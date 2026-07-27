@@ -321,11 +321,11 @@ async def effective_email_matrix(
 
 
 # --------------------------------------------------------------------------- #
-# Personal external channels (#283): per event, per channel
+# External channels (#283, #295): per event, per channel
 # --------------------------------------------------------------------------- #
-#: Off until the owner routes an event here. A personal channel is opt-in per event — that is
-#: what replaces ``event_filter`` for it, and "connected but silent" is the only safe default
-#: for a transport that pings someone's phone.
+#: Off until someone routes an event here. Every channel is opt-in per event — that is what
+#: replaced ``event_filter``, and "connected but silent" is the only safe default for a transport
+#: that pings someone's phone or a room the whole team watches.
 CHANNEL_PREF_OFF = ResolvedPref(
     enabled=False,
     delay_minutes=0,
@@ -343,7 +343,11 @@ async def _load_channel_rows(
     channel_ids: Sequence[uuid.UUID],
     event_types: Sequence[str] | None,
 ) -> dict[tuple[uuid.UUID, str], NotificationPreference]:
-    """One query for every per-channel row that can influence the asked-for pairs."""
+    """One query for every per-channel row that can influence the asked-for pairs.
+
+    Not scoped by ``user_id``: a channel belongs to exactly one scope, so its id already says
+    whose rows these are. Adding the filter would only be a way to get it wrong.
+    """
     if not channel_ids:
         return {}
     stmt = select(NotificationPreference).where(
@@ -363,9 +367,12 @@ def _merge_channel(
 ) -> ResolvedPref:
     """One (channel, event) rule: the row if there is one, else off.
 
-    There is no org-default layer here — nobody but the owner has an opinion about their own
-    Slack DM. The digest *schedule* (time-of-day, weekday) is not per event, so it is folded in
-    from the channel itself, exactly as the e-mail matrix folds in the scope's general row.
+    Flat, unlike the implicit channels: a channel is owned by exactly one scope, so there is
+    nothing to inherit *from*. Nobody but the owner has an opinion about their own Slack DM, and a
+    shared room's routing is the org's single answer, not a default someone overrides.
+
+    The digest *schedule* (time-of-day, weekday) is not per event, so it is folded in from the
+    channel itself, exactly as the e-mail matrix folds in the scope's general row.
     """
     base = CHANNEL_PREF_OFF
     if row is not None:
@@ -374,7 +381,7 @@ def _merge_channel(
             enabled=row.enabled,
             delay_minutes=row.delay_minutes,
             digest=row.digest,
-            source="user",
+            source="org" if config.user_id is None else "user",
         )
     return replace(
         base,
@@ -389,7 +396,7 @@ async def resolve_channel_prefs(
     event_type: str,
     configs: Sequence[NotificationChannelConfig],
 ) -> dict[uuid.UUID, ResolvedPref]:
-    """The rule for one event on each of these personal channels — a single query (no N+1)."""
+    """The rule for one event on each of these channels — a single query (no N+1)."""
     if not configs:
         return {}
     rows = await _load_channel_rows(
@@ -403,7 +410,7 @@ async def effective_channel_matrix(
     org_id: uuid.UUID,
     configs: Sequence[NotificationChannelConfig],
 ) -> dict[uuid.UUID, dict[str, ResolvedPref]]:
-    """Every event's rule on every one of a user's personal channels — one query for all of it."""
+    """Every event's rule on every one of a scope's channels — one query for all of it."""
     if not configs:
         return {}
     rows = await _load_channel_rows(
@@ -417,24 +424,26 @@ async def effective_channel_matrix(
     }
 
 
-async def personal_channels(
+async def scope_channels(
     session: AsyncSession, org_id: uuid.UUID, user_id: uuid.UUID | None
 ) -> list[NotificationChannelConfig]:
-    """The caller's own external channels, in the order the matrix renders their columns.
+    """One scope's external channels, in the order the matrix renders their columns (#295).
 
-    ``user_id=None`` is the org-default scope, which has no personal channels by definition:
-    routing to somebody's Slack DM is not something a manager can pre-decide for them.
+    ``user_id`` set → that person's own transports; ``user_id=None`` → the org's shared rooms.
+    A channel is a column of exactly one matrix, and it is this function that says which: routing
+    to somebody's Slack DM is not something a manager can pre-decide, and how noisy ``#crm`` is is
+    not something whoever last opened their own settings gets to decide.
     """
-    if user_id is None:
-        return []
+    scope = (
+        NotificationChannelConfig.user_id.is_(None)
+        if user_id is None
+        else NotificationChannelConfig.user_id == user_id
+    )
     return list(
         (
             await session.execute(
                 select(NotificationChannelConfig)
-                .where(
-                    NotificationChannelConfig.org_id == org_id,
-                    NotificationChannelConfig.user_id == user_id,
-                )
+                .where(NotificationChannelConfig.org_id == org_id, scope)
                 .order_by(NotificationChannelConfig.name)
             )
         )
@@ -521,7 +530,7 @@ class EmailScheduleWrite:
 
 @dataclass(frozen=True)
 class ChannelWrite:
-    """One event routed to one personal external channel (#283).
+    """One event routed to one external channel (#283, #295).
 
     No time/weekday: a channel's digest schedule lives on the channel itself, so a person who
     wants their Slack digest at 09:00 says it once rather than on every row.
@@ -542,7 +551,7 @@ async def replace_overrides(
     email_events: Sequence[EmailWrite],
     general: GeneralWrite | None,
     email_schedule: EmailScheduleWrite | None,
-    channel_events: Sequence[ChannelWrite] = (),
+    channel_events: Sequence[ChannelWrite] | None = None,
 ) -> None:
     """Set this scope's rows to exactly the given in-app + e-mail + per-channel overrides.
 
@@ -551,10 +560,16 @@ async def replace_overrides(
     is rewritten in one pass — the caller resolves each one's overrides independently, so an
     event may override e-mail while its in-app rule keeps inheriting, and vice versa.
 
-    Personal-channel rows are only ever the caller's own (``user_id`` is not ``None``); the
-    org-default scope has none, because routing to somebody's Slack DM is not something a
-    manager can pre-decide. The caller has already verified that every ``channel_config_id``
-    belongs to this user — the service layer owns that check, where the row is in hand.
+    Channel rows follow their channel's scope (#295): a user's own transports write user rows, the
+    org's shared rooms write org rows. The caller has already verified that every
+    ``channel_config_id`` belongs to *this* scope — the service layer owns that check, where the
+    row is in hand.
+
+    ``channel_events=None`` leaves this scope's channel rows **untouched**, which is not the same
+    as ``()``. An empty sequence is the wholesale instruction "route nothing" (a reset); ``None``
+    is "this caller does not manage these channels, so their silence says nothing about them".
+    Collapsing the two would let a caller who cannot even see the columns clear every route by
+    saving an unrelated part of the matrix.
     """
     scope = (
         NotificationPreference.user_id.is_(None)
@@ -569,7 +584,7 @@ async def replace_overrides(
             scope,
         )
     )
-    if user_id is not None:
+    if channel_events is not None:
         # The per-channel rows are a separate quadrant with its own unique index, so they need
         # their own wholesale delete: an unrouted event is an absent row, not a disabled one.
         await session.execute(
@@ -577,7 +592,7 @@ async def replace_overrides(
                 NotificationPreference.org_id == org_id,
                 NotificationPreference.channel == CHANNEL_EXTERNAL,
                 NotificationPreference.channel_config_id.is_not(None),
-                NotificationPreference.user_id == user_id,
+                scope,
             )
         )
     await session.flush()  # clear the partial unique indexes before re-claiming them
@@ -631,18 +646,17 @@ async def replace_overrides(
                 digest_weekday=email_schedule.digest_weekday,
             )
         )
-    if user_id is not None:
-        for row in channel_events:
-            session.add(
-                NotificationPreference(
-                    org_id=org_id,
-                    user_id=user_id,
-                    channel_config_id=row.channel_config_id,
-                    event_type=row.event_type,
-                    channel=CHANNEL_EXTERNAL,
-                    enabled=row.enabled,
-                    delay_minutes=row.delay_minutes,
-                    digest=row.digest,
-                )
+    for row in channel_events or ():
+        session.add(
+            NotificationPreference(
+                org_id=org_id,
+                user_id=user_id,
+                channel_config_id=row.channel_config_id,
+                event_type=row.event_type,
+                channel=CHANNEL_EXTERNAL,
+                enabled=row.enabled,
+                delay_minutes=row.delay_minutes,
+                digest=row.digest,
             )
+        )
     await session.flush()

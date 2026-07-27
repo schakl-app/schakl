@@ -587,3 +587,17 @@
   legitimate but rare — `leave.recurring.hint` is the reference example. Ranges keep the en
   dash without spaces (`ma–vr`, `{from}–{to}`), and the `—` empty-value placeholder in tables
   stays. English strings are unaffected; this is a Dutch-only rule (owner feedback, 2026-07-12).
+
+- **Two lists of one thing, split by a distinction the reader cannot see.** Instellingen →
+  Meldingen showed "Mijn kanalen" *and* "Externe kanalen" stacked on one screen, and the honest
+  answer to "why two?" was an implementation detail: one kind was routed per event from the matrix
+  above, the other by an event-filter checkbox list and a single channel-wide cadence of its own.
+  The reader saw two boxes of the same nouns (Slack, Teams, webhook) and no way to tell which they
+  wanted. Worse, the second mechanism was a **capability gap wearing a UI**: a shared room could
+  not group per event the way e-mail could, because it had one cadence for everything (#295).
+  Two rules. **When a screen needs a heading to explain why something is duplicated, unify the
+  mechanism instead of labelling the halves** — here every channel became one column of the matrix,
+  and the section is just "Kanalen". And **when two variants of one concept differ by scope, the
+  page is the scope**: my transports live on my settings screen, the org's shared rooms on the org
+  defaults screen, each under the matrix that routes it, so neither page ever shows a list it
+  cannot act on. Suspect any screen rendering the same component twice with a boolean prop.

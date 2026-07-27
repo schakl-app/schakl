@@ -4495,7 +4495,10 @@ export interface paths {
         };
         /**
          * Get Default Preferences
-         * @description What a member inherits before they override anything (org-wide), both channels.
+         * @description What a member inherits before they override anything (org-wide), plus the shared rooms.
+         *
+         *     A shared room is not something a member inherits and overrides — it is routed once, here, for
+         *     everyone (#295). It rides this matrix because that is where its per-event column lives.
          */
         get: operations["get_default_preferences_api_v1_notifications_preferences_defaults_get"];
         /** Set Default Preferences */
@@ -6750,13 +6753,13 @@ export interface components {
              */
             method: string;
         };
-        /** ChannelCreate */
+        /**
+         * ChannelCreate
+         * @description Connect a transport. **Which events reach it, and how often, is not asked here** (#295):
+         *     that is a per-event column in the matrix of the scope that owns the channel, so a freshly
+         *     connected channel is silent until someone routes something to it.
+         */
         ChannelCreate: {
-            /**
-             * Digest
-             * @default immediate
-             */
-            digest: string;
             /** Digest Time */
             digest_time?: string | null;
             /** Digest Weekday */
@@ -6766,8 +6769,6 @@ export interface components {
              * @default true
              */
             enabled: boolean;
-            /** Event Filter */
-            event_filter?: string[];
             /**
              * Kind
              * @enum {string}
@@ -6782,10 +6783,10 @@ export interface components {
         };
         /**
          * ChannelPreference
-         * @description A personal external channel as the matrix renders it: one column, one row per event.
+         * @description An external channel as the matrix renders it: one column, one row per event.
          *
          *     ``digest_time``/``digest_weekday`` are the channel's own digest schedule — not per event, so
-         *     they are edited on the channel (Instellingen → Meldingen → Mijn kanalen), not in the matrix.
+         *     they are edited on the channel (Instellingen → Meldingen → Kanalen), not in the matrix.
          */
         ChannelPreference: {
             /** Digest Time */
@@ -6806,7 +6807,7 @@ export interface components {
         };
         /**
          * ChannelPreferenceEvent
-         * @description One event's rule on one personal external channel (#283). ``enabled=false`` = not routed.
+         * @description One event's rule on one external channel (#283). ``enabled=false`` = not routed.
          */
         ChannelPreferenceEvent: {
             /**
@@ -6829,7 +6830,7 @@ export interface components {
         };
         /**
          * ChannelPreferenceEventWrite
-         * @description One event routed to one personal channel. Absent = not routed (#283).
+         * @description One event routed to one channel. Absent = not routed (#283).
          */
         ChannelPreferenceEventWrite: {
             /**
@@ -6870,16 +6871,12 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
-            /** Digest */
-            digest: string;
             /** Digest Time */
             digest_time?: string | null;
             /** Digest Weekday */
             digest_weekday?: number | null;
             /** Enabled */
             enabled: boolean;
-            /** Event Filter */
-            event_filter: string[];
             /**
              * Id
              * Format: uuid
@@ -6908,16 +6905,12 @@ export interface components {
         };
         /** ChannelUpdate */
         ChannelUpdate: {
-            /** Digest */
-            digest?: string | null;
             /** Digest Time */
             digest_time?: string | null;
             /** Digest Weekday */
             digest_weekday?: number | null;
             /** Enabled */
             enabled?: boolean | null;
-            /** Event Filter */
-            event_filter?: string[] | null;
             /** Name */
             name?: string | null;
             /** Url */

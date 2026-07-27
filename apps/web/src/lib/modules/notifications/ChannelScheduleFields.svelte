@@ -1,10 +1,10 @@
 <script lang="ts">
   /**
-   * When a *personal* channel's digests land (#283).
+   * When a channel's digests land (#283, #295).
    *
-   * A personal channel has no channel-level cadence — the matrix sets one per event — but a daily
-   * or weekly digest still needs an hour and a day. Asking once per channel beats asking on every
-   * one of twenty-odd matrix rows, so the schedule lives here and the cadence lives there.
+   * No channel has a cadence of its own — the matrix sets one per event — but a daily or weekly
+   * digest still needs an hour and a day. Asking once per channel beats asking on every one of
+   * twenty-odd matrix rows, so the schedule lives here and the cadence lives there.
    */
   import { untrack } from "svelte";
 

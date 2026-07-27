@@ -159,11 +159,15 @@ class NotificationPreference(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin
     ``event_type IS NULL`` → the "general" row for a scope: quiet hours + due-soon threshold,
     which are not per-event. Four partial unique indexes keep each quadrant single-valued.
 
-    ``channel_config_id`` names a **personal external channel** (#283): "my Slack, for
-    ``task.overdue``, immediately". Those rows live outside the four quadrants — hence the
-    ``channel_config_id IS NULL`` qualifier on each — and get one index of their own. They are
-    always user-scoped and always per-event: routing to *my* Slack is not an org default, and a
-    channel with no event on it is simply an unrouted channel.
+    ``channel_config_id`` names an **external channel** (#283): "my Slack, for ``task.overdue``,
+    immediately". Those rows live outside the four quadrants — hence the ``channel_config_id IS
+    NULL`` qualifier on each — and get two indexes of their own, one per scope. They are always
+    per-event: a channel with no event on it is simply an unrouted channel.
+
+    A channel belongs to exactly one scope, and its rows follow it there: a **personal** channel's
+    rows are its owner's (``user_id`` set), a **shared** room's are the org's (``user_id IS
+    NULL``). Two indexes rather than one because Postgres treats ``NULL`` as distinct in a unique
+    index, so a single index spanning ``user_id`` would silently stop constraining the org rows.
     """
 
     __tablename__ = "notification_preferences"
@@ -210,7 +214,17 @@ class NotificationPreference(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin
             "org_id", "user_id", "channel_config_id", "event_type",
             unique=True,
             postgresql_where=text(
-                "channel_config_id IS NOT NULL AND event_type IS NOT NULL"
+                "channel_config_id IS NOT NULL AND event_type IS NOT NULL "
+                "AND user_id IS NOT NULL"
+            ),
+        ),
+        # a shared room: one row per (channel, event), owned by the org
+        Index(
+            "uq_notif_pref_org_channel_event",
+            "org_id", "channel_config_id", "event_type",
+            unique=True,
+            postgresql_where=text(
+                "channel_config_id IS NOT NULL AND event_type IS NOT NULL AND user_id IS NULL"
             ),
         ),
     )
@@ -221,7 +235,7 @@ class NotificationPreference(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin
         nullable=True,
         index=True,
     )
-    #: Set → this row is one event's rule for one *personal external channel* (#283).
+    #: Set → this row is one event's rule for one *external channel* (#283).
     channel_config_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("notification_channels.id", ondelete="CASCADE"),
@@ -306,14 +320,18 @@ class NotificationChannelConfig(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMi
     ``kind`` is the transport family (``slack``, ``msteams``, ``gchat``, ``mailto``, ``webhook``)
     for display and SSRF policy; ``url_enc`` is the full Apprise URL — it embeds bot tokens and
     webhook secrets, so it is **encrypted** (:mod:`app.core.crypto`) and never returned by the
-    API, only a redacted preview. ``event_filter`` is the event types this channel receives
-    (empty = all). ``user_id`` distinguishes a personal channel (my Slack DM) from an org channel
-    (the team's ``#crm`` room); ``NULL`` = org-wide.
+    API, only a redacted preview. ``user_id`` distinguishes a personal channel (my Slack DM) from
+    an org channel (the team's ``#crm`` room); ``NULL`` = org-wide.
 
-    ``digest``/``digest_time``/``digest_weekday`` are the **channel-level** cadence (#283): a
-    shared room is not a personal preference, so *when* its events arrive is a property of the
-    room. They mirror the ``NotificationPreference`` columns exactly, so ``compute_visible_at``
-    places a channel's deliveries the same way it places a person's.
+    ``digest_time``/``digest_weekday`` are this channel's digest **schedule** — which hour, which
+    weekday its bundles land on. They mirror the ``NotificationPreference`` columns exactly, so
+    ``compute_visible_at`` places a channel's deliveries the same way it places a person's. The
+    *cadence* is not here: since #295 every channel, shared or personal, is routed per event from
+    the matrix of the scope that owns it, so "which events, how often" is a preference row.
+
+    ``event_filter`` and ``digest`` are what that replaced and are **no longer read** — kept one
+    release so an unattended upgrade can roll back (expand/contract, ``docs/WORKFLOW.md``); the
+    #295 migration copied their meaning into org-scope preference rows.
     """
 
     __tablename__ = "notification_channels"
@@ -322,9 +340,9 @@ class NotificationChannelConfig(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMi
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     url_enc: Mapped[str] = mapped_column(Text, nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    #: Event types routed to this channel; ``[]`` means every event.
+    #: Vestigial (#295): routing moved to per-event preference rows. Dropped next release.
     event_filter: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
-    # immediate | hourly | daily | weekly — this channel's own cadence.
+    #: Vestigial (#295): the cadence is per event now. Dropped next release.
     digest: Mapped[str] = mapped_column(
         String(10), nullable=False, default="immediate", server_default="immediate"
     )

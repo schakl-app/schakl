@@ -1,5 +1,10 @@
 """External notification channels via Apprise (#17): admin-only CRUD, encryption, SSRF, fan-out.
 
+Since #295 a **shared room is routed exactly like a personal channel** — per event, from the
+matrix of the scope that owns it, which for a room is the org defaults. So every fan-out test
+here connects the channel *and then routes something to it*; a connected-but-unrouted room is
+silent, and that is asserted rather than assumed.
+
 No network is touched here: named providers (``slack://``) skip host resolution, and the SSRF
 case uses a literal private IP so no DNS is needed. Delivery *dispatch* (the provider call) is the
 worker's job and is not exercised.
@@ -78,6 +83,45 @@ async def _member(client, headers, email: str) -> User:
     return User(
         id=uuid.UUID(res.json()["user_id"]), email=email, hashed_password="", is_active=True
     )
+
+
+async def _route(client, headers, routing: dict[str, dict[str, str]]) -> dict:  # noqa: ANN001
+    """Route shared rooms from the org-default matrix, as Instellingen → Standaard meldingen does.
+
+    ``routing`` is ``{channel id: {event type: cadence}}``. Wholesale like every block in this
+    body, so every room the test cares about goes in one call — sending one channel would clear
+    the others, exactly as the form always posts every column.
+    """
+    res = await client.put(
+        "/api/v1/notifications/preferences/defaults",
+        json={
+            "channels": [
+                {
+                    "channel_config_id": channel_id,
+                    "events": [
+                        {"event_type": event, "enabled": True, "digest": cadence}
+                        for event, cadence in events.items()
+                    ],
+                }
+                for channel_id, events in routing.items()
+            ]
+        },
+        headers=headers,
+    )
+    assert res.status_code == 200, res.text
+    return res.json()
+
+
+async def _connect_shared(client, headers, name: str = "Team", url: str = _SLACK) -> str:  # noqa: ANN001
+    """Connect a shared room (no ``user_id``) and return its id."""
+    res = await client.post(
+        "/api/v1/notifications/channels",
+        json={"kind": "slack" if url == _SLACK else "discord", "name": name, "url": url},
+        headers=headers,
+    )
+    assert res.status_code == 201, res.text
+    assert res.json()["user_id"] is None
+    return res.json()["id"]
 
 
 async def test_channel_crud_encrypts_and_redacts(client_for) -> None:
@@ -222,15 +266,12 @@ async def test_member_sees_and_touches_only_their_own_channels(client_for) -> No
 
 
 async def test_event_fanout_enqueues_a_delivery(client_for) -> None:
-    """An enabled org channel gets a pending delivery row when an event reaches a recipient."""
+    """A routed org channel gets a pending delivery row when an event reaches a recipient."""
     t = await make_tenant("chan-fanout")
     owner = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        await c.post(
-            "/api/v1/notifications/channels",
-            json={"kind": "slack", "name": "Team", "url": _SLACK},
-            headers=owner,
-        )
+        cid = await _connect_shared(c, owner)
+        await _route(c, owner, {cid: {"leave.requested": "immediate"}})
         member = await _member(c, owner, "emp@example.com")
         mh = await auth_cookie(member)
         types = (await c.get("/api/v1/leave/types", headers=owner)).json()
@@ -268,105 +309,176 @@ async def test_event_fanout_enqueues_a_delivery(client_for) -> None:
         assert deliveries[0].status == "pending"
 
 
-async def test_event_filter_edit_roundtrip(client_for) -> None:
-    """event_filter is settable on create and editable via PATCH; [] means all events (#245)."""
-    t = await make_tenant("chan-filter-edit")
-    headers = await auth_cookie(t.user)
-    async with client_for(t.host) as c:
-        created = (
-            await c.post(
-                "/api/v1/notifications/channels",
-                json={
-                    "kind": "slack",
-                    "name": "Only tasks",
-                    "url": _SLACK,
-                    "event_filter": ["task.assigned"],
-                },
-                headers=headers,
-            )
-        ).json()
-        assert created["event_filter"] == ["task.assigned"]
-        cid = created["id"]
+async def test_connected_but_unrouted_room_is_silent(client_for) -> None:
+    """No row means **not routed** (#295) — connecting a room must not start it pinging.
 
-        widened = await c.patch(
-            f"/api/v1/notifications/channels/{cid}",
-            json={"event_filter": ["task.assigned", "leave.requested"]},
-            headers=headers,
-        )
-        assert widened.status_code == 200
-        assert set(widened.json()["event_filter"]) == {"task.assigned", "leave.requested"}
-
-        # An unknown event is rejected — the picker only ever posts known keys.
-        bad = await c.patch(
-            f"/api/v1/notifications/channels/{cid}",
-            json={"event_filter": ["not.a.real.event"]},
-            headers=headers,
-        )
-        assert bad.status_code == 422
-
-        cleared = await c.patch(
-            f"/api/v1/notifications/channels/{cid}", json={"event_filter": []}, headers=headers
-        )
-        assert cleared.json()["event_filter"] == []
-
-
-async def test_event_filter_routes_only_listed_events(client_for) -> None:
-    """A channel with a non-empty event_filter is skipped for events it does not list (#245)."""
-    t = await make_tenant("chan-filter-route")
+    This is the behaviour that replaced the old empty ``event_filter`` meaning "every event": a
+    shared room now opts in per event, exactly as a personal channel always has.
+    """
+    t = await make_tenant("chan-unrouted")
     owner = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        # This channel only wants company events, so a leave request must not reach it.
-        await c.post(
-            "/api/v1/notifications/channels",
-            json={
-                "kind": "slack",
-                "name": "Companies only",
-                "url": _SLACK,
-                "event_filter": ["company.created"],
-            },
+        await _connect_shared(c, owner, "Silent")
+        member = await _member(c, owner, "emp@unrouted.example")
+        await _leave_request(c, await auth_cookie(member), owner)
+
+    assert await _deliveries(t.org.id) == []
+
+
+async def test_room_routing_is_per_event(client_for) -> None:
+    """A room hears only the events it was routed (#295) — the event_filter's replacement."""
+    t = await make_tenant("chan-per-event")
+    owner = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        cid = await _connect_shared(c, owner, "Companies only")
+        # Routed for company events, so a leave request must not reach it.
+        await _route(c, owner, {cid: {"company.created": "immediate"}})
+        member = await _member(c, owner, "emp@per-event.example")
+        await _leave_request(c, await auth_cookie(member), owner)
+
+    assert await _deliveries(t.org.id) == []
+
+
+async def test_room_routing_roundtrips_on_the_defaults_matrix(client_for) -> None:
+    """The org matrix reads back a room's column, and a wholesale save clears what it omits."""
+    t = await make_tenant("chan-route-roundtrip")
+    owner = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        cid = await _connect_shared(c, owner, "#crm")
+
+        # A fresh room is a column of the org matrix with every event off.
+        matrix = (await c.get("/api/v1/notifications/preferences/defaults", headers=owner)).json()
+        column = next(ch for ch in matrix["channels"] if ch["id"] == cid)
+        assert column["name"] == "#crm"
+        assert all(row["enabled"] is False for row in column["events"])
+
+        saved = await _route(
+            c, owner, {cid: {"leave.requested": "immediate", "task.assigned": "daily"}}
+        )
+        routed = {
+            row["event_type"]: row["digest"]
+            for row in next(ch for ch in saved["channels"] if ch["id"] == cid)["events"]
+            if row["enabled"]
+        }
+        assert routed == {"leave.requested": "immediate", "task.assigned": "daily"}
+
+        # Wholesale: a save that omits an event un-routes it.
+        after = await _route(c, owner, {cid: {"leave.requested": "immediate"}})
+        still = {
+            row["event_type"]
+            for row in next(ch for ch in after["channels"] if ch["id"] == cid)["events"]
+            if row["enabled"]
+        }
+        assert still == {"leave.requested"}
+
+        # An id from another scope is a 404, never a 403 that confirms it exists.
+        member = await _member(c, owner, "emp@route-roundtrip.example")
+        personal = (
+            await c.post(
+                "/api/v1/notifications/channels",
+                json={"kind": "slack", "name": "My DM", "url": _SLACK},
+                headers=await auth_cookie(member),
+            )
+        ).json()["id"]
+        refused = await c.put(
+            "/api/v1/notifications/preferences/defaults",
+            json={"channels": [{"channel_config_id": personal, "events": []}]},
             headers=owner,
         )
-        member = await _member(c, owner, "emp@filter-route.example")
+        assert refused.status_code == 404
+
+
+async def test_saving_defaults_without_channels_manage_leaves_rooms_routed(client_for) -> None:
+    """Reading and writing the channel columns are one permission, so a save cannot wipe them.
+
+    The blocks are wholesale, so an admin who is shown no columns posts an empty list — and if
+    that were allowed to write, saving an unrelated in-app default would silently un-route every
+    shared room. A caller who does not hold ``channels.manage`` therefore sees no columns *and*
+    changes none (#295).
+    """
+    t = await make_tenant("chan-route-nowipe")
+    owner = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        cid = await _connect_shared(c, owner, "#crm")
+        await _route(c, owner, {cid: {"leave.requested": "immediate"}})
+
+        # A role that curates the org defaults but does not manage channels — the exact split
+        # that would otherwise wipe the room's routing on an unrelated save.
+        role = await c.post(
+            "/api/v1/roles",
+            json={"key": "defaults_only", "permissions": ["notifications.defaults.manage"]},
+            headers=owner,
+        )
+        assert role.status_code == 201, role.text
+        member = await _member(c, owner, "emp@nowipe.example")
+        members = (await c.get("/api/v1/members", headers=owner)).json()
+        row = next(m for m in members if m["user_id"] == str(member.id))
+        member_role = next(
+            r for r in (await c.get("/api/v1/roles", headers=owner)).json() if r["key"] == "member"
+        )
+        assigned = await c.put(
+            f"/api/v1/members/{row['membership_id']}/roles",
+            json={"role_ids": [member_role["id"], role.json()["id"]]},
+            headers=owner,
+        )
+        assert assigned.status_code == 200, assigned.text
         mh = await auth_cookie(member)
-        types = (await c.get("/api/v1/leave/types", headers=owner)).json()
-        special = next(x["id"] for x in types if x["key"] == "special")
-        start = leave_workday(0)
-        res = await c.post(
-            "/api/v1/leave/requests",
-            json={
-                "leave_type_id": special,
-                "start_date": start.isoformat(),
-                "end_date": start.isoformat(),
-            },
+
+        # No columns for them …
+        seen = (await c.get("/api/v1/notifications/preferences/defaults", headers=mh)).json()
+        assert seen["channels"] == []
+
+        # … and an ordinary save of the in-app defaults leaves the room routed.
+        saved = await c.put(
+            "/api/v1/notifications/preferences/defaults",
+            json={"events": [{"event_type": "task.assigned", "enabled": False}]},
             headers=mh,
         )
-        assert res.status_code == 201, res.text
+        assert saved.status_code == 200, saved.text
 
-    async with async_session_maker() as session:
-        await set_current_org(session, t.org.id)
-        deliveries = (
-            (
-                await session.execute(
-                    select(NotificationDelivery).where(
-                        NotificationDelivery.org_id == t.org.id,
-                        NotificationDelivery.channel == "external",
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        assert deliveries == []  # leave.requested is not in the channel's filter
+        after = (await c.get("/api/v1/notifications/preferences/defaults", headers=owner)).json()
+        routed = {
+            row["event_type"]
+            for row in next(ch for ch in after["channels"] if ch["id"] == cid)["events"]
+            if row["enabled"]
+        }
+        assert routed == {"leave.requested"}
+
+
+async def test_member_cannot_route_a_shared_room(client_for) -> None:
+    """A room is org config: a member's own matrix has no column for it (#295, §15)."""
+    t = await make_tenant("chan-route-rbac")
+    owner = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        cid = await _connect_shared(c, owner, "#crm")
+        member = await _member(c, owner, "emp@route-rbac.example")
+        mh = await auth_cookie(member)
+
+        mine = (await c.get("/api/v1/notifications/preferences", headers=mh)).json()
+        assert [ch["id"] for ch in mine["channels"]] == []
+
+        # Reaching for it by id is a 404 on their own endpoint, and a 403 on the org's.
+        body = {"channels": [{"channel_config_id": cid, "events": []}]}
+        assert (
+            await c.put("/api/v1/notifications/preferences", json=body, headers=mh)
+        ).status_code == 404
+        assert (
+            await c.put("/api/v1/notifications/preferences/defaults", json=body, headers=mh)
+        ).status_code == 403
 
 
 # --------------------------------------------------------------------------- #
-# Channel-level cadence + digest bundling (#283, Phase A)
+# Per-event cadence + digest bundling (#283 Phase A, generalised to rooms in #295)
 # --------------------------------------------------------------------------- #
 
 
-async def test_channel_cadence_roundtrip(client_for) -> None:
-    """A channel carries its own cadence; ``immediate`` is the default (pre-#283 behaviour)."""
-    t = await make_tenant("chan-cadence")
+async def test_channel_schedule_roundtrip(client_for) -> None:
+    """A channel carries a digest *schedule* — the hour and weekday its bundles land on (#283).
+
+    Not a cadence: since #295 no channel has one of its own, so ``digest`` is not a field of the
+    channel API at all. Which events, and how often, is the matrix's column.
+    """
+    t = await make_tenant("chan-schedule")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
         plain = (
@@ -376,7 +488,7 @@ async def test_channel_cadence_roundtrip(client_for) -> None:
                 headers=headers,
             )
         ).json()
-        assert plain["digest"] == "immediate"
+        assert "digest" not in plain and "event_filter" not in plain
         assert plain["digest_time"] is None and plain["digest_weekday"] is None
 
         weekly = (
@@ -386,43 +498,52 @@ async def test_channel_cadence_roundtrip(client_for) -> None:
                     "kind": "slack",
                     "name": "Weekly",
                     "url": _SLACK,
-                    "digest": "weekly",
                     "digest_time": "09:30",
                     "digest_weekday": 4,
                 },
                 headers=headers,
             )
         ).json()
-        assert weekly["digest"] == "weekly"
         assert weekly["digest_time"] == "09:30:00" and weekly["digest_weekday"] == 4
 
         patched = await c.patch(
             f"/api/v1/notifications/channels/{weekly['id']}",
-            json={"digest": "daily", "digest_time": "08:00", "digest_weekday": None},
+            json={"digest_time": "08:00", "digest_weekday": None},
             headers=headers,
         )
         assert patched.status_code == 200
-        assert patched.json()["digest"] == "daily"
+        assert patched.json()["digest_time"] == "08:00:00"
         assert patched.json()["digest_weekday"] is None
 
-        bad = await c.patch(
-            f"/api/v1/notifications/channels/{weekly['id']}",
-            json={"digest": "fortnightly"},
-            headers=headers,
-        )
-        assert bad.status_code == 422
+
+async def test_room_groups_per_event_like_email(client_for) -> None:
+    """One room, two cadences: leave immediately, tasks in the daily digest (#295).
+
+    The point of the feature in one test. A room used to have exactly one cadence for everything
+    it received, so "bundle the noisy events, ping me for the urgent ones" — which e-mail has had
+    per event since #245 — was not expressible on Slack at all.
+    """
+    t = await make_tenant("chan-mixed-cadence")
+    owner = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        cid = await _connect_shared(c, owner, "#crm")
+        await _route(c, owner, {cid: {"leave.requested": "immediate", "task.assigned": "daily"}})
+        member = await _member(c, owner, "emp@mixed.example")
+        await _leave_request(c, await auth_cookie(member), owner)
+
+    rows = await _deliveries(t.org.id)
+    assert len(rows) == 1
+    # leave.requested is immediate on this room, so its slot is now — not tomorrow's 08:00.
+    assert rows[0].deliver_after <= datetime.now(UTC) + timedelta(seconds=5)
 
 
 async def test_digest_channel_holds_delivery_until_its_slot(client_for) -> None:
-    """A daily channel's rows are written now but held for the slot, never sent immediately."""
+    """A daily-routed event's row is written now but held for the slot, never sent immediately."""
     t = await make_tenant("chan-digest-hold")
     owner = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        await c.post(
-            "/api/v1/notifications/channels",
-            json={"kind": "slack", "name": "Team", "url": _SLACK, "digest": "daily"},
-            headers=owner,
-        )
+        cid = await _connect_shared(c, owner)
+        await _route(c, owner, {cid: {"leave.requested": "daily"}})
         member = await _member(c, owner, "emp@digest-hold.example")
         await _leave_request(c, await auth_cookie(member), owner)
 
@@ -441,13 +562,11 @@ async def test_sweep_bundles_one_message_per_channel(client_for, monkeypatch) ->
     t = await make_tenant("chan-bundle")
     owner = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        for name, url in (("Slack", _SLACK), ("Discord", _DISCORD)):
-            res = await c.post(
-                "/api/v1/notifications/channels",
-                json={"kind": name.lower(), "name": name, "url": url},
-                headers=owner,
-            )
-            assert res.status_code == 201, res.text
+        ids = [
+            await _connect_shared(c, owner, name, url)
+            for name, url in (("Slack", _SLACK), ("Discord", _DISCORD))
+        ]
+        await _route(c, owner, {cid: {"leave.requested": "immediate"} for cid in ids})
         member = await _member(c, owner, "emp@bundle.example")
         mh = await auth_cookie(member)
         for offset in (0, 1):
@@ -481,11 +600,8 @@ async def test_immediate_channel_fires_on_the_next_tick(client_for, monkeypatch)
     t = await make_tenant("chan-immediate")
     owner = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        await c.post(
-            "/api/v1/notifications/channels",
-            json={"kind": "slack", "name": "Team", "url": _SLACK, "digest": "immediate"},
-            headers=owner,
-        )
+        cid = await _connect_shared(c, owner)
+        await _route(c, owner, {cid: {"leave.requested": "immediate"}})
         member = await _member(c, owner, "emp@immediate.example")
         await _leave_request(c, await auth_cookie(member), owner)
 
@@ -508,11 +624,8 @@ async def test_failed_bundle_stays_pending_with_the_provider_error(client_for, m
     t = await make_tenant("chan-fail")
     owner = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        await c.post(
-            "/api/v1/notifications/channels",
-            json={"kind": "slack", "name": "Team", "url": _SLACK},
-            headers=owner,
-        )
+        cid = await _connect_shared(c, owner)
+        await _route(c, owner, {cid: {"leave.requested": "immediate"}})
         member = await _member(c, owner, "emp@fail.example")
         await _leave_request(c, await auth_cookie(member), owner)
 

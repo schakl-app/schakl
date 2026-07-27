@@ -1,7 +1,8 @@
 # Notifications — the delivery model
 
 > How an event becomes a message, on which channel, and *when*. Issues #16 (in-app + prefs),
-> #17 (external transports), #245 (per-event e-mail), #283 (cadence everywhere).
+> #17 (external transports), #245 (per-event e-mail), #283 (cadence everywhere), #295 (one
+> routing table for every channel).
 > Read this before touching `apps/api/app/modules/notifications/`.
 
 ## The two halves
@@ -17,20 +18,41 @@ saving a task.
 
 ## The four channels
 
-| Channel | Row it writes | Who it reaches | Where its cadence lives |
+| Channel | Row it writes | Who it reaches | Where its routing + cadence live |
 |---|---|---|---|
 | `in_app` | `notifications` (`visible_at`) | one recipient | that user's matrix, per event |
 | `email` | `notification_deliveries` | one recipient | that user's matrix, per event (#245) |
-| `external`, org channel | `notification_deliveries` | a shared room | **the channel row** (#283) |
-| `external`, personal channel | `notification_deliveries` | the channel's owner | that user's matrix, per event *per channel* (#283) |
+| `external`, org channel | `notification_deliveries` | a shared room | the **org** matrix, per event *per channel* (#295) |
+| `external`, personal channel | `notification_deliveries` | the channel's owner | that **user's** matrix, per event *per channel* (#283) |
 
 `in_app` and `email` are **implicit**: every member has them, and there is no row to create.
 An `external` channel is an explicit `notification_channels` row holding an Apprise URL,
 encrypted at rest. `user_id NULL` makes it an org/shared channel; `user_id` set makes it personal.
 
-The split is deliberate. *When a shared room hears about things* is a property of the room — you
-do not want two admins fighting over whether `#crm` is noisy. *When my own Slack DM pings me* is a
-personal preference, exactly like the bell and my e-mail, so it belongs in my matrix.
+**Every channel is routed the same way, and the scope is the only difference** (#295). A shared
+room used to route by two columns of its own — `event_filter` for which events, `digest` for how
+often — while a personal channel routed per event from its owner's matrix. That split is what made
+"group Slack the way e-mail groups" impossible: a room had exactly one cadence for everything it
+received, and the matrix had no column to say otherwise. Both now carry
+`notification_preferences` rows keyed by `channel_config_id`; a personal channel's are its owner's
+(`user_id` set), a shared room's are the org's (`user_id IS NULL`).
+
+Which scope owns a channel is what decides *where you configure it*, and it is a real distinction:
+*when a shared room hears about things* is one answer for the whole agency — you do not want two
+admins fighting over whether `#crm` is noisy, nor whoever last opened their own settings deciding
+it. *When my own Slack DM pings me* is a personal preference, exactly like the bell and my e-mail.
+So each of the two settings screens shows exactly the channels it routes, and both call the list
+**Kanalen**:
+
+| Screen | Matrix | Its channels |
+|---|---|---|
+| Instellingen → Meldingen | my own preferences | my own transports (every member) |
+| Instellingen → Standaard meldingen | the org defaults | the org's shared rooms (admin) |
+
+`notification_channels.event_filter` and `.digest` still exist and are **no longer read** — the
+#295 migration copied their meaning into org-scope preference rows and left the columns alone so
+an unattended upgrade can roll back. Dropping them is the contract half, a later release
+(`docs/WORKFLOW.md`).
 
 ## Cadence → `deliver_after` → one bundled message
 
@@ -72,22 +94,23 @@ digest sent is not a state worth modelling.
 
 ## Routing
 
-- **Org channel:** `event_filter` (empty = every event) decides what reaches it.
-- **Personal channel:** the owner's per-event preference decides — `event_filter` is not consulted.
-  Two routing mechanisms on one channel would be two places to look when something did not arrive.
-  No row means **not routed**, so a freshly connected channel is silent until its owner says
-  otherwise: connecting a transport must not start pinging someone's phone on its own.
+- **Every channel:** the per-event preference row for *that channel*, in the matrix of the scope
+  that owns it. One mechanism, so there is one place to look when something did not arrive.
+  No row means **not routed**, so a freshly connected channel is silent until someone says
+  otherwise: connecting a transport must not start pinging a phone (or a room) on its own.
 - **Everything external is a subset of in-app.** E-mail and every channel fan out from the freshly
   written bell rows, so an event switched off in-app never leaves the app, whatever its own column
-  says.
+  says. For a shared room that means the *org default* in-app row: nobody receives it in-app,
+  nothing reaches the room.
+- **Which notification a delivery hangs off** is the one thing still not a preference. A personal
+  channel takes its owner's row; a shared room takes the first of the batch, because the room's
+  one message stands in for the whole audience rather than for a recipient.
 
-One nuance worth knowing before you go looking for it: a personal channel splits its cadence from
-its *schedule*. The cadence (off / immediate / hourly / daily / weekly) is per event, in the
-matrix; the schedule (which hour, which weekday its digests land on) is one choice per channel,
-stored in that channel's own `digest_time` / `digest_weekday` and edited under **Instellingen →
-Meldingen → Mijn kanalen**. Asking "at what time?" on each of twenty-odd matrix rows would be a
-question with one answer. `NotificationChannelConfig.digest` is therefore read only for *org*
-channels; on a personal one it stays at its default and means nothing.
+One nuance worth knowing before you go looking for it: a channel splits its cadence from its
+*schedule*. The cadence (off / immediate / hourly / daily / weekly) is per event, in the matrix;
+the schedule (which hour, which weekday its digests land on) is one choice per channel, stored in
+that channel's own `digest_time` / `digest_weekday` and edited on the channel itself. Asking "at
+what time?" on each of twenty-odd matrix rows would be a question with one answer.
 
 ## Who may configure what
 
@@ -95,6 +118,19 @@ channels; on a personal one it stays at its default and means nothing.
 |---|---|---|
 | `notifications.channels.manage` | admin | the org's shared channels — and, being a superset, everyone's |
 | `notifications.channels.manage_own` | admin + member | the caller's own personal channels |
+
+Routing a shared room takes `channels.manage` **as well as** `defaults.manage` (#295): what lands
+in `#crm` is an administrative act, and a tenant that handed one of those two keys to a role
+without the other meant it. Both are admin-only by default, so this refuses nobody who could route
+a room before. The org-default endpoint declares `defaults.manage` and `router._manages_channels`
+refines it — CLAUDE.md §15's two-layer rule, again.
+
+**Seeing the columns and writing them is deliberately one predicate**, and that is load-bearing
+rather than tidy. The channel blocks are wholesale, so a caller shown no columns posts an empty
+list; if that were allowed to write, someone with only `defaults.manage` would un-route every
+shared room by saving an unrelated in-app default. Hence `replace_overrides(channel_events=None)`
+— "leave this scope's channel rows alone" — which is a different instruction from `()`, "route
+nothing", what a reset means.
 
 Every channel route declares the `manage_own` floor and the service refines with the row in hand
 (CLAUDE.md §15's two-layer rule). A member listing channels sees only their own; an org channel or
@@ -122,5 +158,7 @@ must never import the catalog (`docs/WORKFLOW.md`).
 | `jobs.py` | the per-org ARQ cron that runs the sweeps |
 
 On the web side, `PreferenceMatrixForm.svelte` renders the matrix (one column per channel, added
-by data alone — a new channel adds no code), and `ChannelSection.svelte` is the connect/test/edit
-surface, rendered twice: once as "Mijn kanalen" for everyone, once as the admin's shared channels.
+by data alone — a new channel adds no code), `ChannelSection.svelte` is the connect/test/edit
+surface, and `channels.server.ts` holds the form actions behind it. All three are scope-agnostic:
+each settings page mounts them with its own scope and its own channel list, which is the whole of
+what the two screens differ by.

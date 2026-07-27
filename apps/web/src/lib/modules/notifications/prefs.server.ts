@@ -29,7 +29,7 @@ export interface MatrixEmailEventWrite {
   digest: string;
 }
 
-/** One event routed to one personal external channel (#283). Absent = not routed. */
+/** One event routed to one external channel (#283, #295). Absent = not routed. */
 export interface MatrixChannelEventWrite {
   event_type: string;
   enabled: boolean;
@@ -55,7 +55,7 @@ export interface MatrixWrite {
     digest_time: string | null;
     digest_weekday: number | null;
   } | null;
-  /** The caller's own external channels, each with its per-event routing (#283). */
+  /** This scope's external channels, each with its per-event routing (#283, #295). */
   channels: MatrixChannelWrite[];
 }
 

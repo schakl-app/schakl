@@ -1,15 +1,18 @@
 <script lang="ts">
   /**
-   * Connect, test, edit and remove external notification channels (#17, #283).
+   * Connect, test, edit and remove notification channels (#17, #283, #295).
    *
-   * One component, two audiences, because the *forms* are identical and only the meaning differs:
+   * One component, one form, whichever scope it is mounted in — because since #295 a channel is
+   * set up the same way everywhere: connect the transport here, then route it per event in the
+   * matrix above, where it now has a column of its own. There is no "my channels" versus "external
+   * channels" distinction left to draw on a page; the *page* is the scope. Instellingen →
+   * Meldingen holds my own transports, Instellingen → Standaard meldingen the org's shared rooms.
    *
-   * - **shared** (`personal = false`) — the org's rooms, admin only. Routing is the channel's
-   *   `event_filter`, cadence is the channel's own: how noisy `#crm` is belongs to the room, not
-   *   to whoever last opened this page.
-   * - **personal** (`personal = true`) — my Slack DM, my webhook. Every member may connect one.
-   *   Routing *and* cadence live per event in the matrix above, so this form asks neither — only
-   *   the hour its digests should land on, which is not a per-event question.
+   * That is why this asks for neither an event filter nor a cadence: both were the shared room's
+   * separate answer to questions the matrix now answers for every channel, and a room stuck on one
+   * cadence for everything was exactly what stopped Slack grouping the way e-mail does. What is
+   * left on the channel itself is its digest *schedule* — which hour, which weekday its bundles
+   * land on — because that has one answer per channel, not one per event.
    *
    * The secret-bearing URL is write-only: the API returns a redacted preview and never the URL,
    * so "edit" cannot show it and does not try. Rotating it means connecting the channel again.
@@ -19,8 +22,6 @@
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
-  import ChannelCadenceFields from "$lib/modules/notifications/ChannelCadenceFields.svelte";
-  import ChannelEventFilter from "$lib/modules/notifications/ChannelEventFilter.svelte";
   import ChannelScheduleFields from "$lib/modules/notifications/ChannelScheduleFields.svelte";
 
   interface Channel {
@@ -29,37 +30,25 @@
     name: string;
     redacted: string;
     enabled: boolean;
-    event_filter: string[];
-    digest: string;
     digest_time?: string | null;
     digest_weekday?: number | null;
   }
 
   let {
     channels,
-    eventTypes,
-    personal = false,
+    /** Which matrix these channels are a column of: mine, or the org's. Copy only. */
+    scope,
     form = null,
   }: {
     channels: Channel[];
-    /** The event vocabulary for the shared-channel filter picker; unused when personal. */
-    eventTypes: string[];
-    personal?: boolean;
+    scope: "user" | "org";
     form?: Record<string, unknown> | null;
   } = $props();
 
   const busy = new InFlight();
 
-  // Ids are unique per channel, but the create form exists twice on the page — prefix its
-  // field ids so the two <label for=…> pairs cannot cross-wire.
-  const ns = $derived(personal ? "mine" : "org");
-
   // Which existing channel is open in the inline editor.
   let editingId = $state("");
-  // The filter each open editor is composing, keyed by channel id (shared channels only).
-  let editFilter = $state<Record<string, string[]>>({});
-  // The filter the create form is composing (empty = all events).
-  let createFilter = $state<string[]>([]);
 
   // --- provider cards, never a raw Apprise URL (#17) ------------------------------------- #
   const CHANNEL_KINDS = [
@@ -82,28 +71,14 @@
   };
   let kindChosen = $state("");
   const kind = $derived(kindChosen || "email");
-
-  function openEditor(channel: Channel): void {
-    editingId = channel.id;
-    editFilter = { ...editFilter, [channel.id]: [...(channel.event_filter ?? [])] };
-  }
-
-  /** A create error belongs to the section that raised it, not to both (#283). */
-  const createError = $derived(
-    form?.channelError && Boolean(form?.channelErrorPersonal) === personal
-      ? String(form.channelError)
-      : null,
-  );
 </script>
 
 <section class="mt-8 rounded-xl border border-border bg-surface-raised p-6">
-  <h2 class="mb-1 text-sm font-semibold text-text">
-    {personal ? t("settings.notifications.my_channels") : t("settings.notifications.channels")}
-  </h2>
+  <h2 class="mb-1 text-sm font-semibold text-text">{t("settings.notifications.channels")}</h2>
   <p class="mb-4 text-sm text-text-muted">
-    {personal
-      ? t("settings.notifications.my_channels_hint")
-      : t("settings.notifications.channels_hint")}
+    {scope === "org"
+      ? t("settings.notifications.channels_hint_org")
+      : t("settings.notifications.channels_hint_user")}
   </p>
 
   {#if channels.length > 0}
@@ -125,22 +100,13 @@
                 >{channel.redacted}</span
               >
               <span class="block text-[11px] text-text-muted">
-                {#if personal}
-                  {t("settings.notifications.channel_routed_by_matrix")}
-                {:else}
-                  {channel.event_filter.length === 0
-                    ? t("settings.notifications.channel_events_all")
-                    : t("settings.notifications.channel_events_count", {
-                        count: channel.event_filter.length,
-                      })}
-                  · {t(`notifications.digest.${channel.digest}`)}
-                {/if}
+                {t("settings.notifications.channel_routed_by_matrix")}
               </span>
             </div>
             <Button
               variant="secondary"
               size="xs"
-              onclick={() => openEditor(channel)}
+              onclick={() => (editingId = channel.id)}
               disabled={busy.active}>{t("common.edit")}</Button
             >
             <form
@@ -182,7 +148,6 @@
               })}
             >
               <input type="hidden" name="channel_id" value={channel.id} />
-              {#if personal}<input type="hidden" name="personal" value="1" />{/if}
               <div class="grid gap-3 sm:grid-cols-2">
                 <div>
                   <label for="edit-name-{channel.id}" class="mb-1 block text-sm text-text"
@@ -201,30 +166,11 @@
                   {t("settings.notifications.channel_enabled")}
                 </label>
               </div>
-              {#if personal}
-                <ChannelScheduleFields
-                  id={channel.id}
-                  digestTime={channel.digest_time}
-                  digestWeekday={channel.digest_weekday}
-                />
-              {:else}
-                <ChannelEventFilter
-                  events={eventTypes}
-                  value={editFilter[channel.id] ?? []}
-                  onchange={(v) => (editFilter = { ...editFilter, [channel.id]: v })}
-                />
-                <input
-                  type="hidden"
-                  name="event_filter"
-                  value={JSON.stringify(editFilter[channel.id] ?? [])}
-                />
-                <ChannelCadenceFields
-                  id={channel.id}
-                  digest={channel.digest}
-                  digestTime={channel.digest_time}
-                  digestWeekday={channel.digest_weekday}
-                />
-              {/if}
+              <ChannelScheduleFields
+                id={channel.id}
+                digestTime={channel.digest_time}
+                digestWeekday={channel.digest_weekday}
+              />
               {#if form?.updateError && form?.updateErrorId === channel.id}
                 <p class="text-sm text-red-600 dark:text-red-400">{t(String(form.updateError))}</p>
               {/if}
@@ -283,19 +229,17 @@
     action="?/createChannel"
     class="space-y-3"
     use:enhance={busy.wrap("createChannel", () => ({ result, update }) => {
-      if (result.type === "success") createFilter = [];
       void update({ reset: result.type === "success" });
     })}
   >
     <input type="hidden" name="kind" value={kind} />
-    {#if personal}<input type="hidden" name="personal" value="1" />{/if}
     <div class="grid gap-3 sm:grid-cols-2">
       <div>
-        <label for="{ns}-channel-name" class="mb-1 block text-sm text-text"
+        <label for="channel-name" class="mb-1 block text-sm text-text"
           >{t("settings.notifications.channel_name")}</label
         >
         <input
-          id="{ns}-channel-name"
+          id="channel-name"
           name="name"
           required
           class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand"
@@ -303,11 +247,11 @@
       </div>
       {#if kind === "email"}
         <div>
-          <label for="{ns}-channel-url" class="mb-1 block text-sm text-text"
+          <label for="channel-url" class="mb-1 block text-sm text-text"
             >{t("settings.notifications.input.address")}</label
           >
           <input
-            id="{ns}-channel-url"
+            id="channel-url"
             name="url"
             type="email"
             required
@@ -317,11 +261,11 @@
         </div>
       {:else if kind === "telegram"}
         <div>
-          <label for="{ns}-channel-bot-token" class="mb-1 block text-sm text-text"
+          <label for="channel-bot-token" class="mb-1 block text-sm text-text"
             >{t("settings.notifications.input.bot_token")}</label
           >
           <input
-            id="{ns}-channel-bot-token"
+            id="channel-bot-token"
             name="bot_token"
             required
             placeholder="123456:ABC-…"
@@ -329,11 +273,11 @@
           />
         </div>
         <div>
-          <label for="{ns}-channel-chat-id" class="mb-1 block text-sm text-text"
+          <label for="channel-chat-id" class="mb-1 block text-sm text-text"
             >{t("settings.notifications.input.chat_id")}</label
           >
           <input
-            id="{ns}-channel-chat-id"
+            id="channel-chat-id"
             name="chat_id"
             required
             class="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand"
@@ -341,11 +285,11 @@
         </div>
       {:else if kind === "custom"}
         <div>
-          <label for="{ns}-channel-url" class="mb-1 block text-sm text-text"
+          <label for="channel-url" class="mb-1 block text-sm text-text"
             >{t("settings.notifications.input.apprise_url")}</label
           >
           <input
-            id="{ns}-channel-url"
+            id="channel-url"
             name="url"
             required
             placeholder={KIND_PLACEHOLDER.custom}
@@ -354,11 +298,11 @@
         </div>
       {:else}
         <div>
-          <label for="{ns}-channel-url" class="mb-1 block text-sm text-text"
+          <label for="channel-url" class="mb-1 block text-sm text-text"
             >{t("settings.notifications.input.webhook_url")}</label
           >
           <input
-            id="{ns}-channel-url"
+            id="channel-url"
             name="url"
             type="url"
             required
@@ -370,20 +314,10 @@
     </div>
     <p class="text-xs text-text-muted">{t(`settings.notifications.kind_hint.${kind}`)}</p>
 
-    {#if personal}
-      <ChannelScheduleFields id="{ns}-new" />
-    {:else}
-      <ChannelEventFilter
-        events={eventTypes}
-        value={createFilter}
-        onchange={(v) => (createFilter = v)}
-      />
-      <input type="hidden" name="event_filter" value={JSON.stringify(createFilter)} />
-      <ChannelCadenceFields id="{ns}-new" />
-    {/if}
+    <ChannelScheduleFields id="new" />
 
-    {#if createError}
-      <p class="text-sm text-red-600 dark:text-red-400">{t(createError)}</p>
+    {#if form?.channelError}
+      <p class="text-sm text-red-600 dark:text-red-400">{t(String(form.channelError))}</p>
     {/if}
     <Button loading={busy.is("createChannel")} disabled={busy.active}
       >{t("settings.notifications.channel_add")}</Button

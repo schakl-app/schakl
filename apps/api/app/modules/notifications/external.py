@@ -13,8 +13,10 @@ Design rules honoured here:
     of #16), while a *personal* channel gets its owner's notifications;
   * **every** transport batches (#283). A delivery row carries ``deliver_after`` from its
     channel's cadence, and the worker sends everything due for one channel as a single message —
-    the digest machinery personal e-mail has had since #17, generalised to all of Apprise.
-    ``build_digest_message`` is the one combiner both sweeps share.
+    the digest machinery personal e-mail has had since #17, generalised to all of Apprise;
+  * **one channel, one routing table** (#295). Every channel — a shared ``#crm`` room as much as
+    someone's Slack DM — is routed per event from the matrix of the scope that owns it. The
+    ``event_filter`` + channel-level ``digest`` a shared room used to route by are no longer read.
 """
 
 from __future__ import annotations
@@ -34,11 +36,9 @@ from app.core.crypto import decrypt
 from app.core.events import EmitContext
 from app.core.net_guard import is_public_address
 from app.i18n import translate
-from app.modules.notifications.defaults import ResolvedPref
 from app.modules.notifications.events import (
     CHANNEL_EMAIL,
     CHANNEL_EXTERNAL,
-    DIGEST_IMMEDIATE,
 )
 from app.modules.notifications.models import (
     Notification,
@@ -139,23 +139,6 @@ async def _actor_name(session, actor_user_id) -> str | None:  # noqa: ANN001
     return user.full_name or user.email
 
 
-def channel_cadence(config: NotificationChannelConfig) -> ResolvedPref:
-    """A channel's own cadence, shaped as the ``ResolvedPref`` ``compute_visible_at`` reads (#283).
-
-    A shared room is not a personal preference, so *when* its events arrive is a property of the
-    channel, stored on the config. Wrapping it rather than duplicating the slot arithmetic keeps
-    one implementation of "next 08:00 in Europe/Amsterdam, across a DST change".
-    """
-    return ResolvedPref(
-        enabled=config.enabled,
-        delay_minutes=0,
-        digest=config.digest or DIGEST_IMMEDIATE,
-        digest_time=config.digest_time,
-        digest_weekday=config.digest_weekday,
-        channel=CHANNEL_EXTERNAL,
-    )
-
-
 class ExternalChannel:
     """Push channel: enqueues one ``notification_deliveries`` row per matching configured channel.
 
@@ -168,14 +151,16 @@ class ExternalChannel:
     e-mail has had since #17, now for every Apprise transport. An ``immediate`` channel simply
     lands a slot of "now" and leaves on the next tick.
 
-    **Where the cadence comes from is the one place org and personal channels differ** (#283),
-    and it is this branch:
+    **Routing and cadence come from one place for every channel** (#295): the per-event preference
+    row for *this* channel, in the matrix of the scope that owns it — the owner's for a personal
+    transport, the org's for a shared room. ``event_filter`` and the channel-level ``digest`` were
+    the shared room's separate answer to the same two questions and are no longer read; two
+    routing mechanisms on one table were two places to look when something did not arrive, and
+    only one of them could say "bundle Slack daily, like e-mail".
 
-    * **org / shared** — ``event_filter`` routes, the channel's own ``digest`` sets the slot. A
-      room is not a personal preference; how noisy ``#crm`` is belongs to the room.
-    * **personal** — the owner's per-event preference for *this channel* both routes and sets
-      the slot; ``event_filter`` is not consulted. Two routing mechanisms on one channel would
-      be two places to look when something did not arrive.
+    Which notification a delivery hangs off is the one thing that still differs, and it is not a
+    preference: a personal channel takes its owner's row, a shared room takes the first of the
+    batch, because the room's message stands in for the whole audience rather than one recipient.
     """
 
     key = CHANNEL_EXTERNAL
@@ -212,24 +197,19 @@ class ExternalChannel:
             return
         now = datetime.now(UTC)
         by_user = {row.user_id: row for row in notifications}
-        # Every personal channel's rule for this event in one query — never one per channel.
-        personal = [c for c in configs if c.user_id is not None]
-        channel_prefs = await resolve_channel_prefs(session, org_id, event.event_type, personal)
+        # Every channel's rule for this event in one query — never one per channel.
+        channel_prefs = await resolve_channel_prefs(session, org_id, event.event_type, configs)
 
         for config in configs:
-            if config.user_id is not None:
-                # A personal channel only receives its owner's notifications, and only the
-                # events they routed here.
-                target = by_user.get(config.user_id)
-                pref = channel_prefs.get(config.id)
-                if target is None or pref is None or not pref.enabled:
-                    continue
-            else:
-                if config.event_filter and event.event_type not in config.event_filter:
-                    continue
-                # One message per event for a shared room, not one per recipient.
-                target = notifications[0]
-                pref = channel_cadence(config)
+            pref = channel_prefs.get(config.id)
+            if pref is None or not pref.enabled:
+                continue
+            # A personal channel only ever carries its owner's notifications.
+            target = (
+                notifications[0] if config.user_id is None else by_user.get(config.user_id)
+            )
+            if target is None:
+                continue
             session.add(
                 NotificationDelivery(
                     org_id=org_id,

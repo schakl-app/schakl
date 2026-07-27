@@ -102,7 +102,7 @@ class EmailSchedule(BaseModel):
 
 
 class ChannelPreferenceEvent(BaseModel):
-    """One event's rule on one personal external channel (#283). ``enabled=false`` = not routed."""
+    """One event's rule on one external channel (#283). ``enabled=false`` = not routed."""
 
     event_type: str
     enabled: bool = False
@@ -111,10 +111,10 @@ class ChannelPreferenceEvent(BaseModel):
 
 
 class ChannelPreference(BaseModel):
-    """A personal external channel as the matrix renders it: one column, one row per event.
+    """An external channel as the matrix renders it: one column, one row per event.
 
     ``digest_time``/``digest_weekday`` are the channel's own digest schedule — not per event, so
-    they are edited on the channel (Instellingen → Meldingen → Mijn kanalen), not in the matrix.
+    they are edited on the channel (Instellingen → Meldingen → Kanalen), not in the matrix.
     """
 
     id: uuid.UUID
@@ -129,8 +129,8 @@ class PreferenceMatrix(BaseModel):
     events: list[PreferenceRow]
     general: GeneralPreference
     email: EmailSchedule
-    #: The caller's own external channels, each with its per-event rules (#283). Empty on the
-    #: org-default matrix: nobody can pre-decide the routing of someone else's Slack DM.
+    #: This scope's external channels, each with its per-event rules (#283, #295): the caller's
+    #: own transports on the personal matrix, the org's shared rooms on the default one.
     channels: list[ChannelPreference] = Field(default_factory=list)
 
 
@@ -192,7 +192,7 @@ class EmailScheduleWrite(BaseModel):
 
 
 class ChannelPreferenceEventWrite(BaseModel):
-    """One event routed to one personal channel. Absent = not routed (#283)."""
+    """One event routed to one channel. Absent = not routed (#283)."""
 
     event_type: str
     enabled: bool = False
@@ -247,10 +247,10 @@ class PreferenceUpdate(BaseModel):
     email_events: list[EmailPreferenceRowWrite] = Field(default_factory=list)
     general: GeneralPreferenceWrite | None = None
     email: EmailScheduleWrite | None = None
-    #: Per personal external channel (#283), wholesale like every other block: what this list
-    #: does not carry is cleared, so a caller that means to change one channel still sends the
-    #: others (the web form always posts every column). Ignored on the org-default endpoint,
-    #: where personal channels do not exist.
+    #: Per external channel (#283, #295), wholesale like every other block: what this list does
+    #: not carry is cleared, so a caller that means to change one channel still sends the others
+    #: (the web form always posts every column). Each id must belong to the scope being written —
+    #: the caller's own channels here, the org's shared rooms on the org-default endpoint.
     channels: list[ChannelPreferenceWrite] = Field(default_factory=list)
 
     @field_validator("events")
@@ -307,35 +307,22 @@ CHANNEL_KINDS = Literal[
 
 
 class ChannelCreate(BaseModel):
+    """Connect a transport. **Which events reach it, and how often, is not asked here** (#295):
+    that is a per-event column in the matrix of the scope that owns the channel, so a freshly
+    connected channel is silent until someone routes something to it.
+    """
+
     kind: CHANNEL_KINDS
     name: str = Field(min_length=1, max_length=120)
     #: The full Apprise URL. Write-only: encrypted at rest, never returned (#17).
     url: str = Field(min_length=1)
     enabled: bool = True
-    #: Event types routed here; empty = all. Validated against the known set.
-    event_filter: list[str] = Field(default_factory=list)
     #: A personal channel (my DM) when set to a member; ``None`` = an org channel.
     user_id: uuid.UUID | None = None
-    #: This channel's own cadence (#283): ``immediate`` sends on the next tick, a digest holds
-    #: everything until the slot and sends it as one message. Default keeps pre-#283 behaviour.
-    digest: str = "immediate"
+    #: This channel's digest *schedule*: which hour, which weekday its bundles land on. One
+    #: question per channel rather than one per matrix row, because it has one answer.
     digest_time: time | None = None
     digest_weekday: Annotated[int | None, Field(ge=0, le=6)] = None
-
-    @field_validator("event_filter")
-    @classmethod
-    def _known_events(cls, value: list[str]) -> list[str]:
-        for event in value:
-            if event not in EVENT_TYPES:
-                raise ValueError("errors.validation")
-        return value
-
-    @field_validator("digest")
-    @classmethod
-    def _known_digest(cls, value: str) -> str:
-        if value not in DIGEST_CADENCES:
-            raise ValueError("errors.validation")
-        return value
 
 
 class ChannelUpdate(BaseModel):
@@ -343,26 +330,8 @@ class ChannelUpdate(BaseModel):
     #: Rotate the URL by sending a new one; omit to leave it unchanged.
     url: str | None = None
     enabled: bool | None = None
-    event_filter: list[str] | None = None
-    digest: str | None = None
     digest_time: time | None = None
     digest_weekday: Annotated[int | None, Field(ge=0, le=6)] = None
-
-    @field_validator("event_filter")
-    @classmethod
-    def _known_events(cls, value: list[str] | None) -> list[str] | None:
-        if value is not None:
-            for event in value:
-                if event not in EVENT_TYPES:
-                    raise ValueError("errors.validation")
-        return value
-
-    @field_validator("digest")
-    @classmethod
-    def _known_digest(cls, value: str | None) -> str | None:
-        if value is not None and value not in DIGEST_CADENCES:
-            raise ValueError("errors.validation")
-        return value
 
 
 class ChannelRead(BaseModel):
@@ -373,9 +342,8 @@ class ChannelRead(BaseModel):
     #: A redacted preview (``slack://xoxb-****``) — never the secret-bearing URL.
     redacted: str
     enabled: bool
-    event_filter: list[str]
+    #: ``None`` = a shared room the org routes; set = that person's own transport.
     user_id: uuid.UUID | None
-    digest: str
     digest_time: time | None = None
     digest_weekday: int | None = None
     created_at: datetime

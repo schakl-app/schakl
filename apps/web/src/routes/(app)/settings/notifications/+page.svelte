@@ -5,9 +5,6 @@
   import PreferenceMatrixForm from "$lib/modules/notifications/PreferenceMatrixForm.svelte";
 
   let { data, form } = $props();
-
-  // The event vocabulary for the channel filter picker comes from the matrix (already loaded).
-  const eventTypes = $derived(data.matrix.events.map((row) => row.event_type));
 </script>
 
 <svelte:head>
@@ -26,11 +23,7 @@
   saved={form?.saved ?? false}
 />
 
-<!-- My own transports first: they are the ones the matrix above just gained a column for. -->
+<!-- One list, under the matrix that routes it: each of these is a column above (#295). -->
 {#if data.canManageOwnChannels}
-  <ChannelSection channels={data.myChannels} {eventTypes} personal {form} />
-{/if}
-
-{#if data.canManageChannels}
-  <ChannelSection channels={data.channels} {eventTypes} {form} />
+  <ChannelSection channels={data.channels} scope="user" {form} />
 {/if}

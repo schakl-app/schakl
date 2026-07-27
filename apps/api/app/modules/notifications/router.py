@@ -25,8 +25,8 @@ from app.modules.notifications.prefs import (
     effective_channel_matrix,
     effective_email_matrix,
     effective_matrix,
-    personal_channels,
     replace_overrides,
+    scope_channels,
 )
 from app.modules.notifications.prefs import (
     EmailScheduleWrite as EmailScheduleData,
@@ -69,7 +69,7 @@ def _matrix(
 
     Each row carries both implicit channels' resolved rules and their independent inheritance
     sources; ``schedule`` is the scope's global e-mail digest schedule (a ``prefs.EmailSchedule``).
-    ``configs`` are the caller's personal external channels (#283) — each becomes one more column,
+    ``configs`` are this scope's external channels (#283, #295) — each becomes one more column,
     with its own per-event cadence and its own digest schedule.
     """
     rows = [
@@ -126,37 +126,63 @@ def _matrix(
     )
 
 
-async def _load_matrix(session, org_id, user_id) -> PreferenceMatrix:  # noqa: ANN001
+def _manages_channels(ctx: RequestContext, user_id: uuid.UUID | None) -> bool:
+    """May this caller configure the channels of this scope? (#295)
+
+    One predicate for *seeing* a channel's column and for *writing* it, deliberately, because the
+    channel blocks are wholesale: a caller shown no columns posts an empty list, and if that were
+    still allowed to write it would clear every route the scope had. Reading and writing must
+    therefore agree, or saving an unrelated in-app default silently un-routes `#crm`.
+
+    Configuring a shared room is an administrative act (the same reason ``channels.manage`` gates
+    connecting one), so on the org scope it takes that key **on top of** ``defaults.manage``. Both
+    are admin-only by default, so this refuses nobody who could route a room before.
+    """
+    return ctx.can(
+        "notifications.channels.manage"
+        if user_id is None
+        else "notifications.channels.manage_own"
+    )
+
+
+async def _load_matrix(  # noqa: ANN001
+    session, org_id, user_id, *, include_channels: bool = True
+) -> PreferenceMatrix:
     """Resolve every channel's matrix for one scope, then compose.
 
-    Four queries flat, whatever the number of personal channels: the in-app rows, the e-mail
-    rows, the caller's channel configs, and every per-channel preference in one go
-    (docs/PERFORMANCE.md — never one query per channel).
+    Four queries flat, whatever the number of channels: the in-app rows, the e-mail rows, the
+    scope's channel configs, and every per-channel preference in one go (docs/PERFORMANCE.md —
+    never one query per channel). ``include_channels=False`` skips the last two entirely — a
+    caller who may not configure them has no use for the answer, and not asking is cheaper.
     """
     in_app = await effective_matrix(session, org_id, user_id)
     email, schedule = await effective_email_matrix(session, org_id, user_id)
-    configs = await personal_channels(session, org_id, user_id)
+    configs = await scope_channels(session, org_id, user_id) if include_channels else []
     channel_events = await effective_channel_matrix(session, org_id, configs)
     return _matrix(in_app, email, schedule, configs, channel_events)
 
 
 async def _channel_writes(
-    ctx: RequestContext, payload: PreferenceUpdate
-) -> list[ChannelWrite]:
-    """Flatten the per-channel blocks, refusing any channel that is not the caller's own (#283).
+    ctx: RequestContext, payload: PreferenceUpdate, user_id: uuid.UUID | None
+) -> list[ChannelWrite] | None:
+    """Flatten the per-channel blocks, refusing any channel outside the scope being written.
 
-    The route's permission says "may set my own preferences"; only the row can say whether this
-    channel *is* mine. An unknown or foreign id is a 404, not a 403 — a 403 would confirm that
-    somebody else's channel exists (CLAUDE.md §15).
+    ``None`` means *leave this scope's channel rows alone* — what a caller who does not manage
+    them gets, and the only safe answer given the wholesale semantics (see ``_manages_channels``).
+    An empty list is the opposite instruction: "route nothing", which is what a reset means.
+
+    The route's permission says "may set this scope's preferences"; only the row can say whether
+    a channel belongs to that scope (CLAUDE.md §15's two-layer rule). An id from another scope is
+    a 404, not a 403 — a 403 would confirm that somebody else's channel exists.
     """
-    if not payload.channels:
-        return []
-    mine = {
-        config.id for config in await personal_channels(ctx.session, ctx.org.id, ctx.user.id)
+    if not _manages_channels(ctx, user_id):
+        return None
+    in_scope = {
+        config.id for config in await scope_channels(ctx.session, ctx.org.id, user_id)
     }
     writes: list[ChannelWrite] = []
     for block in payload.channels:
-        if block.channel_config_id not in mine:
+        if block.channel_config_id not in in_scope:
             raise AppError("not_found", "errors.not_found", status_code=404)
         writes.extend(
             ChannelWrite(
@@ -330,7 +356,12 @@ async def set_watch(
 )
 async def get_preferences(ctx: RequestContext = Depends(require_context)) -> PreferenceMatrix:
     """My effective matrix: what will actually happen on both channels, and who decided it."""
-    return await _load_matrix(ctx.session, ctx.org.id, ctx.user.id)
+    return await _load_matrix(
+        ctx.session,
+        ctx.org.id,
+        ctx.user.id,
+        include_channels=_manages_channels(ctx, ctx.user.id),
+    )
 
 
 @router.put(
@@ -350,9 +381,14 @@ async def set_preferences(
         email_events,
         general,
         email_schedule,
-        await _channel_writes(ctx, payload),
+        await _channel_writes(ctx, payload, ctx.user.id),
     )
-    return await _load_matrix(ctx.session, ctx.org.id, ctx.user.id)
+    return await _load_matrix(
+        ctx.session,
+        ctx.org.id,
+        ctx.user.id,
+        include_channels=_manages_channels(ctx, ctx.user.id),
+    )
 
 
 @router.get(
@@ -363,8 +399,14 @@ async def set_preferences(
 async def get_default_preferences(
     ctx: RequestContext = Depends(require_context),
 ) -> PreferenceMatrix:
-    """What a member inherits before they override anything (org-wide), both channels."""
-    return await _load_matrix(ctx.session, ctx.org.id, None)
+    """What a member inherits before they override anything (org-wide), plus the shared rooms.
+
+    A shared room is not something a member inherits and overrides — it is routed once, here, for
+    everyone (#295). It rides this matrix because that is where its per-event column lives.
+    """
+    return await _load_matrix(
+        ctx.session, ctx.org.id, None, include_channels=_manages_channels(ctx, None)
+    )
 
 
 @router.put(
@@ -377,9 +419,18 @@ async def set_default_preferences(
 ) -> PreferenceMatrix:
     events, email_events, general, email_schedule = _writes(payload)
     await replace_overrides(
-        ctx.session, ctx.org.id, None, events, email_events, general, email_schedule
+        ctx.session,
+        ctx.org.id,
+        None,
+        events,
+        email_events,
+        general,
+        email_schedule,
+        await _channel_writes(ctx, payload, None),
     )
-    return await _load_matrix(ctx.session, ctx.org.id, None)
+    return await _load_matrix(
+        ctx.session, ctx.org.id, None, include_channels=_manages_channels(ctx, None)
+    )
 
 
 # --- external channels (#17, #283): declared before ``/{notification_id}`` ---------------- #

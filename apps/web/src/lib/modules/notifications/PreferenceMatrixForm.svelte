@@ -1,11 +1,13 @@
 <script lang="ts">
   /**
-   * The delivery matrix (issue #16; e-mail per event in #245, personal external channels in
-   * #283) — one surface, one save button (docs/UX.md).
+   * The delivery matrix (issue #16; e-mail per event in #245, external channels in #283 and #295)
+   * — one surface, one save button (docs/UX.md).
    *
-   * Every event is deliverable on the bell (in-app), on personal e-mail, and on each external
-   * channel the user connected themselves — one column each, every one with its own cadence per
-   * event.
+   * Every event is deliverable on the bell (in-app), on e-mail, and on each external channel this
+   * scope owns — one column each, every one with its own cadence per event. Which channels those
+   * are is the page's business, not this component's: my own transports on Instellingen →
+   * Meldingen, the org's shared rooms on Instellingen → Standaard meldingen. A channel appearing
+   * as a column is the *whole* of how it is routed, which is why connecting one adds no code here.
    *
    * The two **implicit** channels resolve in three layers (default ← org row ← user row, **whole
    * rows at a time**). A save must not quietly turn every inherited row into an override, or
@@ -14,10 +16,10 @@
    * the ones actually changed here; everything else keeps falling through, and the badge says
    * where each value came from.
    *
-   * A **personal channel** has no such layering — nobody but its owner has an opinion about their
-   * own Slack DM — so its column is plain: a row exists (routed, at a cadence) or it does not
-   * (silent). Its block is posted wholesale, carrying only the events actually routed there. That
-   * is also why it needs no source badge.
+   * An **external channel** has no such layering — a channel belongs to exactly one scope, so
+   * there is nothing to inherit from — and its column is plain: a row exists (routed, at a
+   * cadence) or it does not (silent). Its block is posted wholesale, carrying only the events
+   * actually routed there. That is also why it needs no source badge.
    *
    * E-mail and every external channel are a subset of in-app: they fan out from the freshly
    * written bell rows, so an event switched off in-app cannot reach them whatever their own
@@ -68,7 +70,7 @@
     digest_weekday?: number | null;
     source: string;
   }
-  /** One event's rule on one personal external channel (#283). */
+  /** One event's rule on one external channel (#283). */
   interface ChannelEvent {
     event_type: string;
     enabled: boolean;
@@ -101,8 +103,7 @@
   // Every non-bell column is a single select: "off" plus the four cadences.
   const EMAIL_OPTIONS = ["off", ...CADENCES] as const;
 
-  // The org-default matrix has none by definition: routing to somebody's own Slack DM is not
-  // something a manager can pre-decide for them.
+  // Whatever channels this scope owns — my transports, or the org's shared rooms (#295).
   const channels = $derived(matrix.channels ?? []);
 
   // Monday-based weekday names in the UI locale (2024-01-01 was a Monday).
@@ -181,7 +182,7 @@
     edits = next;
   }
 
-  // --- personal external channels (#283) -------------------------------------------------- #
+  // --- external channels (#283, #295) ----------------------------------------------------- #
   // One column each, all driven by the same three functions — adding a channel adds no code.
 
   /** The loaded value of one cell: the cadence it is routed at, or "off". */
@@ -281,10 +282,10 @@
             digest_weekday: emailSchedule.digest_weekday ?? null,
           }
         : null,
-      // Wholesale per channel, and only the events actually routed there: on a personal
-      // channel an absent row *is* "off", so writing the off ones would store 20 rows to say
-      // nothing. Every channel is always sent, or the ones left out would be cleared. A route
-      // whose in-app row is off is still kept — like the e-mail column, it holds its value and
+      // Wholesale per channel, and only the events actually routed there: on a channel an
+      // absent row *is* "off", so writing the off ones would store 20 rows to say nothing.
+      // Every channel is always sent, or the ones left out would be cleared. A route whose
+      // in-app row is off is still kept — like the e-mail column, it holds its value and
       // simply cannot fire until the bell is back on.
       channels: channels.map((channel) => ({
         channel_config_id: channel.id,
@@ -416,7 +417,7 @@
     </div>
   </section>
 
-  <!-- Per-event delivery: the bell, e-mail, and one column per personal channel. -->
+  <!-- Per-event delivery: the bell, e-mail, and one column per channel this scope owns. -->
   <section class="overflow-hidden rounded-xl border border-border bg-surface-raised">
     <div class="border-b border-border bg-surface px-4 py-2">
       <h2 class="text-xs font-semibold uppercase tracking-wide text-text-muted">
@@ -573,7 +574,7 @@
                       edit(row.event_type, { email_delay_minutes: +e.currentTarget.value })}
                   />
                 </td>
-                <!-- One column per personal external channel: same control, no inheritance. -->
+                <!-- One column per external channel: same control, no inheritance. -->
                 {#each channels as channel (channel.id)}
                   <td class="border-l border-border px-2 py-2">
                     <select

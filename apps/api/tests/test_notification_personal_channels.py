@@ -108,23 +108,32 @@ async def test_matrix_gains_a_column_per_personal_channel(client_for) -> None:
         assert len(routed) == 2  # nothing else was touched
 
 
-async def test_org_channel_is_not_a_matrix_column(client_for) -> None:
-    """A shared room has a channel-level cadence, so it has no business in a personal matrix."""
+async def test_each_matrix_carries_only_its_own_scopes_channels(client_for) -> None:
+    """A channel is a column of exactly one matrix, and the scope that owns it decides which.
+
+    Both are columns now (#295) — a shared room is routed per event like everything else — but not
+    of the same table: `#crm` is one answer for the whole agency, my DM is mine. An admin holds
+    both capabilities and so sees both screens; each still shows only what it routes.
+    """
     t = await make_tenant("pers-not-org")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        await c.post(
-            "/api/v1/notifications/channels",
-            json={"kind": "slack", "name": "#crm", "url": _SLACK},
-            headers=headers,
-        )
+        shared = (
+            await c.post(
+                "/api/v1/notifications/channels",
+                json={"kind": "slack", "name": "#crm", "url": _SLACK},
+                headers=headers,
+            )
+        ).json()["id"]
+        mine = await _connect(c, headers, t.user.id, "My DM")
+
         matrix = (await c.get("/api/v1/notifications/preferences", headers=headers)).json()
-        assert matrix["channels"] == []
-        # Nor on the org-default matrix, which has no personal channels by definition.
+        assert [ch["id"] for ch in matrix["channels"]] == [mine]
+
         defaults = (
             await c.get("/api/v1/notifications/preferences/defaults", headers=headers)
         ).json()
-        assert defaults["channels"] == []
+        assert [ch["id"] for ch in defaults["channels"]] == [shared]
 
 
 async def test_cannot_write_preferences_for_someone_elses_channel(client_for) -> None:
