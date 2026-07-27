@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/addresslookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Lookup Address */
+        get: operations["lookup_address_api_v1_addresslookup_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ai/assist/write": {
         parameters: {
             query?: never;
@@ -6260,6 +6277,24 @@ export interface components {
             payload: {
                 [key: string]: unknown;
             };
+        };
+        /** AddressLookupResponse */
+        AddressLookupResponse: {
+            /** Suggestions */
+            suggestions: components["schemas"]["AddressSuggestionOut"][];
+        };
+        /** AddressSuggestionOut */
+        AddressSuggestionOut: {
+            /** City */
+            city: string;
+            /** Country */
+            country: string;
+            /** House Number */
+            house_number: string;
+            /** Postal Code */
+            postal_code: string;
+            /** Street */
+            street: string;
         };
         /** ApiKeyCreate */
         ApiKeyCreate: {
@@ -15926,6 +15961,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["app__core__activity__schemas__ActivityItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lookup_address_api_v1_addresslookup_get: {
+        parameters: {
+            query: {
+                postal_code: string;
+                house_number: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddressLookupResponse"];
                 };
             };
             /** @description Validation Error */

@@ -172,6 +172,15 @@ CORE_PERMISSIONS: tuple[PermissionSpec, ...] = (
         default_roles=(ROLE_ADMIN, ROLE_MEMBER),
     ),
     PermissionSpec("ai.settings.manage", group="ai", position=20),
+    # --- address lookup (issue #241) --------------------------------------- #
+    # Postcode → address suggestions on any address form. Staff-only by default: the answer
+    # is public registry data, but the surface exists to fill in records a client never edits.
+    PermissionSpec(
+        "addresslookup.lookup",
+        group="addresslookup",
+        position=10,
+        default_roles=(ROLE_ADMIN, ROLE_MEMBER),
+    ),
 )
 
 

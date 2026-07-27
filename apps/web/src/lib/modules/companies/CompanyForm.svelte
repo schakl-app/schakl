@@ -14,6 +14,7 @@
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import { t } from "$lib/core/i18n";
   import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import PhoneInput from "$lib/core/ui/PhoneInput.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import { COMPANY_STATUSES } from "$lib/modules/companies/status";
@@ -67,6 +68,92 @@
 
   const inputClass =
     "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
+
+  // ---- postcode → address lookup (#241) --------------------------------- //
+  // The address fields are bound so an accepted suggestion can fill them; each carries
+  // `defaultValue` so a form reset restores the saved value, never blank (docs/UX.md).
+  // The house-number input is lookup-only (no `name`): option (a) of the issue — on accept
+  // it composes `address_line1`, so the schema keeps its single free-text address line.
+  // The initial-value capture is deliberate: `company` never changes while the form is
+  // mounted (create passes `{}`, edit passes the loaded record once).
+  // svelte-ignore state_referenced_locally
+  let addressLine1 = $state(company.address_line1 ?? "");
+  // svelte-ignore state_referenced_locally
+  let postalCode = $state(company.postal_code ?? "");
+  // svelte-ignore state_referenced_locally
+  let city = $state(company.city ?? "");
+  // svelte-ignore state_referenced_locally
+  let country = $state(company.country ?? "");
+  let houseNumber = $state("");
+
+  interface AddressSuggestion {
+    street: string;
+    house_number: string;
+    postal_code: string;
+    city: string;
+    country: string;
+  }
+  let suggestion = $state<AddressSuggestion | null>(null);
+  let lookupTimer: ReturnType<typeof setTimeout> | undefined;
+  let lookupSeq = 0;
+
+  // Only a complete Dutch postcode triggers a lookup — the provider (PDOK) covers NL, and
+  // half-typed input would just spam requests that answer nothing.
+  const NL_POSTCODE = /^[1-9][0-9]{3}\s?[A-Za-z]{2}$/;
+
+  function formatPostal(raw: string): string {
+    const bare = raw.replace(/\s/g, "").toUpperCase();
+    return bare.length === 6 ? `${bare.slice(0, 4)} ${bare.slice(4)}` : raw;
+  }
+
+  function composedLine(s: AddressSuggestion): string {
+    return `${s.street} ${s.house_number}`.trim();
+  }
+
+  function scheduleLookup() {
+    suggestion = null;
+    clearTimeout(lookupTimer);
+    lookupSeq += 1;
+    if (!NL_POSTCODE.test(postalCode.trim()) || !houseNumber.trim()) return;
+    lookupTimer = setTimeout(runLookup, 400);
+  }
+
+  /** A suggestion is a convenience: any failure (offline, no permission, provider down)
+   *  degrades to "no suggestion", never to an error banner. */
+  async function runLookup() {
+    const seq = lookupSeq;
+    const params = new URLSearchParams({
+      postal_code: postalCode.trim(),
+      house_number: houseNumber.trim(),
+    });
+    let found: AddressSuggestion | null = null;
+    try {
+      const response = await fetch(`/api/v1/addresslookup?${params}`, {
+        headers: { accept: "application/json" },
+      });
+      if (response.ok) {
+        const data = (await response.json()) as { suggestions?: AddressSuggestion[] };
+        found = data.suggestions?.[0] ?? null;
+      }
+    } catch {
+      found = null;
+    }
+    if (seq !== lookupSeq) return; // the input changed while we were looking
+    // What's already filled in needs no "did you mean" — offer only a difference.
+    if (found && composedLine(found) === addressLine1.trim() && found.city === city.trim()) {
+      found = null;
+    }
+    suggestion = found;
+  }
+
+  function applySuggestion() {
+    if (!suggestion) return;
+    addressLine1 = composedLine(suggestion);
+    postalCode = formatPostal(suggestion.postal_code);
+    city = suggestion.city;
+    country = suggestion.country;
+    suggestion = null;
+  }
 </script>
 
 <div class="space-y-3">
@@ -155,13 +242,62 @@
           />
         </div>
         <div>
+          <label for="{idPrefix}-zip" class="mb-1 block text-sm font-medium text-neutral-700">
+            {t("companies.postal_code")}
+          </label>
+          <input
+            id="{idPrefix}-zip"
+            name="postal_code"
+            bind:value={postalCode}
+            defaultValue={company.postal_code ?? ""}
+            oninput={scheduleLookup}
+            class={inputClass}
+          />
+        </div>
+        <div>
+          <label
+            for="{idPrefix}-house-number"
+            class="mb-1 block text-sm font-medium text-neutral-700"
+          >
+            {t("companies.address_lookup.house_number")}
+          </label>
+          <input
+            id="{idPrefix}-house-number"
+            bind:value={houseNumber}
+            oninput={scheduleLookup}
+            class={inputClass}
+          />
+        </div>
+        {#if suggestion}
+          <div
+            class="flex flex-wrap items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-700 sm:col-span-2"
+          >
+            <span>
+              {t("companies.address_lookup.suggestion", {
+                address: `${composedLine(suggestion)}, ${formatPostal(suggestion.postal_code)} ${suggestion.city}`,
+              })}
+            </span>
+            <Button type="button" size="xs" onclick={applySuggestion}>
+              {t("companies.address_lookup.apply")}
+            </Button>
+            <button
+              type="button"
+              class="text-xs text-neutral-500 hover:underline"
+              onclick={() => (suggestion = null)}
+            >
+              {t("companies.address_lookup.dismiss")}
+            </button>
+          </div>
+        {/if}
+        <div>
           <label for="{idPrefix}-address1" class="mb-1 block text-sm font-medium text-neutral-700">
             {t("companies.address_line1")}
           </label>
           <input
             id="{idPrefix}-address1"
             name="address_line1"
-            value={company.address_line1 ?? ""}
+            bind:value={addressLine1}
+            defaultValue={company.address_line1 ?? ""}
             class={inputClass}
           />
         </div>
@@ -177,21 +313,16 @@
           />
         </div>
         <div>
-          <label for="{idPrefix}-zip" class="mb-1 block text-sm font-medium text-neutral-700">
-            {t("companies.postal_code")}
-          </label>
-          <input
-            id="{idPrefix}-zip"
-            name="postal_code"
-            value={company.postal_code ?? ""}
-            class={inputClass}
-          />
-        </div>
-        <div>
           <label for="{idPrefix}-city" class="mb-1 block text-sm font-medium text-neutral-700">
             {t("companies.city")}
           </label>
-          <input id="{idPrefix}-city" name="city" value={company.city ?? ""} class={inputClass} />
+          <input
+            id="{idPrefix}-city"
+            name="city"
+            bind:value={city}
+            defaultValue={company.city ?? ""}
+            class={inputClass}
+          />
         </div>
         <div>
           <label for="{idPrefix}-country" class="mb-1 block text-sm font-medium text-neutral-700">
@@ -201,7 +332,8 @@
             id="{idPrefix}-country"
             name="country"
             maxlength="2"
-            value={company.country ?? ""}
+            bind:value={country}
+            defaultValue={company.country ?? ""}
             class={inputClass}
           />
         </div>
