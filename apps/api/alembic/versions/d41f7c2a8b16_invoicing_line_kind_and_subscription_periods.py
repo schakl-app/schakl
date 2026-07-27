@@ -10,7 +10,7 @@ Two additive changes, both safe for an unattended self-host upgrade (docs/WORKFL
   rather than only for periods billed from here on.
 
 Revision ID: d41f7c2a8b16
-Revises: c5a1e7d3b904
+Revises: f7a2c9e51db4
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from app.core.rls import disable_rls, enable_rls
 
 revision = "d41f7c2a8b16"
-down_revision = "c5a1e7d3b904"
+down_revision = "f7a2c9e51db4"
 branch_labels = None
 depends_on = None
 
