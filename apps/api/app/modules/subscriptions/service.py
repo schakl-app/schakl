@@ -336,10 +336,13 @@ class SubscriptionService:
         await self._ensure_company(data.company_id)
         if data.subscription_type_id is not None:
             await self._ensure_type(data.subscription_type_id)
+        if data.subscription_template_id is not None:
+            await self._ensure_template(data.subscription_template_id)
         custom = await self.custom_fields.validate(ENTITY_TYPE, data.custom or {})
         sub = await self.repo.create(
             company_id=data.company_id,
             subscription_type_id=data.subscription_type_id,
+            subscription_template_id=data.subscription_template_id,
             name=data.name.strip(),
             status=data.status.value,
             currency=data.currency.upper(),
@@ -733,6 +736,23 @@ class SubscriptionService:
                 fields={"subscription_type_id": "errors.validation"},
             )
 
+    async def _ensure_template(self, subscription_template_id: uuid.UUID) -> None:
+        """The preset an agreement claims to come from must be this tenant's (Golden Rule 1) —
+        a foreign id would otherwise let another org's rename reach in here later."""
+        ok = await self.ctx.session.scalar(
+            self.ctx.repo(SubscriptionTemplate)
+            .scoped_select()
+            .where(SubscriptionTemplate.id == subscription_template_id)
+            .with_only_columns(SubscriptionTemplate.id)
+        )
+        if ok is None:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=400,
+                fields={"subscription_template_id": "errors.validation"},
+            )
+
     async def _mark_activated(self, sub: Subscription) -> None:
         """The *first* transition into ``active``: stamp it and emit ``subscription.activated``.
 
@@ -1012,15 +1032,22 @@ class SubscriptionTypeService:
 class SubscriptionTemplateService:
     """CRUD for subscription presets (issue #142).
 
-    A template only ever *prefills* the create form — nothing references it afterwards, so it
-    deletes freely (no ``active`` dance). Managed under Instellingen, and creatable from a live
-    subscription ("save as template"), per the UX template rule.
+    A template *prefills* the create form: its money and hours are copied into the agreement's
+    own columns and are that agreement's from then on, so editing the preset never repriced
+    anything — and must not, because a signed fee changes through the price history, per
+    client. Managed under Instellingen, and creatable from a live subscription ("save as
+    template"), per the UX template rule.
+
+    **The name is the one value that keeps following**, because it is the one value the create
+    form does not let the operator choose: it is copied in read-only, so a preset's name is
+    literally the label of every agreement made from it. See ``update``.
     """
 
     def __init__(self, ctx: RequestContext) -> None:
         self.ctx = ctx
         self.repo = ctx.repo(SubscriptionTemplate)
         self.types = ctx.repo(SubscriptionType)
+        self.subscriptions = ctx.repo(Subscription)
 
     async def list(self) -> Sequence[SubscriptionTemplate]:
         stmt = self.repo.scoped_select().order_by(
@@ -1036,14 +1063,57 @@ class SubscriptionTemplateService:
 
     async def update(
         self, template_id: uuid.UUID, data: SubscriptionTemplateUpdate
-    ) -> SubscriptionTemplate:
+    ) -> tuple[SubscriptionTemplate, int]:
+        """Save the preset, and carry a **rename** over to the agreements it created.
+
+        Returns the preset and how many agreements followed. The rename touches only rows that
+        both came from this preset and *still carry its old name*: an agreement someone
+        deliberately renamed ("Hosting Basis — extra IP") is that tenant's own wording, and a
+        catalog edit must not overwrite it. Renaming an agreement is therefore also how it
+        opts out of following the preset for good.
+
+        No second permission check: the preset is where these agreements' name comes from, so
+        following through is the same write, not a new capability — and each rename lands on
+        that agreement's own activity trail (§16), in this transaction, so a bulk change is
+        never invisible. The repository's tenant scope (and the company horizon, #191) decides
+        which rows are reachable; nothing here widens it.
+        """
         self.ctx.require("subscriptions.template.manage")
         template = await self.repo.get_or_404(template_id)
         if data.subscription_type_id is not None:
             await self._ensure_type(data.subscription_type_id)
-        return await self.repo.update(
+        old_name = template.name
+        template = await self.repo.update(
             template, **self._values(data, data.model_dump(exclude_unset=True))
         )
+        renamed = 0
+        if template.name != old_name:
+            renamed = await self._rename_agreements(template, old_name)
+        return template, renamed
+
+    async def _rename_agreements(self, template: SubscriptionTemplate, old_name: str) -> int:
+        subs = list(
+            (
+                await self.ctx.session.execute(
+                    self.subscriptions.scoped_select().where(
+                        Subscription.subscription_template_id == template.id,
+                        Subscription.name == old_name,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        activity = ActivityService(self.ctx)
+        for sub in subs:
+            await self.subscriptions.update(sub, name=template.name)
+            await activity.record(
+                ENTITY_TYPE,
+                sub.id,
+                "renamed_with_template",
+                {"from": old_name, "to": template.name},
+            )
+        return len(subs)
 
     async def delete(self, template_id: uuid.UUID) -> None:
         self.ctx.require("subscriptions.template.manage")

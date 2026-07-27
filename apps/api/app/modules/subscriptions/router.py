@@ -17,6 +17,7 @@ from app.modules.subscriptions.schemas import (
     SubscriptionSummary,
     SubscriptionTemplateCreate,
     SubscriptionTemplateRead,
+    SubscriptionTemplateSaved,
     SubscriptionTemplateUpdate,
     SubscriptionTypeCreate,
     SubscriptionTypeRead,
@@ -117,16 +118,20 @@ async def create_subscription_template(
 
 @router.patch(
     "/templates/{template_id}",
-    response_model=SubscriptionTemplateRead,
+    response_model=SubscriptionTemplateSaved,
     dependencies=[require_permission("subscriptions.template.manage")],
 )
 async def update_subscription_template(
     template_id: uuid.UUID,
     payload: SubscriptionTemplateUpdate,
     ctx: RequestContext = Depends(require_context),
-) -> SubscriptionTemplateRead:
-    template = await SubscriptionTemplateService(ctx).update(template_id, payload)
-    return SubscriptionTemplateRead.model_validate(template)
+) -> SubscriptionTemplateSaved:
+    """A rename carries over to the agreements made from this preset that still bear its old
+    name; ``renamed_subscriptions`` reports how many, so the screen can say so."""
+    template, renamed = await SubscriptionTemplateService(ctx).update(template_id, payload)
+    saved = SubscriptionTemplateSaved.model_validate(template)
+    saved.renamed_subscriptions = renamed
+    return saved
 
 
 @router.delete(

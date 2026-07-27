@@ -5042,7 +5042,11 @@ export interface paths {
         delete: operations["delete_subscription_template_api_v1_subscriptions_templates__template_id__delete"];
         options?: never;
         head?: never;
-        /** Update Subscription Template */
+        /**
+         * Update Subscription Template
+         * @description A rename carries over to the agreements made from this preset that still bear its old
+         *     name; ``renamed_subscriptions`` reports how many, so the screen can say so.
+         */
         patch: operations["update_subscription_template_api_v1_subscriptions_templates__template_id__patch"];
         trace?: never;
     };
@@ -13351,6 +13355,8 @@ export interface components {
             start_date: string;
             /** @default active */
             status: components["schemas"]["SubscriptionStatus"];
+            /** Subscription Template Id */
+            subscription_template_id?: string | null;
             /** Subscription Type Id */
             subscription_type_id?: string | null;
         };
@@ -13507,6 +13513,8 @@ export interface components {
              */
             start_date: string;
             status: components["schemas"]["SubscriptionStatus"];
+            /** Subscription Template Id */
+            subscription_template_id?: string | null;
             /** Subscription Type Id */
             subscription_type_id?: string | null;
             /**
@@ -13616,6 +13624,72 @@ export interface components {
              * @default 0
              */
             position: number;
+            rollover?: components["schemas"]["RolloverRule"];
+            /** Subscription Type Id */
+            subscription_type_id?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * SubscriptionTemplateSaved
+         * @description The save answer, with what the save reached beyond the preset itself.
+         *
+         *     A rename carries over to the agreements created from this preset that still bear its old
+         *     name; the count comes back so the screen can *say so* rather than change rows silently.
+         */
+        SubscriptionTemplateSaved: {
+            /** Amount */
+            amount?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Currency
+             * @default EUR
+             */
+            currency: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Included Hours */
+            included_hours?: string | null;
+            /** @default monthly */
+            interval: components["schemas"]["SubscriptionInterval"];
+            /**
+             * Interval Count
+             * @default 1
+             */
+            interval_count: number;
+            /** Lines */
+            lines?: components["schemas"]["SubscriptionLineWrite-Output"][];
+            /** Name */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+            /** Notice Period Days */
+            notice_period_days?: number | null;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /**
+             * Renamed Subscriptions
+             * @default 0
+             */
+            renamed_subscriptions: number;
             rollover?: components["schemas"]["RolloverRule"];
             /** Subscription Type Id */
             subscription_type_id?: string | null;
@@ -27245,7 +27319,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SubscriptionTemplateRead"];
+                    "application/json": components["schemas"]["SubscriptionTemplateSaved"];
                 };
             };
             /** @description Validation Error */

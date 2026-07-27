@@ -95,11 +95,15 @@ export const manageActions = {
       position: Number(form.get("position") ?? 0) || 0,
     };
     if (template_id) {
-      const { error } = await apiFor(event).PATCH("/api/v1/subscriptions/templates/{template_id}", {
-        params: { path: { template_id } },
-        body: body as never,
-      });
+      const { data, error } = await apiFor(event).PATCH(
+        "/api/v1/subscriptions/templates/{template_id}",
+        { params: { path: { template_id } }, body: body as never },
+      );
       if (error) return fail(400, { error: apiErrorKey(error).key });
+      // A rename follows through to the agreements made from this preset — say how many
+      // rather than letting a bulk change happen quietly.
+      const renamed = (data as { renamed_subscriptions?: number })?.renamed_subscriptions ?? 0;
+      return { saved: true, templateSaved: true, renamed };
     } else {
       const { error } = await apiFor(event).POST("/api/v1/subscriptions/templates", {
         body: body as never,
@@ -107,7 +111,7 @@ export const manageActions = {
       if (error) return fail(400, { error: apiErrorKey(error).key });
     }
     // `templateSaved` keeps the subscriptions page's "opgeslagen als sjabloon" notice fed.
-    return { saved: true, templateSaved: true };
+    return { saved: true, templateSaved: true, renamed: 0 };
   },
 
   deleteTemplate: async (event: RequestEvent) => {

@@ -81,6 +81,14 @@ export function activityText(item: ActivityLike): string {
       filename: String(item.payload?.filename ?? ""),
     });
   }
+  // An agreement renamed because the standard subscription it came from was renamed: the
+  // trail says *why* the name moved, which a plain `updated` line could not.
+  if (item.action === "renamed_with_template") {
+    return t("activity.action.renamed_with_template", {
+      from: String(item.payload?.from ?? ""),
+      to: String(item.payload?.to ?? ""),
+    });
+  }
   // A contactmoment milestone mirrored onto its host record (#152): logged / linked / unlinked.
   if (item.action.startsWith("interaction.")) {
     return t(`activity.action.${item.action}`, {

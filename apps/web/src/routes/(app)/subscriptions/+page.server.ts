@@ -190,8 +190,13 @@ export const actions: Actions = {
     if (!body.name || !company_id || !body.start_date || body.amount === undefined) {
       return fail(400, { error: "errors.required" });
     }
+    // Only create carries it: it records which preset the form was prefilled from, so a
+    // later rename of that standard subscription reaches this agreement (an edit never
+    // re-links, and renaming the agreement itself is how it stops following).
+    const subscription_template_id =
+      String(form.get("subscription_template_id") ?? "").trim() || null;
     const { error } = await apiFor(event).POST("/api/v1/subscriptions", {
-      body: { ...body, company_id, amount: body.amount } as never,
+      body: { ...body, company_id, amount: body.amount, subscription_template_id } as never,
     });
     if (error) {
       const e = apiErrorKey(error);

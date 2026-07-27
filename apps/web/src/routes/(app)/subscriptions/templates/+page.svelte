@@ -200,6 +200,12 @@
   />
 </div>
 
+{#if form?.renamed}
+  <p class="mb-4 rounded-lg border border-border bg-surface-raised px-4 py-2 text-sm text-text">
+    {t("settings.subscriptions.renamed_subscriptions", { count: form.renamed })}
+  </p>
+{/if}
+
 <PriceIncreaseModal
   bind:open={priceOpen}
   bind:scope={priceScope}
@@ -318,6 +324,13 @@
           >{t("subscriptions.field.name")}</label
         >
         <input id="tpl-name" name="name" required bind:value={tpv.name} class={inputClass} />
+        <!-- The agreements made from this preset carry its name, so a rename here reaches
+             them. Said before saving, not after: it is a bulk change. -->
+        {#if editing}
+          <p class="mt-1 text-xs text-text-muted">
+            {t("settings.subscriptions.rename_propagates")}
+          </p>
+        {/if}
       </div>
       <div class="grid gap-3 sm:grid-cols-2">
         <div>

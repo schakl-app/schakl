@@ -144,6 +144,16 @@
   // the single validation path. Rekeys the form so the defaults re-read.
   let prefill = $state<Template | null>(null);
 
+  // The preset an agreement came from, while it still carries that preset's name: renaming the
+  // preset renames this row too, and giving it its own name here is how it stops following.
+  const followedTemplate = $derived(
+    editing?.subscription_template_id
+      ? (data.templates.find(
+          (tpl) => tpl.id === editing?.subscription_template_id && tpl.name === editing?.name,
+        ) ?? null)
+      : null,
+  );
+
   // Price increase (#231): scope is everything, one type, one subscription or one template.
   // A row's ⋮ shortcut opens the same modal locked to that row.
   let priceOpen = $state(false);
@@ -591,6 +601,11 @@
       class="space-y-4"
     >
       {#if editing}<input type="hidden" name="id" value={editing.id} />{/if}
+      <!-- Which preset this came from: provenance, so a later rename of the standard
+           subscription reaches this agreement's (read-only, preset-owned) name. -->
+      {#if !editing && prefill}
+        <input type="hidden" name="subscription_template_id" value={prefill.id} />
+      {/if}
       <div>
         <label for="sub-name" class="mb-1 block text-sm font-medium text-text"
           >{t("subscriptions.field.name")}</label
@@ -605,6 +620,10 @@
         />
         {#if !editing && prefill}
           <p class="mt-1 text-xs text-text-muted">{t("subscriptions.name_from_template")}</p>
+        {:else if followedTemplate}
+          <p class="mt-1 text-xs text-text-muted">
+            {t("subscriptions.follows_template", { name: followedTemplate.name })}
+          </p>
         {/if}
       </div>
       <div>

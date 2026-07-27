@@ -120,6 +120,16 @@ class SubscriptionTemplateRead(SubscriptionTemplateBase):
     updated_at: datetime
 
 
+class SubscriptionTemplateSaved(SubscriptionTemplateRead):
+    """The save answer, with what the save reached beyond the preset itself.
+
+    A rename carries over to the agreements created from this preset that still bear its old
+    name; the count comes back so the screen can *say so* rather than change rows silently.
+    """
+
+    renamed_subscriptions: int = 0
+
+
 class SubscriptionBase(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     subscription_type_id: uuid.UUID | None = None
@@ -139,6 +149,10 @@ class SubscriptionBase(BaseModel):
 
 class SubscriptionCreate(SubscriptionBase):
     company_id: uuid.UUID
+    #: The standard subscription the form was prefilled from — provenance only: the values
+    #: still arrive as fields and are validated once, here. It makes a later preset *rename*
+    #: reach this agreement.
+    subscription_template_id: uuid.UUID | None = None
     #: The recurring fee per period; becomes the first price-history row (valid_from start_date).
     amount: Decimal = Field(ge=0)
     lines: list[SubscriptionLineWrite] = Field(default_factory=list)
@@ -190,6 +204,8 @@ class SubscriptionRead(BaseModel):
     company_id: uuid.UUID
     company_name: str = ""
     subscription_type_id: uuid.UUID | None = None
+    #: The preset it was created from, if any (a rename there follows through to this name).
+    subscription_template_id: uuid.UUID | None = None
     name: str
     status: SubscriptionStatus
     #: First-ever activation instant; the web resolves the type's label from its own lookup.
