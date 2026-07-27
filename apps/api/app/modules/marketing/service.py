@@ -206,7 +206,10 @@ class MarketingService:
     async def _links(
         self, *, company_id: uuid.UUID | None = None, include_inactive: bool = False
     ) -> list[MarketingLink]:
-        stmt = select(MarketingLink).where(MarketingLink.org_id == self.ctx.org.id)
+        # Through the repo, so the horizon rides along (#285). Both callers pass a
+        # ``company_id`` that ``_company_or_404`` already checked, so this changes nothing
+        # today — it is what keeps the *next* caller from being a leak.
+        stmt = self.ctx.repo(MarketingLink).scoped_select()
         if company_id is not None:
             stmt = stmt.where(MarketingLink.company_id == company_id)
         if not include_inactive:
@@ -885,15 +888,19 @@ class MarketingService:
         prev_end = cur_start - timedelta(days=1)
         prev_start = prev_end - timedelta(days=range_days - 1)
 
-        pairs = (
-            await self.ctx.session.execute(
-                select(MarketingLink, Company.name)
-                .join(Company, Company.id == MarketingLink.company_id)
-                .where(
-                    MarketingLink.org_id == self.ctx.org.id, MarketingLink.active.is_(True)
-                )
-            )
-        ).all()
+        # The cross-client board is hand-built (it pairs each link with its client's name and
+        # folds the metrics per company), so it never travelled ``scoped_select()`` and carried
+        # no horizon at all: a membership scoped to one company group read every client's
+        # marketing numbers on the one screen that lists them all (#285, the #240 shape).
+        stmt = (
+            select(MarketingLink, Company.name)
+            .join(Company, Company.id == MarketingLink.company_id)
+            .where(MarketingLink.org_id == self.ctx.org.id, MarketingLink.active.is_(True))
+        )
+        horizon = self.ctx.repo(MarketingLink).horizon_condition()
+        if horizon is not None:
+            stmt = stmt.where(horizon)
+        pairs = (await self.ctx.session.execute(stmt)).all()
         if not pairs:
             return OverviewResponse(range_days=range_days, rows=[], total=0)
 

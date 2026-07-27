@@ -198,21 +198,38 @@ class WebsiteService:
 
     # --- internals ----------------------------------------------------------- #
     async def _ensure_domain(self, domain_id: uuid.UUID) -> None:
-        ok = await self.ctx.session.scalar(
-            text("SELECT 1 FROM domains WHERE id = :id AND org_id = :oid"),
-            {"id": domain_id, "oid": self._org_id},
-        )
-        if not ok:
+        """The parent domain exists in this tenant **and** inside the caller's horizon (#285).
+
+        A website carries no ``company_id``, so the repository's write guard has nothing to
+        refuse: without the horizon half here, a membership scoped to one company group could
+        create a website on an invisible client's domain — and then not see what it made.
+        """
+        rows = (
+            await self.ctx.session.execute(
+                text("SELECT company_id FROM domains WHERE id = :id AND org_id = :oid"),
+                {"id": domain_id, "oid": self._org_id},
+            )
+        ).all()
+        scope = self.ctx.company_scope
+        if not rows or (scope is not None and rows[0][0] not in scope):
             raise AppError("not_found", "errors.not_found", status_code=404)
 
     async def _ensure_hosting(self, hosting_id: uuid.UUID | None) -> uuid.UUID | None:
         if hosting_id is None:
             return None
-        ok = await self.ctx.session.scalar(
-            text("SELECT 1 FROM hosting WHERE id = :id AND org_id = :oid"),
-            {"id": hosting_id, "oid": self._org_id},
+        # Hosting *may* be company-less (shared infra), which the horizon leaves visible — so
+        # the check mirrors the nullable-column rule rather than demanding a company (#285).
+        rows = (
+            await self.ctx.session.execute(
+                text("SELECT company_id FROM hosting WHERE id = :id AND org_id = :oid"),
+                {"id": hosting_id, "oid": self._org_id},
+            )
+        ).all()
+        scope = self.ctx.company_scope
+        visible = bool(rows) and (
+            scope is None or rows[0][0] is None or rows[0][0] in scope
         )
-        if not ok:
+        if not visible:
             raise AppError("invalid_hosting", "errors.invalid_hosting", status_code=400)
         return hosting_id
 

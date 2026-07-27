@@ -291,6 +291,14 @@ class TenantScopedRepository(Generic[ModelT]):
     filter by ``id``, and writes cannot place a row onto an invisible company. Out-of-horizon
     reads answer 404, never 403 — a 403 on get-by-id leaks existence (#19's ``_owned_or_404``
     reasoning).
+
+    A ``company_id`` column is not the only way a row belongs to a client, and the ones that
+    lack it are exactly where the horizon silently did nothing (#285): a website belongs to its
+    *domain's* client, a contact to whatever ``company_contacts`` links it to. Such a model
+    declares ``__company_horizon_clause__(scope)`` and returns the predicate itself; every path
+    through this repository — ``get_or_404``, ``scoped_select``, ``scoped_count_select``,
+    ``count`` — then carries it, which is the point of putting it here rather than in one
+    module's ``list()``.
     """
 
     def __init__(
@@ -305,8 +313,10 @@ class TenantScopedRepository(Generic[ModelT]):
         self.org_id = org_id
         self.model = model
         self.company_scope = company_scope
-        # Which column anchors the model to a company: `companies` itself declares its pk via
+        # How this model anchors to a company, in precedence order: a clause it builds itself
+        # (an indirect link — #285), else a column. `companies` names its own pk via
         # `__company_horizon_attr__`; every other model is matched on a `company_id` column.
+        self._horizon_clause = getattr(model, "__company_horizon_clause__", None)
         attr = getattr(model, "__company_horizon_attr__", "company_id")
         self._horizon_col = getattr(model, attr, None)
         table_col = getattr(model, "__table__", None)
@@ -322,7 +332,12 @@ class TenantScopedRepository(Generic[ModelT]):
         still expressed in exactly one place. Interactions' folded feed re-derived nothing and
         simply had no horizon at all (#240); this is the seam it was missing.
         """
-        if self.company_scope is None or self._horizon_col is None:
+        if self.company_scope is None:
+            return None
+        if self._horizon_clause is not None:
+            # The model owns the shape of its own company link (#285).
+            return self._horizon_clause(self.company_scope)
+        if self._horizon_col is None:
             return None
         col = self._horizon_col
         if self._horizon_nullable:

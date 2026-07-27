@@ -13,6 +13,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.customfields.registry import register_customizable
+from app.core.scope import register_horizon_entity
 
 
 class CustomizableMixin:
@@ -31,3 +32,6 @@ class CustomizableMixin:
         entity_type = getattr(cls, "__entity_type__", None)
         if entity_type:
             register_customizable(entity_type)
+            # A customizable entity is also addressable by ``(entity_type, entity_id)`` — a file
+            # list, say — so map the slug back to the model for the horizon check (#285).
+            register_horizon_entity(entity_type, cls)

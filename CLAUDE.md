@@ -514,6 +514,24 @@ It is a **core, cross-cutting capability**, like custom fields (§13) — not pe
 - **Resolved once per request** in `require_context`, on the same statement as the membership
   lookup, and cached on `RequestContext` (`ctx.can` / `ctx.require`). No Redis cache — see
   `docs/PERFORMANCE.md`.
+- **A company-group assignment is complete isolation, and the horizon has exactly four ways to
+  leak** (#285). The repository enforces it whenever a model carries `company_id` *and* the read
+  rides `scoped_select()`; the failures are all one of these, so check all four when you add a
+  surface. **(1) No anchor** — the company link is indirect: a website belongs to its *domain's*
+  client, a contact to whatever `company_contacts` links it to. The column match then finds
+  nothing and filters *nothing at all*; such a model declares
+  `__company_horizon_clause__(scope)` and every repository path picks it up. **(2) A hand-built
+  count** — `total` computed with its own `select(count())` shows "2" above a list of one; use
+  `scoped_count_select()`, and for raw SQL splice a bound `IN`. **(3) A hand-built cross-client
+  read** — a window fold, a report, a summary tile: take the predicate from
+  `horizon_condition()`. **(4) An entity-addressed surface** — the activity trail and a file list
+  take `(entity_type, entity_id)` from the caller, so holding the type's read permission is not
+  the same as being able to see *that row*; ask `entity_visible(ctx, …)`, which loads the record
+  through its own repository. Rows attached to **no** client stay visible either way (they are not
+  company data), and org-wide configuration stays readable — each config surface already has its
+  own admin-only manage permission, which is what keeps a member from editing it.
+  `tests/test_company_groups.py` closes with a sweep over every parameterless `GET /api/v1`
+  plus a control run as the owner, so "nothing leaked" cannot quietly mean "nothing matched".
 - **Deny-by-default.** An `/api/v1` route with neither `require_permission(...)` nor an explicit
   `no_permission_required("reason")` is a build break. Two tests enforce it: an introspection
   lint and a behavioural sweep that calls every operation as a member holding nothing.

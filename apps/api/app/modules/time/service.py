@@ -576,9 +576,10 @@ class TimeService:
         items = (await self.ctx.session.execute(stmt)).scalars().all()
         total = int(
             await self.ctx.session.scalar(
-                select(func.count())
-                .select_from(TimeEntry)
-                .where(TimeEntry.org_id == self.ctx.org.id, *conditions)
+                # Horizon-carrying (#285). The default per-user filter hid this: with
+                # ``all_users`` — the manager report — the hand-built count totalled every
+                # client's hours above the rows the horizon actually returned.
+                self.repo.scoped_count_select().where(*conditions)
             )
             or 0
         )

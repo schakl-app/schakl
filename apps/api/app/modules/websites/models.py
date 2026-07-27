@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Boolean, ForeignKey, Index, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Index, UniqueConstraint, column, select, table
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,6 +19,10 @@ from app.core.customfields import CustomizableMixin
 from app.core.mixins import OrgScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
 from app.core.party import party_id_column, party_type_column
 from app.db import Base
+
+# `domains` belongs to another module; reference it as a bare table by name rather than importing
+# its model (CLAUDE.md §6) — the same bridge the service already uses for the domain's name.
+_domains = table("domains", column("id"), column("org_id"), column("company_id"))
 
 
 class Website(
@@ -51,5 +55,20 @@ class Website(
     hosting_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("hosting.id", ondelete="SET NULL"), nullable=True
     )
+
+    @classmethod
+    def __company_horizon_clause__(cls, scope: frozenset[uuid.UUID]):  # noqa: ANN206
+        """A website's client is its **domain's** (#285).
+
+        There is no ``company_id`` here, so the repository's column-matched horizon found
+        nothing to filter on and did nothing at all: every restricted membership — and every
+        client login — read the whole org's websites. ``domain_id`` and ``domains.company_id``
+        are both ``NOT NULL``, so there is no company-less website to exempt.
+        """
+        return cls.domain_id.in_(
+            select(_domains.c.id).where(
+                _domains.c.org_id == cls.org_id, _domains.c.company_id.in_(scope)
+            )
+        )
     # The uptime webhook (a later automation slice) acts on this flag.
     uptime_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

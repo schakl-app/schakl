@@ -753,9 +753,10 @@ class InvoiceService(_DocumentService):
         )
         total = int(
             await self.ctx.session.scalar(
-                select(func.count())
-                .select_from(Invoice)
-                .where(Invoice.org_id == self.ctx.org.id, *conditions)
+                # ``scoped_count_select`` carries the company horizon; the hand-built
+                # ``select(count())`` it replaces counted the org's invoices above a restricted
+                # membership's filtered rows (#285) — the count leak #252 fixed elsewhere.
+                self.repo.scoped_count_select().where(*conditions)
             )
             or 0
         )
@@ -1719,12 +1720,39 @@ class InvoiceService(_DocumentService):
     # --- summary ---------------------------------------------------------------- #
     async def summary(self) -> dict[str, Any]:
         """The list-header tiles, in org currency (foreign documents convert through their
-        stored rate; 1 when unset). Approximate for steering — documents stay exact."""
+        stored rate; 1 when unset). Approximate for steering — documents stay exact.
+
+        Hand-written SQL (six conditional aggregates in one pass), so it cannot ride
+        ``scoped_select`` and had no company horizon: a membership restricted to one company
+        group read *"2 concepten"* above a list showing one, which is the count leak #252 named
+        and #285 found here — a tile is a fact about clients it cannot see. The scope is spliced
+        as a bound ``IN``; an empty horizon short-circuits, since ``IN ()`` is not valid SQL and
+        the honest answer is all-zeroes anyway.
+        """
         today = await org_today(self.ctx)
         base = "COALESCE(exchange_rate, 1)"
+        scope = self.ctx.company_scope
+        if scope is not None and not scope:
+            return {
+                "open_count": 0, "open_total": 0.0,
+                "overdue_count": 0, "overdue_total": 0.0,
+                "draft_count": 0, "paid_this_year": 0.0,
+                "quotes_open_count": 0, "quotes_open_total": 0.0,
+            }
+        horizon_sql = "" if scope is None else " AND company_id IN :companies"
+        params: dict[str, Any] = {"oid": self.ctx.org.id}
+        if scope is not None:
+            params["companies"] = list(scope)
+
+        def _scoped_text(sql: str):  # noqa: ANN202 — a bound `IN` needs the expanding param
+            stmt = text(sql)
+            return stmt if scope is None else stmt.bindparams(
+                bindparam("companies", expanding=True)
+            )
+
         row = (
             await self.ctx.session.execute(
-                text(
+                _scoped_text(
                     f"""
                     SELECT
                       COUNT(*) FILTER (WHERE status = 'open') AS open_count,
@@ -1740,22 +1768,23 @@ class InvoiceService(_DocumentService):
                                FILTER (WHERE status = 'paid'
                                        AND EXTRACT(YEAR FROM paid_at) = :year), 0)
                         AS paid_this_year
-                    FROM invoices WHERE org_id = :oid
-                    """  # noqa: S608 - f-string only splices the constant COALESCE expr
+                    FROM invoices WHERE org_id = :oid{horizon_sql}
+                    """  # noqa: S608 - f-string splices the constant COALESCE expr and a
+                    # bound-parameter `IN`, never a value
                 ),
-                {"oid": self.ctx.org.id, "today": today, "year": today.year},
+                {**params, "today": today, "year": today.year},
             )
         ).mappings().one()
         quotes = (
             await self.ctx.session.execute(
-                text(
+                _scoped_text(
                     f"""
                     SELECT COUNT(*) AS open_count,
                            COALESCE(SUM(total * {base}), 0) AS open_total
-                    FROM quotes WHERE org_id = :oid AND status = 'open'
+                    FROM quotes WHERE org_id = :oid AND status = 'open'{horizon_sql}
                     """  # noqa: S608
                 ),
-                {"oid": self.ctx.org.id},
+                params,
             )
         ).mappings().one()
         return {
@@ -1806,9 +1835,8 @@ class QuoteService(_DocumentService):
         )
         total = int(
             await self.ctx.session.scalar(
-                select(func.count())
-                .select_from(Quote)
-                .where(Quote.org_id == self.ctx.org.id, *conditions)
+                # Horizon-carrying, like the invoice list's (#285).
+                self.repo.scoped_count_select().where(*conditions)
             )
             or 0
         )

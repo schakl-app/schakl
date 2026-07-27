@@ -15,13 +15,18 @@ from app.db import async_session_maker, set_current_org
 from tests.conftest import add_membership, auth_cookie, make_tenant
 
 
-async def _setup(client_for, slug: str):
-    """An owner, a plain member, two companies, and one group holding only company A."""
+async def _setup(client_for, slug: str, *, role: str = "member"):
+    """An owner, a second membership, two companies, and one group holding only company A.
+
+    ``role="admin"`` is the *restricted manager*: someone who may read invoices, quotes and
+    subscriptions and write a website at all, and is still scoped to a portfolio. A plain member
+    holds none of those keys, so a leak in them would hide behind a 403 rather than show up.
+    """
     t = await make_tenant(slug)
     member = await make_tenant(f"{slug}-m", email=f"member-{slug}@example.com")
     async with async_session_maker() as session:
         await set_current_org(session, t.org.id)
-        membership = await add_membership(session, t.org.id, member.user.id, role="member")
+        membership = await add_membership(session, t.org.id, member.user.id, role=role)
         membership_id = membership.id
         await session.commit()
     membership = type("M", (), {"id": membership_id})()
@@ -475,3 +480,361 @@ async def test_company_logo_is_tenant_scoped(client_for, tmp_path, monkeypatch) 
         assert (
             await c.get(f"/api/v1/companies/{a['id']}/logo", headers=other_h)
         ).status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# Complete isolation (#285)
+# --------------------------------------------------------------------------- #
+async def _seed_for_both(c, owner_h, a, b) -> dict[str, dict]:
+    """One recognisable row of every company-rooted entity, for each client."""
+    made: dict[str, dict] = {}
+    for key, company in (("a", a), ("b", b)):
+        rows: dict[str, dict] = {}
+        made[key] = rows
+
+        def keep(name: str, response, *, into=rows, side=key) -> None:
+            assert response.status_code == 201, f"{name}/{side}: {response.text}"
+            into[name] = response.json()
+
+        keep(
+            "contact",
+            await c.post(
+                "/api/v1/contacts",
+                json={"first_name": f"Person-{key}", "company_ids": [company["id"]]},
+                headers=owner_h,
+            ),
+        )
+        keep(
+            "domain",
+            await c.post(
+                "/api/v1/domains",
+                json={"name": f"klant-{key}.nl", "company_id": company["id"]},
+                headers=owner_h,
+            ),
+        )
+        keep(
+            "website",
+            await c.post(
+                "/api/v1/websites",
+                json={"domain_id": rows["domain"]["id"], "root": True},
+                headers=owner_h,
+            ),
+        )
+        keep(
+            "hosting",
+            await c.post(
+                "/api/v1/hosting",
+                json={"name": f"host-{key}", "company_id": company["id"]},
+                headers=owner_h,
+            ),
+        )
+        keep(
+            "time",
+            await c.post(
+                "/api/v1/time/entries",
+                json={
+                    "started_at": "2026-07-10T09:00:00+00:00",
+                    "minutes": 60,
+                    "company_id": company["id"],
+                    "description": f"Time-{key}",
+                },
+                headers=owner_h,
+            ),
+        )
+        keep(
+            "invoice",
+            await c.post(
+                "/api/v1/invoicing/invoices",
+                json={"company_id": company["id"], "reference": f"Inv-{key}", "lines": []},
+                headers=owner_h,
+            ),
+        )
+        keep(
+            "quote",
+            await c.post(
+                "/api/v1/invoicing/quotes",
+                json={"company_id": company["id"], "reference": f"Quo-{key}", "lines": []},
+                headers=owner_h,
+            ),
+        )
+        keep(
+            "subscription",
+            await c.post(
+                "/api/v1/subscriptions",
+                json={
+                    "company_id": company["id"],
+                    "name": f"Sub-{key}",
+                    "amount": "10.00",
+                    "start_date": "2026-01-01",
+                },
+                headers=owner_h,
+            ),
+        )
+    return made
+
+
+async def test_horizon_reaches_entities_with_no_company_column(client_for) -> None:
+    """A ``company_id`` column is not the only way a row belongs to a client (#285).
+
+    ``contacts`` links through ``company_contacts`` and ``websites`` through its parent domain,
+    so the repository's column-matched horizon found nothing to filter on and did **nothing**:
+    a membership scoped to one company group read the agency's whole address book and every
+    client's websites — list, total and get-by-id. Both models now declare the predicate
+    themselves (``__company_horizon_clause__``), so every repository path carries it.
+    """
+    t, member, membership, owner_h, member_h, a, b, group = await _setup(
+        client_for, "horiz-noco", role="admin"
+    )
+
+    async with client_for(t.host) as c:
+        made = await _seed_for_both(c, owner_h, a, b)
+        # A contact attached to nobody stays visible to staff — the same rule a company-less
+        # task rides ("no company linkage" is not company data).
+        loose = await c.post(
+            "/api/v1/contacts", json={"first_name": "Zwevend"}, headers=owner_h
+        )
+        assert loose.status_code == 201, loose.text
+
+        assert (
+            await c.put(
+                f"/api/v1/companies/groups/{group['id']}/memberships",
+                json={"membership_ids": [str(membership.id)]},
+                headers=owner_h,
+            )
+        ).status_code == 204
+
+        contacts = (await c.get("/api/v1/contacts?limit=50", headers=member_h)).json()
+        assert {r["first_name"] for r in contacts["items"]} == {"Person-a", "Zwevend"}
+        assert contacts["total"] == 2
+        assert (
+            await c.get(f"/api/v1/contacts/{made['b']['contact']['id']}", headers=member_h)
+        ).status_code == 404
+        # Filtering on the invisible client answers 404, not "that client has no people".
+        assert (
+            await c.get(
+                "/api/v1/contacts", params={"company_id": b["id"]}, headers=member_h
+            )
+        ).status_code == 404
+
+        websites = (await c.get("/api/v1/websites?limit=50", headers=member_h)).json()
+        assert [r["domain_name"] for r in websites["items"]] == ["klant-a.nl"]
+        assert websites["total"] == 1
+        assert (
+            await c.get(f"/api/v1/websites/{made['b']['website']['id']}", headers=member_h)
+        ).status_code == 404
+        # …nor may they *create* one on the invisible client's domain: a website carries no
+        # company_id, so the repository's write guard has nothing to refuse.
+        assert (
+            await c.post(
+                "/api/v1/websites",
+                json={"domain_id": made["b"]["domain"]["id"], "root": False},
+                headers=member_h,
+            )
+        ).status_code == 404
+
+        # The owner is never restricted.
+        assert (await c.get("/api/v1/contacts?limit=50", headers=owner_h)).json()["total"] == 3
+        assert (await c.get("/api/v1/websites?limit=50", headers=owner_h)).json()["total"] == 2
+
+
+async def test_horizon_reaches_totals_and_summary_tiles(client_for) -> None:
+    """A count is a fact about rows the caller cannot see (#252's rule, still open here).
+
+    Invoices, quotes, subscriptions and time entries each built ``total`` with a hand-rolled
+    ``select(count())``, and the invoicing summary tiles are six conditional aggregates in one
+    raw statement — so a restricted membership read a list of one under a header saying two.
+    """
+    t, member, membership, owner_h, member_h, a, b, group = await _setup(
+        client_for, "horiz-count", role="admin"
+    )
+
+    async with client_for(t.host) as c:
+        await _seed_for_both(c, owner_h, a, b)
+        assert (
+            await c.put(
+                f"/api/v1/companies/groups/{group['id']}/memberships",
+                json={"membership_ids": [str(membership.id)]},
+                headers=owner_h,
+            )
+        ).status_code == 204
+
+        for path, label in (
+            ("/api/v1/invoicing/invoices", "invoices"),
+            ("/api/v1/invoicing/quotes", "quotes"),
+            ("/api/v1/subscriptions", "subscriptions"),
+        ):
+            body = (await c.get(f"{path}?limit=50", headers=member_h)).json()
+            assert len(body["items"]) == 1, label
+            assert body["total"] == 1, f"{label}: total counted the org, not the horizon"
+            assert (await c.get(f"{path}?limit=50", headers=owner_h)).json()["total"] == 2, label
+
+        # The manager report is where the time-entry count leaked: the default per-user filter
+        # hid it, since the owner's rows are not the caller's own.
+        hours = (
+            await c.get("/api/v1/time/entries?all_users=true&limit=50", headers=member_h)
+        ).json()
+        assert [r["description"] for r in hours["items"]] == ["Time-a"]
+        assert hours["total"] == 1
+        owner_hours = (
+            await c.get("/api/v1/time/entries?all_users=true&limit=50", headers=owner_h)
+        ).json()
+        assert owner_hours["total"] == 2
+
+        # The list-header tiles ride the same rule: one draft, not two.
+        tiles = (await c.get("/api/v1/invoicing/summary", headers=member_h)).json()
+        assert tiles["draft_count"] == 1
+        owner_tiles = (await c.get("/api/v1/invoicing/summary", headers=owner_h)).json()
+        assert owner_tiles["draft_count"] == 2
+
+
+async def test_horizon_reaches_the_trail_and_the_attachments(client_for) -> None:
+    """``(entity_type, entity_id)`` comes straight from the caller (#285).
+
+    The activity feed gated on "may you read this *type*" (audit F7) and the file list on
+    nothing at all bar ``company_logo`` — so a restricted membership read the paper trail and
+    listed the documents of a client whose every other surface answers 404, and could attach
+    new documents to it.
+    """
+    t, member, membership, owner_h, member_h, a, b, group = await _setup(
+        client_for, "horiz-trail", role="admin"
+    )
+
+    async with client_for(t.host) as c:
+        made = await _seed_for_both(c, owner_h, a, b)
+        # Give both clients a trail entry to read.
+        for key in ("a", "b"):
+            await c.patch(
+                f"/api/v1/contacts/{made[key]['contact']['id']}",
+                json={"job_title": "Directeur"},
+                headers=owner_h,
+            )
+        assert (
+            await c.put(
+                f"/api/v1/companies/groups/{group['id']}/memberships",
+                json={"membership_ids": [str(membership.id)]},
+                headers=owner_h,
+            )
+        ).status_code == 204
+
+        # Inside the horizon the panel still works…
+        mine = await c.get(
+            "/api/v1/activity",
+            params={"entity_type": "contact", "entity_id": made["a"]["contact"]["id"]},
+            headers=member_h,
+        )
+        assert mine.status_code == 200 and mine.json() != []
+        # …outside it the trail is empty, not the client's history.
+        for entity_type, row in (
+            ("company", {"id": b["id"]}),
+            ("contact", made["b"]["contact"]),
+            ("website", made["b"]["website"]),
+        ):
+            feed = await c.get(
+                "/api/v1/activity",
+                params={"entity_type": entity_type, "entity_id": row["id"]},
+                headers=member_h,
+            )
+            assert feed.status_code == 200, feed.text
+            assert feed.json() == [], entity_type
+            files = await c.get(
+                "/api/v1/files",
+                params={"entity_type": entity_type, "entity_id": row["id"]},
+                headers=member_h,
+            )
+            assert files.status_code == 200 and files.json() == [], entity_type
+
+        # Attaching to an invisible record is refused, like any other write onto one.
+        upload = await c.post(
+            "/api/v1/files",
+            params={"entity_type": "company", "entity_id": b["id"]},
+            files={"file": ("note.txt", b"hello", "text/plain")},
+            headers=member_h,
+        )
+        assert upload.status_code == 404, upload.text
+
+        # The owner still reads both trails.
+        assert (
+            await c.get(
+                "/api/v1/activity",
+                params={"entity_type": "contact", "entity_id": made["b"]["contact"]["id"]},
+                headers=owner_h,
+            )
+        ).json() != []
+
+
+async def test_no_get_route_mentions_a_client_outside_the_horizon(client_for) -> None:
+    """The tripwire (#285): call **every** parameterless ``GET /api/v1`` as a restricted member
+    and fail if the response body mentions the client they are scoped away from.
+
+    A per-module test only covers the modules someone remembered. This one covers the next
+    module too — and the control run proves it can actually see a leak, so a green result is
+    not just "the needle never matched anything".
+    """
+    from app.main import app
+
+    t, member, membership, owner_h, member_h, a, b, group = await _setup(
+        client_for, "horiz-sweep", role="admin"
+    )
+
+    async with client_for(t.host) as c:
+        await _seed_for_both(c, owner_h, a, b)
+        # A recognisable name on the client row itself, so a leak of the company is caught too.
+        assert (
+            await c.patch(
+                f"/api/v1/companies/{b['id']}", json={"name": "ZBEEclient"}, headers=owner_h
+            )
+        ).status_code == 200
+        assert (
+            await c.put(
+                f"/api/v1/companies/groups/{group['id']}/memberships",
+                json={"membership_ids": [str(membership.id)]},
+                headers=owner_h,
+            )
+        ).status_code == 204
+
+        # Routers are included lazily, so the paths come from the OpenAPI spec, not app.routes.
+        paths = sorted(
+            path
+            for path, ops in app.openapi()["paths"].items()
+            if "get" in ops and path.startswith("/api/v1") and "{" not in path
+        )
+        assert len(paths) > 100, "the sweep found almost no routes — did the spec shape change?"
+        needles = ("ZBEEclient", "Inv-b", "Quo-b", "Sub-b", "Person-b", "klant-b.nl", "host-b")
+
+        leaking, control = [], 0
+        for path in paths:
+            member_res = await c.get(path, headers=member_h)
+            if member_res.status_code == 200 and any(n in member_res.text for n in needles):
+                leaking.append(path)
+            owner_res = await c.get(path, headers=owner_h)
+            if owner_res.status_code == 200 and any(n in owner_res.text for n in needles):
+                control += 1
+        assert leaking == [], f"these routes leak the invisible client: {leaking}"
+        # The control: the owner *does* see that client on plenty of these routes. Without it a
+        # green assertion above could mean the seeded rows never reached any response at all.
+        assert control >= 5, f"the sweep proved nothing — the owner saw the client on {control}"
+
+
+async def test_group_trail_is_not_readable_by_the_people_it_restricts(client_for) -> None:
+    """Audit F7 on the horizon's own admin surface (#285).
+
+    ``company_group`` opted into the trail without declaring a read permission, so the feed fell
+    back to the blanket ``activity.read`` every member holds — and a group's entries name the
+    clients moved in and out of it. Reading horizon administration is now
+    ``companies.group.manage``, the permission that administers it.
+    """
+    t, member, membership, owner_h, member_h, a, b, group = await _setup(client_for, "horiz-gtrail")
+
+    async with client_for(t.host) as c:
+        # A rename, so there is something in the trail to read.
+        assert (
+            await c.patch(
+                f"/api/v1/companies/groups/{group['id']}",
+                json={"name": "Team Zuid"},
+                headers=owner_h,
+            )
+        ).status_code == 200
+        params = {"entity_type": "company_group", "entity_id": group["id"]}
+        assert (await c.get("/api/v1/activity", params=params, headers=member_h)).status_code == 403
+        owner_feed = await c.get("/api/v1/activity", params=params, headers=owner_h)
+        assert owner_feed.status_code == 200 and owner_feed.json() != []

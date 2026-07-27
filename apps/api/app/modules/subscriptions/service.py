@@ -277,9 +277,9 @@ class SubscriptionService:
         )
         total = int(
             await self.ctx.session.scalar(
-                select(func.count())
-                .select_from(Subscription)
-                .where(Subscription.org_id == self._org_id, *conditions)
+                # Horizon-carrying: the hand-built count it replaces totalled the org's
+                # agreements above a restricted membership's filtered rows (#285).
+                self.repo.scoped_count_select().where(*conditions)
             )
             or 0
         )

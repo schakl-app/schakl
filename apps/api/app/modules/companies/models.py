@@ -168,6 +168,11 @@ class CompanyGroup(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Auditabl
 
     __tablename__ = "company_groups"
     __entity_type__ = "company_group"
+    # Audit F7's rule, which this type opted in without (#285): the trail is readable only by
+    # someone who may read the record. A group's entries name the *companies* moved in and out
+    # of it, and without a key here the feed fell back to the blanket ``activity.read`` that
+    # every member holds — so horizon administration was legible to the people it restricts.
+    __activity_read_permission__ = "companies.group.manage"
     __table_args__ = (UniqueConstraint("org_id", "name", name="uq_company_groups_name"),)
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
