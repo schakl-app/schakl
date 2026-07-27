@@ -20,9 +20,30 @@ const SOURCE_LOCALE = "en";
 const REQUIRED_LOCALES = ["nl"]; // must exist and be complete
 
 /** @param {string} file */
-function loadKeys(file) {
+function load(file) {
   const raw = JSON.parse(readFileSync(join(MESSAGES_DIR, file), "utf8"));
-  return new Set(Object.keys(raw).filter((k) => !k.startsWith("$")));
+  return Object.entries(raw).filter(([key]) => !key.startsWith("$"));
+}
+
+/** @param {string} file */
+function loadKeys(file) {
+  return new Set(load(file).map(([key]) => key));
+}
+
+// ICU **plural/select** is not supported by our Paraglide setup: it reads `{…}` as a plain
+// placeholder name, so `{count, plural, one {…} other {…}}` compiles to a parameter literally
+// called `count, plural, one {{count` and renders as `undefined … } other …}}` in front of the
+// user. It compiles without complaint, which is exactly why it is checked here.
+// The house form is a count plus a bracketed suffix — `{count} abonnement(en)` — or two keys
+// picked in code when a sentence has to read properly in both numbers.
+const PLURAL_SYNTAX = /\{[^{}]*,\s*(plural|select)\s*,/;
+
+/** @param {string} file */
+function pluralMessages(file) {
+  return load(file)
+    .filter(([, value]) => typeof value === "string" && PLURAL_SYNTAX.test(value))
+    .map(([key]) => key)
+    .sort();
 }
 
 const files = readdirSync(MESSAGES_DIR).filter((f) => f.endsWith(".json"));
@@ -56,6 +77,18 @@ for (const locale of locales) {
     if (extra.length) console.error(`  extra   (${extra.length}): ${extra.join(", ")}`);
   } else {
     console.log(`✓ ${locale}.json — ${keys.size} keys, in sync`);
+  }
+}
+
+for (const locale of locales) {
+  const offenders = pluralMessages(`${locale}.json`);
+  if (offenders.length) {
+    failed = true;
+    console.error(
+      `\n✖ ${locale}.json uses ICU plural/select, which Paraglide does not compile here — ` +
+        `it renders "undefined … } other …}}": ${offenders.join(", ")}`,
+    );
+    console.error(`  Write "{count} abonnement(en)", or two keys chosen in code.`);
   }
 }
 
