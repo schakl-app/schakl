@@ -12,7 +12,7 @@ from app.db import async_session_maker, set_current_org
 from tests.conftest import auth_cookie, make_tenant
 
 COMPANY_HEADER = [
-    "name", "website", "invoice_email", "status",
+    "name", "website", "phone", "invoice_email", "status",
     # Billing identity (issue #11, shipped with invoicing #207).
     "vat_number", "coc_number", "address_line1", "address_line2",
     "postal_code", "city", "country",

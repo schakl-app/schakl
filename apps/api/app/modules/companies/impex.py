@@ -18,13 +18,15 @@ from app.modules.companies.models import Company, CompanyStatus
 from app.modules.companies.schemas import CompanyCreate, CompanyUpdate
 from app.modules.companies.service import CompanyService
 
-_TEXT_FIELDS = (
-    "name", "website", "invoice_email", "notes",
-    # Billing identity (issue #11) — a client list from a bookkeeping package carries these.
+# Billing identity (issue #11) — a client list from a bookkeeping package carries these.
+# Spelled out rather than sliced off ``_TEXT_FIELDS``: a positional slice makes inserting a
+# column at the front silently shift every billing value one field along on create, with no
+# error anywhere. The duplication is the point.
+_BILLING_FIELDS = (
     "vat_number", "coc_number", "address_line1", "address_line2",
     "postal_code", "city", "country",
 )
-_BILLING_FIELDS = _TEXT_FIELDS[4:]
+_TEXT_FIELDS = ("name", "website", "phone", "invoice_email", "notes", *_BILLING_FIELDS)
 
 
 async def _fetch_page(
@@ -56,6 +58,7 @@ async def _create(ctx: RequestContext, values: dict[str, Any]) -> None:
         CompanyCreate(
             name=values["name"],
             website=values.get("website"),
+            phone=values.get("phone"),
             invoice_email=values.get("invoice_email"),
             notes=values.get("notes"),
             status=CompanyStatus(values["status"])
@@ -88,6 +91,8 @@ COMPANY_IMPEX = ImpexDescriptor(
     columns=(
         ImpexColumn("name", required=True),
         ImpexColumn("website"),
+        # Stored E.164; a national number needs the org's default country (see app/core/phone).
+        ImpexColumn("phone"),
         ImpexColumn("invoice_email", data_type="email"),
         # Not clearable: a company always has a status — an empty cell leaves it unchanged
         # (defaults to "active" on a create).
