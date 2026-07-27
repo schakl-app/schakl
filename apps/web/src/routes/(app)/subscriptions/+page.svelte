@@ -4,7 +4,7 @@
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
-  import { fmtMoney, fmtNumber, fmtNumericDate } from "$lib/core/format";
+  import { fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
@@ -17,6 +17,7 @@
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
+  import Markdown from "$lib/core/ui/Markdown.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
@@ -24,7 +25,13 @@
   import { SUBSCRIPTION_COLUMNS } from "$lib/modules/subscriptions/columns";
   import PriceIncreaseModal from "$lib/modules/subscriptions/PriceIncreaseModal.svelte";
   import { subscriptionTypeLabel } from "$lib/modules/subscriptions/types";
-  import { noteVariableItems, resolveNoteVariables } from "$lib/modules/subscriptions/variables";
+  import {
+    hasNoteVariables,
+    noteVariableItems,
+    notePlaceholder,
+    resolveNoteVariables,
+    subscriptionNoteValues,
+  } from "$lib/modules/subscriptions/variables";
 
   let { data, form } = $props();
 
@@ -40,26 +47,43 @@
   // Inline company create from the picker (#115, docs/UX.md — per-picker definition of done).
   let qcCompanyOpen = $state(false);
   let qcCompanyName = $state("");
-  let createdCompanyId = $state("");
-  // A pre-selected existing client (#247): the one picked in the field or carried in via the
-  // ?company= deep link. Unlike createdCompanyId it is never written by the inlineCreated effect,
-  // so the project quick-create still sees a client the user chose without inline-creating it.
-  let pickedCompanyId = $state("");
-  // The client the form is currently on — inline-created, picked/deep-linked, or the edited row.
-  const formCompanyId = $derived(
-    createdCompanyId || pickedCompanyId || (editing?.company_id ?? ""),
-  );
   // Inline project create from the links picker — same pattern, auto-links the new project.
   let qcProjectOpen = $state(false);
   let qcProjectName = $state("");
   // Inline subscription-type create from the type picker (#142) — same pattern again.
   let qcTypeOpen = $state(false);
   let qcTypeName = $state("");
-  let createdTypeId = $state("");
+
+  // The fields a note's variables can draw on (#259), mirrored as reactive state so the edit
+  // preview resolves live as you type. The picked company/type live here too, so an inline-created
+  // one auto-selects and the nested project quick-create inherits the chosen client (#247).
+  // (Re)seeded whenever the dialog opens on a row or a preset is picked.
+  let pv = $state({
+    name: "",
+    companyId: "",
+    typeId: "",
+    amount: "",
+    interval: "monthly",
+    includedHours: "",
+    startDate: "",
+    notes: "",
+  });
+  function seedPreview() {
+    pv = {
+      name: editing?.name ?? prefill?.name ?? "",
+      companyId: editing?.company_id ?? "",
+      typeId: editing?.subscription_type_id ?? prefill?.subscription_type_id ?? "",
+      amount: String(editing?.amount ?? prefill?.amount ?? ""),
+      interval: editing?.interval ?? prefill?.interval ?? "monthly",
+      includedHours: String(editing?.included_hours ?? prefill?.included_hours ?? ""),
+      startDate: editing?.start_date ?? "",
+      notes: editing?.notes ?? prefill?.notes ?? "",
+    };
+  }
   $effect(() => {
     const created = form?.inlineCreated;
-    if (created?.slot === "company") createdCompanyId = created.id;
-    if (created?.slot === "subscription_type") createdTypeId = created.id;
+    if (created?.slot === "company") pv.companyId = created.id;
+    if (created?.slot === "subscription_type") pv.typeId = created.id;
     if (created?.slot === "project" && !linkedProjects.some((p) => p.id === created.id)) {
       const name = "name" in created ? created.name : projectName(created.id);
       linkedProjects = [...linkedProjects, { id: created.id, name }];
@@ -107,6 +131,7 @@
       status: statusCell,
       start_date: startCell,
       included_hours: includedCell,
+      notes: notesCell,
     }),
   });
 
@@ -176,24 +201,21 @@
     return data.projects.find((p) => p.id === id)?.name ?? "—";
   }
 
-  function openCreate(company = "") {
+  function openCreate(companyId = "") {
     editing = null;
-    createdCompanyId = "";
-    pickedCompanyId = company;
-    createdTypeId = "";
     prefill = null;
     linkedProjects = [];
+    seedPreview();
+    if (companyId) pv.companyId = companyId;
     showForm = true;
   }
   function openEdit(sub: Subscription) {
     editing = sub;
-    createdCompanyId = "";
-    pickedCompanyId = "";
-    createdTypeId = "";
     prefill = null;
     linkedProjects = (sub.links ?? [])
       .filter((l) => l.entity_type === "project")
       .map((l) => ({ id: l.entity_id, name: projectName(l.entity_id) }));
+    seedPreview();
     showForm = true;
   }
 
@@ -206,33 +228,43 @@
   const money = (value: string | number | null | undefined) =>
     value == null ? "—" : fmtMoney(Number(value));
 
-  // Note variables (#259): a subscription's notes may carry `{{company_name}}`-style
-  // placeholders — prefilled from a standard subscription or inserted via the editor's menu.
-  // They fill in with this agreement's own details at save time (a snapshot into the stored
-  // markdown), read straight off the submitted form so no field needs a live binding. Only a
-  // known token with a non-empty value resolves; anything else is left as typed.
+  // Note variables (#259): the note keeps its `{{company_name}}`-style tokens in storage. They
+  // are resolved only for reading — a live preview while editing (an unknown value shown as a
+  // `[label]` placeholder), and the finished text wherever the note is displayed.
   const variableItems = $derived(noteVariableItems(t));
-  function noteValues(fd: FormData): Record<string, string | undefined> {
-    const companyId = String(fd.get("company_id") ?? "");
-    const typeId = String(fd.get("subscription_type_id") ?? "");
-    const amount = String(fd.get("amount") ?? "").trim();
-    const hours = String(fd.get("included_hours") ?? "").trim();
-    const start = String(fd.get("start_date") ?? "").trim();
-    const interval = String(fd.get("interval") ?? "monthly");
-    return {
-      company_name: data.companies.find((c) => c.id === companyId)?.name,
-      subscription_name: String(fd.get("name") ?? "").trim() || undefined,
-      type: typeId ? typeLabel(typeId) : undefined,
-      amount: amount ? fmtMoney(Number(amount)) : undefined,
-      interval: t(`subscriptions.interval.${interval}`),
-      included_hours: hours ? fmtNumber(Number(hours)) : undefined,
-      start_date: start ? fmtNumericDate(start) : undefined,
-      brand_name: page.data.theme?.brandName || undefined,
-    };
-  }
-  function resolveNotesField(fd: FormData): void {
-    const notes = String(fd.get("notes") ?? "");
-    if (notes) fd.set("notes", resolveNoteVariables(notes, noteValues(fd)));
+  const previewNotes = $derived(
+    hasNoteVariables(pv.notes)
+      ? resolveNoteVariables(
+          pv.notes,
+          subscriptionNoteValues({
+            companyName: data.companies.find((c) => c.id === pv.companyId)?.name ?? null,
+            subscriptionName: pv.name,
+            typeLabel: pv.typeId ? typeLabel(pv.typeId) : null,
+            amount: pv.amount,
+            interval: pv.interval,
+            includedHours: pv.includedHours,
+            startDate: pv.startDate,
+            brandName: page.data.theme?.brandName ?? null,
+          }),
+          { placeholder: notePlaceholder(t) },
+        )
+      : "",
+  );
+  // A saved subscription resolves its own tokens for display — a reader never meets a variable.
+  function subNoteDisplay(sub: Subscription): string {
+    return resolveNoteVariables(
+      sub.notes ?? "",
+      subscriptionNoteValues({
+        companyName: sub.company_name,
+        subscriptionName: sub.name,
+        typeLabel: sub.subscription_type_id ? typeLabel(sub.subscription_type_id) : null,
+        amount: sub.amount,
+        interval: sub.interval,
+        includedHours: sub.included_hours,
+        startDate: sub.start_date,
+        brandName: page.data.theme?.brandName ?? null,
+      }),
+    );
   }
 
   const inputClass =
@@ -410,6 +442,11 @@
   <span class="tabular-nums text-text-muted">{sub.included_hours ?? "—"}</span>
 {/snippet}
 
+<!-- Notes resolve their variables for reading (#259): a variable is never shown as one. -->
+{#snippet notesCell(sub: Subscription)}
+  <span class="block max-w-64 truncate text-text-muted">{subNoteDisplay(sub) || "—"}</span>
+{/snippet}
+
 {#snippet rowActions(sub: Subscription)}
   <ActionsMenu
     compact
@@ -531,8 +568,10 @@
         id="sub-template"
         class={inputClass}
         value={prefill?.id ?? ""}
-        onchange={(e) =>
-          (prefill = data.templates.find((tpl) => tpl.id === e.currentTarget.value) ?? null)}
+        onchange={(e) => {
+          prefill = data.templates.find((tpl) => tpl.id === e.currentTarget.value) ?? null;
+          seedPreview();
+        }}
       >
         <option value="">—</option>
         {#each data.templates as tpl (tpl.id)}
@@ -545,12 +584,9 @@
     <form
       method="POST"
       action={editing ? "?/update" : "?/create"}
-      use:enhance={busy.wrap("save", (input) => {
-        resolveNotesField(input.formData);
-        return ({ result, update }) => {
-          if (result.type === "success") showForm = false;
-          void update({ reset: false });
-        };
+      use:enhance={busy.wrap("save", () => ({ result, update }) => {
+        if (result.type === "success") showForm = false;
+        void update({ reset: false });
       })}
       class="space-y-4"
     >
@@ -564,7 +600,7 @@
           name="name"
           required
           readonly={!editing && !!prefill}
-          value={editing?.name ?? prefill?.name ?? ""}
+          bind:value={pv.name}
           class="{inputClass} read-only:bg-surface read-only:text-text-muted"
         />
         {#if !editing && prefill}
@@ -578,10 +614,9 @@
         <Combobox
           items={companyItems}
           name="company_id"
-          value={formCompanyId}
+          bind:value={pv.companyId}
           id="sub-company"
           placeholder={t("subscriptions.field.company")}
-          onselect={(v) => (pickedCompanyId = v)}
           oncreate={(name) => {
             qcCompanyName = name;
             qcCompanyOpen = true;
@@ -595,8 +630,7 @@
         <Combobox
           items={typeItems}
           name="subscription_type_id"
-          value={createdTypeId ||
-            (editing?.subscription_type_id ?? prefill?.subscription_type_id ?? "")}
+          bind:value={pv.typeId}
           id="sub-type"
           placeholder={t("subscriptions.field.type")}
           oncreate={data.canManageTypes
@@ -624,13 +658,9 @@
           <label for="sub-interval" class="mb-1 block text-sm font-medium text-text"
             >{t("subscriptions.field.interval")}</label
           >
-          <select id="sub-interval" name="interval" class={inputClass}>
+          <select id="sub-interval" name="interval" class={inputClass} bind:value={pv.interval}>
             {#each INTERVALS as interval (interval)}
-              <option
-                value={interval}
-                selected={(editing?.interval ?? prefill?.interval ?? "monthly") === interval}
-                >{t(`subscriptions.interval.${interval}`)}</option
-              >
+              <option value={interval}>{t(`subscriptions.interval.${interval}`)}</option>
             {/each}
           </select>
         </div>
@@ -645,7 +675,8 @@
             min="0"
             step="0.01"
             required={!editing}
-            value={editing?.amount ?? prefill?.amount ?? ""}
+            value={pv.amount}
+            oninput={(e) => (pv.amount = e.currentTarget.value)}
             class={inputClass}
           />
         </div>
@@ -659,7 +690,8 @@
             type="number"
             min="0"
             step="0.5"
-            value={editing?.included_hours ?? prefill?.included_hours ?? ""}
+            value={pv.includedHours}
+            oninput={(e) => (pv.includedHours = e.currentTarget.value)}
             class={inputClass}
           />
         </div>
@@ -667,7 +699,7 @@
           <label for="sub-start" class="mb-1 block text-sm font-medium text-text"
             >{t("subscriptions.field.start_date")}</label
           >
-          <DateInput name="start_date" id="sub-start" required value={editing?.start_date ?? ""} />
+          <DateInput name="start_date" id="sub-start" required bind:value={pv.startDate} />
         </div>
         <!-- Edit only (#223): on create there is nothing to anchor a "next invoice" against —
              the API derives the first cycle boundary (start + one period) on activation. -->
@@ -734,16 +766,25 @@
           rows={2}
           value={editing?.notes ?? prefill?.notes ?? ""}
           variables={variableItems}
-          scope={{ companyId: formCompanyId || null }}
+          scope={{ companyId: pv.companyId || null }}
+          onchange={(v) => (pv.notes = v)}
         />
         <p class="mt-1 text-xs text-text-muted">{t("subscriptions.variables.hint")}</p>
+        {#if hasNoteVariables(pv.notes)}
+          <div class="mt-2 rounded-lg border border-border bg-surface p-3">
+            <p class="mb-1 text-xs font-medium text-text-muted">
+              {t("subscriptions.variables.preview")}
+            </p>
+            <Markdown value={previewNotes} />
+          </div>
+        {/if}
       </div>
       {#if data.definitions.length > 0}
         <CustomFieldsForm
           definitions={data.definitions}
           values={editing?.custom ?? {}}
           locale={data.locale}
-          scope={{ companyId: formCompanyId || null }}
+          scope={{ companyId: pv.companyId || null }}
         />
       {:else}
         <input type="hidden" name="custom" value={JSON.stringify(editing?.custom ?? {})} />
@@ -802,7 +843,7 @@
         <Combobox
           items={companyItems}
           name="company_id"
-          value={formCompanyId}
+          value={pv.companyId}
           id="qc-sub-project-company"
           placeholder={t("projects.field.company")}
         />

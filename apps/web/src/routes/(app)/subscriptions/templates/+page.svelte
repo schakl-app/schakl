@@ -20,13 +20,20 @@
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import Markdown from "$lib/core/ui/Markdown.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import { SUBSCRIPTION_TEMPLATE_COLUMNS } from "$lib/modules/subscriptions/columns";
   import PriceIncreaseModal from "$lib/modules/subscriptions/PriceIncreaseModal.svelte";
   import { subscriptionTypeLabel } from "$lib/modules/subscriptions/types";
-  import { noteVariableItems } from "$lib/modules/subscriptions/variables";
+  import {
+    hasNoteVariables,
+    noteVariableItems,
+    notePlaceholder,
+    resolveNoteVariables,
+    subscriptionNoteValues,
+  } from "$lib/modules/subscriptions/variables";
 
   let { data, form } = $props();
 
@@ -64,10 +71,12 @@
 
   function openCreate() {
     editing = null;
+    seedTemplatePreview();
     showModal = true;
   }
   function openEdit(tpl: Template) {
     editing = tpl;
+    seedTemplatePreview();
     showModal = true;
   }
 
@@ -98,6 +107,45 @@
   // The insert-a-variable menu items (issue #259): a preset's notes are authored with the
   // placeholders that fill in when a subscription is made from it.
   const variableItems = $derived(noteVariableItems(t));
+
+  // Live preview of a preset's notes (#259). A preset has no client, so the client-context
+  // variables (company name, start date) show as a `[label]` placeholder; the rest resolve from
+  // the preset's own fields, so the author sees the shape a subscription will get. (Re)seeded when
+  // the dialog opens; the notes stay tokens in storage — a preset is the definition, not a copy.
+  let tpv = $state({
+    name: "",
+    typeId: "",
+    amount: "",
+    interval: "monthly",
+    includedHours: "",
+    notes: "",
+  });
+  function seedTemplatePreview() {
+    tpv = {
+      name: editing?.name ?? "",
+      typeId: editing?.subscription_type_id ?? "",
+      amount: String(editing?.amount ?? ""),
+      interval: editing?.interval ?? "monthly",
+      includedHours: String(editing?.included_hours ?? ""),
+      notes: editing?.notes ?? "",
+    };
+  }
+  const templatePreview = $derived(
+    hasNoteVariables(tpv.notes)
+      ? resolveNoteVariables(
+          tpv.notes,
+          subscriptionNoteValues({
+            subscriptionName: tpv.name,
+            typeLabel: tpv.typeId ? typeLabel(tpv.typeId) : null,
+            amount: tpv.amount,
+            interval: tpv.interval,
+            includedHours: tpv.includedHours,
+            brandName: page.data.theme?.brandName ?? null,
+          }),
+          { placeholder: notePlaceholder(t) },
+        )
+      : "",
+  );
 </script>
 
 <svelte:head>
@@ -269,19 +317,22 @@
         <label for="tpl-name" class="mb-1 block text-sm text-text"
           >{t("subscriptions.field.name")}</label
         >
-        <input id="tpl-name" name="name" required value={editing?.name ?? ""} class={inputClass} />
+        <input id="tpl-name" name="name" required bind:value={tpv.name} class={inputClass} />
       </div>
       <div class="grid gap-3 sm:grid-cols-2">
         <div>
           <label for="tpl-type" class="mb-1 block text-sm text-text"
             >{t("subscriptions.field.type")}</label
           >
-          <select id="tpl-type" name="subscription_type_id" class={inputClass}>
+          <select
+            id="tpl-type"
+            name="subscription_type_id"
+            class={inputClass}
+            bind:value={tpv.typeId}
+          >
             <option value="">—</option>
             {#each activeTypes as st (st.id)}
-              <option value={st.id} selected={editing?.subscription_type_id === st.id}
-                >{subscriptionTypeLabel(st, data.locale)}</option
-              >
+              <option value={st.id}>{subscriptionTypeLabel(st, data.locale)}</option>
             {/each}
           </select>
         </div>
@@ -289,11 +340,9 @@
           <label for="tpl-interval" class="mb-1 block text-sm text-text"
             >{t("subscriptions.field.interval")}</label
           >
-          <select id="tpl-interval" name="interval" class={inputClass}>
+          <select id="tpl-interval" name="interval" class={inputClass} bind:value={tpv.interval}>
             {#each INTERVALS as interval (interval)}
-              <option value={interval} selected={(editing?.interval ?? "monthly") === interval}
-                >{t(`subscriptions.interval.${interval}`)}</option
-              >
+              <option value={interval}>{t(`subscriptions.interval.${interval}`)}</option>
             {/each}
           </select>
         </div>
@@ -307,7 +356,8 @@
             type="number"
             min="0"
             step="0.01"
-            value={editing?.amount ?? ""}
+            value={tpv.amount}
+            oninput={(e) => (tpv.amount = e.currentTarget.value)}
             class={inputClass}
           />
         </div>
@@ -321,7 +371,8 @@
             type="number"
             min="0"
             step="0.5"
-            value={editing?.included_hours ?? ""}
+            value={tpv.includedHours}
+            oninput={(e) => (tpv.includedHours = e.currentTarget.value)}
             class={inputClass}
           />
         </div>
@@ -350,8 +401,17 @@
           rows={2}
           value={editing?.notes ?? ""}
           variables={variableItems}
+          onchange={(v) => (tpv.notes = v)}
         />
         <p class="mt-1 text-xs text-text-muted">{t("subscriptions.variables.hint_template")}</p>
+        {#if hasNoteVariables(tpv.notes)}
+          <div class="mt-2 rounded-lg border border-border bg-surface p-3">
+            <p class="mb-1 text-xs font-medium text-text-muted">
+              {t("subscriptions.variables.preview")}
+            </p>
+            <Markdown value={templatePreview} />
+          </div>
+        {/if}
       </div>
       <input
         type="hidden"
