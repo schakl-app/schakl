@@ -2292,6 +2292,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/instance/admins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Admins */
+        get: operations["list_admins_api_v1_instance_admins_get"];
+        put?: never;
+        /** Invite Admin */
+        post: operations["invite_admin_api_v1_instance_admins_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instance/admins/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Admin
+         * @description Remove all instance access: the capability row, and the owner flag if they had it.
+         *
+         *     This is the immediate lever against a live impersonation grant, which the signed token
+         *     outlives by design (see ``impersonation.read_impersonation``).
+         */
+        delete: operations["revoke_admin_api_v1_instance_admins__user_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Admin */
+        patch: operations["update_admin_api_v1_instance_admins__user_id__patch"];
+        trace?: never;
+    };
     "/api/v1/instance/api-keys": {
         parameters: {
             query?: never;
@@ -6660,6 +6702,32 @@ export interface components {
             /** Street */
             street: string;
         };
+        /** AdminInvite */
+        AdminInvite: {
+            /** Capabilities */
+            capabilities?: string[];
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Full Name */
+            full_name?: string | null;
+        };
+        /** AdminUpdate */
+        AdminUpdate: {
+            /** Capabilities */
+            capabilities?: string[] | null;
+            /** Is Owner */
+            is_owner?: boolean | null;
+        };
+        /** AdminsPage */
+        AdminsPage: {
+            /** Catalog */
+            catalog: components["schemas"]["CapabilityInfo"][];
+            /** Principals */
+            principals: components["schemas"]["InstancePrincipal"][];
+        };
         /** ApiKeyCreate */
         ApiKeyCreate: {
             /** Expires At */
@@ -7460,6 +7528,17 @@ export interface components {
             tentative: boolean;
             /** Title */
             title: string;
+        };
+        /** CapabilityInfo */
+        CapabilityInfo: {
+            /** Group */
+            group: string;
+            /** Key */
+            key: string;
+            /** Label Key */
+            label_key: string;
+            /** Sensitive */
+            sensitive: boolean;
         };
         /** CatalogRead */
         CatalogRead: {
@@ -9934,6 +10013,11 @@ export interface components {
          *     exists. The console guards itself on ``is_instance_admin``.
          */
         InstanceMe: {
+            /**
+             * Capabilities
+             * @default []
+             */
+            capabilities: string[];
             /** Email */
             email: string;
             /** Full Name */
@@ -9960,6 +10044,25 @@ export interface components {
             is_instance_host: boolean;
             /** Needs Setup */
             needs_setup: boolean;
+        };
+        /** InstancePrincipal */
+        InstancePrincipal: {
+            /** Capabilities */
+            capabilities: string[];
+            /** Email */
+            email: string;
+            /** Full Name */
+            full_name: string | null;
+            /** Granted At */
+            granted_at?: string | null;
+            /** Granted By Email */
+            granted_by_email?: string | null;
+            /** Is Active */
+            is_active: boolean;
+            /** Is Owner */
+            is_owner: boolean;
+            /** User Id */
+            user_id: string;
         };
         /**
          * InteractionAddToConversation
@@ -21763,6 +21866,123 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImpexInspectReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_admins_api_v1_instance_admins_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminsPage"];
+                };
+            };
+        };
+    };
+    invite_admin_api_v1_instance_admins_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminInvite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstancePrincipal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_admin_api_v1_instance_admins__user_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_admin_api_v1_instance_admins__user_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstancePrincipal"];
                 };
             };
             /** @description Validation Error */

@@ -76,7 +76,17 @@ def read_impersonation(request: Request, real_user: User) -> ImpersonationClaims
     Fails soft on any defect (expired, garbled, wrong admin): the request then simply runs
     as the real user — never as the target.
     """
-    if not settings.instance_admin_enabled or not real_user.is_superuser:
+    # Deliberately **not** a capability lookup. This runs on every request on a tenant host,
+    # so a query here is a query on the hot path (docs/PERFORMANCE.md). The capability is
+    # checked once, where the grant is *issued* — an instance route that already has the
+    # principal loaded — and the grant itself is signed, audience-bound and time-boxed to
+    # ``SCHAKL_IMPERSONATION_MAX_MINUTES``.
+    #
+    # The consequence, stated plainly because it is a real one: revoking
+    # ``instance.impersonate`` does not kill a grant already in flight — it survives at most
+    # one window (≤60 min). Revoking the ``instance_admins`` row, or deactivating the account,
+    # is the immediate lever, and every grant is on the instance audit trail either way.
+    if not settings.instance_admin_enabled:
         return None
     token = request.cookies.get(IMPERSONATION_COOKIE)
     if not token:

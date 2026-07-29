@@ -29,11 +29,20 @@ from app.core.cloud.deps import require_cloud
 from app.core.cloud.models import InstanceApiKey
 from app.core.cloud.plans import set_plan
 from app.core.instance import audit
-from app.core.instance.guard import InstanceContext, require_instance_admin
+from app.core.instance import capabilities as caps
+from app.core.instance.capabilities import CAPABILITY_KEYS
+from app.core.instance.guard import (
+    InstanceContext,
+    load_principal,
+    no_capability_required,
+    require_capability,
+    require_instance_admin,
+)
 from app.core.instance.repo import get_org
 from app.core.models import Org
 from app.core.permissions.deps import no_permission_required, require_permission
 from app.core.tenancy import RequestContext, require_context
+from app.db import async_session_maker
 from app.errors import AppError
 
 # --------------------------------------------------------------------------- #
@@ -139,18 +148,41 @@ class InstanceMe(BaseModel):
     id: str
     email: str
     full_name: str | None
+    #: Reaches the console at all: an owner, or a delegated admin holding something.
     is_instance_admin: bool
+    #: The owner principal (``users.is_superuser``) — the only one who may manage instance
+    #: access. The console renders the *Admins* screen on this, never on is_instance_admin.
     is_instance_owner: bool
+    #: What this caller actually holds, owner expanded to the whole catalog. The console
+    #: decides what to render from it; the API remains the boundary.
+    capabilities: list[str] = []
 
 
-@instance_router.get("/me", response_model=InstanceMe)
+@instance_router.get(
+    "/me",
+    response_model=InstanceMe,
+    dependencies=[
+        no_capability_required(
+            "reports only the CALLER's own identity and what they themselves hold, so the "
+            "console can decide what to render. It cannot report anyone else, and gating it "
+            "on a capability would make the console unable to discover it has none."
+        )
+    ],
+)
 async def instance_me(user: User = Depends(current_active_user)) -> InstanceMe:
+    # Resolved here rather than via require_instance_admin: this route must answer for a
+    # caller who holds *nothing*, so the console can render its "no access" state instead of
+    # a 403 the login screen cannot interpret.
+    async with async_session_maker() as session:
+        is_owner, capabilities = await load_principal(session, user)
+    reaches_console = settings.instance_admin_enabled and (is_owner or bool(capabilities))
     return InstanceMe(
         id=str(user.id),
         email=user.email,
         full_name=user.full_name,
-        is_instance_admin=settings.instance_admin_enabled and user.is_superuser,
-        is_instance_owner=user.is_superuser,
+        is_instance_admin=reaches_console,
+        is_instance_owner=is_owner,
+        capabilities=sorted(CAPABILITY_KEYS) if is_owner else sorted(capabilities),
     )
 
 
@@ -197,7 +229,11 @@ def _lifecycle(org: Org) -> LifecycleSettings:
     )
 
 
-@instance_router.get("/orgs/{org_id}/lifecycle", response_model=LifecycleSettings)
+@instance_router.get(
+    "/orgs/{org_id}/lifecycle",
+    response_model=LifecycleSettings,
+    dependencies=[require_capability(caps.ORGS_READ)],
+)
 async def org_lifecycle(
     org_id: uuid.UUID, ctx: InstanceContext = Depends(require_instance_admin)
 ) -> LifecycleSettings:
@@ -206,7 +242,11 @@ async def org_lifecycle(
     return _lifecycle(await _org_or_404(ctx, org_id))
 
 
-@instance_router.patch("/orgs/{org_id}/lifecycle", response_model=LifecycleSettings)
+@instance_router.patch(
+    "/orgs/{org_id}/lifecycle",
+    response_model=LifecycleSettings,
+    dependencies=[require_capability(caps.LIFECYCLE_WRITE)],
+)
 async def set_org_lifecycle(
     org_id: uuid.UUID,
     payload: lifecycle.LifecycleUpdate,
@@ -231,7 +271,11 @@ async def set_org_lifecycle(
     return _lifecycle(org)
 
 
-@instance_router.get("/orgs/{org_id}/service-access", response_model=OrgServiceAccess)
+@instance_router.get(
+    "/orgs/{org_id}/service-access",
+    response_model=OrgServiceAccess,
+    dependencies=[require_capability(caps.ORGS_READ)],
+)
 async def org_service_access(
     org_id: uuid.UUID, ctx: InstanceContext = Depends(require_instance_admin)
 ) -> OrgServiceAccess:
@@ -244,7 +288,11 @@ async def org_service_access(
     )
 
 
-@instance_router.post("/orgs/{org_id}/service-access", response_model=OrgServiceAccess)
+@instance_router.post(
+    "/orgs/{org_id}/service-access",
+    response_model=OrgServiceAccess,
+    dependencies=[require_capability(caps.ORGS_READ)],
+)
 async def claim_service_pin(
     org_id: uuid.UUID,
     payload: ClaimPinRequest,
@@ -266,7 +314,11 @@ class OrgPlanRead(BaseModel):
     trial_ends_at: datetime | None
 
 
-@instance_router.patch("/orgs/{org_id}/plan", response_model=OrgPlanRead)
+@instance_router.patch(
+    "/orgs/{org_id}/plan",
+    response_model=OrgPlanRead,
+    dependencies=[require_capability(caps.LIFECYCLE_WRITE)],
+)
 async def update_org_plan(
     org_id: uuid.UUID,
     payload: OrgPlanUpdate,
@@ -322,7 +374,11 @@ def _key_read(row: InstanceApiKey) -> InstanceApiKeyRead:
     )
 
 
-@instance_router.get("/api-keys", response_model=list[InstanceApiKeyRead])
+@instance_router.get(
+    "/api-keys",
+    response_model=list[InstanceApiKeyRead],
+    dependencies=[require_capability(caps.KEYS_MANAGE)],
+)
 async def list_instance_api_keys(
     ctx: InstanceContext = Depends(require_instance_admin),
 ) -> list[InstanceApiKeyRead]:
@@ -338,7 +394,12 @@ async def list_instance_api_keys(
     return [_key_read(row) for row in rows]
 
 
-@instance_router.post("/api-keys", response_model=InstanceApiKeyCreated, status_code=201)
+@instance_router.post(
+    "/api-keys",
+    response_model=InstanceApiKeyCreated,
+    status_code=201,
+    dependencies=[require_capability(caps.KEYS_MANAGE)],
+)
 async def create_instance_api_key(
     payload: InstanceApiKeyCreate,
     ctx: InstanceContext = Depends(require_instance_admin),
@@ -362,7 +423,11 @@ async def create_instance_api_key(
     return InstanceApiKeyCreated(secret=generated.plaintext, **_key_read(row).model_dump())
 
 
-@instance_router.post("/api-keys/{key_id}/revoke", response_model=InstanceApiKeyRead)
+@instance_router.post(
+    "/api-keys/{key_id}/revoke",
+    response_model=InstanceApiKeyRead,
+    dependencies=[require_capability(caps.KEYS_MANAGE)],
+)
 async def revoke_instance_api_key(
     key_id: uuid.UUID, ctx: InstanceContext = Depends(require_instance_admin)
 ) -> InstanceApiKeyRead:

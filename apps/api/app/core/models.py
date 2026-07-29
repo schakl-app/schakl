@@ -283,6 +283,39 @@ class InstanceLicense(Base):
     installed_by_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
 
 
+class InstanceAdmin(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """A delegated instance operator and exactly what they may do (issue #26).
+
+    Instance-level like ``orgs``/``users`` and deliberately **not** under RLS: it decides who
+    may cross tenants, so it is read before any tenant is bound. The owner principal stays
+    ``users.is_superuser`` and holds every capability implicitly; a row here is the *second*
+    principal, holding only what it was granted.
+
+    ``granted_by_email`` is snapshotted beside the FK for §16's reason: the trail of who
+    delegated cross-tenant access must outlive the account that did it.
+    """
+
+    __tablename__ = "instance_admins"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    #: Catalog keys from ``app.core.instance.capabilities``. An empty list is valid and means
+    #: "can sign in to the console and see nothing" — the safe default for a half-finished
+    #: invite, which must never over-grant.
+    capabilities: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    granted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    granted_by_email: Mapped[str] = mapped_column(String(320), nullable=False)
+
+
 class InstanceAuditLog(UUIDPrimaryKeyMixin, Base):
     """Audit trail for instance-level administration (issue #26).
 

@@ -2,6 +2,17 @@
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
 
+  // Deliberately NOT imported from $lib/cloud/instance: that module pulls in `apiFor`, i.e.
+  // the server-side session helpers, and importing it here drags them into the client bundle.
+  // `svelte-check` passes on it; the production build does not (`pnpm web build` fails at the
+  // service-worker step with no client output to glob). Keep this a local, pure check.
+  //
+  // It mirrors the API's own gate and decides only what to *render* — the endpoint is the
+  // boundary (CLAUDE.md §15, "the frontend guard is UX, not security").
+  const KEYS_MANAGE = "instance.keys.manage";
+  const holds = (capability: string) =>
+    !!data.me && (data.me.isInstanceOwner || data.me.capabilities.includes(capability));
+
   let { data, children } = $props();
 
   const navClass = (href: string) =>
@@ -20,9 +31,18 @@
       {#if data.me?.isInstanceAdmin}
         <nav class="flex items-center gap-1">
           <a href="/console" class={navClass("/console")}>{t("cloud.console.nav_orgs")}</a>
-          <a href="/console/keys" class={navClass("/console/keys")}>
-            {t("cloud.console.nav_keys")}
-          </a>
+          {#if holds(KEYS_MANAGE)}
+            <a href="/console/keys" class={navClass("/console/keys")}>
+              {t("cloud.console.nav_keys")}
+            </a>
+          {/if}
+          {#if data.me?.isInstanceOwner}
+            <!-- Owner-only: managing who may cross tenants is deliberately not a delegable
+                 capability (#26), so this hangs off the owner principal, not on can(). -->
+            <a href="/console/admins" class={navClass("/console/admins")}>
+              {t("cloud.console.nav_admins")}
+            </a>
+          {/if}
           <span class="mx-2 hidden text-xs text-text-muted sm:inline">{data.me.email}</span>
           <a
             href="/logout"

@@ -32,6 +32,44 @@ Licensing: the provisioning surface rides the `cloud` sku's write gate (#137) �
 install gets the built-in bootstrap window as its trial, after that mutations require a
 license document listing `cloud`.
 
+## Two instance principals, and only one can delegate (#26)
+
+Operating the platform used to be one boolean. It is now two principals:
+
+| | who | capabilities | may manage people |
+|---|---|---|---|
+| **owner** | `users.is_superuser` | implicitly **all** | yes |
+| **admin** | a row in `instance_admins` | exactly what was granted | **no** |
+
+Granting is **owner-only and deliberately not itself a capability**: an admin who could grant
+`instance.impersonate` to themselves is an owner with extra steps, so the escalation edge does
+not exist rather than being guarded. Owners may promote another owner, so this is not a bus
+factor — and the last active owner cannot be demoted or revoked (`409
+errors.last_instance_owner`), because a box nobody can administer is unrecoverable without
+database access.
+
+The catalog is code-defined and small (`app/core/instance/capabilities.py`): view / create /
+lifecycle on orgs, read the audit trail, export data, impersonate, purge, manage API keys. The
+three that reach a tenant's own contents or end it are marked *sensitive* in the console — and
+on cloud each still needs the org's service PIN, so a capability is **necessary, never
+sufficient**.
+
+Manage it at **Console → Administrators** (owners only). Inviting creates the account if the
+email is new; the person sets a password through forgot-password, exactly like an invited org
+member. An invite with nothing ticked is valid and grants nothing — a half-finished invite must
+never over-grant.
+
+Every route on `/api/v1/instance` declares the capability it needs, and
+`tests/test_instance_deny_by_default.py` makes a missing declaration a build break — the same
+deny-by-default rule §15 applies to tenant routes.
+
+**One consequence worth knowing.** `read_impersonation` runs on every request on a tenant host,
+so it does not re-check capabilities there (that would be a query on the hot path). The
+capability is checked when the grant is *issued*, and the grant is signed and time-boxed. So
+**revoking `instance.impersonate` does not kill a session already in flight** — it lapses
+within one window (`SCHAKL_IMPERSONATION_MAX_MINUTES`, ≤60). Revoking the admin, or
+deactivating the account, is the immediate lever; every grant is on the audit trail either way.
+
 ## Service PIN: tenant consent for operator access
 
 On cloud, tenants are paying customers; the instance owner has **no standing access** to an
