@@ -78,11 +78,18 @@ _CORE_CRON_JOBS = [
 if settings.is_cloud:
     # Cloud posture only (epic #199): trial enforcement and the custom-domain ingress drift
     # guard. Imported lazily so a self-hosted worker never loads the business-licensed code.
-    from app.core.cloud.jobs import cloud_expire_trials, cloud_sync_ingress
+    from app.core.cloud.jobs import (
+        cloud_expire_trials,
+        cloud_lifecycle_sweep,
+        cloud_sync_ingress,
+    )
 
     _CORE_CRON_JOBS += [
         cron(cloud_expire_trials, hour=3, minute=30),
         cron(cloud_sync_ingress, hour=3, minute=45),
+        # After the trial sweep: a trial that expires today suspends first, and the end-date
+        # machinery then sees a consistent picture rather than racing it.
+        cron(cloud_lifecycle_sweep, hour=4, minute=0),
     ]
 
 

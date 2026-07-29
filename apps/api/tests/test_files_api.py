@@ -363,6 +363,13 @@ class _FakeS3:
     def delete(self, key: str) -> None:
         self.blobs.pop(key, None)
 
+    def delete_prefix(self, prefix: str) -> int:
+        marker = prefix.rstrip("/") + "/"
+        doomed = [k for k in self.blobs if k.startswith(marker)]
+        for key in doomed:
+            del self.blobs[key]
+        return len(doomed)
+
 
 def _enable_fake_s3(monkeypatch) -> _FakeS3:
     """Point the instance at S3 (#190) the way env vars would, faked at the client seam."""

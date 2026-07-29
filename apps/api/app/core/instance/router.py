@@ -10,7 +10,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 
@@ -62,6 +62,14 @@ class OrgSummary(BaseModel):
     # Cloud plan (epic #199); both None on self-host / unmanaged orgs.
     plan: str | None = None
     trial_ends_at: datetime | None = None
+    # Per-org end date (#199). ``ends_at`` None = unlimited; the rest are the computed
+    # consequences, so the console never has to re-derive the schedule from the defaults.
+    ends_at: datetime | None = None
+    grace_days: int | None = None
+    retention_days: int | None = None
+    lifecycle_stage: str = "active"
+    suspends_at: datetime | None = None
+    terminates_at: datetime | None = None
 
 
 class OrgMember(BaseModel):
@@ -134,7 +142,22 @@ class AuditEntry(BaseModel):
     created_at: datetime
 
 
+def _lifecycle_dates(org: Org) -> tuple[datetime | None, datetime | None]:
+    """The computed suspend/terminate instants, so the console does not re-derive them.
+
+    Imported lazily and only for an org that actually has an end date: the lifecycle module is
+    business-licensed cloud code, and a self-hosted box (where ``ends_at`` is always NULL)
+    must never load it — the same rule the worker's cron registration follows.
+    """
+    if org.ends_at is None:
+        return None, None
+    from app.core.cloud import lifecycle
+
+    return lifecycle.suspend_at(org), lifecycle.terminate_at(org)
+
+
 def _summary(org: Org) -> OrgSummary:
+    suspends_at, terminates_at = _lifecycle_dates(org)
     return OrgSummary(
         id=str(org.id),
         slug=org.slug,
@@ -149,6 +172,12 @@ def _summary(org: Org) -> OrgSummary:
         pending_domain=org.pending_domain,
         plan=org.plan,
         trial_ends_at=org.trial_ends_at,
+        ends_at=org.ends_at,
+        grace_days=org.grace_days,
+        retention_days=org.retention_days,
+        lifecycle_stage=org.lifecycle_stage,
+        suspends_at=suspends_at,
+        terminates_at=terminates_at,
     )
 
 
@@ -309,6 +338,58 @@ async def export_org(
     await ctx.session.flush()
     await audit.record(ctx.session, actor=ctx.user, action="org.export", org=org)
     return payload
+
+
+@router.get("/orgs/{org_id}/archive")
+async def export_org_archive(
+    org_id: uuid.UUID, ctx: InstanceContext = Depends(require_instance_admin)
+) -> Response:
+    """The complete export: rows **and** stored bytes, as a zip.
+
+    ``/export`` returns rows only, which is a pointer-shaped answer once files live in object
+    storage. This is what an agency leaving should take, and what the automated termination
+    archives before it destroys anything.
+    """
+    org = await _org_or_404(ctx, org_id)
+    await ensure_org_data_access(ctx, org)
+    blob = await portability.build_archive(ctx.session, org)
+    org.exported_at = datetime.now(UTC)
+    await ctx.session.flush()
+    await audit.record(
+        ctx.session, actor=ctx.user, action="org.export", org=org, detail={"format": "archive"}
+    )
+    return Response(
+        content=blob,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{org.slug}-archive.zip"',
+        },
+    )
+
+
+@router.post("/orgs/import-archive", response_model=ImportResult, status_code=201)
+async def import_org_archive(
+    slug: str = Form(...),
+    name: str | None = Form(default=None),
+    file: UploadFile = File(...),
+    ctx: InstanceContext = Depends(require_instance_admin),
+) -> ImportResult:
+    """Restore an org from a zip archive — rows and bytes both."""
+    slug = service.validate_slug(slug)
+    if await repo.slug_taken(ctx.session, slug):
+        raise AppError("slug_taken", "errors.slug_taken", status_code=409)
+    payload, blobs = portability.read_archive(await file.read())
+    org, counts = await portability.import_org(
+        ctx.session, payload, slug=slug, name=name, files=blobs
+    )
+    await audit.record(
+        ctx.session,
+        actor=ctx.user,
+        action="org.import",
+        org=org,
+        detail={"tables": counts, "files": len(blobs)},
+    )
+    return ImportResult(org=_summary(org), tables=counts)
 
 
 @router.post("/orgs/import", response_model=ImportResult, status_code=201)

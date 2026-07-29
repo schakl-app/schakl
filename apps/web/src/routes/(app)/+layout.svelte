@@ -27,6 +27,7 @@
   import { AI_CONTEXT_KEY, aiEnabled, type AIFeature, type AssistantEntity } from "$lib/core/ai";
   import AssistantPanel from "$lib/core/ai/AssistantPanel.svelte";
   import { breadcrumbsFor } from "$lib/core/breadcrumbs";
+  import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can, canAccessSettings } from "$lib/core/permissions";
   import { navItemsFor, type NavItem } from "$lib/core/registry";
@@ -342,6 +343,19 @@
         role="status"
       >
         {t("demo.banner", { minutes: theme.demoResetMinutes })}
+      </div>
+    {/if}
+    {#if theme?.endsWarningUntil}
+      <!-- Cloud end date (#199): the org is past its term but still fully usable. Same
+           dismissal-proof construction as the demo banner — it re-renders every navigation.
+           Only rendered during the grace window; once suspended, nothing here loads at all. -->
+      <div
+        class="bg-rose-600 px-4 py-2 text-center text-sm font-medium text-white sm:px-6"
+        role="alert"
+      >
+        {t("cloud.lifecycle.banner_warning", {
+          date: fmtNumericDate(theme.endsWarningUntil),
+        })}
       </div>
     {/if}
     {#if user?.impersonatedBy}

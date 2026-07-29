@@ -216,6 +216,11 @@ What to know before flipping it on:
   naming the fix.
 - **Rollback is safe:** unset the variables and new writes fall back to the volume; S3 rows
   then 404 (distinctly) until the config returns. No migration in either direction.
+- **Two prefixes are not tenant data.** `archive/<org_id>/…` holds org archives (rows + bytes,
+  written before a cloud termination — see `docs/CLOUD.md`). It sits outside every org's key
+  space on purpose, so deleting a terminated org's `<org_id>/` prefix cannot take the archive
+  of that same org with it. Exclude it from any retention rule you would not want applied to
+  your only copy of a departed customer's data.
 
 ## Releases and image tags
 

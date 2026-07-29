@@ -24,6 +24,7 @@ from app.config import settings
 from app.core.apikeys.keys import parse, verify_secret
 from app.core.auth.models import User
 from app.core.cloud.deps import require_cloud
+from app.core.cloud.lifecycle import LifecycleUpdate, set_lifecycle
 from app.core.cloud.models import PLANS, InstanceApiKey
 from app.core.cloud.plans import set_plan
 from app.core.instance import audit, repo
@@ -138,6 +139,8 @@ class PlanUpdate(BaseModel):
     trial_ends_at: datetime | None = None
 
 
+
+
 def _org_url(org: Org) -> str:
     host = (
         org.custom_domain
@@ -240,6 +243,30 @@ async def update_plan(
         plan=payload.plan,
         trial_days=payload.trial_days,
         trial_ends_at=payload.trial_ends_at,
+    )
+    return _provisioned(org)
+
+
+@router.patch("/orgs/{slug}/lifecycle", response_model=ProvisionedOrg)
+async def update_lifecycle(
+    slug: str,
+    payload: LifecycleUpdate,
+    ctx: ProvisioningContext = Depends(require_provisioning_key),
+) -> ProvisionedOrg:
+    """Set an org's end date from the billing system.
+
+    Separate from ``/plan`` on purpose: a plan says *how* the org is billed, an end date says
+    *until when* it exists. A lifetime deal is ``plan=unlimited`` with no end date; a fixed-term
+    contract is ``plan=standard`` with one; the two are set by different events.
+    """
+    org = await _org_by_slug(ctx, slug)
+    await set_lifecycle(
+        ctx.session,
+        ctx.actor,
+        org,
+        ends_at=payload.ends_at,
+        grace=payload.grace_days,
+        retention=payload.retention_days,
     )
     return _provisioned(org)
 

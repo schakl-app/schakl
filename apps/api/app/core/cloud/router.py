@@ -24,7 +24,7 @@ from app.config import settings
 from app.core.apikeys.keys import generate, redacted
 from app.core.auth.models import User
 from app.core.auth.users import current_active_user
-from app.core.cloud import access
+from app.core.cloud import access, lifecycle
 from app.core.cloud.deps import require_cloud
 from app.core.cloud.models import InstanceApiKey
 from app.core.cloud.plans import set_plan
@@ -172,6 +172,63 @@ async def _org_or_404(ctx: InstanceContext, org_id: uuid.UUID) -> Org:
     if org is None:
         raise AppError("not_found", "errors.not_found", status_code=404)
     return org
+
+
+class LifecycleSettings(BaseModel):
+    """An org's end date and windows, plus the instants they imply. Response only — the
+    settable subset is :class:`~app.core.cloud.lifecycle.LifecycleUpdate`."""
+
+    ends_at: datetime | None = None
+    grace_days: int | None = None
+    retention_days: int | None = None
+    lifecycle_stage: str = "active"
+    suspends_at: datetime | None = None
+    terminates_at: datetime | None = None
+
+
+def _lifecycle(org: Org) -> LifecycleSettings:
+    return LifecycleSettings(
+        ends_at=org.ends_at,
+        grace_days=org.grace_days,
+        retention_days=org.retention_days,
+        lifecycle_stage=org.lifecycle_stage,
+        suspends_at=lifecycle.suspend_at(org),
+        terminates_at=lifecycle.terminate_at(org),
+    )
+
+
+@instance_router.get("/orgs/{org_id}/lifecycle", response_model=LifecycleSettings)
+async def org_lifecycle(
+    org_id: uuid.UUID, ctx: InstanceContext = Depends(require_instance_admin)
+) -> LifecycleSettings:
+    """PIN-free, like the org list: an end date is platform/billing state, not tenant content
+    (docs/CLOUD.md). Reading it must not require the customer's consent to see their data."""
+    return _lifecycle(await _org_or_404(ctx, org_id))
+
+
+@instance_router.patch("/orgs/{org_id}/lifecycle", response_model=LifecycleSettings)
+async def set_org_lifecycle(
+    org_id: uuid.UUID,
+    payload: lifecycle.LifecycleUpdate,
+    ctx: InstanceContext = Depends(require_instance_admin),
+) -> LifecycleSettings:
+    """Set the end date from the console. ``ends_at=null`` means unlimited.
+
+    Lifecycle is a platform decision like suspend/activate, so it stays PIN-free: billing
+    enforcement cannot depend on the tenant's consent. The *data* the termination eventually
+    touches is a different matter, and the sweep never runs while
+    ``SCHAKL_CLOUD_LIFECYCLE_DESTRUCTIVE`` is off.
+    """
+    org = await _org_or_404(ctx, org_id)
+    await lifecycle.set_lifecycle(
+        ctx.session,
+        ctx.user,
+        org,
+        ends_at=payload.ends_at,
+        grace=payload.grace_days,
+        retention=payload.retention_days,
+    )
+    return _lifecycle(org)
 
 
 @instance_router.get("/orgs/{org_id}/service-access", response_model=OrgServiceAccess)

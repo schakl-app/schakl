@@ -235,6 +235,46 @@ class Settings(BaseSettings):
     # cloud). Empty = derived as "edge.<base_domain>".
     cloud_cname_target: str | None = None
 
+    # --- Cloudflare for SaaS (cloud only) ---
+    # When the operator fronts the instance with Cloudflare for SaaS, a verified customer
+    # domain becomes a **custom hostname** on the operator's zone and Cloudflare issues the
+    # edge certificate — replacing the Traefik + Let's Encrypt fragment above. Unset = off,
+    # and the ingress fragment stays the mechanism.
+    #
+    # The token is instance-level and **server-side only**: it is never stored in the
+    # database, never returned by any endpoint, and never reaches the web app. Prefer the
+    # *_FILE form with a Docker secret so the value is not visible in `docker inspect`.
+    # Required token scopes (both on the ONE zone, nothing account-level):
+    #   Zone → SSL and Certificates → Edit   (custom hostnames)
+    #   Zone → DNS → Edit                    (the per-org subdomain record)
+    cloud_cf_api_token: str | None = None
+    cloud_cf_api_token_file: str | None = None
+    cloud_cf_zone_id: str | None = None
+    # Presented to the origin as SNI for a custom hostname, so Cloudflare validates against
+    # the operator's wildcard origin certificate instead of the customer's hostname (which no
+    # origin cert covers). Empty = derived from the CNAME target. The Host header is
+    # unaffected, so tenant resolution still sees the customer's domain.
+    cloud_cf_origin_sni: str | None = None
+
+    # --- Per-org end date and termination (cloud only) ---
+    # An org may carry an `ends_at`; NULL means unlimited and nothing below ever touches it.
+    # Past that date the org is *warned* for `grace_days`, then *suspended* for
+    # `retention_days` (recoverable throughout), then terminated: archived, its Cloudflare
+    # records removed, its stored bytes deleted, its rows purged. Per-org overrides live on
+    # `orgs`; these are the instance defaults.
+    cloud_grace_days: int = 14
+    cloud_retention_days: int = 30
+    # Two switches, because the last step is irreversible. `enabled` runs the sweep at all;
+    # `destructive` allows the final purge. Running enabled-but-not-destructive is the
+    # intended first deployment: real warnings and suspensions, nothing destroyed, so the
+    # dates and the copy can be checked against live orgs before anything is unrecoverable.
+    cloud_lifecycle_enabled: bool = False
+    cloud_lifecycle_destructive: bool = False
+    # How many orgs one sweep may terminate. A bounded batch keeps a misconfigured end date
+    # from purging the whole instance in a single run, and stays under Cloudflare's rate
+    # limits; the next run picks up where this one stopped.
+    cloud_lifecycle_batch: int = 25
+
     # --- Instance-provided e-mail (cloud "included e-mail"; usable self-host too) ---
     # When enabled, an org without its own transport sends through this instance-level
     # transport (from the instance's own address — SPF/DKIM belong to the operator's
@@ -276,6 +316,24 @@ class Settings(BaseSettings):
             )
         if self.deployment == "cloud":
             self.instance_admin_enabled = True
+        return self
+
+    @model_validator(mode="after")
+    def _load_cf_token_file(self) -> Settings:
+        """Read the Cloudflare token out of a Docker secret when ``*_FILE`` is set.
+
+        Read once at startup rather than per call: the file is mounted read-only for the
+        process lifetime, and a per-call read would put the secret on the hot path of every
+        domain verification. An unreadable file is left as ``None`` — ``cloudflare_configured()``
+        then reports the integration off, which is the safe direction (nothing is attempted)
+        and is visible in the logs the first time a hostname sync no-ops.
+        """
+        if self.cloud_cf_api_token_file and not self.cloud_cf_api_token:
+            try:
+                token = Path(self.cloud_cf_api_token_file).read_text(encoding="utf-8").strip()
+            except OSError:
+                token = ""
+            self.cloud_cf_api_token = token or None
         return self
 
     @model_validator(mode="after")

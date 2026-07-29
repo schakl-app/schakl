@@ -83,6 +83,28 @@ export const actions: Actions = {
     return { planSaved: true };
   },
 
+  // End date (#199). An empty date means unlimited and switches the whole mechanism off for
+  // this org — which is why it is sent as an explicit null rather than simply omitted.
+  lifecycle: async (event) => {
+    const form = await event.request.formData();
+    const endsOn = String(form.get("ends_on") ?? "").trim();
+    const asDays = (field: string) => {
+      const raw = String(form.get(field) ?? "").trim();
+      return raw === "" ? null : Number(raw);
+    };
+    const { error } = await apiFor(event).PATCH("/api/v1/instance/orgs/{org_id}/lifecycle", {
+      ...orgPath(event),
+      body: {
+        // A date input yields a wall-clock day; the org ends at the end of it.
+        ends_at: endsOn ? new Date(`${endsOn}T23:59:59Z`).toISOString() : null,
+        grace_days: asDays("grace_days"),
+        retention_days: asDays("retention_days"),
+      },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { lifecycleSaved: true };
+  },
+
   update: async (event) => {
     const form = await event.request.formData();
     const name = String(form.get("name") ?? "").trim();

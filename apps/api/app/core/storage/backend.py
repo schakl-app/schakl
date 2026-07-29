@@ -24,6 +24,8 @@ class StorageBackend(Protocol):
 
     def delete(self, key: str) -> None: ...
 
+    def delete_prefix(self, prefix: str) -> int: ...
+
 
 class LocalVolumeStorage:
     """Files under ``SCHAKL_STORAGE_PATH`` (a named volume in Compose). Node-local by design —
@@ -52,6 +54,27 @@ class LocalVolumeStorage:
 
     def delete(self, key: str) -> None:
         self._path(key).unlink(missing_ok=True)
+
+    def delete_prefix(self, prefix: str) -> int:
+        """Remove everything under ``prefix`` (an org's whole key space). Returns the count.
+
+        Used when an org is terminated: without it there is no way to reclaim the space a
+        deleted tenant occupied, and on object storage that is a bill that never stops. The
+        prefix goes through the same escape check as a single key — a caller that could pass
+        ``..`` here would delete the volume rather than one directory.
+        """
+        root = self._path(prefix)
+        if not root.exists():
+            return 0
+        removed = 0
+        for path in sorted(root.rglob("*"), reverse=True):
+            if path.is_file() or path.is_symlink():
+                path.unlink(missing_ok=True)
+                removed += 1
+            elif path.is_dir():
+                path.rmdir()
+        root.rmdir()
+        return removed
 
 
 class StorageUnavailableError(LookupError):

@@ -11,6 +11,7 @@ The TXT challenge: ``_schakl-challenge.<domain>`` must contain the issued token.
 
 from __future__ import annotations
 
+import logging
 import re
 import secrets
 from datetime import UTC, datetime
@@ -24,6 +25,8 @@ from app.core.instance import audit, repo
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.errors import AppError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/meta/tenant/domain", tags=["meta"])
 
@@ -66,6 +69,53 @@ async def _sync_cloud_ingress(ctx: RequestContext) -> None:
     from app.core.cloud.ingress import sync_ingress
 
     await sync_ingress(ctx.session)
+
+
+async def _register_cloudflare_hostname(domain: str) -> str | None:
+    """Register ``domain`` as a Cloudflare custom hostname; returns its id, or None when the
+    integration is off (every self-host install, and any cloud box without a token).
+
+    Called **before** the org row is mutated, so a Cloudflare outage leaves the domain
+    unverified rather than verified-but-unreachable. That is the honest failure: the customer
+    retries, instead of being told their domain is live while the edge has no certificate for
+    it. The clear path takes the opposite trade-off — see :func:`_release_cloudflare_hostname`.
+    """
+    from app.core.cloud.cloudflare import (
+        CloudflareError,
+        cloudflare_configured,
+        ensure_custom_hostname,
+    )
+
+    if not cloudflare_configured():
+        return None
+    try:
+        return await ensure_custom_hostname(domain)
+    except CloudflareError as exc:
+        logger.warning("cloudflare custom hostname failed for %s: %s", domain, exc)
+        raise AppError(
+            "cloudflare_failed", "errors.cloudflare_failed", status_code=502
+        ) from exc
+
+
+async def _release_cloudflare_hostname(hostname_id: str | None, domain: str | None) -> None:
+    """Best-effort removal of the custom hostname behind a cleared domain.
+
+    Unlike registration this never blocks the request: an org must always be able to drop its
+    custom domain, and a leftover Cloudflare record is recoverable (the next verify adopts it,
+    and it routes nothing meanwhile because ``orgs.custom_domain`` no longer resolves).
+    """
+    from app.core.cloud.cloudflare import (
+        CloudflareError,
+        cloudflare_configured,
+        delete_custom_hostname,
+    )
+
+    if not hostname_id or not cloudflare_configured():
+        return
+    try:
+        await delete_custom_hostname(hostname_id)
+    except CloudflareError:
+        logger.exception("could not delete cloudflare custom hostname for %s", domain)
 
 
 def _status(ctx: RequestContext) -> DomainStatus:
@@ -141,8 +191,13 @@ async def verify_domain(ctx: RequestContext = Depends(require_context)) -> Domai
     if await repo.domain_taken(ctx.session, org.pending_domain, exclude_org_id=org.id):
         raise AppError("domain_taken", "errors.domain_taken", status_code=409)
 
+    # Cloudflare first, while the org row still says "unverified": if the edge cannot be
+    # configured, nothing here claims the domain is live.
+    hostname_id = await _register_cloudflare_hostname(org.pending_domain)
+
     org.custom_domain = org.pending_domain
     org.custom_domain_verified_at = datetime.now(UTC)
+    org.cf_hostname_id = hostname_id
     org.pending_domain = None
     org.domain_verification_token = None
     await ctx.session.flush()
@@ -164,8 +219,10 @@ async def clear_domain(ctx: RequestContext = Depends(require_context)) -> Domain
     ``<slug>.<base_domain>`` — the UI warns that this changes the org's address."""
     org = ctx.org
     cleared = org.custom_domain or org.pending_domain
+    hostname_id = org.cf_hostname_id
     org.custom_domain = None
     org.custom_domain_verified_at = None
+    org.cf_hostname_id = None
     org.pending_domain = None
     org.domain_verification_token = None
     await ctx.session.flush()
@@ -173,5 +230,6 @@ async def clear_domain(ctx: RequestContext = Depends(require_context)) -> Domain
         ctx.session, actor=ctx.user, action="domain.clear", org=org,
         detail={"domain": cleared},
     )
+    await _release_cloudflare_hostname(hostname_id, cleared)
     await _sync_cloud_ingress(ctx)
     return _status(ctx)

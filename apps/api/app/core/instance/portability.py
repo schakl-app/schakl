@@ -18,7 +18,12 @@ silently load into *N+1*; upgrade first, then export/import.
 
 from __future__ import annotations
 
+import asyncio
+import io
+import json
+import logging
 import uuid
+import zipfile
 from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from typing import Any
@@ -30,8 +35,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.auth.models import User
 from app.core.models import Org
+from app.core.storage.backend import get_storage, storage_for
+from app.core.storage.models import StoredFile
 from app.db import INSTANCE_LEVEL_TABLES, Base, set_current_org
 from app.errors import AppError
+
+logger = logging.getLogger(__name__)
 
 EXPORT_FORMAT = 1
 
@@ -116,8 +125,69 @@ async def export_org(session: AsyncSession, org: Org) -> dict[str, Any]:
     }
 
 
+#: Where file bytes live inside an archive, keyed by the file's *exported* id.
+_ARCHIVE_FILES = "files/"
+_ARCHIVE_DATA = "data.json"
+
+
+async def build_archive(session: AsyncSession, org: Org) -> bytes:
+    """A complete, self-contained export: the JSON dump **plus every stored byte**.
+
+    ``export_org`` alone dumps rows, and a ``files`` row is a pointer — so on an instance whose
+    bytes live in object storage, a JSON-only export is not the "provably complete export" that
+    :func:`app.core.instance.service.purge_org` requires before it destroys anything. This is
+    what the automated termination archives, and what an agency leaving takes with them.
+
+    Bytes that cannot be read (volume drift, a backend since removed) are listed in
+    ``files_missing`` rather than aborting: an archive that names its own gaps is worth more
+    than no archive at all, and the caller decides what to do about it.
+    """
+    payload = await export_org(session, org)
+    await set_current_org(session, org.id)
+    rows = (
+        (await session.execute(select(StoredFile).where(StoredFile.org_id == org.id)))
+        .scalars()
+        .all()
+    )
+
+    missing: list[str] = []
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for row in rows:
+            try:
+                backend = storage_for(row.backend)
+                with backend.open(row.storage_key) as handle:
+                    archive.writestr(f"{_ARCHIVE_FILES}{row.id}", handle.read())
+            except (OSError, LookupError, ValueError):
+                logger.warning("archive: bytes unreadable for file %s", row.id)
+                missing.append(str(row.id))
+        payload["files_missing"] = missing
+        archive.writestr(_ARCHIVE_DATA, json.dumps(payload, ensure_ascii=False))
+    return buffer.getvalue()
+
+
+def read_archive(data: bytes) -> tuple[dict[str, Any], dict[str, bytes]]:
+    """Split an archive back into its JSON payload and ``{exported file id: bytes}``."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            payload = json.loads(archive.read(_ARCHIVE_DATA))
+            files = {
+                name[len(_ARCHIVE_FILES) :]: archive.read(name)
+                for name in archive.namelist()
+                if name.startswith(_ARCHIVE_FILES) and not name.endswith("/")
+            }
+    except (zipfile.BadZipFile, KeyError, ValueError) as exc:
+        raise AppError("import_invalid", "errors.import_invalid", status_code=422) from exc
+    return payload, files
+
+
 async def import_org(
-    session: AsyncSession, payload: dict[str, Any], *, slug: str, name: str | None = None
+    session: AsyncSession,
+    payload: dict[str, Any],
+    *,
+    slug: str,
+    name: str | None = None,
+    files: dict[str, bytes] | None = None,
 ) -> tuple[Org, dict[str, int]]:
     """Recreate an exported org under ``slug``. Atomic: any failure rolls the whole org back.
 
@@ -169,6 +239,8 @@ async def import_org(
     # Org-scoped rows are RLS-forced: bind the GUC to the new org for the inserts.
     await set_current_org(session, org.id)
     counts: dict[str, int] = {}
+    #: (exported file id, new file id) — what _restore_file_bytes copies across.
+    restored: list[tuple[str, uuid.UUID]] = []
     for table in _tenant_tables():
         rows = tables_payload.get(table.name, [])
         if not rows:
@@ -205,8 +277,36 @@ async def import_org(
             # A domain routes hostnames and must be re-verified on this instance.
             if table.name == "org_settings":
                 decoded["custom_domain"] = None
+            # A file's key belongs to the org that owns it. Copying the exported key verbatim
+            # would leave this org's rows pointing into the *source* org's key space — the same
+            # bytes today, and someone else's prefix the moment either org is terminated
+            # (whose purge now deletes that prefix). Re-key onto this org, and carry the bytes
+            # across when the archive brought them.
+            if table.name == "files":
+                restored.append((str(row["id"]), decoded["id"]))
+                decoded["storage_key"] = f"{org.id}/{decoded['id']}"
+                decoded["backend"] = settings.storage_backend
             values.append(decoded)
         await session.execute(table.insert(), values)
         counts[table.name] = len(values)
 
+    if files:
+        await _restore_file_bytes(restored, files, org_id=org.id)
     return org, counts
+
+
+async def _restore_file_bytes(
+    restored: list[tuple[str, uuid.UUID]], files: dict[str, bytes], *, org_id: uuid.UUID
+) -> None:
+    """Write the archive's bytes back under the new org's keys.
+
+    Runs after the rows are inserted so a rejected import writes no blobs. A file the archive
+    did not carry is skipped rather than fatal — it was already recorded in ``files_missing``
+    at export time, and its row reads as bytes-missing here exactly as it did there.
+    """
+    backend = get_storage()
+    for old_id, new_id in restored:
+        blob = files.get(old_id)
+        if blob is None:
+            continue
+        await asyncio.to_thread(backend.put, f"{org_id}/{new_id}", io.BytesIO(blob))
