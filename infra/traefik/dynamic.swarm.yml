@@ -1,0 +1,53 @@
+# schakl routing for an EXTERNAL Swarm traefik stack (companion to infra/compose.swarm.yml).
+#
+# Drop this on the Traefik host as /opt/traefik/config/00-schakl.yml — the same directory
+# your traefik stack bind-mounts at /configuration/ and watches with
+# `--providers.file.directory=/configuration/ --providers.file.watch=true`.
+#
+# WHY THE FILE PROVIDER AND NOT SWARM LABELS:
+# the API generates /configuration/custom-domains.yml for verified customer domains
+# (app/core/cloud/ingress.py), and that fragment references the file-provider service names
+# `schakl-api` / `schakl-web` defined below. Routing schakl by swarm labels instead would
+# leave those generated routers pointing at services that do not exist.
+#
+# SERVICE NAMES ARE CROSS-STACK: Traefik runs in its own stack, so the short names `api` /
+# `web` do not resolve. Swarm DNS answers the qualified `<stack>_<service>` — hence
+# `schakl_api` / `schakl_web`, which assumes you deployed with the stack name `schakl`.
+http:
+  routers:
+    # API + MCP paths on ANY host: tenant subdomains, the apex console, custom domains.
+    schakl-api-paths:
+      rule: "PathPrefix(`/api/`) || PathPrefix(`/mcp`)"
+      priority: 1000
+      entryPoints: [web-secure]
+      service: schakl-api
+      tls: {}
+
+    # Everything else goes to the SSR web app; the Host header decides whether that renders
+    # a tenant or the instance console.
+    schakl-web-any:
+      rule: "HostRegexp(`^.+$`)"
+      priority: 1
+      entryPoints: [web-secure]
+      service: schakl-web
+      tls: {}
+
+  services:
+    schakl-api:
+      loadBalancer:
+        servers:
+          - url: "http://schakl_api:8000"
+    schakl-web:
+      loadBalancer:
+        servers:
+          - url: "http://schakl_web:3000"
+
+# Your Cloudflare ORIGIN certificate for <base_domain> + *.<base_domain>, serving the apex
+# console and every tenant subdomain. DELETE this block if your existing tls.yml already
+# declares a default certificate — two default stores in one directory is a conflict.
+# tls:
+#   stores:
+#     default:
+#       defaultCertificate:
+#         certFile: /configuration/origin.pem
+#         keyFile: /configuration/origin.key
