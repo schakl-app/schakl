@@ -14,6 +14,20 @@
 #
 # Requires, in the Traefik stack: --providers.swarm=true, --providers.swarm.network=proxy,
 # and an external overlay network named `proxy`.
+#
+# SECRETS — create these five in Portainer → Secrets BEFORE the first deploy. Swarm refuses
+# to deploy a stack whose secrets do not exist, which is the failure you want: loud, up front,
+# rather than a container that starts and quietly runs without a credential.
+#
+#   schakl_secret_key             openssl rand -hex 32
+#   schakl_database_url           postgresql+asyncpg://USER:PASS@172.16.8.3:5432/rdb
+#   schakl_s3_access_key_id       the Scaleway access key (SCW…)
+#   schakl_s3_secret_access_key   the Scaleway secret key (shown once at creation)
+#   schakl_cf_token               the Cloudflare zone token
+#
+# They are mounted at /run/secrets/<name> and read via SCHAKL_<SETTING>_FILE, so none of them
+# appears in this file, in Portainer's database, or in `docker service inspect`. Everything
+# else below is an ordinary environment variable and is safe to set in Portainer's UI.
 
 x-api-env: &api-env
   # --- Posture -----------------------------------------------------------------------------
@@ -21,9 +35,9 @@ x-api-env: &api-env
   SCHAKL_DEPLOYMENT: cloud
   SCHAKL_ENVIRONMENT: production
   SCHAKL_BASE_DOMAIN: ${SCHAKL_BASE_DOMAIN:?e.g. schakl.cloud}
-  # openssl rand -hex 32. Signs sessions AND derives the vault key: the API refuses to boot
-  # in production on a weak or sample value.
-  SCHAKL_SECRET_KEY: ${SCHAKL_SECRET_KEY:?generate with openssl rand -hex 32}
+  # Signs sessions AND derives the key that encrypts every stored secret, so it is the root of
+  # trust: the API refuses to boot in production on a weak or sample value.
+  SCHAKL_SECRET_KEY_FILE: /run/secrets/schakl_secret_key
   # Optional, separate key for secrets at rest; defaults to deriving from SECRET_KEY.
   SCHAKL_ENCRYPTION_KEY: ${SCHAKL_ENCRYPTION_KEY:-}
   # Forced true in production anyway; stated so the intent is visible.
@@ -35,8 +49,12 @@ x-api-env: &api-env
   # Tenant isolation survives here because every domain table carries FORCE ROW LEVEL SECURITY,
   # which applies policies to the table OWNER too — and on a managed database your user owns the
   # schema. Never point this at a role with SUPERUSER or BYPASSRLS.
-  # Add ?ssl=require for a public endpoint; over a Private Network it is usually unnecessary.
-  SCHAKL_DATABASE_URL: postgresql+asyncpg://${PGUSER:?}:${PGPASSWORD:?}@${PGHOST:?}:${PGPORT:-5432}/${PGDATABASE:?}${PGSSL:-}
+  # The URL embeds the password, so the WHOLE url comes from a secret rather than assembling
+  # it here from a PGPASSWORD variable that would sit in Portainer's database. Put this line
+  # in the `schakl_database_url` secret (one line, no quotes), adding ?ssl=require for a
+  # public endpoint:
+  #     postgresql+asyncpg://USER:PASSWORD@172.16.8.3:5432/rdb
+  SCHAKL_DATABASE_URL_FILE: /run/secrets/schakl_database_url
   # The pool is per replica. api replicas × this must stay under the managed instance's
   # max_connections, with headroom for the worker.
   SCHAKL_DB_POOL_SIZE: ${SCHAKL_DB_POOL_SIZE:-15}
@@ -52,8 +70,8 @@ x-api-env: &api-env
   SCHAKL_STORAGE_S3_ENDPOINT: ${SCHAKL_STORAGE_S3_ENDPOINT:-https://s3.nl-ams.scw.cloud}
   SCHAKL_STORAGE_S3_REGION: ${SCHAKL_STORAGE_S3_REGION:-nl-ams}
   SCHAKL_STORAGE_S3_BUCKET: ${SCHAKL_STORAGE_S3_BUCKET:?}
-  SCHAKL_STORAGE_S3_ACCESS_KEY_ID: ${SCHAKL_STORAGE_S3_ACCESS_KEY_ID:?}
-  SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY: ${SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY:?}
+  SCHAKL_STORAGE_S3_ACCESS_KEY_ID_FILE: /run/secrets/schakl_s3_access_key_id
+  SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY_FILE: /run/secrets/schakl_s3_secret_access_key
   SCHAKL_STORAGE_S3_FORCE_PATH_STYLE: ${SCHAKL_STORAGE_S3_FORCE_PATH_STYLE:-false}
   # EFFECTIVELY IMMUTABLE: applied on read, write AND delete, so changing it later strands
   # every existing object. Decide now, even if the answer is "".
@@ -68,13 +86,8 @@ x-api-env: &api-env
   #   Zone → SSL and Certificates → Edit   (custom hostnames)
   #   Zone → DNS → Edit                    (the per-org <slug>.<base_domain> record)
   #
-  # THIS STACK USES A DOCKER SECRET. Before the first deploy:
-  #     Portainer → Secrets → Add secret → name `schakl_cf_token`, paste the token.
-  # It is mounted at /run/secrets/schakl_cf_token, which is the default below, so there is
-  # nothing to set in the environment variables for this one.
-  #
-  # An unreadable or empty file refuses the boot and names the path — deliberately, because
-  # the alternative is running with Cloudflare silently off, which keeps answering 201 to
+  # An unreadable or empty secret refuses the boot and names the path — deliberately, because
+  # the alternative here is running with Cloudflare silently off, which keeps answering 201 to
   # provisioning calls while creating no DNS record and issuing no certificate.
   SCHAKL_CLOUD_CF_API_TOKEN_FILE: ${SCHAKL_CLOUD_CF_API_TOKEN_FILE:-/run/secrets/schakl_cf_token}
   # Escape hatch: setting this wins over the file, so a broken secret can be worked around
@@ -140,6 +153,10 @@ services:
     volumes:
       - storage-data:/data/storage
     secrets:
+      - schakl_secret_key
+      - schakl_database_url
+      - schakl_s3_access_key_id
+      - schakl_s3_secret_access_key
       - schakl_cf_token
     networks: [proxy, internal]
     healthcheck:
@@ -178,6 +195,10 @@ services:
       - storage-data:/data/storage
     # The worker needs it too: the lifecycle sweep releases Cloudflare records on termination.
     secrets:
+      - schakl_secret_key
+      - schakl_database_url
+      - schakl_s3_access_key_id
+      - schakl_s3_secret_access_key
       - schakl_cf_token
     networks: [internal]
     deploy:
@@ -244,6 +265,14 @@ services:
 # Secrets are immutable — rotating means creating schakl_cf_token_v2, changing the name in
 # both places below, and redeploying.
 secrets:
+  schakl_secret_key:
+    external: true
+  schakl_database_url:
+    external: true
+  schakl_s3_access_key_id:
+    external: true
+  schakl_s3_secret_access_key:
+    external: true
   schakl_cf_token:
     external: true
 

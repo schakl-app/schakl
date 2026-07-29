@@ -6,8 +6,10 @@ The internal codename is ``schakl``; the *user-facing* brand is per-tenant and n
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -248,7 +250,6 @@ class Settings(BaseSettings):
     #   Zone → SSL and Certificates → Edit   (custom hostnames)
     #   Zone → DNS → Edit                    (the per-org subdomain record)
     cloud_cf_api_token: str | None = None
-    cloud_cf_api_token_file: str | None = None
     cloud_cf_zone_id: str | None = None
     # Presented to the origin as SNI for a custom hostname, so Cloudflare validates against
     # the operator's wildcard origin certificate instead of the customer's hostname (which no
@@ -318,37 +319,57 @@ class Settings(BaseSettings):
             self.instance_admin_enabled = True
         return self
 
-    @model_validator(mode="after")
-    def _load_cf_token_file(self) -> Settings:
-        """Read the Cloudflare token out of a Docker secret when ``*_FILE`` is set.
+    @model_validator(mode="before")
+    @classmethod
+    def _expand_secret_files(cls, data: Any) -> Any:
+        """``SCHAKL_<SETTING>_FILE=/run/secrets/x`` reads the value from that file.
 
-        Read once at startup rather than per call: the file is mounted read-only for the
-        process lifetime, and a per-call read would put the secret on the hot path of every
-        domain verification.
+        The Docker/Swarm convention, because a Docker secret is a **file**, not an environment
+        variable: without this, creating a secret named after a setting mounts something the
+        app never looks at, and the setting silently keeps its default. That failure is
+        invisible until the feature is used — an unset S3 key surfaces as a broken upload
+        weeks later, not as a container that refuses to start.
 
-        **An unreadable or empty file refuses the boot.** Setting ``*_FILE`` is an explicit
-        statement that this instance uses Cloudflare, so falling back to "integration off"
-        would be a silent downgrade with no visible symptom: provisioning would keep answering
-        201 while creating no DNS record, and custom domains would never get a certificate.
-        Nobody discovers that until a customer complains. A container that will not start is
-        the cheaper failure, and it names the path.
+        Applies to every setting, so the sensitive ones (``SECRET_KEY``, ``DATABASE_URL``,
+        ``STORAGE_S3_SECRET_ACCESS_KEY``, ``CLOUD_CF_API_TOKEN``, e-mail and Google
+        credentials) can all stay out of the stack definition and out of
+        ``docker service inspect``.
+
+        Three rules, each chosen so a mistake is loud:
+
+        * **The direct variable wins.** ``SCHAKL_X`` set alongside ``SCHAKL_X_FILE`` uses the
+          direct value, so a stale ``_FILE`` left in a stack cannot break a working deploy.
+        * **Unreadable or empty refuses the boot**, naming the path. Setting ``_FILE`` is an
+          explicit statement that the value comes from a secret; falling back to the default
+          would be a silent downgrade.
+        * **An unknown setting refuses the boot** too. ``SCHAKL_STORAGE_S3_KEY_FILE`` is a
+          typo for ``..._ACCESS_KEY_ID_FILE``, not a request to ignore it.
         """
-        if self.cloud_cf_api_token_file and not self.cloud_cf_api_token:
+        if not isinstance(data, dict):
+            return data
+        for env_name, path in os.environ.items():
+            if not env_name.startswith("SCHAKL_") or not env_name.endswith("_FILE") or not path:
+                continue
+            field = env_name[len("SCHAKL_") : -len("_FILE")].lower()
+            if field not in cls.model_fields:
+                raise ValueError(
+                    f"{env_name} does not name a setting (looked for {field!r}). "
+                    "Check the spelling: the variable is SCHAKL_<SETTING>_FILE."
+                )
+            if data.get(field):
+                continue  # an explicit value wins over the file
             try:
-                token = Path(self.cloud_cf_api_token_file).read_text(encoding="utf-8").strip()
+                value = Path(path).read_text(encoding="utf-8").strip()
             except OSError as exc:
                 raise ValueError(
-                    f"SCHAKL_CLOUD_CF_API_TOKEN_FILE points at {self.cloud_cf_api_token_file!r}, "
-                    f"which cannot be read ({exc.strerror}). Check that the Docker secret is "
-                    "attached to this service and that the path matches its mount point."
+                    f"{env_name} points at {path!r}, which cannot be read ({exc.strerror}). "
+                    "Check that the Docker secret is attached to this service and that the "
+                    "path matches its mount point."
                 ) from exc
-            if not token:
-                raise ValueError(
-                    f"SCHAKL_CLOUD_CF_API_TOKEN_FILE points at "
-                    f"{self.cloud_cf_api_token_file!r}, which is empty."
-                )
-            self.cloud_cf_api_token = token
-        return self
+            if not value:
+                raise ValueError(f"{env_name} points at {path!r}, which is empty.")
+            data[field] = value
+        return data
 
     @model_validator(mode="after")
     def _force_demo_posture(self) -> Settings:

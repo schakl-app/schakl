@@ -222,6 +222,35 @@ What to know before flipping it on:
   of that same org with it. Exclude it from any retention rule you would not want applied to
   your only copy of a departed customer's data.
 
+## Credentials from files (`SCHAKL_<SETTING>_FILE`)
+
+Any setting can be read from a file instead of an environment variable:
+
+```
+SCHAKL_SECRET_KEY_FILE=/run/secrets/schakl_secret_key
+SCHAKL_DATABASE_URL_FILE=/run/secrets/schakl_database_url
+SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY_FILE=/run/secrets/schakl_s3_secret
+```
+
+This exists because **a Docker secret is a file, not an environment variable**. Creating a
+secret named after a setting mounts something the app would otherwise never look at, and the
+setting silently keeps its default — a failure invisible until the feature is used, when an
+unset S3 key surfaces as a broken upload rather than a container that refuses to start.
+
+Three rules, each so a mistake is loud rather than silent:
+
+- **The direct variable wins.** `SCHAKL_X` alongside `SCHAKL_X_FILE` uses the direct value, so
+  a stale `_FILE` left in a stack cannot break a working deployment.
+- **Unreadable or empty refuses the boot**, naming the path and pointing at the secret
+  attachment. Setting `_FILE` says the value comes from a secret; falling back to the default
+  would be a silent downgrade.
+- **An unknown setting refuses the boot.** `SCHAKL_STORAGE_S3_KEY_FILE` is a typo for
+  `..._ACCESS_KEY_ID_FILE`, not a request to ignore it.
+
+`infra/compose.portainer.yml` uses this for all five credentials (signing key, database URL,
+both S3 keys, the Cloudflare token), so none of them appears in the stack definition, in
+Portainer's database, or in `docker service inspect` — only the paths do.
+
 ## Releases and image tags
 
 Images are built **only** when a `v*` tag is pushed (`.github/workflows/release.yml`). Pushing

@@ -895,37 +895,57 @@ async def test_self_host_provisioning_touches_no_dns(monkeypatch) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Cloudflare token from a Docker secret (*_FILE)
+# Secrets from files: SCHAKL_<SETTING>_FILE (the Docker secret convention)
 # --------------------------------------------------------------------------- #
-def test_cf_token_is_read_from_a_secret_file(tmp_path) -> None:
+def test_any_setting_can_come_from_a_secret_file(monkeypatch, tmp_path) -> None:
+    """Generic, not Cloudflare-only: a Docker secret is a file, so every sensitive setting
+    must be readable from one or it cannot stay out of the stack definition."""
     from app.config import Settings
 
-    secret = tmp_path / "cf_token"
-    secret.write_text("  tok-from-secret\n")  # trailing newline is normal in a mounted secret
-    loaded = Settings(cloud_cf_api_token_file=str(secret))
+    token = tmp_path / "cf"
+    token.write_text("  tok-from-secret\n")  # a mounted secret usually ends in a newline
+    s3key = tmp_path / "s3"
+    s3key.write_text("SCWACCESSKEY\n")
+    monkeypatch.setenv("SCHAKL_CLOUD_CF_API_TOKEN_FILE", str(token))
+    monkeypatch.setenv("SCHAKL_STORAGE_S3_ACCESS_KEY_ID_FILE", str(s3key))
+
+    loaded = Settings()
     assert loaded.cloud_cf_api_token == "tok-from-secret"
+    assert loaded.storage_s3_access_key_id == "SCWACCESSKEY"
 
 
-def test_an_unreadable_secret_file_refuses_the_boot(tmp_path) -> None:
-    """Silently falling back to "Cloudflare off" would keep answering 201 to provisioning
-    calls while creating no DNS record — discovered only when a customer complains."""
+def test_an_unreadable_or_empty_secret_file_refuses_the_boot(monkeypatch, tmp_path) -> None:
+    """Falling back to the default would be invisible: an unset S3 key surfaces as a broken
+    upload weeks later, not as a container that refuses to start."""
     from app.config import Settings
 
+    monkeypatch.setenv("SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY_FILE", str(tmp_path / "missing"))
     with pytest.raises(ValueError, match="cannot be read"):
-        Settings(cloud_cf_api_token_file=str(tmp_path / "does-not-exist"))
+        Settings()
 
     empty = tmp_path / "empty"
     empty.write_text("   \n")
+    monkeypatch.setenv("SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY_FILE", str(empty))
     with pytest.raises(ValueError, match="empty"):
-        Settings(cloud_cf_api_token_file=str(empty))
+        Settings()
 
 
-def test_an_explicit_token_wins_over_the_file(tmp_path) -> None:
-    """Option (a) and option (b) together: the plain variable is used and the file ignored,
-    so a stale _FILE left in the stack cannot break a working deployment."""
+def test_a_misspelled_secret_file_variable_refuses_the_boot(monkeypatch, tmp_path) -> None:
+    """SCHAKL_STORAGE_S3_KEY_FILE is a typo for ..._ACCESS_KEY_ID_FILE, not a request to
+    ignore it — and silently ignoring it is how a credential ends up unset in production."""
     from app.config import Settings
 
-    loaded = Settings(
-        cloud_cf_api_token="direct", cloud_cf_api_token_file=str(tmp_path / "missing")
-    )
-    assert loaded.cloud_cf_api_token == "direct"
+    secret = tmp_path / "s"
+    secret.write_text("value\n")
+    monkeypatch.setenv("SCHAKL_STORAGE_S3_KEY_FILE", str(secret))
+    with pytest.raises(ValueError, match="does not name a setting"):
+        Settings()
+
+
+def test_an_explicit_value_wins_over_the_file(monkeypatch, tmp_path) -> None:
+    """So a stale _FILE left behind in a stack cannot break a working deployment."""
+    from app.config import Settings
+
+    monkeypatch.setenv("SCHAKL_CLOUD_CF_API_TOKEN_FILE", str(tmp_path / "missing"))
+    monkeypatch.setenv("SCHAKL_CLOUD_CF_API_TOKEN", "direct")
+    assert Settings().cloud_cf_api_token == "direct"
