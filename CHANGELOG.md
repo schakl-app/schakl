@@ -2,6 +2,80 @@
 
 ## Unreleased
 
+## v0.19.0 — 2026-07-29
+
+Almost everything here is for whoever *runs* an installation rather than whoever uses one.
+Nothing in this release changes what an agency sees, and no existing install is affected until
+its operator opts in: every new capability is off by default.
+
+### Added
+
+- **Customer domains can be served through Cloudflare for SaaS** (#199). A verified custom
+  domain becomes a custom hostname on the operator's zone and Cloudflare issues the
+  certificate, so Traefik needs no per-domain router and no ACME resolver. The instance-level
+  API token is read from the environment or a Docker secret, never stored in the database,
+  never returned by an endpoint and never sent to the browser; it needs exactly two zone-scoped
+  permissions. Verification registers the hostname *before* the org row changes, so a
+  Cloudflare outage leaves a domain unverified rather than verified with no certificate behind
+  it.
+- **Provisioning an org creates its address** (#199). The zone is checked for
+  `<slug>.<base_domain>` and a name already taken is refused rather than colliding; the
+  reserved list gained the cloud infrastructure names, since an org slugged `edge` would shadow
+  the fallback origin every custom hostname routes through. Renaming an org moves the record.
+- **An organisation can be given an end date** (#199), settable from the console or the
+  provisioning API. Past it the organisation is warned (banner and e-mail) while still fully
+  usable, then suspended but recoverable, then terminated: archived, its Cloudflare records
+  released, its stored files deleted and its rows purged. `NULL` means unlimited and is the
+  default for every existing organisation, so no upgrade puts anyone on a path to deletion. Two
+  separate switches gate it, because the last step cannot be undone — the intended first
+  deployment warns and suspends for real while destroying nothing.
+- **A second person can operate an installation without holding everything** (#26). Instance
+  access used to be one flag meaning "everything, across every organisation". There are now
+  two principals: an owner, who holds every capability implicitly, and an administrator holding
+  an explicit set — view organisations, read the audit trail, manage plans and end dates,
+  export, sign in as a member, permanently delete, manage API keys. Managed at Console →
+  Administrators; inviting creates the account and the person sets a password through the usual
+  flow. Granting access is owner-only and deliberately not itself a capability, and the last
+  owner can never be removed.
+- **An export can be a complete one** (#26). `GET /instance/orgs/{id}/archive` returns the rows
+  *and* every stored file as a zip — what an agency leaving should take, and what the automated
+  termination archives before destroying anything. Importing one restores the files too.
+- **Object storage reclaims space when an organisation is deleted** (#190). Terminating an
+  organisation now removes its objects instead of leaving them to be paid for indefinitely.
+- **Any setting can be read from a file** (`SCHAKL_<SETTING>_FILE`), so every credential can be
+  a Docker secret rather than an environment variable. An unreadable, empty or misspelled one
+  refuses the boot and names the path, because the alternative is a container that starts and
+  quietly runs without a credential.
+- Deployment stacks for Docker Swarm, including a Portainer-ready one that routes through
+  Traefik labels, with managed PostgreSQL and S3-compatible object storage.
+
+### Fixed
+
+- **An imported organisation read its files out of the source organisation's storage.** A file
+  row carries an organisation-prefixed key, and the importer copied it verbatim, so a restored
+  organisation pointed into another one's key space — the same bytes at first, and a broken
+  reference the moment either organisation was deleted. Imported files are now re-keyed onto
+  the organisation that owns them.
+- **The instance surface had no enumerable authorization guard.** The check that every tenant
+  route declares a permission deliberately skipped `/api/v1/instance`, which left the one
+  surface that can read, export, impersonate and purge *any* organisation covered only by a
+  single hand-written test. Every route there now declares its capability, and a route that
+  declares neither a capability nor a reasoned exemption fails the build.
+
+### Upgrade notes
+
+- Four additive migrations, all nullable, all reversible. Existing rows are untouched: every
+  current operator stays an owner holding everything, and every organisation gets no end date.
+- The cloud features are inert unless configured. `SCHAKL_CLOUD_LIFECYCLE_ENABLED` and
+  `SCHAKL_CLOUD_LIFECYCLE_DESTRUCTIVE` both default to off, and the second is what allows an
+  irreversible purge — deploy with it off until the dates have been checked against real
+  organisations.
+- Revoking the "sign in as a member" capability does not end a session already in flight; it
+  lapses within one impersonation window (at most an hour). Withdrawing the administrator's
+  access is the immediate lever.
+
+## v0.18.0 — 2026-07-27
+
 ### Added
 
 - **Clients have a klantnummer.** Instellingen → Bedrijven sets the format (`{jaar}`, `{seq:4}` and friends, previewed live as you type), the next number, whether new clients are numbered automatically, and offers a one-off "number existing clients" action that fills only the blanks. The number is searchable, sortable and shown as an optional column; typing one by hand is fine, and a duplicate is refused. Invoice and quote number formats gained the same live preview.
