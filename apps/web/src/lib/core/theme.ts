@@ -36,6 +36,12 @@ export interface OrgTheme {
   resolved: boolean;
   /** The org exists but is suspended: branding renders, every signed-in request is blocked. */
   suspended: boolean;
+  /**
+   * Cloud end date (#199): when this org's data will be deleted, set only while it is past its
+   * end date and still fully usable. Null at every other time — before the date there is
+   * nothing to warn about, and once suspended the suspension screen is the message.
+   */
+  endsWarningUntil: string | null;
 }
 
 // Neutral fallback used only before/without tenant settings — not a product brand.
@@ -57,6 +63,7 @@ export const DEFAULT_THEME: OrgTheme = {
   demoResetMinutes: 60,
   resolved: false,
   suspended: false,
+  endsWarningUntil: null,
 };
 
 // The API validates colours as hex on write; re-check here because the value is interpolated

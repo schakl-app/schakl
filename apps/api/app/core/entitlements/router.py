@@ -23,6 +23,7 @@ from app.core.entitlements.service import (
     licensed_skus,
     verify_license,
 )
+from app.core.instance.guard import no_capability_required
 from app.core.models import InstanceLicense
 from app.core.permissions.deps import no_permission_required
 from app.db import async_session_maker
@@ -91,7 +92,14 @@ async def _status() -> LicenseStatus:
 @router.get(
     "",
     response_model=LicenseStatus,
-    dependencies=[no_permission_required("instance-owner gated (users.is_superuser)")],
+    dependencies=[
+        no_permission_required("instance-owner gated (users.is_superuser)"),
+        no_capability_required(
+            "owner-only by a gate stricter than any capability: require_instance_owner "
+            "demands users.is_superuser, so a delegated instance admin cannot reach it "
+            "whatever they hold. Licensing the installation is not delegable (#26)."
+        ),
+    ],
 )
 async def get_license(_: User = Depends(require_instance_owner)) -> LicenseStatus:
     return await _status()
@@ -100,7 +108,14 @@ async def get_license(_: User = Depends(require_instance_owner)) -> LicenseStatu
 @router.put(
     "",
     response_model=LicenseStatus,
-    dependencies=[no_permission_required("instance-owner gated (users.is_superuser)")],
+    dependencies=[
+        no_permission_required("instance-owner gated (users.is_superuser)"),
+        no_capability_required(
+            "owner-only by a gate stricter than any capability: require_instance_owner "
+            "demands users.is_superuser, so a delegated instance admin cannot reach it "
+            "whatever they hold. Licensing the installation is not delegable (#26)."
+        ),
+    ],
 )
 async def install_license(
     payload: LicenseInstall, user: User = Depends(require_instance_owner)
@@ -132,7 +147,14 @@ async def install_license(
 @router.delete(
     "",
     response_model=LicenseStatus,
-    dependencies=[no_permission_required("instance-owner gated (users.is_superuser)")],
+    dependencies=[
+        no_permission_required("instance-owner gated (users.is_superuser)"),
+        no_capability_required(
+            "owner-only by a gate stricter than any capability: require_instance_owner "
+            "demands users.is_superuser, so a delegated instance admin cannot reach it "
+            "whatever they hold. Licensing the installation is not delegable (#26)."
+        ),
+    ],
 )
 async def remove_license(_: User = Depends(require_instance_owner)) -> LicenseStatus:
     """Remove the installed license (API-level escape hatch; the UI replaces rather than

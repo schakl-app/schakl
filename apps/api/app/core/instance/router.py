@@ -10,15 +10,18 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 
 from app.core.auth.models import User
 from app.core.instance import audit, portability, repo, service
+from app.core.instance import capabilities as caps
 from app.core.instance.guard import (
     InstanceContext,
     ensure_org_data_access,
+    no_capability_required,
+    require_capability,
     require_instance_admin,
 )
 from app.core.instance.impersonation import (
@@ -62,6 +65,14 @@ class OrgSummary(BaseModel):
     # Cloud plan (epic #199); both None on self-host / unmanaged orgs.
     plan: str | None = None
     trial_ends_at: datetime | None = None
+    # Per-org end date (#199). ``ends_at`` None = unlimited; the rest are the computed
+    # consequences, so the console never has to re-derive the schedule from the defaults.
+    ends_at: datetime | None = None
+    grace_days: int | None = None
+    retention_days: int | None = None
+    lifecycle_stage: str = "active"
+    suspends_at: datetime | None = None
+    terminates_at: datetime | None = None
 
 
 class OrgMember(BaseModel):
@@ -134,7 +145,22 @@ class AuditEntry(BaseModel):
     created_at: datetime
 
 
+def _lifecycle_dates(org: Org) -> tuple[datetime | None, datetime | None]:
+    """The computed suspend/terminate instants, so the console does not re-derive them.
+
+    Imported lazily and only for an org that actually has an end date: the lifecycle module is
+    business-licensed cloud code, and a self-hosted box (where ``ends_at`` is always NULL)
+    must never load it — the same rule the worker's cron registration follows.
+    """
+    if org.ends_at is None:
+        return None, None
+    from app.core.cloud import lifecycle
+
+    return lifecycle.suspend_at(org), lifecycle.terminate_at(org)
+
+
 def _summary(org: Org) -> OrgSummary:
+    suspends_at, terminates_at = _lifecycle_dates(org)
     return OrgSummary(
         id=str(org.id),
         slug=org.slug,
@@ -149,6 +175,12 @@ def _summary(org: Org) -> OrgSummary:
         pending_domain=org.pending_domain,
         plan=org.plan,
         trial_ends_at=org.trial_ends_at,
+        ends_at=org.ends_at,
+        grace_days=org.grace_days,
+        retention_days=org.retention_days,
+        lifecycle_stage=org.lifecycle_stage,
+        suspends_at=suspends_at,
+        terminates_at=terminates_at,
     )
 
 
@@ -162,14 +194,23 @@ async def _org_or_404(ctx: InstanceContext, org_id: uuid.UUID) -> Org:
 # --------------------------------------------------------------------------- #
 # Org lifecycle
 # --------------------------------------------------------------------------- #
-@router.get("/orgs", response_model=list[OrgSummary])
+@router.get(
+    "/orgs",
+    response_model=list[OrgSummary],
+    dependencies=[require_capability(caps.ORGS_READ)],
+)
 async def list_orgs(
     ctx: InstanceContext = Depends(require_instance_admin),
 ) -> list[OrgSummary]:
     return [_summary(org) for org in await repo.list_orgs(ctx.session)]
 
 
-@router.post("/orgs", response_model=OrgSummary, status_code=201)
+@router.post(
+    "/orgs",
+    response_model=OrgSummary,
+    status_code=201,
+    dependencies=[require_capability(caps.ORGS_WRITE)],
+)
 async def create_org(
     payload: OrgCreate, ctx: InstanceContext = Depends(require_instance_admin)
 ) -> OrgSummary:
@@ -186,7 +227,11 @@ async def create_org(
     return _summary(org)
 
 
-@router.get("/orgs/{org_id}", response_model=OrgDetail)
+@router.get(
+    "/orgs/{org_id}",
+    response_model=OrgDetail,
+    dependencies=[require_capability(caps.ORGS_READ)],
+)
 async def org_detail(
     org_id: uuid.UUID, ctx: InstanceContext = Depends(require_instance_admin)
 ) -> OrgDetail:
@@ -236,7 +281,11 @@ async def org_detail(
     )
 
 
-@router.patch("/orgs/{org_id}", response_model=OrgSummary)
+@router.patch(
+    "/orgs/{org_id}",
+    response_model=OrgSummary,
+    dependencies=[require_capability(caps.ORGS_WRITE)],
+)
 async def update_org(
     org_id: uuid.UUID,
     payload: OrgUpdate,
@@ -249,7 +298,11 @@ async def update_org(
     return _summary(org)
 
 
-@router.post("/orgs/{org_id}/suspend", response_model=OrgSummary)
+@router.post(
+    "/orgs/{org_id}/suspend",
+    response_model=OrgSummary,
+    dependencies=[require_capability(caps.LIFECYCLE_WRITE)],
+)
 async def suspend_org(
     org_id: uuid.UUID, ctx: InstanceContext = Depends(require_instance_admin)
 ) -> OrgSummary:
@@ -257,7 +310,11 @@ async def suspend_org(
     return _summary(await service.set_status(ctx.session, ctx.user, org, OrgStatus.SUSPENDED))
 
 
-@router.post("/orgs/{org_id}/activate", response_model=OrgSummary)
+@router.post(
+    "/orgs/{org_id}/activate",
+    response_model=OrgSummary,
+    dependencies=[require_capability(caps.LIFECYCLE_WRITE)],
+)
 async def activate_org(
     org_id: uuid.UUID, ctx: InstanceContext = Depends(require_instance_admin)
 ) -> OrgSummary:
@@ -265,7 +322,11 @@ async def activate_org(
     return _summary(await service.set_status(ctx.session, ctx.user, org, OrgStatus.ACTIVE))
 
 
-@router.delete("/orgs/{org_id}", response_model=OrgSummary)
+@router.delete(
+    "/orgs/{org_id}",
+    response_model=OrgSummary,
+    dependencies=[require_capability(caps.LIFECYCLE_WRITE)],
+)
 async def soft_delete_org(
     org_id: uuid.UUID, ctx: InstanceContext = Depends(require_instance_admin)
 ) -> OrgSummary:
@@ -273,7 +334,11 @@ async def soft_delete_org(
     return _summary(await service.set_status(ctx.session, ctx.user, org, OrgStatus.DELETED))
 
 
-@router.post("/orgs/{org_id}/purge", status_code=204)
+@router.post(
+    "/orgs/{org_id}/purge",
+    status_code=204,
+    dependencies=[require_capability(caps.ORGS_PURGE)],
+)
 async def purge_org(
     org_id: uuid.UUID,
     payload: PurgeRequest,
@@ -283,7 +348,11 @@ async def purge_org(
     await service.purge_org(ctx.session, ctx.user, org, confirm=payload.confirm)
 
 
-@router.patch("/orgs/{org_id}/modules", response_model=OrgDetail)
+@router.patch(
+    "/orgs/{org_id}/modules",
+    response_model=OrgDetail,
+    dependencies=[require_capability(caps.ORGS_WRITE)],
+)
 async def update_org_modules(
     org_id: uuid.UUID,
     payload: OrgModulesUpdate,
@@ -298,7 +367,7 @@ async def update_org_modules(
 # --------------------------------------------------------------------------- #
 # Data portability
 # --------------------------------------------------------------------------- #
-@router.get("/orgs/{org_id}/export")
+@router.get("/orgs/{org_id}/export", dependencies=[require_capability(caps.DATA_EXPORT)])
 async def export_org(
     org_id: uuid.UUID, ctx: InstanceContext = Depends(require_instance_admin)
 ) -> dict[str, Any]:
@@ -311,7 +380,69 @@ async def export_org(
     return payload
 
 
-@router.post("/orgs/import", response_model=ImportResult, status_code=201)
+@router.get("/orgs/{org_id}/archive", dependencies=[require_capability(caps.DATA_EXPORT)])
+async def export_org_archive(
+    org_id: uuid.UUID, ctx: InstanceContext = Depends(require_instance_admin)
+) -> Response:
+    """The complete export: rows **and** stored bytes, as a zip.
+
+    ``/export`` returns rows only, which is a pointer-shaped answer once files live in object
+    storage. This is what an agency leaving should take, and what the automated termination
+    archives before it destroys anything.
+    """
+    org = await _org_or_404(ctx, org_id)
+    await ensure_org_data_access(ctx, org)
+    blob = await portability.build_archive(ctx.session, org)
+    org.exported_at = datetime.now(UTC)
+    await ctx.session.flush()
+    await audit.record(
+        ctx.session, actor=ctx.user, action="org.export", org=org, detail={"format": "archive"}
+    )
+    return Response(
+        content=blob,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{org.slug}-archive.zip"',
+        },
+    )
+
+
+@router.post(
+    "/orgs/import-archive",
+    response_model=ImportResult,
+    status_code=201,
+    dependencies=[require_capability(caps.DATA_EXPORT)],
+)
+async def import_org_archive(
+    slug: str = Form(...),
+    name: str | None = Form(default=None),
+    file: UploadFile = File(...),
+    ctx: InstanceContext = Depends(require_instance_admin),
+) -> ImportResult:
+    """Restore an org from a zip archive — rows and bytes both."""
+    slug = service.validate_slug(slug)
+    if await repo.slug_taken(ctx.session, slug):
+        raise AppError("slug_taken", "errors.slug_taken", status_code=409)
+    payload, blobs = portability.read_archive(await file.read())
+    org, counts = await portability.import_org(
+        ctx.session, payload, slug=slug, name=name, files=blobs
+    )
+    await audit.record(
+        ctx.session,
+        actor=ctx.user,
+        action="org.import",
+        org=org,
+        detail={"tables": counts, "files": len(blobs)},
+    )
+    return ImportResult(org=_summary(org), tables=counts)
+
+
+@router.post(
+    "/orgs/import",
+    response_model=ImportResult,
+    status_code=201,
+    dependencies=[require_capability(caps.DATA_EXPORT)],
+)
 async def import_org(
     payload: ImportRequest, ctx: InstanceContext = Depends(require_instance_admin)
 ) -> ImportResult:
@@ -330,7 +461,11 @@ async def import_org(
 # --------------------------------------------------------------------------- #
 # Impersonation (audited, time-boxed, banner-visible via /meta/me)
 # --------------------------------------------------------------------------- #
-@router.post("/orgs/{org_id}/impersonate", response_model=ImpersonateResponse)
+@router.post(
+    "/orgs/{org_id}/impersonate",
+    response_model=ImpersonateResponse,
+    dependencies=[require_capability(caps.IMPERSONATE)],
+)
 async def impersonate(
     org_id: uuid.UUID,
     payload: ImpersonateRequest,
@@ -364,7 +499,17 @@ async def impersonate(
     return ImpersonateResponse(cookie=IMPERSONATION_COOKIE, token=token, expires_at=expires_at)
 
 
-@router.post("/impersonation/stop", status_code=204)
+@router.post(
+    "/impersonation/stop",
+    status_code=204,
+    dependencies=[
+        no_capability_required(
+            "ends the caller's OWN impersonation session by clearing their cookie. Requiring "
+            "instance.impersonate here would trap someone whose capability was revoked "
+            "mid-session in the very state the revocation was meant to end."
+        )
+    ],
+)
 async def stop_impersonation(
     response: Response, ctx: InstanceContext = Depends(require_instance_admin)
 ) -> None:
@@ -375,7 +520,11 @@ async def stop_impersonation(
 # --------------------------------------------------------------------------- #
 # Audit trail
 # --------------------------------------------------------------------------- #
-@router.get("/audit", response_model=list[AuditEntry])
+@router.get(
+    "/audit",
+    response_model=list[AuditEntry],
+    dependencies=[require_capability(caps.AUDIT_READ)],
+)
 async def list_audit(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),

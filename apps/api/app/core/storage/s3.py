@@ -114,3 +114,23 @@ class S3ObjectStorage:
 
     def delete(self, key: str) -> None:
         self._s3().delete_object(Bucket=self._bucket, Key=self._key(key))
+
+    def delete_prefix(self, prefix: str) -> int:
+        """Remove every object under ``prefix``, returning how many. Used to reclaim a
+        terminated org's space — otherwise a deleted tenant is billed for forever.
+
+        Paginated, and batched at S3's documented 1000-key ceiling for ``delete_objects``.
+        The prefix is normalised to end in ``/`` so that org ``a1b2`` cannot take ``a1b2c3``
+        with it — a plain string prefix would, and the two are different tenants.
+        """
+        marker = self._key(prefix.rstrip("/")) + "/"
+        client = self._s3()
+        removed = 0
+        paginator = client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self._bucket, Prefix=marker):
+            keys = [{"Key": item["Key"]} for item in page.get("Contents", [])]
+            for start in range(0, len(keys), 1000):
+                batch = keys[start : start + 1000]
+                client.delete_objects(Bucket=self._bucket, Delete={"Objects": batch})
+                removed += len(batch)
+        return removed

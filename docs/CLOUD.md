@@ -32,6 +32,44 @@ Licensing: the provisioning surface rides the `cloud` sku's write gate (#137) �
 install gets the built-in bootstrap window as its trial, after that mutations require a
 license document listing `cloud`.
 
+## Two instance principals, and only one can delegate (#26)
+
+Operating the platform used to be one boolean. It is now two principals:
+
+| | who | capabilities | may manage people |
+|---|---|---|---|
+| **owner** | `users.is_superuser` | implicitly **all** | yes |
+| **admin** | a row in `instance_admins` | exactly what was granted | **no** |
+
+Granting is **owner-only and deliberately not itself a capability**: an admin who could grant
+`instance.impersonate` to themselves is an owner with extra steps, so the escalation edge does
+not exist rather than being guarded. Owners may promote another owner, so this is not a bus
+factor — and the last active owner cannot be demoted or revoked (`409
+errors.last_instance_owner`), because a box nobody can administer is unrecoverable without
+database access.
+
+The catalog is code-defined and small (`app/core/instance/capabilities.py`): view / create /
+lifecycle on orgs, read the audit trail, export data, impersonate, purge, manage API keys. The
+three that reach a tenant's own contents or end it are marked *sensitive* in the console — and
+on cloud each still needs the org's service PIN, so a capability is **necessary, never
+sufficient**.
+
+Manage it at **Console → Administrators** (owners only). Inviting creates the account if the
+email is new; the person sets a password through forgot-password, exactly like an invited org
+member. An invite with nothing ticked is valid and grants nothing — a half-finished invite must
+never over-grant.
+
+Every route on `/api/v1/instance` declares the capability it needs, and
+`tests/test_instance_deny_by_default.py` makes a missing declaration a build break — the same
+deny-by-default rule §15 applies to tenant routes.
+
+**One consequence worth knowing.** `read_impersonation` runs on every request on a tenant host,
+so it does not re-check capabilities there (that would be a query on the hot path). The
+capability is checked when the grant is *issued*, and the grant is signed and time-boxed. So
+**revoking `instance.impersonate` does not kill a session already in flight** — it lapses
+within one window (`SCHAKL_IMPERSONATION_MAX_MINUTES`, ≤60). Revoking the admin, or
+deactivating the account, is the immediate lever; every grant is on the audit trail either way.
+
 ## Service PIN: tenant consent for operator access
 
 On cloud, tenants are paying customers; the instance owner has **no standing access** to an
@@ -125,6 +163,128 @@ Two mechanisms, chosen per org:
 
 The fragment is rewritten on verify/clear, at API boot, and by a daily worker cron
 (`SCHAKL_CLOUD_INGRESS_DIR`, set by the overlay; unset = sync off, e.g. in dev).
+
+### Cloudflare for SaaS (the third option, #199)
+
+An operator who fronts the instance with **Cloudflare for SaaS** replaces mechanism 2: a
+verified customer domain becomes a **custom hostname** on the operator's zone, and Cloudflare
+issues and renews the edge certificate. Traefik then needs no per-domain router and no ACME
+resolver at all — leave `SCHAKL_CLOUD_INGRESS_DIR` unset and the catch-all routers handle
+every host.
+
+```
+SCHAKL_CLOUD_CF_API_TOKEN=…        # or _FILE, pointing at a Docker secret
+SCHAKL_CLOUD_CF_ZONE_ID=…
+SCHAKL_CLOUD_CF_ORIGIN_SNI=        # optional; defaults to the CNAME target
+```
+
+**The API token needs exactly two scopes, both Zone-level, on the one zone:**
+
+| Scope | Permission | What it is for |
+|---|---|---|
+| Zone → *your zone* | **SSL and Certificates → Edit** | create / read / delete custom hostnames |
+| Zone → *your zone* | **DNS → Edit** | the per-org `<slug>.<base_domain>` record |
+
+Under *Zone Resources* pick **Include → Specific zone**, never *All zones*. Nothing
+account-level, no Zone Settings, and never a Global API Key. Restrict the token to the
+server's egress IP and give it an expiry.
+
+The token is **instance-level and server-side only**: it is read from the environment, never
+stored in the database, never returned by an endpoint, never in the OpenAPI spec, and never
+reaches the web app. Use the `*_FILE` form with a Docker secret so it does not show up in
+`docker inspect`.
+
+**Why `custom_origin_sni` matters.** Cloudflare opens a *second* TLS connection to the origin
+and by default presents the customer's hostname as SNI — which no origin certificate covers,
+so Full (strict) answers **526**. schakl pins SNI to the operator's own edge hostname, so the
+wildcard origin certificate matches again. The HTTP `Host` header is untouched, so tenant
+resolution still sees the customer's domain.
+
+**Fallback origin.** Cloudflare for SaaS routes every custom hostname to one proxied record in
+your zone — use the CNAME target (`edge.<base_domain>`), set under SSL/TLS → Custom Hostnames.
+It must be proxied, and it must be Active before any custom hostname resolves.
+
+Verification order on `POST /meta/tenant/domain/verify`: the DNS TXT challenge, then global
+uniqueness, then **Cloudflare, before the org row is touched**. A Cloudflare outage therefore
+leaves the domain *unverified* (`502 errors.cloudflare_failed`) rather than verified with no
+certificate behind it. Clearing a domain takes the opposite trade-off: the removal is
+best-effort, because an org must always be able to drop its domain, and a leftover custom
+hostname routes nothing and is adopted again on the next verify.
+
+## Automatic subdomain provisioning (#199)
+
+With Cloudflare configured, creating an org also creates its address:
+
+1. the slug is validated and checked for global uniqueness, as before;
+2. **reserved names are refused** — `edge` is the fallback origin every custom hostname routes
+   through and `console` is the instance console, so an org taking either breaks the instance
+   rather than only itself;
+3. the zone is checked for an existing record at `<slug>.<base_domain>`; one that already
+   exists answers `409 errors.subdomain_taken`. A wildcard `*.<base_domain>` never matches
+   this check — it is stored under its own literal name, so a catch-all does not read as
+   "every name taken";
+4. a **proxied CNAME** to the CNAME target is created and its id stored on the org.
+
+Failure is fail-closed: the org is not created. A provisioned org that does not resolve is
+worse than a provisioning call the billing system can retry. Re-slugging an org moves the
+record (new one first, then the old is dropped), so a failure halfway leaves the org reachable
+at its current address rather than at none.
+
+## Per-org end date and termination (#199)
+
+An org may carry an **`ends_at`**. `NULL` means unlimited, which is the default for every org
+and the only value any existing install has after upgrading — nothing below can happen by
+accident.
+
+| stage | the tenant experiences | recoverable |
+|---|---|---|
+| `active` | nothing; before `ends_at` | — |
+| `warning` | full access, plus a banner and an e-mail (`grace_days`, default 14) | yes |
+| `suspended` | login renders, every request refused (`retention_days`, default 30) | yes |
+| terminated | the org and its data are gone | from the archive |
+
+The suspended window is deliberate: it is the last state from which a wrong date or a customer
+who paid late is fixable by flipping one field.
+
+```
+SCHAKL_CLOUD_GRACE_DAYS=14
+SCHAKL_CLOUD_RETENTION_DAYS=30
+SCHAKL_CLOUD_LIFECYCLE_ENABLED=false        # the sweep runs at all
+SCHAKL_CLOUD_LIFECYCLE_DESTRUCTIVE=false    # …and may actually purge
+SCHAKL_CLOUD_LIFECYCLE_BATCH=25             # orgs terminated per run
+```
+
+**Two switches, because the last step cannot be undone.** Deploy
+`ENABLED=true, DESTRUCTIVE=false` first: real warnings and suspensions, and terminations that
+stop after archiving, so the dates and the copy can be checked against live orgs while
+everything is still recoverable.
+
+Set the date from the console (Organizations → an org → *End date*) or from the billing system
+over `PATCH /api/v1/instance/provisioning/orgs/{slug}/lifecycle`. It is separate from `plan` on
+purpose: a plan says *how* an org is billed, an end date says *until when* it exists. Both are
+PIN-free — billing enforcement cannot depend on tenant consent. Moving the date forward or
+clearing it re-arms the stage, so a renewed customer stops being warned and is warned again
+next time.
+
+The daily `cloud_lifecycle_sweep` cron (04:00, after the trial sweep) advances each org.
+Termination is ordered so every failure mode is safe:
+
+1. mark deleted, so the archive is taken against frozen data and `purge_org`'s
+   export-since-soft-delete precondition is satisfied honestly rather than bypassed;
+2. **archive rows and bytes** to `archive/<org_id>/<timestamp>.zip` in the storage backend,
+   outside every org's key space;
+3. remove the Cloudflare custom hostname and subdomain record;
+4. delete the org's stored bytes (`delete_prefix`);
+5. purge the rows.
+
+Anything that raises stops the sequence before step 5 and the next sweep retries; a
+soft-deleted org resolves for nobody, so retrying is inert. **A failed archive never purges.**
+
+`GET /api/v1/instance/orgs/{id}/archive` is the same complete archive on demand — what an
+agency leaving should take. `/export` remains rows-only, which is a pointer-shaped answer once
+files live in object storage, so prefer the archive. Importing one restores the bytes and
+**re-keys them onto the new org**: a `files` row carries `<org_id>/<file_id>`, and copying it
+verbatim left the new org reading out of the source org's prefix.
 
 ## Included e-mail vs bring-your-own
 

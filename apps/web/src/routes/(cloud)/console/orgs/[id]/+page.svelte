@@ -16,6 +16,15 @@
 
   const summary = $derived(data.locked ? data.summary : data.org);
   let planChoice = $derived(summary?.plan ?? "trial");
+
+  // A datetime from the API rendered back into the <input type="date"> value it came from.
+  const asDateValue = (iso: string | null | undefined) => (iso ? iso.slice(0, 10) : "");
+  const stageKey = $derived(
+    ({
+      warning: "cloud.lifecycle.stage_warning",
+      suspended: "cloud.lifecycle.stage_suspended",
+    })[summary?.lifecycle_stage ?? "active"] ?? "cloud.lifecycle.stage_active",
+  );
 </script>
 
 <svelte:head>
@@ -147,6 +156,81 @@
       <p class="text-sm text-emerald-700 dark:text-emerald-400">{t("cloud.plan.saved")}</p>
     {/if}
     <Button variant="secondary" loading={busy.is("plan")} disabled={busy.active}>
+      {t("common.save")}
+    </Button>
+  </form>
+</section>
+
+<!-- End date (#199). PIN-free like the plan: platform state, not tenant content. -->
+<section class="mt-6 max-w-md rounded-xl border border-border bg-surface-raised p-6">
+  <h2 class="text-base font-semibold text-text">{t("cloud.lifecycle.end_date")}</h2>
+  <p class="mt-1 text-sm text-text-muted">{t("cloud.lifecycle.end_date_hint")}</p>
+
+  {#if summary?.ends_at}
+    <dl class="mt-3 space-y-1 text-sm">
+      <div class="flex justify-between gap-3">
+        <dt class="text-text-muted">{t(stageKey)}</dt>
+        <dd class="text-text">{fmtNumericDate(summary.ends_at)}</dd>
+      </div>
+      {#if summary.suspends_at}
+        <div class="flex justify-between gap-3">
+          <dt class="text-text-muted">{t("cloud.lifecycle.suspends_on")}</dt>
+          <dd class="text-text">{fmtNumericDate(summary.suspends_at)}</dd>
+        </div>
+      {/if}
+      {#if summary.terminates_at}
+        <div class="flex justify-between gap-3">
+          <dt class="text-text-muted">{t("cloud.lifecycle.deletes_on")}</dt>
+          <dd class="font-medium text-rose-700 dark:text-rose-400">
+            {fmtNumericDate(summary.terminates_at)}
+          </dd>
+        </div>
+      {/if}
+    </dl>
+  {:else}
+    <p class="mt-3 text-sm font-medium text-text">{t("cloud.lifecycle.unlimited")}</p>
+  {/if}
+
+  <form
+    method="POST"
+    action="?/lifecycle"
+    use:enhance={busy.keep("lifecycle")}
+    class="mt-4 space-y-3"
+  >
+    <input
+      name="ends_on"
+      type="date"
+      value={asDateValue(summary?.ends_at)}
+      class={inputClass}
+      aria-label={t("cloud.lifecycle.end_date")}
+    />
+    <div class="grid grid-cols-2 gap-2">
+      <input
+        name="grace_days"
+        type="number"
+        min="0"
+        max="3650"
+        value={summary?.grace_days ?? ""}
+        placeholder={t("cloud.lifecycle.grace_days")}
+        aria-label={t("cloud.lifecycle.grace_days")}
+        class={inputClass}
+      />
+      <input
+        name="retention_days"
+        type="number"
+        min="0"
+        max="3650"
+        value={summary?.retention_days ?? ""}
+        placeholder={t("cloud.lifecycle.retention_days")}
+        aria-label={t("cloud.lifecycle.retention_days")}
+        class={inputClass}
+      />
+    </div>
+    <p class="text-xs text-text-muted">{t("cloud.lifecycle.inherit_hint")}</p>
+    {#if form?.lifecycleSaved}
+      <p class="text-sm text-emerald-700 dark:text-emerald-400">{t("cloud.lifecycle.saved")}</p>
+    {/if}
+    <Button variant="secondary" loading={busy.is("lifecycle")} disabled={busy.active}>
       {t("common.save")}
     </Button>
   </form>

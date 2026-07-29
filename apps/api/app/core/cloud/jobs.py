@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 
 from app.core.cloud.ingress import sync_ingress
+from app.core.cloud.lifecycle import sweep
 from app.core.cloud.plans import suspend_expired_trials
 from app.db import async_session_maker
 
@@ -29,6 +30,28 @@ async def cloud_expire_trials(_ctx: dict | None = None) -> int:
     except Exception:  # noqa: BLE001 — cron contract: log, never crash-loop
         logger.exception("trial expiry sweep failed")
         return 0
+
+
+async def cloud_lifecycle_sweep(_ctx: dict | None = None) -> dict[str, int]:
+    """Daily: advance every org that carries an end date (#199).
+
+    Orgs with ``ends_at IS NULL`` — the default, and every self-host org — are never looked at.
+    Off unless ``SCHAKL_CLOUD_LIFECYCLE_ENABLED``; the purge additionally needs
+    ``SCHAKL_CLOUD_LIFECYCLE_DESTRUCTIVE``, so the first deployment can warn and suspend for
+    real while nothing is destroyed.
+    """
+    try:
+        async with async_session_maker() as session:
+            counts = await sweep(session)
+        if any(counts.values()):
+            logger.info(
+                "lifecycle sweep: %d warned, %d suspended, %d terminated",
+                counts["warned"], counts["suspended"], counts["terminated"],
+            )
+        return counts
+    except Exception:  # noqa: BLE001 — cron contract: log, never crash-loop
+        logger.exception("lifecycle sweep failed")
+        return {"warned": 0, "suspended": 0, "terminated": 0}
 
 
 async def cloud_sync_ingress(_ctx: dict | None = None) -> str | None:

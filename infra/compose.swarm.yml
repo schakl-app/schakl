@@ -1,0 +1,203 @@
+# schakl — CLOUD posture on Docker Swarm, against managed Postgres + Scaleway Object Storage.
+#
+#   set -a; . ./schakl.env; set +a          # `docker stack deploy` does NOT read .env itself
+#   docker stack deploy -c infra/compose.swarm.yml schakl
+#
+# The stack name MUST be `schakl`: Traefik lives in a different stack, and cross-stack Swarm
+# DNS only resolves the qualified name `schakl_api` / `schakl_web` — which is what the
+# companion routing file (infra/traefik/dynamic.swarm.yml) points at.
+#
+# What this is NOT:
+#   - no `db` / `db-init`  → managed Postgres. See the RLS note on SCHAKL_DATABASE_URL below.
+#   - no `traefik`         → your existing traefik stack owns :80/:443 and the `proxy` network.
+#   - no `build:`          → Swarm cannot build. Images come from ghcr.io; set SCHAKL_TAG.
+#   - no `depends_on`      → Swarm ignores it. The API retries its DB connection on boot.
+
+x-api-env: &api-env
+  # --- Posture -------------------------------------------------------------------------
+  SCHAKL_DEPLOYMENT: cloud
+  SCHAKL_ENVIRONMENT: production
+  SCHAKL_BASE_DOMAIN: ${SCHAKL_BASE_DOMAIN:?set SCHAKL_BASE_DOMAIN, e.g. schakl.cloud}
+  SCHAKL_SECRET_KEY: ${SCHAKL_SECRET_KEY:?generate with openssl rand -hex 32}
+  SCHAKL_AUTH_COOKIE_SECURE: "true"
+
+  # --- Managed Postgres ------------------------------------------------------------------
+  # Tenant isolation holds here because every domain table carries FORCE ROW LEVEL SECURITY
+  # (app/core/rls.py:23), which applies policies to the *table owner* too. That matters on a
+  # managed DB: your `rdb` user owns the schema, and a plain `ENABLE RLS` would let an owner
+  # read every tenant's rows. Do NOT connect as a role with BYPASSRLS or SUPERUSER.
+  # Add `?ssl=require` if you terminate the private link over TLS.
+  SCHAKL_DATABASE_URL: postgresql+asyncpg://${PGUSER:?}:${PGPASSWORD:?}@${PGHOST:?}:${PGPORT:-5432}/${PGDATABASE:-rdb}
+
+  SCHAKL_REDIS_URL: redis://redis:6379/0
+
+  # --- Object storage (Scaleway nl-ams) --------------------------------------------------
+  # Bucket https://schakl-cloud.s3.nl-ams.scw.cloud → endpoint is the SERVICE host; the
+  # bucket is named separately. Keep the bucket PRIVATE: the API is the only data path
+  # (CLAUDE.md Golden Rule 6) and never signs public URLs.
+  SCHAKL_STORAGE_BACKEND: s3
+  SCHAKL_STORAGE_S3_ENDPOINT: ${SCHAKL_STORAGE_S3_ENDPOINT:-https://s3.nl-ams.scw.cloud}
+  SCHAKL_STORAGE_S3_REGION: ${SCHAKL_STORAGE_S3_REGION:-nl-ams}
+  SCHAKL_STORAGE_S3_BUCKET: ${SCHAKL_STORAGE_S3_BUCKET:-schakl-cloud}
+  SCHAKL_STORAGE_S3_ACCESS_KEY_ID: ${SCHAKL_STORAGE_S3_ACCESS_KEY_ID:?}
+  SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY: ${SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY:?}
+  # Virtual-hosted addressing, matching the bucket URL above. Scaleway also accepts path
+  # style (`true`) if you ever move behind something that needs it.
+  SCHAKL_STORAGE_S3_FORCE_PATH_STYLE: "false"
+  # EFFECTIVELY IMMUTABLE: the prefix is applied on read, write AND delete (s3.py:87), so
+  # changing it later strands every existing object. Decide now, even if that means "".
+  SCHAKL_STORAGE_S3_KEY_PREFIX: ${SCHAKL_STORAGE_S3_KEY_PREFIX:-prod}
+  # Safety net only — dispatch is per `files.backend`, so any row ever written as `local`
+  # still needs this path to exist. Nothing new lands here while the backend is `s3`.
+  SCHAKL_STORAGE_PATH: /data/storage
+
+  # --- Cloud knobs -----------------------------------------------------------------------
+  SCHAKL_CLOUD_TRIAL_DAYS: ${SCHAKL_CLOUD_TRIAL_DAYS:-14}
+  SCHAKL_CLOUD_SERVICE_PIN_HOURS: ${SCHAKL_CLOUD_SERVICE_PIN_HOURS:-24}
+  SCHAKL_CLOUD_CNAME_TARGET: ${SCHAKL_CLOUD_CNAME_TARGET:-}
+
+  # --- Cloudflare for SaaS (docs/CLOUD.md) -------------------------------------------------
+  # Zone-scoped token, one zone, exactly two permissions:
+  #   Zone → SSL and Certificates → Edit   ·   Zone → DNS → Edit
+  # Server-side only: never stored in the DB, never returned by an endpoint, never in the web
+  # app. With CF for SaaS terminating TLS, leave SCHAKL_CLOUD_INGRESS_DIR unset.
+  SCHAKL_CLOUD_CF_API_TOKEN: ${SCHAKL_CLOUD_CF_API_TOKEN:-}
+  SCHAKL_CLOUD_CF_API_TOKEN_FILE: ${SCHAKL_CLOUD_CF_API_TOKEN_FILE:-}
+  SCHAKL_CLOUD_CF_ZONE_ID: ${SCHAKL_CLOUD_CF_ZONE_ID:-}
+  SCHAKL_CLOUD_CF_ORIGIN_SNI: ${SCHAKL_CLOUD_CF_ORIGIN_SNI:-}
+
+  # --- Per-org end date (inert until an org is given one) ----------------------------------
+  # Ship ENABLED=true / DESTRUCTIVE=false first: real warnings and suspensions, terminations
+  # that stop after archiving. Flip DESTRUCTIVE once the dates have been checked against live
+  # orgs — it is the switch that allows an irreversible purge.
+  SCHAKL_CLOUD_GRACE_DAYS: ${SCHAKL_CLOUD_GRACE_DAYS:-14}
+  SCHAKL_CLOUD_RETENTION_DAYS: ${SCHAKL_CLOUD_RETENTION_DAYS:-30}
+  SCHAKL_CLOUD_LIFECYCLE_ENABLED: ${SCHAKL_CLOUD_LIFECYCLE_ENABLED:-false}
+  SCHAKL_CLOUD_LIFECYCLE_DESTRUCTIVE: ${SCHAKL_CLOUD_LIFECYCLE_DESTRUCTIVE:-false}
+  SCHAKL_CLOUD_LIFECYCLE_BATCH: ${SCHAKL_CLOUD_LIFECYCLE_BATCH:-25}
+  # The directory Traefik's file provider watches. Bind-mounted from the host below, so the
+  # API and Traefik must run on the SAME node — hence the manager placement constraint.
+  # Leave unset to disable custom-domain ingress sync entirely (subdomains still work).
+  SCHAKL_CLOUD_INGRESS_DIR: ${SCHAKL_CLOUD_INGRESS_DIR:-/configuration}
+
+  # --- Optional: instance-provided e-mail (docs/CLOUD.md) --------------------------------
+  SCHAKL_INSTANCE_EMAIL_ENABLED: ${SCHAKL_INSTANCE_EMAIL_ENABLED:-false}
+  SCHAKL_INSTANCE_EMAIL_PROVIDER: ${SCHAKL_INSTANCE_EMAIL_PROVIDER:-smtp}
+  SCHAKL_INSTANCE_EMAIL_FROM: ${SCHAKL_INSTANCE_EMAIL_FROM:-}
+  SCHAKL_INSTANCE_EMAIL_FROM_NAME: ${SCHAKL_INSTANCE_EMAIL_FROM_NAME:-}
+  SCHAKL_INSTANCE_EMAIL_REPLY_TO: ${SCHAKL_INSTANCE_EMAIL_REPLY_TO:-}
+  SCHAKL_INSTANCE_EMAIL_HOST: ${SCHAKL_INSTANCE_EMAIL_HOST:-}
+  SCHAKL_INSTANCE_EMAIL_PORT: ${SCHAKL_INSTANCE_EMAIL_PORT:-587}
+  SCHAKL_INSTANCE_EMAIL_SECURITY: ${SCHAKL_INSTANCE_EMAIL_SECURITY:-starttls}
+  SCHAKL_INSTANCE_EMAIL_USERNAME: ${SCHAKL_INSTANCE_EMAIL_USERNAME:-}
+  SCHAKL_INSTANCE_EMAIL_PASSWORD: ${SCHAKL_INSTANCE_EMAIL_PASSWORD:-}
+  SCHAKL_INSTANCE_EMAIL_API_KEY: ${SCHAKL_INSTANCE_EMAIL_API_KEY:-}
+
+  # --- Optional: Google (bring-your-own per org; these are the documented fallback) -------
+  SCHAKL_GOOGLE_CLIENT_ID: ${SCHAKL_GOOGLE_CLIENT_ID:-}
+  SCHAKL_GOOGLE_CLIENT_SECRET: ${SCHAKL_GOOGLE_CLIENT_SECRET:-}
+  SCHAKL_GOOGLE_ADS_DEVELOPER_TOKEN: ${SCHAKL_GOOGLE_ADS_DEVELOPER_TOKEN:-}
+
+services:
+  api:
+    image: ghcr.io/schakl-app/schakl-api:${SCHAKL_TAG:?pin a release tag, e.g. 1.4.0}
+    environment: *api-env
+    volumes:
+      - storage-data:/data/storage
+      # Same host path your traefik stack bind-mounts read-only at /configuration/. The API
+      # writes custom-domains.yml here on verify, at boot, and from a daily cron.
+      - ${TRAEFIK_CONFIG_DIR:-/opt/traefik/config}:/configuration
+    networks:
+      - proxy      # so Traefik can reach it
+      - internal   # so it can reach redis
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 60s
+    deploy:
+      mode: replicated
+      # MUST stay 1. The entrypoint runs `alembic upgrade head` before serving
+      # (apps/api/docker-entrypoint.sh:11); two tasks booting together race the migration.
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager   # co-located with Traefik for the bind mount above
+      restart_policy:
+        condition: any
+      update_config:
+        # stop-first, NOT start-first: never let an old and a new schema serve at once, and
+        # never run two migrations concurrently. Accepts a few seconds of downtime.
+        order: stop-first
+        failure_action: rollback
+
+  worker:
+    image: ghcr.io/schakl-app/schakl-api:${SCHAKL_TAG:?pin a release tag, e.g. 1.4.0}
+    command: ["worker"]
+    environment: *api-env
+    volumes:
+      - storage-data:/data/storage
+      - ${TRAEFIK_CONFIG_DIR:-/opt/traefik/config}:/configuration
+    networks:
+      - internal
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager   # shares storage-data + the ingress dir with api
+      restart_policy:
+        condition: any
+      update_config:
+        order: stop-first
+        failure_action: rollback
+
+  web:
+    image: ghcr.io/schakl-app/schakl-web:${SCHAKL_TAG:?pin a release tag, e.g. 1.4.0}
+    environment:
+      # Same stack → the short service name resolves over Swarm DNS.
+      SCHAKL_API_URL: http://api:8000
+    networks:
+      - proxy
+      - internal
+    deploy:
+      mode: replicated
+      replicas: 2      # stateless SSR; safe to scale
+      restart_policy:
+        condition: any
+      update_config:
+        order: start-first
+        failure_action: rollback
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager   # node-local volume
+      restart_policy:
+        condition: any
+
+networks:
+  proxy:
+    external: true
+  internal:
+    driver: overlay
+    attachable: false
+
+volumes:
+  storage-data:
+  redis-data:

@@ -7,6 +7,7 @@ can see two tenants at once.
 
 from __future__ import annotations
 
+import logging
 import re
 import secrets
 import uuid
@@ -27,12 +28,23 @@ from app.core.permissions.service import create_membership, seed_system_roles
 from app.db import set_current_org
 from app.errors import AppError
 
+logger = logging.getLogger(__name__)
+
 _password_hash = PasswordHash.recommended()
 
 _SLUG_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 # Hostnames with a meaning of their own under <base_domain>: the app itself, its API, and
 # common infrastructure names. An org slugged "app" would shadow the canonical install host.
-_RESERVED_SLUGS = frozenset({"app", "api", "www", "mail", "traefik", "setup"})
+# The cloud posture adds its own: "edge" is the Cloudflare for SaaS fallback origin every
+# custom hostname routes through, and "console" is the instance console — an org taking either
+# would break the whole instance, not just itself (epic #199).
+_RESERVED_SLUGS = frozenset(
+    {
+        "app", "api", "www", "mail", "traefik", "setup",
+        "edge", "console", "admin", "mx", "ns", "ns1", "ns2", "smtp", "imap",
+        "autodiscover", "autoconfig", "cdn", "static", "assets", "status", "_dmarc",
+    }
+)
 
 
 def validate_slug(slug: str) -> str:
@@ -78,6 +90,10 @@ async def create_org(
     slug = validate_slug(slug)
     if await repo.slug_taken(session, slug):
         raise AppError("slug_taken", "errors.slug_taken", status_code=409)
+    # Cheap check first, before any row is written: a name already present in the operator's
+    # DNS zone is not ours to take, even when no org holds the slug (an infrastructure record,
+    # or a leftover from an org purged on another instance sharing the zone).
+    await _assert_subdomain_free(slug)
     locale = locale or settings.default_locale
     if locale not in settings.supported_locales:
         raise AppError(
@@ -114,9 +130,78 @@ async def create_org(
         owner = await _get_or_create_user(session, owner_email)
         await create_membership(session, org.id, owner.id, ROLE_OWNER)
         detail["owner_email"] = owner_email
+    # Last, so a Cloudflare failure rolls the whole org back rather than leaving one behind
+    # with no address. Fail closed: a provisioned org that does not resolve is worse than a
+    # provisioning call the billing system can simply retry.
+    org.cf_dns_record_id = await _create_subdomain_record(slug)
     await session.flush()
     await audit.record(session, actor=actor, action="org.create", org=org, detail=detail)
     return org
+
+
+async def _assert_subdomain_free(slug: str) -> None:
+    """Refuse a slug whose subdomain already exists in the operator's zone (epic #199).
+
+    No-op unless Cloudflare is configured — self-host resolves ``<slug>.<base_domain>`` through
+    whatever the operator's own DNS says, which is not ours to inspect.
+    """
+    from app.core.cloud.cloudflare import (
+        CloudflareError,
+        cloudflare_configured,
+        find_dns_record,
+        subdomain_for,
+    )
+
+    if not cloudflare_configured():
+        return
+    try:
+        existing = await find_dns_record(subdomain_for(slug))
+    except CloudflareError as exc:
+        raise AppError(
+            "cloudflare_failed", "errors.cloudflare_failed", status_code=502
+        ) from exc
+    if existing is not None:
+        raise AppError("subdomain_taken", "errors.subdomain_taken", status_code=409)
+
+
+async def _create_subdomain_record(slug: str) -> str | None:
+    """Create the org's proxied subdomain record; None when Cloudflare is not configured."""
+    from app.core.cloud.cloudflare import (
+        CloudflareError,
+        cloudflare_configured,
+        create_subdomain_record,
+    )
+
+    if not cloudflare_configured():
+        return None
+    try:
+        return await create_subdomain_record(slug)
+    except CloudflareError as exc:
+        raise AppError(
+            "cloudflare_failed", "errors.cloudflare_failed", status_code=502
+        ) from exc
+
+
+async def _delete_subdomain_record(record_id: str | None, slug: str) -> None:
+    """Best-effort removal of a subdomain record. Never raises into the caller.
+
+    The opposite trade-off from creation, and for the same reason as clearing a custom domain:
+    the operations that call this (re-slug, terminate) must complete. A leftover CNAME points
+    at the edge and resolves to an org that no longer answers for it, which the app rejects as
+    an unknown host (CLAUDE.md §5) — recoverable, and visible from the record's own comment.
+    """
+    from app.core.cloud.cloudflare import (
+        CloudflareError,
+        cloudflare_configured,
+        delete_dns_record,
+    )
+
+    if not record_id or not cloudflare_configured():
+        return
+    try:
+        await delete_dns_record(record_id)
+    except CloudflareError:
+        logger.exception("could not delete cloudflare DNS record for %s", slug)
 
 
 async def _get_or_create_user(session: AsyncSession, email: str) -> User:
@@ -153,6 +238,12 @@ async def update_org(
         slug = validate_slug(slug)
         if await repo.slug_taken(session, slug, exclude_org_id=org.id):
             raise AppError("slug_taken", "errors.slug_taken", status_code=409)
+        await _assert_subdomain_free(slug)
+        # Move the subdomain with the slug: create the new record before dropping the old, so a
+        # failure halfway leaves the org reachable at its current address rather than at none.
+        previous_record = org.cf_dns_record_id
+        org.cf_dns_record_id = await _create_subdomain_record(slug)
+        await _delete_subdomain_record(previous_record, org.slug)
         changes["slug"] = {"from": org.slug, "to": slug}
         org.slug = slug
     if changes:

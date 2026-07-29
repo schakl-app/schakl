@@ -31,6 +31,7 @@ from app.core.email.router import router as email_settings_router
 from app.core.entitlements.router import router as license_router
 from app.core.entitlements.service import AI_SKU, MCP_SKU, LicenseGateASGI, license_write_gate
 from app.core.impex.router import build_impex_router
+from app.core.instance.admins import router as instance_admins_router
 from app.core.instance.router import router as instance_router
 from app.core.members import router as members_router
 from app.core.meta import router as meta_router
@@ -119,6 +120,7 @@ def create_app() -> FastAPI:
     api.include_router(userprefs_router)
     api.include_router(system_router)
     api.include_router(instance_router)
+    api.include_router(instance_admins_router)
     api.include_router(license_router)
     api.include_router(apikeys_router)
     # The AI core (epic #131) is a licensed surface (issue #137): every generation is a

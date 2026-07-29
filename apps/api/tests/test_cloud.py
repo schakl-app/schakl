@@ -4,21 +4,26 @@ the custom-domain ingress renderer, and the cloud first-run wizard."""
 
 from __future__ import annotations
 
+import json as json_module
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import httpx
 import pytest
 from sqlalchemy import select
 
 from app.config import settings
 from app.core.auth.models import User
+from app.core.cloud import cloudflare as cf
 from app.core.cloud.ingress import render_fragment, sync_ingress, verified_domains
 from app.core.cloud.models import ServiceAccessGrant
 from app.core.cloud.plans import suspend_expired_trials
 from app.core.email.senders import OutgoingEmail
 from app.core.email.service import email_configured, send_org_email
+from app.core.instance import service as org_service
 from app.core.models import Org, OrgStatus
 from app.db import async_session_maker, set_current_org
+from app.errors import AppError
 from tests.conftest import Tenant, auth_cookie, make_tenant
 
 
@@ -549,3 +554,398 @@ async def test_ingress_fragment_only_lists_verified_domains(
 
     empty = render_fragment([])
     assert "http: {}" in empty
+
+
+# --------------------------------------------------------------------------- #
+# Cloudflare for SaaS custom hostnames (#199)
+# --------------------------------------------------------------------------- #
+class _FakeCloudflare:
+    """A minimal stand-in for the zone's custom-hostname API.
+
+    Deliberately mimics Cloudflare's **substring** hostname filter, so the exact-match guard in
+    ``find_custom_hostname`` is actually exercised rather than assumed.
+    """
+
+    def __init__(self) -> None:
+        self.records: dict[str, dict] = {}
+        self.dns: dict[str, dict] = {}
+        self.calls: list[tuple[str, str]] = []
+        self.bodies: list[dict] = []
+        self.dns_bodies: list[dict] = []
+        #: Statuses to answer before behaving normally — one entry consumed per request.
+        self.fail_with: list[int] = []
+        self._seq = 0
+
+    def seed_dns(self, name: str, *, record_id: str = "seeded") -> None:
+        self.dns[record_id] = {"id": record_id, "name": name, "type": "CNAME"}
+
+    @staticmethod
+    def _ok(result) -> httpx.Response:
+        return httpx.Response(200, json={"success": True, "errors": [], "result": result})
+
+    @staticmethod
+    def _gone() -> httpx.Response:
+        return httpx.Response(404, json={"success": False, "errors": [{"message": "not found"}]})
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        self.calls.append((request.method, request.url.path))
+        if self.fail_with:
+            return httpx.Response(
+                self.fail_with.pop(0), json={"success": False, "errors": [{"message": "nope"}]}
+            )
+        path = request.url.path
+        body = json_module.loads(request.content or b"{}") if request.content else {}
+
+        if "/custom_hostnames" in path:
+            if request.method == "GET":
+                wanted = request.url.params.get("hostname", "")
+                # Cloudflare's filter is a substring match — mimic it, so the exact-match
+                # guard in find_custom_hostname is genuinely exercised.
+                return self._ok([r for r in self.records.values() if wanted in r["hostname"]])
+            if request.method == "POST":
+                self.bodies.append(body)
+                self._seq += 1
+                record = {
+                    "id": f"ch{self._seq}", "hostname": body["hostname"], "status": "pending"
+                }
+                self.records[record["id"]] = record
+                return httpx.Response(
+                    201, json={"success": True, "errors": [], "result": record}
+                )
+            if request.method == "DELETE":
+                gone = self.records.pop(path.rsplit("/", 1)[-1], None)
+                return self._ok({}) if gone else self._gone()
+
+        if "/dns_records" in path:
+            if request.method == "GET":
+                # The real DNS `name` filter is exact; the wildcard is stored under the literal
+                # name "*.<zone>" and therefore never matches a specific subdomain query.
+                wanted = request.url.params.get("name", "")
+                return self._ok([r for r in self.dns.values() if r["name"] == wanted])
+            if request.method == "POST":
+                self.dns_bodies.append(body)
+                self._seq += 1
+                record = {"id": f"dns{self._seq}", "name": body["name"], "type": body["type"]}
+                self.dns[record["id"]] = record
+                return httpx.Response(
+                    201, json={"success": True, "errors": [], "result": record}
+                )
+            if request.method == "DELETE":
+                gone = self.dns.pop(path.rsplit("/", 1)[-1], None)
+                return self._ok({}) if gone else self._gone()
+
+        return httpx.Response(404, json={"success": False, "errors": [{"message": "no route"}]})
+
+
+@pytest.fixture
+def cloudflare(monkeypatch, cloud_mode) -> _FakeCloudflare:
+    fake = _FakeCloudflare()
+    monkeypatch.setattr(settings, "cloud_cf_api_token", "cf-token-never-logged")
+    monkeypatch.setattr(settings, "cloud_cf_zone_id", "zone-123")
+    monkeypatch.setattr(settings, "cloud_cf_origin_sni", "edge.schakl.test")
+    monkeypatch.setattr(cf, "_transport", httpx.MockTransport(fake.handler))
+    return fake
+
+
+@pytest.fixture
+def published_txt(monkeypatch) -> dict[str, list[str]]:
+    """Stand in for the DNS TXT challenge lookup, as test_instance_admin does."""
+    published: dict[str, list[str]] = {}
+
+    async def fake_txt(name: str) -> list[str]:
+        return published.get(name, [])
+
+    from app.core import domains as domains_module
+
+    monkeypatch.setattr(domains_module.dnscheck, "txt_records", fake_txt)
+    return published
+
+
+async def _claim_and_publish(client, headers, published, domain: str) -> None:
+    claimed = await client.post(
+        "/api/v1/meta/tenant/domain", json={"domain": domain}, headers=headers
+    )
+    assert claimed.status_code == 200
+    published[f"_schakl-challenge.{domain}"] = [claimed.json()["txt_record_value"]]
+
+
+def test_cloudflare_off_unless_fully_configured(monkeypatch, cloud_mode) -> None:
+    monkeypatch.setattr(settings, "cloud_cf_api_token", None)
+    monkeypatch.setattr(settings, "cloud_cf_zone_id", "zone-123")
+    assert cf.cloudflare_configured() is False
+    monkeypatch.setattr(settings, "cloud_cf_api_token", "tok")
+    monkeypatch.setattr(settings, "cloud_cf_zone_id", None)
+    assert cf.cloudflare_configured() is False
+    # Fully configured, but self-host: the integration is a cloud posture, never a self-host one.
+    monkeypatch.setattr(settings, "cloud_cf_zone_id", "zone-123")
+    assert cf.cloudflare_configured() is True
+    monkeypatch.setattr(settings, "deployment", "self_hosted")
+    assert cf.cloudflare_configured() is False
+
+
+async def test_ensure_custom_hostname_pins_origin_sni(cloudflare) -> None:
+    hostname_id = await cf.ensure_custom_hostname("crm.klant.test")
+    assert hostname_id == "ch1"
+    body = cloudflare.bodies[0]
+    # The SNI override is the whole reason Full (strict) survives a customer hostname.
+    assert body["custom_origin_sni"] == "edge.schakl.test"
+    assert body["custom_origin_server"] == "edge.schakl.test"
+    assert body["ssl"]["method"] == "http"
+    assert body["ssl"]["type"] == "dv"
+
+
+async def test_ensure_custom_hostname_adopts_only_an_exact_match(cloudflare) -> None:
+    """Cloudflare's filter is a substring match, so `klant.test` lists `crm.klant.test` too.
+    Adopting that would point the wrong org's domain at the wrong record."""
+    await cf.ensure_custom_hostname("crm.klant.test")
+    assert len(cloudflare.records) == 1
+
+    # A different, shorter hostname must NOT adopt the existing record — it creates its own.
+    second = await cf.ensure_custom_hostname("klant.test")
+    assert second == "ch2"
+    assert len(cloudflare.records) == 2
+
+    # The same hostname again adopts rather than duplicating.
+    again = await cf.ensure_custom_hostname("crm.klant.test")
+    assert again == "ch1"
+    assert len(cloudflare.records) == 2
+
+
+async def test_delete_custom_hostname_is_idempotent(cloudflare) -> None:
+    hostname_id = await cf.ensure_custom_hostname("crm.klant.test")
+    await cf.delete_custom_hostname(hostname_id)
+    assert cloudflare.records == {}
+    # Already gone is the state the caller wanted — a 404 must not raise.
+    await cf.delete_custom_hostname(hostname_id)
+
+
+async def test_transient_status_is_retried_once(cloudflare) -> None:
+    cloudflare.fail_with = [503]
+    hostname_id = await cf.ensure_custom_hostname("crm.klant.test")
+    assert hostname_id == "ch1"
+
+    # Two failures in a row is a real failure, and the error carries Cloudflare's own text.
+    cloudflare.fail_with = [500, 500]
+    with pytest.raises(cf.CloudflareError) as caught:
+        await cf.ensure_custom_hostname("other.klant.test")
+    assert "cf-token-never-logged" not in str(caught.value)
+
+
+async def test_domain_verify_registers_hostname_and_clear_removes_it(
+    client_for, cloudflare, published_txt
+) -> None:
+    tenant = await make_tenant("cf-dom")
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as client:
+        await _claim_and_publish(client, headers, published_txt, "crm.klant.test")
+        verified = await client.post("/api/v1/meta/tenant/domain/verify", headers=headers)
+        assert verified.status_code == 200
+        assert verified.json()["custom_domain"] == "crm.klant.test"
+
+    async with async_session_maker() as session:
+        org = await session.get(Org, tenant.org.id)
+        assert org.cf_hostname_id == "ch1"
+    assert cloudflare.records["ch1"]["hostname"] == "crm.klant.test"
+
+    async with client_for(tenant.host) as client:
+        cleared = await client.delete("/api/v1/meta/tenant/domain", headers=headers)
+        assert cleared.status_code == 200
+
+    assert cloudflare.records == {}
+    async with async_session_maker() as session:
+        org = await session.get(Org, tenant.org.id)
+        assert org.cf_hostname_id is None
+        assert org.custom_domain is None
+
+
+async def test_verify_fails_closed_when_cloudflare_is_down(
+    client_for, cloudflare, published_txt
+) -> None:
+    """A domain must never read as verified while the edge has no certificate for it."""
+    tenant = await make_tenant("cf-down")
+    headers = await auth_cookie(tenant.user)
+    cloudflare.fail_with = [500, 500, 500, 500]
+    async with client_for(tenant.host) as client:
+        await _claim_and_publish(client, headers, published_txt, "crm.stuk.test")
+        failed = await client.post("/api/v1/meta/tenant/domain/verify", headers=headers)
+        assert failed.status_code == 502
+        assert failed.json()["error"]["message"] == "errors.cloudflare_failed"
+
+        status = await client.get("/api/v1/meta/tenant/domain", headers=headers)
+        assert status.json()["custom_domain"] is None
+        assert status.json()["pending_domain"] == "crm.stuk.test"
+
+    async with async_session_maker() as session:
+        org = await session.get(Org, tenant.org.id)
+        assert org.custom_domain is None
+        assert org.cf_hostname_id is None
+
+
+async def test_self_host_verify_never_calls_cloudflare(
+    client_for, monkeypatch, published_txt
+) -> None:
+    fake = _FakeCloudflare()
+    monkeypatch.setattr(settings, "cloud_cf_api_token", "tok")
+    monkeypatch.setattr(settings, "cloud_cf_zone_id", "zone-123")
+    monkeypatch.setattr(cf, "_transport", httpx.MockTransport(fake.handler))
+    # deployment stays "self_hosted" — no cloud_mode fixture here.
+    tenant = await make_tenant("cf-selfhost")
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as client:
+        await _claim_and_publish(client, headers, published_txt, "crm.zelf.test")
+        verified = await client.post("/api/v1/meta/tenant/domain/verify", headers=headers)
+        assert verified.status_code == 200
+
+    assert fake.calls == []
+    async with async_session_maker() as session:
+        org = await session.get(Org, tenant.org.id)
+        assert org.custom_domain == "crm.zelf.test"
+        assert org.cf_hostname_id is None
+
+
+# --------------------------------------------------------------------------- #
+# Automatic subdomain provisioning (#199)
+# --------------------------------------------------------------------------- #
+async def _make_org(actor_id, **kwargs):
+    async with async_session_maker() as session:
+        actor = await session.get(User, actor_id)
+        org = await org_service.create_org(session, actor, **kwargs)
+        await session.commit()
+        return org.id
+
+
+async def test_create_org_provisions_a_proxied_subdomain(cloudflare) -> None:
+    actor = await make_tenant("cf-prov")
+    org_id = await _make_org(actor.user.id, name="Klant BV", slug="klantbv")
+
+    body = cloudflare.dns_bodies[0]
+    assert body["name"] == "klantbv.localhost"
+    assert body["type"] == "CNAME"
+    assert body["content"] == "edge.localhost"
+    # Unproxied would expose the origin IP and bypass the edge entirely.
+    assert body["proxied"] is True
+
+    async with async_session_maker() as session:
+        stored = await session.get(Org, org_id)
+        assert stored.cf_dns_record_id == "dns1"
+
+
+async def test_subdomain_already_in_the_zone_is_rejected(cloudflare) -> None:
+    """A name can be free as a slug and still taken in DNS — an infrastructure record, or a
+    leftover from an org purged elsewhere in the same zone. The zone is the authority."""
+    cloudflare.seed_dns("bezet.localhost")
+    actor = await make_tenant("cf-clash")
+
+    with pytest.raises(AppError) as caught:
+        await _make_org(actor.user.id, name="Bezet", slug="bezet")
+    assert caught.value.message_key == "errors.subdomain_taken"
+    assert caught.value.status_code == 409
+    # Nothing was created: the check runs before any row or record is written.
+    assert cloudflare.dns_bodies == []
+
+
+async def test_wildcard_record_does_not_block_a_slug(cloudflare) -> None:
+    """The zone routes *.<base_domain> by wildcard. That must not read as "every name taken"."""
+    cloudflare.seed_dns("*.localhost")
+    actor = await make_tenant("cf-wild")
+    org_id = await _make_org(actor.user.id, name="Vrij", slug="vrij")
+    async with async_session_maker() as session:
+        assert (await session.get(Org, org_id)).cf_dns_record_id is not None
+
+
+async def test_reslug_moves_the_subdomain_record(cloudflare) -> None:
+    actor = await make_tenant("cf-reslug")
+    org_id = await _make_org(actor.user.id, name="Oud", slug="oudnaam")
+    async with async_session_maker() as session:
+        assert (await session.get(Org, org_id)).cf_dns_record_id == "dns1"
+
+    async with async_session_maker() as session:
+        who = await session.get(User, actor.user.id)
+        org = await session.get(Org, org_id)
+        await org_service.update_org(session, who, org, slug="nieuwenaam")
+        await session.commit()
+
+    names = {r["name"] for r in cloudflare.dns.values()}
+    assert names == {"nieuwenaam.localhost"}  # the old record is gone, the new one is live
+    async with async_session_maker() as session:
+        stored = await session.get(Org, org_id)
+        assert stored.slug == "nieuwenaam"
+        assert stored.cf_dns_record_id == "dns2"
+
+
+def test_cloud_infrastructure_names_are_reserved() -> None:
+    """`edge` is the fallback origin every custom hostname routes through, and `console` is the
+    instance console: an org taking either breaks the instance, not just itself."""
+    for slug in ("edge", "console", "admin", "mx", "ns"):
+        with pytest.raises(AppError) as caught:
+            org_service.validate_slug(slug)
+        assert caught.value.fields == {"slug": "errors.invalid_slug"}
+
+
+async def test_self_host_provisioning_touches_no_dns(monkeypatch) -> None:
+    fake = _FakeCloudflare()
+    monkeypatch.setattr(settings, "cloud_cf_api_token", "tok")
+    monkeypatch.setattr(settings, "cloud_cf_zone_id", "zone-123")
+    monkeypatch.setattr(cf, "_transport", httpx.MockTransport(fake.handler))
+    actor = await make_tenant("cf-sh-prov")
+    org_id = await _make_org(actor.user.id, name="Zelf", slug="zelfhost")
+    assert fake.calls == []
+    async with async_session_maker() as session:
+        assert (await session.get(Org, org_id)).cf_dns_record_id is None
+
+
+# --------------------------------------------------------------------------- #
+# Secrets from files: SCHAKL_<SETTING>_FILE (the Docker secret convention)
+# --------------------------------------------------------------------------- #
+def test_any_setting_can_come_from_a_secret_file(monkeypatch, tmp_path) -> None:
+    """Generic, not Cloudflare-only: a Docker secret is a file, so every sensitive setting
+    must be readable from one or it cannot stay out of the stack definition."""
+    from app.config import Settings
+
+    token = tmp_path / "cf"
+    token.write_text("  tok-from-secret\n")  # a mounted secret usually ends in a newline
+    s3key = tmp_path / "s3"
+    s3key.write_text("SCWACCESSKEY\n")
+    monkeypatch.setenv("SCHAKL_CLOUD_CF_API_TOKEN_FILE", str(token))
+    monkeypatch.setenv("SCHAKL_STORAGE_S3_ACCESS_KEY_ID_FILE", str(s3key))
+
+    loaded = Settings()
+    assert loaded.cloud_cf_api_token == "tok-from-secret"
+    assert loaded.storage_s3_access_key_id == "SCWACCESSKEY"
+
+
+def test_an_unreadable_or_empty_secret_file_refuses_the_boot(monkeypatch, tmp_path) -> None:
+    """Falling back to the default would be invisible: an unset S3 key surfaces as a broken
+    upload weeks later, not as a container that refuses to start."""
+    from app.config import Settings
+
+    monkeypatch.setenv("SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY_FILE", str(tmp_path / "missing"))
+    with pytest.raises(ValueError, match="cannot be read"):
+        Settings()
+
+    empty = tmp_path / "empty"
+    empty.write_text("   \n")
+    monkeypatch.setenv("SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY_FILE", str(empty))
+    with pytest.raises(ValueError, match="empty"):
+        Settings()
+
+
+def test_a_misspelled_secret_file_variable_refuses_the_boot(monkeypatch, tmp_path) -> None:
+    """SCHAKL_STORAGE_S3_KEY_FILE is a typo for ..._ACCESS_KEY_ID_FILE, not a request to
+    ignore it — and silently ignoring it is how a credential ends up unset in production."""
+    from app.config import Settings
+
+    secret = tmp_path / "s"
+    secret.write_text("value\n")
+    monkeypatch.setenv("SCHAKL_STORAGE_S3_KEY_FILE", str(secret))
+    with pytest.raises(ValueError, match="does not name a setting"):
+        Settings()
+
+
+def test_an_explicit_value_wins_over_the_file(monkeypatch, tmp_path) -> None:
+    """So a stale _FILE left behind in a stack cannot break a working deployment."""
+    from app.config import Settings
+
+    monkeypatch.setenv("SCHAKL_CLOUD_CF_API_TOKEN_FILE", str(tmp_path / "missing"))
+    monkeypatch.setenv("SCHAKL_CLOUD_CF_API_TOKEN", "direct")
+    assert Settings().cloud_cf_api_token == "direct"

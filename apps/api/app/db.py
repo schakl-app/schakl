@@ -47,6 +47,10 @@ INSTANCE_LEVEL_TABLES = frozenset(
         "user_two_factor",
         "instance_audit_log",
         "instance_license",  # one product license per installation (issue #137)
+        # Who may cross tenants, and with which capabilities (issue #26). Read before any
+        # tenant is bound, so it cannot sit under RLS — and it is emphatically not tenant
+        # data, so an org export must never carry it.
+        "instance_admins",
         # Cloud (epic #199): the instance owner's provisioning credentials, and the org-issued
         # service-access grants the owner must present before touching tenant data. Both are
         # read by the instance surface *before* any tenant is bound, so they cannot sit under

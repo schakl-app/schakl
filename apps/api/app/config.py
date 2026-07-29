@@ -6,8 +6,10 @@ The internal codename is ``schakl``; the *user-facing* brand is per-tenant and n
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -235,6 +237,45 @@ class Settings(BaseSettings):
     # cloud). Empty = derived as "edge.<base_domain>".
     cloud_cname_target: str | None = None
 
+    # --- Cloudflare for SaaS (cloud only) ---
+    # When the operator fronts the instance with Cloudflare for SaaS, a verified customer
+    # domain becomes a **custom hostname** on the operator's zone and Cloudflare issues the
+    # edge certificate — replacing the Traefik + Let's Encrypt fragment above. Unset = off,
+    # and the ingress fragment stays the mechanism.
+    #
+    # The token is instance-level and **server-side only**: it is never stored in the
+    # database, never returned by any endpoint, and never reaches the web app. Prefer the
+    # *_FILE form with a Docker secret so the value is not visible in `docker inspect`.
+    # Required token scopes (both on the ONE zone, nothing account-level):
+    #   Zone → SSL and Certificates → Edit   (custom hostnames)
+    #   Zone → DNS → Edit                    (the per-org subdomain record)
+    cloud_cf_api_token: str | None = None
+    cloud_cf_zone_id: str | None = None
+    # Presented to the origin as SNI for a custom hostname, so Cloudflare validates against
+    # the operator's wildcard origin certificate instead of the customer's hostname (which no
+    # origin cert covers). Empty = derived from the CNAME target. The Host header is
+    # unaffected, so tenant resolution still sees the customer's domain.
+    cloud_cf_origin_sni: str | None = None
+
+    # --- Per-org end date and termination (cloud only) ---
+    # An org may carry an `ends_at`; NULL means unlimited and nothing below ever touches it.
+    # Past that date the org is *warned* for `grace_days`, then *suspended* for
+    # `retention_days` (recoverable throughout), then terminated: archived, its Cloudflare
+    # records removed, its stored bytes deleted, its rows purged. Per-org overrides live on
+    # `orgs`; these are the instance defaults.
+    cloud_grace_days: int = 14
+    cloud_retention_days: int = 30
+    # Two switches, because the last step is irreversible. `enabled` runs the sweep at all;
+    # `destructive` allows the final purge. Running enabled-but-not-destructive is the
+    # intended first deployment: real warnings and suspensions, nothing destroyed, so the
+    # dates and the copy can be checked against live orgs before anything is unrecoverable.
+    cloud_lifecycle_enabled: bool = False
+    cloud_lifecycle_destructive: bool = False
+    # How many orgs one sweep may terminate. A bounded batch keeps a misconfigured end date
+    # from purging the whole instance in a single run, and stays under Cloudflare's rate
+    # limits; the next run picks up where this one stopped.
+    cloud_lifecycle_batch: int = 25
+
     # --- Instance-provided e-mail (cloud "included e-mail"; usable self-host too) ---
     # When enabled, an org without its own transport sends through this instance-level
     # transport (from the instance's own address — SPF/DKIM belong to the operator's
@@ -277,6 +318,58 @@ class Settings(BaseSettings):
         if self.deployment == "cloud":
             self.instance_admin_enabled = True
         return self
+
+    @model_validator(mode="before")
+    @classmethod
+    def _expand_secret_files(cls, data: Any) -> Any:
+        """``SCHAKL_<SETTING>_FILE=/run/secrets/x`` reads the value from that file.
+
+        The Docker/Swarm convention, because a Docker secret is a **file**, not an environment
+        variable: without this, creating a secret named after a setting mounts something the
+        app never looks at, and the setting silently keeps its default. That failure is
+        invisible until the feature is used — an unset S3 key surfaces as a broken upload
+        weeks later, not as a container that refuses to start.
+
+        Applies to every setting, so the sensitive ones (``SECRET_KEY``, ``DATABASE_URL``,
+        ``STORAGE_S3_SECRET_ACCESS_KEY``, ``CLOUD_CF_API_TOKEN``, e-mail and Google
+        credentials) can all stay out of the stack definition and out of
+        ``docker service inspect``.
+
+        Three rules, each chosen so a mistake is loud:
+
+        * **The direct variable wins.** ``SCHAKL_X`` set alongside ``SCHAKL_X_FILE`` uses the
+          direct value, so a stale ``_FILE`` left in a stack cannot break a working deploy.
+        * **Unreadable or empty refuses the boot**, naming the path. Setting ``_FILE`` is an
+          explicit statement that the value comes from a secret; falling back to the default
+          would be a silent downgrade.
+        * **An unknown setting refuses the boot** too. ``SCHAKL_STORAGE_S3_KEY_FILE`` is a
+          typo for ``..._ACCESS_KEY_ID_FILE``, not a request to ignore it.
+        """
+        if not isinstance(data, dict):
+            return data
+        for env_name, path in os.environ.items():
+            if not env_name.startswith("SCHAKL_") or not env_name.endswith("_FILE") or not path:
+                continue
+            field = env_name[len("SCHAKL_") : -len("_FILE")].lower()
+            if field not in cls.model_fields:
+                raise ValueError(
+                    f"{env_name} does not name a setting (looked for {field!r}). "
+                    "Check the spelling: the variable is SCHAKL_<SETTING>_FILE."
+                )
+            if data.get(field):
+                continue  # an explicit value wins over the file
+            try:
+                value = Path(path).read_text(encoding="utf-8").strip()
+            except OSError as exc:
+                raise ValueError(
+                    f"{env_name} points at {path!r}, which cannot be read ({exc.strerror}). "
+                    "Check that the Docker secret is attached to this service and that the "
+                    "path matches its mount point."
+                ) from exc
+            if not value:
+                raise ValueError(f"{env_name} points at {path!r}, which is empty.")
+            data[field] = value
+        return data
 
     @model_validator(mode="after")
     def _force_demo_posture(self) -> Settings:

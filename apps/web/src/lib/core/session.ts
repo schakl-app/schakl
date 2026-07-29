@@ -70,6 +70,7 @@ export async function fetchTenant(event: ApiEvent): Promise<OrgTheme> {
     demoResetMinutes: data.demo_reset_minutes ?? 60,
     resolved: true,
     suspended: data.suspended,
+    endsWarningUntil: data.ends_warning_until ?? null,
   };
 }
 

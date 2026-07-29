@@ -8,7 +8,7 @@ its settings through the RLS GUC (no membership required for public branding).
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
@@ -68,6 +68,10 @@ class TenantBranding(BaseModel):
     # Suspended orgs still expose branding (the login screen needs it) but every
     # authenticated request is blocked with errors.org_suspended.
     suspended: bool = False
+    # Cloud end-date warning (#199): set only while the org is past ends_at but still fully
+    # usable, so the app can say what is about to happen and when. None at every other time,
+    # including on self-host — the tenant should not carry an empty concept around.
+    ends_warning_until: datetime | None = None
 
 
 _HEX_COLOR = r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
@@ -249,6 +253,23 @@ async def update_me(
     )
 
 
+def _ends_warning_until(org) -> datetime | None:  # noqa: ANN001 — Org, avoiding a cycle
+    """When this org's data will be deleted, but only while it is in the warning window.
+
+    Deliberately silent once the org is suspended: at that point every request is refused and
+    the suspension screen is the message. Deliberately silent before ``ends_at`` too — a date
+    in the future is a contract, not a warning. The lifecycle module is business-licensed, so
+    it is imported only for an org that carries an end date at all.
+    """
+    if getattr(org, "ends_at", None) is None or org.status != OrgStatus.ACTIVE.value:
+        return None
+    from app.core.cloud import lifecycle
+
+    if lifecycle.stage_for(org, datetime.now(UTC)) != lifecycle.STAGE_WARNING:
+        return None
+    return lifecycle.terminate_at(org)
+
+
 @router.get(
     "/tenant",
     response_model=TenantBranding,
@@ -281,6 +302,7 @@ async def tenant_branding(request: Request) -> TenantBranding:
             demo_mode=settings.demo_mode,
             demo_reset_minutes=settings.demo_reset_minutes,
             suspended=org.status == OrgStatus.SUSPENDED.value,
+            ends_warning_until=_ends_warning_until(org),
         )
 
 

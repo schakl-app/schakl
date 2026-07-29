@@ -109,9 +109,17 @@ stay bring-your-own per org.
   `<slug>.<base_domain>` — an unknown host is an explicit error, never "the only org".
 - **Org lifecycle & instance administration** (issue #26) live in `app/core/instance/`:
   the one sanctioned unscoped crossing (`repo.py`, for global slug/domain uniqueness), the
-  audit trail, org lifecycle, export/import, and time-boxed impersonation. The surface is
-  gated on `users.is_superuser` (the *instance owner*, distinct from an org `owner`) and
-  disabled by default (`SCHAKL_INSTANCE_ADMIN_ENABLED`).
+  audit trail, org lifecycle, export/import, and time-boxed impersonation. Disabled by default
+  (`SCHAKL_INSTANCE_ADMIN_ENABLED`), and gated on **two principals** — a third authorization
+  axis, neither RLS nor org RBAC. An **owner** (`users.is_superuser`, distinct from an org
+  `owner`) holds everything implicitly; an **admin** (`instance_admins`) holds an explicit
+  capability set from the code-defined catalog in `capabilities.py`. Every `/api/v1/instance`
+  route declares its capability and a missing declaration is a build break
+  (`tests/test_instance_deny_by_default.py`), exactly as §15 requires of tenant routes.
+  **Delegation is owner-only and deliberately not a capability**: an admin who could grant
+  `instance.impersonate` to themselves would be an owner with extra steps. The last active
+  owner can never be removed (`errors.last_instance_owner`) — a box nobody can administer is
+  unrecoverable, and an admin cannot promote anyone.
 
 ## 6. Module pattern (how to add a domain)
 

@@ -1,0 +1,291 @@
+# schakl — CLOUD posture, Docker Swarm via Portainer, Traefik routed by LABELS.
+#
+# Paste into Portainer → Stacks → Add stack → Web editor, set the variables under
+# "Environment variables", deploy. The stack name does not matter here (unlike the
+# file-provider variant): Traefik's swarm provider discovers these services by their labels,
+# so nothing has to resolve them by name across stacks.
+#
+# WHEN TO USE THIS FILE vs infra/compose.swarm.yml:
+#   - this one    → Cloudflare for SaaS terminates customer domains at the edge.
+#                   SCHAKL_CLOUD_INGRESS_DIR stays UNSET, the API generates no Traefik
+#                   fragment, and labels are enough.
+#   - compose.swarm.yml → Traefik itself issues per-domain certificates (Let's Encrypt).
+#                   The API writes custom-domains.yml, which only the file provider can read.
+#
+# Requires, in the Traefik stack: --providers.swarm=true, --providers.swarm.network=proxy,
+# and an external overlay network named `proxy`.
+#
+# SECRETS — create these five in Portainer → Secrets BEFORE the first deploy. Swarm refuses
+# to deploy a stack whose secrets do not exist, which is the failure you want: loud, up front,
+# rather than a container that starts and quietly runs without a credential.
+#
+# The secret is named after the setting it feeds, so the mapping needs no lookup:
+#
+#   SCHAKL_SECRET_KEY                      openssl rand -hex 32
+#   SCHAKL_DATABASE_URL                    postgresql+asyncpg://USER:PASS@172.16.8.3:5432/rdb
+#   SCHAKL_STORAGE_S3_ACCESS_KEY_ID        the Scaleway access key (SCW…)
+#   SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY    the Scaleway secret key (shown once at creation)
+#   SCHAKL_CLOUD_CF_API_TOKEN              the Cloudflare zone token
+#
+# They are mounted at /run/secrets/<name> and read via SCHAKL_<SETTING>_FILE, so none of them
+# appears in this file, in Portainer's database, or in `docker service inspect`. Everything
+# else below is an ordinary environment variable and is safe to set in Portainer's UI.
+
+x-api-env: &api-env
+  # --- Posture -----------------------------------------------------------------------------
+  # cloud forces the instance-admin surface on, so it is not set here.
+  SCHAKL_DEPLOYMENT: cloud
+  SCHAKL_ENVIRONMENT: production
+  SCHAKL_BASE_DOMAIN: ${SCHAKL_BASE_DOMAIN:?e.g. schakl.cloud}
+  # Signs sessions AND derives the key that encrypts every stored secret, so it is the root of
+  # trust: the API refuses to boot in production on a weak or sample value.
+  SCHAKL_SECRET_KEY_FILE: /run/secrets/SCHAKL_SECRET_KEY
+  # Optional, separate key for secrets at rest; defaults to deriving from SECRET_KEY.
+  SCHAKL_ENCRYPTION_KEY: ${SCHAKL_ENCRYPTION_KEY:-}
+  # Forced true in production anyway; stated so the intent is visible.
+  SCHAKL_AUTH_COOKIE_SECURE: "true"
+  # A public multi-tenant console should not let strangers mint accounts.
+  SCHAKL_ALLOW_REGISTRATION: ${SCHAKL_ALLOW_REGISTRATION:-false}
+
+  # --- Managed PostgreSQL (Scaleway) ---------------------------------------------------------
+  # Tenant isolation survives here because every domain table carries FORCE ROW LEVEL SECURITY,
+  # which applies policies to the table OWNER too — and on a managed database your user owns the
+  # schema. Never point this at a role with SUPERUSER or BYPASSRLS.
+  # The URL embeds the password, so the WHOLE url comes from a secret rather than assembling
+  # it here from a PGPASSWORD variable that would sit in Portainer's database. Put this line
+  # in the `SCHAKL_DATABASE_URL` secret (one line, no quotes), adding ?ssl=require for a
+  # public endpoint:
+  #     postgresql+asyncpg://USER:PASSWORD@172.16.8.3:5432/rdb
+  SCHAKL_DATABASE_URL_FILE: /run/secrets/SCHAKL_DATABASE_URL
+  # The pool is per replica. api replicas × this must stay under the managed instance's
+  # max_connections, with headroom for the worker.
+  SCHAKL_DB_POOL_SIZE: ${SCHAKL_DB_POOL_SIZE:-15}
+  SCHAKL_DB_POOL_MAX_OVERFLOW: ${SCHAKL_DB_POOL_MAX_OVERFLOW:-15}
+
+  SCHAKL_REDIS_URL: redis://redis:6379/0
+
+  # --- Object storage (Scaleway) -------------------------------------------------------------
+  # THE ENDPOINT IS THE SERVICE HOST, NOT THE BUCKET URL. Scaleway shows the bucket as
+  # https://<bucket>.s3.<region>.scw.cloud; pasting that here doubles the bucket name
+  # (boto3 builds https://schakl-cloud.schakl-cloud.s3.nl-ams.scw.cloud/…) and every object
+  # call 404s. Endpoint = https://s3.<region>.scw.cloud, bucket = <bucket>, separately.
+  # Keep the bucket PRIVATE — the API is the only data path and never signs public URLs.
+  SCHAKL_STORAGE_BACKEND: s3
+  SCHAKL_STORAGE_S3_ENDPOINT: ${SCHAKL_STORAGE_S3_ENDPOINT:-https://s3.nl-ams.scw.cloud}
+  SCHAKL_STORAGE_S3_REGION: ${SCHAKL_STORAGE_S3_REGION:-nl-ams}
+  SCHAKL_STORAGE_S3_BUCKET: ${SCHAKL_STORAGE_S3_BUCKET:?}
+  SCHAKL_STORAGE_S3_ACCESS_KEY_ID_FILE: /run/secrets/SCHAKL_STORAGE_S3_ACCESS_KEY_ID
+  SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY_FILE: /run/secrets/SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY
+  SCHAKL_STORAGE_S3_FORCE_PATH_STYLE: ${SCHAKL_STORAGE_S3_FORCE_PATH_STYLE:-false}
+  # EFFECTIVELY IMMUTABLE: applied on read, write AND delete, so changing it later strands
+  # every existing object. Decide now, even if the answer is "".
+  SCHAKL_STORAGE_S3_KEY_PREFIX: ${SCHAKL_STORAGE_S3_KEY_PREFIX:-prod}
+  SCHAKL_UPLOAD_MAX_BYTES: ${SCHAKL_UPLOAD_MAX_BYTES:-10485760}
+  # Fallback path for any row whose backend says "local". Nothing new lands here while the
+  # backend is s3; kept so such a row reads instead of erroring.
+  SCHAKL_STORAGE_PATH: /data/storage
+
+  # --- Cloudflare for SaaS -------------------------------------------------------------------
+  # Zone-scoped token, ONE zone, exactly two permissions:
+  #   Zone → SSL and Certificates → Edit   (custom hostnames)
+  #   Zone → DNS → Edit                    (the per-org <slug>.<base_domain> record)
+  #
+  # An unreadable or empty secret refuses the boot and names the path — deliberately, because
+  # the alternative here is running with Cloudflare silently off, which keeps answering 201 to
+  # provisioning calls while creating no DNS record and issuing no certificate.
+  SCHAKL_CLOUD_CF_API_TOKEN_FILE: ${SCHAKL_CLOUD_CF_API_TOKEN_FILE:-/run/secrets/SCHAKL_CLOUD_CF_API_TOKEN}
+  # Escape hatch: setting this wins over the file, so a broken secret can be worked around
+  # without editing the stack. Leave it empty in normal operation — a value here lands in
+  # Portainer's database and in `docker service inspect`, which is what the secret avoids.
+  SCHAKL_CLOUD_CF_API_TOKEN: ${SCHAKL_CLOUD_CF_API_TOKEN:-}
+  SCHAKL_CLOUD_CF_ZONE_ID: ${SCHAKL_CLOUD_CF_ZONE_ID:-}
+  # Presented to the origin as SNI so Full (strict) validates against your wildcard origin
+  # certificate instead of the customer's hostname. Empty derives it from the CNAME target.
+  SCHAKL_CLOUD_CF_ORIGIN_SNI: ${SCHAKL_CLOUD_CF_ORIGIN_SNI:-}
+  # What customers CNAME at, and the Cloudflare for SaaS fallback origin.
+  SCHAKL_CLOUD_CNAME_TARGET: ${SCHAKL_CLOUD_CNAME_TARGET:-}
+  # DELIBERATELY UNSET: with Cloudflare terminating customer domains there is no Traefik
+  # fragment to write, which is exactly what lets this file use labels.
+  # SCHAKL_CLOUD_INGRESS_DIR
+
+  # --- Plans, trials, service PIN --------------------------------------------------------------
+  SCHAKL_CLOUD_TRIAL_DAYS: ${SCHAKL_CLOUD_TRIAL_DAYS:-14}
+  SCHAKL_CLOUD_SERVICE_PIN_HOURS: ${SCHAKL_CLOUD_SERVICE_PIN_HOURS:-24}
+
+  # --- Per-org end date (inert until an org is given one) ---------------------------------------
+  # Ship ENABLED=true / DESTRUCTIVE=false first: real warnings and suspensions, terminations
+  # that stop after archiving. DESTRUCTIVE is the switch that allows an irreversible purge.
+  SCHAKL_CLOUD_GRACE_DAYS: ${SCHAKL_CLOUD_GRACE_DAYS:-14}
+  SCHAKL_CLOUD_RETENTION_DAYS: ${SCHAKL_CLOUD_RETENTION_DAYS:-30}
+  SCHAKL_CLOUD_LIFECYCLE_ENABLED: ${SCHAKL_CLOUD_LIFECYCLE_ENABLED:-false}
+  SCHAKL_CLOUD_LIFECYCLE_DESTRUCTIVE: ${SCHAKL_CLOUD_LIFECYCLE_DESTRUCTIVE:-false}
+  SCHAKL_CLOUD_LIFECYCLE_BATCH: ${SCHAKL_CLOUD_LIFECYCLE_BATCH:-25}
+
+  # --- Instance operators ------------------------------------------------------------------------
+  SCHAKL_IMPERSONATION_MAX_MINUTES: ${SCHAKL_IMPERSONATION_MAX_MINUTES:-60}
+
+  # --- Instance-provided e-mail (optional: the "included e-mail" orgs may choose) ------------------
+  SCHAKL_INSTANCE_EMAIL_ENABLED: ${SCHAKL_INSTANCE_EMAIL_ENABLED:-false}
+  SCHAKL_INSTANCE_EMAIL_PROVIDER: ${SCHAKL_INSTANCE_EMAIL_PROVIDER:-smtp}
+  SCHAKL_INSTANCE_EMAIL_FROM: ${SCHAKL_INSTANCE_EMAIL_FROM:-}
+  SCHAKL_INSTANCE_EMAIL_FROM_NAME: ${SCHAKL_INSTANCE_EMAIL_FROM_NAME:-}
+  SCHAKL_INSTANCE_EMAIL_REPLY_TO: ${SCHAKL_INSTANCE_EMAIL_REPLY_TO:-}
+  SCHAKL_INSTANCE_EMAIL_HOST: ${SCHAKL_INSTANCE_EMAIL_HOST:-}
+  SCHAKL_INSTANCE_EMAIL_PORT: ${SCHAKL_INSTANCE_EMAIL_PORT:-587}
+  SCHAKL_INSTANCE_EMAIL_SECURITY: ${SCHAKL_INSTANCE_EMAIL_SECURITY:-starttls}
+  SCHAKL_INSTANCE_EMAIL_USERNAME: ${SCHAKL_INSTANCE_EMAIL_USERNAME:-}
+  SCHAKL_INSTANCE_EMAIL_PASSWORD: ${SCHAKL_INSTANCE_EMAIL_PASSWORD:-}
+  SCHAKL_INSTANCE_EMAIL_API_KEY: ${SCHAKL_INSTANCE_EMAIL_API_KEY:-}
+
+  # --- Optional integrations -----------------------------------------------------------------------
+  # Google and AI credentials stay bring-your-own PER ORG on cloud; these are the documented
+  # instance fallback. The Ads developer token has no per-org field and can only live here.
+  SCHAKL_GOOGLE_CLIENT_ID: ${SCHAKL_GOOGLE_CLIENT_ID:-}
+  SCHAKL_GOOGLE_CLIENT_SECRET: ${SCHAKL_GOOGLE_CLIENT_SECRET:-}
+  SCHAKL_GOOGLE_ADS_DEVELOPER_TOKEN: ${SCHAKL_GOOGLE_ADS_DEVELOPER_TOKEN:-}
+  # Optional 2FA-over-SMS gateway (TOTP works without it).
+  SCHAKL_SMS_GATEWAY_URL: ${SCHAKL_SMS_GATEWAY_URL:-}
+  SCHAKL_SMS_GATEWAY_TOKEN: ${SCHAKL_SMS_GATEWAY_TOKEN:-}
+  SCHAKL_SMS_GATEWAY_SENDER: ${SCHAKL_SMS_GATEWAY_SENDER:-}
+  SCHAKL_MCP_ENABLED: ${SCHAKL_MCP_ENABLED:-true}
+  SCHAKL_UPDATE_CHECK_ENABLED: ${SCHAKL_UPDATE_CHECK_ENABLED:-true}
+
+services:
+  api:
+    image: ghcr.io/schakl-app/schakl-api:${SCHAKL_TAG:?pin a release tag, e.g. 1.4.0}
+    environment: *api-env
+    volumes:
+      - storage-data:/data/storage
+    secrets:
+      - SCHAKL_SECRET_KEY
+      - SCHAKL_DATABASE_URL
+      - SCHAKL_STORAGE_S3_ACCESS_KEY_ID
+      - SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY
+      - SCHAKL_CLOUD_CF_API_TOKEN
+    networks: [proxy, internal]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 90s
+    deploy:
+      mode: replicated
+      # MUST stay 1: the entrypoint runs `alembic upgrade head` before serving, so two tasks
+      # starting together race the migration.
+      replicas: 1
+      restart_policy:
+        condition: any
+      update_config:
+        # stop-first, NOT start-first: never run two migrations at once, and never serve an
+        # old and a new schema simultaneously. Costs a few seconds of API downtime per deploy.
+        order: stop-first
+        failure_action: rollback
+      labels:
+        # Swarm reads routing labels from deploy.labels, not the service's top-level labels.
+        - "traefik.enable=true"
+        # API + MCP on ANY host: tenant subdomains, the apex console, verified custom domains.
+        - "traefik.http.routers.schakl-api.rule=PathPrefix(`/api/`) || PathPrefix(`/mcp`)"
+        - "traefik.http.routers.schakl-api.priority=1000"
+        - "traefik.http.routers.schakl-api.entrypoints=${TRAEFIK_ENTRYPOINT:-web-secure}"
+        - "traefik.http.routers.schakl-api.tls=true"
+        - "traefik.http.services.schakl-api.loadbalancer.server.port=8000"
+
+  worker:
+    image: ghcr.io/schakl-app/schakl-api:${SCHAKL_TAG:?pin a release tag, e.g. 1.4.0}
+    command: ["worker"]
+    environment: *api-env
+    volumes:
+      - storage-data:/data/storage
+    # The worker needs it too: the lifecycle sweep releases Cloudflare records on termination.
+    secrets:
+      - SCHAKL_SECRET_KEY
+      - SCHAKL_DATABASE_URL
+      - SCHAKL_STORAGE_S3_ACCESS_KEY_ID
+      - SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY
+      - SCHAKL_CLOUD_CF_API_TOKEN
+    networks: [internal]
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: any
+      update_config:
+        order: stop-first
+        failure_action: rollback
+      labels:
+        - "traefik.enable=false"
+
+  web:
+    image: ghcr.io/schakl-app/schakl-web:${SCHAKL_TAG:?pin a release tag, e.g. 1.4.0}
+    environment:
+      # Same stack, so the short service name resolves over Swarm DNS.
+      SCHAKL_API_URL: http://api:8000
+    networks: [proxy, internal]
+    deploy:
+      mode: replicated
+      replicas: ${WEB_REPLICAS:-2} # stateless SSR
+      restart_policy:
+        condition: any
+      update_config:
+        order: start-first
+        failure_action: rollback
+      labels:
+        - "traefik.enable=true"
+        # Catch-all: every host, every remaining path. `PathPrefix(`/`)` rather than a
+        # HostRegexp — a regex would contain `$`, which Compose/Portainer would try to
+        # interpolate before Traefik ever sees it (it must be written `$$` to survive).
+        # The Host header decides whether this renders a tenant or the instance console.
+        - "traefik.http.routers.schakl-web.rule=PathPrefix(`/`)"
+        - "traefik.http.routers.schakl-web.priority=1"
+        - "traefik.http.routers.schakl-web.entrypoints=${TRAEFIK_ENTRYPOINT:-web-secure}"
+        - "traefik.http.routers.schakl-web.tls=true"
+        - "traefik.http.services.schakl-web.loadbalancer.server.port=3000"
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    networks: [internal]
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          # Node-local volume: the queue must come back on the node that holds it.
+          - node.role == manager
+      restart_policy:
+        condition: any
+      labels:
+        - "traefik.enable=false"
+
+# Created in Portainer → Secrets, not here: `external: true` means this stack *references* it,
+# so the token never appears in the stack definition. Docker mounts it at /run/secrets/<name>,
+# which is what SCHAKL_CLOUD_CF_API_TOKEN_FILE points at.
+#
+# Consequence, and it is the good kind: the stack will not deploy at all until the secret
+# exists ("secret not found"), rather than starting and quietly running with Cloudflare off.
+# Secrets are immutable — rotating means creating SCHAKL_CLOUD_CF_API_TOKEN_v2, changing the name in
+# both places below, and redeploying.
+secrets:
+  SCHAKL_SECRET_KEY:
+    external: true
+  SCHAKL_DATABASE_URL:
+    external: true
+  SCHAKL_STORAGE_S3_ACCESS_KEY_ID:
+    external: true
+  SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY:
+    external: true
+  SCHAKL_CLOUD_CF_API_TOKEN:
+    external: true
+
+networks:
+  proxy:
+    external: true
+  internal:
+    driver: overlay
+
+volumes:
+  storage-data:
+  redis-data:

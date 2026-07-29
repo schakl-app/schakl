@@ -15,6 +15,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -69,6 +70,13 @@ class Org(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # A claim awaiting DNS TXT verification; promoted to custom_domain by the verify endpoint.
     pending_domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
     domain_verification_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Cloudflare for SaaS (epic #199): the custom-hostname id registered for custom_domain when
+    # the operator fronts the instance with Cloudflare. NULL everywhere the integration is off
+    # (all self-host installs) — clearing the domain deletes the hostname by this id.
+    cf_hostname_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # …and the DNS record id for this org's <slug>.<base_domain> subdomain, created at
+    # provisioning time and removed when the org is terminated.
+    cf_dns_record_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     # Cloud plan (epic #199, issue #200 slice): NULL on self-host / unmanaged orgs. One of
     # "trial" (expires at trial_ends_at → suspended by the cloud cron), "standard" (billing
@@ -76,6 +84,21 @@ class Org(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # *platform* billing state — nothing to do with the tenant's own `subscriptions` module.
     plan: Mapped[str | None] = mapped_column(String(20), nullable=True)
     trial_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Per-org end date (epic #199). NULL = **unlimited**, and the lifecycle sweep skips the org
+    # entirely — the default for a column that eventually destroys data must be "never".
+    # Past ends_at: warned for grace_days, then suspended for retention_days, then terminated.
+    # grace_days / retention_days are NULL to inherit the instance defaults.
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    grace_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    retention_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Where the sweep last left this org, so a transition fires once instead of every run.
+    lifecycle_stage: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="active", server_default="active"
+    )
+    lifecycle_notified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class Membership(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
@@ -258,6 +281,39 @@ class InstanceLicense(Base):
     )
     installed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     installed_by_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+
+
+class InstanceAdmin(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """A delegated instance operator and exactly what they may do (issue #26).
+
+    Instance-level like ``orgs``/``users`` and deliberately **not** under RLS: it decides who
+    may cross tenants, so it is read before any tenant is bound. The owner principal stays
+    ``users.is_superuser`` and holds every capability implicitly; a row here is the *second*
+    principal, holding only what it was granted.
+
+    ``granted_by_email`` is snapshotted beside the FK for §16's reason: the trail of who
+    delegated cross-tenant access must outlive the account that did it.
+    """
+
+    __tablename__ = "instance_admins"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    #: Catalog keys from ``app.core.instance.capabilities``. An empty list is valid and means
+    #: "can sign in to the console and see nothing" — the safe default for a half-finished
+    #: invite, which must never over-grant.
+    capabilities: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    granted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    granted_by_email: Mapped[str] = mapped_column(String(320), nullable=False)
 
 
 class InstanceAuditLog(UUIDPrimaryKeyMixin, Base):
