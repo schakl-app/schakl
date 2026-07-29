@@ -5622,6 +5622,46 @@ export interface paths {
         patch: operations["update_checklist_template_api_v1_tasks_checklist_templates__template_id__patch"];
         trace?: never;
     };
+    "/api/v1/tasks/dashboard-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Dashboard Groups
+         * @description Open-task counts grouped by project, then company, in one compact query.
+         */
+        get: operations["dashboard_groups_api_v1_tasks_dashboard_groups_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/dashboard-mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Dashboard Mine
+         * @description Compact personal task list for the dashboard tile.
+         */
+        get: operations["dashboard_mine_api_v1_tasks_dashboard_mine_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/labels": {
         parameters: {
             query?: never;
@@ -6252,6 +6292,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/time/stats/team-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Team Time Summary
+         * @description One-query hours + revenue payload for the manager dashboard tile.
+         */
+        get: operations["team_time_summary_api_v1_time_stats_team_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/time/summary": {
         parameters: {
             query?: never;
@@ -6329,6 +6389,26 @@ export interface paths {
         };
         /** Timesheet */
         get: operations["timesheet_api_v1_time_timesheet_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/time/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Time Workspace
+         * @description The interactive Hours screen in one request, reusing its weekly entry scan.
+         */
+        get: operations["time_workspace_api_v1_time_workspace_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -8569,6 +8649,38 @@ export interface components {
         DashboardPrefsUpdate: {
             /** Widgets */
             widgets: string[];
+        };
+        /**
+         * DashboardTaskGroup
+         * @description Compact open-task aggregate for the dashboard; no 200-row lookup payloads.
+         */
+        DashboardTaskGroup: {
+            /** Count */
+            count: number;
+            /** Entity Id */
+            entity_id: string | null;
+            /** Entity Type */
+            entity_type: string;
+            /** Label */
+            label: string | null;
+            /** Overdue */
+            overdue: number;
+        };
+        /**
+         * DashboardTaskItem
+         * @description Only the four fields rendered by the personal dashboard task tile.
+         */
+        DashboardTaskItem: {
+            /** Due Date */
+            due_date: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            priority: components["schemas"]["TaskPriority"];
+            /** Title */
+            title: string;
         };
         /**
          * DayView
@@ -15433,6 +15545,30 @@ export interface components {
             /** User Name */
             user_name: string;
         };
+        /**
+         * TeamTimeSummary
+         * @description Compact manager dashboard aggregate for one bounded period.
+         */
+        TeamTimeSummary: {
+            /** Billable Minutes */
+            billable_minutes: number;
+            /**
+             * Date From
+             * Format: date
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
+            /** Minutes */
+            minutes: number;
+            /** Open Minutes */
+            open_minutes: number;
+            /** Revenue */
+            revenue: number;
+        };
         /** TemplateApply */
         TemplateApply: {
             /**
@@ -16019,6 +16155,16 @@ export interface components {
             /** Minutes */
             minutes: number;
             running: components["schemas"]["TimeEntryRead"] | null;
+        };
+        /**
+         * TimeWorkspace
+         * @description Everything that changes together when the interactive Hours page changes day/week.
+         */
+        TimeWorkspace: {
+            day: components["schemas"]["DayView"];
+            recent: components["schemas"]["TimeEntryRead"] | null;
+            running: components["schemas"]["TimeEntryRead"] | null;
+            week: components["schemas"]["Timesheet"];
         };
         /**
          * TimerStart
@@ -29566,6 +29712,57 @@ export interface operations {
             };
         };
     };
+    dashboard_groups_api_v1_tasks_dashboard_groups_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardTaskGroup"][];
+                };
+            };
+        };
+    };
+    dashboard_mine_api_v1_tasks_dashboard_mine_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardTaskItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_labels_api_v1_tasks_labels_get: {
         parameters: {
             query?: never;
@@ -30858,6 +31055,8 @@ export interface operations {
                 all_users?: boolean;
                 /** @description date | employee | company | project | task | minutes | …, '-' desc */
                 sort?: string | null;
+                /** @description Compute total; set false for lightweight lookups */
+                count?: boolean;
             };
             header?: never;
             path?: never;
@@ -31349,6 +31548,38 @@ export interface operations {
             };
         };
     };
+    team_time_summary_api_v1_time_stats_team_summary_get: {
+        parameters: {
+            query: {
+                date_from: string;
+                date_to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamTimeSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     summary_api_v1_time_summary_get: {
         parameters: {
             query?: {
@@ -31473,6 +31704,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Timesheet"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    time_workspace_api_v1_time_workspace_get: {
+        parameters: {
+            query: {
+                week_start: string;
+                day: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeWorkspace"];
                 };
             };
             /** @description Validation Error */

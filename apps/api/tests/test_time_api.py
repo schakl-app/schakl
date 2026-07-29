@@ -63,6 +63,29 @@ async def test_manual_entry_and_summary(client_for) -> None:
         assert summary.json()["minutes"] == 30
 
 
+async def test_entries_can_skip_count_for_lightweight_lookup(client_for) -> None:
+    t = await make_tenant("time-no-count")
+    headers = await auth_cookie(t.user)
+    now = datetime.now(UTC)
+    async with client_for(t.host) as c:
+        for minutes in (15, 30):
+            await c.post(
+                "/api/v1/time/entries",
+                json={"started_at": now.isoformat(), "minutes": minutes},
+                headers=headers,
+            )
+
+        page = await c.get(
+            "/api/v1/time/entries",
+            params={"limit": 1, "count": "false"},
+            headers=headers,
+        )
+        assert page.status_code == 200
+        assert len(page.json()["items"]) == 1
+        # With counting disabled, total intentionally describes the returned page.
+        assert page.json()["total"] == 1
+
+
 async def test_timesheet_grid(client_for) -> None:
     t = await make_tenant("time-sheet")
     headers = await auth_cookie(t.user)
@@ -84,6 +107,32 @@ async def test_timesheet_grid(client_for) -> None:
         assert len(data["days"]) == 7
         assert data["total"] == 45
         assert data["day_totals"][0] == 45
+
+
+async def test_time_workspace_combines_week_day_timer_and_recent(client_for) -> None:
+    t = await make_tenant("time-workspace")
+    headers = await auth_cookie(t.user)
+    day = datetime(2026, 7, 6, 9, 0, tzinfo=UTC)
+    async with client_for(t.host) as c:
+        entry = (
+            await c.post(
+                "/api/v1/time/entries",
+                json={"started_at": day.isoformat(), "minutes": 45},
+                headers=headers,
+            )
+        ).json()
+        workspace = await c.get(
+            "/api/v1/time/workspace",
+            params={"week_start": "2026-07-06", "day": "2026-07-06"},
+            headers=headers,
+        )
+        assert workspace.status_code == 200
+        body = workspace.json()
+        assert body["running"] is None
+        assert body["week"]["total"] == 45
+        assert body["day"]["total_minutes"] == 45
+        assert body["day"]["entries"][0]["id"] == entry["id"]
+        assert body["recent"]["id"] == entry["id"]
 
 
 async def test_start_end_with_break_derives_minutes(client_for) -> None:

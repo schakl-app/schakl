@@ -5,68 +5,29 @@
 
   let { data }: { data: unknown } = $props();
 
-  interface Row {
-    id: string;
-    title: string;
-    status: string;
-    due_date: string | null;
-    project_id: string | null;
-    company_id: string | null;
-  }
-  interface Named {
-    id: string;
-    name: string;
-  }
-  interface Payload {
-    tasks: Row[];
-    projects: Named[];
-    companies: Named[];
-  }
-
-  const payload = $derived((data ?? { tasks: [], projects: [], companies: [] }) as Payload);
-  const today = new Date().toISOString().slice(0, 10);
-
   interface Group {
-    key: string;
+    entity_type: string;
+    entity_id: string | null;
     label: string;
-    /** The project/company record the group is (issue #15 — rows link to their entity). */
-    entityHref: string;
-    /** The open-tasks list filtered to this group (the aggregate's own filtered list). */
-    listHref: string;
     count: number;
     overdue: number;
   }
-
-  const groups = $derived.by<Group[]>(() => {
-    const open = payload.tasks.filter((task) => task.status !== "done");
-    const byKey = new Map<string, Group>();
-    for (const task of open) {
-      let key: string, label: string, entityHref: string, listHref: string;
-      if (task.project_id) {
-        key = `p:${task.project_id}`;
-        label = payload.projects.find((p) => p.id === task.project_id)?.name ?? "?";
-        entityHref = `/projects/${task.project_id}`;
-        // This widget's own count is org-wide (no assignee filter) — the tasks list defaults
-        // its person switcher to "yourself", so override it to keep the count and the list in sync.
-        listHref = `/tasks?project_id=${task.project_id}&assignee_user_id=${ALL_ASSIGNEES}`;
-      } else if (task.company_id) {
-        key = `c:${task.company_id}`;
-        label = payload.companies.find((c) => c.id === task.company_id)?.name ?? "?";
-        entityHref = `/companies/${task.company_id}`;
-        listHref = `/tasks?company_id=${task.company_id}&assignee_user_id=${ALL_ASSIGNEES}`;
-      } else {
-        key = "none";
-        label = t("time.general");
-        entityHref = "/tasks";
-        listHref = `/tasks?assignee_user_id=${ALL_ASSIGNEES}`;
-      }
-      const group = byKey.get(key) ?? { key, label, entityHref, listHref, count: 0, overdue: 0 };
-      group.count += 1;
-      if (task.due_date && task.due_date < today) group.overdue += 1;
-      byKey.set(key, group);
-    }
-    return [...byKey.values()].sort((a, b) => b.count - a.count);
-  });
+  const groups = $derived((data ?? []) as Group[]);
+  const entityHref = (group: Group) =>
+    group.entity_type === "project"
+      ? `/projects/${group.entity_id}`
+      : group.entity_type === "company"
+        ? `/companies/${group.entity_id}`
+        : "/tasks";
+  const listHref = (group: Group) => {
+    const filter =
+      group.entity_type === "project"
+        ? `project_id=${group.entity_id}&`
+        : group.entity_type === "company"
+          ? `company_id=${group.entity_id}&`
+          : "";
+    return `/tasks?${filter}assignee_user_id=${ALL_ASSIGNEES}`;
+  };
 </script>
 
 <div class="rounded-xl border border-border bg-surface-raised p-5">
@@ -78,13 +39,13 @@
     <p class="text-sm text-text-muted">{t("dashboard.open_by_group.empty")}</p>
   {:else}
     <ul class="divide-y divide-border">
-      {#each groups as group (group.key)}
+      {#each groups as group (`${group.entity_type}:${group.entity_id}`)}
         <li class="flex items-center justify-between gap-2 py-2">
           <!-- The name is the record; the count is the filtered task list (issue #15). -->
           <a
-            href={group.entityHref}
+            href={entityHref(group)}
             class="min-w-0 flex-1 truncate text-sm font-medium text-text hover:text-brand"
-            >{group.label}</a
+            >{group.label ?? t("time.general")}</a
           >
           {#if group.overdue > 0}
             <span
@@ -94,7 +55,7 @@
             </span>
           {/if}
           <a
-            href={group.listHref}
+            href={listHref(group)}
             class="shrink-0 rounded-full bg-surface px-2 py-0.5 text-xs font-semibold tabular-nums text-text-muted hover:text-brand"
           >
             {group.count}

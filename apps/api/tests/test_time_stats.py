@@ -123,6 +123,41 @@ async def test_revenue_stats(client_for) -> None:
         assert stats["other_revenue"] == 0.0
 
 
+async def test_team_summary_is_one_bounded_dashboard_payload(client_for) -> None:
+    t = await make_tenant("stats-team-summary")
+    headers = await auth_cookie(t.user)
+    now = datetime.now(UTC)
+
+    async with client_for(t.host) as c:
+        await c.put(
+            f"/api/v1/leave/rate/{t.user.id}",
+            json={"hourly_rate": "80.00"},
+            headers=headers,
+        )
+        await c.post(
+            "/api/v1/time/entries",
+            json={"started_at": now.isoformat(), "minutes": 90},
+            headers=headers,
+        )
+        await c.post(
+            "/api/v1/time/entries",
+            json={"started_at": now.isoformat(), "minutes": 30, "billable": False},
+            headers=headers,
+        )
+
+        params = {
+            "date_from": now.date().replace(day=1).isoformat(),
+            "date_to": now.date().isoformat(),
+        }
+        summary = (
+            await c.get("/api/v1/time/stats/team-summary", params=params, headers=headers)
+        ).json()
+        assert summary["minutes"] == 120
+        assert summary["billable_minutes"] == 90
+        assert summary["open_minutes"] == 120
+        assert summary["revenue"] == 120.0
+
+
 async def test_show_brand_name_toggle(client_for) -> None:
     t = await make_tenant("brandname")
     headers = await auth_cookie(t.user)

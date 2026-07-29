@@ -30,7 +30,7 @@ work is discarded**:
 
 - **`count=false`** — skip the `SELECT count(*)` that computes `Page.total`. Pass it from
   name-only lookups and pickers and any widget that never shows a total (companies, projects,
-  tasks list endpoints support it). `total` then returns the page length.
+  tasks, and time-entry list endpoints support it). `total` then returns the page length.
 - **`meta=false`** (tasks) — skip the per-task label/checklist/comment aggregate subqueries.
   Pass it whenever you only need id/title/status/dates (grouping, pickers, the timesheet
   lookups).
@@ -101,19 +101,26 @@ failing anyway. Never fall back to the SQLAlchemy defaults (5/10/30 s).
 The dashboard composes widgets contributed by modules (`(app)/+page.server.ts`). Fixes applied
 (and the reasoning, so the pattern is reusable):
 
-1. **Prefs no longer gate the widgets.** `GET /api/v1/dashboard/prefs` only orders/filters the
-   already-known available widgets, so it runs *inside* the same `Promise.all` as the widget
-   loaders instead of being `await`ed first — one fewer sequential round-trip.
+1. **Hidden widgets do no work.** The small `GET /api/v1/dashboard/prefs` request resolves the
+   saved layout first, then only selected widget loaders run. This deliberately adds one small
+   dependency but avoids every hidden widget's HTTP and aggregate-query fan-out.
 2. **The "open tasks by group" widget** fetched tasks + projects + companies (200 each) with
-   full aggregates just to map ids→names. It now passes `meta=false` (skips the task
-   aggregates it discards) and `count=false` on all three (skips the discarded COUNTs).
+   full aggregates just to map ids→names. It now calls `/tasks/dashboard-groups`, which returns
+   the finished groups from one compact aggregate query. The personal tasks widget likewise
+   skips label/checklist/comment enrichment it never renders.
+3. **The team-month widget uses one bounded aggregate.** It previously requested a paginated
+   report and a two-year revenue series to display four numbers. `/time/stats/team-summary`
+   returns those four values from one period-bounded database query.
+4. **Identical widget GETs coalesce per render.** Registry composition stays independent, while
+   widgets requesting the same digest share one promise. In particular, the two invoicing tiles
+   now cause one API/context/DB request rather than two.
+5. **Tiles stream independently.** The page returns selected widget promises after resolving the
+   small layout preference. The shell and skeletons render immediately, and each usable tile
+   replaces its skeleton when ready; the slowest integration no longer gates the whole board.
 
-### Still on the list (documented, not yet done)
-
-- `tasks.my_open` and `tasks.by_group` both fetch tasks — "mine" is a subset of the full list
-  the group widget already pulls. A shared fetch could serve both.
-- `time.team_month` pulls a whole-month report **and** a full-year revenue series to render a
-  few tiles; both could be scoped to just the tile inputs.
+The Hours screen follows the same rule: `/time/workspace` combines timer, weekly grid, selected
+day, draft, and recent-entry defaults. Besides removing three authenticated HTTP round trips, it
+reuses the weekly entry scan for the selected day instead of reading those rows twice.
 
 If you bound coverage for speed (top-N, sampling, no-retry), say so in the UI/logs — silent
 truncation reads as "we showed everything" when we didn't.

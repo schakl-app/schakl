@@ -58,7 +58,9 @@ export const load: PageServerLoad = async (event) => {
   // picker, and `count=false` skips the COUNT(*) it would throw away.
   const [tasks, companies, projects, members, statuses, definitions, cost, files, ...panelData] =
     await Promise.all([
-      api.GET("/api/v1/tasks", { params: { query: { project_id, limit: 200, offset: 0 } } }),
+      api.GET("/api/v1/tasks", {
+        params: { query: { project_id, limit: 200, offset: 0, count: false } },
+      }),
       api.GET("/api/v1/companies", {
         params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
       }),

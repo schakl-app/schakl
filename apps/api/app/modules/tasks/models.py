@@ -72,6 +72,16 @@ class TemplateTrigger(StrEnum):
 class Task(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     __tablename__ = "tasks"
     __table_args__ = (
+        # Dashboard/task-board paths always tenant-scope before narrowing the workflow state.
+        Index("ix_tasks_org_status", "org_id", "status"),
+        # My Day: one employee's unfinished work ordered/partitioned around its deadline.
+        Index(
+            "ix_tasks_org_assignee_status_due",
+            "org_id",
+            "assignee_user_id",
+            "status",
+            "due_date",
+        ),
         # Partial index: the daily cron only ever scans carriers with a pending next_run.
         Index(
             "ix_tasks_recurrence_next_run",

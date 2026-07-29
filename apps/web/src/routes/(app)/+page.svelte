@@ -24,10 +24,7 @@
   interface Tile {
     id: string;
   }
-  let tiles = $state<Tile[]>([]);
-  $effect(() => {
-    tiles = data.widgetKeys.map((key: string) => ({ id: key }));
-  });
+  let tiles = $derived<Tile[]>(data.widgetKeys.map((key: string) => ({ id: key })));
   const widgetFor = (key: string) => allWidgets.find((w) => w.key === key);
   const activeKeys = $derived(tiles.map((tile) => tile.id));
 
@@ -196,7 +193,14 @@
               </button>
               {#if widget}
                 {@const WidgetComponent = widget.component}
-                <WidgetComponent data={data.widgetData[tile.id]} />
+                {#await data.widgetData[tile.id]}
+                  <div
+                    class="h-32 animate-pulse rounded-xl border border-border bg-surface-raised"
+                    aria-busy="true"
+                  ></div>
+                {:then widgetData}
+                  <WidgetComponent data={widgetData} />
+                {/await}
               {/if}
             </div>
           {/each}
@@ -213,7 +217,16 @@
             {@const widget = widgetFor(tile.id)}
             {#if widget}
               {@const WidgetComponent = widget.component}
-              <div><WidgetComponent data={data.widgetData[tile.id]} /></div>
+              <div>
+                {#await data.widgetData[tile.id]}
+                  <div
+                    class="h-32 animate-pulse rounded-xl border border-border bg-surface-raised"
+                    aria-busy="true"
+                  ></div>
+                {:then widgetData}
+                  <WidgetComponent data={widgetData} />
+                {/await}
+              </div>
             {/if}
           {/each}
         </div>
@@ -233,7 +246,8 @@
             method="POST"
             action="?/resetLayout"
             use:enhance={() =>
-              ({ update }) => void update()}
+              ({ update }) =>
+                void update()}
           >
             <button class="text-xs text-text-muted hover:text-text">
               {t("dashboard.customize.reset")}

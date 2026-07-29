@@ -23,6 +23,7 @@ from app.modules.time.schemas import (
     ProductivityStats,
     ProjectCost,
     RevenueStats,
+    TeamTimeSummary,
     TimeEntryCreate,
     TimeEntryDraftPayload,
     TimeEntryDraftRead,
@@ -35,6 +36,7 @@ from app.modules.time.schemas import (
     TimerStart,
     Timesheet,
     TimeSummary,
+    TimeWorkspace,
 )
 from app.modules.time.service import TimeEntryTypeService, TimeService
 from app.schemas import Page
@@ -165,6 +167,22 @@ async def productivity_stats(
 
 
 @router.get(
+    "/stats/team-summary",
+    response_model=TeamTimeSummary,
+    dependencies=[require_permission("time.report.read")],
+)
+async def team_time_summary(
+    date_from: date = Query(...),
+    date_to: date = Query(...),
+    ctx: RequestContext = Depends(require_context),
+) -> TeamTimeSummary:
+    """One-query hours + revenue payload for the manager dashboard tile."""
+    return TeamTimeSummary.model_validate(
+        await TimeService(ctx).team_summary(date_from=date_from, date_to=date_to)
+    )
+
+
+@router.get(
     "/stats/revenue",
     response_model=RevenueStats,
     dependencies=[require_permission("time.report.read")],
@@ -284,6 +302,36 @@ async def timesheet(
 
 
 @router.get(
+    "/workspace",
+    response_model=TimeWorkspace,
+    dependencies=[require_permission("time.entry.read")],
+)
+async def time_workspace(
+    week_start: date = Query(...),
+    day: date = Query(...),
+    ctx: RequestContext = Depends(require_context),
+) -> TimeWorkspace:
+    """The interactive Hours screen in one request, reusing its weekly entry scan."""
+    running, week, entries, draft, recent = await TimeService(ctx).workspace(
+        week_start=week_start,
+        day=day,
+    )
+    stopped = [entry for entry in entries if not entry.is_running]
+    return TimeWorkspace(
+        running=TimeEntryRead.model_validate(running) if running else None,
+        week=week,
+        day=DayView(
+            date=day,
+            total_minutes=sum(entry.minutes for entry in stopped),
+            billable_minutes=sum(entry.minutes for entry in stopped if entry.billable),
+            entries=[TimeEntryRead.model_validate(entry) for entry in entries],
+            draft=TimeEntryDraftRead.model_validate(draft) if draft else None,
+        ),
+        recent=TimeEntryRead.model_validate(recent) if recent else None,
+    )
+
+
+@router.get(
     "/day",
     response_model=DayView,
     dependencies=[require_permission("time.entry.read")],
@@ -393,6 +441,7 @@ async def list_entries(
     sort: str | None = Query(
         None, description="date | employee | company | project | task | minutes | …, '-' desc"
     ),
+    count: bool = Query(True, description="Compute total; set false for lightweight lookups"),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[TimeEntryRead]:
     items, total = await TimeService(ctx).list(
@@ -408,6 +457,7 @@ async def list_entries(
         all_users=all_users,
         sort=sort,
         entry_type=entry_type,
+        count=count,
     )
     return Page(
         items=[TimeEntryRead.model_validate(e) for e in items],
