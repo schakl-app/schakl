@@ -892,3 +892,40 @@ async def test_self_host_provisioning_touches_no_dns(monkeypatch) -> None:
     assert fake.calls == []
     async with async_session_maker() as session:
         assert (await session.get(Org, org_id)).cf_dns_record_id is None
+
+
+# --------------------------------------------------------------------------- #
+# Cloudflare token from a Docker secret (*_FILE)
+# --------------------------------------------------------------------------- #
+def test_cf_token_is_read_from_a_secret_file(tmp_path) -> None:
+    from app.config import Settings
+
+    secret = tmp_path / "cf_token"
+    secret.write_text("  tok-from-secret\n")  # trailing newline is normal in a mounted secret
+    loaded = Settings(cloud_cf_api_token_file=str(secret))
+    assert loaded.cloud_cf_api_token == "tok-from-secret"
+
+
+def test_an_unreadable_secret_file_refuses_the_boot(tmp_path) -> None:
+    """Silently falling back to "Cloudflare off" would keep answering 201 to provisioning
+    calls while creating no DNS record — discovered only when a customer complains."""
+    from app.config import Settings
+
+    with pytest.raises(ValueError, match="cannot be read"):
+        Settings(cloud_cf_api_token_file=str(tmp_path / "does-not-exist"))
+
+    empty = tmp_path / "empty"
+    empty.write_text("   \n")
+    with pytest.raises(ValueError, match="empty"):
+        Settings(cloud_cf_api_token_file=str(empty))
+
+
+def test_an_explicit_token_wins_over_the_file(tmp_path) -> None:
+    """Option (a) and option (b) together: the plain variable is used and the file ignored,
+    so a stale _FILE left in the stack cannot break a working deployment."""
+    from app.config import Settings
+
+    loaded = Settings(
+        cloud_cf_api_token="direct", cloud_cf_api_token_file=str(tmp_path / "missing")
+    )
+    assert loaded.cloud_cf_api_token == "direct"

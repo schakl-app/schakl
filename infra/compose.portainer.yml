@@ -67,8 +67,24 @@ x-api-env: &api-env
   # Zone-scoped token, ONE zone, exactly two permissions:
   #   Zone → SSL and Certificates → Edit   (custom hostnames)
   #   Zone → DNS → Edit                    (the per-org <slug>.<base_domain> record)
-  # Prefer the _FILE form with a Docker secret so the value is not in `docker inspect` or in
-  # Portainer's stack definition.
+  #
+  # TWO WAYS TO SUPPLY IT — pick one:
+  #
+  #  (a) Plain Portainer environment variable. Set SCHAKL_CLOUD_CF_API_TOKEN below and leave
+  #      the secret block at the bottom of this file commented out. Works fine. The value is
+  #      then stored in Portainer's own database, shown to anyone who can view the stack, and
+  #      readable via `docker service inspect` on any node.
+  #
+  #  (b) Docker secret (recommended). Portainer → Secrets → Add secret, name it
+  #      `schakl_cf_token`, paste the token. Then UNCOMMENT the two `secrets:` blocks on the
+  #      api and worker services AND the top-level `secrets:` block, leave
+  #      SCHAKL_CLOUD_CF_API_TOKEN empty, and set:
+  #          SCHAKL_CLOUD_CF_API_TOKEN_FILE=/run/secrets/schakl_cf_token
+  #      The value never enters the stack definition or `inspect` output.
+  #
+  # If _FILE is set and the file cannot be read, the API refuses to boot and names the path —
+  # rather than silently running with Cloudflare off, which would keep answering 201 to
+  # provisioning calls while creating no DNS record at all.
   SCHAKL_CLOUD_CF_API_TOKEN: ${SCHAKL_CLOUD_CF_API_TOKEN:-}
   SCHAKL_CLOUD_CF_API_TOKEN_FILE: ${SCHAKL_CLOUD_CF_API_TOKEN_FILE:-}
   SCHAKL_CLOUD_CF_ZONE_ID: ${SCHAKL_CLOUD_CF_ZONE_ID:-}
@@ -129,6 +145,9 @@ services:
     environment: *api-env
     volumes:
       - storage-data:/data/storage
+    # Option (b): uncomment together with the top-level `secrets:` block.
+    # secrets:
+    #   - schakl_cf_token
     networks: [proxy, internal]
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
@@ -164,6 +183,9 @@ services:
     environment: *api-env
     volumes:
       - storage-data:/data/storage
+    # Option (b): the worker resolves Cloudflare too (the lifecycle sweep releases records).
+    # secrets:
+    #   - schakl_cf_token
     networks: [internal]
     deploy:
       mode: replicated
@@ -219,6 +241,13 @@ services:
         condition: any
       labels:
         - "traefik.enable=false"
+
+# Option (b): a secret created in Portainer → Secrets is `external` here — this stack does
+# not create it, so the token never appears in the stack definition. The mount point is
+# /run/secrets/<name>, which is what SCHAKL_CLOUD_CF_API_TOKEN_FILE must point at.
+# secrets:
+#   schakl_cf_token:
+#     external: true
 
 networks:
   proxy:

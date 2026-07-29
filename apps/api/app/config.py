@@ -324,16 +324,30 @@ class Settings(BaseSettings):
 
         Read once at startup rather than per call: the file is mounted read-only for the
         process lifetime, and a per-call read would put the secret on the hot path of every
-        domain verification. An unreadable file is left as ``None`` — ``cloudflare_configured()``
-        then reports the integration off, which is the safe direction (nothing is attempted)
-        and is visible in the logs the first time a hostname sync no-ops.
+        domain verification.
+
+        **An unreadable or empty file refuses the boot.** Setting ``*_FILE`` is an explicit
+        statement that this instance uses Cloudflare, so falling back to "integration off"
+        would be a silent downgrade with no visible symptom: provisioning would keep answering
+        201 while creating no DNS record, and custom domains would never get a certificate.
+        Nobody discovers that until a customer complains. A container that will not start is
+        the cheaper failure, and it names the path.
         """
         if self.cloud_cf_api_token_file and not self.cloud_cf_api_token:
             try:
                 token = Path(self.cloud_cf_api_token_file).read_text(encoding="utf-8").strip()
-            except OSError:
-                token = ""
-            self.cloud_cf_api_token = token or None
+            except OSError as exc:
+                raise ValueError(
+                    f"SCHAKL_CLOUD_CF_API_TOKEN_FILE points at {self.cloud_cf_api_token_file!r}, "
+                    f"which cannot be read ({exc.strerror}). Check that the Docker secret is "
+                    "attached to this service and that the path matches its mount point."
+                ) from exc
+            if not token:
+                raise ValueError(
+                    f"SCHAKL_CLOUD_CF_API_TOKEN_FILE points at "
+                    f"{self.cloud_cf_api_token_file!r}, which is empty."
+                )
+            self.cloud_cf_api_token = token
         return self
 
     @model_validator(mode="after")
