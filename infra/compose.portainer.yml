@@ -15,17 +15,19 @@
 # Requires, in the Traefik stack: --providers.swarm=true, --providers.swarm.network=proxy,
 # and an external overlay network named `proxy`.
 #
-# SECRETS — create these five in Portainer → Secrets BEFORE the first deploy. Swarm refuses
+# SECRETS — create these seven in Portainer → Secrets BEFORE the first deploy. Swarm refuses
 # to deploy a stack whose secrets do not exist, which is the failure you want: loud, up front,
 # rather than a container that starts and quietly runs without a credential.
 #
 # The secret is named after the setting it feeds, so the mapping needs no lookup:
 #
 #   SCHAKL_SECRET_KEY                      openssl rand -hex 32
+#   SCHAKL_ENCRYPTION_KEY                  openssl rand -hex 32
 #   SCHAKL_DATABASE_URL                    postgresql+asyncpg://USER:PASS@172.16.8.3:5432/rdb
 #   SCHAKL_STORAGE_S3_ACCESS_KEY_ID        the Scaleway access key (SCW…)
 #   SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY    the Scaleway secret key (shown once at creation)
 #   SCHAKL_CLOUD_CF_API_TOKEN              the Cloudflare zone token
+#   SCHAKL_INSTANCE_EMAIL_API_KEY          the SMTP2GO API key
 #
 # They are mounted at /run/secrets/<name> and read via SCHAKL_<SETTING>_FILE, so none of them
 # appears in this file, in Portainer's database, or in `docker service inspect`. Everything
@@ -37,11 +39,15 @@ x-api-env: &api-env
   SCHAKL_DEPLOYMENT: cloud
   SCHAKL_ENVIRONMENT: production
   SCHAKL_BASE_DOMAIN: ${SCHAKL_BASE_DOMAIN:?e.g. schakl.cloud}
+  # Schakl accepts customer custom domains, so its Traefik routers otherwise match every host.
+  # Exclude Portainer explicitly to keep Schakl's /api catch-all from intercepting Portainer.
+  PORTAINER_HOST: ${PORTAINER_HOST:?e.g. portainer.example.com}
   # Signs sessions AND derives the key that encrypts every stored secret, so it is the root of
   # trust: the API refuses to boot in production on a weak or sample value.
   SCHAKL_SECRET_KEY_FILE: /run/secrets/SCHAKL_SECRET_KEY
-  # Optional, separate key for secrets at rest; defaults to deriving from SECRET_KEY.
-  SCHAKL_ENCRYPTION_KEY: ${SCHAKL_ENCRYPTION_KEY:-}
+  # Separate key for secrets at rest. Read from a Docker secret so the value never appears in
+  # the stack definition or `docker service inspect`.
+  SCHAKL_ENCRYPTION_KEY_FILE: /run/secrets/SCHAKL_ENCRYPTION_KEY
   # Forced true in production anyway; stated so the intent is visible.
   SCHAKL_AUTH_COOKIE_SECURE: "true"
   # A public multi-tenant console should not let strangers mint accounts.
@@ -135,7 +141,7 @@ x-api-env: &api-env
   SCHAKL_INSTANCE_EMAIL_SECURITY: ${SCHAKL_INSTANCE_EMAIL_SECURITY:-starttls}
   SCHAKL_INSTANCE_EMAIL_USERNAME: ${SCHAKL_INSTANCE_EMAIL_USERNAME:-}
   SCHAKL_INSTANCE_EMAIL_PASSWORD: ${SCHAKL_INSTANCE_EMAIL_PASSWORD:-}
-  SCHAKL_INSTANCE_EMAIL_API_KEY: ${SCHAKL_INSTANCE_EMAIL_API_KEY:-}
+  SCHAKL_INSTANCE_EMAIL_API_KEY_FILE: /run/secrets/SCHAKL_INSTANCE_EMAIL_API_KEY
 
   # --- Optional integrations -----------------------------------------------------------------------
   # Google and AI credentials stay bring-your-own PER ORG on cloud; these are the documented
@@ -158,10 +164,12 @@ services:
       - storage-data:/data/storage
     secrets:
       - SCHAKL_SECRET_KEY
+      - SCHAKL_ENCRYPTION_KEY
       - SCHAKL_DATABASE_URL
       - SCHAKL_STORAGE_S3_ACCESS_KEY_ID
       - SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY
       - SCHAKL_CLOUD_CF_API_TOKEN
+      - SCHAKL_INSTANCE_EMAIL_API_KEY
     networks: [proxy, internal]
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
@@ -185,7 +193,7 @@ services:
         # Swarm reads routing labels from deploy.labels, not the service's top-level labels.
         - "traefik.enable=true"
         # API + MCP on ANY host: tenant subdomains, the apex console, verified custom domains.
-        - "traefik.http.routers.schakl-api.rule=PathPrefix(`/api/`) || PathPrefix(`/mcp`)"
+        - "traefik.http.routers.schakl-api.rule=!Host(`${PORTAINER_HOST}`) && (PathPrefix(`/api/`) || PathPrefix(`/mcp`))"
         - "traefik.http.routers.schakl-api.priority=1000"
         - "traefik.http.routers.schakl-api.entrypoints=${TRAEFIK_ENTRYPOINT:-web-secure}"
         - "traefik.http.routers.schakl-api.tls=true"
@@ -200,10 +208,12 @@ services:
     # The worker needs it too: the lifecycle sweep releases Cloudflare records on termination.
     secrets:
       - SCHAKL_SECRET_KEY
+      - SCHAKL_ENCRYPTION_KEY
       - SCHAKL_DATABASE_URL
       - SCHAKL_STORAGE_S3_ACCESS_KEY_ID
       - SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY
       - SCHAKL_CLOUD_CF_API_TOKEN
+      - SCHAKL_INSTANCE_EMAIL_API_KEY
     networks: [internal]
     deploy:
       mode: replicated
@@ -236,7 +246,7 @@ services:
         # HostRegexp — a regex would contain `$`, which Compose/Portainer would try to
         # interpolate before Traefik ever sees it (it must be written `$$` to survive).
         # The Host header decides whether this renders a tenant or the instance console.
-        - "traefik.http.routers.schakl-web.rule=PathPrefix(`/`)"
+        - "traefik.http.routers.schakl-web.rule=!Host(`${PORTAINER_HOST}`) && PathPrefix(`/`)"
         - "traefik.http.routers.schakl-web.priority=1"
         - "traefik.http.routers.schakl-web.entrypoints=${TRAEFIK_ENTRYPOINT:-web-secure}"
         - "traefik.http.routers.schakl-web.tls=true"
@@ -271,6 +281,8 @@ services:
 secrets:
   SCHAKL_SECRET_KEY:
     external: true
+  SCHAKL_ENCRYPTION_KEY:
+    external: true
   SCHAKL_DATABASE_URL:
     external: true
   SCHAKL_STORAGE_S3_ACCESS_KEY_ID:
@@ -278,6 +290,8 @@ secrets:
   SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY:
     external: true
   SCHAKL_CLOUD_CF_API_TOKEN:
+    external: true
+  SCHAKL_INSTANCE_EMAIL_API_KEY:
     external: true
 
 networks:
