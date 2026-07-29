@@ -68,25 +68,19 @@ x-api-env: &api-env
   #   Zone → SSL and Certificates → Edit   (custom hostnames)
   #   Zone → DNS → Edit                    (the per-org <slug>.<base_domain> record)
   #
-  # TWO WAYS TO SUPPLY IT — pick one:
+  # THIS STACK USES A DOCKER SECRET. Before the first deploy:
+  #     Portainer → Secrets → Add secret → name `schakl_cf_token`, paste the token.
+  # It is mounted at /run/secrets/schakl_cf_token, which is the default below, so there is
+  # nothing to set in the environment variables for this one.
   #
-  #  (a) Plain Portainer environment variable. Set SCHAKL_CLOUD_CF_API_TOKEN below and leave
-  #      the secret block at the bottom of this file commented out. Works fine. The value is
-  #      then stored in Portainer's own database, shown to anyone who can view the stack, and
-  #      readable via `docker service inspect` on any node.
-  #
-  #  (b) Docker secret (recommended). Portainer → Secrets → Add secret, name it
-  #      `schakl_cf_token`, paste the token. Then UNCOMMENT the two `secrets:` blocks on the
-  #      api and worker services AND the top-level `secrets:` block, leave
-  #      SCHAKL_CLOUD_CF_API_TOKEN empty, and set:
-  #          SCHAKL_CLOUD_CF_API_TOKEN_FILE=/run/secrets/schakl_cf_token
-  #      The value never enters the stack definition or `inspect` output.
-  #
-  # If _FILE is set and the file cannot be read, the API refuses to boot and names the path —
-  # rather than silently running with Cloudflare off, which would keep answering 201 to
-  # provisioning calls while creating no DNS record at all.
+  # An unreadable or empty file refuses the boot and names the path — deliberately, because
+  # the alternative is running with Cloudflare silently off, which keeps answering 201 to
+  # provisioning calls while creating no DNS record and issuing no certificate.
+  SCHAKL_CLOUD_CF_API_TOKEN_FILE: ${SCHAKL_CLOUD_CF_API_TOKEN_FILE:-/run/secrets/schakl_cf_token}
+  # Escape hatch: setting this wins over the file, so a broken secret can be worked around
+  # without editing the stack. Leave it empty in normal operation — a value here lands in
+  # Portainer's database and in `docker service inspect`, which is what the secret avoids.
   SCHAKL_CLOUD_CF_API_TOKEN: ${SCHAKL_CLOUD_CF_API_TOKEN:-}
-  SCHAKL_CLOUD_CF_API_TOKEN_FILE: ${SCHAKL_CLOUD_CF_API_TOKEN_FILE:-}
   SCHAKL_CLOUD_CF_ZONE_ID: ${SCHAKL_CLOUD_CF_ZONE_ID:-}
   # Presented to the origin as SNI so Full (strict) validates against your wildcard origin
   # certificate instead of the customer's hostname. Empty derives it from the CNAME target.
@@ -145,9 +139,8 @@ services:
     environment: *api-env
     volumes:
       - storage-data:/data/storage
-    # Option (b): uncomment together with the top-level `secrets:` block.
-    # secrets:
-    #   - schakl_cf_token
+    secrets:
+      - schakl_cf_token
     networks: [proxy, internal]
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
@@ -183,9 +176,9 @@ services:
     environment: *api-env
     volumes:
       - storage-data:/data/storage
-    # Option (b): the worker resolves Cloudflare too (the lifecycle sweep releases records).
-    # secrets:
-    #   - schakl_cf_token
+    # The worker needs it too: the lifecycle sweep releases Cloudflare records on termination.
+    secrets:
+      - schakl_cf_token
     networks: [internal]
     deploy:
       mode: replicated
@@ -242,12 +235,17 @@ services:
       labels:
         - "traefik.enable=false"
 
-# Option (b): a secret created in Portainer → Secrets is `external` here — this stack does
-# not create it, so the token never appears in the stack definition. The mount point is
-# /run/secrets/<name>, which is what SCHAKL_CLOUD_CF_API_TOKEN_FILE must point at.
-# secrets:
-#   schakl_cf_token:
-#     external: true
+# Created in Portainer → Secrets, not here: `external: true` means this stack *references* it,
+# so the token never appears in the stack definition. Docker mounts it at /run/secrets/<name>,
+# which is what SCHAKL_CLOUD_CF_API_TOKEN_FILE points at.
+#
+# Consequence, and it is the good kind: the stack will not deploy at all until the secret
+# exists ("secret not found"), rather than starting and quietly running with Cloudflare off.
+# Secrets are immutable — rotating means creating schakl_cf_token_v2, changing the name in
+# both places below, and redeploying.
+secrets:
+  schakl_cf_token:
+    external: true
 
 networks:
   proxy:
