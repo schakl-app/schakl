@@ -19,11 +19,13 @@
 # to deploy a stack whose secrets do not exist, which is the failure you want: loud, up front,
 # rather than a container that starts and quietly runs without a credential.
 #
-#   schakl_secret_key             openssl rand -hex 32
-#   schakl_database_url           postgresql+asyncpg://USER:PASS@172.16.8.3:5432/rdb
-#   schakl_s3_access_key_id       the Scaleway access key (SCW…)
-#   schakl_s3_secret_access_key   the Scaleway secret key (shown once at creation)
-#   schakl_cf_token               the Cloudflare zone token
+# The secret is named after the setting it feeds, so the mapping needs no lookup:
+#
+#   SCHAKL_SECRET_KEY                      openssl rand -hex 32
+#   SCHAKL_DATABASE_URL                    postgresql+asyncpg://USER:PASS@172.16.8.3:5432/rdb
+#   SCHAKL_STORAGE_S3_ACCESS_KEY_ID        the Scaleway access key (SCW…)
+#   SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY    the Scaleway secret key (shown once at creation)
+#   SCHAKL_CLOUD_CF_API_TOKEN              the Cloudflare zone token
 #
 # They are mounted at /run/secrets/<name> and read via SCHAKL_<SETTING>_FILE, so none of them
 # appears in this file, in Portainer's database, or in `docker service inspect`. Everything
@@ -37,7 +39,7 @@ x-api-env: &api-env
   SCHAKL_BASE_DOMAIN: ${SCHAKL_BASE_DOMAIN:?e.g. schakl.cloud}
   # Signs sessions AND derives the key that encrypts every stored secret, so it is the root of
   # trust: the API refuses to boot in production on a weak or sample value.
-  SCHAKL_SECRET_KEY_FILE: /run/secrets/schakl_secret_key
+  SCHAKL_SECRET_KEY_FILE: /run/secrets/SCHAKL_SECRET_KEY
   # Optional, separate key for secrets at rest; defaults to deriving from SECRET_KEY.
   SCHAKL_ENCRYPTION_KEY: ${SCHAKL_ENCRYPTION_KEY:-}
   # Forced true in production anyway; stated so the intent is visible.
@@ -51,10 +53,10 @@ x-api-env: &api-env
   # schema. Never point this at a role with SUPERUSER or BYPASSRLS.
   # The URL embeds the password, so the WHOLE url comes from a secret rather than assembling
   # it here from a PGPASSWORD variable that would sit in Portainer's database. Put this line
-  # in the `schakl_database_url` secret (one line, no quotes), adding ?ssl=require for a
+  # in the `SCHAKL_DATABASE_URL` secret (one line, no quotes), adding ?ssl=require for a
   # public endpoint:
   #     postgresql+asyncpg://USER:PASSWORD@172.16.8.3:5432/rdb
-  SCHAKL_DATABASE_URL_FILE: /run/secrets/schakl_database_url
+  SCHAKL_DATABASE_URL_FILE: /run/secrets/SCHAKL_DATABASE_URL
   # The pool is per replica. api replicas × this must stay under the managed instance's
   # max_connections, with headroom for the worker.
   SCHAKL_DB_POOL_SIZE: ${SCHAKL_DB_POOL_SIZE:-15}
@@ -63,15 +65,17 @@ x-api-env: &api-env
   SCHAKL_REDIS_URL: redis://redis:6379/0
 
   # --- Object storage (Scaleway) -------------------------------------------------------------
-  # Endpoint is the SERVICE host, not the bucket URL: bucket schakl-cloud in nl-ams is
-  # https://s3.nl-ams.scw.cloud with SCHAKL_STORAGE_S3_BUCKET=schakl-cloud.
+  # THE ENDPOINT IS THE SERVICE HOST, NOT THE BUCKET URL. Scaleway shows the bucket as
+  # https://<bucket>.s3.<region>.scw.cloud; pasting that here doubles the bucket name
+  # (boto3 builds https://schakl-cloud.schakl-cloud.s3.nl-ams.scw.cloud/…) and every object
+  # call 404s. Endpoint = https://s3.<region>.scw.cloud, bucket = <bucket>, separately.
   # Keep the bucket PRIVATE — the API is the only data path and never signs public URLs.
   SCHAKL_STORAGE_BACKEND: s3
   SCHAKL_STORAGE_S3_ENDPOINT: ${SCHAKL_STORAGE_S3_ENDPOINT:-https://s3.nl-ams.scw.cloud}
   SCHAKL_STORAGE_S3_REGION: ${SCHAKL_STORAGE_S3_REGION:-nl-ams}
   SCHAKL_STORAGE_S3_BUCKET: ${SCHAKL_STORAGE_S3_BUCKET:?}
-  SCHAKL_STORAGE_S3_ACCESS_KEY_ID_FILE: /run/secrets/schakl_s3_access_key_id
-  SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY_FILE: /run/secrets/schakl_s3_secret_access_key
+  SCHAKL_STORAGE_S3_ACCESS_KEY_ID_FILE: /run/secrets/SCHAKL_STORAGE_S3_ACCESS_KEY_ID
+  SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY_FILE: /run/secrets/SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY
   SCHAKL_STORAGE_S3_FORCE_PATH_STYLE: ${SCHAKL_STORAGE_S3_FORCE_PATH_STYLE:-false}
   # EFFECTIVELY IMMUTABLE: applied on read, write AND delete, so changing it later strands
   # every existing object. Decide now, even if the answer is "".
@@ -89,7 +93,7 @@ x-api-env: &api-env
   # An unreadable or empty secret refuses the boot and names the path — deliberately, because
   # the alternative here is running with Cloudflare silently off, which keeps answering 201 to
   # provisioning calls while creating no DNS record and issuing no certificate.
-  SCHAKL_CLOUD_CF_API_TOKEN_FILE: ${SCHAKL_CLOUD_CF_API_TOKEN_FILE:-/run/secrets/schakl_cf_token}
+  SCHAKL_CLOUD_CF_API_TOKEN_FILE: ${SCHAKL_CLOUD_CF_API_TOKEN_FILE:-/run/secrets/SCHAKL_CLOUD_CF_API_TOKEN}
   # Escape hatch: setting this wins over the file, so a broken secret can be worked around
   # without editing the stack. Leave it empty in normal operation — a value here lands in
   # Portainer's database and in `docker service inspect`, which is what the secret avoids.
@@ -153,11 +157,11 @@ services:
     volumes:
       - storage-data:/data/storage
     secrets:
-      - schakl_secret_key
-      - schakl_database_url
-      - schakl_s3_access_key_id
-      - schakl_s3_secret_access_key
-      - schakl_cf_token
+      - SCHAKL_SECRET_KEY
+      - SCHAKL_DATABASE_URL
+      - SCHAKL_STORAGE_S3_ACCESS_KEY_ID
+      - SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY
+      - SCHAKL_CLOUD_CF_API_TOKEN
     networks: [proxy, internal]
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
@@ -195,11 +199,11 @@ services:
       - storage-data:/data/storage
     # The worker needs it too: the lifecycle sweep releases Cloudflare records on termination.
     secrets:
-      - schakl_secret_key
-      - schakl_database_url
-      - schakl_s3_access_key_id
-      - schakl_s3_secret_access_key
-      - schakl_cf_token
+      - SCHAKL_SECRET_KEY
+      - SCHAKL_DATABASE_URL
+      - SCHAKL_STORAGE_S3_ACCESS_KEY_ID
+      - SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY
+      - SCHAKL_CLOUD_CF_API_TOKEN
     networks: [internal]
     deploy:
       mode: replicated
@@ -262,18 +266,18 @@ services:
 #
 # Consequence, and it is the good kind: the stack will not deploy at all until the secret
 # exists ("secret not found"), rather than starting and quietly running with Cloudflare off.
-# Secrets are immutable — rotating means creating schakl_cf_token_v2, changing the name in
+# Secrets are immutable — rotating means creating SCHAKL_CLOUD_CF_API_TOKEN_v2, changing the name in
 # both places below, and redeploying.
 secrets:
-  schakl_secret_key:
+  SCHAKL_SECRET_KEY:
     external: true
-  schakl_database_url:
+  SCHAKL_DATABASE_URL:
     external: true
-  schakl_s3_access_key_id:
+  SCHAKL_STORAGE_S3_ACCESS_KEY_ID:
     external: true
-  schakl_s3_secret_access_key:
+  SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY:
     external: true
-  schakl_cf_token:
+  SCHAKL_CLOUD_CF_API_TOKEN:
     external: true
 
 networks:
