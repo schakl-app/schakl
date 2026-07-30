@@ -10,6 +10,7 @@ no row of its own, so the *person* is the subject of the event and the week ride
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
@@ -41,6 +42,78 @@ def _week_bounds(week_start: date, tz: ZoneInfo = _DEFAULT_TZ) -> tuple[datetime
     return start, end
 
 
+async def _fully_on_leave(
+    org: Org, session: AsyncSession, candidates: set[uuid.UUID], week_start: date
+) -> set[uuid.UUID]:
+    """Who among ``candidates`` had every scheduled minute of the week covered by approved
+    leave or a holiday. They logged nothing *by design* — the module's own yardstick everywhere
+    else is "the schedule minus approved leave" (§14), and nudging someone the Monday after
+    their vacation says the timesheet forgot they were on it.
+
+    Through the leave module's service under a system context — the same seam its own December
+    crons use — and lazily imported like every cross-module service call. One requests query
+    for all candidates; the per-day arithmetic only runs for the few who actually had leave.
+    """
+    from app.core.jobs import system_context
+    from app.modules.leave import schedule as sched
+    from app.modules.leave.models import LeaveRequest, LeaveRequestStatus
+    from app.modules.leave.service import LeaveService
+
+    week_end = week_start + timedelta(days=6)
+    rows = (
+        await session.execute(
+            select(LeaveRequest).where(
+                LeaveRequest.org_id == org.id,
+                LeaveRequest.user_id.in_(candidates),
+                LeaveRequest.status == LeaveRequestStatus.APPROVED.value,
+                LeaveRequest.start_date <= week_end,
+                LeaveRequest.end_date >= week_start,
+            )
+        )
+    ).scalars().all()
+    if not rows:
+        return set()
+    by_user: dict[uuid.UUID, list[LeaveRequest]] = {}
+    for row in rows:
+        by_user.setdefault(row.user_id, []).append(row)
+
+    service = LeaveService(system_context(org, session))
+    holidays_off = await service.active_holidays_between(week_start, week_end)
+    covered: set[uuid.UUID] = set()
+    for user_id, requests in by_user.items():
+        resolver = await service.schedule_resolver(user_id)
+        fully = True
+        for offset in range(7):
+            day = week_start + timedelta(days=offset)
+            work_day = resolver(day).day(day.weekday())
+            scheduled = 0 if day in holidays_off else sched.day_minutes(work_day)
+            if scheduled <= 0:
+                continue
+            # A request's boundary times only bind on its boundary days (#48) — a middle day
+            # is covered whole. The same intersect `compute_hours` prices with.
+            leave = 0
+            for request in requests:
+                if not request.start_date <= day <= request.end_date:
+                    continue
+                low = (
+                    sched.to_minutes(request.start_time)
+                    if request.start_date == day and request.start_time
+                    else 0
+                )
+                high = (
+                    sched.to_minutes(request.end_time)
+                    if request.end_date == day and request.end_time
+                    else sched.MINUTES_PER_DAY
+                )
+                leave += sched.day_minutes(work_day, (low, high))
+            if leave < scheduled:
+                fully = False
+                break
+        if fully:
+            covered.add(user_id)
+    return covered
+
+
 async def remind_for_org(org: Org, session: AsyncSession, *, week_start: date | None = None) -> int:
     """Nudge every staff member with an empty previous week.
 
@@ -68,8 +141,14 @@ async def remind_for_org(org: Org, session: AsyncSession, *, week_start: date | 
         ).scalars()
     )
 
+    candidates = staff - logged
+    if candidates:
+        # An empty week that was entirely approved leave (or holidays) is not a missing
+        # timesheet — it is a vacation, and the reminder must know the difference.
+        candidates -= await _fully_on_leave(org, session, candidates, week_start)
+
     ctx = SystemContext(org=org, session=session)
-    for user_id in sorted(staff - logged):
+    for user_id in sorted(candidates):
         await emit(
             "time.timesheet_reminder",
             ctx,
@@ -80,7 +159,7 @@ async def remind_for_org(org: Org, session: AsyncSession, *, week_start: date | 
                 "_dedup_key": f"time.timesheet_reminder:{user_id}:{week_start.isoformat()}",
             },
         )
-    return len(staff - logged)
+    return len(candidates)
 
 
 async def send_timesheet_reminders(ctx: dict) -> int:

@@ -310,6 +310,47 @@ async def test_only_an_empty_timesheet_is_nudged_and_only_once() -> None:
     assert payload["week_start"] == week_start.isoformat()
 
 
+async def test_a_week_fully_covered_by_leave_is_not_nudged() -> None:
+    """An empty week that was entirely approved leave is a vacation, not a missing timesheet:
+    the module's yardstick everywhere else is the schedule minus approved leave (§14), and the
+    Monday-after-holiday nudge said otherwise. Partial leave still nudges."""
+    from app.modules.leave.models import LeaveRequest, LeaveRequestStatus, LeaveType
+
+    t = await make_tenant("cron-timesheet-leave")
+    away = await _member(t, "away@example.com")
+    partly = await _member(t, "partly@example.com")
+    week_start = date(2026, 6, 29)  # a Monday; the default schedule works Mon–Fri
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        leave_type = LeaveType(
+            org_id=t.org.id, key="vac-test", label_i18n={"nl": "Test", "en": "Test"}
+        )
+        session.add(leave_type)
+        await session.flush()
+        session.add(
+            LeaveRequest(
+                org_id=t.org.id, user_id=away.id, leave_type_id=leave_type.id,
+                start_date=week_start, end_date=week_start + timedelta(days=4),
+                hours=40, status=LeaveRequestStatus.APPROVED.value,
+            )
+        )
+        # Mon–Wed only: Thursday and Friday are genuinely unaccounted for.
+        session.add(
+            LeaveRequest(
+                org_id=t.org.id, user_id=partly.id, leave_type_id=leave_type.id,
+                start_date=week_start, end_date=week_start + timedelta(days=2),
+                hours=24, status=LeaveRequestStatus.APPROVED.value,
+            )
+        )
+        await session.commit()
+
+    # The owner logged nothing (nudged) and `partly` was only half away (nudged); `away` not.
+    assert await _run_timesheet_reminders(t, week_start) == 2
+    assert await _inbox_events(t, away.id) == []
+    assert await _inbox_events(t, partly.id) == ["time.timesheet_reminder"]
+
+
 async def test_the_reminder_crons_are_registered_and_bind_tenant_context() -> None:
     """Belt-and-braces alongside the structural seam test: the jobs are actually wired."""
     import inspect
