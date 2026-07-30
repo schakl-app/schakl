@@ -173,6 +173,12 @@ async def _member_of(t, slug: str, *, role: str = "member"):
 #: Update this deliberately: it is the floor under **every** request in the app.
 _MEMBER_REQUEST_BUDGET = 8
 
+#: Statements a populated company's panel composition may issue, end to end (request context
+#: included). Measured, not guessed — see the umbrella test at the bottom of this file. Thirteen
+#: panel providers run in sequence on one session, so the hub's cost is the *sum* of theirs;
+#: this is the number that stops it growing one panel at a time.
+_PANELS_BUDGET = 40
+
 
 async def test_a_staff_request_never_queries_contacts_to_learn_it_is_staff(
     client_for, count_queries
@@ -430,3 +436,39 @@ async def test_dashboard_budgets_returns_only_the_hottest_rows(client_for, count
         assert rows[0]["hours"]["budget_hours"] == 8.0
         # The burn enrichment stays one grouped aggregate, whatever the project count.
         assert len(counter.matching("from time_entries")) == 1
+
+
+# --- the company hub: an umbrella budget over every panel ----------------------------------- #
+async def test_company_panels_have_a_query_budget(client_for, count_queries) -> None:
+    """One number that stops the hub regressing panel by panel (#290).
+
+    `GET /companies/{id}/panels` composes a provider per enabled module, in sequence — correct
+    on a single ``AsyncSession``, and the reason the hub's cost is the *sum* of its panels. No
+    individual panel review catches "each one added a query"; this does.
+
+    The company is deliberately populated (an entry, a task, a contact, an interaction), because
+    a panel over an empty table often short-circuits and would hide exactly the fan-out this
+    budget exists to catch. Raising the number is fine when a panel is added — do it knowingly,
+    with the new panel's own count_queries test beside it.
+    """
+    t = await make_tenant("perf-panels-budget")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers)
+        await _entry(c, headers, company_id=company, minutes=60, day=0)
+        await _task(c, headers, company_id=company, title="Werk")
+        await _interaction(c, headers, company_id=company, subject="Hoi", body="tekst")
+        contact = await c.post(
+            "/api/v1/contacts", json={"first_name": "Jan", "company_ids": [company]},
+            headers=headers,
+        )
+        assert contact.status_code == 201, contact.text
+
+        with count_queries() as counter:
+            res = await c.get(f"/api/v1/companies/{company}/panels", headers=headers)
+        assert res.status_code == 200, res.text
+        assert len(res.json()) >= 4
+        assert len(counter) <= _PANELS_BUDGET, (
+            f"{len(counter)} statements, budget {_PANELS_BUDGET}:\n"
+            + "\n".join(counter.statements)
+        )

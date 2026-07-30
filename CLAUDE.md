@@ -222,7 +222,11 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   descriptor with `en`+`nl` labels, web UI (**every entity-reference picker offers inline-create →
   full dialog → auto-select**, `docs/UX.md`), `nl.json` + `en.json` keys, test for tenant
   isolation, **a mutable entity records its changes to the activity log and its detail view
-  renders the trail** (§16), docs/OpenAPI updated.
+  renders the trail** (§16), docs/OpenAPI updated. **Performance is part of done, not a
+  follow-up**: a list endpoint exposes `count=false` and skips whatever the caller opts out of, a
+  row carries only what its screen draws, aggregates are computed in SQL with the company horizon
+  carried, every unbounded read is capped, section-shared lookups live in the section's layout
+  load, and the whole thing lands with a `count_queries` budget test (`docs/PERFORMANCE.md`).
 
 ## 10. Phased plan (build gates)
 
@@ -256,7 +260,10 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   Keep SSR loads minimal (shared lookups in layout loads, `meta=false`/`count=false` on
   pickers, no redundant API calls or queries), prefer fixing the data path over adding
   libraries, and when a page feels slow, count its API calls/queries before writing code.
-  **Read `docs/PERFORMANCE.md`** — the data-path rules and the per-screen checklist.
+  **Read `docs/PERFORMANCE.md`** — the data-path rules and the per-screen checklist — and **pin
+  any perf fix with a query-count test**, because the shape it fixes is invisible in the JSON:
+  an endpoint that is one grouped query at three rows and one-per-row at three hundred passes
+  every functional test either way.
 - **Read `docs/WORKFLOW.md` before your first commit in a session** — branches (agents commit
   and push straight to `dev`), the label set, what to write on the issue, and the rules for
   working a tree that **other agents are editing at the same time**: stage explicit paths,
