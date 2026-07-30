@@ -66,8 +66,18 @@ async def check_domain(ctx: RequestContext = Depends(require_context)) -> Domain
     response_model=DomainStatus,
     dependencies=[require_permission("settings.domain.write")],
 )
-async def clear_domain(ctx: RequestContext = Depends(require_context)) -> DomainStatus:
+async def clear_domain(
+    pending_only: bool = False, ctx: RequestContext = Depends(require_context)
+) -> DomainStatus:
     """Remove the custom domain (and any pending claim). The org keeps resolving via
-    ``<slug>.<base_domain>`` — the UI warns that this changes the org's address."""
-    await domainflow.clear(ctx.session, ctx.user, ctx.org)
+    ``<slug>.<base_domain>`` — the UI warns that this changes the org's address.
+
+    ``pending_only=true`` abandons just the in-flight claim. That is what the wizard's
+    *cancel setup* means while a domain is already live: changing your mind about moving to a
+    new domain must never take the working one down with it.
+    """
+    if pending_only:
+        await domainflow.cancel_claim(ctx.session, ctx.user, ctx.org)
+    else:
+        await domainflow.clear(ctx.session, ctx.user, ctx.org)
     return domainflow.status_for(ctx.org)

@@ -844,6 +844,47 @@ async def test_transient_status_is_retried_once(cloudflare) -> None:
     assert "cf-token-never-logged" not in str(caught.value)
 
 
+async def test_cancelling_a_replacement_keeps_the_live_domain(
+    client_for, cloudflare, fake_dns
+) -> None:
+    """Moving to a new domain and changing your mind must not take the working one down.
+
+    The wizard calls this button *cancel setup* while a domain is live, and the claim is what
+    is being cancelled — so it drops only the claim. Clearing outright is the other button,
+    and still removes everything.
+    """
+    tenant, headers = await _attached_tenant(fake_dns, "cf-swap", "crm.oud.test")
+    async with client_for(tenant.host) as client:
+        claimed = await client.post(
+            "/api/v1/meta/tenant/domain", json={"domain": "crm.nieuw.test"}, headers=headers
+        )
+        assert claimed.status_code == 200
+        # A claim rides *alongside* the live domain — that is what makes a swap safe.
+        assert claimed.json()["custom_domain"] == "crm.oud.test"
+        assert claimed.json()["pending_domain"] == "crm.nieuw.test"
+
+        cancelled = await client.delete(
+            "/api/v1/meta/tenant/domain?pending_only=true", headers=headers
+        )
+        assert cancelled.status_code == 200
+        body = cancelled.json()
+        assert body["pending_domain"] is None
+        assert body["custom_domain"] == "crm.oud.test"
+        assert body["stage"] == "active"
+
+    async with async_session_maker() as session:
+        org = await session.get(Org, tenant.org.id)
+        assert org.custom_domain == "crm.oud.test"
+        assert org.custom_domain_verified_at is not None
+        assert org.cf_hostname_id is not None  # the live hostname was not released
+
+    # …and the unqualified delete still means "remove my domain".
+    async with client_for(tenant.host) as client:
+        cleared = await client.delete("/api/v1/meta/tenant/domain", headers=headers)
+        assert cleared.json()["custom_domain"] is None
+        assert cleared.json()["stage"] == "none"
+
+
 async def test_domain_wizard_staged_end_to_end(client_for, cloudflare, fake_dns) -> None:
     """The #292 flow on cloud: ownership TXT first, then traffic DNS + certificate, then
     active — with per-layer diagnostics at every intermediate state, and resumable via GET."""

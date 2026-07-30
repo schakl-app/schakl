@@ -4742,6 +4742,10 @@ export interface paths {
          * Clear Domain
          * @description Remove the custom domain (and any pending claim). The org keeps resolving via
          *     ``<slug>.<base_domain>`` — the UI warns that this changes the org's address.
+         *
+         *     ``pending_only=true`` abandons just the in-flight claim. That is what the wizard's
+         *     *cancel setup* means while a domain is already live: changing your mind about moving to a
+         *     new domain must never take the working one down with it.
          */
         delete: operations["clear_domain_api_v1_meta_tenant_domain_delete"];
         options?: never;
@@ -27792,7 +27796,9 @@ export interface operations {
     };
     clear_domain_api_v1_meta_tenant_domain_delete: {
         parameters: {
-            query?: never;
+            query?: {
+                pending_only?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -27806,6 +27812,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["app__core__domainflow__DomainStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

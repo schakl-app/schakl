@@ -46,6 +46,17 @@
   ];
 
   let domainInput = $state("");
+  // Swapping a live domain for another one, without removing the working one first.
+  let replacing = $state(false);
+  // A claim in flight *over* a live domain: cancelling that is cancelling the move, not the
+  // domain. Derived from the status rather than from `replacing`, so it survives the reload
+  // after the claim (and a session resumed on another day).
+  const cancellingReplacement = $derived(Boolean(status?.pending_domain && status?.custom_domain));
+  // Once the claim exists the form has done its job; collapse it so cancelling back to the
+  // active domain lands on the button again rather than a half-open form.
+  $effect(() => {
+    if (status?.pending_domain) replacing = false;
+  });
   const inputClass =
     "w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text " +
     "focus:outline-none focus:ring-2 focus:ring-brand/40";
@@ -208,9 +219,16 @@
         </li>
       {/each}
     </ul>
+  {:else if report}
+    <!-- A check that found no layer to report still has to say it ran. On self-host there is
+         no CNAME target and no edge to poll, so an active domain genuinely has nothing to
+         probe — silence there reads as a dead button. -->
+    <p class="mt-4 text-xs text-text-muted">{t("settings.domain.no_checks")}</p>
+  {/if}
+  {#if report}
     <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-text-muted">
       {#if checkedAt}<span>{t("settings.domain.last_checked", { time: checkedAt })}</span>{/if}
-      {#if report && checks.some((c: { state: string }) => c.state !== "ok")}
+      {#if checks.some((c: { state: string }) => c.state !== "ok")}
         <span>{t("settings.domain.correlation", { id: report.correlation_id })}</span>
       {/if}
     </div>
@@ -236,43 +254,47 @@
   </form>
 {/snippet}
 
+{#snippet claimForm()}
+  <p class="text-sm text-text-muted">{t("settings.domain.choose.explain")}</p>
+  <form
+    method="POST"
+    action="?/claim"
+    use:enhance={busy.keep("claim")}
+    class="mt-4 flex flex-wrap items-end gap-3"
+  >
+    <div class="grow">
+      <label for="domain" class="mb-1 block text-sm font-medium text-text">
+        {t("settings.domain.choose.label")}
+      </label>
+      <input
+        id="domain"
+        name="domain"
+        bind:value={domainInput}
+        placeholder={t("settings.domain.choose.placeholder")}
+        class="{inputClass} font-mono"
+      />
+    </div>
+    <Button loading={busy.is("claim")} disabled={busy.active}>
+      {t("settings.domain.choose.submit")}
+    </Button>
+  </form>
+  {#if domainInput.trim()}
+    <p class="mt-2 text-xs text-text-muted">
+      {t("settings.domain.choose.preview", {
+        url: `https://${domainInput.trim().toLowerCase()}`,
+      })}
+    </p>
+  {/if}
+  {#if form?.claimError}
+    <p class="mt-2 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
+  {/if}
+{/snippet}
+
 <div class="max-w-2xl space-y-4">
   {#if stage === "none"}
     <!-- Step 1: choose -->
     <section class="rounded-xl border border-border bg-surface-raised p-5">
-      <p class="text-sm text-text-muted">{t("settings.domain.choose.explain")}</p>
-      <form
-        method="POST"
-        action="?/claim"
-        use:enhance={busy.keep("claim")}
-        class="mt-4 flex flex-wrap items-end gap-3"
-      >
-        <div class="grow">
-          <label for="domain" class="mb-1 block text-sm font-medium text-text">
-            {t("settings.domain.choose.label")}
-          </label>
-          <input
-            id="domain"
-            name="domain"
-            bind:value={domainInput}
-            placeholder={t("settings.domain.choose.placeholder")}
-            class="{inputClass} font-mono"
-          />
-        </div>
-        <Button loading={busy.is("claim")} disabled={busy.active}>
-          {t("settings.domain.choose.submit")}
-        </Button>
-      </form>
-      {#if domainInput.trim()}
-        <p class="mt-2 text-xs text-text-muted">
-          {t("settings.domain.choose.preview", {
-            url: `https://${domainInput.trim().toLowerCase()}`,
-          })}
-        </p>
-      {/if}
-      {#if form?.claimError}
-        <p class="mt-2 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
-      {/if}
+      {@render claimForm()}
     </section>
   {:else if stage === "ownership_pending"}
     <!-- Step 2: prove ownership — only the TXT challenge, never the CNAME yet (#292). -->
@@ -396,6 +418,29 @@
       {@render checkButton()}
       {@render checkPanel()}
     </section>
+
+    <!-- Moving to another domain must not mean going dark first. The API keeps the live
+         domain routing while the new one is claimed and proven (domainflow.claim), so the
+         wizard offers the swap here rather than forcing Verwijderen → start over. -->
+    <section class="rounded-xl border border-border bg-surface-raised p-5">
+      {#if replacing}
+        <p
+          class="mb-3 rounded-lg bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300"
+        >
+          {t("settings.domain.choose.replace_warning", { domain: domainName })}
+        </p>
+        {@render claimForm()}
+      {:else}
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <p class="text-xs text-text-muted">
+            {t("settings.domain.replace_hint", { domain: domainName })}
+          </p>
+          <Button variant="secondary" size="sm" onclick={() => (replacing = true)}>
+            {t("settings.domain.replace")}
+          </Button>
+        </div>
+      {/if}
+    </section>
   {/if}
 
   {#if stage !== "none"}
@@ -403,9 +448,14 @@
       class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-raised p-4"
     >
       <p class="text-xs text-text-muted">
-        {t("settings.domain.remove_warning", { fallback: data.fallbackHost })}
+        {cancellingReplacement
+          ? t("settings.domain.cancel_claim_warning", { domain: status?.custom_domain ?? "" })
+          : t("settings.domain.remove_warning", { fallback: data.fallbackHost })}
       </p>
       <form method="POST" action="?/clear" use:enhance={busy.wrap("clear")}>
+        <!-- Cancelling a replacement drops only the claim: the live domain is not the thing
+             being cancelled, and taking it down would be the opposite of what the button says. -->
+        <input type="hidden" name="pending_only" value={cancellingReplacement ? "1" : "0"} />
         <Button variant="secondary" size="sm" loading={busy.is("clear")} disabled={busy.active}>
           {stage === "active" ? t("settings.domain.remove") : t("settings.domain.cancel_claim")}
         </Button>

@@ -414,6 +414,33 @@ async def claim(session: AsyncSession, actor, org: Org, raw_domain: str) -> Org:
     return org
 
 
+async def cancel_claim(session: AsyncSession, actor, org: Org) -> Org:  # noqa: ANN001
+    """Abandon the in-flight claim and **leave any live domain exactly as it is**.
+
+    Distinct from :func:`clear` because the two are opposite intentions that the wizard's own
+    copy already distinguishes: mid-replacement the button says *cancel setup*, and a customer
+    who changes their mind about moving to a new domain must not thereby take their working
+    production address down. Falls through to nothing when there is no claim.
+    """
+    pending = org.pending_domain
+    hostname = org.pending_cf_hostname_id
+    if pending is None:
+        return org
+    org.pending_domain = None
+    org.domain_verification_token = None
+    org.pending_domain_ownership_verified_at = None
+    org.pending_cf_hostname_id = None
+    await session.flush()
+    await audit.record(
+        session, actor=actor, action="domain.cancel_claim", org=org, detail={"domain": pending}
+    )
+    # The abandoned hostname routes nothing once the org forgets it; releasing it is best
+    # effort, exactly as in clear().
+    if hostname and hostname != org.cf_hostname_id:
+        await _release_hostname(hostname, pending)
+    return org
+
+
 async def clear(session: AsyncSession, actor, org: Org) -> Org:  # noqa: ANN001
     """Drop the custom domain and any in-flight claim; the org keeps resolving via
     ``<slug>.<base_domain>``."""

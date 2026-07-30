@@ -46,7 +46,14 @@ export const actions: Actions = {
     return { report: data };
   },
   clear: async (event) => {
-    const { error } = await apiFor(event).DELETE("/api/v1/meta/tenant/domain");
+    // `pending_only` is the difference between "cancel this setup" and "remove my domain".
+    // Mid-replacement the wizard means the first, and conflating them drops a live domain
+    // the customer never asked to lose.
+    const form = await event.request.formData();
+    const pendingOnly = form.get("pending_only") === "1";
+    const { error } = await apiFor(event).DELETE("/api/v1/meta/tenant/domain", {
+      params: { query: { pending_only: pendingOnly } },
+    });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { cleared: true };
   },
