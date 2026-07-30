@@ -77,12 +77,16 @@ def render_fragment(domains: list[str]) -> str:
             f"      rule: \"Host(`{host}`) && (PathPrefix(`/api/`) || PathPrefix(`/mcp`))\"",
             "      priority: 1000",
             "      service: schakl-api",
+            # `@file` because the middleware is defined in the sibling 00-base.yml: a bare
+            # name only resolves within one file (#290).
+            "      middlewares: [compress@file]",
             "      entryPoints: [websecure]",
             "      tls:",
             "        certResolver: letsencrypt",
             f"    {name}-web:",
             f"      rule: \"Host(`{host}`)\"",
             "      service: schakl-web",
+            "      middlewares: [compress@file]",
             "      entryPoints: [websecure]",
             "      tls:",
             "        certResolver: letsencrypt",

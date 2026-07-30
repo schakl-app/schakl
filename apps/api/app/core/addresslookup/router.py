@@ -29,7 +29,12 @@ async def lookup_address(
     house_number: str = Query(..., min_length=1, max_length=16),
     ctx: RequestContext = Depends(require_context),
 ) -> AddressLookupResponse:
-    suggestions = await get_provider().lookup(postal_code, house_number)
+    # The provider is an external HTTP call, so the pooled connection goes back while we wait
+    # (docs/PERFORMANCE.md — this is the rule the marketing tab's meltdown wrote). This route
+    # reads no tenant rows at all, which makes it the easiest possible case: nothing before the
+    # block needs the session and nothing after it does either.
+    async with ctx.release_db():
+        suggestions = await get_provider().lookup(postal_code, house_number)
     return AddressLookupResponse(
         suggestions=[
             AddressSuggestionOut(

@@ -12,16 +12,40 @@ http:
       entryPoints:
         - web
       service: api
+      middlewares: [compress]
     api:
       rule: "Host(`api.localhost`)"
       entryPoints:
         - web
       service: api
+      middlewares: [compress]
     web:
       rule: "Host(`app.localhost`)"
       entryPoints:
         - web
       service: web
+      middlewares: [compress]
+
+  middlewares:
+    # Compress responses at the edge, not in the app (#290). The SSR HTML and the JSON list
+    # payloads behind it are highly compressible text, and this is the one place that can
+    # gzip/brotli them without a Python process spending CPU on it per request.
+    #
+    # Deliberately NOT FastAPI's GZipMiddleware: that would also buffer the AI assistant's SSE
+    # stream (killing token-by-token delivery) and sit in front of /mcp, whose SDK owns its own
+    # transport framing. Traefik's `compress` skips streamed and already-compressed responses.
+    #
+    # `minResponseBodyBytes` keeps the small hot responses (/prefs, /meta/me) uncompressed —
+    # below ~1 KB the header and CPU cost outweighs anything saved.
+    compress:
+      compress:
+        minResponseBodyBytes: 1024
+        # The AI assistant answers as `text/event-stream` (app/core/ai/router.py). Traefik
+        # already declines to compress a streamed body, but naming it here means a future
+        # reader does not have to trust that: an SSE stream that gets buffered stops being a
+        # stream, and the symptom is "the assistant answers all at once, late".
+        excludedContentTypes:
+          - text/event-stream
 
   services:
     api:
