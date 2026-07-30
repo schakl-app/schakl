@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.config import settings
+from app.core import hosts
 from app.core.ai.service import enabled_features as ai_enabled_features
 from app.core.auth import sso
 from app.core.auth.models import User
@@ -72,6 +73,16 @@ class TenantBranding(BaseModel):
     # usable, so the app can say what is about to happen and when. None at every other time,
     # including on self-host — the tenant should not carry an empty concept around.
     ends_warning_until: datetime | None = None
+    # Canonical host (#291): the org's live custom domain, set only while it is actually
+    # serving (hostname + certificate + DNS all healthy where Cloudflare manages them). The
+    # web app 307-redirects browser navigation on any other host of this org toward it; None
+    # means "stay where you are" — which is what makes the policy loop-free: the canonical
+    # host itself always compares equal, and an unhealthy domain never redirects anyone.
+    canonical_host: str | None = None
+    # True while a verified custom domain exists but is NOT live: whoever reaches the app
+    # (necessarily on the recovery host) sees a domain-health warning instead of guessing at
+    # a generic TLS/login failure.
+    domain_unhealthy: bool = False
 
 
 _HEX_COLOR = r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
@@ -303,6 +314,14 @@ async def tenant_branding(request: Request) -> TenantBranding:
             demo_reset_minutes=settings.demo_reset_minutes,
             suspended=org.status == OrgStatus.SUSPENDED.value,
             ends_warning_until=_ends_warning_until(org),
+            canonical_host=(
+                org.custom_domain if hosts.custom_domain_live(org) else None
+            ),
+            domain_unhealthy=bool(
+                org.custom_domain
+                and org.custom_domain_verified_at
+                and not hosts.custom_domain_live(org)
+            ),
         )
 
 

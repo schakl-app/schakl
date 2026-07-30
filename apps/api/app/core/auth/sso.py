@@ -38,6 +38,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.config import settings
 from app.core.crypto import decrypt
+from app.core.hosts import org_base_url  # noqa: F401 — re-export; historical import seam
 from app.core.mixins import OrgScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
 from app.core.models import Org
 from app.db import Base, async_session_maker, set_current_org
@@ -152,13 +153,6 @@ async def require_local_login(request: Request) -> None:
 # --------------------------------------------------------------------------- #
 # Callback URL — derived, never configured
 # --------------------------------------------------------------------------- #
-def org_base_url(org: Org) -> str:
-    """The address users reach this org on: its verified custom domain, else slug host."""
-    if org.custom_domain and org.custom_domain_verified_at:
-        return f"https://{org.custom_domain}"
-    return f"https://{org.slug}.{settings.base_domain}"
-
-
 def callback_url(org: Org) -> str:
     """What the admin registers at the IdP. The runtime value is request-derived
     (``request.url_for("oidc_callback")``, docs/SSO.md); this is the same URL built from the

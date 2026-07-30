@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 
+from app.core.cloud.domain_health import sweep_domain_health
 from app.core.cloud.ingress import sync_ingress
 from app.core.cloud.lifecycle import sweep
 from app.core.cloud.plans import suspend_expired_trials
@@ -60,3 +61,21 @@ async def cloud_sync_ingress(_ctx: dict | None = None) -> str | None:
     async with async_session_maker() as session:
         path = await sync_ingress(session)
     return str(path) if path else None
+
+
+async def cloud_domains_sweep(_ctx: dict | None = None) -> dict[str, int]:
+    """Daily: reconcile every Cloudflare-managed custom domain's hostname/certificate/DNS
+    state and alert the org's domain managers on new problems (#291). The safety sweep —
+    the settings page's "check now" endpoint does the interactive refreshes."""
+    try:
+        async with async_session_maker() as session:
+            counts = await sweep_domain_health(session)
+            await session.commit()
+        if counts["alerted"]:
+            logger.info(
+                "domain sweep: %d checked, %d alerted", counts["checked"], counts["alerted"]
+            )
+        return counts
+    except Exception:  # noqa: BLE001 — cron contract: log, never crash-loop
+        logger.exception("domain health sweep failed")
+        return {"checked": 0, "alerted": 0}

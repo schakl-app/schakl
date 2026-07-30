@@ -2,6 +2,7 @@
   import { enhance } from "$app/forms";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import { currencyLabel } from "$lib/core/currencies";
+  import { fmtNumericDate } from "$lib/core/format";
   import { phoneCountries } from "$lib/core/phone";
   import { localeLabel, t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -32,6 +33,12 @@
   });
 
   const busy = new InFlight();
+
+  // Cloudflare manages this domain's certificate lifecycle (#291): there is state to show
+  // and to re-check. A Traefik/Let's Encrypt domain (self-host) has neither.
+  const hasLifecycle = $derived(
+    Boolean(data.domain?.hostname_status || data.domain?.checked_at),
+  );
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
@@ -293,21 +300,91 @@
       <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <p class="font-mono text-sm text-text">{data.domain.custom_domain}</p>
-          <p class="mt-0.5 text-xs text-green-600 dark:text-green-400">
-            {t("settings.branding.domain.verified")}
-          </p>
+          {#if data.domain.live}
+            <p class="mt-0.5 text-xs text-green-600 dark:text-green-400">
+              {t("settings.branding.domain.live")}
+            </p>
+          {:else}
+            <!-- Verified (ownership proven) but not serving yet / anymore (#291): the org
+                 keeps working on the recovery address below; nothing redirects to a domain
+                 whose certificate or DNS is not ready. -->
+            <p class="mt-0.5 text-xs text-amber-600 dark:text-amber-400">
+              {t("settings.branding.domain.not_live", {
+                host: data.domain.recovery_host ?? "",
+              })}
+            </p>
+          {/if}
         </div>
-        <form method="POST" action="?/clearDomain" use:enhance={busy.wrap("removeDomain")}>
-          <Button
-            variant="secondary"
-            size="sm"
-            loading={busy.is("removeDomain")}
-            disabled={busy.active}
-          >
-            {t("settings.branding.domain.remove")}
-          </Button>
-        </form>
+        <div class="flex gap-2">
+          {#if hasLifecycle}
+            <form method="POST" action="?/checkDomain" use:enhance={busy.wrap("checkDomain")}>
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={busy.is("checkDomain")}
+                disabled={busy.active}
+              >
+                {t("settings.branding.domain.check")}
+              </Button>
+            </form>
+          {/if}
+          <form method="POST" action="?/clearDomain" use:enhance={busy.wrap("removeDomain")}>
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={busy.is("removeDomain")}
+              disabled={busy.active}
+            >
+              {t("settings.branding.domain.remove")}
+            </Button>
+          </form>
+        </div>
       </div>
+
+      {#if hasLifecycle}
+        <!-- Cloudflare-managed lifecycle (#291). Status codes are the external system's own
+             vocabulary ("active", "pending_validation", …) — data, rendered verbatim. -->
+        <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
+          <dt class="text-text-muted">{t("settings.branding.domain.status_hostname")}</dt>
+          <dd class="font-mono text-text">{data.domain.hostname_status ?? "—"}</dd>
+          <dt class="text-text-muted">{t("settings.branding.domain.status_certificate")}</dt>
+          <dd class="font-mono text-text">
+            {data.domain.ssl_status ?? "—"}{#if data.domain.cert_expires_at}
+              <span class="ml-2 font-sans text-text-muted">
+                {t("settings.branding.domain.expires", {
+                  date: fmtNumericDate(data.domain.cert_expires_at),
+                })}
+              </span>
+            {/if}
+          </dd>
+          <dt class="text-text-muted">{t("settings.branding.domain.status_dns")}</dt>
+          <dd class="text-text">
+            {data.domain.dns_ok === true
+              ? t("settings.branding.domain.dns_ok")
+              : data.domain.dns_ok === false
+                ? t("settings.branding.domain.dns_moved")
+                : t("settings.branding.domain.dns_unknown")}
+          </dd>
+          {#if data.domain.checked_at}
+            <dt class="text-text-muted">{t("settings.branding.domain.checked_at")}</dt>
+            <dd class="text-text">{fmtNumericDate(data.domain.checked_at)}</dd>
+          {/if}
+        </dl>
+        {#if data.domain.check_error}
+          <p class="mt-2 font-mono text-xs text-red-600 dark:text-red-400">
+            {data.domain.check_error}
+          </p>
+        {/if}
+      {/if}
+
+      {#if data.domain.live && data.domain.recovery_host}
+        <p class="mt-3 text-xs text-text-muted">
+          {t("settings.branding.domain.canonical_note", {
+            host: data.domain.recovery_host,
+            domain: data.domain.custom_domain,
+          })}
+        </p>
+      {/if}
     {/if}
 
     {#if data.domain?.pending_domain}

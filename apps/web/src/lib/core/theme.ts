@@ -42,6 +42,15 @@ export interface OrgTheme {
    * nothing to warn about, and once suspended the suspension screen is the message.
    */
   endsWarningUntil: string | null;
+  /**
+   * Canonical host (#291): the org's custom domain, set only while it is actually live
+   * (hostname + certificate + DNS healthy). The server hook 307-redirects document
+   * navigation on any other host toward it; null means "stay where you are", which is what
+   * keeps the policy loop-free — an unhealthy domain never redirects anyone.
+   */
+  canonicalHost: string | null;
+  /** A verified custom domain exists but is not live: show the domain-health warning. */
+  domainUnhealthy: boolean;
 }
 
 // Neutral fallback used only before/without tenant settings — not a product brand.
@@ -64,6 +73,8 @@ export const DEFAULT_THEME: OrgTheme = {
   resolved: false,
   suspended: false,
   endsWarningUntil: null,
+  canonicalHost: null,
+  domainUnhealthy: false,
 };
 
 // The API validates colours as hex on write; re-check here because the value is interpolated

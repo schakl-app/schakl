@@ -39,8 +39,15 @@
   <div>
     <h1 class="text-xl font-semibold text-text">{summary?.name}</h1>
     <p class="mt-1 font-mono text-sm text-text-muted">
-      {summary?.custom_domain ?? `${summary?.slug}.${data.baseDomain}`}
+      {summary?.canonical_host ?? `${summary?.slug}.${data.baseDomain}`}
       · {t(`instance.status_${summary?.status}`)}
+      {#if summary?.custom_domain && summary?.custom_domain_verified && !summary?.custom_domain_live}
+        <!-- Verified custom domain that is not serving (#291): the console shows the working
+             (recovery) address above, and flags the broken one for the operator. -->
+        · <span class="text-amber-600 dark:text-amber-400"
+          >{t("cloud.console.domain_unhealthy", { domain: summary.custom_domain })}</span
+        >
+      {/if}
     </p>
   </div>
 </div>

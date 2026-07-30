@@ -169,9 +169,11 @@ export const actions: Actions = {
 
     // The console never runs on the org's own host: hand the grant to that host's
     // /impersonate route, which stores the cookie there and lands on the dashboard.
+    // canonical_host (#291) is live-aware — a broken custom domain sends the operator to the
+    // recovery host instead of a TLS error, which is impersonation's most likely occasion.
     const { data: org } = await api.GET("/api/v1/instance/orgs/{org_id}", orgPath(event));
     const { data: meta } = await api.GET("/api/v1/meta/modules");
-    const targetHost = org?.custom_domain ?? `${org?.slug}.${meta?.base_domain ?? ""}`;
+    const targetHost = org?.canonical_host ?? `${org?.slug}.${meta?.base_domain ?? ""}`;
     const port = event.url.port ? `:${event.url.port}` : "";
     throw redirect(
       303,

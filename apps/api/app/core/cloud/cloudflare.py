@@ -226,20 +226,37 @@ async def create_custom_hostname(hostname: str) -> dict[str, Any]:
         raise
 
 
-async def ensure_custom_hostname(hostname: str) -> str:
-    """Idempotent create → the Cloudflare custom-hostname id.
+async def ensure_custom_hostname_record(hostname: str) -> dict[str, Any]:
+    """Idempotent create → the full Cloudflare custom-hostname record.
 
     Adopts an existing record rather than duplicating it, so a retried verification (or a
-    hostname registered by hand during the manual era) converges instead of erroring.
+    hostname registered by hand during the manual era) converges instead of erroring. The
+    full record (not just the id) comes back so the caller can seed the domain-health state
+    (#291) without a second round-trip.
     """
     existing = await find_custom_hostname(hostname)
     if existing and existing.get("id"):
-        return str(existing["id"])
+        return existing
     created = await create_custom_hostname(hostname)
-    hostname_id = (created or {}).get("id")
-    if not hostname_id:
+    if not (created or {}).get("id"):
         raise CloudflareError("Cloudflare accepted the custom hostname but returned no id")
-    return str(hostname_id)
+    return created
+
+
+async def ensure_custom_hostname(hostname: str) -> str:
+    """Idempotent create → the Cloudflare custom-hostname id."""
+    return str((await ensure_custom_hostname_record(hostname))["id"])
+
+
+async def get_custom_hostname(hostname_id: str) -> dict[str, Any] | None:
+    """The current custom-hostname record — status, SSL state, verification errors — or
+    None when it no longer exists (deleted by hand, or moved to another zone)."""
+    try:
+        return await _request("GET", _zone_path(f"/custom_hostnames/{hostname_id}"))
+    except CloudflareError as exc:
+        if exc.status == 404:
+            return None
+        raise
 
 
 async def delete_custom_hostname(hostname_id: str) -> None:

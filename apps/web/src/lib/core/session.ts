@@ -71,6 +71,8 @@ export async function fetchTenant(event: ApiEvent): Promise<OrgTheme> {
     resolved: true,
     suspended: data.suspended,
     endsWarningUntil: data.ends_warning_until ?? null,
+    canonicalHost: data.canonical_host ?? null,
+    domainUnhealthy: data.domain_unhealthy ?? false,
   };
 }
 

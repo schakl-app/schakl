@@ -142,13 +142,12 @@ class PlanUpdate(BaseModel):
 
 
 def _org_url(org: Org) -> str:
-    host = (
-        org.custom_domain
-        if org.custom_domain and org.custom_domain_verified_at is not None
-        else f"{org.slug}.{settings.base_domain}"
-    )
+    # The canonical host (#291): the custom domain only while it is actually live, so the
+    # billing system never mails out a link whose edge cannot serve it.
+    from app.core.hosts import canonical_host
+
     scheme = "https" if settings.auth_cookie_secure else "http"
-    return f"{scheme}://{host}"
+    return f"{scheme}://{canonical_host(org)}"
 
 
 def _provisioned(org: Org, owner_email: str | None = None) -> ProvisionedOrg:

@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 
+from app.core import hosts
 from app.core.auth.models import User
 from app.core.instance import audit, portability, repo, service
 from app.core.instance import capabilities as caps
@@ -62,6 +63,11 @@ class OrgSummary(BaseModel):
     custom_domain: str | None
     custom_domain_verified: bool
     pending_domain: str | None
+    # Canonical host (#291): where the org should be reached *right now* — the custom domain
+    # only while it is live, else the slug host. The console's impersonation jump and org
+    # links use this, so the operator lands on an origin that actually serves.
+    canonical_host: str
+    custom_domain_live: bool = False
     # Cloud plan (epic #199); both None on self-host / unmanaged orgs.
     plan: str | None = None
     trial_ends_at: datetime | None = None
@@ -173,6 +179,8 @@ def _summary(org: Org) -> OrgSummary:
         custom_domain=org.custom_domain,
         custom_domain_verified=org.custom_domain_verified_at is not None,
         pending_domain=org.pending_domain,
+        canonical_host=hosts.canonical_host(org),
+        custom_domain_live=hosts.custom_domain_live(org),
         plan=org.plan,
         trial_ends_at=org.trial_ends_at,
         ends_at=org.ends_at,

@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from app.config import settings
-from app.core import dnscheck
+from app.core import dnscheck, hosts
 from app.core.instance import audit, repo
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
@@ -47,6 +47,22 @@ class DomainStatus(BaseModel):
     # (TLS is issued automatically once verified). None on self-host — routing there is
     # the operator's own ingress concern.
     cname_target: str | None = None
+    # Lifecycle state (#291), all None wherever Cloudflare doesn't manage the certificate.
+    # Raw Cloudflare vocabulary ("active", "pending_validation", "moved", …) — external
+    # system state, rendered as data by the UI, never translated.
+    hostname_status: str | None = None
+    ssl_status: str | None = None
+    dns_ok: bool | None = None
+    cert_expires_at: datetime | None = None
+    checked_at: datetime | None = None
+    check_error: str | None = None
+    # The canonical-host decision (#291): verified is ownership, live is "actually serving".
+    # While live, the custom domain is canonical (browser traffic on the slug host redirects
+    # to it and generated links use it); the slug host below always keeps working as the
+    # operator-controlled recovery path.
+    live: bool = False
+    canonical_host: str | None = None
+    recovery_host: str | None = None
 
 
 class DomainClaim(BaseModel):
@@ -71,9 +87,9 @@ async def _sync_cloud_ingress(ctx: RequestContext) -> None:
     await sync_ingress(ctx.session)
 
 
-async def _register_cloudflare_hostname(domain: str) -> str | None:
-    """Register ``domain`` as a Cloudflare custom hostname; returns its id, or None when the
-    integration is off (every self-host install, and any cloud box without a token).
+async def _register_cloudflare_hostname(domain: str) -> dict | None:
+    """Register ``domain`` as a Cloudflare custom hostname; returns the full record, or None
+    when the integration is off (every self-host install, and any cloud box without a token).
 
     Called **before** the org row is mutated, so a Cloudflare outage leaves the domain
     unverified rather than verified-but-unreachable. That is the honest failure: the customer
@@ -84,13 +100,13 @@ async def _register_cloudflare_hostname(domain: str) -> str | None:
         CloudflareError,
         CloudflareNotEntitledError,
         cloudflare_configured,
-        ensure_custom_hostname,
+        ensure_custom_hostname_record,
     )
 
     if not cloudflare_configured():
         return None
     try:
-        return await ensure_custom_hostname(domain)
+        return await ensure_custom_hostname_record(domain)
     except CloudflareNotEntitledError as exc:
         # A token scope or a plan entitlement (#293). "Try again in a moment" would be a lie —
         # nothing changes until the operator acts, so say so and log what they have to fix.
@@ -142,6 +158,15 @@ def _status(ctx: RequestContext) -> DomainStatus:
         ),
         txt_record_value=org.domain_verification_token,
         cname_target=_cname_target(),
+        hostname_status=org.cf_hostname_status,
+        ssl_status=org.cf_ssl_status,
+        dns_ok=org.domain_dns_ok,
+        cert_expires_at=org.domain_cert_expires_at,
+        checked_at=org.domain_checked_at,
+        check_error=org.domain_check_error,
+        live=hosts.custom_domain_live(org),
+        canonical_host=hosts.canonical_host(org),
+        recovery_host=hosts.slug_host(org),
     )
 
 
@@ -205,19 +230,73 @@ async def verify_domain(ctx: RequestContext = Depends(require_context)) -> Domai
 
     # Cloudflare first, while the org row still says "unverified": if the edge cannot be
     # configured, nothing here claims the domain is live.
-    hostname_id = await _register_cloudflare_hostname(org.pending_domain)
+    record = await _register_cloudflare_hostname(org.pending_domain)
 
     org.custom_domain = org.pending_domain
     org.custom_domain_verified_at = datetime.now(UTC)
-    org.cf_hostname_id = hostname_id
+    org.cf_hostname_id = str(record["id"]) if record else None
     org.pending_domain = None
     org.domain_verification_token = None
+    if record is not None:
+        # Seed the lifecycle state (#291) from the create/adopt response: a fresh hostname
+        # answers "pending", so the domain is verified (ownership proven, routed) but not
+        # yet *live* — the canonical host stays the slug host until Cloudflare reports the
+        # hostname and its certificate active (the check endpoint / daily sweep flip it).
+        from app.core.cloud.domain_health import parse_hostname_record
+
+        health = parse_hostname_record(record)
+        org.cf_hostname_status = health.hostname_status
+        org.cf_ssl_status = health.ssl_status
+        org.domain_cert_expires_at = health.cert_expires_at
+        org.domain_check_error = health.error
+        org.domain_dns_ok = None
+        org.domain_checked_at = datetime.now(UTC)
+    else:
+        # No Cloudflare lifecycle for this domain (Traefik/Let's Encrypt posture): make sure
+        # no state from a previously managed domain lingers — verified is live here.
+        org.cf_hostname_status = None
+        org.cf_ssl_status = None
+        org.domain_dns_ok = None
+        org.domain_cert_expires_at = None
+        org.domain_checked_at = None
+        org.domain_check_error = None
+    org.domain_alerted_for = None
     await ctx.session.flush()
     await audit.record(
         ctx.session, actor=ctx.user, action="domain.verify", org=org,
         detail={"domain": org.custom_domain},
     )
     await _sync_cloud_ingress(ctx)
+    return _status(ctx)
+
+
+@router.post(
+    "/check",
+    response_model=DomainStatus,
+    dependencies=[require_permission("settings.domain.write")],
+)
+async def check_domain(ctx: RequestContext = Depends(require_context)) -> DomainStatus:
+    """Reconcile the custom domain's lifecycle state on demand (#291).
+
+    Fetches the Cloudflare custom-hostname status + certificate state and re-runs the DNS
+    drift check, then stores the result — the same reconciliation the daily sweep performs,
+    for the settings page's "check now" button. A no-op wherever Cloudflare does not manage
+    the certificate: a Traefik/Let's Encrypt domain has no state to poll.
+    """
+    org = ctx.org
+    if not org.custom_domain:
+        raise AppError("not_found", "errors.not_found", status_code=404)
+    from app.core.cloud.cloudflare import cloudflare_configured
+
+    if org.cf_hostname_id and cloudflare_configured():
+        from app.core.cloud.domain_health import refresh_domain_health
+
+        # Two external lookups (Cloudflare + DNS); hand the pooled connection back while
+        # they run (docs/PERFORMANCE.md). refresh mutates the loaded org only — memory,
+        # not I/O — so nothing inside the block touches the session.
+        async with ctx.release_db():
+            await refresh_domain_health(org)
+        await ctx.session.flush()
     return _status(ctx)
 
 
@@ -237,6 +316,15 @@ async def clear_domain(ctx: RequestContext = Depends(require_context)) -> Domain
     org.cf_hostname_id = None
     org.pending_domain = None
     org.domain_verification_token = None
+    # Lifecycle state (#291) describes the cleared domain — drop it with the domain, so the
+    # slug host (now canonical again) never renders a stale health warning.
+    org.cf_hostname_status = None
+    org.cf_ssl_status = None
+    org.domain_dns_ok = None
+    org.domain_cert_expires_at = None
+    org.domain_checked_at = None
+    org.domain_check_error = None
+    org.domain_alerted_for = None
     await ctx.session.flush()
     await audit.record(
         ctx.session, actor=ctx.user, action="domain.clear", org=org,

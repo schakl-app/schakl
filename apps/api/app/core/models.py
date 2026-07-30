@@ -78,6 +78,29 @@ class Org(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # provisioning time and removed when the org is terminated.
     cf_dns_record_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
+    # Custom-domain lifecycle (#291): the state Cloudflare + DNS last reported for
+    # custom_domain. Written by the verify flow, the manual check endpoint and the daily
+    # sweep; all NULL wherever the Cloudflare integration is off — a Traefik/Let's Encrypt
+    # domain has no state to poll, so a verified domain there is live by definition
+    # (`app.core.hosts.custom_domain_live`).
+    cf_hostname_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    cf_ssl_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Tri-state DNS drift check: does custom_domain still resolve toward the CNAME target?
+    # NULL = never checked or resolver unavailable — a lookup timeout must not read as
+    # "the customer moved their DNS away".
+    domain_dns_ok: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    domain_cert_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    domain_checked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # The last reconciliation problem, Cloudflare's own words (or ours), for the settings UI.
+    domain_check_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Alert dedup for the sweep: a fingerprint of the state the org was last mailed about,
+    # so a broken domain is reported once per distinct problem, not once per day.
+    domain_alerted_for: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
     # Cloud plan (epic #199, issue #200 slice): NULL on self-host / unmanaged orgs. One of
     # "trial" (expires at trial_ends_at → suspended by the cloud cron), "standard" (billing
     # drives suspension over the provisioning API) or "unlimited" (never expires). This is

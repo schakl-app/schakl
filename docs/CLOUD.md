@@ -226,6 +226,67 @@ certificate behind it. Clearing a domain takes the opposite trade-off: the remov
 best-effort, because an org must always be able to drop its domain, and a leftover custom
 hostname routes nothing and is adopted again on the next verify.
 
+## Canonical host & custom-domain lifecycle (#291)
+
+After a custom domain verifies, the org has **two valid origins**: the operator-controlled
+`<slug>.<base_domain>` host and the customer's domain. Neither is removed; one is canonical.
+
+**Verified is ownership; live is activation.** With Cloudflare for SaaS, creating the custom
+hostname is not activation: the domain counts as **live** only once Cloudflare reports the
+hostname `active`, its DV certificate `active`, and the DNS drift check still sees the domain
+pointing at the SaaS target. That state lives on `orgs` (`cf_hostname_status`,
+`cf_ssl_status`, `domain_dns_ok`, `domain_cert_expires_at`, `domain_checked_at`,
+`domain_check_error`) and is written by the verify flow (seed), by
+`POST /meta/tenant/domain/check` (the settings page's *Status controleren* button) and by the
+daily `cloud_domains_sweep` cron (04:30). Without Cloudflare (self-host, or the
+Traefik/Let's Encrypt posture) there is no state to poll: the router and certificate follow
+the verification directly, so verified = live — today's behaviour, unchanged. Orgs verified
+before this state existed stay live until the first sweep records the truth: an upgrade must
+never silently demote a working domain.
+
+**The policy, per surface** (`app.core.hosts` is the one helper):
+
+| Surface | Behaviour |
+|---|---|
+| Browser navigation | While live, top-level GET/HEAD document requests on the slug host 307 to the custom domain (`hooks.server.ts`, from `canonical_host` on `/meta/tenant`). `no-store`, never a 308 — health is state, a cached permanent redirect would brick recovery. |
+| Generated links, e-mail | `org_base_url()` → the live custom domain, else the slug host. Used by e-mail branding, password/invite mails, task links. |
+| OAuth / OIDC | Callback URLs derive from `org_base_url()` (`docs/SSO.md`); the runtime OIDC callback stays request-derived. While a domain is unhealthy the displayed callback flips to the slug host — matching reality, since the broken domain serves nothing. No WebAuthn surface exists today. |
+| API / MCP | **Never redirected.** Both origins keep answering — a blind 307 would break non-idempotent requests and cookie-less clients. Canonical is a recommendation for API consumers, not an enforcement. |
+| Instance console | Org rows carry `canonical_host` (live-aware); the impersonation jump uses it, so the operator lands on an origin that serves — which matters most exactly when the customer domain is broken. |
+
+**Loop-safety, by construction:** only one direction ever redirects (toward `canonical_host`),
+the canonical host compares equal to itself, and an unhealthy domain advertises no canonical
+host at all — so at most one hop, and the slug host silently resumes serving the moment
+health degrades. Sessions are host-only cookies: switching origins means signing in again,
+deliberately — a customer domain must never share the base domain's cookie scope.
+
+**Recovery:** the slug host always resolves (`resolve_org` is untouched by health), an
+unhealthy domain shows a banner to holders of `settings.domain.write` instead of a generic
+TLS failure, and Instellingen → Huisstijl shows the raw hostname/certificate/DNS state, the
+last error and a re-check button.
+
+### Certificate renewal, HTTP DCV and Delegated DCV
+
+The custom hostnames schakl creates are **exact, non-wildcard** names validated with
+`ssl.method=http`. Cloudflare renews their DV certificates through the same automatic HTTP
+DCV **as long as the hostname stays `active` and keeps resolving to the SaaS target** — the
+customer does not need Cloudflare as their DNS provider and does not need to proxy anything
+in their own zone; the CNAME routes their traffic through the schakl edge, which answers the
+renewal challenge itself. Renewal breaks when the domain stops pointing at the target,
+another CDN sits in front of it, or a CAA record blocks the CA — which is exactly what the
+sweep watches: it re-reads every hostname's status/SSL state, runs the DNS drift check, and
+mails the org's domain managers **once per distinct problem** (`orgs.domain_alerted_for`
+fingerprint) — on any not-live state, and ahead of an expiry closer than 15 days (Cloudflare
+renews ~30 days out, so 15 means renewal has been failing for weeks).
+
+**Delegated DCV is deliberately deferred.** It would let certificates renew even while the
+domain points elsewhere, at the cost of every customer adding a permanent `_acme-challenge`
+CNAME (and conflict-checking any existing `_acme-challenge` TXT). For exact hostnames that
+actually point at the platform, HTTP DCV renews unattended — and when it can't, the sweep
+says so before browsers do. Revisit alongside the guided setup wizard (#292), which will
+consume the same state this lifecycle work records. Cloudflare webhooks are likewise deferred
+(account-level configuration; the daily sweep is the safety net).
+
 ## Automatic subdomain provisioning (#199)
 
 With Cloudflare configured, creating an org also creates its address:

@@ -56,6 +56,29 @@ const handleContext: Handle = async ({ event, resolve }) => {
   event.locals.theme = theme;
   event.locals.user = user;
 
+  // Canonical host (#291): while the org's custom domain is live, document navigation on the
+  // operator-controlled <slug> host redirects to it. Loop-safe by construction: the API sets
+  // `canonicalHost` only when the domain is healthy, the canonical host compares equal to
+  // itself, and an unhealthy domain yields null — so at most one hop, ever, and the slug host
+  // silently keeps serving as the recovery path the moment health degrades. Only top-level
+  // GET/HEAD document requests move: SvelteKit __data.json fetches (sec-fetch-dest "empty")
+  // would hit CORS cross-origin, and the API/MCP never pass through this hook at all —
+  // dual-origin stays supported there. 307 + no-store: health is state, never cache it.
+  const secFetchDest = event.request.headers.get("sec-fetch-dest");
+  if (
+    theme.canonicalHost &&
+    theme.canonicalHost !== event.url.hostname &&
+    (event.request.method === "GET" || event.request.method === "HEAD") &&
+    (!secFetchDest || secFetchDest === "document")
+  ) {
+    const target = new URL(event.url);
+    target.hostname = theme.canonicalHost;
+    return new Response(null, {
+      status: 307,
+      headers: { location: target.toString(), "cache-control": "no-store" },
+    });
+  }
+
   // A hostname that resolves to no org is a fresh install (route every visit to the
   // first-run wizard), the instance-management host of a cloud deployment (route to the
   // console — epic #199), or an unknown host (the login screen explains — issue #26).

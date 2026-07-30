@@ -131,4 +131,12 @@ export const actions: Actions = {
     if (error) return fail(400, { error: apiErrorKey(error).key, domainError: true });
     return { domainCleared: true };
   },
+
+  // Lifecycle check (#291): re-fetch Cloudflare hostname/certificate state + the DNS drift
+  // check on demand; the page re-loads and renders the stored result.
+  checkDomain: async (event) => {
+    const { error } = await apiFor(event).POST("/api/v1/meta/tenant/domain/check");
+    if (error) return fail(400, { error: apiErrorKey(error).key, domainError: true });
+    return { domainChecked: true };
+  },
 };

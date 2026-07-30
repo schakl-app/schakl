@@ -587,6 +587,28 @@ class _FakeCloudflare:
         """A custom hostname the operator added by hand in the dashboard (#293)."""
         self.records[record_id] = {"id": record_id, "hostname": hostname, "status": "active"}
 
+    def set_state(
+        self,
+        hostname_id: str,
+        *,
+        status: str | None = None,
+        ssl_status: str | None = None,
+        expires_on: str | None = None,
+        validation_errors: list[str] | None = None,
+    ) -> None:
+        """Drive the lifecycle a real Cloudflare would (#291): hostname/SSL status flips,
+        certificate expiry, validation errors."""
+        record = self.records[hostname_id]
+        if status is not None:
+            record["status"] = status
+        ssl = record.setdefault("ssl", {})
+        if ssl_status is not None:
+            ssl["status"] = ssl_status
+        if expires_on is not None:
+            ssl["expires_on"] = expires_on
+        if validation_errors is not None:
+            ssl["validation_errors"] = [{"message": message} for message in validation_errors]
+
     @staticmethod
     def _ok(result) -> httpx.Response:
         return httpx.Response(200, json={"success": True, "errors": [], "result": result})
@@ -612,6 +634,10 @@ class _FakeCloudflare:
 
         if "/custom_hostnames" in path:
             if request.method == "GET":
+                if not path.endswith("/custom_hostnames"):
+                    # Detail read by id (#291) — the lifecycle refresh path.
+                    found = self.records.get(path.rsplit("/", 1)[-1])
+                    return self._ok(found) if found else self._gone()
                 wanted = request.url.params.get("hostname", "")
                 # Cloudflare's filter is a substring match — mimic it, so the exact-match
                 # guard in find_custom_hostname is genuinely exercised.
@@ -620,7 +646,11 @@ class _FakeCloudflare:
                 self.bodies.append(body)
                 self._seq += 1
                 record = {
-                    "id": f"ch{self._seq}", "hostname": body["hostname"], "status": "pending"
+                    "id": f"ch{self._seq}",
+                    "hostname": body["hostname"],
+                    # A fresh custom hostname is never active: HTTP DCV still has to run.
+                    "status": "pending",
+                    "ssl": {"status": "pending_validation"},
                 }
                 self.records[record["id"]] = record
                 return httpx.Response(
@@ -990,6 +1020,272 @@ async def test_self_host_provisioning_touches_no_dns(monkeypatch) -> None:
     assert fake.calls == []
     async with async_session_maker() as session:
         assert (await session.get(Org, org_id)).cf_dns_record_id is None
+
+
+# --------------------------------------------------------------------------- #
+# Canonical host & custom-domain lifecycle (#291)
+# --------------------------------------------------------------------------- #
+@pytest.fixture
+def dns_points(monkeypatch) -> dict:
+    """Stand in for the DNS drift check; tests flip `value` between True/False/None."""
+    state = {"value": True}
+
+    async def fake_points_at(host: str, target: str) -> bool | None:
+        return state["value"]
+
+    from app.core import dnscheck as dnscheck_module
+
+    monkeypatch.setattr(dnscheck_module, "points_at", fake_points_at)
+    return state
+
+
+async def _verified_tenant(client_for, cloudflare, published_txt, slug: str, domain: str):
+    tenant = await make_tenant(slug)
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as client:
+        await _claim_and_publish(client, headers, published_txt, domain)
+        verified = await client.post("/api/v1/meta/tenant/domain/verify", headers=headers)
+        assert verified.status_code == 200
+    return tenant, headers
+
+
+async def test_verify_is_not_activation(client_for, cloudflare, published_txt) -> None:
+    """A fresh custom hostname answers "pending": the domain is verified (ownership proven,
+    routed) but not live — nothing may present it as the org's address yet."""
+    tenant, headers = await _verified_tenant(
+        client_for, cloudflare, published_txt, "cf-notyet", "crm.wacht.test"
+    )
+    async with client_for(tenant.host) as client:
+        status = (await client.get("/api/v1/meta/tenant/domain", headers=headers)).json()
+        assert status["hostname_status"] == "pending"
+        assert status["ssl_status"] == "pending_validation"
+        assert status["live"] is False
+        assert status["canonical_host"] == tenant.host  # the slug host stays canonical
+        assert status["recovery_host"] == tenant.host
+
+        branding = (await client.get("/api/v1/meta/tenant")).json()
+        assert branding["canonical_host"] is None  # nothing redirects anywhere
+        assert branding["domain_unhealthy"] is True
+
+
+async def test_check_flips_the_canonical_host_when_all_three_are_ready(
+    client_for, cloudflare, published_txt, dns_points
+) -> None:
+    tenant, headers = await _verified_tenant(
+        client_for, cloudflare, published_txt, "cf-live", "crm.actief.test"
+    )
+    cloudflare.set_state(
+        "ch1", status="active", ssl_status="active", expires_on="2027-01-15T00:00:00Z"
+    )
+    async with client_for(tenant.host) as client:
+        checked = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
+        ).json()
+        assert checked["hostname_status"] == "active"
+        assert checked["ssl_status"] == "active"
+        assert checked["dns_ok"] is True
+        assert checked["live"] is True
+        assert checked["canonical_host"] == "crm.actief.test"
+        assert checked["cert_expires_at"].startswith("2027-01-15")
+
+        # The slug host keeps resolving (recovery path) and now advertises the redirect.
+        branding = (await client.get("/api/v1/meta/tenant")).json()
+        assert branding["canonical_host"] == "crm.actief.test"
+        assert branding["domain_unhealthy"] is False
+
+    # On the canonical host itself the advertised host compares equal — the web hook
+    # therefore never redirects there. One direction, one hop: no loop is constructible.
+    async with client_for("crm.actief.test") as client:
+        branding = (await client.get("/api/v1/meta/tenant")).json()
+        assert branding["canonical_host"] == "crm.actief.test"
+
+
+async def test_dns_moved_away_demotes_the_domain_and_alerts_nobody_twice(
+    client_for, cloudflare, published_txt, dns_points, monkeypatch
+) -> None:
+    """The customer re-points their DNS: the domain stops being canonical, the slug host
+    carries the org, and the daily sweep mails the domain managers exactly once."""
+    tenant, headers = await _verified_tenant(
+        client_for, cloudflare, published_txt, "cf-moved", "crm.verhuisd.test"
+    )
+    cloudflare.set_state("ch1", status="active", ssl_status="active")
+    async with client_for(tenant.host) as client:
+        assert (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
+        ).json()["live"] is True
+
+    dns_points["value"] = False
+    async with client_for(tenant.host) as client:
+        demoted = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
+        ).json()
+        assert demoted["dns_ok"] is False
+        assert demoted["live"] is False
+        assert demoted["canonical_host"] == tenant.host
+        branding = (await client.get("/api/v1/meta/tenant")).json()
+        assert branding["canonical_host"] is None
+        assert branding["domain_unhealthy"] is True
+
+    # The sweep alerts once per distinct problem, and clears the slate on recovery.
+    from app.core.cloud import domain_health
+
+    sent: list[OutgoingEmail] = []
+
+    async def fake_send(session, org_id, mail):  # noqa: ANN001
+        sent.append(mail)
+        return True, None
+
+    monkeypatch.setattr(domain_health, "send_org_email", fake_send)
+    async with async_session_maker() as session:
+        first = await domain_health.sweep_domain_health(session)
+        await session.commit()
+    assert first["alerted"] == 1
+    assert len(sent) == 1  # the tenant owner holds "*", so they are the domain manager
+    assert tenant.user.email == sent[0].to
+
+    async with async_session_maker() as session:
+        second = await domain_health.sweep_domain_health(session)
+        await session.commit()
+    assert second["alerted"] == 0 and len(sent) == 1  # same problem, no repeat mail
+
+    dns_points["value"] = True
+    async with async_session_maker() as session:
+        recovered = await domain_health.sweep_domain_health(session)
+        await session.commit()
+    assert recovered["alerted"] == 0
+    async with async_session_maker() as session:
+        org = await session.get(Org, tenant.org.id)
+        assert org.domain_alerted_for is None  # a future problem alerts again
+
+
+async def test_sweep_warns_ahead_of_a_failing_renewal(
+    client_for, cloudflare, published_txt, dns_points, monkeypatch
+) -> None:
+    """Healthy statuses but an expiry closing in means HTTP DCV renewal is not happening —
+    that is discovered here, not by browsers rejecting TLS."""
+    tenant, headers = await _verified_tenant(
+        client_for, cloudflare, published_txt, "cf-renew", "crm.bijna.test"
+    )
+    soon = (datetime.now(UTC) + timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    cloudflare.set_state("ch1", status="active", ssl_status="active", expires_on=soon)
+
+    from app.core.cloud import domain_health
+
+    sent: list[OutgoingEmail] = []
+
+    async def fake_send(session, org_id, mail):  # noqa: ANN001
+        sent.append(mail)
+        return True, None
+
+    monkeypatch.setattr(domain_health, "send_org_email", fake_send)
+    async with async_session_maker() as session:
+        counts = await domain_health.sweep_domain_health(session)
+        await session.commit()
+    assert counts["alerted"] == 1
+
+    async with async_session_maker() as session:
+        org = await session.get(Org, tenant.org.id)
+        assert org.domain_alerted_for.startswith("expiry:")
+        # Still live: an expiring-but-valid certificate serves — the alert is the point.
+        from app.core.hosts import custom_domain_live
+
+        assert custom_domain_live(org) is True
+
+
+async def test_hostname_deleted_behind_our_back_is_reported(
+    client_for, cloudflare, published_txt, dns_points
+) -> None:
+    tenant, headers = await _verified_tenant(
+        client_for, cloudflare, published_txt, "cf-gone", "crm.weg.test"
+    )
+    cloudflare.records.clear()
+    async with client_for(tenant.host) as client:
+        checked = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
+        ).json()
+        assert checked["hostname_status"] == "deleted"
+        assert checked["live"] is False
+        assert checked["check_error"]
+
+
+async def test_a_cloudflare_outage_is_not_a_state_change(
+    client_for, cloudflare, published_txt, dns_points
+) -> None:
+    tenant, headers = await _verified_tenant(
+        client_for, cloudflare, published_txt, "cf-blip", "crm.storing.test"
+    )
+    cloudflare.set_state("ch1", status="active", ssl_status="active")
+    async with client_for(tenant.host) as client:
+        await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
+
+        cloudflare.fail_with = [500, 500]
+        blipped = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
+        ).json()
+        # The previous statuses stand; only the error is recorded. Still live.
+        assert blipped["hostname_status"] == "active"
+        assert blipped["live"] is True
+        assert blipped["check_error"]
+
+
+async def test_clear_resets_the_lifecycle_state(
+    client_for, cloudflare, published_txt, dns_points
+) -> None:
+    tenant, headers = await _verified_tenant(
+        client_for, cloudflare, published_txt, "cf-reset", "crm.schoon.test"
+    )
+    async with client_for(tenant.host) as client:
+        await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
+        cleared = (await client.delete("/api/v1/meta/tenant/domain", headers=headers)).json()
+        assert cleared["hostname_status"] is None
+        assert cleared["checked_at"] is None
+        assert cleared["live"] is False
+        assert cleared["canonical_host"] == tenant.host
+
+    async with async_session_maker() as session:
+        org = await session.get(Org, tenant.org.id)
+        assert org.cf_hostname_status is None
+        assert org.domain_checked_at is None
+        assert org.domain_alerted_for is None
+
+
+async def test_without_cloudflare_a_verified_domain_is_live_immediately(
+    client_for, monkeypatch, published_txt
+) -> None:
+    """Self-host / Traefik posture: the router and its Let's Encrypt certificate follow the
+    verification directly — there is no state to poll, so verified means live (#202)."""
+    tenant = await make_tenant("cf-le")
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as client:
+        await _claim_and_publish(client, headers, published_txt, "crm.zelf291.test")
+        await client.post("/api/v1/meta/tenant/domain/verify", headers=headers)
+        status = (await client.get("/api/v1/meta/tenant/domain", headers=headers)).json()
+        assert status["hostname_status"] is None
+        assert status["live"] is True
+        assert status["canonical_host"] == "crm.zelf291.test"
+        branding = (await client.get("/api/v1/meta/tenant")).json()
+        assert branding["canonical_host"] == "crm.zelf291.test"
+
+
+async def test_a_pre_291_row_is_not_demoted_by_the_upgrade() -> None:
+    """An org verified before lifecycle tracking existed has a hostname id but no captured
+    state. It must stay live until the first sweep records the truth — an upgrade must never
+    silently move a working custom domain back to the slug host."""
+    from app.core.hosts import canonical_host, custom_domain_live
+
+    tenant = await make_tenant("cf-legacy")
+    async with async_session_maker() as session:
+        org = await session.get(Org, tenant.org.id)
+        org.custom_domain = "crm.legacy.test"
+        org.custom_domain_verified_at = datetime.now(UTC)
+        org.cf_hostname_id = "ch-old"
+        assert custom_domain_live(org) is True
+        assert canonical_host(org) == "crm.legacy.test"
+        # …and the moment a check records a non-live state, the demotion is real.
+        org.domain_checked_at = datetime.now(UTC)
+        org.cf_hostname_status = "moved"
+        assert custom_domain_live(org) is False
+        assert canonical_host(org) == f"{org.slug}.{settings.base_domain}"
 
 
 # --------------------------------------------------------------------------- #

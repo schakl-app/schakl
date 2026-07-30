@@ -4695,6 +4695,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/meta/tenant/domain/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Domain
+         * @description Reconcile the custom domain's lifecycle state on demand (#291).
+         *
+         *     Fetches the Cloudflare custom-hostname status + certificate state and re-runs the DNS
+         *     drift check, then stores the result — the same reconciliation the daily sweep performs,
+         *     for the settings page's "check now" button. A no-op wherever Cloudflare does not manage
+         *     the certificate: a Traefik/Let's Encrypt domain has no state to poll.
+         */
+        post: operations["check_domain_api_v1_meta_tenant_domain_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/meta/tenant/domain/verify": {
         parameters: {
             query?: never;
@@ -12261,6 +12286,8 @@ export interface components {
         OrgDetail: {
             /** Brand Name */
             brand_name: string | null;
+            /** Canonical Host */
+            canonical_host: string;
             /**
              * Created At
              * Format: date-time
@@ -12268,6 +12295,11 @@ export interface components {
             created_at: string;
             /** Custom Domain */
             custom_domain: string | null;
+            /**
+             * Custom Domain Live
+             * @default false
+             */
+            custom_domain_live: boolean;
             /** Custom Domain Verified */
             custom_domain_verified: boolean;
             /** Default Locale */
@@ -12363,6 +12395,8 @@ export interface components {
         };
         /** OrgSummary */
         OrgSummary: {
+            /** Canonical Host */
+            canonical_host: string;
             /**
              * Created At
              * Format: date-time
@@ -12370,6 +12404,11 @@ export interface components {
             created_at: string;
             /** Custom Domain */
             custom_domain: string | null;
+            /**
+             * Custom Domain Live
+             * @default false
+             */
+            custom_domain_live: boolean;
             /** Custom Domain Verified */
             custom_domain_verified: boolean;
             /** Deleted At */
@@ -15730,6 +15769,8 @@ export interface components {
             app_icon_url?: string | null;
             /** Brand Name */
             brand_name: string;
+            /** Canonical Host */
+            canonical_host?: string | null;
             /** Currency */
             currency: string;
             /**
@@ -15749,6 +15790,11 @@ export interface components {
              * @default 60
              */
             demo_reset_minutes: number;
+            /**
+             * Domain Unhealthy
+             * @default false
+             */
+            domain_unhealthy: boolean;
             /** Enabled Modules */
             enabled_modules: string[];
             /** Ends Warning Until */
@@ -16878,14 +16924,35 @@ export interface components {
         };
         /** DomainStatus */
         app__core__domains__DomainStatus: {
+            /** Canonical Host */
+            canonical_host?: string | null;
+            /** Cert Expires At */
+            cert_expires_at?: string | null;
+            /** Check Error */
+            check_error?: string | null;
+            /** Checked At */
+            checked_at?: string | null;
             /** Cname Target */
             cname_target?: string | null;
             /** Custom Domain */
             custom_domain: string | null;
             /** Custom Domain Verified At */
             custom_domain_verified_at: string | null;
+            /** Dns Ok */
+            dns_ok?: boolean | null;
+            /** Hostname Status */
+            hostname_status?: string | null;
+            /**
+             * Live
+             * @default false
+             */
+            live: boolean;
             /** Pending Domain */
             pending_domain: string | null;
+            /** Recovery Host */
+            recovery_host?: string | null;
+            /** Ssl Status */
+            ssl_status?: string | null;
             /** Txt Record Name */
             txt_record_name: string | null;
             /** Txt Record Value */
@@ -27309,6 +27376,26 @@ export interface operations {
         };
     };
     clear_domain_api_v1_meta_tenant_domain_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app__core__domains__DomainStatus"];
+                };
+            };
+        };
+    };
+    check_domain_api_v1_meta_tenant_domain_check_post: {
         parameters: {
             query?: never;
             header?: never;
