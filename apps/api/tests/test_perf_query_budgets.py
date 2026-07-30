@@ -14,7 +14,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from tests.conftest import auth_cookie, make_tenant
+from app.db import async_session_maker, set_current_org
+from tests.conftest import add_membership, auth_cookie, make_tenant
 
 
 def _iso(dt: datetime) -> str:
@@ -146,6 +147,82 @@ async def test_tasks_panel_open_count_is_counted_not_measured(client_for) -> Non
         panel = next(p for p in res.json() if p["key"] == "tasks.company")
         assert panel["data"]["open_count"] == 51
         assert len(panel["data"]["tasks"]) == 50
+
+
+# --- per-request tenancy overhead ---------------------------------------------------------- #
+# Every request in the app pays this, so it is budgeted rather than left to drift. An owner
+# holds ``*`` and never reaches horizon resolution at all; a member and a client both do, and
+# each used to re-derive a fact the membership statement had already answered.
+
+
+async def _member_of(t, slug: str, *, role: str = "member"):
+    """A second person in ``t``'s org, holding ``role``. Returns their auth headers."""
+    other = await make_tenant(f"{slug}-other", email=f"{slug}-other@example.com")
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        await add_membership(session, t.org.id, other.user.id, role=role)
+        await session.commit()
+    return await auth_cookie(other.user)
+
+
+#: Statements an ordinary member's ``GET /meta/me`` issues, end to end: the auth user, the two
+#: org resolutions, the RLS ``set_config``, the combined membership/permissions/client-role
+#: statement, the company-groups resolver, the portal resolver, and the endpoint's own read.
+#: It was 10 before #290 — the client-role floor re-ran an ``EXISTS`` the membership statement
+#: had already answered, and ``is_portal`` re-ran the contacts join the portal resolver had.
+#: Update this deliberately: it is the floor under **every** request in the app.
+_MEMBER_REQUEST_BUDGET = 8
+
+
+async def test_a_staff_request_never_queries_contacts_to_learn_it_is_staff(
+    client_for, count_queries
+) -> None:
+    """The heaviest of the two duplicates, and the one that hit *everyone*.
+
+    ``is_portal`` asked the contacts module "is this user contact-linked?" on every non-owner
+    request — so a member loading any screen paid a standalone contacts read to be told no.
+    """
+    t = await make_tenant("perf-ctx-member")
+    headers = await _member_of(t, "perf-ctx-member")
+    async with client_for(t.host) as c:
+        with count_queries() as counter:
+            assert (await c.get("/api/v1/meta/me", headers=headers)).status_code == 200
+    # The portal resolver reads contacts through ``FROM memberships JOIN contacts``; a bare
+    # ``FROM contacts`` is the duplicate this removed.
+    assert counter.matching("from contacts") == [], counter.matching("from contacts")
+    # The client-role floor no longer re-asks what the membership statement's ``bool_or``
+    # answered: the only membership_roles read is the one inside it.
+    assert len(counter.matching("membership_roles")) == 1, counter.matching("membership_roles")
+    assert len(counter) == _MEMBER_REQUEST_BUDGET, "\n".join(counter.statements)
+
+
+async def test_a_client_request_resolves_its_horizon_without_re_deriving_the_role(
+    client_for, count_queries
+) -> None:
+    """A client is the case the skipped resolver exists for — it must still be floored (#252).
+
+    The saving is only safe if the synthesized floor is the same answer the query gave, so the
+    behaviour is asserted beside the count: a client with no company assignment sees nothing.
+    """
+    t = await make_tenant("perf-ctx-client")
+    owner_headers = await auth_cookie(t.user)
+    headers = await _member_of(t, "perf-ctx-client", role="client")
+    async with client_for(t.host) as c:
+        await _company(c, owner_headers, name="Alpha")
+
+        with count_queries() as counter:
+            res = await c.get("/api/v1/meta/me", headers=headers)
+        assert res.status_code == 200
+        # Still exactly one membership_roles read: the floor is synthesized, not queried.
+        assert len(counter.matching("membership_roles")) == 1, counter.matching(
+            "membership_roles"
+        )
+
+        # …and the floor really applied. The owner sees the client; the client sees nothing —
+        # the empty horizon, not the unrestricted ``None`` a missing resolver would have given.
+        assert (await c.get("/api/v1/companies", headers=headers)).json()["items"] == []
+        owned = (await c.get("/api/v1/companies", headers=owner_headers)).json()
+        assert [r["name"] for r in owned["items"]] == ["Alpha"]
 
 
 # --- automation rules: grouped, not one query per rule -------------------------------------- #

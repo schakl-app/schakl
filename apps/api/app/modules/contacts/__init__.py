@@ -7,7 +7,7 @@ namespace) into the shared registry. ``main.py`` imports it for each enabled mod
 from __future__ import annotations
 
 from app.core.portal import register_portal_user_resolver
-from app.core.scope import register_company_scope_resolver
+from app.core.scope import SCOPE_SOURCE_PORTAL, register_company_scope_resolver
 from app.modules.contacts.impex import CONTACT_IMPEX, CONTACT_ON_COMPANY_EXTENSION
 from app.modules.contacts.mcp import CONTACT_MCP_TOOLS
 from app.modules.contacts.panels import contacts_company_panel
@@ -17,8 +17,10 @@ from app.modules.contacts.router import router
 from app.registry import ModuleDescriptor, registry
 
 # The client portal's data horizon (#193, on #191's seam): a contact-linked membership sees
-# exactly its contact's companies — live, and never unrestricted.
-register_company_scope_resolver(resolve_portal_company_scope)
+# exactly its contact's companies — live, and never unrestricted. Whether this source
+# restricted *is* "is this user contact-linked", so ``require_context`` reads the answer off
+# the resolution rather than asking us again.
+register_company_scope_resolver(resolve_portal_company_scope, key=SCOPE_SOURCE_PORTAL)
 # …and lets other modules ask "is this user a portal login?" without importing our models
 # (notification fan-out keeps staff events out of client inboxes).
 register_portal_user_resolver(resolve_portal_users)
