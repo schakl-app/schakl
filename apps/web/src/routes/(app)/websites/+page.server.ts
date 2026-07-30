@@ -1,6 +1,6 @@
 import { fail, redirect } from "@sveltejs/kit";
 
-import { apiErrorKey, lookupItems } from "$lib/core/errors";
+import { apiErrorKey } from "$lib/core/errors";
 import { parseParty } from "$lib/core/party";
 import { can } from "$lib/core/permissions";
 import {
@@ -36,70 +36,15 @@ export const load: PageServerLoad = async (event) => {
   const resolved = resolveColumns(WEBSITE_COLUMNS, pref);
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
 
-  const [
-    websites,
-    domains,
-    hosting,
-    companies,
-    providers,
-    members,
-    contacts,
-    definitions,
-    hostingDefinitions,
-    domainDefinitions,
-    companyDefinitions,
-    contactDefinitions,
-  ] = await Promise.all([
-    api.GET("/api/v1/websites", { params: { query: { limit: 200, offset: 0, sort } } }),
-    // The create picker: a website is a 0/1 child of a domain, so the options are the
-    // tenant's domains — ones that already carry a website are filtered out client-side.
-    api.GET("/api/v1/domains", { params: { query: { limit: 200, offset: 0 } } }),
-    api.GET("/api/v1/hosting", { params: { query: { limit: 200, offset: 0 } } }),
-    api.GET("/api/v1/companies", {
-      params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
-    }),
-    api.GET("/api/v1/providers"),
-    api.GET("/api/v1/members/lookup"),
-    api.GET("/api/v1/contacts", { params: { query: { limit: 200, offset: 0, sort: "first_name" } } }),
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "website" } },
-    }),
-    // For the inline hosting/domain quick-creates (#115): their full dialogs include custom fields.
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "hosting" } },
-    }),
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "domain" } },
-    }),
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "company" } },
-    }),
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "contact" } },
-    }),
-  ]);
+  // Only the URL-dependent read; every picker and definition set comes from the section
+  // layout, which does not rerun on a sort click (#290).
+  const websites = await api.GET("/api/v1/websites", {
+    params: { query: { limit: 200, offset: 0, sort } },
+  });
 
   return {
     websites: websites.data?.items ?? [],
     total: websites.data?.total ?? 0,
-    domains: (domains.data?.items ?? []).map((d) => ({
-      id: d.id,
-      name: d.name,
-      company_id: d.company_id ?? null,
-    })),
-    hosting: (hosting.data?.items ?? []).map((h) => ({ id: h.id, name: h.name })),
-    companies: lookupItems(companies, "companies").map((c) => ({ id: c.id, name: c.name })),
-    providers: providers.data ?? [],
-    employees: members.data ?? [],
-    contacts: lookupItems(contacts, "contacts").map((c) => ({
-      id: c.id,
-      name: [c.first_name, c.last_name].filter(Boolean).join(" "),
-    })),
-    definitions: definitions.data ?? [],
-    hostingDefinitions: hostingDefinitions.data ?? [],
-    domainDefinitions: domainDefinitions.data ?? [],
-    companyDefinitions: companyDefinitions.data ?? [],
-    contactDefinitions: contactDefinitions.data ?? [],
     agencyLabel: event.locals.theme?.brandName ?? "",
     table: { pref, sort: sort ?? null, widths: resolved.widths },
     locale: event.locals.locale,

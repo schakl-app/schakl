@@ -1,6 +1,6 @@
 import { fail, redirect } from "@sveltejs/kit";
 
-import { apiErrorKey, lookupItems } from "$lib/core/errors";
+import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";

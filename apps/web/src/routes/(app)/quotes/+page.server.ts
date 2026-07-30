@@ -1,6 +1,6 @@
 import { fail, redirect } from "@sveltejs/kit";
 
-import { apiErrorKey, lookupItems } from "$lib/core/errors";
+import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
@@ -20,28 +20,26 @@ export const load: PageServerLoad = async (event) => {
   const companyFilter = event.url.searchParams.get("company") ?? undefined;
   const q = event.url.searchParams.get("q") ?? undefined;
 
-  const [quotes, companies] = await Promise.all([
-    api.GET("/api/v1/invoicing/quotes", {
-      params: {
-        // `lines: false` — the index never draws a line (#290, docs/PERFORMANCE.md).
-        query: {
-          limit: 200,
-          offset: 0,
-          sort,
-          status: statusFilter,
-          company_id: companyFilter,
-          q,
-          lines: false,
-        },
+  // Only the URL-dependent read; the client picker comes from the section layout, which does
+  // not rerun on a filter or sort click (#290).
+  const quotes = await api.GET("/api/v1/invoicing/quotes", {
+    params: {
+      // `lines: false` — the index never draws a line (#290, docs/PERFORMANCE.md).
+      query: {
+        limit: 200,
+        offset: 0,
+        sort,
+        status: statusFilter,
+        company_id: companyFilter,
+        q,
+        lines: false,
       },
-    }),
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, count: false, sort: "name" } } }),
-  ]);
+    },
+  });
 
   return {
     quotes: quotes.data?.items ?? [],
     total: quotes.data?.total ?? 0,
-    companies: lookupItems(companies, "companies").map((c) => ({ id: c.id, name: c.name })),
     table: { pref, sort: sort ?? null, widths: resolved.widths },
     statusFilter: statusFilter ?? "",
     companyFilter: companyFilter ?? "",

@@ -2,7 +2,6 @@ import { error, fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey, lookupItems } from "$lib/core/errors";
 import { parseParty } from "$lib/core/party";
-import { can } from "$lib/core/permissions";
 import {
   createCompanyAction,
   createContactAction,
@@ -30,9 +29,6 @@ export const load: PageServerLoad = async (event) => {
   const context = { entityId: domain_id, periodStart: null };
   const enabled = event.locals.theme?.enabledModules ?? [];
   const panels = entityPanelsFor(enabled, "domain");
-  // The form's TLD price hint (#250): only fetched for holders of the read permission.
-  const canReadPrices = can(event.locals.user, "domains.tld_price.read");
-
   // Only what is about *this* domain. Every picker and definition set that does not vary by id
   // — clients, providers, employees, contacts, the domain custom fields, the two inline
   // quick-create sets, the TLD prices — comes from the section layout, which does not rerun
