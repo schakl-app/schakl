@@ -386,6 +386,13 @@
   onsort={table.onSort}
   onresize={table.onResize}
 />
+{#if data.requestsTotal > data.requests.length}
+  <!-- A weekly free-day pattern alone is ~52 requests a year; silent truncation would read as
+       "this is everything". -->
+  <p class="mt-2 text-xs text-text-muted">
+    {t("leave.list.truncated", { shown: data.requests.length, total: data.requestsTotal })}
+  </p>
+{/if}
 
 <ConfirmDialog
   bind:open={bulkCancelOpen}

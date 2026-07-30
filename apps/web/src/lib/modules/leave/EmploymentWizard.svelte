@@ -266,6 +266,16 @@
         <Check size={16} />
         {t("settings.employment.saved")}
       </p>
+      {#if result.error}
+        <!-- The contract landed but the pattern did not: say so, or the green line above reads
+             as "the free days were placed" while zero days exist on the calendar. -->
+        <p
+          class="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950 dark:text-red-300"
+        >
+          {t("settings.employment.pattern_not_placed")}
+          {t(result.error)}
+        </p>
+      {/if}
       {#if result.freeTime}
         <dl
           class="grid grid-cols-2 gap-3 rounded-lg border border-border p-3 text-sm sm:grid-cols-4"
@@ -329,6 +339,7 @@
               void update({ reset: false });
             })}
           >
+            <input type="hidden" name="user_id" value={userId} />
             <input
               type="hidden"
               name="request_ids"

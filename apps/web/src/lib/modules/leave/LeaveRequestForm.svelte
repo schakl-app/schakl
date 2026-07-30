@@ -126,7 +126,6 @@
   let overriding = $state(request?.hours_override != null);
 
   const selectedType = $derived(types.find((lt) => lt.id === typeId));
-  const remaining = $derived(selectedType?.tracks_balance ? balances[selectedType.id] : undefined);
 
   // What actually posts (#265): the picked option, except when an edit stays within the same
   // group — there the original stored pot is preserved, so a note-only edit never silently
@@ -161,6 +160,14 @@
   // flow is the wrong person (#109). Null = no type chosen, or the type tracks no balance.
   let previewRemaining = $state<number | null>(null);
   let timer: ReturnType<typeof setTimeout> | undefined;
+
+  // The hint under the type picker prefers the preview's figure the moment one exists: it is
+  // computed for the span's *own* year and the *target* employee. The `balances` prop belongs
+  // to the viewer's currently viewed year, which disagrees the moment the dates cross a year
+  // boundary (booking January in December read as December's remaining).
+  const remaining = $derived(
+    selectedType?.tracks_balance ? (previewRemaining ?? balances[selectedType.id]) : undefined,
+  );
 
   // Warn only when editing an *already-approved* request that the save would push back to pending
   // (#72). Creating, or editing a still-pending one, needs no warning — nothing is being undone.

@@ -57,10 +57,13 @@ export const employmentActions = {
     const inherit = form.get("inherit") === "true";
     const schedule = inherit ? null : parseSchedule(form.get("schedule"));
     if (!inherit && !schedule) return fail(400, { error: "errors.required" });
-    const free_time_hours_per_week = freeTimeHours(
-      String(form.get("free_time_mode") ?? "derive"),
-      form.get("free_time_hours"),
-    );
+    const freeTimeMode = String(form.get("free_time_mode") ?? "derive");
+    const free_time_hours_per_week = freeTimeHours(freeTimeMode, form.get("free_time_hours"));
+    if (freeTimeMode === "custom" && free_time_hours_per_week === null) {
+      // An emptied custom figure would post `null`, which the API reads as "derive the norm
+      // shortfall" — the exact opposite of the 0 the wizard's own preview just showed for it.
+      return fail(400, { error: "errors.required" });
+    }
 
     const contractId = String(form.get("contract_id") ?? "").trim();
     if (contractId) {
@@ -91,37 +94,66 @@ export const employmentActions = {
 
     // The pattern is optional: plenty of arrangements accrue free time that the employee books
     // by hand. A failure here is reported *with* `employmentSaved`, so the wizard does not offer
-    // to re-save a contract that already landed.
+    // to re-save a contract that already landed — and the receipt states the failure instead of
+    // a bare green "saved" over a pattern that never landed.
     let generated = 0;
+    let patternError: string | null = null;
     const patternMode = String(form.get("pattern_mode") ?? "none");
     const typeId = String(form.get("leave_type_id") ?? "");
     const anchor = String(form.get("anchor_date") ?? "");
     if ((patternMode === "spread" || patternMode === "interval") && typeId && anchor) {
-      const { data, error } = await api.POST("/api/v1/leave/recurring", {
-        body: {
-          user_id: userId,
-          leave_type_id: typeId,
-          anchor_date: anchor,
-          // `interval_weeks` always travels: in spread mode the API overwrites it with the
-          // nearest equivalent cadence anyway, and the schema requires it.
-          interval_weeks: Number(form.get("interval_weeks") ?? 1) || 1,
-          days_per_year:
-            patternMode === "spread" ? Number(form.get("days_per_year") ?? 0) || null : null,
-          start_time: String(form.get("start_time") ?? "").trim() || null,
-          end_time: String(form.get("end_time") ?? "").trim() || null,
-        },
-      });
-      if (error) {
-        return fail(400, { error: apiErrorKey(error).key, employmentSaved: true });
+      let days_per_year: number | null = null;
+      if (patternMode === "spread") {
+        const parsed = Number(
+          String(form.get("days_per_year") ?? "")
+            .trim()
+            .replace(",", "."),
+        );
+        // Falling through with an emptied/invalid count would post {interval_weeks: 1,
+        // days_per_year: null} — an every-week pattern that front-loads the whole pot into
+        // consecutive weeks. A day count is a whole number or it is an error.
+        if (!Number.isInteger(parsed) || parsed <= 0) {
+          patternError = "errors.leave_pattern_days_invalid";
+        } else {
+          days_per_year = parsed;
+        }
       }
-      generated = data?.generated ?? 0;
+      if (patternError === null) {
+        const { data, error } = await api.POST("/api/v1/leave/recurring", {
+          body: {
+            user_id: userId,
+            leave_type_id: typeId,
+            anchor_date: anchor,
+            // `interval_weeks` always travels: in spread mode the API overwrites it with the
+            // nearest equivalent cadence anyway, and the schema requires it.
+            interval_weeks: Number(form.get("interval_weeks") ?? 1) || 1,
+            days_per_year,
+            start_time: String(form.get("start_time") ?? "").trim() || null,
+            end_time: String(form.get("end_time") ?? "").trim() || null,
+          },
+        });
+        if (error) {
+          patternError = apiErrorKey(error).key;
+        } else {
+          generated = data?.generated ?? 0;
+        }
+      }
     }
 
     // What the save actually produced — days placed, and days a reprorated pot no longer covers
     // (#264 moves the entitlement and leaves the calendar alone). Reported, never auto-cancelled.
+    // Fetched on the failure path too, so the receipt's figures show that nothing was placed.
     const { data: freeTime } = await api.GET("/api/v1/leave/free-time", {
       params: { query: { year: new Date().getFullYear(), user_id: userId } },
     });
+    if (patternError !== null) {
+      return fail(400, {
+        error: patternError,
+        employmentSaved: true,
+        employmentGenerated: 0,
+        freeTime: freeTime ?? null,
+      });
+    }
     return {
       employmentSaved: true,
       employmentGenerated: generated,
@@ -132,15 +164,31 @@ export const employmentActions = {
   /** Give back free days the pot no longer covers — explicit ids the wizard just listed. */
   withdrawFreeTime: async (event) => {
     const form = await event.request.formData();
+    const userId = String(form.get("user_id") ?? "");
     const ids = String(form.get("request_ids") ?? "")
       .split(",")
       .filter(Boolean);
     if (ids.length === 0) return fail(400, { error: "errors.required" });
-    const { data, error } = await apiFor(event).POST("/api/v1/leave/free-time/withdraw", {
+    const api = apiFor(event);
+    const { data, error } = await api.POST("/api/v1/leave/free-time/withdraw", {
       body: { request_ids: ids },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
-    return { withdrawn: data?.cancelled ?? 0, withdrawSkipped: data?.skipped?.length ?? 0 };
+    // `employmentSaved` keeps the wizard's receipt mounted (EmploymentModals keys it on that
+    // flag — without it the whole wizard remounts at step 1 and the confirmation is
+    // unreachable), and the refreshed overview shows the overhang actually emptied.
+    const { data: freeTime } = userId
+      ? await api.GET("/api/v1/leave/free-time", {
+          params: { query: { year: new Date().getFullYear(), user_id: userId } },
+        })
+      : { data: null };
+    return {
+      employmentSaved: true,
+      employmentGenerated: 0,
+      withdrawn: data?.cancelled ?? 0,
+      withdrawSkipped: data?.skipped?.length ?? 0,
+      freeTime: freeTime ?? null,
+    };
   },
 
   /**

@@ -24,7 +24,7 @@
     type LeaveTypeInfo,
   } from "$lib/modules/leave/format";
   import WorkScheduleEditor from "$lib/modules/leave/WorkScheduleEditor.svelte";
-  import { cloneSchedule, type WorkSchedule } from "$lib/modules/leave/schedule";
+  import { cloneSchedule, weekHours, type WorkSchedule } from "$lib/modules/leave/schedule";
 
   let { data, form } = $props();
 
@@ -564,7 +564,7 @@
                   class="hover:text-brand hover:underline"
                   title={t("settings.leave.contract_hours_derived")}
                 >
-                  {fmtHours(hoursByUser[member.user_id] ?? 40)}
+                  {fmtHours(hoursByUser[member.user_id] ?? weekHours(data.defaultSchedule as WorkSchedule))}
                 </a>
                 {#if inheritedByUser[member.user_id] !== false}
                   <span class="ml-1 text-xs text-text-muted"
@@ -773,6 +773,14 @@
                     </span>
                   {/if}
                 </span>
+                <!-- The prefill travels along, so the action writes only what actually changed:
+                     a ride-along PUT claims the pot as a manual override and permanently opts
+                     it out of the contract recompute (#264). -->
+                <input
+                  type="hidden"
+                  name="orig_{lt.id}"
+                  value={entitledByUserType[`${editMember.user_id}|${lt.id}`] ?? 0}
+                />
                 <input
                   name="ent_{lt.id}"
                   type="number"

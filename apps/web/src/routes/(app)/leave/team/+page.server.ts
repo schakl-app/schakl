@@ -62,7 +62,9 @@ export const load: PageServerLoad = async (event) => {
       // The combined per-group balances for the whole roster (#282): the same expiry-aware figures
       // the employee sees on /leave, so the team table and the personal page can never disagree.
       api.GET("/api/v1/leave/balance/groups", { params: { query: { year, all_users: true } } }),
-      api.GET("/api/v1/leave/profiles"),
+      // Manage-gated like the three below: the endpoint requires `leave.profile.manage`, and an
+      // unconditional call 403s for a bare approver — which used to read as "everyone works 40".
+      manage ? api.GET("/api/v1/leave/profiles") : Promise.resolve({ data: null }),
       // Employment editors — the whole roster in one call each, like Instellingen → Gebruikers.
       manage
         ? api.GET("/api/v1/leave/contracts", { params: { query: { all_users: true } } })
@@ -71,14 +73,36 @@ export const load: PageServerLoad = async (event) => {
       manage ? api.GET("/api/v1/leave/settings") : Promise.resolve({ data: null }),
     ]);
 
+  // The pending queue is cross-year, but the balances above are year-scoped — so a next-year
+  // request reviewed in December showed no balance and no #109 over-request warning at all.
+  // Fetch the missing years' groups too (0 extra calls in the common case).
+  const pendingItems = pending.data?.items ?? [];
+  const extraYears = [
+    ...new Set(pendingItems.map((r) => Number(r.start_date.slice(0, 4)))),
+  ].filter((y) => y !== year);
+  const extraGroups = (
+    await Promise.all(
+      extraYears.map((y) =>
+        api.GET("/api/v1/leave/balance/groups", {
+          params: { query: { year: y, all_users: true } },
+        }),
+      ),
+    )
+  ).flatMap((r) => r.data ?? []);
+
   return {
     year,
     currentYear: currentYear(),
-    pending: pending.data?.items ?? [],
+    pending: pendingItems,
     yearRequests: yearRequests.data?.items ?? [],
+    // Silent truncation reads as "covered everything": the page states N of M when it isn't.
+    yearRequestsTotal: yearRequests.data?.total ?? 0,
     members: members.data ?? [],
     groups: groups.data ?? [],
-    profiles: profiles.data ?? [],
+    extraGroups,
+    // `null` = not permitted to read them (distinct from "nobody has one"): the page renders a
+    // placeholder rather than inventing a number.
+    profiles: profiles.data ?? null,
     // Employment editors, only when the caller may manage them.
     manageEmployment: manage,
     contracts: contracts.data ?? [],

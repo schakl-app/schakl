@@ -32,7 +32,7 @@
     representativeType,
     type LeaveTypeInfo,
   } from "$lib/modules/leave/format";
-  import type { WorkSchedule } from "$lib/modules/leave/schedule";
+  import { weekHours, type WorkSchedule } from "$lib/modules/leave/schedule";
 
   let { data, form } = $props();
 
@@ -60,9 +60,14 @@
   const memberOptions = $derived(
     data.members.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
   );
+  // `data.profiles` is null when the caller may not read them (`leave.profile.manage`) — the
+  // column then shows a placeholder rather than pretending everyone works the default week.
   const hoursByUser = $derived(
-    Object.fromEntries(data.profiles.map((p) => [p.user_id, Number(p.hours_per_week)])),
+    Object.fromEntries((data.profiles ?? []).map((p) => [p.user_id, Number(p.hours_per_week)])),
   );
+  // A member without an arrangement of their own follows the org default week — never a
+  // hardcoded 40: the tenant configures that week (§14).
+  const fallbackWeekHours = $derived(weekHours(data.defaultSchedule as WorkSchedule));
 
   type Group = (typeof data.groups)[number];
 
@@ -116,6 +121,15 @@
     for (const g of data.groups) map[`${g.user_id}|${groupKey(g)}`] = g;
     return map;
   });
+  // The same balances keyed *with the year*, for the pending queue: it is cross-year, and each
+  // request warns against its own year's pool (extraGroups carries the non-viewed years).
+  const groupBalByUserYear = $derived.by(() => {
+    const map: Record<string, Group> = {};
+    for (const g of [...data.groups, ...data.extraGroups]) {
+      map[`${g.user_id}|${groupKey(g)}|${g.year}`] = g;
+    }
+    return map;
+  });
   // Which group column a tracked type belongs to, for the pending-list over-balance warning.
   const columnByType = $derived.by(() => {
     const map: Record<string, GroupColumn> = {};
@@ -127,27 +141,39 @@
    *  to the column's own type ids so a member with no vacation pots still shows a 0/0 split. */
   function groupSplit(
     g: Group | undefined,
-    typeIds: string[],
+    col: GroupColumn,
   ): { type: LeaveTypeInfo | undefined; remaining: number }[] {
     const byType: Record<string, number> = {};
     for (const pot of g?.pots ?? []) {
       byType[pot.leave_type_id] = (byType[pot.leave_type_id] ?? 0) + Number(pot.remaining_hours);
     }
-    return typeIds.map((id) => ({ type: typeById[id], remaining: byType[id] ?? 0 }));
+    // The #109 over-request shortfall lives on the combined figure, never on a pot — put it on
+    // the representative (soonest-expiring) type, exactly where the API's per-type balance
+    // carries it, so the expanded rows sum to the negative the combined column shows.
+    if (g) {
+      const potSum = Object.values(byType).reduce((a, b) => a + b, 0);
+      const shortfall = Number(g.remaining_hours) - potSum;
+      if (shortfall !== 0) {
+        const rep = representativeType(col.members);
+        if (rep) byType[rep.id] = (byType[rep.id] ?? 0) + shortfall;
+      }
+    }
+    return col.typeIds.map((id) => ({ type: typeById[id], remaining: byType[id] ?? 0 }));
   }
 
   // Approving over-balance leave must be an informed choice (#109): pending already counts against
   // the balance, so a negative group remaining *is* "what approving leaves them at". A request
-  // draws on the pool of its type's group (#282, #265), not a lone type.
+  // draws on the pool of its type's group (#282, #265), not a lone type — for the request's own
+  // start year, whichever year the table happens to be viewing.
   function balanceFor(request: Request): { remaining: number; entitled: number } | null {
     const type = typeById[request.leave_type_id];
     if (!type?.tracks_balance) return null;
-    // The loaded balances are year-scoped; a request outside the viewed year has no figure.
-    if (Number(request.start_date.slice(0, 4)) !== data.year) return null;
     const col = columnByType[request.leave_type_id];
     if (!col) return null;
-    const g = groupBalByUser[`${request.user_id}|${col.key}`];
-    return { remaining: Number(g?.remaining_hours ?? 0), entitled: Number(g?.entitled_hours ?? 0) };
+    const requestYear = Number(request.start_date.slice(0, 4));
+    const g = groupBalByUserYear[`${request.user_id}|${col.key}|${requestYear}`];
+    if (!g) return null;
+    return { remaining: Number(g.remaining_hours), entitled: Number(g.entitled_hours) };
   }
 
   function overBalanceBy(request: Request): number {
@@ -399,7 +425,9 @@
               {member.full_name || member.email}
             </td>
             <td class="px-2 py-2 text-right tabular-nums text-text-muted">
-              {fmtHours(hoursByUser[member.user_id] ?? 40)}
+              {data.profiles === null
+                ? "—"
+                : fmtHours(hoursByUser[member.user_id] ?? fallbackWeekHours)}
             </td>
             {#each groupColumns as col (col.key)}
               {@const g = groupBalByUser[`${member.user_id}|${col.key}`]}
@@ -452,7 +480,7 @@
                 <span class="flex flex-wrap gap-x-4 gap-y-1">
                   {#each groupColumns.filter((c) => c.multi) as col (col.key)}
                     {@const g = groupBalByUser[`${member.user_id}|${col.key}`]}
-                    {#each groupSplit(g, col.typeIds) as part (part.type?.id)}
+                    {#each groupSplit(g, col) as part (part.type?.id)}
                       <span class="tabular-nums">
                         {typeLabel(part.type, data.locale)}: {fmtHours(part.remaining)}
                       </span>
@@ -599,6 +627,16 @@
   onsort={table.onSort}
   onresize={table.onResize}
 />
+{#if data.yearRequestsTotal > data.yearRequests.length}
+  <!-- The org's year can outgrow the fetch cap (a weekly free-day pattern alone is ~52 rows per
+       person); silent truncation would read as "this is everything". -->
+  <p class="mt-2 text-xs text-text-muted">
+    {t("leave.list.truncated", {
+      shown: data.yearRequests.length,
+      total: data.yearRequestsTotal,
+    })}
+  </p>
+{/if}
 
 <ConfirmDialog
   bind:open={bulkRejectOpen}
