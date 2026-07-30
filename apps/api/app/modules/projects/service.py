@@ -30,7 +30,11 @@ from app.core.tenancy import RequestContext
 from app.errors import AppError
 from app.modules.projects.budget import period_bound, period_start_date
 from app.modules.projects.models import Project, ProjectAssignee, ProjectStatus
-from app.modules.projects.schemas import ProjectCreate, ProjectUpdate
+from app.modules.projects.schemas import (
+    DashboardBudgetProject,
+    ProjectCreate,
+    ProjectUpdate,
+)
 from app.schemas import BudgetHours
 
 ENTITY_TYPE = "project"
@@ -274,6 +278,34 @@ class ProjectService:
         if hours:
             await self._attach_hours(items)
         return items, total
+
+    async def dashboard_budgets(self, *, limit: int = 4) -> list[DashboardBudgetProject]:
+        """The budgeted active projects burning hottest — what the My Day tile draws (#290).
+
+        The widget used to fetch 200 active projects with the full budget enrichment, every
+        assignee row and every custom field, and then keep four. The enrichment is the same
+        aggregate either way; the difference is 200 project rows crossing the wire so the
+        browser could sort them. Sorted here, cut here, four rows returned.
+
+        Sorting is in Python on purpose: "hottest" is `spent / effective budget`, and the
+        effective budget may come from a covering subscription rather than the stored column
+        (#225). That rule lives in ``_attach_hours``; re-expressing it as SQL would be a second
+        copy of it, which is how the two answers drift.
+        """
+        stmt = self.repo.scoped_select().where(
+            Project.status == ProjectStatus.ACTIVE.value
+        )
+        items = list((await self.ctx.session.execute(stmt)).scalars().all())
+        await self._attach_hours(items)
+        budgeted = [p for p in items if p.hours.budget_hours]  # type: ignore[attr-defined]
+        budgeted.sort(
+            key=lambda p: p.hours.spent_hours / p.hours.budget_hours,  # type: ignore[attr-defined]
+            reverse=True,
+        )
+        return [
+            DashboardBudgetProject(id=p.id, name=p.name, hours=p.hours)  # type: ignore[attr-defined]
+            for p in budgeted[:limit]
+        ]
 
     async def get(self, project_id: uuid.UUID, *, hours: bool = False) -> Project:
         project = await self.repo.get_or_404(project_id)

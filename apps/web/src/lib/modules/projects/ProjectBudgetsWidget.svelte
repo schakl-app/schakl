@@ -16,19 +16,17 @@
       spent_hours?: number;
     } | null;
   }
-  const rows = $derived.by(() => {
-    const items = ((data ?? []) as ProjectRow[])
-      .filter((p) => p.hours?.budget_hours != null)
-      .map((p) => ({
-        id: p.id,
-        name: p.name,
-        spent: p.hours?.spent_hours ?? 0,
-        budget: p.hours?.budget_hours ?? 0,
-        pct: burnPct(p.hours?.spent_hours ?? 0, p.hours?.budget_hours ?? null),
-      }));
-    items.sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0));
-    return items.slice(0, 4);
-  });
+  // `/projects/dashboard-budgets` returns the budgeted projects already sorted by burn and cut
+  // to the tile's length (#290), so there is nothing left to filter, sort or slice here.
+  const rows = $derived(
+    ((data ?? []) as ProjectRow[]).map((p) => ({
+      id: p.id,
+      name: p.name,
+      spent: p.hours?.spent_hours ?? 0,
+      budget: p.hours?.budget_hours ?? 0,
+      pct: burnPct(p.hours?.spent_hours ?? 0, p.hours?.budget_hours ?? null),
+    })),
+  );
 </script>
 
 <DashboardWidgetCard

@@ -20,14 +20,13 @@ registerWebModule({
       descriptionKey: "dashboard.widget_desc.projects.budgets",
       category: "dashboard.category.projects",
       size: "md",
+      // Four rows, sorted by burn on the server (#290). This asked for 200 active projects
+      // with every assignee and custom field attached, then sliced four of them in the
+      // browser — the tile's whole payload was 98% discarded (docs/PERFORMANCE.md).
       load: (api) =>
         api
-          .GET("/api/v1/projects", {
-            params: {
-              query: { limit: 200, offset: 0, count: false, hours: true, status: "active" },
-            },
-          })
-          .then((r) => r.data?.items ?? []),
+          .GET("/api/v1/projects/dashboard-budgets", { params: { query: { limit: 4 } } })
+          .then((r) => r.data ?? []),
       component: ProjectBudgetsWidget,
     },
   ],

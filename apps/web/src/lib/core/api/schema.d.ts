@@ -5086,6 +5086,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/dashboard-budgets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Dashboard Budgets
+         * @description The budgeted active projects burning hottest — the My Day tile, already sorted and cut.
+         *
+         *     Mirrors ``/tasks/dashboard-groups``: the widget asked for 200 rows and kept four
+         *     (docs/PERFORMANCE.md).
+         */
+        get: operations["dashboard_budgets_api_v1_projects_dashboard_budgets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}": {
         parameters: {
             query?: never;
@@ -8699,6 +8722,23 @@ export interface components {
             postal_code?: string | null;
             /** Vat Number */
             vat_number?: string | null;
+        };
+        /**
+         * DashboardBudgetProject
+         * @description The four fields the My Day burn tile draws — nothing else (#290).
+         *
+         *     The widget used to request 200 active projects with full budget enrichment, then keep the
+         *     hottest four. This is the same aggregate, sorted and cut server-side.
+         */
+        DashboardBudgetProject: {
+            hours: components["schemas"]["BudgetHours"];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
         };
         /** DashboardPrefs */
         DashboardPrefs: {
@@ -28491,6 +28531,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dashboard_budgets_api_v1_projects_dashboard_budgets_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardBudgetProject"][];
                 };
             };
             /** @description Validation Error */

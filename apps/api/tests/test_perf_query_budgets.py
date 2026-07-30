@@ -381,3 +381,52 @@ async def test_automation_rules_load_their_actions_in_one_statement(
         # Five rules, one action load — not five.
         action_reads = counter.matching("from automation_actions")
         assert len(action_reads) == 1, action_reads
+
+
+# --- the dashboard burn tile: sorted and cut on the server ---------------------------------- #
+async def test_dashboard_budgets_returns_only_the_hottest_rows(client_for, count_queries) -> None:
+    """The widget asked for 200 projects with full enrichment and kept four."""
+    t = await make_tenant("perf-dash-budgets")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers)
+        # Three budgeted projects burning 25% / 50% / 75%, plus one with no budget at all.
+        for name, budget, minutes in (("Koel", 8, 120), ("Warm", 8, 240), ("Heet", 8, 360)):
+            res = await c.post(
+                "/api/v1/projects",
+                json={
+                    "name": name,
+                    "company_id": company,
+                    "budget_hours": budget,
+                    "budget_period": "total",
+                },
+                headers=headers,
+            )
+            assert res.status_code == 201, res.text
+            project = res.json()["id"]
+            started = datetime(2026, 3, 2, 9, 0, tzinfo=UTC)
+            entry = await c.post(
+                "/api/v1/time/entries",
+                json={
+                    "project_id": project,
+                    "started_at": _iso(started),
+                    "ended_at": _iso(started + timedelta(minutes=minutes)),
+                },
+                headers=headers,
+            )
+            assert entry.status_code == 201, entry.text
+        unbudgeted = await c.post(
+            "/api/v1/projects", json={"name": "Geen budget", "company_id": company}, headers=headers
+        )
+        assert unbudgeted.status_code == 201, unbudgeted.text
+
+        with count_queries() as counter:
+            res = await c.get("/api/v1/projects/dashboard-budgets?limit=2", headers=headers)
+        assert res.status_code == 200, res.text
+        rows = res.json()
+        # Hottest first, cut to the asked-for length, and a project with no budget is absent.
+        assert [r["name"] for r in rows] == ["Heet", "Warm"]
+        assert rows[0]["hours"]["spent_hours"] == 6.0
+        assert rows[0]["hours"]["budget_hours"] == 8.0
+        # The burn enrichment stays one grouped aggregate, whatever the project count.
+        assert len(counter.matching("from time_entries")) == 1

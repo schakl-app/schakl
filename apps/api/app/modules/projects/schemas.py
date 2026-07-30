@@ -90,3 +90,15 @@ class ProjectRead(ProjectBase):
     # Populated on the detail read and wherever ``hours`` is; the stored ``budget_hours`` stays
     # visible as the dormant fallback that returns when the link is removed.
     budget_sources: list[ProjectHoursSource] = Field(default_factory=list)
+
+
+class DashboardBudgetProject(BaseModel):
+    """The four fields the My Day burn tile draws — nothing else (#290).
+
+    The widget used to request 200 active projects with full budget enrichment, then keep the
+    hottest four. This is the same aggregate, sorted and cut server-side.
+    """
+
+    id: uuid.UUID
+    name: str
+    hours: BudgetHours
