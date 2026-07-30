@@ -19457,6 +19457,8 @@ export interface operations {
                 q?: string | null;
                 /** @description first_name | last_name | email | job_title | company | …, '-' desc */
                 sort?: string | null;
+                /** @description Compute the total. False for pickers and name-only lookups. */
+                count?: boolean;
             };
             header?: never;
             path?: never;
@@ -23617,6 +23619,10 @@ export interface operations {
                 sort?: string | null;
                 limit?: number;
                 offset?: number;
+                /** @description Compute the total. False skips a second full pass over the filter. */
+                count?: boolean;
+                /** @description Include each row's full body_text. Off by default — the list draws snippet. */
+                with_body?: boolean;
             };
             header?: never;
             path?: never;
@@ -24149,6 +24155,8 @@ export interface operations {
                 q?: string | null;
                 /** @description number | status | issue_date | due_date | total | created_at */
                 sort?: string | null;
+                /** @description Include each row's lines and tax groups. False for list views (#290). */
+                lines?: boolean;
             };
             header?: never;
             path?: never;
@@ -24856,6 +24864,8 @@ export interface operations {
                 q?: string | null;
                 /** @description number | status | issue_date | valid_until | total | created_at */
                 sort?: string | null;
+                /** @description Include each row's lines and tax groups. False for list views (#290). */
+                lines?: boolean;
             };
             header?: never;
             path?: never;

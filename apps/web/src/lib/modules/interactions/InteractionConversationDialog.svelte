@@ -58,6 +58,9 @@
       mine: "true",
       q: query,
       limit: "8",
+      // A picker shows eight candidates and no total, and this runs per keystroke — the
+      // count(DISTINCT) is a second full pass over the same filter (docs/PERFORMANCE.md).
+      count: "false",
     });
     const response = await fetch(`/api/v1/interactions?${params}`, {
       headers: { accept: "application/json" },

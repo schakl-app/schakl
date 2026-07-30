@@ -171,7 +171,22 @@ class InteractionService:
         date_from: date | None = None,
         date_to: date | None = None,
         sort: str | None = None,
+        count: bool = True,
+        with_body: bool = False,
     ) -> tuple[list[dict[str, Any]], int]:
+        """A page of folded conversations, and (unless opted out) how many there are.
+
+        Two opt-outs, because this list is the heaviest one in the app (docs/PERFORMANCE.md):
+
+        ``count=False`` skips the ``count(DISTINCT …)`` second pass over the same filter — the
+        fold makes it a genuinely separate aggregate, not a free by-product. Pass it wherever
+        the total is not rendered.
+
+        ``with_body`` is **off** by default: a list row carries only what the list draws, and
+        ``body_text`` is a full e-mail body per row. Twenty of them is the bulk of the response
+        for a column that shows ``snippet``. The key stays in the payload as ``None`` so the
+        response shape never changes; the detail view fetches the row it opens.
+        """
         include_set = {part.strip() for part in (include or "").split(",") if part.strip()}
         conditions = []
         # A pending row is private to its mailbox owner until approved — with NO admin or
@@ -279,14 +294,19 @@ class InteractionService:
         stmt = stmt.limit(limit).offset(offset)
         rows = (await self.ctx.session.execute(stmt)).all()
         # The total is the number of distinct conversations matching the filter, not raw rows,
-        # so pagination lines up with the folded list.
-        total = int(
-            await self.ctx.session.scalar(
-                select(func.count(func.distinct(group_key)))
-                .select_from(Interaction)
-                .where(Interaction.org_id == self._org_id, *conditions)
+        # so pagination lines up with the folded list. Skipped when the caller says it never
+        # renders one — this is a second full pass over the filter, not a cheap by-product.
+        total = (
+            int(
+                await self.ctx.session.scalar(
+                    select(func.count(func.distinct(group_key)))
+                    .select_from(Interaction)
+                    .where(Interaction.org_id == self._org_id, *conditions)
+                )
+                or 0
             )
-            or 0
+            if count
+            else len(rows)
         )
         plain_rows = [row for row, _, _ in rows]
         names = await self._link_names(plain_rows)
@@ -309,6 +329,7 @@ class InteractionService:
                 members_by_email,
                 closing_ids,
                 conversation_count=conv_counts.get(row.conversation_id, 1),
+                with_body=with_body,
             )
             for row, full_name, email in rows
         ], total
@@ -1118,8 +1139,15 @@ class InteractionService:
         members_by_email: dict[str, uuid.UUID] | None = None,
         closing_ids: set[uuid.UUID] | None = None,
         conversation_count: int = 1,
+        with_body: bool = True,
     ) -> dict[str, Any]:
-        """Owner resolved like the activity trail (issue #64): live account wins, snapshot after."""
+        """Owner resolved like the activity trail (issue #64): live account wins, snapshot after.
+
+        ``with_body=False`` blanks ``body_text`` for list rows: the key stays (so the response
+        schema is unchanged and a client can tell "not loaded" from "no body" only by asking
+        for the row), but a page of full e-mail bodies never crosses the wire to render a
+        snippet column. Every single-row path leaves it on.
+        """
         if live_email is not None:
             owner_name, owner_deleted = live_name or live_email, False
         else:
@@ -1133,7 +1161,7 @@ class InteractionService:
             "occurred_at": row.occurred_at,
             "subject": row.subject,
             "snippet": row.snippet,
-            "body_text": row.body_text,
+            "body_text": row.body_text if with_body else None,
             "direction": row.direction,
             "company_id": row.company_id,
             "project_id": row.project_id,

@@ -337,11 +337,15 @@ async def list_invoices(
     sort: str | None = Query(
         None, description="number | status | issue_date | due_date | total | created_at"
     ),
+    lines: bool = Query(
+        True,
+        description="Include each row's lines and tax groups. False for list views (#290).",
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[InvoiceRead]:
     items, total = await InvoiceService(ctx).list(
         limit=limit, offset=offset, status=status, company_id=company_id,
-        kind=kind, overdue=overdue, q=q, sort=sort,
+        kind=kind, overdue=overdue, q=q, sort=sort, lines=lines,
     )
     return Page(
         items=[InvoiceRead.model_validate(i) for i in items],
@@ -633,10 +637,15 @@ async def list_quotes(
     sort: str | None = Query(
         None, description="number | status | issue_date | valid_until | total | created_at"
     ),
+    lines: bool = Query(
+        True,
+        description="Include each row's lines and tax groups. False for list views (#290).",
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[QuoteRead]:
     items, total = await QuoteService(ctx).list(
-        limit=limit, offset=offset, status=status, company_id=company_id, q=q, sort=sort
+        limit=limit, offset=offset, status=status, company_id=company_id, q=q, sort=sort,
+        lines=lines,
     )
     return Page(
         items=[QuoteRead.model_validate(i) for i in items],

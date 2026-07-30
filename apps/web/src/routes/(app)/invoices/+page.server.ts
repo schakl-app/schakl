@@ -32,6 +32,10 @@ export const load: PageServerLoad = async (event) => {
           company_id: companyFilter,
           overdue,
           q,
+          // The index draws number, client, date, status and total — never a line. Loading
+          // every line of 200 invoices to derive tax groups nobody renders was the heaviest
+          // thing this response did (#290, docs/PERFORMANCE.md).
+          lines: false,
         },
       },
     }),

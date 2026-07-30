@@ -174,3 +174,20 @@ export function instantToLocal(iso: string): { date: string; time: string } {
     time: `${get("hour")}:${get("minute")}`,
   };
 }
+
+/**
+ * The full row behind a list row, fetched before an edit form opens (#290).
+ *
+ * A list row carries no `body_text`: twenty full e-mail bodies to draw a snippet column was the
+ * bulk of the list response. The edit form **posts** that field, so opening it on a list row
+ * would submit an empty body and wipe the notes — this is what keeps the saving safe rather
+ * than merely cheap. On a failed fetch the caller gets the row it had, and the form falls back
+ * to the old behaviour instead of opening on nothing.
+ */
+export async function withBody(item: InteractionItem): Promise<InteractionItem> {
+  if (item.body_text != null) return item;
+  const response = await fetch(`/api/v1/interactions/${item.id}`, {
+    headers: { accept: "application/json" },
+  });
+  return response.ok ? { ...item, ...((await response.json()) as InteractionItem) } : item;
+}

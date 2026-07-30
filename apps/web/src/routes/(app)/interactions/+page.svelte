@@ -39,6 +39,7 @@
     kindIcon,
     kindLabel,
     localDay,
+    withBody,
   } from "$lib/modules/interactions/format";
   import { snippetPreview } from "$lib/modules/interactions/snippet";
   import InteractionConversationDialog from "$lib/modules/interactions/InteractionConversationDialog.svelte";
@@ -209,8 +210,10 @@
       entries.push({
         label: t("common.edit"),
         icon: Pencil,
-        onclick: () => {
-          editing = item;
+        onclick: async () => {
+          // The row's body is fetched before the form opens (#290) — the form posts that
+          // field, so editing a list row without it would blank the notes on save.
+          editing = await withBody(item);
           showEdit = true;
         },
       });

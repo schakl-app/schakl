@@ -24,6 +24,8 @@
     listClass = "w-full",
     onselect,
     oncreate,
+    onsearch,
+    searching = false,
   }: {
     items: Item[];
     name: string;
@@ -40,6 +42,18 @@
     onselect?: (value: string) => void;
     /** When provided, typing an unknown name offers a "add …" option in the dropdown. */
     oncreate?: (query: string) => void;
+    /**
+     * Search server-side instead of filtering `items` in the browser (#290).
+     *
+     * Opt-in: a picker that omits it keeps the client-side filter below, unchanged. Provide it
+     * where the full option set is too large to ship on every page render — the company page's
+     * contact picker sent up to 500 people to fill a dropdown nobody had opened yet. `items`
+     * then holds the *current* options and the host replaces them from the returned rows;
+     * debouncing and stale-response ordering are handled here so every caller inherits them.
+     */
+    onsearch?: (query: string) => void;
+    /** A search is in flight — shows the dropdown's loading row (server-search pickers only). */
+    searching?: boolean;
   } = $props();
 
   let query = $state("");
@@ -55,6 +69,9 @@
   // Prefix matches outrank substring hits — typing "nederland" must offer Nederland before
   // Caribisch Nederland, or Enter picks the wrong one. Stable within each tier.
   const filtered = $derived.by(() => {
+    // Server-searched pickers show what came back, in the order it came back: re-filtering it
+    // here would hide rows the API matched on a field the label doesn't show.
+    if (onsearch) return items;
     const q = query.trim().toLowerCase();
     if (!q) return items;
     const starts = (s?: string) => s?.toLowerCase().startsWith(q) ?? false;
@@ -129,11 +146,22 @@
     }
   }
 
+  // Debounce the server search so a typist causes one request, not one per keystroke
+  // (docs/PERFORMANCE.md). Cleared on destroy so a pending timer can't fire into a dead
+  // component. Inert unless `onsearch` was provided.
+  let searchTimer: ReturnType<typeof setTimeout> | undefined;
+  $effect(() => () => clearTimeout(searchTimer));
+
   function oninput() {
     open = true;
     highlighted = 0;
     // Clearing the text clears the selection (when allowed).
     if (query.trim() === "" && allowEmpty) value = "";
+    if (onsearch) {
+      const draft = query.trim();
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => onsearch(draft), 200);
+    }
   }
 
   function onblur() {
@@ -246,7 +274,9 @@
           </button>
         </li>
       {:else}
-        {#if !canCreate}
+        {#if searching}
+          <li class="px-3 py-1.5 text-sm text-text-muted">{t("common.loading")}</li>
+        {:else if !canCreate}
           <li class="px-3 py-1.5 text-sm text-text-muted">{t("common.no_results")}</li>
         {/if}
       {/each}

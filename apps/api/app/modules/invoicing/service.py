@@ -728,6 +728,7 @@ class InvoiceService(_DocumentService):
         overdue: bool = False,
         q: str | None = None,
         sort: str | None = None,
+        lines: bool = True,
     ) -> tuple[Sequence[Invoice], int]:
         conditions = []
         if status:
@@ -760,7 +761,7 @@ class InvoiceService(_DocumentService):
             )
             or 0
         )
-        await self._attach(items)
+        await self._attach(items, lines=lines)
         return items, total
 
     async def get(self, invoice_id: uuid.UUID) -> Invoice:
@@ -776,16 +777,26 @@ class InvoiceService(_DocumentService):
             .limit(limit)
         )
         items = list((await self.ctx.session.execute(stmt)).scalars().all())
-        await self._attach(items)
+        # The company panel lists number/date/status/total, never a line (#290).
+        await self._attach(items, lines=False)
         return items
 
-    async def _attach(self, invoices: Sequence[Invoice], *, payments: bool = False) -> None:
-        """Batch-resolve names/lines/groups/derived flags — a list never N+1s."""
+    async def _attach(
+        self, invoices: Sequence[Invoice], *, payments: bool = False, lines: bool = True
+    ) -> None:
+        """Batch-resolve names/lines/groups/derived flags — a list never N+1s.
+
+        ``lines=False`` is the list's opt-out (#290): the index shows number, client, date,
+        status and total, and never a line. Loading every line of every invoice on the page to
+        derive tax groups nobody renders is the heaviest thing that response does. ``total``
+        and ``paid_total`` are real columns, so ``outstanding``/``overdue`` still answer
+        correctly without them.
+        """
         if not invoices:
             return
         ids = [i.id for i in invoices]
         names = await self._company_names(invoices)
-        lines_by_doc = await self._doc_lines(ids)
+        lines_by_doc = await self._doc_lines(ids) if lines else {}
         today = await org_today(self.ctx)
         payment_rows: dict[uuid.UUID, list[InvoicePayment]] = {}
         if payments:
@@ -801,16 +812,21 @@ class InvoiceService(_DocumentService):
                 payment_rows.setdefault(row.invoice_id, []).append(row)
         for invoice in invoices:
             rows = lines_by_doc.get(invoice.id, [])
-            totals = _totals_from_rows(rows, prices_include_tax=invoice.prices_include_tax)
             invoice.company_name = names.get(invoice.company_id, "")  # type: ignore[attr-defined]
             invoice.lines = rows  # type: ignore[attr-defined]
-            invoice.tax_groups = [  # type: ignore[attr-defined]
-                {
-                    "rate_pct": g.rate_pct, "category": g.category, "name": g.name,
-                    "base": g.base, "tax": g.tax,
-                }
-                for g in totals.groups
-            ]
+            invoice.tax_groups = (  # type: ignore[attr-defined]
+                [
+                    {
+                        "rate_pct": g.rate_pct, "category": g.category, "name": g.name,
+                        "base": g.base, "tax": g.tax,
+                    }
+                    for g in _totals_from_rows(
+                        rows, prices_include_tax=invoice.prices_include_tax
+                    ).groups
+                ]
+                if lines
+                else []
+            )
             invoice.outstanding = invoice.total - invoice.paid_total  # type: ignore[attr-defined]
             invoice.overdue = (  # type: ignore[attr-defined]
                 invoice.status == InvoiceStatus.OPEN.value
@@ -1819,6 +1835,7 @@ class QuoteService(_DocumentService):
         company_id: uuid.UUID | None = None,
         q: str | None = None,
         sort: str | None = None,
+        lines: bool = True,
     ) -> tuple[Sequence[Quote], int]:
         conditions = []
         if status:
@@ -1840,7 +1857,7 @@ class QuoteService(_DocumentService):
             )
             or 0
         )
-        await self._attach(items)
+        await self._attach(items, lines=lines)
         return items, total
 
     async def get(self, quote_id: uuid.UUID) -> Quote:
@@ -1856,27 +1873,34 @@ class QuoteService(_DocumentService):
             .limit(limit)
         )
         items = list((await self.ctx.session.execute(stmt)).scalars().all())
-        await self._attach(items)
+        # The company panel lists number/date/status/total, never a line (#290).
+        await self._attach(items, lines=False)
         return items
 
-    async def _attach(self, quotes: Sequence[Quote]) -> None:
+    async def _attach(self, quotes: Sequence[Quote], *, lines: bool = True) -> None:
+        """``lines=False`` is the list's opt-out — see ``InvoiceService._attach`` (#290)."""
         if not quotes:
             return
         names = await self._company_names(quotes)
-        lines_by_doc = await self._doc_lines([q.id for q in quotes])
+        lines_by_doc = await self._doc_lines([q.id for q in quotes]) if lines else {}
         today = await org_today(self.ctx)
         for quote in quotes:
             rows = lines_by_doc.get(quote.id, [])
-            totals = _totals_from_rows(rows, prices_include_tax=quote.prices_include_tax)
             quote.company_name = names.get(quote.company_id, "")  # type: ignore[attr-defined]
             quote.lines = rows  # type: ignore[attr-defined]
-            quote.tax_groups = [  # type: ignore[attr-defined]
-                {
-                    "rate_pct": g.rate_pct, "category": g.category, "name": g.name,
-                    "base": g.base, "tax": g.tax,
-                }
-                for g in totals.groups
-            ]
+            quote.tax_groups = (  # type: ignore[attr-defined]
+                [
+                    {
+                        "rate_pct": g.rate_pct, "category": g.category, "name": g.name,
+                        "base": g.base, "tax": g.tax,
+                    }
+                    for g in _totals_from_rows(
+                        rows, prices_include_tax=quote.prices_include_tax
+                    ).groups
+                ]
+                if lines
+                else []
+            )
             quote.expired = (  # type: ignore[attr-defined]
                 quote.status in (QuoteStatus.OPEN.value, QuoteStatus.EXPIRED.value)
                 and quote.valid_until is not None

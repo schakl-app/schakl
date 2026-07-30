@@ -23,7 +23,16 @@ export const load: PageServerLoad = async (event) => {
   const [quotes, companies] = await Promise.all([
     api.GET("/api/v1/invoicing/quotes", {
       params: {
-        query: { limit: 200, offset: 0, sort, status: statusFilter, company_id: companyFilter, q },
+        // `lines: false` — the index never draws a line (#290, docs/PERFORMANCE.md).
+        query: {
+          limit: 200,
+          offset: 0,
+          sort,
+          status: statusFilter,
+          company_id: companyFilter,
+          q,
+          lines: false,
+        },
       },
     }),
     api.GET("/api/v1/companies", { params: { query: { limit: 200, count: false, sort: "name" } } }),

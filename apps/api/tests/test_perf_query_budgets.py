@@ -225,6 +225,127 @@ async def test_a_client_request_resolves_its_horizon_without_re_deriving_the_rol
         assert [r["name"] for r in owned["items"]] == ["Alpha"]
 
 
+# --- list shapes: a row carries only what the list draws ------------------------------------ #
+async def _interaction(client, headers, *, company_id: str, subject: str, body: str) -> str:
+    res = await client.post(
+        "/api/v1/interactions",
+        json={
+            "kind": "note",
+            "subject": subject,
+            "body_text": body,
+            "company_id": company_id,
+            "occurred_at": datetime(2026, 3, 2, 9, 0, tzinfo=UTC).isoformat(),
+        },
+        headers=headers,
+    )
+    assert res.status_code == 201, res.text
+    return res.json()["id"]
+
+
+async def test_interaction_rows_carry_no_body_until_asked(client_for) -> None:
+    """A page of full e-mail bodies to render a snippet column was the bulk of the response."""
+    t = await make_tenant("perf-inter-body")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers)
+        row_id = await _interaction(
+            c, headers, company_id=company, subject="Hoi", body="De hele lange tekst"
+        )
+
+        listed = (await c.get("/api/v1/interactions", headers=headers)).json()["items"]
+        assert [r["subject"] for r in listed] == ["Hoi"]
+        # The key stays — the response shape is unchanged, only the payload is lighter.
+        assert "body_text" in listed[0]
+        assert listed[0]["body_text"] is None
+
+        opt_in = (await c.get("/api/v1/interactions?with_body=true", headers=headers)).json()
+        assert opt_in["items"][0]["body_text"] == "De hele lange tekst"
+        # …and the single-row read the detail modal uses always carries it.
+        one = (await c.get(f"/api/v1/interactions/{row_id}", headers=headers)).json()
+        assert one["body_text"] == "De hele lange tekst"
+
+
+async def test_interaction_count_can_be_skipped(client_for, count_queries) -> None:
+    """The fold makes the total a second full pass, not a free by-product."""
+    t = await make_tenant("perf-inter-count")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers)
+        for i in range(3):
+            await _interaction(c, headers, company_id=company, subject=f"S{i}", body="x")
+
+        with count_queries() as counter:
+            counted = (await c.get("/api/v1/interactions?limit=2", headers=headers)).json()
+        assert counted["total"] == 3
+        assert len(counter.matching("count(distinct")) == 1
+
+        with count_queries() as counter:
+            skipped = (
+                await c.get("/api/v1/interactions?limit=2&count=false", headers=headers)
+            ).json()
+        assert counter.matching("count(distinct") == []
+        # `total` degrades to the page length, the same contract every other list uses.
+        assert skipped["total"] == len(skipped["items"]) == 2
+
+
+async def test_invoice_rows_carry_no_lines_until_asked(client_for, count_queries) -> None:
+    t = await make_tenant("perf-invoice-lines")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers)
+        res = await c.post(
+            "/api/v1/invoicing/invoices",
+            json={
+                "company_id": company,
+                "lines": [{"description": "Werk", "quantity": "2", "unit_price": "100"}],
+            },
+            headers=headers,
+        )
+        assert res.status_code == 201, res.text
+        invoice_id = res.json()["id"]
+
+        with count_queries() as counter:
+            slim = (
+                await c.get("/api/v1/invoicing/invoices?lines=false", headers=headers)
+            ).json()["items"][0]
+        assert counter.matching("from invoice_lines") == []
+        assert slim["lines"] == [] and slim["tax_groups"] == []
+        # The figures the index actually draws are columns, so they still answer.
+        assert slim["total"] == "200.00"
+        assert slim["outstanding"] == "200.00"
+        assert slim["overdue"] is False
+
+        full = (await c.get("/api/v1/invoicing/invoices", headers=headers)).json()["items"][0]
+        assert len(full["lines"]) == 1
+        assert full["total"] == slim["total"], "the total is a column; slimming must not change it"
+        # The detail view is never slimmed.
+        detail = (
+            await c.get(f"/api/v1/invoicing/invoices/{invoice_id}", headers=headers)
+        ).json()
+        assert len(detail["lines"]) == 1
+
+
+async def test_contacts_count_can_be_skipped(client_for, count_queries) -> None:
+    """The service supported this from the start; the router never forwarded it, so every
+    picker that asked for ``count=false`` was silently paying for the total anyway."""
+    t = await make_tenant("perf-contacts-count")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        for i in range(3):
+            res = await c.post(
+                "/api/v1/contacts", json={"first_name": f"P{i}"}, headers=headers
+            )
+            assert res.status_code == 201, res.text
+
+        assert (await c.get("/api/v1/contacts", headers=headers)).json()["total"] == 3
+        with count_queries() as counter:
+            page = (
+                await c.get("/api/v1/contacts?limit=2&count=false", headers=headers)
+            ).json()
+        assert page["total"] == len(page["items"]) == 2
+        assert counter.matching("count(*)") == [], counter.matching("count(*)")
+
+
 # --- automation rules: grouped, not one query per rule -------------------------------------- #
 async def test_automation_rules_load_their_actions_in_one_statement(
     client_for, count_queries

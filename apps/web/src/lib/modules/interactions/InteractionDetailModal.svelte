@@ -84,6 +84,20 @@
     }
   }
 
+  // A list row carries no `body_text` (#290): twenty full e-mail bodies to draw a snippet column
+  // was the bulk of the list response. The modal is where the body is actually read, so it
+  // fetches the one row it opened — and only when the row genuinely has no body loaded, so a
+  // folded conversation (which already fetches `/thread`, bodies included) adds nothing.
+  async function loadBody(anchor: InteractionItem) {
+    const response = await fetch(`/api/v1/interactions/${anchor.id}`, {
+      headers: { accept: "application/json" },
+    });
+    if (!open || item?.id !== anchor.id) return; // the modal moved on or closed while fetching
+    if (!response.ok) return;
+    const full: InteractionItem = await response.json();
+    messages = messages.map((m) => (m.id === anchor.id ? { ...m, ...full } : m));
+  }
+
   function toggleMessage(id: string) {
     if (expanded.has(id)) {
       expanded.delete(id);
@@ -141,6 +155,7 @@
     expanded.add(anchor.id);
     if (isMailRow(anchor) && anchor.status === "logged") void loadAttachments(anchor.id);
     if ((anchor.conversation_count ?? 1) > 1) void loadThread(anchor);
+    else if (anchor.body_text == null) void loadBody(anchor);
   });
 
   // A long email conversation shows only the current message; the quoted history folds behind

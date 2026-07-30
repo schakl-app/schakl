@@ -236,9 +236,15 @@ class ContactService:
         return [(row[0], row[1]) for row in rows]
 
     async def candidates_for_company(
-        self, company_id: uuid.UUID, *, limit: int = 500
+        self, company_id: uuid.UUID, *, limit: int = 20
     ) -> Sequence[Contact]:
-        """Org contacts not yet linked to this company (the type-ahead's attach list)."""
+        """Org contacts not yet linked to this company — the type-ahead's **opening** options.
+
+        Twenty, not five hundred (#290). Every render of a client page shipped the whole
+        address book so that a dropdown most visits never open could be filtered in the
+        browser; the picker searches the API as the user types now, so this only has to fill
+        the list before anyone has typed anything.
+        """
         linked = select(CompanyContact.contact_id).where(
             CompanyContact.org_id == self._org_id,
             CompanyContact.company_id == company_id,
