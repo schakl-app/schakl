@@ -149,10 +149,27 @@ POST   /api/v1/instance/provisioning/orgs/{slug}/activate …and reactivation
 ```
 
 Create payload: `{name, slug, owner_email, owner_password?, owner_full_name?, brand_name?,
-locale?, enabled_modules?, plan?, trial_days?}`. With `owner_password` the org is fully
-auto-configured (the owner can log in immediately at the returned `url`); without it the
-owner arrives via the forgot-password flow like an invited member. The provisioned owner is
-a plain org `owner`, **never** `is_superuser` (#201).
+locale?, enabled_modules?, plan?, trial_days?, custom_domain?, custom_domain_mode?}`. With
+`owner_password` the org is fully auto-configured (the owner can log in immediately at the
+returned `url`); without it the owner arrives via the forgot-password flow like an invited
+member. The provisioned owner is a plain org `owner`, **never** `is_superuser` (#201).
+
+`custom_domain` configures the customer's own domain in the same call (#292).
+`custom_domain_mode` defaults to `"activate"`: **operator-asserted ownership** — the TXT
+challenge is skipped (recorded on the audit trail as `domain.attach` /
+`ownership: operator-asserted`), the Cloudflare custom hostname is provisioned fail-closed
+in the same transaction (a Cloudflare failure rolls the whole org back — retry the call),
+and the response's `dns_records` lists exactly what the customer's DNS must carry
+(Type / Name / Value / TTL) so the checkout can show or mail them. The response's `url` stays
+the **slug host** until the domain is live: the hostname was created moments ago and its
+certificate is still being issued, and a provisioning response must hand the caller an
+address that already serves (#291). It flips to the custom domain once the certificate is
+active — the daily sweep or a check on the wizard notices. `"claim"` only reserves
+the name and issues the challenge — the response carries the TXT card, and the org's own
+admin finishes the wizard. The same two modes exist on the console and instance-admin org
+pages (`PUT/GET/DELETE /api/v1/instance/orgs/{org_id}/domain`, capability
+`instance.orgs.write` to change, `instance.orgs.read` to read) and as an optional field on
+both org-creation forms.
 
 ### Plans
 
@@ -192,15 +209,15 @@ Two mechanisms, chosen per org:
    `*.<base_domain>`, mounted into Traefik (`infra/certs/origin.pem` + `origin.key`, or
    `SCHAKL_ORIGIN_CERT_DIR`) as the default certificate. Wildcard routers in
    `infra/traefik/dynamic.cloud.yml` route any subdomain; nothing per-org to do.
-2. **Custom domain (CNAME + Let's Encrypt):** the org claims a domain under Instellingen →
-   Branding, points a CNAME at the target shown there (`SCHAKL_CLOUD_CNAME_TARGET`,
-   default `edge.<base_domain>` — give that name an A/AAAA record to the server), proves
-   ownership via the existing DNS-TXT challenge, and verifies. On verification the API
-   writes `custom-domains.yml` (one router pair per **verified** domain, each with
-   `certResolver: letsencrypt`) into the shared ingress volume; Traefik watches it and
-   issues/renews the certificate. Unverified hosts get no router and no certificate —
-   the allow-list is the verified-domains table, so the box is never an open cert factory
-   and never trips LE rate limits.
+2. **Custom domain (CNAME + Let's Encrypt):** the org sets a domain up through the guided
+   wizard under Instellingen → Branding → Eigen domein (#292): it claims the name, proves
+   ownership via the DNS-TXT challenge, then points a CNAME at the target shown
+   (`SCHAKL_CLOUD_CNAME_TARGET`, default `edge.<base_domain>` — give that name an A/AAAA
+   record to the server). On activation the API writes `custom-domains.yml` (one router
+   pair per **active** domain, each with `certResolver: letsencrypt`) into the shared
+   ingress volume; Traefik watches it and issues/renews the certificate. Unverified hosts
+   get no router and no certificate — the allow-list is the verified-domains table, so the
+   box is never an open cert factory and never trips LE rate limits.
 
 The fragment is rewritten on verify/clear, at API boot, and by a daily worker cron
 (`SCHAKL_CLOUD_INGRESS_DIR`, set by the overlay; unset = sync off, e.g. in dev).
@@ -250,22 +267,80 @@ create with *"Access to setting a custom origin SNI has not been granted"* and l
 customer's domain unverified. Leave the setting empty unless you have the entitlement *and* need
 an SNI that differs from the origin server; it never changes `custom_origin_server`.
 
-Should Cloudflare refuse a call over a token scope or a plan entitlement, it answers
-`502 errors.cloudflare_not_entitled` rather than the retryable `errors.cloudflare_failed`, and the
-API log carries Cloudflare's own words plus what the operator has to change — retrying is
-pointless until they do. A hostname added by hand in SSL/TLS → Custom Hostnames is adopted by the
-next verify (exact name match), so a manual workaround needs no cleanup.
+Should Cloudflare refuse a call over a token scope or a plan entitlement, retrying is pointless
+until the operator acts, so neither path says "try again in a moment". Provisioning an org's
+subdomain answers `502 errors.cloudflare_not_entitled` rather than the retryable
+`errors.cloudflare_failed`; the customer-facing domain wizard reports the same refusal as a
+*failed* `cloudflare_auth` / `cloudflare_entitlement` check (see below) instead of an HTTP error,
+because a 502 there would throw away the progress the customer has already made. Either way the
+API log carries Cloudflare's own words plus what the operator has to change. A hostname added by
+hand in SSL/TLS → Custom Hostnames is adopted by the next check (exact name match), so a manual
+workaround needs no cleanup.
 
 **Fallback origin.** Cloudflare for SaaS routes every custom hostname to one proxied record in
 your zone — use the CNAME target (`edge.<base_domain>`), set under SSL/TLS → Custom Hostnames.
 It must be proxied, and it must be Active before any custom hostname resolves.
 
-Verification order on `POST /meta/tenant/domain/verify`: the DNS TXT challenge, then global
-uniqueness, then **Cloudflare, before the org row is touched**. A Cloudflare outage therefore
-leaves the domain *unverified* (`502 errors.cloudflare_failed`) rather than verified with no
-certificate behind it. Clearing a domain takes the opposite trade-off: the removal is
-best-effort, because an org must always be able to drop its domain, and a leftover custom
-hostname routes nothing and is adopted again on the next verify.
+### The domain wizard (#292)
+
+Customer-side onboarding is a resumable four-step flow on `/meta/tenant/domain`:
+
+1. **Choose** (`POST /meta/tenant/domain`) — normalize + validate the name, refuse anything
+   under the base domain, check global uniqueness, issue the ownership token. The org's
+   current custom domain (if any) keeps routing until the new one activates.
+2. **Prove ownership** — only the `_schakl-challenge.<domain>` TXT card is shown; the
+   customer is never asked to cut traffic over before control is proven.
+3. **Point DNS** — after ownership succeeds the Cloudflare custom hostname is provisioned
+   and the traffic CNAME card appears (the TXT card stays, flagged *temporary*).
+4. **Activate & monitor** — the domain activates only when every production condition is
+   ready: traffic DNS observed, hostname active, certificate issued. On self-host, ownership
+   alone activates (routing is the operator's own ingress); on cloud without Cloudflare,
+   ownership + observed DNS activate and Let's Encrypt takes it from there.
+
+`POST /meta/tenant/domain/check` is the single probe-and-advance action the wizard polls.
+It always answers 200 with per-layer `checks` — `ownership`, `dns_target`, `hostname`,
+`certificate` — each carrying `state` (`ok` / `pending` / `failed`), a machine `code`, the
+**expected** and **observed** values, and an i18n message. Conditions that plausibly mean
+"still propagating" (missing TXT, NXDOMAIN, timeout) read as *pending*, never as failure —
+the wizard does not declare defeat while Cloudflare validates asynchronously. `GET` reads
+only persisted state (no DNS probes), which is what makes the wizard resumable across
+sessions. Cloudflare is still contacted **before** the org row says anything is live, so an
+edge outage leaves the claim in `routing_pending` rather than active-without-certificate.
+Clearing a domain takes the opposite trade-off: the removal is best-effort, because an org
+must always be able to drop its domain, and a leftover custom hostname routes nothing and
+is adopted again on the next check.
+
+Past `active` the same endpoint keeps answering, and becomes the **lifecycle** view (#291):
+it re-reads the hostname and certificate, re-resolves the traffic record, and writes the
+health columns `app.core.hosts.custom_domain_live` decides canonicality from. So the wizard
+does not end at activation — the fourth step is where a customer sees a certificate that
+stopped renewing or DNS that moved away, with the same expected/observed diagnostics.
+
+#### Operator troubleshooting
+
+Every non-ok check logs `domain check <correlation_id> org=<slug> …` API-side; the customer
+sees the same correlation id, so a support ticket maps to the exact probe. Codes:
+
+| code | meaning | operator action |
+|---|---|---|
+| `txt_missing` / `txt_nxdomain` | challenge not visible yet | usually propagation; verify the record name with the customer |
+| `txt_wrong_value` | TXT exists, wrong token | customer pasted stale/partial value |
+| `dns_servfail` | customer zone broken (often DNSSEC) | point customer at their DNS provider |
+| `target_missing` / `target_nxdomain` | traffic CNAME absent | propagation or record not created |
+| `target_wrong` | domain resolves elsewhere | another CDN/proxy in front, or wrong target |
+| `hostname_pending` | Cloudflare still validating | wait; check the fallback origin is Active |
+| `hostname_moved` / `hostname_blocked` / `hostname_deleted` | Cloudflare hostname state | inspect the custom hostname in the CF dashboard |
+| `cloudflare_auth` | token rejected (401/403) | rotate/rescope `SCHAKL_CLOUD_CF_API_TOKEN` |
+| `cloudflare_entitlement` | plan/quota refusal (#293) | raise the custom-hostnames quota / plan |
+| `cloudflare_unavailable` | CF API unreachable / 5xx | transient; retries on the next check |
+| `cert_pending` | certificate being issued | wait (up to ~1 h) |
+| `cert_failed` | validation errors (CAA, expired token) | the check's `observed` carries Cloudflare's own validation message |
+
+The Cloudflare API token never appears in any diagnostic, log line or response — only
+Cloudflare's own error text does. Optional customer-side Cloudflare **DNS automation**
+("Connect Cloudflare", #292) is deliberately not implemented: there is no
+operator-independent OAuth flow to a customer's zone that meets the least-privilege bar, so
+the wizard ships the precise manual record cards instead.
 
 ## Canonical host & custom-domain lifecycle (#291)
 
@@ -277,9 +352,14 @@ hostname is not activation: the domain counts as **live** only once Cloudflare r
 hostname `active`, its DV certificate `active`, and the DNS drift check still sees the domain
 pointing at the SaaS target. That state lives on `orgs` (`cf_hostname_status`,
 `cf_ssl_status`, `domain_dns_ok`, `domain_cert_expires_at`, `domain_checked_at`,
-`domain_check_error`) and is written by the verify flow (seed), by
-`POST /meta/tenant/domain/check` (the settings page's *Status controleren* button) and by the
-daily `cloud_domains_sweep` cron (04:30). Without Cloudflare (self-host, or the
+`domain_check_error`) and is written in three places, all of them the same reconciliation:
+activation seeds it from the custom-hostname record it already holds (the wizard's
+`_activate`, and `attach` for an operator-set domain), `POST /meta/tenant/domain/check`
+re-reads it whenever the wizard polls, and the daily `cloud_domains_sweep` cron (04:30) does
+it unattended. The wizard's own check is deliberately the *only* customer-facing one — one
+probe feeds both the per-layer diagnostics the customer reads and the columns
+`custom_domain_live` consults, so the two can never disagree. Without Cloudflare (self-host,
+or the
 Traefik/Let's Encrypt posture) there is no state to poll: the router and certificate follow
 the verification directly, so verified = live — today's behaviour, unchanged. Orgs verified
 before this state existed stay live until the first sweep records the truth: an upgrade must
@@ -303,8 +383,10 @@ deliberately — a customer domain must never share the base domain's cookie sco
 
 **Recovery:** the slug host always resolves (`resolve_org` is untouched by health), an
 unhealthy domain shows a banner to holders of `settings.domain.write` instead of a generic
-TLS failure, and Instellingen → Huisstijl shows the raw hostname/certificate/DNS state, the
-last error and a re-check button.
+TLS failure, and **Instellingen → Eigen domein** — the wizard's own screen, at its *Actief*
+step — shows the raw hostname/certificate/DNS state, the last error and the re-check button.
+Huisstijl keeps only a summary card linking there: one screen owns the domain, setup and
+lifecycle alike.
 
 ### Certificate renewal, HTTP DCV and Delegated DCV
 

@@ -70,6 +70,14 @@ class Org(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # A claim awaiting DNS TXT verification; promoted to custom_domain by the verify endpoint.
     pending_domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
     domain_verification_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Ownership proven (TXT seen) but the domain not yet activated — the wizard's staged
+    # middle state (#292): traffic/certificate DNS may still be propagating. Reset on claim.
+    pending_domain_ownership_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # The Cloudflare custom hostname provisioned for the *pending* domain once ownership is
+    # proven (#292); promoted into cf_hostname_id at activation.
+    pending_cf_hostname_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # Cloudflare for SaaS (epic #199): the custom-hostname id registered for custom_domain when
     # the operator fronts the instance with Cloudflare. NULL everywhere the integration is off
     # (all self-host installs) — clearing the domain deletes the hostname by this id.

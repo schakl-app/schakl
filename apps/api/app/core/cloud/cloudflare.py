@@ -249,8 +249,14 @@ async def ensure_custom_hostname(hostname: str) -> str:
 
 
 async def get_custom_hostname(hostname_id: str) -> dict[str, Any] | None:
-    """The current custom-hostname record — status, SSL state, verification errors — or
-    None when it no longer exists (deleted by hand, or moved to another zone)."""
+    """The current custom-hostname record, or None when it no longer exists (deleted by hand,
+    or moved to another zone).
+
+    Both readers of the lifecycle want the same fields — ``status``, ``ssl.status``,
+    ``ssl.validation_errors``, ``verification_errors``: the wizard's activation step polls it
+    rather than treating "created" as "live" (#292), and the daily health sweep reconciles
+    against it (#291).
+    """
     try:
         return await _request("GET", _zone_path(f"/custom_hostnames/{hostname_id}"))
     except CloudflareError as exc:

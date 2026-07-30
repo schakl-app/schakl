@@ -197,6 +197,75 @@
   </form>
 </section>
 
+<!-- Custom domain (#292). PIN-free: routing is platform data, not tenant content. -->
+<section class="mt-6 max-w-md rounded-xl border border-border bg-surface-raised p-6">
+  <h2 class="text-base font-semibold text-text">{t("instance.domain.title")}</h2>
+  <p class="mt-1 text-sm text-text-muted">{t("instance.domain.hint")}</p>
+
+  {#if data.domain && data.domain.stage !== "none"}
+    <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <p class="font-mono text-sm text-text">
+          {data.domain.pending_domain ?? data.domain.custom_domain}
+        </p>
+        <p class="mt-0.5 text-xs text-text-muted">
+          {t(`settings.domain.stage.${data.domain.stage}`)}
+        </p>
+      </div>
+      <form method="POST" action="?/clearDomain" use:enhance={busy.wrap("clearDomain")}>
+        <Button
+          variant="secondary"
+          size="sm"
+          loading={busy.is("clearDomain")}
+          disabled={busy.active}
+        >
+          {t("instance.domain.remove")}
+        </Button>
+      </form>
+    </div>
+    {#if data.domain.records.length}
+      <div class="mt-3">
+        <p class="text-xs font-medium text-text-muted">{t("instance.domain.records")}</p>
+        <dl class="mt-1 space-y-1 font-mono text-xs text-text">
+          {#each data.domain.records as record (record.purpose)}
+            <div class="flex gap-2">
+              <dt class="shrink-0 text-text-muted">{record.type}</dt>
+              <dd class="break-all">{record.name} → {record.value}</dd>
+            </div>
+          {/each}
+        </dl>
+      </div>
+    {/if}
+  {/if}
+
+  <form
+    method="POST"
+    action="?/setDomain"
+    use:enhance={busy.keep("setDomain")}
+    class="mt-4 space-y-3"
+  >
+    <input
+      name="domain"
+      placeholder="crm.klant.nl"
+      aria-label={t("instance.domain.label")}
+      class="{inputClass} font-mono"
+    />
+    <select name="mode" class={inputClass} aria-label={t("instance.domain.mode")}>
+      <option value="activate">{t("instance.domain.mode_activate")}</option>
+      <option value="claim">{t("instance.domain.mode_claim")}</option>
+    </select>
+    {#if form?.error && form?.domainError}
+      <p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
+    {/if}
+    {#if form?.domainSaved}
+      <p class="text-sm text-emerald-700 dark:text-emerald-400">{t("instance.domain.saved")}</p>
+    {/if}
+    <Button variant="secondary" loading={busy.is("setDomain")} disabled={busy.active}>
+      {t("instance.domain.set")}
+    </Button>
+  </form>
+</section>
+
 <!-- End date (#199). PIN-free like the plan: platform state, not tenant content. -->
 <section class="mt-6 max-w-md rounded-xl border border-border bg-surface-raised p-6">
   <h2 class="text-base font-semibold text-text">{t("cloud.lifecycle.end_date")}</h2>

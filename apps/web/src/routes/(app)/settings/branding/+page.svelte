@@ -2,7 +2,6 @@
   import { enhance } from "$app/forms";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import { currencyLabel } from "$lib/core/currencies";
-  import { fmtNumericDate } from "$lib/core/format";
   import { phoneCountries } from "$lib/core/phone";
   import { localeLabel, t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -33,12 +32,6 @@
   });
 
   const busy = new InFlight();
-
-  // Cloudflare manages this domain's certificate lifecycle (#291): there is state to show
-  // and to re-check. A Traefik/Let's Encrypt domain (self-host) has neither.
-  const hasLifecycle = $derived(
-    Boolean(data.domain?.hostname_status || data.domain?.checked_at),
-  );
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
@@ -291,187 +284,33 @@
     </aside>
   </div>
 
-  <!-- Custom domain (issue #26): claimed here, proven via DNS TXT, only then routed. -->
-  <section class="mt-4 max-w-2xl rounded-xl border border-border bg-surface-raised p-5">
-    <h2 class="text-sm font-semibold text-text">{t("settings.branding.domain.title")}</h2>
-    <p class="mt-1 text-xs text-text-muted">{t("settings.branding.domain.subtitle")}</p>
-
-    {#if data.domain?.custom_domain}
-      <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p class="font-mono text-sm text-text">{data.domain.custom_domain}</p>
-          {#if data.domain.live}
-            <p class="mt-0.5 text-xs text-green-600 dark:text-green-400">
-              {t("settings.branding.domain.live")}
-            </p>
-          {:else}
-            <!-- Verified (ownership proven) but not serving yet / anymore (#291): the org
-                 keeps working on the recovery address below; nothing redirects to a domain
-                 whose certificate or DNS is not ready. -->
-            <p class="mt-0.5 text-xs text-amber-600 dark:text-amber-400">
-              {t("settings.branding.domain.not_live", {
-                host: data.domain.recovery_host ?? "",
-              })}
-            </p>
-          {/if}
-        </div>
-        <div class="flex gap-2">
-          {#if hasLifecycle}
-            <form method="POST" action="?/checkDomain" use:enhance={busy.wrap("checkDomain")}>
-              <Button
-                variant="secondary"
-                size="sm"
-                loading={busy.is("checkDomain")}
-                disabled={busy.active}
-              >
-                {t("settings.branding.domain.check")}
-              </Button>
-            </form>
-          {/if}
-          <form method="POST" action="?/clearDomain" use:enhance={busy.wrap("removeDomain")}>
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={busy.is("removeDomain")}
-              disabled={busy.active}
-            >
-              {t("settings.branding.domain.remove")}
-            </Button>
-          </form>
-        </div>
-      </div>
-
-      {#if hasLifecycle}
-        <!-- Cloudflare-managed lifecycle (#291). Status codes are the external system's own
-             vocabulary ("active", "pending_validation", …) — data, rendered verbatim. -->
-        <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
-          <dt class="text-text-muted">{t("settings.branding.domain.status_hostname")}</dt>
-          <dd class="font-mono text-text">{data.domain.hostname_status ?? "—"}</dd>
-          <dt class="text-text-muted">{t("settings.branding.domain.status_certificate")}</dt>
-          <dd class="font-mono text-text">
-            {data.domain.ssl_status ?? "—"}{#if data.domain.cert_expires_at}
-              <span class="ml-2 font-sans text-text-muted">
-                {t("settings.branding.domain.expires", {
-                  date: fmtNumericDate(data.domain.cert_expires_at),
-                })}
-              </span>
-            {/if}
-          </dd>
-          <dt class="text-text-muted">{t("settings.branding.domain.status_dns")}</dt>
-          <dd class="text-text">
-            {data.domain.dns_ok === true
-              ? t("settings.branding.domain.dns_ok")
-              : data.domain.dns_ok === false
-                ? t("settings.branding.domain.dns_moved")
-                : t("settings.branding.domain.dns_unknown")}
-          </dd>
-          {#if data.domain.checked_at}
-            <dt class="text-text-muted">{t("settings.branding.domain.checked_at")}</dt>
-            <dd class="text-text">{fmtNumericDate(data.domain.checked_at)}</dd>
-          {/if}
-        </dl>
-        {#if data.domain.check_error}
-          <p class="mt-2 font-mono text-xs text-red-600 dark:text-red-400">
-            {data.domain.check_error}
-          </p>
-        {/if}
-      {/if}
-
-      {#if data.domain.live && data.domain.recovery_host}
-        <p class="mt-3 text-xs text-text-muted">
-          {t("settings.branding.domain.canonical_note", {
-            host: data.domain.recovery_host,
-            domain: data.domain.custom_domain,
-          })}
+  <!-- Custom domain (#292): the guided wizard owns claim → ownership → DNS → activation. -->
+  <section
+    class="mt-4 flex max-w-2xl flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-raised p-5"
+  >
+    <div>
+      <h2 class="text-sm font-semibold text-text">{t("settings.branding.domain.title")}</h2>
+      <p class="mt-1 text-xs text-text-muted">{t("settings.branding.domain.subtitle")}</p>
+      {#if data.domain?.custom_domain || data.domain?.pending_domain}
+        <p class="mt-2 font-mono text-sm text-text">
+          {data.domain.pending_domain ?? data.domain.custom_domain}
         </p>
       {/if}
-    {/if}
-
-    {#if data.domain?.pending_domain}
-      <div
-        class="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30"
+      <p
+        class="mt-1 text-xs {data.domain?.stage === 'active'
+          ? 'text-green-600 dark:text-green-400'
+          : 'text-text-muted'}"
       >
-        <p class="text-sm font-medium text-text">
-          {t("settings.branding.domain.pending", { domain: data.domain.pending_domain })}
-        </p>
-        <p class="mt-2 text-xs text-text-muted">
-          {t("settings.branding.domain.txt_instructions")}
-        </p>
-        <dl class="mt-2 space-y-1 font-mono text-xs text-text">
-          <div class="flex gap-2">
-            <dt class="shrink-0 text-text-muted">TXT</dt>
-            <dd class="break-all">{data.domain.txt_record_name}</dd>
-          </div>
-          <div class="flex gap-2">
-            <dt class="shrink-0 text-text-muted">→</dt>
-            <dd class="break-all">{data.domain.txt_record_value}</dd>
-          </div>
-        </dl>
-        {#if data.domain.cname_target}
-          <!-- Cloud (#202): traffic + automatic TLS need the CNAME besides the TXT proof. -->
-          <p class="mt-3 text-xs text-text-muted">
-            {t("settings.branding.domain.cname_instructions")}
-          </p>
-          <dl class="mt-1 space-y-1 font-mono text-xs text-text">
-            <div class="flex gap-2">
-              <dt class="shrink-0 text-text-muted">CNAME</dt>
-              <dd class="break-all">{data.domain.pending_domain}</dd>
-            </div>
-            <div class="flex gap-2">
-              <dt class="shrink-0 text-text-muted">→</dt>
-              <dd class="break-all">{data.domain.cname_target}</dd>
-            </div>
-          </dl>
-        {/if}
-        <div class="mt-3 flex gap-2">
-          <form method="POST" action="?/verifyDomain" use:enhance={busy.wrap("verifyDomain")}>
-            <Button size="sm" loading={busy.is("verifyDomain")} disabled={busy.active}>
-              {t("settings.branding.domain.verify")}
-            </Button>
-          </form>
-          <form method="POST" action="?/clearDomain" use:enhance={busy.wrap("cancelDomain")}>
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={busy.is("cancelDomain")}
-              disabled={busy.active}
-            >
-              {t("common.cancel")}
-            </Button>
-          </form>
-        </div>
-      </div>
-    {:else}
-      <form
-        method="POST"
-        action="?/claimDomain"
-        use:enhance={busy.wrap("claimDomain")}
-        class="mt-4 flex flex-wrap items-end gap-3"
-      >
-        <div class="grow">
-          <label for="domain" class="mb-1 block text-sm font-medium text-text">
-            {t("settings.branding.domain.claim_label")}
-          </label>
-          <input
-            id="domain"
-            name="domain"
-            placeholder={t("settings.branding.domain.placeholder")}
-            class="{inputClass} font-mono"
-          />
-        </div>
-        <Button variant="secondary" loading={busy.is("claimDomain")} disabled={busy.active}>
-          {t("settings.branding.domain.claim")}
-        </Button>
-      </form>
-    {/if}
-
-    {#if form?.error && form?.domainError}
-      <p class="mt-2 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
-    {/if}
-    {#if form?.domainVerified}
-      <p class="mt-2 text-sm text-green-600 dark:text-green-400">
-        {t("settings.branding.domain.verified_now")}
+        {t(`settings.domain.stage.${data.domain?.stage ?? "none"}`)}
       </p>
-    {/if}
+    </div>
+    <a
+      href="/settings/domain"
+      class="rounded-lg border border-border px-3 py-2 text-sm font-medium text-text hover:bg-surface"
+    >
+      {data.domain?.stage === "none"
+        ? t("settings.domain.manage")
+        : t("settings.domain.manage_existing")}
+    </a>
   </section>
 {/if}

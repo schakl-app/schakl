@@ -2587,6 +2587,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/instance/orgs/{org_id}/domain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Org Domain
+         * @description Routing state is platform data (it decides which hostname reaches the org), so this
+         *     stays PIN-free like the org list — it exposes no tenant content.
+         */
+        get: operations["org_domain_api_v1_instance_orgs__org_id__domain_get"];
+        /** Set Org Domain */
+        put: operations["set_org_domain_api_v1_instance_orgs__org_id__domain_put"];
+        post?: never;
+        /** Clear Org Domain */
+        delete: operations["clear_org_domain_api_v1_instance_orgs__org_id__domain_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/instance/orgs/{org_id}/export": {
         parameters: {
             query?: never;
@@ -4737,31 +4760,14 @@ export interface paths {
         put?: never;
         /**
          * Check Domain
-         * @description Reconcile the custom domain's lifecycle state on demand (#291).
+         * @description Probe the current stage's DNS/edge conditions, advance whatever they satisfy, and
+         *     report each layer separately (ownership TXT, traffic DNS, hostname, certificate).
          *
-         *     Fetches the Cloudflare custom-hostname status + certificate state and re-runs the DNS
-         *     drift check, then stores the result — the same reconciliation the daily sweep performs,
-         *     for the settings page's "check now" button. A no-op wherever Cloudflare does not manage
-         *     the certificate: a Traefik/Let's Encrypt domain has no state to poll.
+         *     Deliberately a 200 even when nothing is satisfied yet: "your record has not propagated"
+         *     is a diagnostic, not an HTTP failure — the old single-shot verify's 400 is exactly the
+         *     collapsed error #292 replaces.
          */
         post: operations["check_domain_api_v1_meta_tenant_domain_check_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/meta/tenant/domain/verify": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Verify Domain */
-        post: operations["verify_domain_api_v1_meta_tenant_domain_verify_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8780,6 +8786,32 @@ export interface components {
             password: string;
         };
         /**
+         * DnsRecordCard
+         * @description One record to create at the customer's DNS provider, renderable as a copy-paste card.
+         */
+        DnsRecordCard: {
+            /** Host */
+            host: string;
+            /** Name */
+            name: string;
+            /** Purpose */
+            purpose: string;
+            /**
+             * Temporary
+             * @default false
+             */
+            temporary: boolean;
+            /**
+             * Ttl
+             * @default 3600
+             */
+            ttl: number;
+            /** Type */
+            type: string;
+            /** Value */
+            value: string;
+        };
+        /**
          * DocumentSend
          * @description POST /send: stamp ``sent_at`` and (by default) e-mail the document summary to the
          *     customer through the org's transport (#17). ``email=false`` records a send that
@@ -8795,6 +8827,52 @@ export interface components {
             message?: string | null;
             /** To */
             to?: string | null;
+        };
+        /**
+         * DomainCheck
+         * @description One probe's outcome, with the diagnostic answer #292 demands: which layer, what was
+         *     expected, what was observed, and (via ``code`` → i18n) what to do next.
+         */
+        DomainCheck: {
+            /** Code */
+            code: string;
+            /** Expected */
+            expected?: string | null;
+            /** Key */
+            key: string;
+            /** Message Key */
+            message_key: string;
+            /** Observed */
+            observed?: string | null;
+            /** State */
+            state: string;
+        };
+        /** DomainCheckReport */
+        DomainCheckReport: {
+            /**
+             * Advanced
+             * @default false
+             */
+            advanced: boolean;
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at: string;
+            /**
+             * Checks
+             * @default []
+             */
+            checks: components["schemas"]["DomainCheck"][];
+            /** Correlation Id */
+            correlation_id: string;
+            /** Provider */
+            provider?: string | null;
+            /** Provider Name */
+            provider_name?: string | null;
+            status: components["schemas"]["app__core__domainflow__DomainStatus"];
+            /** Zone */
+            zone?: string | null;
         };
         /** DomainClaim */
         DomainClaim: {
@@ -12349,6 +12427,13 @@ export interface components {
         OrgCreate: {
             /** Brand Name */
             brand_name?: string | null;
+            /** Custom Domain */
+            custom_domain?: string | null;
+            /**
+             * Custom Domain Mode
+             * @default activate
+             */
+            custom_domain_mode: string;
             /** Enabled Modules */
             enabled_modules?: string[] | null;
             /** Locale */
@@ -12421,6 +12506,16 @@ export interface components {
             terminates_at?: string | null;
             /** Trial Ends At */
             trial_ends_at?: string | null;
+        };
+        /** OrgDomainUpdate */
+        OrgDomainUpdate: {
+            /** Domain */
+            domain: string;
+            /**
+             * Mode
+             * @default activate
+             */
+            mode: string;
         };
         /** OrgMember */
         OrgMember: {
@@ -13501,6 +13596,13 @@ export interface components {
         ProvisionOrgRequest: {
             /** Brand Name */
             brand_name?: string | null;
+            /** Custom Domain */
+            custom_domain?: string | null;
+            /**
+             * Custom Domain Mode
+             * @default activate
+             */
+            custom_domain_mode: string;
             /** Enabled Modules */
             enabled_modules?: string[] | null;
             /** Locale */
@@ -13528,12 +13630,26 @@ export interface components {
         };
         /** ProvisionedOrg */
         ProvisionedOrg: {
+            /** Custom Domain */
+            custom_domain?: string | null;
+            /**
+             * Custom Domain Active
+             * @default false
+             */
+            custom_domain_active: boolean;
+            /**
+             * Dns Records
+             * @default []
+             */
+            dns_records: components["schemas"]["DnsRecordCard"][];
             /** Id */
             id: string;
             /** Name */
             name: string;
             /** Owner Email */
             owner_email?: string | null;
+            /** Pending Domain */
+            pending_domain?: string | null;
             /** Plan */
             plan: string | null;
             /** Slug */
@@ -17001,7 +17117,9 @@ export interface components {
             };
         };
         /** DomainStatus */
-        app__core__domains__DomainStatus: {
+        app__core__domainflow__DomainStatus: {
+            /** Apex */
+            apex?: boolean | null;
             /** Canonical Host */
             canonical_host?: string | null;
             /** Cert Expires At */
@@ -17025,18 +17143,21 @@ export interface components {
              * @default false
              */
             live: boolean;
+            /** Ownership Verified At */
+            ownership_verified_at: string | null;
             /** Pending Domain */
             pending_domain: string | null;
+            /**
+             * Records
+             * @default []
+             */
+            records: components["schemas"]["DnsRecordCard"][];
             /** Recovery Host */
             recovery_host?: string | null;
             /** Ssl Status */
             ssl_status?: string | null;
-            /** Txt Record Name */
-            txt_record_name: string | null;
-            /** Txt Record Value */
-            txt_record_value: string | null;
-            /** Verification Token */
-            verification_token: string | null;
+            /** Stage */
+            stage: string;
         };
         /**
          * DomainStatus
@@ -22825,6 +22946,103 @@ export interface operations {
             };
         };
     };
+    org_domain_api_v1_instance_orgs__org_id__domain_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app__core__domainflow__DomainStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_org_domain_api_v1_instance_orgs__org_id__domain_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrgDomainUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app__core__domainflow__DomainStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_org_domain_api_v1_instance_orgs__org_id__domain_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app__core__domainflow__DomainStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     export_org_api_v1_instance_orgs__org_id__export_get: {
         parameters: {
             query?: never;
@@ -27479,7 +27697,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__core__domains__DomainStatus"];
+                    "application/json": components["schemas"]["app__core__domainflow__DomainStatus"];
                 };
             };
         };
@@ -27503,7 +27721,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__core__domains__DomainStatus"];
+                    "application/json": components["schemas"]["app__core__domainflow__DomainStatus"];
                 };
             };
             /** @description Validation Error */
@@ -27532,7 +27750,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__core__domains__DomainStatus"];
+                    "application/json": components["schemas"]["app__core__domainflow__DomainStatus"];
                 };
             };
         };
@@ -27552,27 +27770,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__core__domains__DomainStatus"];
-                };
-            };
-        };
-    };
-    verify_domain_api_v1_meta_tenant_domain_verify_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["app__core__domains__DomainStatus"];
+                    "application/json": components["schemas"]["DomainCheckReport"];
                 };
             };
         };

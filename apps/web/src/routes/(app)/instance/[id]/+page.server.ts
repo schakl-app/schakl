@@ -9,17 +9,21 @@ import type { Actions, PageServerLoad, RequestEvent } from "./$types";
 export const load: PageServerLoad = async (event) => {
   if (!event.locals.user?.isInstanceAdmin) throw redirect(303, "/");
   const api = apiFor(event);
-  const [org, modules] = await Promise.all([
+  const [org, modules, domain] = await Promise.all([
     api.GET("/api/v1/instance/orgs/{org_id}", {
       params: { path: { org_id: event.params.id } },
     }),
     api.GET("/api/v1/meta/modules"),
+    api.GET("/api/v1/instance/orgs/{org_id}/domain", {
+      params: { path: { org_id: event.params.id } },
+    }),
   ]);
   if (!org.data) throw httpError(404);
   return {
     org: org.data,
     availableModules: modules.data?.enabled_modules ?? [],
     baseDomain: modules.data?.base_domain ?? "",
+    domain: domain.data ?? null,
   };
 };
 
@@ -53,6 +57,35 @@ export const actions: Actions = {
       return fail(400, { error: parsed.fields?.slug ?? parsed.key });
     }
     return { updated: true };
+  },
+
+  // Operator-side custom domain (#292): activate asserts ownership (audited); claim only
+  // reserves it and issues the TXT challenge for the org's own admin to complete.
+  setDomain: async (event) => {
+    const form = await event.request.formData();
+    const domain = String(form.get("domain") ?? "")
+      .trim()
+      .toLowerCase();
+    const mode = String(form.get("mode") ?? "activate");
+    if (!domain) return fail(400, { error: "errors.required", domainError: true });
+    const { error } = await apiFor(event).PUT("/api/v1/instance/orgs/{org_id}/domain", {
+      ...orgPath(event),
+      body: { domain, mode },
+    });
+    if (error) {
+      const parsed = apiErrorKey(error);
+      return fail(400, { error: parsed.fields?.domain ?? parsed.key, domainError: true });
+    }
+    return { domainSaved: true };
+  },
+
+  clearDomain: async (event) => {
+    const { error } = await apiFor(event).DELETE(
+      "/api/v1/instance/orgs/{org_id}/domain",
+      orgPath(event),
+    );
+    if (error) return fail(400, { error: apiErrorKey(error).key, domainError: true });
+    return { domainSaved: true };
   },
 
   suspend: transition("suspend"),

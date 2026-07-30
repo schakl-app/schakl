@@ -643,20 +643,11 @@ async def test_import_rejects_schema_mismatch(client_for, instance_admin_enabled
 # --------------------------------------------------------------------------- #
 # Custom-domain claim & verify (tenant manager surface)
 # --------------------------------------------------------------------------- #
-async def test_domain_claim_verify_and_uniqueness(client_for, monkeypatch) -> None:
+async def test_domain_claim_check_and_uniqueness(client_for, fake_dns) -> None:
     a = await make_tenant("dom-a")
     b = await make_tenant("dom-b")
     a_headers = await auth_cookie(a.user)
     b_headers = await auth_cookie(b.user)
-
-    published: dict[str, list[str]] = {}
-
-    async def fake_txt(name: str) -> list[str]:
-        return published.get(name, [])
-
-    from app.core import domains as domains_module
-
-    monkeypatch.setattr(domains_module.dnscheck, "txt_records", fake_txt)
 
     async with client_for(a.host) as client:
         # Hosts under the base domain are routed by slug — not claimable.
@@ -669,20 +660,39 @@ async def test_domain_claim_verify_and_uniqueness(client_for, monkeypatch) -> No
             "/api/v1/meta/tenant/domain", json={"domain": "crm.agency.test"}, headers=a_headers
         )
         assert claimed.status_code == 200
-        challenge = claimed.json()
-        assert challenge["txt_record_name"] == "_schakl-challenge.crm.agency.test"
-        token = challenge["txt_record_value"]
+        status = claimed.json()
+        assert status["stage"] == "ownership_pending"
+        card = next(r for r in status["records"] if r["purpose"] == "ownership")
+        assert card["name"] == "_schakl-challenge.crm.agency.test"
+        token = card["value"]
 
-        # Verification fails until the TXT record exists…
-        failed = await client.post("/api/v1/meta/tenant/domain/verify", headers=a_headers)
-        assert failed.status_code == 400
-        assert failed.json()["error"]["message"] == "errors.domain_verification_failed"
+        # NXDOMAIN reads as propagation (pending), SERVFAIL as a broken zone (failed) —
+        # the distinct diagnoses #292 requires instead of one generic failure.
+        from app.core import dnscheck
 
-        published["_schakl-challenge.crm.agency.test"] = ["something-else", token]
-        verified = await client.post("/api/v1/meta/tenant/domain/verify", headers=a_headers)
-        assert verified.status_code == 200
-        assert verified.json()["custom_domain"] == "crm.agency.test"
-        assert verified.json()["pending_domain"] is None
+        fake_dns.txt["_schakl-challenge.crm.agency.test"] = dnscheck.NXDOMAIN
+        report = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=a_headers)
+        ).json()
+        assert (report["checks"][0]["state"], report["checks"][0]["code"]) == (
+            "pending", "txt_nxdomain",
+        )
+        fake_dns.txt["_schakl-challenge.crm.agency.test"] = dnscheck.SERVFAIL
+        report = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=a_headers)
+        ).json()
+        assert (report["checks"][0]["state"], report["checks"][0]["code"]) == (
+            "failed", "dns_servfail",
+        )
+
+        fake_dns.txt["_schakl-challenge.crm.agency.test"] = ["something-else", token]
+        report = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=a_headers)
+        ).json()
+        # Self-host: ownership is the whole story — one good check activates.
+        assert report["advanced"] is True
+        assert report["status"]["custom_domain"] == "crm.agency.test"
+        assert report["status"]["pending_domain"] is None
 
     # The verified domain now resolves to org A.
     async with client_for("crm.agency.test") as client:
@@ -703,3 +713,97 @@ async def test_domain_claim_verify_and_uniqueness(client_for, monkeypatch) -> No
             "/api/v1/meta/tenant/domain", headers=await auth_cookie(member.user)
         )
         assert denied.status_code == 403
+
+
+async def test_instance_admin_configures_domain_directly(
+    client_for, fake_dns, instance_admin_enabled
+) -> None:
+    """The operator path (#292): set a custom domain on an org from the instance surface —
+    operator-asserted ownership skips the TXT challenge and is audited as such."""
+    admin = await make_tenant("dom-admin")
+    await make_instance_owner(admin)
+    target = await make_tenant("dom-target")
+    other = await make_tenant("dom-other")
+    headers = await auth_cookie(admin.user)
+
+    async with client_for(admin.host) as client:
+        set_resp = await client.put(
+            f"/api/v1/instance/orgs/{target.org.id}/domain",
+            json={"domain": "Portaal.Klant.example."},
+            headers=headers,
+        )
+        assert set_resp.status_code == 200
+        status = set_resp.json()
+        # Normalized, active immediately, no ownership challenge issued.
+        assert status["custom_domain"] == "portaal.klant.example"
+        assert status["stage"] == "active"
+        assert status["pending_domain"] is None
+
+        # Global uniqueness holds on the operator path too.
+        conflict = await client.put(
+            f"/api/v1/instance/orgs/{other.org.id}/domain",
+            json={"domain": "portaal.klant.example"},
+            headers=headers,
+        )
+        assert conflict.status_code == 409
+
+        # claim mode only reserves + issues the challenge; the org admin finishes the wizard.
+        claim_resp = await client.put(
+            f"/api/v1/instance/orgs/{other.org.id}/domain",
+            json={"domain": "crm.ander.example", "mode": "claim"},
+            headers=headers,
+        )
+        assert claim_resp.status_code == 200
+        assert claim_resp.json()["stage"] == "ownership_pending"
+        assert claim_resp.json()["custom_domain"] is None
+
+        read_back = await client.get(
+            f"/api/v1/instance/orgs/{other.org.id}/domain", headers=headers
+        )
+        assert read_back.json()["pending_domain"] == "crm.ander.example"
+
+        cleared = await client.delete(
+            f"/api/v1/instance/orgs/{target.org.id}/domain", headers=headers
+        )
+        assert cleared.status_code == 200
+        assert cleared.json()["stage"] == "none"
+
+    # The audit trail records the operator assertion.
+    async with async_session_maker() as session:
+        actions = (
+            (
+                await session.execute(
+                    select(InstanceAuditLog.action, InstanceAuditLog.detail).order_by(
+                        InstanceAuditLog.created_at.asc()
+                    )
+                )
+            )
+            .all()
+        )
+        attach = next(row for row in actions if row[0] == "domain.attach")
+        assert attach[1]["ownership"] == "operator-asserted"
+
+
+async def test_instance_org_create_with_custom_domain(
+    client_for, fake_dns, instance_admin_enabled
+) -> None:
+    admin = await make_tenant("dom-create-admin")
+    await make_instance_owner(admin)
+    headers = await auth_cookie(admin.user)
+    async with client_for(admin.host) as client:
+        created = await client.post(
+            "/api/v1/instance/orgs",
+            json={
+                "name": "Klant BV",
+                "slug": "klantbv-dom",
+                "custom_domain": "app.klantbv.example",
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201
+        assert created.json()["custom_domain"] == "app.klantbv.example"
+        assert created.json()["custom_domain_verified"] is True
+
+    # The domain resolves to the new org straight away (DNS willing).
+    async with client_for("app.klantbv.example") as client:
+        assert (await client.get("/api/v1/meta/tenant")).json()["slug"] == "klantbv-dom"

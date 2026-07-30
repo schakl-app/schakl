@@ -13,6 +13,7 @@ import pytest
 from sqlalchemy import select
 
 from app.config import settings
+from app.core import domainflow
 from app.core.auth.models import User
 from app.core.cloud import cloudflare as cf
 from app.core.cloud.ingress import render_fragment, sync_ingress, verified_domains
@@ -585,7 +586,13 @@ class _FakeCloudflare:
 
     def seed_hostname(self, hostname: str, *, record_id: str = "manual") -> None:
         """A custom hostname the operator added by hand in the dashboard (#293)."""
-        self.records[record_id] = {"id": record_id, "hostname": hostname, "status": "active"}
+        self.records[record_id] = {
+            "id": record_id,
+            "hostname": hostname,
+            "status": "active",
+            "verification_errors": [],
+            "ssl": {"status": "active", "validation_errors": []},
+        }
 
     def set_state(
         self,
@@ -594,10 +601,16 @@ class _FakeCloudflare:
         status: str | None = None,
         ssl_status: str | None = None,
         expires_on: str | None = None,
+        ssl_errors: list[str] | None = None,
         validation_errors: list[str] | None = None,
     ) -> None:
-        """Drive the lifecycle a real Cloudflare would (#291): hostname/SSL status flips,
-        certificate expiry, validation errors."""
+        """Drive the asynchronous validation a real Cloudflare would: hostname/SSL status
+        flips and validation errors (the wizard's activation gate, #292) plus certificate
+        expiry (the lifecycle sweep, #291).
+
+        ``ssl_errors`` and ``validation_errors`` are the same thing under the two issues'
+        names; both are accepted so neither suite's call sites had to be rewritten.
+        """
         record = self.records[hostname_id]
         if status is not None:
             record["status"] = status
@@ -606,8 +619,9 @@ class _FakeCloudflare:
             ssl["status"] = ssl_status
         if expires_on is not None:
             ssl["expires_on"] = expires_on
-        if validation_errors is not None:
-            ssl["validation_errors"] = [{"message": message} for message in validation_errors]
+        errors = validation_errors if validation_errors is not None else ssl_errors
+        if errors is not None:
+            ssl["validation_errors"] = [{"message": message} for message in errors]
 
     @staticmethod
     def _ok(result) -> httpx.Response:
@@ -635,7 +649,8 @@ class _FakeCloudflare:
         if "/custom_hostnames" in path:
             if request.method == "GET":
                 if not path.endswith("/custom_hostnames"):
-                    # Detail read by id (#291) — the lifecycle refresh path.
+                    # Detail read by id: the wizard's status poll (#292) and the lifecycle
+                    # refresh (#291) are the same call.
                     found = self.records.get(path.rsplit("/", 1)[-1])
                     return self._ok(found) if found else self._gone()
                 wanted = request.url.params.get("hostname", "")
@@ -650,7 +665,8 @@ class _FakeCloudflare:
                     "hostname": body["hostname"],
                     # A fresh custom hostname is never active: HTTP DCV still has to run.
                     "status": "pending",
-                    "ssl": {"status": "pending_validation"},
+                    "verification_errors": [],
+                    "ssl": {"status": "pending_validation", "validation_errors": []},
                 }
                 self.records[record["id"]] = record
                 return httpx.Response(
@@ -693,26 +709,17 @@ def cloudflare(monkeypatch, cloud_mode) -> _FakeCloudflare:
     return fake
 
 
-@pytest.fixture
-def published_txt(monkeypatch) -> dict[str, list[str]]:
-    """Stand in for the DNS TXT challenge lookup, as test_instance_admin does."""
-    published: dict[str, list[str]] = {}
-
-    async def fake_txt(name: str) -> list[str]:
-        return published.get(name, [])
-
-    from app.core import domains as domains_module
-
-    monkeypatch.setattr(domains_module.dnscheck, "txt_records", fake_txt)
-    return published
+def _ownership_token(status: dict) -> str:
+    """The TXT challenge value from the status' record cards (#292)."""
+    return next(r["value"] for r in status["records"] if r["purpose"] == "ownership")
 
 
-async def _claim_and_publish(client, headers, published, domain: str) -> None:
+async def _claim_and_publish(client, headers, fake_dns, domain: str) -> None:
     claimed = await client.post(
         "/api/v1/meta/tenant/domain", json={"domain": domain}, headers=headers
     )
     assert claimed.status_code == 200
-    published[f"_schakl-challenge.{domain}"] = [claimed.json()["txt_record_value"]]
+    fake_dns.txt[f"_schakl-challenge.{domain}"] = [_ownership_token(claimed.json())]
 
 
 def test_cloudflare_off_unless_fully_configured(monkeypatch, cloud_mode) -> None:
@@ -837,26 +844,108 @@ async def test_transient_status_is_retried_once(cloudflare) -> None:
     assert "cf-token-never-logged" not in str(caught.value)
 
 
-async def test_domain_verify_registers_hostname_and_clear_removes_it(
-    client_for, cloudflare, published_txt
-) -> None:
+async def test_domain_wizard_staged_end_to_end(client_for, cloudflare, fake_dns) -> None:
+    """The #292 flow on cloud: ownership TXT first, then traffic DNS + certificate, then
+    active — with per-layer diagnostics at every intermediate state, and resumable via GET."""
     tenant = await make_tenant("cf-dom")
     headers = await auth_cookie(tenant.user)
+    fake_dns.zone = ("klant.test", ["ns1.transip.nl", "ns2.transip.eu"])
     async with client_for(tenant.host) as client:
-        await _claim_and_publish(client, headers, published_txt, "crm.klant.test")
-        verified = await client.post("/api/v1/meta/tenant/domain/verify", headers=headers)
-        assert verified.status_code == 200
-        assert verified.json()["custom_domain"] == "crm.klant.test"
+        claimed = await client.post(
+            "/api/v1/meta/tenant/domain", json={"domain": "crm.klant.test"}, headers=headers
+        )
+        assert claimed.status_code == 200
+        status = claimed.json()
+        assert status["stage"] == "ownership_pending"
+        # Ownership first, alone: the customer is not asked for the CNAME yet.
+        assert [r["purpose"] for r in status["records"]] == ["ownership"]
+        token = _ownership_token(status)
+
+        # Nothing published yet: pending (propagation), never a hard failure.
+        report = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
+        ).json()
+        assert report["advanced"] is False
+        assert report["provider"] == "transip"
+        assert report["zone"] == "klant.test"
+        ownership = report["checks"][0]
+        assert (ownership["key"], ownership["state"], ownership["code"]) == (
+            "ownership", "pending", "txt_missing",
+        )
+
+        # A wrong value is a *different* diagnosis, with expected and observed shown.
+        fake_dns.txt["_schakl-challenge.crm.klant.test"] = ["copy-paste-mistake"]
+        report = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
+        ).json()
+        ownership = report["checks"][0]
+        assert (ownership["state"], ownership["code"]) == ("failed", "txt_wrong_value")
+        assert ownership["expected"] == token
+        assert "copy-paste-mistake" in ownership["observed"]
+
+        # Correct TXT: ownership verifies, the Cloudflare hostname is provisioned, and the
+        # wizard moves to routing — but the domain is NOT yet active.
+        fake_dns.txt["_schakl-challenge.crm.klant.test"] = ["other", token]
+        report = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
+        ).json()
+        assert report["advanced"] is True
+        assert report["status"]["stage"] == "routing_pending"
+        assert report["status"]["custom_domain"] is None
+        by_key = {item["key"]: item for item in report["checks"]}
+        assert by_key["ownership"]["state"] == "ok"
+        assert by_key["dns_target"]["code"] == "target_missing"
+        assert by_key["certificate"]["code"] == "cert_pending"
+        assert cloudflare.records["ch1"]["hostname"] == "crm.klant.test"
+        # The traffic record card is now presented (first), the TXT flagged removable.
+        purposes = {r["purpose"]: r for r in report["status"]["records"]}
+        assert purposes["traffic"]["value"] == "edge.localhost"
+        assert purposes["ownership"]["temporary"] is True
+
+        # Resumable: a fresh GET (a new session) lands on the same stage, no network probes.
+        resumed = (await client.get("/api/v1/meta/tenant/domain", headers=headers)).json()
+        assert resumed["stage"] == "routing_pending"
+
+        # A CNAME to the wrong place is called out with what was observed.
+        fake_dns.cname["crm.klant.test"] = ["cdn.wrong.example"]
+        report = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
+        ).json()
+        target = next(c for c in report["checks"] if c["key"] == "dns_target")
+        assert (target["state"], target["code"]) == ("failed", "target_wrong")
+        assert target["observed"] == "cdn.wrong.example"
+        assert target["expected"] == "edge.localhost"
+
+        # Correct CNAME, but the certificate is still validating: stays pending (#292 — no
+        # premature failure while Cloudflare works asynchronously).
+        fake_dns.cname["crm.klant.test"] = ["edge.localhost"]
+        report = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
+        ).json()
+        assert report["advanced"] is False
+        assert report["status"]["stage"] == "routing_pending"
+
+        # Certificate issued and hostname active: the domain activates.
+        cloudflare.set_state("ch1", status="active", ssl_status="active")
+        report = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
+        ).json()
+        assert report["advanced"] is True
+        assert report["status"]["stage"] == "active"
+        assert report["status"]["custom_domain"] == "crm.klant.test"
 
     async with async_session_maker() as session:
         org = await session.get(Org, tenant.org.id)
         assert org.cf_hostname_id == "ch1"
-    assert cloudflare.records["ch1"]["hostname"] == "crm.klant.test"
+        assert org.pending_domain is None
+        assert org.pending_cf_hostname_id is None
 
+    # The activated domain resolves to the org; clear removes the hostname again.
+    async with client_for("crm.klant.test") as client:
+        assert (await client.get("/api/v1/meta/tenant", headers=headers)).status_code == 200
     async with client_for(tenant.host) as client:
         cleared = await client.delete("/api/v1/meta/tenant/domain", headers=headers)
         assert cleared.status_code == 200
-
     assert cloudflare.records == {}
     async with async_session_maker() as session:
         org = await session.get(Org, tenant.org.id)
@@ -864,22 +953,43 @@ async def test_domain_verify_registers_hostname_and_clear_removes_it(
         assert org.custom_domain is None
 
 
-async def test_verify_fails_closed_when_cloudflare_is_down(
-    client_for, cloudflare, published_txt
+async def test_certificate_validation_errors_are_surfaced(
+    client_for, cloudflare, fake_dns
 ) -> None:
-    """A domain must never read as verified while the edge has no certificate for it."""
+    tenant = await make_tenant("cf-caa")
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as client:
+        await _claim_and_publish(client, headers, fake_dns, "crm.caa.test")
+        await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
+        cloudflare.set_state("ch1", ssl_errors=["caa_error: refused by CAA record"])
+        report = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
+        ).json()
+        cert = next(c for c in report["checks"] if c["key"] == "certificate")
+        assert (cert["state"], cert["code"]) == ("failed", "cert_failed")
+        assert "caa" in cert["observed"].lower()
+        # The correlation id ties this customer-visible outcome to the operator's logs.
+        assert len(report["correlation_id"]) == 12
+
+
+async def test_wizard_fails_closed_when_cloudflare_is_down(
+    client_for, cloudflare, fake_dns
+) -> None:
+    """A domain must never read as active while the edge has no certificate for it — but an
+    edge outage is a *pending* diagnostic, not a 502 that loses the customer's progress."""
     tenant = await make_tenant("cf-down")
     headers = await auth_cookie(tenant.user)
-    cloudflare.fail_with = [500, 500, 500, 500]
     async with client_for(tenant.host) as client:
-        await _claim_and_publish(client, headers, published_txt, "crm.stuk.test")
-        failed = await client.post("/api/v1/meta/tenant/domain/verify", headers=headers)
-        assert failed.status_code == 502
-        assert failed.json()["error"]["message"] == "errors.cloudflare_failed"
-
-        status = await client.get("/api/v1/meta/tenant/domain", headers=headers)
-        assert status.json()["custom_domain"] is None
-        assert status.json()["pending_domain"] == "crm.stuk.test"
+        await _claim_and_publish(client, headers, fake_dns, "crm.stuk.test")
+        cloudflare.fail_with = [500, 500, 500, 500]
+        report = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
+        ).json()
+        # Ownership advanced (it is our own DNS probe), the edge did not.
+        assert report["status"]["stage"] == "routing_pending"
+        assert report["status"]["custom_domain"] is None
+        edge = next(c for c in report["checks"] if c["key"] == "hostname")
+        assert (edge["state"], edge["code"]) == ("pending", "cloudflare_unavailable")
 
     async with async_session_maker() as session:
         org = await session.get(Org, tenant.org.id)
@@ -887,21 +997,34 @@ async def test_verify_fails_closed_when_cloudflare_is_down(
         assert org.cf_hostname_id is None
 
 
-async def test_verify_reports_an_entitlement_problem_as_its_own_error(
-    client_for, cloudflare, published_txt
+async def test_an_entitlement_refusal_on_create_is_not_a_propagation_diagnostic(
+    client_for, cloudflare, fake_dns
 ) -> None:
-    """Not ``errors.cloudflare_failed`` — that message tells the tenant to try again in a moment,
-    and no number of retries fixes a token scope or a plan (#293)."""
+    """The #293 case, re-asked of the #292 wizard: an operator who sets the Enterprise-only SNI
+    rewrite on a Free/Pro/Business zone gets the create refused with a 403.
+
+    That must not read as "your DNS is still propagating" — no amount of waiting fixes a plan or
+    a token scope, and nobody in the tenant can. So it is a ``failed`` edge diagnostic carrying
+    Cloudflare's own words plus a correlation id for the operator's logs, and the domain stays
+    inactive. Only the POST is refused, so this exercises the create path specifically rather
+    than a blanket edge outage.
+    """
     tenant = await make_tenant("cf-plan")
     headers = await auth_cookie(tenant.user)
     cloudflare.refusals = [
         ("POST", 403, "Access to setting a custom origin SNI has not been granted")
     ]
     async with client_for(tenant.host) as client:
-        await _claim_and_publish(client, headers, published_txt, "crm.plan.test")
-        failed = await client.post("/api/v1/meta/tenant/domain/verify", headers=headers)
-        assert failed.status_code == 502
-        assert failed.json()["error"]["message"] == "errors.cloudflare_not_entitled"
+        await _claim_and_publish(client, headers, fake_dns, "crm.plan.test")
+        report = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
+        ).json()
+        edge = next(c for c in report["checks"] if c["key"] == "hostname")
+        assert edge["state"] == "failed"
+        assert edge["code"] in ("cloudflare_auth", "cloudflare_entitlement")
+        assert "custom origin SNI" in edge["observed"]
+        assert len(report["correlation_id"]) == 12
+        assert report["status"]["custom_domain"] is None
 
     async with async_session_maker() as session:
         org = await session.get(Org, tenant.org.id)
@@ -909,8 +1032,35 @@ async def test_verify_reports_an_entitlement_problem_as_its_own_error(
         assert org.cf_hostname_id is None
 
 
-async def test_self_host_verify_never_calls_cloudflare(
-    client_for, monkeypatch, published_txt
+async def test_cloudflare_auth_failures_are_distinguished(
+    client_for, cloudflare, fake_dns
+) -> None:
+    """A revoked/misscoped token is an operator problem and must say so (#292, #293) —
+    "keep waiting for propagation" would be a lie."""
+    tenant = await make_tenant("cf-auth")
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as client:
+        await _claim_and_publish(client, headers, fake_dns, "crm.auth.test")
+        cloudflare.fail_with = [403]
+        report = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
+        ).json()
+        edge = next(c for c in report["checks"] if c["key"] == "hostname")
+        assert (edge["state"], edge["code"]) == ("failed", "cloudflare_auth")
+
+
+def test_cloudflare_entitlement_classification() -> None:
+    from app.core.domainflow import _classify_cloudflare
+
+    exc = cf.CloudflareError("Exceeded quota for custom hostnames on this plan", status=409)
+    assert _classify_cloudflare(exc, 409) == ("cloudflare_entitlement", "failed")
+    assert _classify_cloudflare(cf.CloudflareError("boom", status=500), 500) == (
+        "cloudflare_unavailable", "pending",
+    )
+
+
+async def test_self_host_check_never_calls_cloudflare(
+    client_for, monkeypatch, fake_dns
 ) -> None:
     fake = _FakeCloudflare()
     monkeypatch.setattr(settings, "cloud_cf_api_token", "tok")
@@ -920,15 +1070,98 @@ async def test_self_host_verify_never_calls_cloudflare(
     tenant = await make_tenant("cf-selfhost")
     headers = await auth_cookie(tenant.user)
     async with client_for(tenant.host) as client:
-        await _claim_and_publish(client, headers, published_txt, "crm.zelf.test")
-        verified = await client.post("/api/v1/meta/tenant/domain/verify", headers=headers)
-        assert verified.status_code == 200
+        await _claim_and_publish(client, headers, fake_dns, "crm.zelf.test")
+        # On self-host ownership is the whole story: one good check activates.
+        report = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
+        ).json()
+        assert report["advanced"] is True
+        assert report["status"]["stage"] == "active"
 
     assert fake.calls == []
     async with async_session_maker() as session:
         org = await session.get(Org, tenant.org.id)
         assert org.custom_domain == "crm.zelf.test"
         assert org.cf_hostname_id is None
+
+
+async def test_provisioning_with_custom_domain(client_for, cloudflare, fake_dns) -> None:
+    """The billing system configures the customer's domain in the same provisioning call
+    (#292): operator-asserted ownership activates it fail-closed, and the response carries
+    the DNS records the customer must create."""
+    admin = await make_tenant("cl-dom-admin")
+    await make_instance_owner(admin)
+    headers = await auth_cookie(admin.user)
+
+    async with client_for(admin.host) as client:
+        secret = await mint_instance_key(client_for, (client, headers))
+        key_headers = {"X-API-Key": secret}
+
+        created = await client.post(
+            "/api/v1/instance/provisioning/orgs",
+            headers=key_headers,
+            json={
+                "name": "Domained BV",
+                "slug": "domained",
+                "owner_email": "boss@domained.example",
+                "plan": "unlimited",
+                "custom_domain": "crm.domained.example",
+            },
+        )
+        assert created.status_code == 201
+        body = created.json()
+        assert body["custom_domain"] == "crm.domained.example"
+        assert body["custom_domain_active"] is True
+        # …but the returned URL is still the slug host. The edge hostname was created a
+        # moment ago and its certificate is pending, so the domain is routed without yet
+        # being *live* (#291): a provisioning response must hand the checkout an address
+        # that already serves, never one whose TLS is still being issued. The records the
+        # customer has to create come back alongside it (traffic CNAME → the edge; the
+        # ownership TXT was skipped, the operator asserted it).
+        assert body["url"] == "http://domained.localhost"
+        traffic = next(r for r in body["dns_records"] if r["purpose"] == "traffic")
+        assert (traffic["type"], traffic["value"]) == ("CNAME", "edge.localhost")
+        assert all(r["purpose"] != "ownership" for r in body["dns_records"])
+        # The edge hostname exists, fail-closed in the same transaction as the org.
+        assert any(r["hostname"] == "crm.domained.example" for r in cloudflare.records.values())
+
+        # claim mode: reserved + challenge issued, customer proves ownership themselves.
+        claimed = await client.post(
+            "/api/v1/instance/provisioning/orgs",
+            headers=key_headers,
+            json={
+                "name": "Claimed BV",
+                "slug": "claimed",
+                "owner_email": "boss@claimed.example",
+                "plan": "unlimited",
+                "custom_domain": "crm.claimed.example",
+                "custom_domain_mode": "claim",
+            },
+        )
+        assert claimed.status_code == 201
+        body = claimed.json()
+        assert body["custom_domain"] is None
+        assert body["pending_domain"] == "crm.claimed.example"
+        ownership = next(r for r in body["dns_records"] if r["purpose"] == "ownership")
+        assert ownership["type"] == "TXT"
+        assert ownership["name"] == "_schakl-challenge.crm.claimed.example"
+
+        # A domain already taken rolls the whole org back — retryable, never half-made.
+        conflict = await client.post(
+            "/api/v1/instance/provisioning/orgs",
+            headers=key_headers,
+            json={
+                "name": "Squatter",
+                "slug": "squatter",
+                "owner_email": "boss@squatter.example",
+                "custom_domain": "crm.domained.example",
+            },
+        )
+        assert conflict.status_code == 409
+        async with async_session_maker() as session:
+            assert (
+                await session.scalar(select(Org).where(Org.slug == "squatter"))
+            ) is None
 
 
 # --------------------------------------------------------------------------- #
@@ -1039,22 +1272,30 @@ def dns_points(monkeypatch) -> dict:
     return state
 
 
-async def _verified_tenant(client_for, cloudflare, published_txt, slug: str, domain: str):
+async def _attached_tenant(fake_dns, slug: str, domain: str):
+    """An org whose custom domain the **operator** set (#292 `attach`): ownership is asserted
+    rather than proven, so the domain is routed immediately with a freshly created — and
+    therefore *pending* — Cloudflare hostname.
+
+    That is precisely the state #291's lifecycle is about, and since #292 the wizard itself can
+    no longer produce it: it refuses to activate until the hostname and certificate report
+    active. The traffic CNAME is published here too, so the active-stage check can observe it.
+    """
     tenant = await make_tenant(slug)
     headers = await auth_cookie(tenant.user)
-    async with client_for(tenant.host) as client:
-        await _claim_and_publish(client, headers, published_txt, domain)
-        verified = await client.post("/api/v1/meta/tenant/domain/verify", headers=headers)
-        assert verified.status_code == 200
+    fake_dns.cname[domain] = ["edge.localhost"]
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        org = await session.get(Org, tenant.org.id)
+        await domainflow.attach(session, tenant.user, org, domain)
+        await session.commit()
     return tenant, headers
 
 
-async def test_verify_is_not_activation(client_for, cloudflare, published_txt) -> None:
+async def test_operator_attach_is_not_activation(client_for, cloudflare, fake_dns) -> None:
     """A fresh custom hostname answers "pending": the domain is verified (ownership proven,
     routed) but not live — nothing may present it as the org's address yet."""
-    tenant, headers = await _verified_tenant(
-        client_for, cloudflare, published_txt, "cf-notyet", "crm.wacht.test"
-    )
+    tenant, headers = await _attached_tenant(fake_dns, "cf-notyet", "crm.wacht.test")
     async with client_for(tenant.host) as client:
         status = (await client.get("/api/v1/meta/tenant/domain", headers=headers)).json()
         assert status["hostname_status"] == "pending"
@@ -1069,18 +1310,16 @@ async def test_verify_is_not_activation(client_for, cloudflare, published_txt) -
 
 
 async def test_check_flips_the_canonical_host_when_all_three_are_ready(
-    client_for, cloudflare, published_txt, dns_points
+    client_for, cloudflare, fake_dns
 ) -> None:
-    tenant, headers = await _verified_tenant(
-        client_for, cloudflare, published_txt, "cf-live", "crm.actief.test"
-    )
+    tenant, headers = await _attached_tenant(fake_dns, "cf-live", "crm.actief.test")
     cloudflare.set_state(
         "ch1", status="active", ssl_status="active", expires_on="2027-01-15T00:00:00Z"
     )
     async with client_for(tenant.host) as client:
         checked = (
             await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
-        ).json()
+        ).json()["status"]
         assert checked["hostname_status"] == "active"
         assert checked["ssl_status"] == "active"
         assert checked["dns_ok"] is True
@@ -1101,24 +1340,26 @@ async def test_check_flips_the_canonical_host_when_all_three_are_ready(
 
 
 async def test_dns_moved_away_demotes_the_domain_and_alerts_nobody_twice(
-    client_for, cloudflare, published_txt, dns_points, monkeypatch
+    client_for, cloudflare, fake_dns, dns_points, monkeypatch
 ) -> None:
     """The customer re-points their DNS: the domain stops being canonical, the slug host
     carries the org, and the daily sweep mails the domain managers exactly once."""
-    tenant, headers = await _verified_tenant(
-        client_for, cloudflare, published_txt, "cf-moved", "crm.verhuisd.test"
-    )
+    tenant, headers = await _attached_tenant(fake_dns, "cf-moved", "crm.verhuisd.test")
     cloudflare.set_state("ch1", status="active", ssl_status="active")
     async with client_for(tenant.host) as client:
         assert (
             await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
-        ).json()["live"] is True
+        ).json()["status"]["live"] is True
 
+    # The customer re-points the record. Both probes have to see it: the wizard's check
+    # resolves the name itself (so it can tell the customer *where* it went), while the
+    # unattended sweep uses the cheaper drift check — one question, two callers.
+    fake_dns.cname["crm.verhuisd.test"] = ["cdn.elders.example"]
     dns_points["value"] = False
     async with client_for(tenant.host) as client:
         demoted = (
             await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
-        ).json()
+        ).json()["status"]
         assert demoted["dns_ok"] is False
         assert demoted["live"] is False
         assert demoted["canonical_host"] == tenant.host
@@ -1159,13 +1400,11 @@ async def test_dns_moved_away_demotes_the_domain_and_alerts_nobody_twice(
 
 
 async def test_sweep_warns_ahead_of_a_failing_renewal(
-    client_for, cloudflare, published_txt, dns_points, monkeypatch
+    client_for, cloudflare, fake_dns, dns_points, monkeypatch
 ) -> None:
     """Healthy statuses but an expiry closing in means HTTP DCV renewal is not happening —
     that is discovered here, not by browsers rejecting TLS."""
-    tenant, headers = await _verified_tenant(
-        client_for, cloudflare, published_txt, "cf-renew", "crm.bijna.test"
-    )
+    tenant, headers = await _attached_tenant(fake_dns, "cf-renew", "crm.bijna.test")
     soon = (datetime.now(UTC) + timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
     cloudflare.set_state("ch1", status="active", ssl_status="active", expires_on=soon)
 
@@ -1193,27 +1432,23 @@ async def test_sweep_warns_ahead_of_a_failing_renewal(
 
 
 async def test_hostname_deleted_behind_our_back_is_reported(
-    client_for, cloudflare, published_txt, dns_points
+    client_for, cloudflare, fake_dns
 ) -> None:
-    tenant, headers = await _verified_tenant(
-        client_for, cloudflare, published_txt, "cf-gone", "crm.weg.test"
-    )
+    tenant, headers = await _attached_tenant(fake_dns, "cf-gone", "crm.weg.test")
     cloudflare.records.clear()
     async with client_for(tenant.host) as client:
         checked = (
             await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
-        ).json()
+        ).json()["status"]
         assert checked["hostname_status"] == "deleted"
         assert checked["live"] is False
         assert checked["check_error"]
 
 
 async def test_a_cloudflare_outage_is_not_a_state_change(
-    client_for, cloudflare, published_txt, dns_points
+    client_for, cloudflare, fake_dns
 ) -> None:
-    tenant, headers = await _verified_tenant(
-        client_for, cloudflare, published_txt, "cf-blip", "crm.storing.test"
-    )
+    tenant, headers = await _attached_tenant(fake_dns, "cf-blip", "crm.storing.test")
     cloudflare.set_state("ch1", status="active", ssl_status="active")
     async with client_for(tenant.host) as client:
         await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
@@ -1221,7 +1456,7 @@ async def test_a_cloudflare_outage_is_not_a_state_change(
         cloudflare.fail_with = [500, 500]
         blipped = (
             await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
-        ).json()
+        ).json()["status"]
         # The previous statuses stand; only the error is recorded. Still live.
         assert blipped["hostname_status"] == "active"
         assert blipped["live"] is True
@@ -1229,11 +1464,9 @@ async def test_a_cloudflare_outage_is_not_a_state_change(
 
 
 async def test_clear_resets_the_lifecycle_state(
-    client_for, cloudflare, published_txt, dns_points
+    client_for, cloudflare, fake_dns
 ) -> None:
-    tenant, headers = await _verified_tenant(
-        client_for, cloudflare, published_txt, "cf-reset", "crm.schoon.test"
-    )
+    tenant, headers = await _attached_tenant(fake_dns, "cf-reset", "crm.schoon.test")
     async with client_for(tenant.host) as client:
         await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
         cleared = (await client.delete("/api/v1/meta/tenant/domain", headers=headers)).json()
@@ -1250,15 +1483,18 @@ async def test_clear_resets_the_lifecycle_state(
 
 
 async def test_without_cloudflare_a_verified_domain_is_live_immediately(
-    client_for, monkeypatch, published_txt
+    client_for, monkeypatch, fake_dns
 ) -> None:
     """Self-host / Traefik posture: the router and its Let's Encrypt certificate follow the
-    verification directly — there is no state to poll, so verified means live (#202)."""
+    verification directly — there is no state to poll, so verified means live (#202).
+
+    Here proving ownership is the whole wizard: with no edge to configure there is no routing
+    stage to wait on, so one check carries the domain from claim to active (#292)."""
     tenant = await make_tenant("cf-le")
     headers = await auth_cookie(tenant.user)
     async with client_for(tenant.host) as client:
-        await _claim_and_publish(client, headers, published_txt, "crm.zelf291.test")
-        await client.post("/api/v1/meta/tenant/domain/verify", headers=headers)
+        await _claim_and_publish(client, headers, fake_dns, "crm.zelf291.test")
+        await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
         status = (await client.get("/api/v1/meta/tenant/domain", headers=headers)).json()
         assert status["hostname_status"] is None
         assert status["live"] is True

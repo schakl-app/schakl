@@ -15,7 +15,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 
 from app.config import settings
-from app.core import hosts
+from app.core import domainflow, hosts
 from app.core.auth.backend import issue_session_token
 from app.core.auth.models import User
 from app.core.instance import audit, portability, repo, service
@@ -110,6 +110,17 @@ class OrgCreate(BaseModel):
     enabled_modules: list[str] | None = None
     # Optional first owner; invited like a member (password via forgot-password flow).
     owner_email: EmailStr | None = None
+    # Configure a custom domain in the same call (#292). ``activate`` is operator-asserted
+    # ownership (the TXT challenge is skipped and audited as such; the domain routes as soon
+    # as its DNS points at the edge); ``claim`` only pre-claims, so the org's own admin
+    # resumes the wizard at the ownership step.
+    custom_domain: str | None = Field(default=None, min_length=4, max_length=255)
+    custom_domain_mode: str = Field(default="activate", pattern="^(activate|claim)$")
+
+
+class OrgDomainUpdate(BaseModel):
+    domain: str = Field(min_length=4, max_length=255)
+    mode: str = Field(default="activate", pattern="^(activate|claim)$")
 
 
 class OrgUpdate(BaseModel):
@@ -275,7 +286,63 @@ async def create_org(
         enabled_modules=payload.enabled_modules,
         owner_email=payload.owner_email,
     )
+    if payload.custom_domain:
+        # In the same transaction: a domain that cannot be configured rolls the org back,
+        # so the caller retries the whole provisioning instead of patching up half an org.
+        await domainflow.attach(
+            ctx.session,
+            ctx.user,
+            org,
+            payload.custom_domain,
+            activate=payload.custom_domain_mode == "activate",
+        )
     return _summary(org)
+
+
+# --------------------------------------------------------------------------- #
+# Custom domain (#292): operator-side configuration of one org's domain
+# --------------------------------------------------------------------------- #
+@router.get(
+    "/orgs/{org_id}/domain",
+    response_model=domainflow.DomainStatus,
+    dependencies=[require_capability(caps.ORGS_READ)],
+)
+async def org_domain(
+    org_id: uuid.UUID, ctx: InstanceContext = Depends(require_instance_admin)
+) -> domainflow.DomainStatus:
+    """Routing state is platform data (it decides which hostname reaches the org), so this
+    stays PIN-free like the org list — it exposes no tenant content."""
+    return domainflow.status_for(await _org_or_404(ctx, org_id))
+
+
+@router.put(
+    "/orgs/{org_id}/domain",
+    response_model=domainflow.DomainStatus,
+    dependencies=[require_capability(caps.ORGS_WRITE)],
+)
+async def set_org_domain(
+    org_id: uuid.UUID,
+    payload: OrgDomainUpdate,
+    ctx: InstanceContext = Depends(require_instance_admin),
+) -> domainflow.DomainStatus:
+    org = await _org_or_404(ctx, org_id)
+    await domainflow.attach(
+        ctx.session, ctx.user, org, payload.domain, activate=payload.mode == "activate"
+    )
+    return domainflow.status_for(org)
+
+
+@router.delete(
+    "/orgs/{org_id}/domain",
+    response_model=domainflow.DomainStatus,
+    dependencies=[require_capability(caps.ORGS_WRITE)],
+)
+async def clear_org_domain(
+    org_id: uuid.UUID, ctx: InstanceContext = Depends(require_instance_admin)
+) -> domainflow.DomainStatus:
+    org = await _org_or_404(ctx, org_id)
+    await domainflow.clear(ctx.session, ctx.user, org)
+    return domainflow.status_for(org)
 
 
 @router.get(

@@ -122,6 +122,17 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     permissions: ["settings.branding.write"],
   },
   {
+    // The custom-domain wizard (#292). Its own screen rather than a block on Huisstijl: it is
+    // a staged, resumable flow with its own polling, not a field you fill in and save.
+    key: "domain",
+    href: "/settings/domain",
+    titleKey: "settings.domain.title",
+    subtitleKey: "settings.domain.subtitle",
+    keywordsKey: "settings.search.domain",
+    group: "workspace",
+    permissions: ["settings.domain.write"],
+  },
+  {
     key: "modules",
     href: "/settings/modules",
     titleKey: "settings.modules.title",

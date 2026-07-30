@@ -10,7 +10,7 @@ import type { Actions, PageServerLoad, RequestEvent } from "./$types";
 // errors.service_pin_required and this page shows the unlock form instead.
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
-  const [detail, access, modules] = await Promise.all([
+  const [detail, access, modules, domain] = await Promise.all([
     api.GET("/api/v1/instance/orgs/{org_id}", {
       params: { path: { org_id: event.params.id } },
     }),
@@ -18,6 +18,10 @@ export const load: PageServerLoad = async (event) => {
       params: { path: { org_id: event.params.id } },
     }),
     api.GET("/api/v1/meta/modules"),
+    // Routing state is platform data (#292): PIN-free like the org list.
+    api.GET("/api/v1/instance/orgs/{org_id}/domain", {
+      params: { path: { org_id: event.params.id } },
+    }),
   ]);
 
   if (detail.data) {
@@ -28,6 +32,7 @@ export const load: PageServerLoad = async (event) => {
       access: access.data ?? null,
       availableModules: modules.data?.enabled_modules ?? [],
       baseDomain: modules.data?.base_domain ?? "",
+      domain: domain.data ?? null,
     };
   }
   if (apiErrorKey(detail.error).key !== "errors.service_pin_required") throw httpError(404);
@@ -42,6 +47,7 @@ export const load: PageServerLoad = async (event) => {
     access: access.data ?? null,
     availableModules: modules.data?.enabled_modules ?? [],
     baseDomain: modules.data?.base_domain ?? "",
+    domain: domain.data ?? null,
   };
 };
 
@@ -121,6 +127,35 @@ export const actions: Actions = {
       return fail(400, { error: parsed.fields?.slug ?? parsed.key });
     }
     return { updated: true };
+  },
+
+  // Operator-side custom domain (#292): activate asserts ownership (audited); claim only
+  // reserves it and issues the TXT challenge for the org's own admin to complete.
+  setDomain: async (event) => {
+    const form = await event.request.formData();
+    const domain = String(form.get("domain") ?? "")
+      .trim()
+      .toLowerCase();
+    const mode = String(form.get("mode") ?? "activate");
+    if (!domain) return fail(400, { error: "errors.required", domainError: true });
+    const { error } = await apiFor(event).PUT("/api/v1/instance/orgs/{org_id}/domain", {
+      ...orgPath(event),
+      body: { domain, mode },
+    });
+    if (error) {
+      const parsed = apiErrorKey(error);
+      return fail(400, { error: parsed.fields?.domain ?? parsed.key, domainError: true });
+    }
+    return { domainSaved: true };
+  },
+
+  clearDomain: async (event) => {
+    const { error } = await apiFor(event).DELETE(
+      "/api/v1/instance/orgs/{org_id}/domain",
+      orgPath(event),
+    );
+    if (error) return fail(400, { error: apiErrorKey(error).key, domainError: true });
+    return { domainSaved: true };
   },
 
   suspend: transition("suspend"),

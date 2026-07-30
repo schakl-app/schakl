@@ -36,6 +36,7 @@ from httpx import ASGITransport, AsyncClient  # noqa: E402
 from pwdlib import PasswordHash  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
+from app.core import dnscheck  # noqa: E402
 from app.core.auth.backend import get_jwt_strategy  # noqa: E402
 from app.core.auth.models import User  # noqa: E402
 from app.core.models import Membership, Org, OrgSettings  # noqa: E402
@@ -179,6 +180,53 @@ async def auth_cookie(user: User) -> dict[str, str]:
     """A Cookie header carrying a valid session for ``user`` (skips the login form)."""
     token = await get_jwt_strategy().write_token(user)
     return {"Cookie": f"schakl_auth={token}"}
+
+
+class FakeDns:
+    """Scriptable stand-in for :mod:`app.core.dnscheck` (#292).
+
+    Map a record name to its values, or to one of the dnscheck error codes
+    (``dnscheck.NXDOMAIN`` / ``SERVFAIL`` / ``TIMEOUT``) to simulate that failure. A name
+    that is not mapped answers like an existing name without the record.
+    """
+
+    def __init__(self) -> None:
+        self.txt: dict[str, list[str] | str] = {}
+        self.cname: dict[str, list[str] | str] = {}
+        self.a: dict[str, list[str] | str] = {}
+        self.zone: tuple[str | None, list[str]] = (None, [])
+
+    @staticmethod
+    def _result(table: dict[str, list[str] | str], name: str) -> dnscheck.DnsResult:
+        entry = table.get(name)
+        if entry is None:
+            return dnscheck.DnsResult()
+        if isinstance(entry, str):
+            return dnscheck.DnsResult(error=entry)
+        return dnscheck.DnsResult(values=list(entry))
+
+
+@pytest.fixture
+def fake_dns(monkeypatch) -> FakeDns:
+    fake = FakeDns()
+
+    async def _txt(name: str) -> dnscheck.DnsResult:
+        return fake._result(fake.txt, name)
+
+    async def _cname(name: str) -> dnscheck.DnsResult:
+        return fake._result(fake.cname, name)
+
+    async def _a(name: str) -> dnscheck.DnsResult:
+        return fake._result(fake.a, name)
+
+    async def _ns(domain: str) -> tuple[str | None, list[str]]:
+        return fake.zone
+
+    monkeypatch.setattr(dnscheck, "txt", _txt)
+    monkeypatch.setattr(dnscheck, "cname", _cname)
+    monkeypatch.setattr(dnscheck, "a_records", _a)
+    monkeypatch.setattr(dnscheck, "ns_zone", _ns)
+    return fake
 
 
 @pytest.fixture
