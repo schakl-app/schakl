@@ -251,10 +251,12 @@ class Settings(BaseSettings):
     #   Zone → DNS → Edit                    (the per-org subdomain record)
     cloud_cf_api_token: str | None = None
     cloud_cf_zone_id: str | None = None
-    # Presented to the origin as SNI for a custom hostname, so Cloudflare validates against
-    # the operator's wildcard origin certificate instead of the customer's hostname (which no
-    # origin cert covers). Empty = derived from the CNAME target. The Host header is
-    # unaffected, so tenant resolution still sees the customer's domain.
+    # OPTIONAL, and Enterprise-only: an explicit SNI *rewrite* for custom hostnames. Leave it
+    # empty (#293). Cloudflare already presents the custom origin server — the CNAME target,
+    # which the operator's wildcard origin certificate covers — as SNI, so the normal flow needs
+    # nothing here; "SNI Rewrite for Custom Origin" is not included on Free/Pro/Business and
+    # sending the field there fails the hostname create outright. Empty = the field is omitted,
+    # never derived. Set it only with the entitlement, and only to override that default.
     cloud_cf_origin_sni: str | None = None
 
     # --- Per-org end date and termination (cloud only) ---

@@ -82,6 +82,7 @@ async def _register_cloudflare_hostname(domain: str) -> str | None:
     """
     from app.core.cloud.cloudflare import (
         CloudflareError,
+        CloudflareNotEntitledError,
         cloudflare_configured,
         ensure_custom_hostname,
     )
@@ -90,6 +91,17 @@ async def _register_cloudflare_hostname(domain: str) -> str | None:
         return None
     try:
         return await ensure_custom_hostname(domain)
+    except CloudflareNotEntitledError as exc:
+        # A token scope or a plan entitlement (#293). "Try again in a moment" would be a lie —
+        # nothing changes until the operator acts, so say so and log what they have to fix.
+        logger.error(
+            "cloudflare refused the custom hostname for %s — operator action required: %s",
+            domain,
+            exc,
+        )
+        raise AppError(
+            "cloudflare_not_entitled", "errors.cloudflare_not_entitled", status_code=502
+        ) from exc
     except CloudflareError as exc:
         logger.warning("cloudflare custom hostname failed for %s: %s", domain, exc)
         raise AppError(

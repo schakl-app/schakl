@@ -1408,6 +1408,7 @@
   "errors.domain_taken": "Dit domein is al geclaimd door een andere organisatie.",
   "errors.domain_verification_failed": "Verificatie mislukt: het DNS TXT-record is (nog) niet gevonden.",
   "errors.cloudflare_failed": "Het domein kon niet worden geactiveerd op het edge-netwerk. Probeer het zo meteen opnieuw.",
+  "errors.cloudflare_not_entitled": "Het edge-netwerk heeft dit domein geweigerd door een configuratieprobleem in deze installatie. Opnieuw proberen helpt niet; de beheerder van deze installatie moet dit oplossen.",
   "errors.export_required": "Exporteer eerst de data van de organisatie; vernietigen vereist een export van ná de verwijdering.",
   "errors.org_deleted": "Deze organisatie is verwijderd.",
   "errors.org_not_deleted": "Verwijder de organisatie eerst voordat je haar definitief vernietigt.",

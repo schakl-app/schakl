@@ -105,8 +105,10 @@ x-api-env: &api-env
   # Portainer's database and in `docker service inspect`, which is what the secret avoids.
   SCHAKL_CLOUD_CF_API_TOKEN: ${SCHAKL_CLOUD_CF_API_TOKEN:-}
   SCHAKL_CLOUD_CF_ZONE_ID: ${SCHAKL_CLOUD_CF_ZONE_ID:-}
-  # Presented to the origin as SNI so Full (strict) validates against your wildcard origin
-  # certificate instead of the customer's hostname. Empty derives it from the CNAME target.
+  # Leave empty unless the zone is Enterprise: an explicit SNI rewrite is an Enterprise-only
+  # entitlement and setting it elsewhere fails every custom-hostname create. Cloudflare presents
+  # the custom origin server (the CNAME target below) as SNI on its own, which is what your
+  # wildcard origin certificate covers. Empty means the field is not sent at all.
   SCHAKL_CLOUD_CF_ORIGIN_SNI: ${SCHAKL_CLOUD_CF_ORIGIN_SNI:-}
   # What customers CNAME at, and the Cloudflare for SaaS fallback origin.
   SCHAKL_CLOUD_CNAME_TARGET: ${SCHAKL_CLOUD_CNAME_TARGET:-}

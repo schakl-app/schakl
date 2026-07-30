@@ -574,10 +574,18 @@ class _FakeCloudflare:
         self.dns_bodies: list[dict] = []
         #: Statuses to answer before behaving normally — one entry consumed per request.
         self.fail_with: list[int] = []
+        #: ``(method, status, message)`` refusals in Cloudflare's own words. The first entry
+        #: matching the request's method (``"*"`` matches any) answers it and is consumed — so a
+        #: test can refuse the *create* without the preceding lookup swallowing it.
+        self.refusals: list[tuple[str, int, str]] = []
         self._seq = 0
 
     def seed_dns(self, name: str, *, record_id: str = "seeded") -> None:
         self.dns[record_id] = {"id": record_id, "name": name, "type": "CNAME"}
+
+    def seed_hostname(self, hostname: str, *, record_id: str = "manual") -> None:
+        """A custom hostname the operator added by hand in the dashboard (#293)."""
+        self.records[record_id] = {"id": record_id, "hostname": hostname, "status": "active"}
 
     @staticmethod
     def _ok(result) -> httpx.Response:
@@ -589,6 +597,12 @@ class _FakeCloudflare:
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         self.calls.append((request.method, request.url.path))
+        for index, (method, status, message) in enumerate(self.refusals):
+            if method in ("*", request.method):
+                self.refusals.pop(index)
+                return httpx.Response(
+                    status, json={"success": False, "errors": [{"message": message}]}
+                )
         if self.fail_with:
             return httpx.Response(
                 self.fail_with.pop(0), json={"success": False, "errors": [{"message": "nope"}]}
@@ -642,7 +656,9 @@ def cloudflare(monkeypatch, cloud_mode) -> _FakeCloudflare:
     fake = _FakeCloudflare()
     monkeypatch.setattr(settings, "cloud_cf_api_token", "cf-token-never-logged")
     monkeypatch.setattr(settings, "cloud_cf_zone_id", "zone-123")
-    monkeypatch.setattr(settings, "cloud_cf_origin_sni", "edge.schakl.test")
+    # Unset, which is the *default* posture and the only one a Free/Pro/Business zone can use
+    # (#293). Tests that need the Enterprise SNI rewrite set it themselves.
+    monkeypatch.setattr(settings, "cloud_cf_origin_sni", None)
     monkeypatch.setattr(cf, "_transport", httpx.MockTransport(fake.handler))
     return fake
 
@@ -683,15 +699,75 @@ def test_cloudflare_off_unless_fully_configured(monkeypatch, cloud_mode) -> None
     assert cf.cloudflare_configured() is False
 
 
-async def test_ensure_custom_hostname_pins_origin_sni(cloudflare) -> None:
+async def test_ensure_custom_hostname_omits_the_enterprise_only_sni_rewrite(cloudflare) -> None:
+    """The default request, in full (#293).
+
+    ``custom_origin_sni`` must be *absent*, not empty: an explicit SNI rewrite needs an
+    Enterprise entitlement, and sending it on a Free/Pro/Business zone fails the whole create.
+    Cloudflare presents the custom origin server's own name as SNI anyway, which is the value
+    this instance would have derived — so the routing is unchanged and Full (strict) still
+    validates against the wildcard origin certificate.
+    """
     hostname_id = await cf.ensure_custom_hostname("crm.klant.test")
     assert hostname_id == "ch1"
+    assert cloudflare.bodies[0] == {
+        "hostname": "crm.klant.test",
+        "ssl": {"method": "http", "type": "dv", "settings": {"min_tls_version": "1.2"}},
+        "custom_origin_server": "edge.localhost",
+    }
+
+
+async def test_configured_sni_rewrite_never_moves_the_origin_server(cloudflare, monkeypatch):
+    """An entitled operator may rewrite SNI to a name that is *not* the origin server. Deriving
+    one value from the other would silently re-route the origin to it."""
+    monkeypatch.setattr(settings, "cloud_cf_origin_sni", "sni.anders.test")
+    await cf.ensure_custom_hostname("crm.klant.test")
     body = cloudflare.bodies[0]
-    # The SNI override is the whole reason Full (strict) survives a customer hostname.
-    assert body["custom_origin_sni"] == "edge.schakl.test"
-    assert body["custom_origin_server"] == "edge.schakl.test"
-    assert body["ssl"]["method"] == "http"
-    assert body["ssl"]["type"] == "dv"
+    assert body["custom_origin_sni"] == "sni.anders.test"
+    assert body["custom_origin_server"] == "edge.localhost"
+
+
+async def test_an_sni_entitlement_refusal_says_what_the_operator_must_change(
+    cloudflare, monkeypatch
+) -> None:
+    """Cloudflare's own refusal, plus the fix — and never the token."""
+    monkeypatch.setattr(settings, "cloud_cf_origin_sni", "edge.schakl.test")
+    cloudflare.refusals = [
+        ("POST", 403, "Access to setting a custom origin SNI has not been granted")
+    ]
+    with pytest.raises(cf.CloudflareNotEntitledError) as caught:
+        await cf.ensure_custom_hostname("crm.klant.test")
+    message = str(caught.value)
+    assert "Access to setting a custom origin SNI has not been granted" in message
+    assert "SCHAKL_CLOUD_CF_ORIGIN_SNI" in message
+    assert "Enterprise" in message
+    assert "cf-token-never-logged" not in message
+
+
+async def test_an_entitlement_refusal_is_not_retried(cloudflare) -> None:
+    """A missing scope is permanent: a second attempt cannot succeed, and burning it hides
+    nothing. One request, one refusal."""
+    cloudflare.refusals = [("GET", 403, "Actor is not authorized to perform this action")]
+    with pytest.raises(cf.CloudflareNotEntitledError):
+        await cf.find_custom_hostname("crm.klant.test")
+    assert len(cloudflare.calls) == 1
+
+
+async def test_a_transient_failure_is_not_read_as_an_entitlement_problem(cloudflare) -> None:
+    """The marker list must stay narrow — a 500 that gave up twice is still retryable."""
+    cloudflare.fail_with = [500, 500]
+    with pytest.raises(cf.CloudflareError) as caught:
+        await cf.ensure_custom_hostname("crm.klant.test")
+    assert not isinstance(caught.value, cf.CloudflareNotEntitledError)
+
+
+async def test_ensure_adopts_a_hand_created_hostname_without_creating(cloudflare) -> None:
+    """The documented workaround for #293: the operator adds the hostname in the dashboard, and
+    the next verify adopts it instead of re-issuing the request that failed."""
+    cloudflare.seed_hostname("crm.klant.test", record_id="manual")
+    assert await cf.ensure_custom_hostname("crm.klant.test") == "manual"
+    assert cloudflare.bodies == []
+    assert [method for method, _ in cloudflare.calls] == ["GET"]
 
 
 async def test_ensure_custom_hostname_adopts_only_an_exact_match(cloudflare) -> None:
@@ -774,6 +850,28 @@ async def test_verify_fails_closed_when_cloudflare_is_down(
         status = await client.get("/api/v1/meta/tenant/domain", headers=headers)
         assert status.json()["custom_domain"] is None
         assert status.json()["pending_domain"] == "crm.stuk.test"
+
+    async with async_session_maker() as session:
+        org = await session.get(Org, tenant.org.id)
+        assert org.custom_domain is None
+        assert org.cf_hostname_id is None
+
+
+async def test_verify_reports_an_entitlement_problem_as_its_own_error(
+    client_for, cloudflare, published_txt
+) -> None:
+    """Not ``errors.cloudflare_failed`` — that message tells the tenant to try again in a moment,
+    and no number of retries fixes a token scope or a plan (#293)."""
+    tenant = await make_tenant("cf-plan")
+    headers = await auth_cookie(tenant.user)
+    cloudflare.refusals = [
+        ("POST", 403, "Access to setting a custom origin SNI has not been granted")
+    ]
+    async with client_for(tenant.host) as client:
+        await _claim_and_publish(client, headers, published_txt, "crm.plan.test")
+        failed = await client.post("/api/v1/meta/tenant/domain/verify", headers=headers)
+        assert failed.status_code == 502
+        assert failed.json()["error"]["message"] == "errors.cloudflare_not_entitled"
 
     async with async_session_maker() as session:
         org = await session.get(Org, tenant.org.id)

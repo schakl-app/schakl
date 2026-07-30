@@ -175,7 +175,7 @@ every host.
 ```
 SCHAKL_CLOUD_CF_API_TOKEN=…        # or _FILE, pointing at a Docker secret
 SCHAKL_CLOUD_CF_ZONE_ID=…
-SCHAKL_CLOUD_CF_ORIGIN_SNI=        # optional; defaults to the CNAME target
+SCHAKL_CLOUD_CF_ORIGIN_SNI=        # leave empty; Enterprise-only SNI rewrite (#293)
 ```
 
 **The API token needs exactly two scopes, both Zone-level, on the one zone:**
@@ -194,11 +194,26 @@ stored in the database, never returned by an endpoint, never in the OpenAPI spec
 reaches the web app. Use the `*_FILE` form with a Docker secret so it does not show up in
 `docker inspect`.
 
-**Why `custom_origin_sni` matters.** Cloudflare opens a *second* TLS connection to the origin
-and by default presents the customer's hostname as SNI — which no origin certificate covers,
-so Full (strict) answers **526**. schakl pins SNI to the operator's own edge hostname, so the
-wildcard origin certificate matches again. The HTTP `Host` header is untouched, so tenant
-resolution still sees the customer's domain.
+**What keeps Full (strict) working — and why the SNI rewrite is not it.** Cloudflare opens a
+*second* TLS connection to the origin. Every custom hostname schakl creates carries a
+`custom_origin_server` of the CNAME target (`edge.<base_domain>`), and Cloudflare presents that
+custom origin's own name as SNI by default — which is exactly what the operator's wildcard origin
+certificate covers, so Full (strict) validates. Nothing extra is needed. The HTTP `Host` header is
+untouched either way, so tenant resolution still sees the customer's domain.
+
+`SCHAKL_CLOUD_CF_ORIGIN_SNI` is a *rewrite* of that default, and **"SNI Rewrite for Custom Origin"
+is an Enterprise-only entitlement** — Custom Origins themselves are available on Free, Pro and
+Business, the SNI rewrite is not. So schakl sends `custom_origin_sni` **only** when the setting is
+explicitly configured, and never derives it (#293): sending it on a non-Enterprise zone fails the
+create with *"Access to setting a custom origin SNI has not been granted"* and leaves the
+customer's domain unverified. Leave the setting empty unless you have the entitlement *and* need
+an SNI that differs from the origin server; it never changes `custom_origin_server`.
+
+Should Cloudflare refuse a call over a token scope or a plan entitlement, it answers
+`502 errors.cloudflare_not_entitled` rather than the retryable `errors.cloudflare_failed`, and the
+API log carries Cloudflare's own words plus what the operator has to change — retrying is
+pointless until they do. A hostname added by hand in SSL/TLS → Custom Hostnames is adopted by the
+next verify (exact name match), so a manual workaround needs no cleanup.
 
 **Fallback origin.** Cloudflare for SaaS routes every custom hostname to one proxied record in
 your zone — use the CNAME target (`edge.<base_domain>`), set under SSL/TLS → Custom Hostnames.

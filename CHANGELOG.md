@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Fixed
+
+- **Cloudflare for SaaS custom domains activate on a Free, Pro or Business zone again** (#293).
+  Every custom-hostname request carried `custom_origin_sni`, which is an Enterprise-only
+  entitlement, so Cloudflare refused the whole create with *"Access to setting a custom origin SNI
+  has not been granted"* and the customer's domain stayed unverified even with correct DNS. The
+  field is now sent only when an operator explicitly configures `SCHAKL_CLOUD_CF_ORIGIN_SNI` —
+  never derived — and it no longer doubles as the origin server, so an entitled operator's SNI
+  rewrite cannot re-route the origin with it. Cloudflare presents the custom origin server's own
+  name as SNI by default, which is the value that was being derived anyway, so Full (strict) is
+  unaffected. A refusal over a token scope or a plan entitlement now answers
+  `errors.cloudflare_not_entitled` instead of the retryable "try again in a moment", and the API
+  log names what the operator has to change. A hostname added by hand in the Cloudflare dashboard
+  is still adopted by the next verify.
+
 ## v0.19.0 — 2026-07-29
 
 Almost everything here is for whoever *runs* an installation rather than whoever uses one.

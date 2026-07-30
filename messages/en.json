@@ -1408,6 +1408,7 @@
   "errors.domain_taken": "This domain is already claimed by another organization.",
   "errors.domain_verification_failed": "Verification failed: the DNS TXT record was not found (yet).",
   "errors.cloudflare_failed": "The domain could not be activated at the edge network. Please try again in a moment.",
+  "errors.cloudflare_not_entitled": "The edge network refused this domain because of a configuration problem in this installation. Retrying will not help; the administrator of this installation has to resolve it.",
   "errors.export_required": "Export the organization's data first — destruction requires an export taken after deletion.",
   "errors.org_deleted": "This organization has been deleted.",
   "errors.org_not_deleted": "Delete the organization first before destroying it permanently.",
