@@ -10,7 +10,6 @@ import { LEAVE_TEAM_COLUMNS, LEAVE_TEAM_TABLE_ID } from "$lib/modules/leave/colu
 // surface as Instellingen → Gebruikers, so the roster ⋯ menu reuses its actions verbatim.
 import { employmentActions } from "$lib/modules/leave/employment.server";
 import { requestBody } from "$lib/modules/leave/request";
-import { defaultSchedule } from "$lib/modules/leave/schedule";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -45,41 +44,27 @@ export const load: PageServerLoad = async (event) => {
   const resolved = resolveColumns(LEAVE_TEAM_COLUMNS, pref);
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
 
-  // Editing a member's employment data (schedule/contracts/recurring) from the roster ⋯ menu is
-  // gated on `leave.profile.manage`, distinct from the `leave.request.approve` that opens this
-  // page — an approver who can't manage schedules gets no menu and none of these three calls.
-  const manage = can(event.locals.user, "leave.profile.manage");
-
-  const [pending, yearRequests, members, groups, profiles, contracts, recurring, settings] =
-    await Promise.all([
-      api.GET("/api/v1/leave/requests", {
-        params: { query: { all_users: true, status: "pending", limit: 100, offset: 0 } },
-      }),
-      api.GET("/api/v1/leave/requests", {
-        params: { query: { all_users: true, year, limit: 200, offset: 0, sort } },
-      }),
-      api.GET("/api/v1/members/lookup"),
-      // The combined per-group balances for the whole roster (#282): the same expiry-aware figures
-      // the employee sees on /leave, so the team table and the personal page can never disagree.
-      api.GET("/api/v1/leave/balance/groups", { params: { query: { year, all_users: true } } }),
-      // Manage-gated like the three below: the endpoint requires `leave.profile.manage`, and an
-      // unconditional call 403s for a bare approver — which used to read as "everyone works 40".
-      manage ? api.GET("/api/v1/leave/profiles") : Promise.resolve({ data: null }),
-      // Employment editors — the whole roster in one call each, like Instellingen → Gebruikers.
-      manage
-        ? api.GET("/api/v1/leave/contracts", { params: { query: { all_users: true } } })
-        : Promise.resolve({ data: null }),
-      manage ? api.GET("/api/v1/leave/recurring") : Promise.resolve({ data: null }),
-      manage ? api.GET("/api/v1/leave/settings") : Promise.resolve({ data: null }),
-    ]);
+  // Only the year/sort-dependent reads. The member names and the employment editors' data come
+  // from the section layout, which does not rerun on a year switch or a sort click (#290).
+  const [pending, yearRequests, groups] = await Promise.all([
+    api.GET("/api/v1/leave/requests", {
+      params: { query: { all_users: true, status: "pending", limit: 100, offset: 0 } },
+    }),
+    api.GET("/api/v1/leave/requests", {
+      params: { query: { all_users: true, year, limit: 200, offset: 0, sort } },
+    }),
+    // The combined per-group balances for the whole roster (#282): the same expiry-aware figures
+    // the employee sees on /leave, so the team table and the personal page can never disagree.
+    api.GET("/api/v1/leave/balance/groups", { params: { query: { year, all_users: true } } }),
+  ]);
 
   // The pending queue is cross-year, but the balances above are year-scoped — so a next-year
   // request reviewed in December showed no balance and no #109 over-request warning at all.
   // Fetch the missing years' groups too (0 extra calls in the common case).
   const pendingItems = pending.data?.items ?? [];
-  const extraYears = [
-    ...new Set(pendingItems.map((r) => Number(r.start_date.slice(0, 4)))),
-  ].filter((y) => y !== year);
+  const extraYears = [...new Set(pendingItems.map((r) => Number(r.start_date.slice(0, 4))))].filter(
+    (y) => y !== year,
+  );
   const extraGroups = (
     await Promise.all(
       extraYears.map((y) =>
@@ -97,17 +82,8 @@ export const load: PageServerLoad = async (event) => {
     yearRequests: yearRequests.data?.items ?? [],
     // Silent truncation reads as "covered everything": the page states N of M when it isn't.
     yearRequestsTotal: yearRequests.data?.total ?? 0,
-    members: members.data ?? [],
     groups: groups.data ?? [],
     extraGroups,
-    // `null` = not permitted to read them (distinct from "nobody has one"): the page renders a
-    // placeholder rather than inventing a number.
-    profiles: profiles.data ?? null,
-    // Employment editors, only when the caller may manage them.
-    manageEmployment: manage,
-    contracts: contracts.data ?? [],
-    recurring: recurring.data ?? [],
-    defaultSchedule: settings.data?.default_schedule ?? defaultSchedule(),
     table: { pref, sort: sort ?? null, widths: resolved.widths },
   };
 };
