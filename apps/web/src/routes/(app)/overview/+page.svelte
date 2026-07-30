@@ -27,7 +27,14 @@
 
   const busy = new InFlight();
 
-  const report = $derived(data.report);
+  // The report streams in behind the shell (#290). Held in state rather than awaited in the
+  // markup: approving or invoicing from this page invalidates, and an `{#await}` would drop the
+  // whole table back to a skeleton on every one of those in-place actions.
+  let report = $state<Awaited<typeof data.report>>(null);
+  $effect(() => {
+    void data.report.then((resolved) => (report = resolved));
+  });
+  const loading = $derived(report === null);
   const entries = $derived(report?.items ?? []);
   const totals = $derived(report?.totals ?? null);
 
@@ -398,7 +405,9 @@
   <p
     class="rounded-xl border border-border bg-surface-raised p-8 text-center text-sm text-text-muted"
   >
-    {t("time.overview.empty")}
+    <!-- The report streams (#290): until it lands, the table is not empty, it is loading —
+         saying "geen uren gevonden" over a pending fetch is a wrong answer, not a slow one. -->
+    {loading ? t("common.loading") : t("time.overview.empty")}
   </p>
 {/snippet}
 

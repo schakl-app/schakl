@@ -87,25 +87,27 @@ export const load: PageServerLoad = async (event) => {
   const sources = allSources.filter((source) => !hidden.has(source.key));
   // A per-source range carries that source's own colleague overlay (#188) and the viewer's
   // personal colour overrides / per-colleague hides (#281).
-  const results = await Promise.all(
-    sources.map((source) =>
-      source
-        .load(api, {
-          ...baseRange,
-          people: peopleBySource[source.key] ?? [],
-          color: colors[source.key],
-          personColors: personColorsFor(source.key, colors),
-          hiddenPeople: hiddenPeopleFor(source.key, hidden),
-        })
-        .catch(() => [] as CalendarEvent[]),
+  // The events and the roster lookups go out together (#290). They are independent — both are
+  // built from `baseRange` — and awaiting the events first made the menu's people cost a second
+  // round-trip on every prev/next click (docs/PERFORMANCE.md).
+  //
+  // Rosters feed the per-person menu: the overlay picker (#188) and the split-by-colleague rows
+  // (#281). Both only for visible sources that offer them, and only if the viewer may see anyone
+  // else (the source returns [] otherwise).
+  const [results, rosters, splitRosters] = await Promise.all([
+    Promise.all(
+      sources.map((source) =>
+        source
+          .load(api, {
+            ...baseRange,
+            people: peopleBySource[source.key] ?? [],
+            color: colors[source.key],
+            personColors: personColorsFor(source.key, colors),
+            hiddenPeople: hiddenPeopleFor(source.key, hidden),
+          })
+          .catch(() => [] as CalendarEvent[]),
+      ),
     ),
-  );
-  const events = results.flat();
-
-  // Rosters for the per-person feed menu: the overlay picker (#188) and the split-by-colleague
-  // rows (#281). Both only for visible sources that offer them, and only if the viewer may see
-  // anyone else (the source returns [] otherwise).
-  const [rosters, splitRosters] = await Promise.all([
     Promise.all(
       allSources.map((source) =>
         !hidden.has(source.key) && source.people
@@ -121,6 +123,7 @@ export const load: PageServerLoad = async (event) => {
       ),
     ),
   ]);
+  const events = results.flat();
 
   const sourceOptions = allSources.map((source, index) => ({
     key: source.key,

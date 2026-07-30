@@ -103,96 +103,16 @@
     (task.requires_interaction || (finishStatus?.requires_interaction ?? false)) &&
       !task.closing_interaction_id,
   );
-  // @mention candidates for the comment composer (issue #63): the org members already loaded,
-  // plus — since #165 — the task's company's contacts, fetched lazily in the browser so the
-  // SSR load pays nothing for them (docs/PERFORMANCE.md).
-  let contactCandidates = $state<
-    { id: string; name: string; kind: "contact"; subtitle?: string }[]
-  >([]);
-  $effect(() => {
-    const companyId = task.company_id;
-    if (!companyId) {
-      contactCandidates = [];
-      return;
-    }
-    void (async () => {
-      const response = await fetch(`/api/v1/contacts?limit=200&company_id=${companyId}`, {
-        headers: { accept: "application/json" },
-      });
-      if (!response.ok) return;
-      interface ContactRow {
-        id: string;
-        first_name: string;
-        last_name?: string | null;
-        companies?: { name: string }[];
-      }
-      const items: ContactRow[] = (await response.json()).items ?? [];
-      contactCandidates = items.map((c) => ({
-        id: c.id,
-        name: `${c.first_name} ${c.last_name ?? ""}`.trim(),
-        kind: "contact" as const,
-        subtitle: c.companies?.[0]?.name,
-      }));
-    })();
+  // The @ and # candidate lists are the editor's own business (#237, #290). This page used to
+  // fire two mount-time fetches — 200 contacts and 200 tasks — on *every* open, to fill
+  // dropdowns most opens never trigger. `RichTextEditor` fetches them on first focus from the
+  // shared TTL cache in `lib/core/richtext/candidates.ts`, scoped to this task's project/company,
+  // so five editors on this page still cost one fetch and an untouched page costs none.
+  const candidateScope = $derived({
+    companyId: task.company_id ?? null,
+    projectId: task.project_id ?? null,
   });
-  // #task reference candidates (#197): host-scoped like the contact list — the task's project,
-  // else its company, else the org's recent tasks — fetched lazily in the browser so the SSR
-  // load pays nothing (docs/PERFORMANCE.md: meta=false&count=false skips discarded aggregates).
-  let taskCandidates = $state<
-    {
-      id: string;
-      name: string;
-      subtitle?: string;
-      assignee?: string;
-      due?: string;
-      overdue?: boolean;
-    }[]
-  >([]);
-  $effect(() => {
-    const scope = task.project_id
-      ? `&project_id=${task.project_id}`
-      : task.company_id
-        ? `&company_id=${task.company_id}`
-        : "";
-    void (async () => {
-      const response = await fetch(`/api/v1/tasks?limit=200&meta=false&count=false${scope}`, {
-        headers: { accept: "application/json" },
-      });
-      if (!response.ok) return;
-      interface TaskRow {
-        id: string;
-        title: string;
-        status: string;
-        assignee_user_id?: string | null;
-        due_date?: string | null;
-      }
-      const items: TaskRow[] = (await response.json()).items ?? [];
-      // Assignee and due date ride along (#237) so the dropdown says which task you mean —
-      // two "Bellen met klant" rows are indistinguishable by title alone.
-      const today = new Date().toISOString().slice(0, 10);
-      taskCandidates = items
-        .filter((row) => row.id !== task.id)
-        .map((row) => ({
-          id: row.id,
-          name: row.title,
-          subtitle: statusName(row.status),
-          assignee: memberName(row.assignee_user_id) ?? undefined,
-          due: row.due_date ?? undefined,
-          overdue:
-            !!row.due_date &&
-            row.due_date < today &&
-            !(statuses.find((s) => s.key === row.status)?.is_terminal ?? false),
-        }));
-    })();
-  });
-  const mentionCandidates = $derived([
-    ...data.members.map((m) => ({
-      id: m.user_id,
-      name: m.full_name || m.email,
-      kind: "user" as const,
-    })),
-    ...contactCandidates,
-  ]);
+
   const priorities = ["low", "normal", "high"] as const;
   const freqs = ["daily", "weekly", "monthly", "quarterly", "yearly"] as const;
 
@@ -236,13 +156,19 @@
   }
   // The task's own client contacts (#273): the options for a contact assignee, and the source
   // for naming a contact assignee in the read view. Follows the *live* company pick (fCompany) so
-  // re-homing the task in edit mode narrows the options; reuses the mention fetch when the company
-  // is unchanged (the common case), only issuing a fresh request when the client differs.
+  // re-homing the task in edit mode narrows the options.
+  //
+  // Fetched only when something actually needs it (#290): edit mode, where the picker is drawn,
+  // or a task that already carries a contact assignee, whose name the read view has to show. It
+  // used to piggyback on a mention-candidate fetch that *every* open paid for; that fetch is
+  // gone, and this must not quietly reinstate it for the majority of tasks, which are assigned
+  // to a colleague or to nobody.
   let editContacts = $state<{ id: string; name: string }[]>([]);
   let editContactsFor = $state<string>("");
   $effect(() => {
     const companyId = fCompany;
-    if (!companyId || companyId === (task.company_id ?? "")) return;
+    if (!companyId) return;
+    if (!editMode && !task.assignee_contact_id) return;
     if (companyId === editContactsFor) return;
     void (async () => {
       const response = await fetch(`/api/v1/contacts?limit=200&company_id=${companyId}`, {
@@ -263,13 +189,7 @@
     })();
   });
   const assigneeContacts = $derived(
-    !fCompany
-      ? []
-      : fCompany === (task.company_id ?? "")
-        ? contactCandidates.map((c) => ({ id: c.id, name: c.name }))
-        : editContactsFor === fCompany
-          ? editContacts
-          : [],
+    fCompany && editContactsFor === fCompany ? editContacts : [],
   );
   const contactName = (id?: string | null) =>
     id ? (assigneeContacts.find((c) => c.id === id)?.name ?? null) : null;
@@ -562,8 +482,7 @@
             form="task-edit"
             rows={4}
             value={task.description ?? ""}
-            mentions={mentionCandidates}
-            tasks={taskCandidates}
+            scope={candidateScope}
           />
         {:else if task.description}
           <Markdown value={task.description} />
@@ -679,8 +598,7 @@
                   rows={2}
                   value={checklist.description ?? ""}
                   placeholder={t("tasks.checklist.description_placeholder")}
-                  mentions={mentionCandidates}
-                  tasks={taskCandidates}
+                  scope={candidateScope}
                 />
                 <div class="flex gap-2">
                   <Button size="xs" loading={busy.is("editChecklist")}>{t("common.save")}</Button>
@@ -795,8 +713,7 @@
                         rows={2}
                         value={item.description ?? ""}
                         placeholder={t("tasks.checklist.description_placeholder")}
-                        mentions={mentionCandidates}
-                        tasks={taskCandidates}
+                        scope={candidateScope}
                       />
                       <div class="flex gap-2">
                         <Button size="xs" loading={busy.is("editItem")}>{t("common.save")}</Button>
@@ -997,8 +914,7 @@
             rows={2}
             required
             placeholder={t("tasks.comments.placeholder")}
-            mentions={mentionCandidates}
-            tasks={taskCandidates}
+            scope={candidateScope}
           />
         {/key}
         <div class="mt-2 flex justify-end">
@@ -1065,8 +981,7 @@
                     rows={2}
                     required
                     value={comment.body}
-                    mentions={mentionCandidates}
-                    tasks={taskCandidates}
+                    scope={candidateScope}
                   />
                   <div class="mt-1 flex gap-2">
                     <Button size="xs" loading={busy.is("editComment")}>{t("common.save")}</Button>
