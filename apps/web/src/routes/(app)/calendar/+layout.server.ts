@@ -1,5 +1,4 @@
 import { isCalendarView, type CalendarView } from "$lib/core/calendar";
-import { apiFor } from "$lib/core/session";
 
 import type { LayoutServerLoad } from "./$types";
 
@@ -8,9 +7,12 @@ import type { LayoutServerLoad } from "./$types";
  * every prev/next/switcher click — mirrors `(app)/time/+layout.server.ts`.
  */
 export const load: LayoutServerLoad = async (event) => {
-  const prefs = await apiFor(event).GET("/api/v1/prefs");
+  // Read from the parent rather than fetching `/prefs` again (#290): the app layout already
+  // has the blob, and every value below comes out of it. Nothing else is loaded here, so
+  // awaiting the parent first serialises nothing.
+  const { prefs } = await event.parent();
   const calendar = (
-    prefs.data?.prefs as
+    prefs as
       | {
           calendar?: {
             view?: string;

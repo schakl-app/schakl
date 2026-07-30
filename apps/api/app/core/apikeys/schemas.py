@@ -21,6 +21,10 @@ class ServiceAccountRead(BaseModel):
     active: bool
     created_by_user_id: uuid.UUID | None
     created_at: datetime
+    #: This account's keys, newest first (#290). Carried on the list so the Service-toegang
+    #: screen does not fan one request per account; the dedicated
+    #: ``/service-accounts/{id}/keys`` endpoint stays for callers that want just one.
+    keys: list[ApiKeyRead] = Field(default_factory=list)
 
 
 class ApiKeyCreate(BaseModel):
@@ -61,3 +65,9 @@ class ApiKeyCreated(ApiKeyRead):
     """The one and only time the full secret is returned — at creation."""
 
     secret: str
+
+
+# ``ServiceAccountRead.keys`` forward-references ``ApiKeyRead``, which is defined below it.
+# FastAPI builds response models at import time, so resolve the reference here rather than
+# leaving it to whichever call happens to touch the model first.
+ServiceAccountRead.model_rebuild()

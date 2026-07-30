@@ -5228,7 +5228,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Service Accounts */
+        /**
+         * List Service Accounts
+         * @description Each account with its keys — one grouped read, not one request per account (#290).
+         */
         get: operations["list_service_accounts_api_v1_service_accounts_get"];
         put?: never;
         /** Create Service Account */
@@ -14480,6 +14483,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Keys */
+            keys?: components["schemas"]["ApiKeyRead"][];
             /** Name */
             name: string;
             /**

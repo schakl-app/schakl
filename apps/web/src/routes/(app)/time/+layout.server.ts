@@ -9,8 +9,12 @@ import type { LayoutServerLoad } from "./$types";
  */
 export const load: LayoutServerLoad = async (event) => {
   const api = apiFor(event);
-  const [companies, projects, tasks, members, companyDefs, projectDefs, prefs] = await Promise.all([
-    api.GET("/api/v1/companies", {
+  // `event.parent()` is awaited *inside* the Promise.all, never before it: awaiting it first
+  // would serialise this whole fan behind the app layout instead of running alongside it
+  // (docs/PERFORMANCE.md).
+  const [companies, projects, tasks, members, companyDefs, projectDefs, parent] =
+    await Promise.all([
+      api.GET("/api/v1/companies", {
       params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
     }),
     // `hours=true` (#112): the budget burn per project rides the lookup this layout already
@@ -32,11 +36,12 @@ export const load: LayoutServerLoad = async (event) => {
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "project" } },
     }),
-    // Personal timesheet view preference (7-day vs Mon–Fri); URL-independent so it doesn't
-    // refetch on day/week navigation.
-    api.GET("/api/v1/prefs"),
+    // The personal timesheet view preference (7-day vs Mon–Fri) lives in the same prefs blob
+    // the app layout already fetched (#290) — reading it from the parent costs nothing, where
+    // a second `GET /prefs` cost a whole authenticated round-trip for a string.
+    event.parent(),
   ]);
-  const weekView = (prefs.data?.prefs as { time?: { week_view?: string } } | undefined)?.time
+  const weekView = (parent.prefs as { time?: { week_view?: string } } | undefined)?.time
     ?.week_view;
   return {
     companies: companies.data?.items ?? [],

@@ -2,35 +2,12 @@ import "$lib/modules"; // ensure widgets are registered before we read the regis
 
 import { fail } from "@sveltejs/kit";
 
-import type { ApiClient } from "$lib/core/api/client";
+import { dedupeGets } from "$lib/core/api/dedupe";
 import { apiErrorKey } from "$lib/core/errors";
 import { dashboardWidgetsFor, type DashboardWidgetSpec } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
 
 import type { Actions, PageServerLoad } from "./$types";
-
-/**
- * Widgets are independently registered and should stay that way, but two selected widgets may
- * request the exact same digest (the invoicing tiles do). Coalesce identical GETs for this SSR
- * render so composition never means duplicate network/auth/DB work.
- */
-function dedupeGets(api: ApiClient): ApiClient {
-  const cache = new Map<string, Promise<unknown>>();
-  const get = ((...args: unknown[]) => {
-    const key = JSON.stringify(args);
-    let request = cache.get(key);
-    if (!request) {
-      request = Reflect.apply(api.GET, api, args) as Promise<unknown>;
-      cache.set(key, request);
-    }
-    return request;
-  }) as ApiClient["GET"];
-  return new Proxy(api, {
-    get(target, property, receiver) {
-      return property === "GET" ? get : Reflect.get(target, property, receiver);
-    },
-  });
-}
 
 // A saved layout picks/orders the (already permission-filtered) available widgets; unknown
 // keys — another audience's widgets in the org template, a module since disabled — drop out.
@@ -51,6 +28,8 @@ function resolveLayout(
 // The user's saved layout (or the org template) decides which widgets show, in which order.
 export const load: PageServerLoad = async (event) => {
   const enabled = event.locals.theme?.enabledModules ?? [];
+  // Two selected widgets may request the exact same digest (the invoicing tiles do), and the
+  // registry deliberately keeps them ignorant of each other — see `dedupeGets`.
   const api = dedupeGets(apiFor(event));
 
   // A widget whose loader calls an endpoint the user cannot reach is not "empty", it is a 403.

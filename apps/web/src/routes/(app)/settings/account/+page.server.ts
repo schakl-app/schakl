@@ -30,8 +30,13 @@ import type { Actions, PageServerLoad } from "./$types";
 // Personal account — reachable by every member (NOT manager-gated, unlike org settings).
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
-  const prefs = await api.GET("/api/v1/prefs");
-  const appearance = prefs.data?.prefs?.appearance as { theme?: string } | undefined;
+  // The prefs blob and the permission catalog both already exist upstream (#290): the app
+  // layout fetched `/prefs`, the settings layout fetched the catalog for whoever can use it.
+  // This used to `await` its own `/prefs` *before* the fan below, so it paid twice — once in
+  // round-trips, once in serialisation.
+  const parent = await event.parent();
+  const prefsBlob = parent.prefs as Record<string, unknown> | undefined;
+  const appearance = prefsBlob?.appearance as { theme?: string } | undefined;
   const persistedTheme = asThemeMode(appearance?.theme) ?? "system";
 
   // The cookie is only this browser's cache of the persisted preference (see theme-mode.ts) —
@@ -44,7 +49,7 @@ export const load: PageServerLoad = async (event) => {
 
   // Same reconcile for the personal date/time formatting choice (issue #13): prefs are the
   // cross-device truth, the cookie is this browser's SSR cache (see dateformat.ts).
-  const format = prefs.data?.prefs?.format as { clock?: string; date?: string } | undefined;
+  const format = prefsBlob?.format as { clock?: string; date?: string } | undefined;
   const persistedFormat = {
     clock: asClock(format?.clock) ?? DEFAULT_CLOCK,
     date: asDateFormat(format?.date) ?? DEFAULT_DATE_FORMAT,
@@ -60,9 +65,8 @@ export const load: PageServerLoad = async (event) => {
   const canManageKeys = can(event.locals.user, "apikeys.personal.manage");
   // The per-user Google connection card (docs/GOOGLE.md §1) — only when the org runs the module.
   const googleEnabled = (event.locals.theme?.enabledModules ?? []).includes("google");
-  const [keys, catalog, google, modules, twoFactor] = await Promise.all([
+  const [keys, google, modules, twoFactor] = await Promise.all([
     canManageKeys ? api.GET("/api/v1/api-keys") : Promise.resolve({ data: null }),
-    canManageKeys ? api.GET("/api/v1/permissions/catalog") : Promise.resolve({ data: null }),
     googleEnabled ? api.GET("/api/v1/google/connections/me") : Promise.resolve({ data: null }),
     // Whether this org allows local password login (#161): an SSO-enforced org hides the
     // change-password card — there is no local password to change.
@@ -73,7 +77,7 @@ export const load: PageServerLoad = async (event) => {
   ]);
 
   const scopeOptions: { value: string; label_key: string }[] = [];
-  for (const perm of catalog.data?.permissions ?? []) {
+  for (const perm of parent.permissionCatalog?.permissions ?? []) {
     const variants =
       perm.scopes.length > 0 ? perm.scopes.map((s) => `${perm.key}:${s}`) : [perm.key];
     for (const value of variants) {
@@ -85,9 +89,9 @@ export const load: PageServerLoad = async (event) => {
   }
 
   // The personal sidebar layout (#169): the (app) layout already resolved the effective pref.
-  const { navPref } = (await event.parent()) as {
-    navPref?: { items: { key: string; hidden?: boolean }[] | null; source: string };
-  };
+  const navPref = parent.navPref as
+    | { items: { key: string; hidden?: boolean }[] | null; source: string }
+    | undefined;
 
   return {
     personalNavItems: navPref?.source === "user" ? (navPref.items ?? null) : null,
