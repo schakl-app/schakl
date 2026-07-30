@@ -63,6 +63,11 @@ class TimeEntry(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         Index("ix_time_entries_org_started", "org_id", "started_at"),
         # Budget burn/report panels commonly scope the same range to one project.
         Index("ix_time_entries_org_project_started", "org_id", "project_id", "started_at"),
+        # The client's own hours: the company panel's recent list and the unbudgeted-hours
+        # aggregate both narrow to one company (#290). The project variant above does not
+        # cover it — a leftmost prefix of ``(org_id, project_id, …)`` is not ``company_id``,
+        # and entries booked straight onto a client carry no project at all.
+        Index("ix_time_entries_org_company_started", "org_id", "company_id", "started_at"),
         # The timer bar asks for this on every time/dashboard navigation.
         Index(
             "ix_time_entries_running",

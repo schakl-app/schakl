@@ -82,6 +82,15 @@ class Task(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
             "status",
             "due_date",
         ),
+        # The company hub and the project detail each ask for one parent's unfinished work
+        # (#290). ``(org_id, status)`` above cannot serve either: status is the *second*
+        # column, so narrowing by parent first has no prefix to ride.
+        Index("ix_tasks_org_company_status", "org_id", "company_id", "status"),
+        Index("ix_tasks_org_project_status", "org_id", "project_id", "status"),
+        # Deadline windows that are not one person's: "due this week" across the tenant, and
+        # the reminder cron's `due_date <= horizon`. The assignee index below starts with a
+        # user id, so an org-wide deadline scan cannot use it.
+        Index("ix_tasks_org_due", "org_id", "due_date"),
         # Partial index: the daily cron only ever scans carriers with a pending next_run.
         Index(
             "ix_tasks_recurrence_next_run",
