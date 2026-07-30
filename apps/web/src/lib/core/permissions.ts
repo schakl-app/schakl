@@ -52,4 +52,6 @@ export function hasPermission(
  * It now derives from the screen registry (`core/settings-nav.ts`), which the index grid, the
  * section rail and the breadcrumb labels read as well.
  */
-export { canAccessSettings } from "./settings-nav";
+// The `.ts` is not decoration: `tests/unit` runs on node's own test runner, whose ESM resolver
+// does not guess extensions the way Vite does. Extensionless here fails the suite, not the build.
+export { canAccessSettings } from "./settings-nav.ts";

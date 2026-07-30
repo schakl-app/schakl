@@ -26,7 +26,7 @@
  *  - `cloudOnly` / `instanceOwnerOnly` — posture, not permission: `settings.service_access.manage`
  *    is satisfied by the owner's wildcard on a self-hosted box where the capability does not exist.
  */
-import { hasPermission, type PermissionHolder } from "./permissions";
+import { hasPermission, type PermissionHolder } from "./permissions.ts";
 
 export type SettingsSectionKey = "personal" | "org" | "system";
 
