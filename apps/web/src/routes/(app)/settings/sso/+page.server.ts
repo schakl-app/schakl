@@ -1,6 +1,7 @@
-import { fail } from "@sveltejs/kit";
+import { fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey, type ApiError } from "$lib/core/errors";
+import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -9,6 +10,9 @@ import type { Actions, PageServerLoad } from "./$types";
 // (the API enforces `settings.auth.manage`). The client secret is write-only: the API reports
 // `secret_configured` and never plays the value back.
 export const load: PageServerLoad = async (event) => {
+  // A settings screen guards itself (#19); without it the identity-provider form rendered blank
+  // for any member, because the only thing stopping them was the API refusing the read.
+  if (!can(event.locals.user, "settings.auth.manage")) throw redirect(303, "/settings");
   const { data } = await apiFor(event).GET("/api/v1/settings/sso");
   return { sso: data ?? null, locale: event.locals.locale };
 };

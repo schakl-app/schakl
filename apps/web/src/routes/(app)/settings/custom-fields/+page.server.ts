@@ -11,7 +11,7 @@ const SELECT_TYPES = new Set(["select", "multi_select"]);
 
 export const load: PageServerLoad = async (event) => {
   // Manager-only screen (the API also enforces this on writes).
-  if (!can(event.locals.user, "settings.customfields.write")) throw redirect(303, "/");
+  if (!can(event.locals.user, "settings.customfields.write")) throw redirect(303, "/settings");
 
   const api = apiFor(event);
   const entityTypesRes = await api.GET("/api/v1/custom-fields/entity-types");

@@ -28,7 +28,7 @@ function parseYear(raw: string | null): number {
 }
 
 export const load: PageServerLoad = async (event) => {
-  if (!can(event.locals.user, "leave.type.write")) throw redirect(303, "/");
+  if (!can(event.locals.user, "leave.type.write")) throw redirect(303, "/settings");
   const api = apiFor(event);
   const year = parseYear(event.url.searchParams.get("year"));
 

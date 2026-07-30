@@ -10,7 +10,7 @@ import type { Actions, PageServerLoad } from "./$types";
 // Roles and the catalog come from `settings/+layout.server.ts`: both screens under Instellingen
 // need them, and a layout load does not rerun on tab navigation (docs/PERFORMANCE.md).
 export const load: PageServerLoad = async (event) => {
-  if (!can(event.locals.user, "settings.roles.manage")) throw redirect(303, "/");
+  if (!can(event.locals.user, "settings.roles.manage")) throw redirect(303, "/settings");
   return {};
 };
 

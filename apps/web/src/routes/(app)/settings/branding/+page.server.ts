@@ -35,7 +35,7 @@ async function uploadBrandingFile(
 }
 
 export const load: PageServerLoad = async (event) => {
-  if (!can(event.locals.user, "settings.branding.write")) throw redirect(303, "/");
+  if (!can(event.locals.user, "settings.branding.write")) throw redirect(303, "/settings");
   const api = apiFor(event);
   const [{ data }, { data: domain }] = await Promise.all([
     api.GET("/api/v1/meta/tenant"),

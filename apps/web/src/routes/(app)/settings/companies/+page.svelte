@@ -53,10 +53,9 @@
 {/if}
 
 <div class="max-w-3xl space-y-6">
+  <!-- No section heading: the screen is now called Klantnummering, so "Klantnummering" twice
+       above the same form said nothing the h1 had not. -->
   <section class={sectionClass}>
-    <h2 class="mb-3 text-base font-semibold text-text">
-      {t("settings.companies.numbering_heading")}
-    </h2>
     <form
       method="POST"
       action="?/saveNumbering"

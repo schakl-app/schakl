@@ -5,6 +5,7 @@
  * in `page.data` (company.name, invoice.number, …), never from an extra fetch.
  */
 import { t } from "$lib/core/i18n";
+import { settingsTitleKeys } from "$lib/core/settings-nav";
 
 export interface Crumb {
   label: string;
@@ -35,41 +36,15 @@ const ROOTS: Record<string, string> = {
   ai: "ai.assistant.title",
 };
 
-/** Settings slug → its screen title key (the cards on the Instellingen index). */
+/**
+ * Settings slug → its screen title key. Taken from the screen registry rather than re-typed, so a
+ * renamed card renames its crumb too — this map had already drifted into a third copy of the
+ * Instellingen surface. `subscriptions` is the one extra: it is a 301 to `/subscriptions/templates`
+ * (#229), so the registry points outside `/settings` and the slug still needs a label.
+ */
 const SETTINGS: Record<string, string> = {
-  account: "settings.account.title",
-  ai: "settings.ai.title",
-  automation: "automation.title",
-  branding: "settings.branding.title",
-  companies: "settings.companies.title",
-  "company-groups": "settings.company_groups.title",
-  "contact-types": "settings.contact_types.title",
-  "custom-fields": "settings.custom_fields.title",
-  dashboard: "settings.dashboard.title",
-  email: "settings.email.title",
-  google: "settings.google.title",
-  hosting: "nav.hosting",
-  impex: "impex.settings.title",
-  "interaction-kinds": "settings.interaction_kinds.title",
-  invoicing: "settings.invoicing.title",
-  leave: "settings.leave.title",
-  license: "settings.license.title",
-  marketing: "settings.marketing.title",
-  modules: "settings.modules.title",
-  navigation: "settings.navigation.title",
-  "notification-defaults": "settings.notification_defaults.title",
-  notifications: "settings.notifications.title",
-  providers: "settings.providers.title",
-  roles: "settings.roles.title",
-  "service-access": "settings.service_access.title",
-  "service-accounts": "settings.service_accounts.title",
-  sso: "settings.sso.title",
+  ...settingsTitleKeys(),
   subscriptions: "settings.subscriptions.title",
-  system: "settings.system.title",
-  "task-labels": "settings.task_labels.title",
-  "task-statuses": "settings.task_statuses.title",
-  "time-entry-types": "settings.time_entry_types.title",
-  users: "settings.users.title",
 };
 
 /** Known non-id tail segments. */

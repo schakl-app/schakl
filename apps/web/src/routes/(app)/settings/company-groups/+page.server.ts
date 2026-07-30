@@ -9,7 +9,7 @@ import type { Actions, PageServerLoad } from "./$types";
 // Company groups (issue #191): the admin surface for the company data horizon. Groups scope
 // which companies a member can *see*; roles keep scoping what they can *do* (§15).
 export const load: PageServerLoad = async (event) => {
-  if (!can(event.locals.user, "companies.group.manage")) throw redirect(303, "/");
+  if (!can(event.locals.user, "companies.group.manage")) throw redirect(303, "/settings");
   const api = apiFor(event);
   const [{ data: groups }, { data: companies }, { data: members }] = await Promise.all([
     api.GET("/api/v1/companies/groups"),

@@ -46,32 +46,10 @@ export function hasPermission(
 }
 
 /**
- * One permission per Instellingen screen. The landing page and the sidebar link show iff the
- * user can reach at least one of them — an agency may hand someone `settings.branding.write`
- * and nothing else, and Instellingen must then still be findable.
+ * `canAccessSettings` used to live here, over a hand-kept list of "one permission per Instellingen
+ * screen". It drifted: two entries named permissions no screen guards on, and eight screens were
+ * missing entirely — so an admin holding only `settings.nav.manage` could not reach Instellingen.
+ * It now derives from the screen registry (`core/settings-nav.ts`), which the index grid, the
+ * section rail and the breadcrumb labels read as well.
  */
-export const SETTINGS_SCREEN_PERMISSIONS = [
-  "settings.roles.manage",
-  "companies.group.manage",
-  "settings.branding.write",
-  "settings.auth.manage",
-  "settings.customfields.write",
-  "settings.dashboard.manage",
-  "settings.system.read",
-  "members.member.read",
-  "tasks.label.write",
-  "leave.type.write",
-  "notifications.defaults.manage",
-  "settings.providers.manage",
-  "contacts.type.manage",
-  "subscriptions.type.manage",
-  "domains.tld_price.manage",
-  "invoicing.settings.manage",
-  "automation.rule.read",
-  "ai.settings.manage",
-  "settings.service_access.manage",
-] as const;
-
-export function canAccessSettings(granted: readonly string[] | undefined): boolean {
-  return SETTINGS_SCREEN_PERMISSIONS.some((key) => hasPermission(granted, key));
-}
+export { canAccessSettings } from "./settings-nav";

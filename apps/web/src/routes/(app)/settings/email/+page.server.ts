@@ -1,6 +1,7 @@
-import { fail } from "@sveltejs/kit";
+import { fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
+import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -8,6 +9,9 @@ import type { Actions, PageServerLoad } from "./$types";
 // Org e-mail transport (#17): DB-stored, UI-configured — the official Brevo/SendGrid/SMTP2GO
 // APIs or a plain SMTP relay. Admin-only (the API enforces `settings.email.manage`).
 export const load: PageServerLoad = async (event) => {
+  // A settings screen guards itself (#19). Without this the route rendered for anyone: all three
+  // calls 403'd, and the visitor got an empty transport form that could never save.
+  if (!can(event.locals.user, "settings.email.manage")) throw redirect(303, "/settings");
   const api = apiFor(event);
   // Transport config + the tenant's auth-mail templates (#161 tier 2), both admin-gated.
   const [settings, templates, modules] = await Promise.all([

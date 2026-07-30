@@ -9,7 +9,7 @@ import type { PageServerLoad } from "./$types";
 // dependency topology are reconnaissance on an internet-facing, self-hosted box.
 // One API call; the endpoint assembles every probe server-side (docs/PERFORMANCE.md).
 export const load: PageServerLoad = async (event) => {
-  if (!can(event.locals.user, "settings.system.read")) throw redirect(303, "/");
+  if (!can(event.locals.user, "settings.system.read")) throw redirect(303, "/settings");
 
   const { data, error: apiError } = await apiFor(event).GET("/api/v1/system/info");
   if (apiError || !data) throw error(502, "settings.system.unavailable");
