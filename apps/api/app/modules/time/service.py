@@ -320,8 +320,25 @@ class TimeService:
         date_from: date | None = None,
         date_to: date | None = None,
     ) -> tuple[int, int]:
-        """Team-wide logged minutes for a company/project/task (budget burn-down)."""
-        stmt = self.repo.scoped_select().where(TimeEntry.ended_at.is_not(None))
+        """Team-wide logged minutes for a company/project/task (budget burn-down).
+
+        Summed in SQL, never in Python: this answers two numbers, and loading every entry a
+        client has ever booked to add them up costs the whole history in transfer and memory
+        for a budget bar (docs/PERFORMANCE.md). The horizon is carried explicitly — the row
+        query got it from ``scoped_select()``, so the aggregate that replaces it must ask for
+        it by name, or a scoped login reads a total over rows it cannot see (§15).
+        """
+        stmt = (
+            select(self._sum(), self._sum(TimeEntry.billable.is_(True)))
+            .select_from(TimeEntry)
+            .where(
+                TimeEntry.org_id == self.ctx.org.id,
+                TimeEntry.ended_at.is_not(None),
+            )
+        )
+        horizon = self.repo.horizon_condition()
+        if horizon is not None:
+            stmt = stmt.where(horizon)
         if company_id is not None:
             stmt = stmt.where(TimeEntry.company_id == company_id)
         if project_id is not None:
@@ -337,10 +354,8 @@ class TimeService:
                 TimeEntry.started_at
                 < datetime.combine(date_to, time.min, tzinfo=UTC) + timedelta(days=1)
             )
-        entries = (await self.ctx.session.execute(stmt)).scalars().all()
-        minutes = sum(e.minutes for e in entries)
-        billable = sum(e.minutes for e in entries if e.billable)
-        return minutes, billable
+        row = (await self.ctx.session.execute(stmt)).one()
+        return int(row[0]), int(row[1])
 
     # --- drafts (#44) ---------------------------------------------------------- #
     # Author-only, stricter than the rest of the platform: every path filters on

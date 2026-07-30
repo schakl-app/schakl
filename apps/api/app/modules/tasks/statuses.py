@@ -42,6 +42,37 @@ DEFAULT_STATUSES: tuple[_StatusSeed, ...] = (
 )
 
 
+def _ordered(org_id: uuid.UUID):
+    return (
+        select(TaskStatusDef)
+        .where(TaskStatusDef.org_id == org_id)
+        .order_by(TaskStatusDef.position.asc(), TaskStatusDef.key.asc())
+    )
+
+
+async def _seed(session: AsyncSession, org_id: uuid.UUID) -> list[TaskStatusDef]:
+    """Write the default vocabulary and return it in board order.
+
+    Callers must already know the org has none — the "are there any?" probe lives with them,
+    because the read that answers it is the same read that wants the rows.
+    """
+    rows = [
+        TaskStatusDef(
+            org_id=org_id,
+            key=seed.key,
+            name=seed.name,
+            color=seed.color,
+            position=seed.position,
+            is_terminal=seed.is_terminal,
+            is_default=seed.is_default,
+        )
+        for seed in DEFAULT_STATUSES
+    ]
+    session.add_all(rows)
+    await session.flush()
+    return rows
+
+
 async def ensure_statuses(session: AsyncSession, org_id: uuid.UUID) -> None:
     """Seed the default statuses for an org that has none yet (idempotent).
 
@@ -52,35 +83,24 @@ async def ensure_statuses(session: AsyncSession, org_id: uuid.UUID) -> None:
     exists = await session.scalar(
         select(TaskStatusDef.id).where(TaskStatusDef.org_id == org_id).limit(1)
     )
-    if exists is not None:
-        return
-    for seed in DEFAULT_STATUSES:
-        session.add(
-            TaskStatusDef(
-                org_id=org_id,
-                key=seed.key,
-                name=seed.name,
-                color=seed.color,
-                position=seed.position,
-                is_terminal=seed.is_terminal,
-                is_default=seed.is_default,
-            )
-        )
-    await session.flush()
+    if exists is None:
+        await _seed(session, org_id)
 
 
 async def load_statuses(session: AsyncSession, org_id: uuid.UUID) -> list[TaskStatusDef]:
-    """The org's statuses in board/sort order, seeding defaults first if there are none."""
-    await ensure_statuses(session, org_id)
-    return list(
-        (
-            await session.execute(
-                select(TaskStatusDef)
-                .where(TaskStatusDef.org_id == org_id)
-                .order_by(TaskStatusDef.position.asc(), TaskStatusDef.key.asc())
-            )
-        ).scalars()
-    )
+    """The org's statuses in board/sort order, seeding the defaults if there are none.
+
+    **One statement on the hot path.** Every task list, board, group aggregate and company panel
+    starts here, and the old "does this org have any?" probe asked a question the ordered read
+    was about to answer anyway — a second round-trip on every one of those requests, forever,
+    to cover the single request in an org's life that finds nothing (docs/PERFORMANCE.md).
+    Seeding now hangs off the empty result instead of preceding it.
+    """
+    statuses = list((await session.execute(_ordered(org_id))).scalars())
+    if statuses:
+        return statuses
+    # DEFAULT_STATUSES is already in board order, so the seeded rows need no re-read.
+    return await _seed(session, org_id)
 
 
 def status_order(statuses: list[TaskStatusDef]) -> list[str]:

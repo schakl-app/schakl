@@ -691,6 +691,14 @@ async def test_horizon_reaches_totals_and_summary_tiles(client_for) -> None:
         assert owner_report["totals"]["count"] == 2
         assert owner_report["totals"]["minutes"] == 120
 
+        # /time/logged got the horizon for free while it selected rows through the repository
+        # and summed them in Python. It is a SQL aggregate now (#290), so the predicate has to
+        # be asked for by name — pinned here because losing it is silent: the burn-down bar is
+        # simply too full, and only for restricted logins.
+        logged = (await c.get("/api/v1/time/logged", headers=member_h)).json()
+        assert logged["minutes"] == 60
+        assert (await c.get("/api/v1/time/logged", headers=owner_h)).json()["minutes"] == 120
+
         # The list-header tiles ride the same rule: one draft, not two.
         tiles = (await c.get("/api/v1/invoicing/summary", headers=member_h)).json()
         assert tiles["draft_count"] == 1

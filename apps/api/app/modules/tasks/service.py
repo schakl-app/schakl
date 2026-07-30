@@ -115,6 +115,10 @@ def _rank(column: Any, order: Sequence[str]) -> Any:
 # every uppercase one. ``assignee`` orders by the employee's display name, never by their user id
 # — a list sorted by a person has to read that way (docs/UX.md).
 _PRIORITY_ORDER = (TaskPriority.LOW.value, TaskPriority.NORMAL.value, TaskPriority.HIGH.value)
+# Newest comments the task card carries. The activity trail beside it has always capped at 50;
+# the discussion had no bound at all, so a task people talk on for a year grew its detail
+# response without limit (docs/PERFORMANCE.md — bound every read).
+_COMMENT_CAP = 200
 _dashboard_projects = table(
     "projects",
     column("id"),
@@ -535,17 +539,26 @@ class TaskService:
                     if i.checklist_id == read.id
                 ]
 
-        comment_rows = (
-            await self.ctx.session.execute(
-                select(TaskComment, User)
-                .outerjoin(User, User.id == TaskComment.author_user_id)
-                .where(
-                    TaskComment.org_id == self.ctx.org.id,
-                    TaskComment.task_id == task_id,
-                )
-                .order_by(TaskComment.created_at.asc())
+        # Bounded like the activity trail below it: a long-running task's discussion is otherwise
+        # unbounded, and opening the card would load every comment ever written on it. Newest
+        # ``_COMMENT_CAP`` selected, then reversed — the card reads oldest-first, so taking the
+        # *first* 200 would have shown the oldest and hidden the conversation people came for.
+        comment_rows = list(
+            reversed(
+                (
+                    await self.ctx.session.execute(
+                        select(TaskComment, User)
+                        .outerjoin(User, User.id == TaskComment.author_user_id)
+                        .where(
+                            TaskComment.org_id == self.ctx.org.id,
+                            TaskComment.task_id == task_id,
+                        )
+                        .order_by(TaskComment.created_at.desc())
+                        .limit(_COMMENT_CAP)
+                    )
+                ).all()
             )
-        ).all()
+        )
         detail.comments = []
         for comment, author in comment_rows:
             name, deleted = _attribution(author, comment.author_name)
