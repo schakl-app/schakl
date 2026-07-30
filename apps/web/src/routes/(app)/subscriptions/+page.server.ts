@@ -72,16 +72,9 @@ export const load: PageServerLoad = async (event) => {
   const companyFilter = event.url.searchParams.get("company") || undefined;
   const statusFilter = event.url.searchParams.get("status") || undefined;
 
-  const [
-    subscriptions,
-    summary,
-    types,
-    templates,
-    companies,
-    projects,
-    definitions,
-    companyDefinitions,
-  ] = await Promise.all([
+  // The client/project pickers and the two custom-field sets come from the section layout, which
+  // does not rerun on filter or sort navigation (#290).
+  const [subscriptions, summary, types, templates] = await Promise.all([
     api.GET("/api/v1/subscriptions", {
       params: {
         query: {
@@ -100,17 +93,6 @@ export const load: PageServerLoad = async (event) => {
       params: { query: { include_inactive: canManageTypes || canManageTemplates } },
     }),
     api.GET("/api/v1/subscriptions/templates"),
-    api.GET("/api/v1/companies", {
-      params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
-    }),
-    api.GET("/api/v1/projects", { params: { query: { limit: 200, offset: 0, count: false } } }),
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "subscription" } },
-    }),
-    // For the inline company quick-create (#115): the full dialog includes custom fields.
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "company" } },
-    }),
   ]);
 
   return {
@@ -126,10 +108,6 @@ export const load: PageServerLoad = async (event) => {
     canManageTypes,
     canManageTemplates,
     canWrite: can(event.locals.user, "subscriptions.subscription.write"),
-    companies: lookupItems(companies, "companies").map((c) => ({ id: c.id, name: c.name })),
-    projects: lookupItems(projects, "projects").map((p) => ({ id: p.id, name: p.name })),
-    definitions: definitions.data ?? [],
-    companyDefinitions: companyDefinitions.data ?? [],
     locale: event.locals.locale,
   };
 };

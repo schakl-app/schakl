@@ -34,58 +34,15 @@ export const load: PageServerLoad = async (event) => {
   const resolved = resolveColumns(DOMAIN_COLUMNS, pref);
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
 
-  // The form's TLD price hint (#250): only fetched for holders of the read permission.
-  const canReadPrices = can(event.locals.user, "domains.tld_price.read");
-
-  const [
-    domains,
-    companies,
-    providers,
-    members,
-    contacts,
-    definitions,
-    companyDefinitions,
-    contactDefinitions,
-    tldPrices,
-  ] = await Promise.all([
-    api.GET("/api/v1/domains", { params: { query: { limit: 200, offset: 0, q, sort } } }),
-    api.GET("/api/v1/companies", {
-      params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
-    }),
-    api.GET("/api/v1/providers"),
-    api.GET("/api/v1/members/lookup"),
-    api.GET("/api/v1/contacts", {
-      params: { query: { limit: 200, offset: 0, sort: "first_name" } },
-    }),
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "domain" } },
-    }),
-    // For the inline quick-creates (#115): their full dialogs include custom fields.
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "company" } },
-    }),
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "contact" } },
-    }),
-    canReadPrices ? api.GET("/api/v1/domains/tld-prices") : Promise.resolve({ data: null }),
-  ]);
+  // Only the URL-dependent read; every picker and definition set comes from the section
+  // layout, which does not rerun on search or sort navigation (#290).
+  const domains = await api.GET("/api/v1/domains", {
+    params: { query: { limit: 200, offset: 0, q, sort } },
+  });
 
   return {
     domains: domains.data?.items ?? [],
     total: domains.data?.total ?? 0,
-    companies: lookupItems(companies, "companies").map((c) => ({ id: c.id, name: c.name })),
-    providers: providers.data ?? [],
-    employees: members.data ?? [],
-    contacts: lookupItems(contacts, "contacts").map((c) => ({
-      id: c.id,
-      name: [c.first_name, c.last_name].filter(Boolean).join(" "),
-    })),
-    definitions: definitions.data ?? [],
-    companyDefinitions: companyDefinitions.data ?? [],
-    contactDefinitions: contactDefinitions.data ?? [],
-    tldPrices: (tldPrices.data ?? [])
-      .filter((g) => g.current != null)
-      .map((g) => ({ tld: g.tld, amount: g.current!.amount, currency: g.currency })),
     agencyLabel: event.locals.theme?.brandName ?? "",
     q: q ?? "",
     table: { pref, sort: sort ?? null, widths: resolved.widths },

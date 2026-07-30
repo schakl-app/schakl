@@ -33,74 +33,36 @@ export const load: PageServerLoad = async (event) => {
   // The form's TLD price hint (#250): only fetched for holders of the read permission.
   const canReadPrices = can(event.locals.user, "domains.tld_price.read");
 
-  const [
-    domain,
-    companies,
-    providers,
-    members,
-    contacts,
-    defs,
-    websiteDefs,
-    websites,
-    hosting,
-    companyDefs,
-    hostingDefs,
-    contactDefs,
-    tldPrices,
-    ...panelData
-  ] = await Promise.all([
+  // Only what is about *this* domain. Every picker and definition set that does not vary by id
+  // — clients, providers, employees, contacts, the domain custom fields, the two inline
+  // quick-create sets, the TLD prices — comes from the section layout, which does not rerun
+  // when you move between domains (#290).
+  const [domain, websites, ...panelData] = await Promise.all([
     api.GET("/api/v1/domains/{domain_id}", { params: { path: { domain_id } } }),
-    api.GET("/api/v1/companies", {
-      params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
-    }),
-    api.GET("/api/v1/providers"),
-    api.GET("/api/v1/members/lookup"),
-    api.GET("/api/v1/contacts", {
-      params: { query: { limit: 200, offset: 0, sort: "first_name" } },
-    }),
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "domain" } },
-    }),
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "website" } },
-    }),
     api.GET("/api/v1/websites", { params: { query: { domain_id, limit: 1, offset: 0 } } }),
-    api.GET("/api/v1/hosting", { params: { query: { limit: 200, offset: 0 } } }),
-    // For the inline quick-creates (#115): their full dialogs include custom fields.
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "company" } },
-    }),
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "hosting" } },
-    }),
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "contact" } },
-    }),
-    canReadPrices ? api.GET("/api/v1/domains/tld-prices") : Promise.resolve({ data: null }),
     ...panels.map((panel) => panel.load(api, context)),
   ]);
+
+  // The website form is a modal most visits never open, so its own bundle streams in behind the
+  // page (the `createForm` pattern, docs/PERFORMANCE.md).
+  const websiteForm = Promise.all([
+    api.GET("/api/v1/custom-fields/definitions", { params: { query: { entity_type: "website" } } }),
+    api.GET("/api/v1/hosting", { params: { query: { limit: 200, offset: 0 } } }),
+    api.GET("/api/v1/custom-fields/definitions", { params: { query: { entity_type: "hosting" } } }),
+  ])
+    .then(([websiteDefs, hosting, hostingDefs]) => ({
+      websiteDefinitions: websiteDefs.data ?? [],
+      hosting: lookupItems(hosting, "hosting").map((h) => ({ id: h.id, name: h.name })),
+      hostingDefinitions: hostingDefs.data ?? [],
+    }))
+    .catch(() => ({ websiteDefinitions: [], hosting: [], hostingDefinitions: [] }));
 
   if (!domain.data) throw error(404, { code: "not_found", message: "errors.not_found" });
 
   return {
     domain: domain.data,
-    companies: lookupItems(companies, "companies").map((c) => ({ id: c.id, name: c.name })),
-    providers: providers.data ?? [],
-    employees: members.data ?? [],
-    contacts: lookupItems(contacts, "contacts").map((c) => ({
-      id: c.id,
-      name: [c.first_name, c.last_name].filter(Boolean).join(" "),
-    })),
-    definitions: defs.data ?? [],
-    websiteDefinitions: websiteDefs.data ?? [],
-    companyDefinitions: companyDefs.data ?? [],
-    hostingDefinitions: hostingDefs.data ?? [],
-    contactDefinitions: contactDefs.data ?? [],
     website: websites.data?.items?.[0] ?? null,
-    hosting: lookupItems(hosting, "hosting").map((h) => ({ id: h.id, name: h.name })),
-    tldPrices: (tldPrices.data ?? [])
-      .filter((g) => g.current != null)
-      .map((g) => ({ tld: g.tld, amount: g.current!.amount, currency: g.currency })),
+    websiteForm,
     panels: panels.map((panel, i) => ({
       key: panel.key,
       titleKey: panel.titleKey,
