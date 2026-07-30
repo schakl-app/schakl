@@ -300,6 +300,9 @@ CONTACT_ON_COMPANY_EXTENSION = ImpexExtension(
         ),
         ImpexColumn(
             "contact_phone",
+            # The org's country, never the *company's*: a contact is read in the organisation's
+            # country wherever it is written from, and the preview must agree with the write.
+            data_type="phone",
             clearable=False,
             field="phone",
             getter=_contact_field("phone"),
@@ -328,7 +331,9 @@ CONTACT_IMPEX = ImpexDescriptor(
         ImpexColumn("first_name", required=True),
         ImpexColumn("last_name"),
         ImpexColumn("email", data_type="email"),
-        ImpexColumn("phone"),
+        # No country of its own: a national number is read in the org's, exactly as
+        # ``ContactService`` reads one (issue #289).
+        ImpexColumn("phone", data_type="phone"),
         ImpexColumn("job_title"),
         ImpexColumn("notes"),
         # FK: resolved by exact company name or UUID; an empty cell never unlinks.

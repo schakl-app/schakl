@@ -630,6 +630,15 @@ its shape**, exactly as it does for custom fields (§13) and panels (§6).
 - **The mapping is positional, so it is fingerprinted.** `/inspect` returns a digest of the bytes
   and `/import` refuses a mismatch (409): applying a mapping to a *different* file writes the
   wrong columns into the right fields, with every row valid and every value wrong.
+- **A check the row report cannot name is a check the preview does not have** (#289).
+  Validation that lives only in the service runs *after* the report is built, so its failure
+  returns as a request-level 422 naming no row — and the user hunts through blank cells for one
+  number a digit short. So a validated shape gets a column `data_type` in the engine: `phone`
+  coerces to E.164 against the row's own country (`region_field`, resolved exactly as the owning
+  service resolves it) and reports `errors.invalid_phone` against that row and that column. Being
+  a *pre*-check it may never reject what the write would accept, which is why an unchanged value
+  on an existing row is grandfathered here too (§3, issue #256) — and why a *contributed* column,
+  whose target row only exists at write time, is validated as a create.
 - **A module contributes columns to another module's entity with an `ImpexExtension`** — the
   panels pattern, applied to import/export, so the company import can carry the client's contact
   person without companies importing contacts' internals. Keys are namespaced by the contributor,

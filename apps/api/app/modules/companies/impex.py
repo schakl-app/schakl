@@ -112,8 +112,14 @@ COMPANY_IMPEX = ImpexDescriptor(
             aliases=("klantnummer", "klantnr", "klantcode", "client number", "debiteurnummer"),
         ),
         ImpexColumn("website", aliases=("site", "url", "webadres")),
-        # Stored E.164; a national number needs the org's default country (see app/core/phone).
-        ImpexColumn("phone", aliases=("telefoon", "telefoonnummer", "tel", "telephone")),
+        # Stored E.164, and validated in the preview (issue #289) — reading the number in this
+        # row's own ``country`` when it names one, else the org's (see app/core/phone).
+        ImpexColumn(
+            "phone",
+            data_type="phone",
+            region_field="country",
+            aliases=("telefoon", "telefoonnummer", "tel", "telephone"),
+        ),
         # Deliberately *not* aliased to a bare "e-mail"/"email": in a client list that column
         # is far more often the contact person's address than the billing one, and a wrong
         # suggestion the user accepts is worse than no suggestion at all. Verified in the

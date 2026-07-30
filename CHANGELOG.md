@@ -16,6 +16,13 @@
   `errors.cloudflare_not_entitled` instead of the retryable "try again in a moment", and the API
   log names what the operator has to change. A hostname added by hand in the Cloudflare dashboard
   is still adopted by the next verify.
+- **An import preview now names the row a bad phone number is on** (#289). Phone numbers were
+  only checked once the import was already being written, so a file with one malformed number
+  previewed clean and then failed as a whole with no row, no column and nothing to correct —
+  leaving the blank cells and the ninety valid numbers looking equally guilty. Phone columns
+  are validated with every other column type now, read in the row's own country exactly as
+  saving that record would read it, and an empty cell stays what it always was: nothing to
+  import, not a rejection.
 
 ## v0.19.0 — 2026-07-29
 

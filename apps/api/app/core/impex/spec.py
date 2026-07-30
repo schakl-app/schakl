@@ -74,6 +74,8 @@ class ImpexColumn:
 
     * ``text`` — trimmed string.
     * ``email`` — validated address (row error ``errors.invalid_email`` otherwise).
+    * ``phone`` — normalised to E.164 (row error ``errors.invalid_phone`` otherwise), read in
+      ``region_field``'s country or the org's (see :mod:`app.core.phone`).
     * ``select`` — must be one of ``options`` (row error ``impex.errors.invalid_option``).
     * ``date`` — ISO ``YYYY-MM-DD`` (what export writes; row error ``impex.errors.invalid_date``).
     * ``time`` — ``HH:MM`` wall clock (row error ``impex.errors.invalid_time``).
@@ -104,6 +106,12 @@ class ImpexColumn:
     #: i18n key for the mapping step's label; ``None`` → ``impex.column.<entity>.<key>``. The
     #: **header** is always the stable key — this is only ever what a human is shown.
     label_key: str | None = None
+    #: ``phone`` only: the **values key** naming the country a *national* number in this row
+    #: belongs to (companies: their own ``country``). ``None`` reads it in the org's country.
+    #: Mirrors the owning service's own rule — the row's own country wins, the org's is the
+    #: fallback — because a preview that resolved a different region than the write would
+    #: either pass a row the write then rejects, or store a Belgian number as a Dutch one.
+    region_field: str | None = None
     #: Header spellings this column is recognised by when *suggesting* a mapping — nl and en,
     #: lowercased. Aliases never widen the header-key contract: an unmapped import still
     #: accepts only real keys, so a file that used to fail still fails the same way and an
