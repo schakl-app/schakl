@@ -680,6 +680,17 @@ async def test_horizon_reaches_totals_and_summary_tiles(client_for) -> None:
         ).json()
         assert owner_hours["total"] == 2
 
+        # /time/report rides scoped_select for its rows but hand-builds its totals
+        # aggregate — which silently skipped the horizon, so a scoped manager read
+        # org-wide minutes above their own filtered rows.
+        report = (await c.get("/api/v1/time/report", headers=member_h)).json()
+        assert [r["description"] for r in report["items"]] == ["Time-a"]
+        assert report["totals"]["count"] == 1
+        assert report["totals"]["minutes"] == 60
+        owner_report = (await c.get("/api/v1/time/report", headers=owner_h)).json()
+        assert owner_report["totals"]["count"] == 2
+        assert owner_report["totals"]["minutes"] == 120
+
         # The list-header tiles ride the same rule: one draft, not two.
         tiles = (await c.get("/api/v1/invoicing/summary", headers=member_h)).json()
         assert tiles["draft_count"] == 1

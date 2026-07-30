@@ -701,6 +701,12 @@ class TimeService:
             .select_from(TimeEntry)
             .where(TimeEntry.org_id == self.ctx.org.id, *conditions)
         )
+        # The rows ride ``scoped_select()``; a hand-built aggregate must carry the same
+        # company horizon or a group-scoped caller reads org-wide totals above their
+        # own filtered rows (#285's rule 3).
+        horizon = self.repo.horizon_condition()
+        if horizon is not None:
+            base = base.where(horizon)
         row = (await self.ctx.session.execute(base)).one()
         totals = {
             "count": int(row[0]),
