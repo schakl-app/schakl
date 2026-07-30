@@ -243,6 +243,64 @@ async def test_extra_carries_over_and_old_statutory_has_expired(client_for) -> N
         assert float(carried["remaining_hours"]) == 40.0
 
 
+async def test_a_request_after_a_pots_expiry_cannot_spend_it(client_for) -> None:
+    """A statutory pot carried from last year lapses on 1 July; a November request draws from
+    the current-year pot. Year-granular allocation let any request in the expiry year spend the
+    carried pot because it was still alive on 1 January — hours that lapsed in July were then
+    quietly re-spent on an autumn absence, and the live pot read fuller than it is."""
+    t = await make_tenant("vac-post-expiry")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _member(c, headers, "expiry@example.com")
+        types = await _types(c, headers)
+        await _put_ent(c, headers, member.id, types["vacation_statutory"], _YEAR - 1, 40)
+        await _put_ent(c, headers, member.id, types["vacation_statutory"], _YEAR, 160)
+        await _put_ent(c, headers, member.id, types["vacation_extra"], _YEAR, 40)
+
+        start, end = _span(0)  # one 8 h weekday in November — after 1 July, whenever we run
+        res = await c.post(
+            "/api/v1/leave/requests",
+            json={
+                "user_id": str(member.id),
+                "leave_type_id": types["vacation_statutory"],
+                "start_date": start,
+                "end_date": end,
+            },
+            headers=headers,
+        )
+        assert res.status_code == 201, res.text
+
+        vacation = _vacation(await _groups(c, headers, user_id=member.id))
+        pots = {(p["leave_type_id"], p["accrual_year"]): p for p in vacation["pots"]}
+        # The November hours dent the current-year pot, never the carried one.
+        assert float(pots[(types["vacation_statutory"], _YEAR)]["remaining_hours"]) == 152.0
+        # The carried pot was unspendable on the request's date: it reads whole while it still
+        # awaits its 1 July lapse (a suite run in H1) or expired-and-empty after it (H2) —
+        # never dented to 32.
+        assert float(pots[(types["vacation_statutory"], _YEAR - 1)]["remaining_hours"]) in (
+            0.0,
+            40.0,
+        )
+
+
+async def test_next_year_balance_excludes_pots_dead_by_then(client_for) -> None:
+    """A free-time pot (carry 0) dies the moment its year ends. A next-year balance read taken
+    while the pot is still alive *today* must not count it — the FIFO pass will never let next
+    year spend it, and the recurring generator caps next-year free days on this figure."""
+    t = await make_tenant("vac-nextyear-dead")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _member(c, headers, "dead-pot@example.com")
+        types = await _types(c, headers)
+        await _put_ent(c, headers, member.id, types["roostervrij"], _YEAR, 52)
+
+        rows = await _per_type(c, headers, year=_YEAR + 1, user_id=member.id)
+        adv = next(r for r in rows if r["leave_type_id"] == types["roostervrij"])
+        assert float(adv["entitled_hours"]) == 0.0
+        # Pre-fix this read "52 over of 0 entitled": alive today, dead all of next year.
+        assert float(adv["remaining_hours"]) == 0.0
+
+
 async def test_standalone_adv_lapses_at_year_end(client_for) -> None:
     """ADV carries 0 months, so last year's unused rostered-free-day hours have lapsed (#265)."""
     t = await make_tenant("vac-adv-expiry")

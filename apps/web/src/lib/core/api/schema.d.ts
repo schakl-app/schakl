@@ -3750,7 +3750,13 @@ export interface paths {
         /** Upsert Entitlement */
         put: operations["upsert_entitlement_api_v1_leave_entitlements_put"];
         post?: never;
-        delete?: never;
+        /**
+         * Delete Entitlement
+         * @description Drop a pot and let generation re-derive it — the revert behind "clear it to let it be
+         *     derived again". A current/next-year pot reappears with the derived figure in the same
+         *     request; a past year's simply goes (history is never backfilled).
+         */
+        delete: operations["delete_entitlement_api_v1_leave_entitlements_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -25528,6 +25534,37 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["LeaveEntitlementRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_entitlement_api_v1_leave_entitlements_delete: {
+        parameters: {
+            query: {
+                year: number;
+                user_id: string;
+                leave_type_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
