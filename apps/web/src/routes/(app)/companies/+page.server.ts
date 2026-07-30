@@ -45,8 +45,11 @@ export const load: PageServerLoad = async (event) => {
 
   // The saved column layout comes from the layout load, which does not rerun on filter or sort
   // navigation (docs/PERFORMANCE.md). Two things depend on it before a single row is fetched:
-  const { prefs } = await event.parent();
-  const pref = readTablePref(prefs, COMPANIES_TABLE_ID);
+  // This one *must* precede the fetch below — the saved sort and the hidden-column decision are
+  // query parameters of it — and `event.parent()` is memoised, so the layout's own calls are
+  // already in flight by the time this resolves.
+  const parent = await event.parent();
+  const pref = readTablePref(parent.prefs, COMPANIES_TABLE_ID);
   const resolved = resolveColumns(COMPANY_COLUMNS, pref);
 
   //   1. the sort, which the *server* applies — sorting a 200-row page of a longer list in the
@@ -56,19 +59,15 @@ export const load: PageServerLoad = async (event) => {
   //   2. whether to pay for the budget roll-up at all. Hidden column, no aggregate (#24).
   const hours = resolved.columns.some((column) => column.key === HOURS_COLUMN);
 
-  // Definitions and members are awaited, not streamed: the table needs the tenant's custom-field
-  // definitions to render (and offer) their columns, and the assignees column needs names. All
-  // three calls go out together, so this costs one round trip, not three.
-  const [companiesRes, definitionsRes, membersRes] = await Promise.all([
-    api.GET("/api/v1/companies", {
-      params: { query: { limit: 200, offset: 0, q, mine, sort, hours } },
-    }),
-    api.GET("/api/v1/custom-fields/definitions", { params: { query: { entity_type: "company" } } }),
-    api.GET("/api/v1/members/lookup"),
-  ]);
+  // Only the URL-dependent read happens here. The custom-field definitions the table renders
+  // its columns from, and the member names the assignee column needs, come from the section
+  // layout — which does not rerun on filter or sort navigation (#290).
+  const companiesRes = await api.GET("/api/v1/companies", {
+    params: { query: { limit: 200, offset: 0, q, mine, sort, hours } },
+  });
 
-  const definitions = definitionsRes.data ?? [];
-  const members = membersRes.data ?? [];
+  const definitions = parent.definitions;
+  const members = parent.members;
 
   // The create form's remaining lookups still stream in behind the list.
   const createForm = Promise.all([

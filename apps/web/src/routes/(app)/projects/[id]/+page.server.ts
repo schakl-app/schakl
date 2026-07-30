@@ -3,6 +3,7 @@ import "$lib/modules"; // ensure the panels are registered before we read the re
 import { error, fail, redirect } from "@sveltejs/kit";
 
 import { apiBaseUrl } from "$lib/core/api/client";
+import { dedupeGets } from "$lib/core/api/dedupe";
 import { parseAssignees } from "$lib/core/assignees";
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
@@ -29,7 +30,7 @@ function parseCustom(raw: FormDataEntryValue | null): Record<string, unknown> {
 }
 
 export const load: PageServerLoad = async (event) => {
-  const api = apiFor(event);
+  const api = dedupeGets(apiFor(event));
   const project_id = event.params.id;
 
   // `hours=true` costs one grouped query and replaces the separate `/time/logged` call this page
@@ -56,40 +57,33 @@ export const load: PageServerLoad = async (event) => {
 
   // Every call in one flight. `projects` is a name-only lookup: the panel's edit modal needs the
   // picker, and `count=false` skips the COUNT(*) it would throw away.
-  const [tasks, companies, projects, members, statuses, definitions, cost, files, ...panelData] =
-    await Promise.all([
-      api.GET("/api/v1/tasks", {
-        params: { query: { project_id, limit: 200, offset: 0, count: false } },
-      }),
-      api.GET("/api/v1/companies", {
-        params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
-      }),
-      api.GET("/api/v1/projects", { params: { query: { limit: 200, offset: 0, count: false } } }),
-      api.GET("/api/v1/members/lookup"),
-      // The tenant's task statuses (issue #62) so the to-do list groups/toggles by the real ones.
-      api.GET("/api/v1/tasks/statuses"),
-      api.GET("/api/v1/custom-fields/definitions", {
-        params: { query: { entity_type: "project" } },
-      }),
-      canSeeCost
-        ? api.GET("/api/v1/time/cost", { params: { query: { project_id } } })
-        : Promise.resolve({ data: null }),
-      api.GET("/api/v1/files", {
-        params: { query: { entity_type: "project", entity_id: project_id } },
-      }),
-      ...panels.map((panel) => panel.load(api, context)),
-    ]);
+  //
+  // The client picker, the project custom fields and the member names are gone from here: they
+  // are URL-independent, so they live in the section layout, which does not rerun when you move
+  // between projects (#290, docs/PERFORMANCE.md).
+  const [tasks, projects, statuses, cost, files, ...panelData] = await Promise.all([
+    api.GET("/api/v1/tasks", {
+      params: { query: { project_id, limit: 200, offset: 0, count: false } },
+    }),
+    api.GET("/api/v1/projects", { params: { query: { limit: 200, offset: 0, count: false } } }),
+    // The tenant's task statuses (issue #62) so the to-do list groups/toggles by the real ones.
+    api.GET("/api/v1/tasks/statuses"),
+    canSeeCost
+      ? api.GET("/api/v1/time/cost", { params: { query: { project_id } } })
+      : Promise.resolve({ data: null }),
+    api.GET("/api/v1/files", {
+      params: { query: { entity_type: "project", entity_id: project_id } },
+    }),
+    ...panels.map((panel) => panel.load(api, context)),
+  ]);
 
   return {
     project,
     files: files.data ?? [],
     cost: cost.data ?? null,
     tasks: tasks.data?.items ?? [],
-    companies: companies.data?.items ?? [],
     projects: projects.data?.items ?? [],
-    members: members.data ?? [],
     statuses: statuses.data ?? [],
-    definitions: definitions.data ?? [],
     context,
     // Keyed so the page can pair each payload with the spec that produced it, without the page
     // knowing what any of them are.

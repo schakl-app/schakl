@@ -21,30 +21,23 @@ export const load: PageServerLoad = async (event) => {
   // The saved layout decides two things before a row is fetched: how the *server* sorts, and
   // whether the budget burn-down is worth computing at all (#24 — a hidden aggregate costs
   // nothing). It comes from the layout load, which doesn't rerun on filter navigation.
+  // Must precede the fetch — the saved sort and the hidden-column decision are query parameters
+  // of it — and `event.parent()` is memoised, so the section layout's own calls are already in
+  // flight by the time this resolves.
   const { prefs } = await event.parent();
   const pref = readTablePref(prefs, PROJECTS_TABLE_ID);
   const resolved = resolveColumns(PROJECT_COLUMNS, pref);
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
   const hours = resolved.columns.some((column) => column.key === HOURS_COLUMN);
 
-  const [projects, companies, definitions, members] = await Promise.all([
-    api.GET("/api/v1/projects", {
-      params: { query: { limit: 200, offset: 0, q, mine, sort, hours, company_id } },
-    }),
-    api.GET("/api/v1/companies", {
-      params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
-    }),
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "project" } },
-    }),
-    api.GET("/api/v1/members/lookup"),
-  ]);
+  // Only the URL-dependent read is here; the client picker, the definitions and the member
+  // names come from the section layout, which does not rerun on filter/sort navigation (#290).
+  const projects = await api.GET("/api/v1/projects", {
+    params: { query: { limit: 200, offset: 0, q, mine, sort, hours, company_id } },
+  });
   return {
     projects: projects.data?.items ?? [],
     total: projects.data?.total ?? 0,
-    companies: companies.data?.items ?? [],
-    definitions: definitions.data ?? [],
-    members: members.data ?? [],
     table: { pref, sort: sort ?? null, widths: resolved.widths },
     mine,
     companyFilter: company_id ?? "",

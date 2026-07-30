@@ -28,10 +28,19 @@
   const company = $derived(data.company);
   const assignees = $derived(company.assignees ?? []);
 
+  // The edit modal's lookups stream in behind the page (#290) — nothing here draws them, and
+  // most visits never open the modal. Held in state rather than awaited in the markup: a re-run
+  // load hands us a *new* promise, and an `{#await}` would fall back to its pending branch and
+  // remount the form, throwing away what the user had picked.
+  let editForm = $state<Awaited<typeof data.editForm> | null>(null);
+  $effect(() => {
+    void data.editForm.then((resolved) => (editForm = resolved));
+  });
+
   // The contact persons currently on this client, primary first — derived from the org's contacts
   // rather than fetched again, since each one carries the companies it is linked to.
   const companyContacts = $derived(
-    data.contacts
+    (editForm?.contacts ?? [])
       .map((c) => ({ id: c.id, link: c.companies?.find((l) => l.company_id === company.id) }))
       .filter((c) => c.link !== undefined)
       .map((c) => ({ contact_id: c.id, is_primary: Boolean(c.link?.is_primary) }))
@@ -239,13 +248,19 @@
         locale={data.locale}
         idPrefix="edit-company"
       >
-        <ContactDraftField
-          contacts={data.contacts}
-          definitions={data.contactDefinitions}
-          locale={data.locale}
-          value={companyContacts}
-          id="edit-company-contacts"
-        />
+        {#if editForm}
+          <ContactDraftField
+            contacts={editForm.contacts}
+            definitions={editForm.contactDefinitions}
+            locale={data.locale}
+            value={companyContacts}
+            id="edit-company-contacts"
+          />
+        {:else}
+          <!-- `?edit=1` can open this modal before the streamed lookups land (#78 + #290), so
+               the field says it is coming rather than rendering an empty picker. -->
+          <p class="text-sm text-text-muted">{t("common.loading")}</p>
+        {/if}
       </CompanyForm>
       <div>
         <!-- Per-client logo (#196): shown on this page's header and on the client's portal
