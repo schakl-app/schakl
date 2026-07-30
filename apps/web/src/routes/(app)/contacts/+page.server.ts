@@ -25,30 +25,14 @@ export const load: PageServerLoad = async (event) => {
   // Client filter (#154) — applied by the API; the URL keeps it shareable.
   const company_id = event.url.searchParams.get("company") || undefined;
 
-  const [contacts, definitions, companyDefinitions, companies, types] = await Promise.all([
-    api.GET("/api/v1/contacts", {
-      params: { query: { limit: 100, offset: 0, q, sort, contact_type_id, company_id } },
-    }),
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "contact" } },
-    }),
-    // For the picker's inline company create (#115, docs/UX.md): the full dialog, real fields.
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "company" } },
-    }),
-    // For the create form's "connected companies" picker (#80). Lean list — no counts.
-    api.GET("/api/v1/companies", {
-      params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
-    }),
-    api.GET("/api/v1/contacts/types"),
-  ]);
+  // Only the URL-dependent read. The definitions, the client picker and the type vocabulary
+  // come from the section layout, which does not rerun on filter navigation (#290).
+  const contacts = await api.GET("/api/v1/contacts", {
+    params: { query: { limit: 100, offset: 0, q, sort, contact_type_id, company_id } },
+  });
   return {
     contacts: contacts.data?.items ?? [],
     total: contacts.data?.total ?? 0,
-    definitions: definitions.data ?? [],
-    companyDefinitions: companyDefinitions.data ?? [],
-    companies: companies.data?.items ?? [],
-    types: types.data ?? [],
     typeFilter: contact_type_id ?? "",
     companyFilter: company_id ?? "",
     table: { pref, sort: sort ?? null, widths: resolved.widths },

@@ -23,31 +23,22 @@ export const load: PageServerLoad = async (event) => {
 
   // Portal state (#193): manager-only (managing logins is member management), one call.
   const canPortal = can(event.locals.user, "members.member.write");
-  const [contact, definitions, companies, companyDefinitions, members, portal, ...panelData] =
-    await Promise.all([
-      api.GET("/api/v1/contacts/{contact_id}", { params: { path: { contact_id } } }),
-      api.GET("/api/v1/custom-fields/definitions", {
-        params: { query: { entity_type: "contact" } },
-      }),
-      api.GET("/api/v1/companies", {
-        params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
-      }),
-      api.GET("/api/v1/custom-fields/definitions", {
-        params: { query: { entity_type: "company" } },
-      }),
-      // The quick-create client dialog is the full client form, so it needs the member lookup.
-      api.GET("/api/v1/members/lookup"),
-      canPortal
-        ? api.GET("/api/v1/contacts/{contact_id}/portal", { params: { path: { contact_id } } })
-        : Promise.resolve({ data: null }),
-      ...panels.map((panel) => panel.load(api, context)),
-    ]);
+  // The contact custom fields, the company ones and the client picker all come from the section
+  // layout now (#290) — they do not change between contacts, so refetching them per row click
+  // was three round-trips per navigation for identical answers. The member lookup stays: the
+  // quick-create client dialog is the full client form, and contacts has no section-wide need
+  // for it otherwise.
+  const [contact, members, portal, ...panelData] = await Promise.all([
+    api.GET("/api/v1/contacts/{contact_id}", { params: { path: { contact_id } } }),
+    api.GET("/api/v1/members/lookup"),
+    canPortal
+      ? api.GET("/api/v1/contacts/{contact_id}/portal", { params: { path: { contact_id } } })
+      : Promise.resolve({ data: null }),
+    ...panels.map((panel) => panel.load(api, context)),
+  ]);
   if (!contact.data) throw error(404, { code: "not_found", message: "errors.not_found" });
   return {
     contact: contact.data,
-    definitions: definitions.data ?? [],
-    companies: companies.data?.items ?? [],
-    companyDefinitions: companyDefinitions.data ?? [],
     members: members.data ?? [],
     portal: portal.data ?? null,
     canPortal,
