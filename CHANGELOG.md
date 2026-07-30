@@ -23,6 +23,17 @@
   are validated with every other column type now, read in the row's own country exactly as
   saving that record would read it, and an empty cell stays what it always was: nothing to
   import, not a rejection.
+- **Signing in as a member of another organisation now works from the console** (#288). On a
+  cloud installation the console lives on its own address, so the administrator's session was
+  simply not present on the organisation's address — and on a customer's own domain it never can
+  be. The jump landed on that organisation's login screen instead of opening it. It now crosses
+  over a **single-use, two-minute link**: the organisation's address redeems it server-side for
+  the session and the grant, everything is re-checked on arrival (the address it was issued for,
+  the administrator still holding the right, the organisation's service PIN still standing), and a
+  link that was already used — reopened from history, or from a shared screen — refuses and says
+  so instead of quietly signing anyone in again. No long-lived credential travels in a URL, a
+  stolen grant on its own is still worthless, and the administrator's session on a customer's
+  address expires together with the impersonation. Ending it returns to the console.
 
 ## v0.19.0 — 2026-07-29
 

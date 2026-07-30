@@ -63,10 +63,10 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const pin = String(form.get("pin") ?? "").trim();
     if (!pin) return fail(400, { error: "errors.required", unlockError: true });
-    const { error } = await apiFor(event).POST(
-      "/api/v1/instance/orgs/{org_id}/service-access",
-      { ...orgPath(event), body: { pin } },
-    );
+    const { error } = await apiFor(event).POST("/api/v1/instance/orgs/{org_id}/service-access", {
+      ...orgPath(event),
+      body: { pin },
+    });
     if (error) return fail(400, { error: apiErrorKey(error).key, unlockError: true });
     return { unlocked: true };
   },
@@ -160,24 +160,29 @@ export const actions: Actions = {
   impersonate: async (event) => {
     const form = await event.request.formData();
     const userId = String(form.get("user_id") ?? "");
-    const api = apiFor(event);
-    const { data, error } = await api.POST("/api/v1/instance/orgs/{org_id}/impersonate", {
+    const { data, error } = await apiFor(event).POST("/api/v1/instance/orgs/{org_id}/impersonate", {
       ...orgPath(event),
       body: { user_id: userId, minutes: 30 },
     });
-    if (error || !data) return fail(400, { error: apiErrorKey(error).key });
+    if (error || !data?.handoff) return fail(400, { error: apiErrorKey(error).key });
 
-    // The console never runs on the org's own host: hand the grant to that host's
-    // /impersonate route, which stores the cookie there and lands on the dashboard.
-    // canonical_host (#291) is live-aware — a broken custom domain sends the operator to the
-    // recovery host instead of a TLS error, which is impersonation's most likely occasion.
-    const { data: org } = await api.GET("/api/v1/instance/orgs/{org_id}", orgPath(event));
-    const { data: meta } = await api.GET("/api/v1/meta/modules");
-    const targetHost = org?.canonical_host ?? `${org?.slug}.${meta?.base_domain ?? ""}`;
+    // The console never runs on the org's own host, and cookies are host-scoped — including on
+    // a customer-owned custom domain, where there is no shared parent to widen one to. So the
+    // API hands out a single-use **ticket** and the address to present it at (#288); that host's
+    // /impersonate route exchanges it for the session + grant cookies. The ticket is the only
+    // thing in this URL and it authenticates nothing by itself. The address is the API's own
+    // canonical choice (#291) — live-aware, so a broken custom domain sends the operator to the
+    // recovery host instead of a TLS error — which is why this no longer re-derives it here.
+    //
+    // Returned rather than redirected to, deliberately: our own CSP sends `form-action 'self'`
+    // (audit F14) and Chrome applies it to the *whole redirect chain* of a form submission, so a
+    // 303 out of this origin is blocked before the browser ever asks for it. The page navigates
+    // itself instead — see the form in `+page.svelte`.
     const port = event.url.port ? `:${event.url.port}` : "";
-    throw redirect(
-      303,
-      `${event.url.protocol}//${targetHost}${port}/impersonate?token=${encodeURIComponent(data.token)}`,
-    );
+    return {
+      handoffUrl:
+        `${event.url.protocol}//${data.handoff.host}${port}` +
+        `/impersonate?ticket=${encodeURIComponent(data.handoff.ticket)}`,
+    };
   },
 };

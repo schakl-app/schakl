@@ -92,19 +92,17 @@ export const actions: Actions = {
   impersonate: async (event) => {
     const form = await event.request.formData();
     const userId = String(form.get("user_id") ?? "");
-    const api = apiFor(event);
-    const { data, error } = await api.POST("/api/v1/instance/orgs/{org_id}/impersonate", {
+    const { data, error } = await apiFor(event).POST("/api/v1/instance/orgs/{org_id}/impersonate", {
       ...orgPath(event),
       body: { user_id: userId, minutes: 30 },
     });
     if (error || !data) return fail(400, { error: apiErrorKey(error).key });
 
-    // The grant only acts on the target org's own hostname. Same host → store the cookie
-    // and go home; different host → hand the token to that host's /impersonate route.
-    const { data: org } = await api.GET("/api/v1/instance/orgs/{org_id}", orgPath(event));
-    const { data: meta } = await api.GET("/api/v1/meta/modules");
-    const targetHost = org?.custom_domain ?? `${org?.slug}.${meta?.base_domain ?? ""}`;
-    if (targetHost === event.url.hostname) {
+    // The API decides which of the two shapes applies, because it is the side that knows how a
+    // hostname resolves to an org (#288). Same host — a box administering its own org — and the
+    // grant comes straight back to be set beside the session that is already here. Another host
+    // and there is only a single-use ticket to present there.
+    if (data.token) {
       event.cookies.set(IMPERSONATION_COOKIE, data.token, {
         path: "/",
         httpOnly: true,
@@ -114,10 +112,14 @@ export const actions: Actions = {
       });
       throw redirect(303, "/");
     }
+    if (!data.handoff) return fail(400, { error: "errors.server" });
+    // Returned, not redirected to: `form-action 'self'` (our own CSP) blocks a form submission
+    // whose redirect chain leaves this origin, so the page navigates itself (#288).
     const port = event.url.port ? `:${event.url.port}` : "";
-    throw redirect(
-      303,
-      `${event.url.protocol}//${targetHost}${port}/impersonate?token=${encodeURIComponent(data.token)}`,
-    );
+    return {
+      handoffUrl:
+        `${event.url.protocol}//${data.handoff.host}${port}` +
+        `/impersonate?ticket=${encodeURIComponent(data.handoff.ticket)}`,
+    };
   },
 };

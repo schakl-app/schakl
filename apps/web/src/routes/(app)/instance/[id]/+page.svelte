@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { enhance } from "$app/forms";
+  import { applyAction, enhance } from "$app/forms";
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -141,7 +141,21 @@
             </p>
           </div>
           {#if org.status === "active" && member.is_active}
-            <form method="POST" action="?/impersonate">
+            <!-- Another org's host needs a script navigation, not a redirect: `form-action 'self'`
+                 blocks a form submission that leaves this origin (#288). Impersonating a member of
+                 *this* org stays a plain same-origin redirect from the action. -->
+            <form
+              method="POST"
+              action="?/impersonate"
+              use:enhance={() =>
+                async ({ result }) => {
+                  if (result.type === "success" && result.data?.handoffUrl) {
+                    window.location.href = String(result.data.handoffUrl);
+                    return;
+                  }
+                  await applyAction(result);
+                }}
+            >
               <input type="hidden" name="user_id" value={member.user_id} />
               <button class={buttonSecondary}>{t("instance.impersonate")}</button>
             </form>

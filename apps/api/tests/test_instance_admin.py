@@ -3,14 +3,16 @@ domain verification, export/import — including the gates that keep it all shut
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from sqlalchemy import select
 
 from app.config import settings
 from app.core.auth.models import User
 from app.core.models import InstanceAuditLog, Org
-from app.db import async_session_maker
-from tests.conftest import Tenant, auth_cookie, make_tenant
+from app.db import async_session_maker, set_current_org
+from tests.conftest import Tenant, add_membership, auth_cookie, make_tenant
 
 
 @pytest.fixture
@@ -260,6 +262,31 @@ async def test_org_modules_update(client_for, instance_admin_enabled) -> None:
 # --------------------------------------------------------------------------- #
 # Impersonation
 # --------------------------------------------------------------------------- #
+async def start_handoff(
+    client_for, admin: Tenant, target_org_id, target_user_id, *, minutes: int = 30
+) -> dict:
+    """Ask for a crossing from the admin's own host and return the handoff payload (#288)."""
+    async with client_for(admin.host) as client:
+        response = await client.post(
+            f"/api/v1/instance/orgs/{target_org_id}/impersonate",
+            json={"user_id": str(target_user_id), "minutes": minutes},
+            headers=await auth_cookie(admin.user),
+        )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    # Crossing hosts, so no usable grant may come back here — only a ticket for the other host.
+    assert body["token"] is None
+    assert body["handoff"] is not None
+    return body["handoff"]
+
+
+async def claim(client_for, host: str, ticket: str):
+    async with client_for(host) as client:
+        return await client.post(
+            "/api/v1/instance/impersonation/claim", json={"ticket": ticket}
+        )
+
+
 async def test_impersonation_is_time_boxed_audited_and_visible(
     client_for, instance_admin_enabled
 ) -> None:
@@ -268,24 +295,29 @@ async def test_impersonation_is_time_boxed_audited_and_visible(
     admin_headers = await auth_cookie(admin.user)
     target = await make_tenant("imp-target", email="member@example.org", role="member")
 
-    async with client_for(admin.host) as client:
-        grant = await client.post(
-            f"/api/v1/instance/orgs/{target.org.id}/impersonate",
-            json={"user_id": str(target.user.id), "minutes": 9999},
-            headers=admin_headers,
-        )
-        assert grant.status_code == 200
-        body = grant.json()
-        token = body["token"]
+    # The console runs on its own host, so the crossing is a handoff (#288).
+    handoff = await start_handoff(
+        client_for, admin, target.org.id, target.user.id, minutes=9999
+    )
+    assert handoff["host"] == target.host
 
-    # Clamped to the configured maximum (60 min).
+    redeemed = await claim(client_for, target.host, handoff["ticket"])
+    assert redeemed.status_code == 200, redeemed.text
+    body = redeemed.json()
+    token = body["token"]
+    session_token = body["session_token"]
+
+    # Clamped to the configured maximum (60 min) — and the admin's session on this host is
+    # minted to lapse with the grant, never for the ordinary week.
     from datetime import UTC, datetime, timedelta
 
     expires_at = datetime.fromisoformat(body["expires_at"])
     max_allowed = timedelta(minutes=settings.impersonation_max_minutes + 1)
     assert expires_at <= datetime.now(UTC) + max_allowed
+    assert 0 < body["max_age"] <= (settings.impersonation_max_minutes + 1) * 60
+    assert body["session_cookie"] == settings.auth_cookie_name
 
-    both_cookies = {"Cookie": f"{admin_headers['Cookie']}; schakl_impersonate={token}"}
+    both_cookies = {"Cookie": f"schakl_auth={session_token}; schakl_impersonate={token}"}
 
     # On the target org's host the admin now *is* the member — visibly.
     async with client_for(target.host) as client:
@@ -307,6 +339,14 @@ async def test_impersonation_is_time_boxed_audited_and_visible(
     async with client_for(target.host) as client:
         assert (await client.get("/api/v1/meta/me", headers=hijack)).status_code == 403
 
+    # …and neither does the grant on its own: it authenticates nobody (#288's promise that a
+    # stolen grant stays insufficient).
+    async with client_for(target.host) as client:
+        alone = await client.get(
+            "/api/v1/meta/me", headers={"Cookie": f"schakl_impersonate={token}"}
+        )
+        assert alone.status_code == 401
+
     # Disabling the flag kills outstanding grants instantly.
     settings.instance_admin_enabled = False
     try:
@@ -320,7 +360,189 @@ async def test_impersonation_is_time_boxed_audited_and_visible(
         stopped = await client.post("/api/v1/instance/impersonation/stop", headers=admin_headers)
         assert stopped.status_code == 204
     actions = await audit_actions()
+    assert "impersonate.handoff" in actions
     assert "impersonate.start" in actions and "impersonate.stop" in actions
+
+
+async def test_a_handoff_ticket_is_single_use(client_for, instance_admin_enabled) -> None:
+    admin = await make_tenant("hand-once-admin")
+    await make_instance_owner(admin)
+    target = await make_tenant("hand-once", email="once@example.org", role="member")
+
+    handoff = await start_handoff(client_for, admin, target.org.id, target.user.id)
+    assert (await claim(client_for, target.host, handoff["ticket"])).status_code == 200
+
+    # Replaying the link — browser history, a proxy log, a screen share — opens nothing.
+    replayed = await claim(client_for, target.host, handoff["ticket"])
+    assert replayed.status_code == 403
+    assert replayed.json()["error"]["message"] == "errors.impersonation_handoff_invalid"
+
+
+async def test_a_handoff_ticket_only_works_on_the_host_it_names(
+    client_for, instance_admin_enabled
+) -> None:
+    admin = await make_tenant("hand-host-admin")
+    await make_instance_owner(admin)
+    target = await make_tenant("hand-host", email="host@example.org", role="member")
+    bystander = await make_tenant("hand-host-other")
+
+    handoff = await start_handoff(client_for, admin, target.org.id, target.user.id)
+
+    # Presented anywhere else it is refused — including on the console's own host, which is
+    # where a leaked URL would most plausibly be re-opened.
+    for host in (bystander.host, admin.host):
+        wrong = await claim(client_for, host, handoff["ticket"])
+        assert wrong.status_code == 403, host
+        assert wrong.json()["error"]["message"] == "errors.impersonation_handoff_invalid"
+
+    # A refusal elsewhere must not burn the ticket: the operator's own tab still works.
+    assert (await claim(client_for, target.host, handoff["ticket"])).status_code == 200
+
+
+async def test_an_expired_handoff_ticket_is_refused(client_for, instance_admin_enabled) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from app.core.instance.impersonation import ImpersonationHandoff
+
+    admin = await make_tenant("hand-exp-admin")
+    await make_instance_owner(admin)
+    target = await make_tenant("hand-exp", email="exp@example.org", role="member")
+
+    handoff = await start_handoff(client_for, admin, target.org.id, target.user.id)
+    async with async_session_maker() as session:
+        row = await session.scalar(select(ImpersonationHandoff))
+        row.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        await session.commit()
+
+    lapsed = await claim(client_for, target.host, handoff["ticket"])
+    assert lapsed.status_code == 403
+    assert lapsed.json()["error"]["message"] == "errors.impersonation_handoff_invalid"
+
+
+async def test_a_garbled_or_absent_ticket_refuses_rather_than_422(
+    client_for, instance_admin_enabled
+) -> None:
+    """The one session-less route on this surface still refuses like the rest of it."""
+    tenant = await make_tenant("hand-garbled")
+    for payload in ({}, {"ticket": ""}, {"ticket": "not-a-ticket"}):
+        async with client_for(tenant.host) as client:
+            response = await client.post(
+                "/api/v1/instance/impersonation/claim", json=payload
+            )
+        assert response.status_code == 403, payload
+
+
+async def test_a_handoff_is_refused_once_the_capability_is_gone(
+    client_for, instance_admin_enabled
+) -> None:
+    """A crossing that has not happened yet is re-authorized, unlike a grant already in flight
+    (docs/CLOUD.md): withdrawing ``instance.impersonate`` stops the pending link dead."""
+    from app.core.instance import capabilities as caps
+    from app.core.models import InstanceAdmin
+
+    admin = await make_tenant("hand-revoked-admin")
+    async with async_session_maker() as session:
+        session.add(
+            InstanceAdmin(
+                user_id=admin.user.id,
+                capabilities=[caps.ORGS_READ, caps.IMPERSONATE],
+                granted_by_email="owner@example.com",
+            )
+        )
+        await session.commit()
+    target = await make_tenant("hand-revoked", email="revoked@example.org", role="member")
+
+    handoff = await start_handoff(client_for, admin, target.org.id, target.user.id)
+
+    async with async_session_maker() as session:
+        row = await session.scalar(
+            select(InstanceAdmin).where(InstanceAdmin.user_id == admin.user.id)
+        )
+        row.capabilities = [caps.ORGS_READ]
+        await session.commit()
+
+    refused = await claim(client_for, target.host, handoff["ticket"])
+    assert refused.status_code == 403
+    assert refused.json()["error"]["message"] == "errors.impersonation_handoff_invalid"
+
+
+async def test_impersonation_crosses_to_a_verified_custom_domain(
+    client_for, instance_admin_enabled
+) -> None:
+    """The bug in #288: an org on its own domain is exactly where cookies cannot be shared."""
+    from datetime import UTC, datetime
+
+    admin = await make_tenant("hand-cd-admin")
+    await make_instance_owner(admin)
+    target = await make_tenant("hand-cd", email="cd@example.org", role="member")
+    domain = "support.klant-eigen-domein.example"
+    async with async_session_maker() as session:
+        org = await session.get(Org, target.org.id)
+        org.custom_domain = domain
+        org.custom_domain_verified_at = datetime.now(UTC)
+        await session.commit()
+
+    handoff = await start_handoff(client_for, admin, target.org.id, target.user.id)
+    # The handoff addresses the org the way hostname resolution does — the custom domain wins.
+    assert handoff["host"] == domain
+
+    redeemed = await claim(client_for, domain, handoff["ticket"])
+    assert redeemed.status_code == 200, redeemed.text
+    body = redeemed.json()
+    cookies = {
+        "Cookie": f"schakl_auth={body['session_token']}; schakl_impersonate={body['token']}"
+    }
+    async with client_for(domain) as client:
+        me = await client.get("/api/v1/meta/me", headers=cookies)
+        assert me.status_code == 200
+        assert me.json()["email"] == "cd@example.org"
+        assert me.json()["impersonated_by"] == admin.user.email
+
+    # The org's slug host still resolves to the same org, and the ticket was for the domain.
+    assert (await claim(client_for, target.host, handoff["ticket"])).status_code == 403
+
+
+async def test_same_host_impersonation_still_sets_the_cookie_directly(
+    client_for, instance_admin_enabled
+) -> None:
+    """A self-hosted box administering its own org shares one hostname, so there is nothing to
+    hand off: the grant comes straight back and no ticket is minted."""
+    admin = await make_tenant("imp-samehost")
+    await make_instance_owner(admin)
+    async with async_session_maker() as session:
+        member = User(
+            id=uuid.uuid4(),
+            email="samehost-member@example.org",
+            hashed_password="",
+            is_active=True,
+            is_verified=True,
+        )
+        session.add(member)
+        await session.flush()
+        await set_current_org(session, admin.org.id)
+        await add_membership(session, admin.org.id, member.id, "member")
+        await session.commit()
+        member_id = member.id
+
+    async with client_for(admin.host) as client:
+        response = await client.post(
+            f"/api/v1/instance/orgs/{admin.org.id}/impersonate",
+            json={"user_id": str(member_id), "minutes": 15},
+            headers=await auth_cookie(admin.user),
+        )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["handoff"] is None
+    assert body["token"]
+
+    cookies = {
+        "Cookie": f"{(await auth_cookie(admin.user))['Cookie']}; "
+        f"schakl_impersonate={body['token']}"
+    }
+    async with client_for(admin.host) as client:
+        me = await client.get("/api/v1/meta/me", headers=cookies)
+        assert me.status_code == 200
+        assert me.json()["email"] == "samehost-member@example.org"
 
 
 # --------------------------------------------------------------------------- #

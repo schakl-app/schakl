@@ -69,6 +69,47 @@ capability is checked when the grant is *issued*, and the grant is signed and ti
 **revoking `instance.impersonate` does not kill a session already in flight** — it lapses
 within one window (`SCHAKL_IMPERSONATION_MAX_MINUTES`, ≤60). Revoking the admin, or
 deactivating the account, is the immediate lever; every grant is on the audit trail either way.
+A crossing that has *not* happened yet is a different matter and is re-authorized on arrival, so
+withdrawing the capability does stop a link still sitting in a redirect.
+
+### Impersonating across hosts (#288)
+
+The grant only works alongside the administrator's own session, and both are cookies — which are
+**host-scoped**. The console runs on the apex, the org runs on `<slug>.<base_domain>` or on a
+domain the customer owns, so there is nothing to share and, for a customer domain, no parent to
+widen a cookie to. Handing the grant over in a query string put it on a host that had a grant and
+no session: the API refused before the grant could be applied and the browser landed on the
+tenant's login screen.
+
+So the crossing is an explicit, single-use **handoff**:
+
+1. `POST /instance/orgs/{id}/impersonate` on the console host stores an `impersonation_handoffs`
+   row and returns `{handoff: {host, ticket, expires_at}}` — and **no grant**. The grant JWT does
+   not exist yet, so an unclaimed handoff leaves nothing usable anywhere.
+2. The console sends the browser to `https://<host>/impersonate?ticket=…`. That SSR route
+   redeems the ticket over `POST /instance/impersonation/claim` — the one route on the instance
+   surface that answers without a session, because the whole point is that there isn't one yet.
+3. The claim re-checks everything against live state (host, org still active, administrator still
+   an instance principal *holding* `instance.impersonate`, service PIN still claimed, target still
+   an active member), burns the ticket under `FOR UPDATE`, and returns the grant plus a session
+   token for the **real administrator**, minted to expire *with* the grant. Both are set as
+   httpOnly cookies on the tenant host; the operator's footprint there dies with the window.
+4. Anything wrong — expired, already redeemed, wrong host, revoked capability — is one
+   undifferentiated `403 errors.impersonation_handoff_invalid`, rendered as a page that says the
+   link is spent, never a login redirect.
+
+Two constraints shaped the plumbing, and both are easy to undo by accident:
+
+- **The crossing cannot be an HTTP redirect.** Our own CSP sends `form-action 'self'` (audit F14)
+  and Chrome applies it to a form submission's *whole* redirect chain, so a 303 off-origin is
+  blocked before the browser asks for it. The action returns the address and the page navigates
+  itself (with a plain link as the no-JavaScript fallback). Same reason **stopping** lands on the
+  tenant host's own `/impersonate?stopped=1` page, which offers the link back to the console.
+- **Ending it drops the minted session too.** The administrator is usually not a member of that
+  org, so leaving the session behind would strand them on a 403 that looks like a login screen.
+
+`tests/test_instance_admin.py` covers single use, host binding, expiry, revocation and the custom
+domain; `apps/web/tests/e2e/cloud.spec.ts` drives it in a browser across two real hosts.
 
 ## Service PIN: tenant consent for operator access
 
@@ -135,8 +176,8 @@ There is **no org** on the instance-management domain. On cloud, the base domain
 
 - `/setup` (first run) creates the instance owner — a user with `is_superuser`, no org.
 - `/console` — login, org list (status, plan, domains), org creation, per-org detail with
-  PIN entry, plan control, lifecycle actions, impersonation (jumps to the org's own host),
-  instance API keys, and the instance audit trail.
+  PIN entry, plan control, lifecycle actions, impersonation (crosses to the org's own host over
+  the single-use handoff above), instance API keys, and the instance audit trail.
 - Tenant hosts never serve `/console`; the apex never serves an org.
 
 The web app decides via `GET /api/v1/meta/instance` (`{deployment, is_instance_host,

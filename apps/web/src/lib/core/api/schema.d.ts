@@ -2386,6 +2386,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/instance/impersonation/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Claim Impersonation
+         * @description Exchange a handoff ticket for the two cookies this host needs (#288).
+         *
+         *     Deliberately session-less, and therefore paranoid: everything the issuing route checked is
+         *     checked again here against live state, because the ticket may have been sitting in a redirect
+         *     for two minutes. The refusal is one undifferentiated 403 — the browser is told the handoff
+         *     failed, never which of the eight ways it did.
+         */
+        post: operations["claim_impersonation_api_v1_instance_impersonation_claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/instance/impersonation/stop": {
         parameters: {
             query?: never;
@@ -9881,6 +9906,21 @@ export interface components {
              */
             user_id: string;
         };
+        /**
+         * ImpersonateHandoff
+         * @description Where to send the browser, and the one-time ticket to present there (#288).
+         */
+        ImpersonateHandoff: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Host */
+            host: string;
+            /** Ticket */
+            ticket: string;
+        };
         /** ImpersonateRequest */
         ImpersonateRequest: {
             /**
@@ -9903,6 +9943,38 @@ export interface components {
              * Format: date-time
              */
             expires_at: string;
+            handoff?: components["schemas"]["ImpersonateHandoff"] | null;
+            /** Token */
+            token?: string | null;
+        };
+        /** ImpersonationClaimRequest */
+        ImpersonationClaimRequest: {
+            /**
+             * Ticket
+             * @default
+             */
+            ticket: string;
+        };
+        /**
+         * ImpersonationClaimResponse
+         * @description The two cookies the tenant host has to set, and how long both may live.
+         */
+        ImpersonationClaimResponse: {
+            /** Console Host */
+            console_host: string | null;
+            /** Cookie */
+            cookie: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Max Age */
+            max_age: number;
+            /** Session Cookie */
+            session_cookie: string;
+            /** Session Token */
+            session_token: string;
             /** Token */
             token: string;
         };
@@ -22318,6 +22390,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditEntry"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    claim_impersonation_api_v1_instance_impersonation_claim_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImpersonationClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpersonationClaimResponse"];
                 };
             };
             /** @description Validation Error */

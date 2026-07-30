@@ -10,24 +10,29 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 
+from app.config import settings
 from app.core import hosts
+from app.core.auth.backend import issue_session_token
 from app.core.auth.models import User
 from app.core.instance import audit, portability, repo, service
 from app.core.instance import capabilities as caps
 from app.core.instance.guard import (
     InstanceContext,
     ensure_org_data_access,
+    load_principal,
     no_capability_required,
     require_capability,
     require_instance_admin,
 )
 from app.core.instance.impersonation import (
     IMPERSONATION_COOKIE,
+    claim_handoff,
     clear_grant_cookie,
+    create_handoff,
     issue_grant,
     set_grant_cookie,
 )
@@ -36,7 +41,8 @@ from app.core.permissions.deps import no_permission_required
 from app.core.permissions.models import MembershipRole
 from app.core.permissions.models import Role as RoleRow
 from app.core.permissions.service import collapse_to_legacy_role
-from app.db import set_current_org
+from app.core.tenancy import request_hostname
+from app.db import async_session_maker, set_current_org
 from app.errors import AppError
 
 router = APIRouter(
@@ -135,10 +141,47 @@ class ImpersonateRequest(BaseModel):
     minutes: int = Field(default=30, ge=1)
 
 
+class ImpersonateHandoff(BaseModel):
+    """Where to send the browser, and the one-time ticket to present there (#288)."""
+
+    host: str
+    ticket: str
+    expires_at: datetime
+
+
 class ImpersonateResponse(BaseModel):
+    cookie: str
+    #: The grant itself — **only** when the caller is already on the org's own host, where the
+    #: console can simply set the cookie. On any other host the grant does not exist yet: it is
+    #: minted when the handoff below is redeemed, so nothing usable travels through the console
+    #: or its redirect URL (#288).
+    token: str | None = None
+    expires_at: datetime
+    handoff: ImpersonateHandoff | None = None
+
+
+class ImpersonationClaimRequest(BaseModel):
+    # Deliberately defaulted rather than required: a missing, garbled or stale ticket is a
+    # *refusal* (403), not a 422 about a field name. The route is the one place on this surface
+    # that answers without a session, so it must refuse like the rest of it.
+    ticket: str = ""
+
+
+class ImpersonationClaimResponse(BaseModel):
+    """The two cookies the tenant host has to set, and how long both may live."""
+
+    session_cookie: str
+    session_token: str
     cookie: str
     token: str
     expires_at: datetime
+    max_age: int
+    #: Where to send the operator when the impersonation ends — the console's own hostname, which
+    #: on cloud is the apex. Derived from the instance's configuration, never from the request, so
+    #: it can't be steered into an open redirect; a **host** rather than a URL because only the
+    #: caller knows the scheme and port the browser is actually using. ``None`` on a self-hosted
+    #: box: the console there lives on a tenant host and only the operator knows which one.
+    console_host: str | None
 
 
 class AuditEntry(BaseModel):
@@ -477,6 +520,7 @@ async def import_org(
 async def impersonate(
     org_id: uuid.UUID,
     payload: ImpersonateRequest,
+    request: Request,
     response: Response,
     ctx: InstanceContext = Depends(require_instance_admin),
 ) -> ImpersonateResponse:
@@ -494,7 +538,51 @@ async def impersonate(
     if membership is None or target is None or not target.is_active:
         raise AppError("not_found", "errors.not_found", status_code=404)
 
-    token, expires_at = issue_grant(ctx.user, target.id, org.id, payload.minutes)
+    # The canonical host (#291), not just the slug one: a custom domain whose certificate is
+    # broken sends the operator to the recovery address instead of a TLS error — and
+    # impersonation is exactly when someone is looking into that.
+    host = hosts.canonical_host(org)
+    if request_hostname(request) == host:
+        # Already on the org's own hostname (a self-hosted box administering its own org): the
+        # admin's session cookie is right here, so the grant can simply be set beside it.
+        token, expires_at = issue_grant(ctx.user, target.id, org.id, payload.minutes)
+        await _audit_impersonation_start(ctx, org, target, expires_at)
+        set_grant_cookie(response, token, expires_at)
+        return ImpersonateResponse(
+            cookie=IMPERSONATION_COOKIE, token=token, expires_at=expires_at
+        )
+
+    # Crossing hosts (#288). Hand out nothing but a single-use ticket for that host; the grant
+    # and the admin's session there are minted on redemption, in ``claim_impersonation``.
+    ticket, ticket_expires_at = await create_handoff(
+        ctx.session,
+        admin=ctx.user,
+        target_user_id=target.id,
+        org_id=org.id,
+        host=host,
+        minutes=payload.minutes,
+    )
+    await audit.record(
+        ctx.session,
+        actor=ctx.user,
+        action="impersonate.handoff",
+        org=org,
+        target_user_id=target.id,
+        detail={"target_email": target.email, "host": host},
+    )
+    return ImpersonateResponse(
+        cookie=IMPERSONATION_COOKIE,
+        token=None,
+        # The grant's clock starts at redemption, so all the console can promise is the window
+        # the *ticket* is good for.
+        expires_at=ticket_expires_at,
+        handoff=ImpersonateHandoff(host=host, ticket=ticket, expires_at=ticket_expires_at),
+    )
+
+
+async def _audit_impersonation_start(
+    ctx: InstanceContext, org: Org, target: User, expires_at: datetime
+) -> None:
     await audit.record(
         ctx.session,
         actor=ctx.user,
@@ -503,8 +591,113 @@ async def impersonate(
         target_user_id=target.id,
         detail={"target_email": target.email, "expires_at": expires_at.isoformat()},
     )
-    set_grant_cookie(response, token, expires_at)
-    return ImpersonateResponse(cookie=IMPERSONATION_COOKIE, token=token, expires_at=expires_at)
+
+
+@router.post(
+    "/impersonation/claim",
+    response_model=ImpersonationClaimResponse,
+    dependencies=[
+        no_capability_required(
+            "redeems a single-use handoff ticket the caller already holds, on the one host that "
+            "ticket names (#288). It cannot be reached with a session at all — the whole point "
+            "is that the administrator has none on the tenant's hostname yet — so the ticket "
+            "itself is the credential: bound to host, org, impersonator and target, verified "
+            "against the row, and refused (403) on any mismatch or second attempt. Every "
+            "authorization decision was made when it was issued, behind instance.impersonate."
+        )
+    ],
+)
+async def claim_impersonation(
+    request: Request, payload: ImpersonationClaimRequest
+) -> ImpersonationClaimResponse:
+    """Exchange a handoff ticket for the two cookies this host needs (#288).
+
+    Deliberately session-less, and therefore paranoid: everything the issuing route checked is
+    checked again here against live state, because the ticket may have been sitting in a redirect
+    for two minutes. The refusal is one undifferentiated 403 — the browser is told the handoff
+    failed, never which of the eight ways it did.
+    """
+    if not settings.instance_admin_enabled:
+        # Same posture as the rest of the surface: a box with the flag off does not admit that
+        # any of this exists.
+        raise AppError("not_found", "errors.not_found", status_code=404)
+
+    def refuse() -> AppError:
+        return AppError(
+            "impersonation_handoff_invalid",
+            "errors.impersonation_handoff_invalid",
+            status_code=403,
+        )
+
+    async with async_session_maker() as session:
+        handoff = await claim_handoff(session, payload.ticket, request_hostname(request))
+        if handoff is None:
+            raise refuse()
+
+        admin = await session.get(User, handoff.impersonator_user_id)
+        if admin is None or not admin.is_active:
+            raise refuse()
+        # The administrator must *still* be one, and still hold the capability: unlike a grant in
+        # flight (which lapses within its window — docs/CLOUD.md), a crossing that has not
+        # happened yet is cheap to re-authorize, so it is.
+        is_owner, capabilities = await load_principal(session, admin)
+        principal = InstanceContext(
+            user=admin, session=session, is_owner=is_owner, capabilities=capabilities
+        )
+        if not principal.can(caps.IMPERSONATE):
+            raise refuse()
+
+        org = await session.get(Org, handoff.org_id)
+        if org is None or org.status != OrgStatus.ACTIVE.value:
+            raise refuse()
+        # …and the tenant's consent must still stand on cloud (the PIN can be revoked between
+        # issuing and arriving).
+        try:
+            await ensure_org_data_access(principal, org)
+        except AppError as exc:
+            raise refuse() from exc
+
+        await set_current_org(session, org.id)
+        membership = await session.scalar(
+            select(Membership).where(
+                Membership.org_id == org.id, Membership.user_id == handoff.target_user_id
+            )
+        )
+        target = await session.get(User, handoff.target_user_id)
+        if membership is None or target is None or not target.is_active:
+            raise refuse()
+
+        token, expires_at = issue_grant(admin, target.id, org.id, handoff.minutes)
+        max_age = max(1, int((expires_at - datetime.now(UTC)).total_seconds()))
+        # The admin's session on *this* host lapses with the grant: an operator's footprint on a
+        # customer's hostname should not outlive the reason it was created.
+        session_token = await issue_session_token(admin, max_age)
+        await audit.record(
+            session,
+            actor=admin,
+            action="impersonate.start",
+            org=org,
+            target_user_id=target.id,
+            detail={
+                "target_email": target.email,
+                "expires_at": expires_at.isoformat(),
+                "host": handoff.host,
+                "via": "handoff",
+            },
+        )
+        await session.commit()
+
+    return ImpersonationClaimResponse(
+        session_cookie=settings.auth_cookie_name,
+        session_token=session_token,
+        cookie=IMPERSONATION_COOKIE,
+        token=token,
+        expires_at=expires_at,
+        max_age=max_age,
+        # The apex serves the console on cloud (docs/CLOUD.md); a self-hosted box has no such
+        # fixed address, so it gets nothing rather than a guess.
+        console_host=settings.base_domain.lower() if settings.is_cloud else None,
+    )
 
 
 @router.post(

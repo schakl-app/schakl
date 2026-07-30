@@ -57,6 +57,11 @@ INSTANCE_LEVEL_TABLES = frozenset(
         # RLS; writes are org-bound by code and audited.
         "instance_api_keys",
         "service_access_grants",
+        # A pending cross-host impersonation crossing (#288). Its ``org_id`` is the *target* of
+        # the handoff, not the row's owner: the ticket is read on a host whose tenant is not
+        # bound yet — deciding which tenant may be entered is precisely what it is for — so it
+        # cannot sit under RLS, and it is operator state rather than tenant data.
+        "impersonation_handoffs",
     }
 )
 
