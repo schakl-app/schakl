@@ -106,7 +106,23 @@ async def test_spread_mode_places_the_requested_number_of_days(client_for) -> No
 
 
 async def test_spread_days_are_not_bunched_at_the_start_of_the_year(client_for) -> None:
-    """Evenly spread, not "the first N Fridays" — the difference between a roster and a binge."""
+    """Evenly spread, not "the first N Fridays" — the difference between a roster and a binge.
+
+    The assertion is on the *rhythm*, not on an exact fortnight, because an exact fortnight is
+    only ever achievable half the time. The pattern is anchored on the next Friday, so it prorates
+    to ``target = round(remaining / 2)`` of ``remaining`` candidates: when an even number of
+    Fridays is left that halves perfectly and every gap is 14, but when an odd number is left the
+    extra day has to go somewhere and one gap is a single week — mathematically forced, unless the
+    spread consumes the very last Friday of December and gives up the slack that lets a day slid
+    off a holiday land at all. Asserting ``gaps <= {14, 21}`` therefore flipped with the parity of
+    the weeks remaining: it passed on the day it was written (22 Fridays left) and failed a week
+    later (21 left), for a generator that had not changed.
+
+    What actually holds, every week of every year: a gap is a fortnight, a week short where the
+    odd remainder lands or where a day that slid past a holiday catches back up, or a week long
+    where one slid — and the rhythm averages out near a fortnight. A bunched generator gives 7
+    throughout, and averages 7.
+    """
     t = await make_tenant("ft-spacing")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
@@ -130,9 +146,13 @@ async def test_spread_days_are_not_bunched_at_the_start_of_the_year(client_for) 
         days = [date.fromisoformat(d["date"]) for d in overview["days"]]
         if len(days) < 3:
             return  # too late in the year to say anything about spacing
-        gaps = {(b - a).days for a, b in zip(days, days[1:], strict=False)}
-        # A 26-of-52 spread is every other week; a bunched generator would give 7 throughout.
-        assert gaps <= {14, 21}, f"expected a fortnightly rhythm, got gaps {sorted(gaps)}"
+        gaps = [(b - a).days for a, b in zip(days, days[1:], strict=False)]
+        # Nothing outside a fortnight give or take a week.
+        assert set(gaps) <= {7, 14, 21}, f"gaps outside a fortnight ± a week: {sorted(set(gaps))}"
+        # And the rhythm as a whole is fortnightly, not weekly. Over every run date from 2025 to
+        # 2045 this average never falls below 10.5; a generator that bunched would score 7.
+        average = sum(gaps) / len(gaps)
+        assert average >= 10, f"expected a fortnightly rhythm, got gaps {gaps}"
 
 
 async def test_spread_mode_slides_past_a_holiday_and_still_lands_the_count(client_for) -> None:
