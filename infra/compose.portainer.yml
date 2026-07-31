@@ -200,6 +200,24 @@ services:
         - "traefik.http.routers.schakl-api.entrypoints=${TRAEFIK_ENTRYPOINT:-web-secure}"
         - "traefik.http.routers.schakl-api.tls=true"
         - "traefik.http.services.schakl-api.loadbalancer.server.port=8000"
+        # Compress JSON at the edge rather than in the API process (#290). The list responses
+        # behind every screen are highly compressible text and this is the one place that can
+        # gzip them without a Python worker spending CPU per request.
+        #
+        # EXCLUDING text/event-stream IS LOAD-BEARING, not tidiness: the AI assistant answers as
+        # SSE, and a compressor that buffers it turns token-by-token delivery into one late blob.
+        #
+        # Under ~1 KB the Content-Encoding header and the CPU cost more than the saving, so the
+        # small hot responses (/prefs, /meta/me) stay uncompressed.
+        #
+        # The middleware is declared here, on the service that uses it, so its definition and
+        # its reference can never drift apart or land in different deploys. `web` declares its
+        # own under a different name for the same reason — one shared name defined twice is a
+        # conflict the moment someone edits one copy.
+        - "traefik.http.middlewares.schakl-api-compress.compress=true"
+        - "traefik.http.middlewares.schakl-api-compress.compress.minresponsebodybytes=1024"
+        - "traefik.http.middlewares.schakl-api-compress.compress.excludedcontenttypes=text/event-stream"
+        - "traefik.http.routers.schakl-api.middlewares=schakl-api-compress"
 
   worker:
     image: ghcr.io/schakl-app/schakl-api:${SCHAKL_TAG:?pin a release tag, e.g. 1.4.0}
@@ -253,6 +271,12 @@ services:
         - "traefik.http.routers.schakl-web.entrypoints=${TRAEFIK_ENTRYPOINT:-web-secure}"
         - "traefik.http.routers.schakl-web.tls=true"
         - "traefik.http.services.schakl-web.loadbalancer.server.port=3000"
+        # The SSR HTML is the most compressible thing this stack serves, and with Cloudflare in
+        # front the saving lands on origin egress — which is metered — as well as on the wire.
+        # Its own middleware name, not a shared one: see the api service above.
+        - "traefik.http.middlewares.schakl-web-compress.compress=true"
+        - "traefik.http.middlewares.schakl-web-compress.compress.minresponsebodybytes=1024"
+        - "traefik.http.routers.schakl-web.middlewares=schakl-web-compress"
 
   redis:
     image: redis:7-alpine
