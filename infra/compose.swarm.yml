@@ -64,6 +64,8 @@ x-api-env: &api-env
   SCHAKL_CLOUD_CF_API_TOKEN: ${SCHAKL_CLOUD_CF_API_TOKEN:-}
   SCHAKL_CLOUD_CF_API_TOKEN_FILE: ${SCHAKL_CLOUD_CF_API_TOKEN_FILE:-}
   SCHAKL_CLOUD_CF_ZONE_ID: ${SCHAKL_CLOUD_CF_ZONE_ID:-}
+  # Enterprise-only SNI rewrite; leave empty (Cloudflare presents the custom origin server as
+  # SNI by default, which is what the wildcard origin certificate covers).
   SCHAKL_CLOUD_CF_ORIGIN_SNI: ${SCHAKL_CLOUD_CF_ORIGIN_SNI:-}
 
   # --- Per-org end date (inert until an org is given one) ----------------------------------

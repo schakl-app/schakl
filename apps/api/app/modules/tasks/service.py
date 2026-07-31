@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import bindparam, case, func, select
+from sqlalchemy import and_, bindparam, case, column, func, select, table
 from sqlalchemy import text as sql_text
 
 from app.core.auth.models import User
@@ -59,6 +59,8 @@ from app.modules.tasks.schemas import (
     CommentCreate,
     CommentRead,
     CommentUpdate,
+    DashboardTaskGroup,
+    DashboardTaskItem,
     LabelCreate,
     LabelRead,
     LabelUpdate,
@@ -113,6 +115,22 @@ def _rank(column: Any, order: Sequence[str]) -> Any:
 # every uppercase one. ``assignee`` orders by the employee's display name, never by their user id
 # — a list sorted by a person has to read that way (docs/UX.md).
 _PRIORITY_ORDER = (TaskPriority.LOW.value, TaskPriority.NORMAL.value, TaskPriority.HIGH.value)
+# Newest comments the task card carries. The activity trail beside it has always capped at 50;
+# the discussion had no bound at all, so a task people talk on for a year grew its detail
+# response without limit (docs/PERFORMANCE.md — bound every read).
+_COMMENT_CAP = 200
+_dashboard_projects = table(
+    "projects",
+    column("id"),
+    column("org_id"),
+    column("name"),
+)
+_dashboard_companies = table(
+    "companies",
+    column("id"),
+    column("org_id"),
+    column("name"),
+)
 
 # Status is no longer a fixed vocabulary, so its rank is built per request from the org's
 # configured order (see ``list``). Everything else is static.
@@ -406,8 +424,7 @@ class TaskService:
             return [TaskListItem.model_validate(t) for t in tasks], total
         return await self._list_items(tasks), total
 
-    async def my_open(self, *, limit: int = 20) -> list[TaskListItem]:
-        """Unfinished tasks assigned to the current user (My Day)."""
+    async def _my_open_rows(self, limit: int) -> list[Task]:
         statuses = await load_statuses(self.ctx.session, self.ctx.org.id)
         stmt = (
             self.repo.scoped_select()
@@ -416,8 +433,74 @@ class TaskService:
             .order_by(Task.due_date.asc().nulls_last(), Task.created_at.desc())
             .limit(limit)
         )
-        tasks = (await self.ctx.session.execute(stmt)).scalars().all()
-        return await self._list_items(tasks)
+        return list((await self.ctx.session.execute(stmt)).scalars().all())
+
+    async def my_open(self, *, limit: int = 20) -> list[TaskListItem]:
+        """Unfinished tasks assigned to the current user (My Day)."""
+        return await self._list_items(await self._my_open_rows(limit))
+
+    async def dashboard_mine(self, *, limit: int = 20) -> list[DashboardTaskItem]:
+        """Personal tile rows without full-card label/checklist/comment enrichment."""
+        return [DashboardTaskItem.model_validate(task) for task in await self._my_open_rows(limit)]
+
+    async def dashboard_groups(self) -> list[DashboardTaskGroup]:
+        """Open task counts by project/company without shipping all source rows to the web."""
+        statuses = await load_statuses(self.ctx.session, self.ctx.org.id)
+        open_keys = non_terminal_keys(statuses)
+        today = rec_mod.today_local()
+        # Start from the repository-scoped relation, not the bare tasks table: portal visibility
+        # and a manager's company horizon remain API-boundary guarantees even on an aggregate.
+        visible = self.repo.scoped_select().subquery()
+        entity_type = case(
+            (visible.c.project_id.is_not(None), "project"),
+            (visible.c.company_id.is_not(None), "company"),
+            else_="none",
+        )
+        entity_id = func.coalesce(visible.c.project_id, visible.c.company_id)
+        label = case(
+            (visible.c.project_id.is_not(None), _dashboard_projects.c.name),
+            (visible.c.company_id.is_not(None), _dashboard_companies.c.name),
+        )
+        count = func.count()
+        overdue = func.count().filter(visible.c.due_date < today)
+        stmt = (
+            select(
+                entity_type.label("entity_type"),
+                entity_id.label("entity_id"),
+                label.label("label"),
+                count.label("count"),
+                overdue.label("overdue"),
+            )
+            .select_from(visible)
+            .outerjoin(
+                _dashboard_projects,
+                and_(
+                    _dashboard_projects.c.org_id == visible.c.org_id,
+                    _dashboard_projects.c.id == visible.c.project_id,
+                ),
+            )
+            .outerjoin(
+                _dashboard_companies,
+                and_(
+                    _dashboard_companies.c.org_id == visible.c.org_id,
+                    _dashboard_companies.c.id == visible.c.company_id,
+                ),
+            )
+            .where(visible.c.status.in_(open_keys))
+            .group_by(entity_type, entity_id, label)
+            .order_by(count.desc(), label.asc().nulls_last())
+        )
+        rows = (await self.ctx.session.execute(stmt)).all()
+        return [
+            DashboardTaskGroup(
+                entity_type=row.entity_type,
+                entity_id=row.entity_id,
+                label=row.label,
+                count=int(row.count),
+                overdue=int(row.overdue),
+            )
+            for row in rows
+        ]
 
     # ------------------------------------------------------------------ #
     # Detail
@@ -456,17 +539,26 @@ class TaskService:
                     if i.checklist_id == read.id
                 ]
 
-        comment_rows = (
-            await self.ctx.session.execute(
-                select(TaskComment, User)
-                .outerjoin(User, User.id == TaskComment.author_user_id)
-                .where(
-                    TaskComment.org_id == self.ctx.org.id,
-                    TaskComment.task_id == task_id,
-                )
-                .order_by(TaskComment.created_at.asc())
+        # Bounded like the activity trail below it: a long-running task's discussion is otherwise
+        # unbounded, and opening the card would load every comment ever written on it. Newest
+        # ``_COMMENT_CAP`` selected, then reversed — the card reads oldest-first, so taking the
+        # *first* 200 would have shown the oldest and hidden the conversation people came for.
+        comment_rows = list(
+            reversed(
+                (
+                    await self.ctx.session.execute(
+                        select(TaskComment, User)
+                        .outerjoin(User, User.id == TaskComment.author_user_id)
+                        .where(
+                            TaskComment.org_id == self.ctx.org.id,
+                            TaskComment.task_id == task_id,
+                        )
+                        .order_by(TaskComment.created_at.desc())
+                        .limit(_COMMENT_CAP)
+                    )
+                ).all()
             )
-        ).all()
+        )
         detail.comments = []
         for comment, author in comment_rows:
             name, deleted = _attribution(author, comment.author_name)

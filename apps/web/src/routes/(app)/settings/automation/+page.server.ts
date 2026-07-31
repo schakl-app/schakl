@@ -7,7 +7,7 @@ import { apiFor } from "$lib/core/session";
 import type { Actions, PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async (event) => {
-  if (!can(event.locals.user, "automation.rule.read")) throw redirect(303, "/");
+  if (!can(event.locals.user, "automation.rule.read")) throw redirect(303, "/settings");
   const { data } = await apiFor(event).GET("/api/v1/automation/rules");
   return {
     rules: data ?? [],

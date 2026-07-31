@@ -206,6 +206,51 @@ async def test_regenerating_a_spread_pattern_places_nothing_new(client_for) -> N
         assert len((await _overview(c, headers, member.id))["days"]) == first
 
 
+async def test_a_later_run_does_not_add_extra_days(client_for, monkeypatch) -> None:
+    """Idempotent across *time*, not just across runs: the monthly cron re-runs the generator at
+    a later ``today``, and the quota universe is anchored — never the window still ahead. The
+    pre-fix behaviour prorated ``days_per_year`` against the remaining weeks only, while the
+    front-loaded days already placed fell out of both the candidate list and the placed count,
+    so every cron run derived a fresh surplus and quietly handed out an extra day."""
+    t = await make_tenant("ft-drift")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _member(c, headers, "drift@example.com")
+        await _contract(c, headers, member.id, "36")
+        anchor = _next_weekday(4)
+        created = await c.post(
+            "/api/v1/leave/recurring",
+            json={
+                "user_id": str(member.id),
+                "leave_type_id": await _free_time_id(c, headers),
+                "anchor_date": anchor.isoformat(),
+                "days_per_year": 26,
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        # The anchor's year is fully inside the first run's horizon, so its placed hours are
+        # final on day one — a later run may reveal more of *next* year, never add to this one.
+        before = float((await _overview(c, headers, member.id, anchor.year))["placed_hours"])
+
+        from app.modules.leave.service import LeaveService
+
+        later = date.today() + timedelta(days=35)
+
+        async def _later_today(self) -> date:
+            return later
+
+        monkeypatch.setattr(LeaveService, "_org_today", _later_today)
+        again = await c.patch(
+            f"/api/v1/leave/recurring/{created.json()['id']}",
+            json={"note": "cron, a month on"},
+            headers=headers,
+        )
+        assert again.status_code == 200, again.text
+        after = float((await _overview(c, headers, member.id, anchor.year))["placed_hours"])
+        assert after == before, f"a later run grew the year from {before} to {after} hours"
+
+
 async def test_interval_mode_is_untouched(client_for) -> None:
     """``days_per_year`` omitted keeps the #107 cadence exactly — every pattern already on file."""
     t = await make_tenant("ft-interval")

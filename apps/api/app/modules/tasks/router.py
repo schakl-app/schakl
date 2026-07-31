@@ -28,6 +28,8 @@ from app.modules.tasks.schemas import (
     CommentCreate,
     CommentRead,
     CommentUpdate,
+    DashboardTaskGroup,
+    DashboardTaskItem,
     LabelCreate,
     LabelRead,
     LabelUpdate,
@@ -101,6 +103,31 @@ async def list_tasks(
         count=count,
     )
     return Page(items=items, total=total, limit=limit, offset=offset)
+
+
+@router.get(
+    "/dashboard-groups",
+    response_model=list[DashboardTaskGroup],
+    dependencies=[require_permission("tasks.task.read")],
+)
+async def dashboard_groups(
+    ctx: RequestContext = Depends(require_context),
+) -> list[DashboardTaskGroup]:
+    """Open-task counts grouped by project, then company, in one compact query."""
+    return await TaskService(ctx).dashboard_groups()
+
+
+@router.get(
+    "/dashboard-mine",
+    response_model=list[DashboardTaskItem],
+    dependencies=[require_permission("tasks.task.read")],
+)
+async def dashboard_mine(
+    limit: int = Query(20, ge=1, le=100),
+    ctx: RequestContext = Depends(require_context),
+) -> list[DashboardTaskItem]:
+    """Compact personal task list for the dashboard tile."""
+    return await TaskService(ctx).dashboard_mine(limit=limit)
 
 
 @router.get(

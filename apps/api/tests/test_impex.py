@@ -6,6 +6,7 @@ from __future__ import annotations
 import csv
 import io
 
+from openpyxl import Workbook
 from sqlalchemy import text
 
 from app.db import async_session_maker, set_current_org
@@ -31,6 +32,21 @@ def _csv_bytes(header: list[str], rows: list[list[str]]) -> bytes:
     writer.writerow(header)
     writer.writerows(rows)
     return buffer.getvalue().encode("utf-8")
+
+
+def _xlsx_bytes(header: list[str], rows: list[list[str]]) -> bytes:
+    """The same table as :func:`_csv_bytes`, as a workbook.
+
+    Rows are appended as given, so a **short** row stays short: a spreadsheet stops writing
+    cells at the last one it has, and the column of a row that ended early never arrives.
+    """
+    workbook = Workbook()
+    workbook.active.append(header)
+    for row in rows:
+        workbook.active.append(row)
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
 
 
 def _file(content: bytes) -> dict:
@@ -342,6 +358,229 @@ async def test_national_phone_numbers_import_using_the_org_country(client_for) -
         # The row's own country wins over the org's — a Belgian client stays Belgian.
         assert phones["Belgian BV"] == "+32475123456"
         assert phones["Intl BV"] == "+31206241111"
+
+
+async def test_one_bad_phone_is_a_row_error_and_the_blanks_are_not(client_for) -> None:
+    """The reported file's shape (issue #289): valid international numbers, blank cells, and
+    a single number one digit short.
+
+    Phone validation used to live only in the service, which runs *after* the report is built
+    — so the preview said the file was clean and the commit came back as a request-level 422
+    naming no row. The user then went looking at the 19 empty cells and the 85 good numbers.
+    """
+    t = await make_tenant("impex-phone-bad")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        rows = [
+            ["Acme", "+31 6 1234 5678"],
+            ["Blank BV", ""],           # a true blank
+            ["Spaces BV", "   "],       # whitespace only
+            ["Short BV", "+3161234567"],  # a digit short — the only real problem
+            ["Beta", "+31 20 624 1111"],
+        ]
+        content = _csv_bytes(["name", "phone"], rows)
+        preview = (
+            await c.post(
+                "/api/v1/impex/company/import", files=_file(content), headers=headers
+            )
+        ).json()
+        # The dry run names the row and the column, and blames nothing else.
+        assert preview["errors"] == [
+            {"row": 4, "field": "phone", "message_key": "errors.invalid_phone"}
+        ]
+        assert preview["error_count"] == 1
+
+        # And a commit of the same file is refused as a whole, writing nothing.
+        commit = (
+            await c.post(
+                "/api/v1/impex/company/import",
+                params={"dry_run": "false"},
+                files=_file(content),
+                headers=headers,
+            )
+        ).json()
+        assert commit["applied"] is False
+        assert (await c.get("/api/v1/companies", headers=headers)).json()["total"] == 0
+
+        # Corrected, the very same file imports — blanks and all.
+        rows[3][1] = "+31612345670"
+        fixed = (
+            await c.post(
+                "/api/v1/impex/company/import",
+                params={"dry_run": "false"},
+                files=_file(_csv_bytes(["name", "phone"], rows)),
+                headers=headers,
+            )
+        ).json()
+        assert (fixed["errors"], fixed["applied"]) == ([], True)
+        listing = (await c.get("/api/v1/companies", headers=headers)).json()
+        phones = {i["name"]: i["phone"] for i in listing["items"]}
+        assert phones == {
+            "Acme": "+31612345678",
+            "Blank BV": None,       # an empty optional cell clears, never rejects
+            "Spaces BV": None,      # and whitespace is an empty cell
+            "Short BV": "+31612345670",
+            "Beta": "+31206241111",
+        }
+
+
+async def test_an_xlsx_reports_a_phone_exactly_as_the_same_csv_does(client_for) -> None:
+    """The reported file was a workbook, and Excel is where the ambiguity lives: a blank cell,
+    a row that ends early and a formatted-but-empty cell all have to mean the same thing they
+    mean in a CSV, and a bad number has to name the same data row (issue #289)."""
+    t = await make_tenant("impex-phone-xlsx")
+    headers = await auth_cookie(t.user)
+    header = ["name", "phone"]
+    rows = [
+        ["Acme", "0612345678"],
+        ["Trailing BV"],            # the row simply ends — no phone cell at all
+        ["Blank BV", ""],
+        ["Short BV", "+3161234567"],  # a digit short, on data row 4 either way
+    ]
+
+    async with client_for(t.host) as c:
+        for source, content in (
+            ("import.csv", _csv_bytes(header, rows)),
+            ("import.xlsx", _xlsx_bytes(header, rows)),
+        ):
+            report = (
+                await c.post(
+                    "/api/v1/impex/company/import",
+                    files={"file": (source, content, "application/octet-stream")},
+                    headers=headers,
+                )
+            ).json()
+            assert report["errors"] == [
+                {"row": 4, "field": "phone", "message_key": "errors.invalid_phone"}
+            ], source
+
+        rows[3][1] = "+31612345670"
+        for source, content in (
+            ("import.csv", _csv_bytes(header, rows)),
+            ("import.xlsx", _xlsx_bytes(header, rows)),
+        ):
+            report = (
+                await c.post(
+                    "/api/v1/impex/company/import",
+                    params={"dry_run": "false"},
+                    files={"file": (source, content, "application/octet-stream")},
+                    headers=headers,
+                )
+            ).json()
+            assert (report["errors"], report["applied"]) == ([], True), source
+            listing = (await c.get("/api/v1/companies", headers=headers)).json()
+            phones = {i["name"]: i["phone"] for i in listing["items"]}
+            assert phones == {
+                "Acme": "+31612345678",
+                "Trailing BV": None,
+                "Blank BV": None,
+                "Short BV": "+31612345670",
+            }, source
+
+
+async def test_contact_phone_columns_report_their_own_row_and_field(client_for) -> None:
+    """Both places a contact's number reaches the importer: its own entity, and the column
+    contacts contributes to the company import (§17)."""
+    t = await make_tenant("impex-phone-contact")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        report = (
+            await c.post(
+                "/api/v1/impex/contact/import",
+                files=_file(
+                    _csv_bytes(
+                        ["first_name", "email", "phone"],
+                        [
+                            ["Ann", "ann@x.nl", "0612345678"],
+                            ["Bob", "bob@x.nl", ""],
+                            ["Cee", "cee@x.nl", "0612"],
+                        ],
+                    )
+                ),
+                headers=headers,
+            )
+        ).json()
+        assert report["errors"] == [
+            {"row": 3, "field": "phone", "message_key": "errors.invalid_phone"}
+        ]
+
+        # The contributed column blames itself, not the company's own phone column.
+        report = (
+            await c.post(
+                "/api/v1/impex/company/import",
+                files=_file(
+                    _csv_bytes(
+                        ["name", "phone", "contact_first_name", "contact_phone"],
+                        [["Acme", "0612345678", "Ann", "06123"]],
+                    )
+                ),
+                headers=headers,
+            )
+        ).json()
+        assert report["errors"] == [
+            {"row": 1, "field": "contact_phone", "message_key": "errors.invalid_phone"}
+        ]
+
+        # Valid, it lands on the contact as E.164 — the preview and the write agree.
+        assert (
+            await c.post(
+                "/api/v1/impex/company/import",
+                params={"dry_run": "false"},
+                files=_file(
+                    _csv_bytes(
+                        ["name", "phone", "contact_first_name", "contact_phone"],
+                        [["Acme", "0612345678", "Ann", "0612345679"]],
+                    )
+                ),
+                headers=headers,
+            )
+        ).json()["applied"] is True
+        contacts = (await c.get("/api/v1/contacts", headers=headers)).json()
+        assert [i["phone"] for i in contacts["items"]] == ["+31612345679"]
+
+
+async def test_a_legacy_freeform_phone_still_round_trips(client_for) -> None:
+    """Rows predating validation (issue #256) hold freeform strings, and their own service
+    revalidates a phone only when it *changes*. An export→import round-trip must inherit that
+    exactly: the preview is a pre-check of the write, never a stricter gate of its own."""
+    t = await make_tenant("impex-phone-legacy")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Oud BV"}, headers=headers)
+        ).json()
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            await session.execute(
+                text("UPDATE companies SET phone = :phone WHERE id = :id"),
+                {"phone": "010-1234567 (privé)", "id": company["id"]},
+            )
+            await session.commit()
+
+        export = (await c.get("/api/v1/impex/company/export", headers=headers)).content
+        report = (
+            await c.post(
+                "/api/v1/impex/company/import",
+                params={"dry_run": "false"},
+                files={"file": ("export.csv", export, "text/csv")},
+                headers=headers,
+            )
+        ).json()
+        assert (report["errors"], report["updates"]) == ([], 1)
+        listing = (await c.get("/api/v1/companies", headers=headers)).json()
+        assert listing["items"][0]["phone"] == "010-1234567 (privé)"
+
+        # Editing it, though, does have to be a valid number.
+        report = (
+            await c.post(
+                "/api/v1/impex/company/import",
+                files=_file(_csv_bytes(["name", "phone"], [["Oud BV", "010-12345"]])),
+                headers=headers,
+            )
+        ).json()
+        assert report["errors"] == [
+            {"row": 1, "field": "phone", "message_key": "errors.invalid_phone"}
+        ]
 
 
 async def test_commit_with_errors_applies_nothing(client_for) -> None:

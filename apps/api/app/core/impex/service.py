@@ -48,6 +48,8 @@ from app.core.impex.schemas import (
     ImportRowError,
 )
 from app.core.impex.spec import ImpexColumn, ImpexDescriptor, ImpexExtension
+from app.core.phone import normalize_phone
+from app.core.region import is_valid_country, org_default_country
 from app.core.tenancy import RequestContext
 from app.errors import AppError
 
@@ -123,6 +125,11 @@ class _Row:
     index: int                                    # 1-based data row number (header is 0)
     values: dict[str, Any] = field(default_factory=dict)
     fk: dict[str, tuple[ImpexColumn, str]] = field(default_factory=dict)
+    #: ``{column key: (column, contributing module or None, raw cell)}`` — held back until the
+    #: whole row is parsed and its upsert target known, because both are inputs: the region
+    #: comes from a *sibling* column the file may list after this one, and an unchanged value
+    #: on an existing row is grandfathered (:meth:`ImpexService._normalize_phones`).
+    phone: dict[str, tuple[ImpexColumn, str | None, str]] = field(default_factory=dict)
     custom: dict[str, str] = field(default_factory=dict)  # raw cells, "" = clear
     #: Coerced values destined for a contributing module, keyed by extension module name.
     #: Kept apart from ``values`` because they are written by a *different* service, after the
@@ -288,10 +295,12 @@ class ImpexService:
         self._mark_duplicate_targets(resolved)
 
         custom_keys = {target.key for target in targets if target.source == "custom"}
+        default_region = await self._default_region(rows)
         errors: list[ImportRowError] = []
         plans: list[tuple[str, Any, _Row]] = []
         creates = updates = 0
         for row, entity in resolved:
+            self._normalize_phones(row, entity, default_region)
             self._validate_custom(row, defs, custom_keys, entity)
             if row.errors:
                 errors.extend(
@@ -677,6 +686,12 @@ class ImpexService:
                     values[column.target] = _email_adapter.validate_python(cell)
                 except ValidationError:
                     row.errors.append((column.key, "errors.invalid_email"))
+            elif column.data_type == "phone":
+                # Deferred: needs the row's country column (which may come later in the file)
+                # and its upsert target. Resolved in _normalize_phones once both exist.
+                row.phone[column.key] = (
+                    column, target.module if target.source == "extension" else None, cell
+                )
             elif column.data_type == "select":
                 if cell in column.options:
                     values[column.target] = cell
@@ -810,6 +825,81 @@ class ImpexService:
             row.errors.append((row.nk_key, "impex.errors.ambiguous_match"))
             return None
         return matches[0] if matches else None
+
+    async def _default_region(self, rows: list[_Row]) -> str | None:
+        """The org's country — read **once** for the whole file, and only if it is needed.
+
+        A file with no phone column, or one whose phone cells are all blank, never touches
+        ``org_settings`` (docs/PERFORMANCE.md), exactly as the services' own lazy lookup
+        doesn't.
+        """
+        if not any(row.phone for row in rows):
+            return None
+        return await org_default_country(self.ctx.session, self.ctx.org.id)
+
+    def _normalize_phones(
+        self, row: _Row, entity: Any | None, default_region: str | None
+    ) -> None:
+        """Store each phone cell as E.164, or make it this row's error (issue #289).
+
+        Phone validation lives in the service (:mod:`app.core.phone`), which runs *after* the
+        importer has built its report — so an invalid number used to escape the dry run and
+        come back as a request-level 422 naming no row. The whole file then looked suspect,
+        including the blank cells and the 85 valid numbers, when one cell was a digit short.
+
+        Two rules keep this a genuine pre-check rather than a second, stricter gate:
+
+        * **The region is resolved exactly as the owning service resolves it** — the row's own
+          country column (the value it will be *written* with, else the stored one), otherwise
+          the org's. A different region here would reject a number the write accepts.
+        * **An unchanged value on an existing row is not revalidated**, mirroring issue #256's
+          grandfathering: rows predating validation hold freeform strings, and re-importing an
+          export must not fail on a number nobody edited. A *contributed* column (§17) has no
+          such comparison available — the contributor matches its own row at write time, which
+          a dry run must not do — so its cells are always validated, as a create would be.
+        """
+        for column, module, cell in row.phone.values():
+            values = row.extension.setdefault(module, {}) if module else row.values
+            stored = (
+                getattr(entity, column.target, None)
+                if entity is not None and not module
+                else None
+            )
+            if stored is not None and cell == stored:
+                values[column.target] = cell  # grandfathered; the service skips it too
+                continue
+            try:
+                values[column.target] = normalize_phone(
+                    cell,
+                    field=column.key,
+                    region=self._phone_region(column, values, entity, default_region),
+                )
+            except AppError as exc:
+                row.errors.append((column.key, exc.message_key))
+
+    def _phone_region(
+        self,
+        column: ImpexColumn,
+        values: dict[str, Any],
+        entity: Any | None,
+        default_region: str | None,
+    ) -> str | None:
+        """Which country a national number in this row is read in.
+
+        Presence beats truthiness: a row that explicitly *clears* its country is read in the
+        org's, not in the country it is about to stop having — which is what the entity's own
+        service does with the same two values.
+        """
+        if column.region_field:
+            if column.region_field in values:
+                code = values[column.region_field]
+            elif entity is not None:
+                code = getattr(entity, column.region_field, None)
+            else:
+                code = None
+            if is_valid_country(code):
+                return str(code).upper()
+        return default_region
 
     def _validate_custom(
         self,

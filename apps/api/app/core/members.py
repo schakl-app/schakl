@@ -48,7 +48,7 @@ from app.core.permissions.service import (
     set_membership_roles,
 )
 from app.core.portal import portal_user_ids
-from app.core.scope import resolve_company_scope
+from app.core.scope import resolve_company_scope_details
 from app.core.tenancy import RequestContext, require_context
 from app.errors import AppError
 
@@ -236,10 +236,15 @@ async def list_members(ctx: RequestContext = Depends(require_context)) -> list[M
     for m, _ in rows:
         if client_role_ids.isdisjoint(held.get(m.id, [])):
             continue
-        scope = await resolve_company_scope(ctx.session, ctx.org.id, m.id)
+        # The ``isdisjoint`` above *is* the client-role floor's own query, already answered
+        # from ``held`` — so hand it in rather than making the resolver re-run an ``EXISTS``
+        # per client member (#290).
+        resolution = await resolve_company_scope_details(
+            ctx.session, ctx.org.id, m.id, holds_client=True
+        )
         # ``None`` is *unrestricted*, not empty — the two must never collapse into one falsy
         # check (a client always resolves to a set, but the seam's contract is the seam's).
-        if scope is not None and not scope:
+        if resolution.scope is not None and not resolution.scope:
             scope_empty.add(m.id)
     return [
         _member_read(

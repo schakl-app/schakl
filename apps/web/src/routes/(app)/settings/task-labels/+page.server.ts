@@ -8,7 +8,7 @@ import type { Actions, PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async (event) => {
   // Manager-only screen (label writes themselves only need staff access).
-  if (!can(event.locals.user, "tasks.label.write")) throw redirect(303, "/");
+  if (!can(event.locals.user, "tasks.label.write")) throw redirect(303, "/settings");
   const { data } = await apiFor(event).GET("/api/v1/tasks/labels");
   return { labels: data ?? [] };
 };

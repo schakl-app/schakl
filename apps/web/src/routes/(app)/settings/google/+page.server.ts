@@ -10,7 +10,7 @@ import type { Actions, PageServerLoad } from "./$types";
 // toggles, Drive layout and gmail policy. Admin-only; the client secret is write-only — the
 // API reports `client_secret_configured` and never plays the value back (the SSO pattern).
 export const load: PageServerLoad = async (event) => {
-  if (!can(event.locals.user, "google.settings.manage")) throw redirect(303, "/");
+  if (!can(event.locals.user, "google.settings.manage")) throw redirect(303, "/settings");
   const api = apiFor(event);
   const [settings, connections, members] = await Promise.all([
     api.GET("/api/v1/google/settings"),

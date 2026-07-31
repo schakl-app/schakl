@@ -149,6 +149,19 @@
       <p class="mt-1 text-xs text-text-muted">{t("instance.owner_email_hint")}</p>
     </div>
     <div>
+      <label for="new-domain" class="mb-1 block text-sm font-medium text-text">
+        {t("instance.domain.create_label")}
+      </label>
+      <input
+        id="new-domain"
+        name="custom_domain"
+        maxlength="255"
+        placeholder="crm.klant.nl"
+        class="{inputClass} font-mono"
+      />
+      <p class="mt-1 text-xs text-text-muted">{t("instance.domain.create_hint")}</p>
+    </div>
+    <div>
       <label for="new-plan" class="mb-1 block text-sm font-medium text-text">
         {t("cloud.plan.label")}
       </label>

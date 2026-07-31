@@ -1,136 +1,27 @@
-"""Custom-domain claim & verification for the current org (issue #26).
+"""Custom-domain wizard endpoints for the current org (issues #26, #292).
 
-An org manager claims a domain, proves control via a DNS TXT record, and only then does the
-domain start resolving to their org — an unverified claim never routes traffic, otherwise
-anyone could park a competitor's hostname on their own org and phish it. Global uniqueness
-(the one legitimately cross-tenant check) goes through ``app.core.instance.repo``, and every
-step writes the instance audit trail.
-
-The TXT challenge: ``_schakl-challenge.<domain>`` must contain the issued token.
+Thin REST surface over :mod:`app.core.domainflow` — a staged, resumable flow: claim →
+prove ownership (DNS TXT) → point traffic DNS / certificate issuance → active. ``GET``
+reads the persisted state without touching the network (SSR loads stay fast, and the
+wizard resumes across sessions from it); ``POST /check`` is the single probe-and-advance
+action the wizard polls, returning per-layer diagnostics instead of one generic error.
 """
 
 from __future__ import annotations
 
-import logging
-import re
-import secrets
-from datetime import UTC, datetime
-
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from app.config import settings
-from app.core import dnscheck
-from app.core.instance import audit, repo
+from app.core import domainflow
+from app.core.domainflow import DomainCheckReport, DomainStatus
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
-from app.errors import AppError
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/meta/tenant/domain", tags=["meta"])
-
-_HOSTNAME_RE = re.compile(
-    r"^(?=.{4,255}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$"
-)
-_CHALLENGE_PREFIX = "_schakl-challenge"
-
-
-class DomainStatus(BaseModel):
-    custom_domain: str | None
-    custom_domain_verified_at: datetime | None
-    pending_domain: str | None
-    verification_token: str | None
-    txt_record_name: str | None
-    txt_record_value: str | None
-    # Cloud (#202): where the tenant points their CNAME so traffic reaches this instance
-    # (TLS is issued automatically once verified). None on self-host — routing there is
-    # the operator's own ingress concern.
-    cname_target: str | None = None
 
 
 class DomainClaim(BaseModel):
     domain: str = Field(min_length=4, max_length=255)
-
-
-def _cname_target() -> str | None:
-    if not settings.is_cloud:
-        return None
-    from app.core.cloud.ingress import cname_target
-
-    return cname_target()
-
-
-async def _sync_cloud_ingress(ctx: RequestContext) -> None:
-    """Keep the Traefik custom-domain fragment in step with a verify/clear (#202).
-    No-op on self-host; never fails the request (sync_ingress logs and swallows)."""
-    if not settings.is_cloud:
-        return
-    from app.core.cloud.ingress import sync_ingress
-
-    await sync_ingress(ctx.session)
-
-
-async def _register_cloudflare_hostname(domain: str) -> str | None:
-    """Register ``domain`` as a Cloudflare custom hostname; returns its id, or None when the
-    integration is off (every self-host install, and any cloud box without a token).
-
-    Called **before** the org row is mutated, so a Cloudflare outage leaves the domain
-    unverified rather than verified-but-unreachable. That is the honest failure: the customer
-    retries, instead of being told their domain is live while the edge has no certificate for
-    it. The clear path takes the opposite trade-off — see :func:`_release_cloudflare_hostname`.
-    """
-    from app.core.cloud.cloudflare import (
-        CloudflareError,
-        cloudflare_configured,
-        ensure_custom_hostname,
-    )
-
-    if not cloudflare_configured():
-        return None
-    try:
-        return await ensure_custom_hostname(domain)
-    except CloudflareError as exc:
-        logger.warning("cloudflare custom hostname failed for %s: %s", domain, exc)
-        raise AppError(
-            "cloudflare_failed", "errors.cloudflare_failed", status_code=502
-        ) from exc
-
-
-async def _release_cloudflare_hostname(hostname_id: str | None, domain: str | None) -> None:
-    """Best-effort removal of the custom hostname behind a cleared domain.
-
-    Unlike registration this never blocks the request: an org must always be able to drop its
-    custom domain, and a leftover Cloudflare record is recoverable (the next verify adopts it,
-    and it routes nothing meanwhile because ``orgs.custom_domain`` no longer resolves).
-    """
-    from app.core.cloud.cloudflare import (
-        CloudflareError,
-        cloudflare_configured,
-        delete_custom_hostname,
-    )
-
-    if not hostname_id or not cloudflare_configured():
-        return
-    try:
-        await delete_custom_hostname(hostname_id)
-    except CloudflareError:
-        logger.exception("could not delete cloudflare custom hostname for %s", domain)
-
-
-def _status(ctx: RequestContext) -> DomainStatus:
-    org = ctx.org
-    return DomainStatus(
-        custom_domain=org.custom_domain,
-        custom_domain_verified_at=org.custom_domain_verified_at,
-        pending_domain=org.pending_domain,
-        verification_token=org.domain_verification_token,
-        txt_record_name=(
-            f"{_CHALLENGE_PREFIX}.{org.pending_domain}" if org.pending_domain else None
-        ),
-        txt_record_value=org.domain_verification_token,
-        cname_target=_cname_target(),
-    )
 
 
 @router.get(
@@ -139,7 +30,7 @@ def _status(ctx: RequestContext) -> DomainStatus:
     dependencies=[require_permission("settings.domain.read")],
 )
 async def domain_status(ctx: RequestContext = Depends(require_context)) -> DomainStatus:
-    return _status(ctx)
+    return domainflow.status_for(ctx.org)
 
 
 @router.post(
@@ -150,63 +41,24 @@ async def domain_status(ctx: RequestContext = Depends(require_context)) -> Domai
 async def claim_domain(
     payload: DomainClaim, ctx: RequestContext = Depends(require_context)
 ) -> DomainStatus:
-    domain = payload.domain.strip().lower().rstrip(".")
-    if not _HOSTNAME_RE.fullmatch(domain) or domain.endswith("." + settings.base_domain.lower()):
-        # Hosts under the base domain are routed by slug; claiming one here could only
-        # shadow another org.
-        raise AppError(
-            "validation",
-            "errors.validation",
-            status_code=422,
-            fields={"domain": "errors.invalid_domain"},
-        )
-    if await repo.domain_taken(ctx.session, domain, exclude_org_id=ctx.org.id):
-        raise AppError("domain_taken", "errors.domain_taken", status_code=409)
-
-    ctx.org.pending_domain = domain
-    ctx.org.domain_verification_token = secrets.token_hex(16)
-    await ctx.session.flush()
-    await audit.record(
-        ctx.session, actor=ctx.user, action="domain.claim", org=ctx.org,
-        detail={"domain": domain},
-    )
-    return _status(ctx)
+    await domainflow.claim(ctx.session, ctx.user, ctx.org, payload.domain)
+    return domainflow.status_for(ctx.org)
 
 
 @router.post(
-    "/verify",
-    response_model=DomainStatus,
+    "/check",
+    response_model=DomainCheckReport,
     dependencies=[require_permission("settings.domain.write")],
 )
-async def verify_domain(ctx: RequestContext = Depends(require_context)) -> DomainStatus:
-    org = ctx.org
-    if not org.pending_domain or not org.domain_verification_token:
-        raise AppError("not_found", "errors.not_found", status_code=404)
-    records = await dnscheck.txt_records(f"{_CHALLENGE_PREFIX}.{org.pending_domain}")
-    if org.domain_verification_token not in records:
-        raise AppError(
-            "domain_verification_failed", "errors.domain_verification_failed", status_code=400
-        )
-    # Re-check uniqueness at promotion time: another org may have verified it meanwhile.
-    if await repo.domain_taken(ctx.session, org.pending_domain, exclude_org_id=org.id):
-        raise AppError("domain_taken", "errors.domain_taken", status_code=409)
+async def check_domain(ctx: RequestContext = Depends(require_context)) -> DomainCheckReport:
+    """Probe the current stage's DNS/edge conditions, advance whatever they satisfy, and
+    report each layer separately (ownership TXT, traffic DNS, hostname, certificate).
 
-    # Cloudflare first, while the org row still says "unverified": if the edge cannot be
-    # configured, nothing here claims the domain is live.
-    hostname_id = await _register_cloudflare_hostname(org.pending_domain)
-
-    org.custom_domain = org.pending_domain
-    org.custom_domain_verified_at = datetime.now(UTC)
-    org.cf_hostname_id = hostname_id
-    org.pending_domain = None
-    org.domain_verification_token = None
-    await ctx.session.flush()
-    await audit.record(
-        ctx.session, actor=ctx.user, action="domain.verify", org=org,
-        detail={"domain": org.custom_domain},
-    )
-    await _sync_cloud_ingress(ctx)
-    return _status(ctx)
+    Deliberately a 200 even when nothing is satisfied yet: "your record has not propagated"
+    is a diagnostic, not an HTTP failure — the old single-shot verify's 400 is exactly the
+    collapsed error #292 replaces.
+    """
+    return await domainflow.run_checks(ctx.session, ctx.user, ctx.org)
 
 
 @router.delete(
@@ -214,22 +66,18 @@ async def verify_domain(ctx: RequestContext = Depends(require_context)) -> Domai
     response_model=DomainStatus,
     dependencies=[require_permission("settings.domain.write")],
 )
-async def clear_domain(ctx: RequestContext = Depends(require_context)) -> DomainStatus:
+async def clear_domain(
+    pending_only: bool = False, ctx: RequestContext = Depends(require_context)
+) -> DomainStatus:
     """Remove the custom domain (and any pending claim). The org keeps resolving via
-    ``<slug>.<base_domain>`` — the UI warns that this changes the org's address."""
-    org = ctx.org
-    cleared = org.custom_domain or org.pending_domain
-    hostname_id = org.cf_hostname_id
-    org.custom_domain = None
-    org.custom_domain_verified_at = None
-    org.cf_hostname_id = None
-    org.pending_domain = None
-    org.domain_verification_token = None
-    await ctx.session.flush()
-    await audit.record(
-        ctx.session, actor=ctx.user, action="domain.clear", org=org,
-        detail={"domain": cleared},
-    )
-    await _release_cloudflare_hostname(hostname_id, cleared)
-    await _sync_cloud_ingress(ctx)
-    return _status(ctx)
+    ``<slug>.<base_domain>`` — the UI warns that this changes the org's address.
+
+    ``pending_only=true`` abandons just the in-flight claim. That is what the wizard's
+    *cancel setup* means while a domain is already live: changing your mind about moving to a
+    new domain must never take the working one down with it.
+    """
+    if pending_only:
+        await domainflow.cancel_claim(ctx.session, ctx.user, ctx.org)
+    else:
+        await domainflow.clear(ctx.session, ctx.user, ctx.org)
+    return domainflow.status_for(ctx.org)

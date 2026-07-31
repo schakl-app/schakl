@@ -65,7 +65,19 @@
 
   const domain = $derived(data.domain);
   const website = $derived(data.website);
-  const hostingItems = $derived(data.hosting.map((h) => ({ value: h.id, label: h.name })));
+
+  // The website form's own bundle streams in behind the page (#290) — the hosting picker, the
+  // website custom fields and the hosting ones are only ever drawn inside a modal, and most
+  // visits never open one. Held in state, not awaited in the markup: a re-run load hands us a
+  // *new* promise, and an `{#await}` would fall back to its pending branch and remount the
+  // form, throwing away what the user had typed.
+  let websiteForm = $state<Awaited<typeof data.websiteForm> | null>(null);
+  $effect(() => {
+    void data.websiteForm.then((resolved) => (websiteForm = resolved));
+  });
+  const hostingItems = $derived(
+    (websiteForm?.hosting ?? []).map((h) => ({ value: h.id, label: h.name })),
+  );
 
   // Actions render only for holders of the matching permission (#253). The DNS refresh posts
   // a write on the API, so it follows domains.domain.write.
@@ -422,9 +434,9 @@
           />
           {t("websites.uptime")}
         </label>
-        {#if data.websiteDefinitions.length > 0}
+        {#if websiteForm && websiteForm.websiteDefinitions.length > 0}
           <CustomFieldsForm
-            definitions={data.websiteDefinitions}
+            definitions={websiteForm.websiteDefinitions}
             values={website?.custom ?? {}}
             locale={data.locale}
           />
@@ -475,7 +487,7 @@
   employees={data.employees}
   contacts={data.contacts}
   agencyLabel={data.agencyLabel}
-  definitions={data.hostingDefinitions}
+  definitions={websiteForm?.hostingDefinitions ?? []}
   locale={data.locale}
   initialCompanyId={domain.company_id ?? ""}
   error={form?.qcError ?? null}

@@ -147,6 +147,7 @@ async def _assert_subdomain_free(slug: str) -> None:
     """
     from app.core.cloud.cloudflare import (
         CloudflareError,
+        CloudflareNotEntitledError,
         cloudflare_configured,
         find_dns_record,
         subdomain_for,
@@ -156,6 +157,8 @@ async def _assert_subdomain_free(slug: str) -> None:
         return
     try:
         existing = await find_dns_record(subdomain_for(slug))
+    except CloudflareNotEntitledError as exc:
+        raise _not_entitled(exc, "read the zone's DNS records") from exc
     except CloudflareError as exc:
         raise AppError(
             "cloudflare_failed", "errors.cloudflare_failed", status_code=502
@@ -164,10 +167,23 @@ async def _assert_subdomain_free(slug: str) -> None:
         raise AppError("subdomain_taken", "errors.subdomain_taken", status_code=409)
 
 
+def _not_entitled(exc: Exception, what: str) -> AppError:
+    """Map a Cloudflare permission/entitlement refusal to its own code (#293).
+
+    Distinct from ``cloudflare_failed`` because the two need opposite responses: a transient
+    edge failure is worth retrying, a missing token scope or plan entitlement never is. The
+    operator sees Cloudflare's own words plus which call was refused; the caller sees a code
+    that does not tell them to try again.
+    """
+    logger.error("cloudflare refused to %s — operator action required: %s", what, exc)
+    return AppError("cloudflare_not_entitled", "errors.cloudflare_not_entitled", status_code=502)
+
+
 async def _create_subdomain_record(slug: str) -> str | None:
     """Create the org's proxied subdomain record; None when Cloudflare is not configured."""
     from app.core.cloud.cloudflare import (
         CloudflareError,
+        CloudflareNotEntitledError,
         cloudflare_configured,
         create_subdomain_record,
     )
@@ -176,6 +192,8 @@ async def _create_subdomain_record(slug: str) -> str | None:
         return None
     try:
         return await create_subdomain_record(slug)
+    except CloudflareNotEntitledError as exc:
+        raise _not_entitled(exc, f"create the DNS record for {slug}") from exc
     except CloudflareError as exc:
         raise AppError(
             "cloudflare_failed", "errors.cloudflare_failed", status_code=502

@@ -25,13 +25,23 @@ export const actions: Actions = {
       .trim()
       .toLowerCase();
     const ownerEmail = String(form.get("owner_email") ?? "").trim();
+    // Optional custom domain configured at creation (#292): operator-asserted, audited.
+    const customDomain = String(form.get("custom_domain") ?? "")
+      .trim()
+      .toLowerCase();
     if (!name || !slug) return fail(400, { error: "errors.required" });
     const { error } = await apiFor(event).POST("/api/v1/instance/orgs", {
-      body: { name, slug, owner_email: ownerEmail || null },
+      body: {
+        name,
+        slug,
+        owner_email: ownerEmail || null,
+        custom_domain: customDomain || null,
+        custom_domain_mode: "activate",
+      },
     });
     if (error) {
       const parsed = apiErrorKey(error);
-      return fail(400, { error: parsed.fields?.slug ?? parsed.key });
+      return fail(400, { error: parsed.fields?.domain ?? parsed.fields?.slug ?? parsed.key });
     }
     return { created: true };
   },

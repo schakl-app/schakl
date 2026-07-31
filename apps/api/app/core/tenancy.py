@@ -241,21 +241,27 @@ async def require_context(
         # via the resolver seam (the tables belong to the companies module). A wildcard
         # holder (owner) is never restricted, whatever rows exist — never lock the tenant
         # out (§15) — so resolution is skipped entirely for them.
-        from app.core.portal import portal_user_ids
-        from app.core.scope import resolve_company_scope
+        #
+        # The two facts the statement above already answered are handed *in*, never asked for
+        # again (docs/PERFORMANCE.md): ``holds_client`` short-circuits the client-role floor's
+        # own ``EXISTS``, and "did the portal source restrict?" is the same question as "is
+        # this user contact-linked", so ``is_portal`` reads off the resolution instead of
+        # re-running the contacts join. Together that was two extra round-trips on **every**
+        # non-owner request in the app — including every ordinary staff one, which paid a
+        # contacts query to be told it was not a client.
+        from app.core.scope import SCOPE_SOURCE_PORTAL, resolve_company_scope_details
 
-        company_scope = (
-            None
-            if permissions.wildcard
-            else await resolve_company_scope(session, org.id, membership.id)
-        )
-        # External login (#193 + #274): the client role already marks one, so the contact-link
-        # lookup is skipped when it does — and a client with no contact link is external too.
-        is_portal = (
-            False
-            if permissions.wildcard
-            else bool(holds_client) or bool(await portal_user_ids(session, org.id, {user.id}))
-        )
+        if permissions.wildcard:
+            company_scope: frozenset[uuid.UUID] | None = None
+            is_portal = False
+        else:
+            resolution = await resolve_company_scope_details(
+                session, org.id, membership.id, holds_client=bool(holds_client)
+            )
+            company_scope = resolution.scope
+            # External login (#193 + #274): the client role marks one, and so does a contact
+            # link — a client with no contact link is external too.
+            is_portal = bool(holds_client) or SCOPE_SOURCE_PORTAL in resolution.sources
 
         ctx = RequestContext(
             user=user,

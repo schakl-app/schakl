@@ -53,40 +53,32 @@ export const load: PageServerLoad = async (event) => {
   // The URL wins over the saved default so a sorted list stays shareable (docs/UX.md).
   const sort = params.get("sort") ?? resolved.sort ?? undefined;
 
+  // Only the URL-dependent read. The kind vocabulary, the member names and the company custom
+  // fields come from the section layout, which does not rerun on a search keystroke, a date
+  // click, an owner switch or a page step (#290).
   const api = apiFor(event);
-  const [list, kinds, members, companyDefinitions] = await Promise.all([
-    api.GET("/api/v1/interactions", {
-      params: {
-        query: {
-          limit: PAGE_SIZE,
-          offset,
-          q,
-          kind,
-          status: pending ? "pending" : undefined,
-          mine: mine || undefined,
-          owner_user_id: !mine ? owner : undefined,
-          date_from: from,
-          date_to: to,
-          sort,
-        },
+  const list = await api.GET("/api/v1/interactions", {
+    params: {
+      query: {
+        limit: PAGE_SIZE,
+        offset,
+        q,
+        kind,
+        status: pending ? "pending" : undefined,
+        mine: mine || undefined,
+        owner_user_id: !mine ? owner : undefined,
+        date_from: from,
+        date_to: to,
+        sort,
       },
-    }),
-    api.GET("/api/v1/interactions/kinds", { params: { query: { include_inactive: true } } }),
-    api.GET("/api/v1/members/lookup"),
-    // For the inline company quick-create (#115): the full dialog includes custom fields.
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "company" } },
-    }),
-  ]);
+    },
+  });
 
   return {
     items: list.data?.items ?? [],
     total: list.data?.total ?? 0,
     offset,
     limit: PAGE_SIZE,
-    kinds: kinds.data ?? [],
-    members: members.data ?? [],
-    companyDefinitions: companyDefinitions.data ?? [],
     canReadAll,
     filters: {
       q: q ?? "",

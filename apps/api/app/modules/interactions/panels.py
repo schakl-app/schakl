@@ -18,6 +18,9 @@ PANEL_LIMIT = 8
 async def _interactions_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
     if not ctx.can("interactions.interaction.read"):
         return {"items": [], "total": 0, "forbidden": True}
+    # ``count`` stays on: the panel footer says "8 of 214", so the total is rendered and
+    # skipping it would be a lie, not a saving. ``with_body`` stays off (the default): the
+    # panel draws snippets, and the detail modal fetches the row it opens (#290).
     items, total = await InteractionService(ctx).list(
         limit=PANEL_LIMIT, offset=0, company_id=company_id
     )

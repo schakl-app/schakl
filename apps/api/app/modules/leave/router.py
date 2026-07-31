@@ -552,6 +552,25 @@ async def upsert_entitlement(
     )
 
 
+@router.delete(
+    "/entitlements",
+    status_code=204,
+    dependencies=[require_permission("leave.entitlement.write")],
+)
+async def delete_entitlement(
+    year: int = Query(..., ge=2000, le=2100),
+    user_id: uuid.UUID = Query(...),
+    leave_type_id: uuid.UUID = Query(...),
+    ctx: RequestContext = Depends(require_context),
+) -> None:
+    """Drop a pot and let generation re-derive it — the revert behind "clear it to let it be
+    derived again". A current/next-year pot reappears with the derived figure in the same
+    request; a past year's simply goes (history is never backfilled)."""
+    await LeaveService(ctx).delete_entitlement(
+        user_id=user_id, leave_type_id=leave_type_id, year=year
+    )
+
+
 @router.post(
     "/entitlements/generate",
     response_model=GenerateResult,

@@ -345,6 +345,20 @@
         {t("demo.banner", { minutes: theme.demoResetMinutes })}
       </div>
     {/if}
+    {#if theme?.domainUnhealthy && can(user, "settings.domain.write")}
+      <!-- Custom-domain health (#291): a verified custom domain is not serving. Whoever sees
+           this is necessarily on the recovery host (the broken domain reaches nothing), so
+           say what is wrong instead of leaving a generic TLS/login failure to be guessed at.
+           Shown only to who can act on it — a member can't fix DNS. -->
+      <div
+        class="bg-amber-500 px-4 py-2 text-center text-sm font-medium text-amber-950 sm:px-6"
+        role="alert"
+      >
+        <a href="/settings/branding" class="underline underline-offset-2">
+          {t("settings.branding.domain.banner_unhealthy")}
+        </a>
+      </div>
+    {/if}
     {#if theme?.endsWarningUntil}
       <!-- Cloud end date (#199): the org is past its term but still fully usable. Same
            dismissal-proof construction as the demo banner — it re-renders every navigation.

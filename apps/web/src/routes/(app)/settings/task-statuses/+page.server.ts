@@ -9,7 +9,7 @@ import type { Actions, PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async (event) => {
   // Manager-only screen (status writes need the dedicated permission — issue #62).
-  if (!can(event.locals.user, "tasks.status.write")) throw redirect(303, "/");
+  if (!can(event.locals.user, "tasks.status.write")) throw redirect(303, "/settings");
   const { data } = await apiFor(event).GET("/api/v1/tasks/statuses");
   return { statuses: data ?? [] };
 };

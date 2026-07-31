@@ -222,7 +222,11 @@ def _xlsx_cell(value: Any) -> str:
         return value.isoformat()
     if isinstance(value, float):
         # 1234.0 is what Excel stores for an integer; "1234.0" is not a client number.
-        return str(Decimal(str(value)).normalize())
+        # Formatted with ``f`` rather than ``str()``: ``normalize()`` moves a value whose
+        # trailing zeros it just stripped into exponent form, so a phone number arriving as a
+        # float came out as "3.161234567E+10" and failed validation for a reason no one could
+        # see in their spreadsheet (issue #289).
+        return format(Decimal(str(value)).normalize(), "f")
     return str(value).strip()
 
 

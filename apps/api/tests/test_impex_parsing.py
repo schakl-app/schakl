@@ -122,6 +122,20 @@ def test_excel_types_arrive_as_the_text_their_column_expects() -> None:
     assert table.rows == [["1234", "3512", "2026-01-05", "2026-01-05 09:30", "true"]]
 
 
+def test_a_whole_number_never_arrives_in_exponent_form() -> None:
+    """Issue #289: stripping a float's trailing zeros moves the value into exponent form, so a
+    phone number that reached us as a float came out as "3.161234567E+10" — a value nothing
+    could validate and nothing in the user's spreadsheet to explain it.
+
+    Tested on the cell converter directly: openpyxl writes an integral float back without its
+    decimal point, so its own round-trip cannot reproduce what a third-party writer (or a
+    scientific-notation cell) hands us.
+    """
+    assert parsing._xlsx_cell(31612345670.0) == "31612345670"  # noqa: SLF001
+    assert parsing._xlsx_cell(float("3.1612345E+10")) == "31612345000"  # noqa: SLF001
+    assert parsing._xlsx_cell(12.5) == "12.5"  # noqa: SLF001
+
+
 def test_a_named_sheet_is_read_and_an_unknown_one_is_an_error() -> None:
     raw = _xlsx(
         [["name"], ["Acme"]], sheets={"Archief": [["name"], ["Oud BV"]]}

@@ -48,6 +48,9 @@ export const load: PageServerLoad = async (event) => {
     currentYear: currentYear(),
     groups: groups.data ?? [],
     requests: requests.data?.items ?? [],
+    // A weekly free-day pattern alone is ~52 requests a year, so the 100 cap is reachable; the
+    // page says "N van M" rather than silently showing a prefix that reads as everything.
+    requestsTotal: requests.data?.total ?? 0,
     freeTime: freeTime.data ?? null,
     table: { pref, sort: sort ?? null, widths: resolved.widths },
   };

@@ -12,6 +12,7 @@ response never confirms that the key exists.
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import UTC, datetime
 
 from fastapi import Request
@@ -127,21 +128,21 @@ async def _personal_context(session, org, key, RequestContext):  # noqa: ANN001
     effective = [s for s in key.scopes if _split_and_check(owner_perms, s)]
     # The company horizon (#191) rides the owner's membership, exactly like a session —
     # a personal key must not see further than the person it acts as.
-    from app.core.portal import portal_user_ids
-    from app.core.scope import resolve_company_scope
+    from app.core.scope import SCOPE_SOURCE_PORTAL, resolve_company_scope_details
 
-    company_scope = (
-        None
-        if owner_perms.wildcard
-        else await resolve_company_scope(session, org.id, membership.id)
-    )
-    # …and so does "is this an external (client) login" (#274) — a key can never widen its
-    # owner's audience.
-    is_portal = (
-        False
-        if owner_perms.wildcard
-        else bool(holds_client) or bool(await portal_user_ids(session, org.id, {owner.id}))
-    )
+    if owner_perms.wildcard:
+        company_scope: frozenset[uuid.UUID] | None = None
+        is_portal = False
+    else:
+        # Same shape as the session path: the membership statement above already answered the
+        # client-role question, and the portal source's own answer *is* "contact-linked".
+        resolution = await resolve_company_scope_details(
+            session, org.id, membership.id, holds_client=bool(holds_client)
+        )
+        company_scope = resolution.scope
+        # …and so does "is this an external (client) login" (#274) — a key can never widen its
+        # owner's audience.
+        is_portal = bool(holds_client) or SCOPE_SOURCE_PORTAL in resolution.sources
     return RequestContext(
         user=owner,
         org=org,

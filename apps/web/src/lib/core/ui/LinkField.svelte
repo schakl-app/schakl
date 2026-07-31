@@ -45,6 +45,8 @@
     labels,
     editing = false,
     oncreate,
+    onsearch,
+    searching = false,
   }: {
     links: LinkChip[];
     candidates: Candidate[];
@@ -62,6 +64,11 @@
     editing?: boolean;
     /** Typing an unknown name offers "＋ add …", handed back here to open a create dialog. */
     oncreate?: (query: string) => void;
+    /** Search the candidate set server-side rather than shipping all of it (#290) — see
+     *  `Combobox`. Omit and the picker filters `candidates` in the browser as before. */
+    onsearch?: (query: string) => void;
+    /** A candidate search is in flight (server-search pickers only). */
+    searching?: boolean;
   } = $props();
 
   let comboValue = $state("");
@@ -163,6 +170,8 @@
       allowEmpty={false}
       {onselect}
       {oncreate}
+      {onsearch}
+      {searching}
     />
 
     <form bind:this={linkForm} method="POST" action={linkAction} use:enhance class="hidden">

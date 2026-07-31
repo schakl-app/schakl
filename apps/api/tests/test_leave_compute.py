@@ -429,6 +429,79 @@ async def test_a_member_may_edit_a_request_a_manager_overrode(client_for) -> Non
         assert edited.json()["hours_override_by_user_id"] == str(tenant.user.id)
 
 
+async def test_moving_the_span_drops_a_stale_override(client_for) -> None:
+    """The override priced one specific span ("four hours agreed on a day they were not
+    scheduled"). A PATCH that moves the dates without restating it gets the schedule's answer
+    for the new span — never the old number billed to a different absence."""
+    tenant = await make_tenant("leave-compute-override-move")
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as client:
+        employee = await _member(client, headers, "moved@example.com")
+        created = await client.post(
+            "/api/v1/leave/requests",
+            json={
+                "leave_type_id": await _type_id(client, headers),
+                "user_id": str(employee.id),
+                "start_date": SAT.isoformat(),
+                "end_date": SAT.isoformat(),
+                "hours_override": 4,
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+
+        moved = await client.patch(
+            f"/api/v1/leave/requests/{created.json()['id']}",
+            json={"start_date": THU.isoformat(), "end_date": THU.isoformat()},
+            headers=headers,
+        )
+        assert moved.status_code == 200, moved.text
+        assert moved.json()["hours"] == "8.00"  # the schedule's Thursday, not the stale 4
+        assert moved.json()["hours_override"] is None
+        assert moved.json()["hours_override_by_user_id"] is None
+
+        # Restating it in the same PATCH keeps it — which is exactly what the form posts.
+        kept = await client.patch(
+            f"/api/v1/leave/requests/{created.json()['id']}",
+            json={
+                "start_date": FRI.isoformat(),
+                "end_date": FRI.isoformat(),
+                "hours_override": 4,
+            },
+            headers=headers,
+        )
+        assert kept.status_code == 200, kept.text
+        assert kept.json()["hours"] == "4.00"
+
+
+async def test_preview_of_an_edit_flags_the_original_past_span(client_for) -> None:
+    """Moving a past request forward still touches the past — update() guards it, so the
+    preview must say so and let the form warn before submit instead of 403 after (#114)."""
+    tenant = await make_tenant("leave-compute-preview-past")
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as client:
+        created = await client.post(
+            "/api/v1/leave/requests",
+            json={
+                "leave_type_id": await _type_id(client, headers),
+                "start_date": THU.isoformat(),
+                "end_date": THU.isoformat(),
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        # A scheduled weekday at least a week ahead, so the *new* span alone is clean.
+        future = date.today() + timedelta(days=(0 - date.today().weekday()) % 7 + 7)
+        result = await _preview(
+            client,
+            headers,
+            request_id=created.json()["id"],
+            start_date=future.isoformat(),
+            end_date=future.isoformat(),
+        )
+        assert result["touches_past"] is True
+
+
 # --- the timesheet breakdown ------------------------------------------------------ #
 async def test_team_feed_carries_the_per_day_shape_not_an_even_spread(client_for) -> None:
     """2 h Thursday and 5 h Friday, never 3,5 / 3,5 (issue #48)."""

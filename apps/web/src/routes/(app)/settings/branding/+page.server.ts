@@ -35,7 +35,7 @@ async function uploadBrandingFile(
 }
 
 export const load: PageServerLoad = async (event) => {
-  if (!can(event.locals.user, "settings.branding.write")) throw redirect(303, "/");
+  if (!can(event.locals.user, "settings.branding.write")) throw redirect(303, "/settings");
   const api = apiFor(event);
   const [{ data }, { data: domain }] = await Promise.all([
     api.GET("/api/v1/meta/tenant"),
@@ -102,33 +102,6 @@ export const actions: Actions = {
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { updated: true };
   },
-
-  // Custom domain (issue #26): claim → prove control via DNS TXT → it starts resolving.
-  claimDomain: async (event) => {
-    const form = await event.request.formData();
-    const domain = String(form.get("domain") ?? "")
-      .trim()
-      .toLowerCase();
-    if (!domain) return fail(400, { error: "errors.required", domainError: true });
-    const { error } = await apiFor(event).POST("/api/v1/meta/tenant/domain", {
-      body: { domain },
-    });
-    if (error) {
-      const parsed = apiErrorKey(error);
-      return fail(400, { error: parsed.fields?.domain ?? parsed.key, domainError: true });
-    }
-    return { domainClaimed: true };
-  },
-
-  verifyDomain: async (event) => {
-    const { error } = await apiFor(event).POST("/api/v1/meta/tenant/domain/verify");
-    if (error) return fail(400, { error: apiErrorKey(error).key, domainError: true });
-    return { domainVerified: true };
-  },
-
-  clearDomain: async (event) => {
-    const { error } = await apiFor(event).DELETE("/api/v1/meta/tenant/domain");
-    if (error) return fail(400, { error: apiErrorKey(error).key, domainError: true });
-    return { domainCleared: true };
-  },
+  // The custom domain moved to its own guided wizard (#292): /settings/domain. That screen
+  // also owns the lifecycle/health view #291 added here — one place per concern.
 };

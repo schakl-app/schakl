@@ -76,10 +76,34 @@ class AutomationService:
         return read
 
     async def list(self) -> list[RuleRead]:
+        """Every rule with its actions — two statements, not one per rule.
+
+        ``_read`` is the right shape for a single rule and exactly wrong for a page of them:
+        the list fanned one action query per rule, so an org's automations screen cost as many
+        round-trips as it had rules (docs/PERFORMANCE.md, the N+1 rule). One grouped ``IN``
+        load, folded in Python.
+        """
         rules = await self.rules.list(
             limit=200, order_by=AutomationRule.position.asc()
         )
-        return [await self._read(rule) for rule in rules]
+        if not rules:
+            return []
+        actions = (
+            await self.ctx.session.execute(
+                self.actions.scoped_select()
+                .where(AutomationAction.rule_id.in_([r.id for r in rules]))
+                .order_by(AutomationAction.position.asc())
+            )
+        ).scalars().all()
+        by_rule: dict[uuid.UUID, list[ActionRead]] = {}
+        for action in actions:
+            by_rule.setdefault(action.rule_id, []).append(ActionRead.model_validate(action))
+        reads = []
+        for rule in rules:
+            read = RuleRead.model_validate(rule)
+            read.actions = by_rule.get(rule.id, [])
+            reads.append(read)
+        return reads
 
     async def get(self, rule_id: uuid.UUID) -> RuleRead:
         return await self._read(await self.rules.get_or_404(rule_id))

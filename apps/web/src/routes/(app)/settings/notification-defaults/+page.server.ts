@@ -16,7 +16,7 @@ import type { Actions, PageServerLoad } from "./$types";
 // is a column of the matrix above, so "which events, how often" is set exactly where an
 // employee's own Slack is set.
 export const load: PageServerLoad = async (event) => {
-  if (!can(event.locals.user, "notifications.defaults.manage")) throw redirect(303, "/");
+  if (!can(event.locals.user, "notifications.defaults.manage")) throw redirect(303, "/settings");
   const api = apiFor(event);
   const canManageChannels = can(event.locals.user, "notifications.channels.manage");
   const [prefs, channels] = await Promise.all([

@@ -10,7 +10,7 @@ import { apiFor } from "$lib/core/session";
 import type { Actions, PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async (event) => {
-  if (!can(event.locals.user, "settings.dashboard.manage")) throw redirect(303, "/");
+  if (!can(event.locals.user, "settings.dashboard.manage")) throw redirect(303, "/settings");
   const enabled = event.locals.theme?.enabledModules ?? [];
   const { data: prefs } = await apiFor(event).GET("/api/v1/dashboard/prefs");
   return {

@@ -287,3 +287,85 @@ async def test_deleting_a_contract_re_derives(client_for) -> None:
             )
         ).json()
         assert rows == []
+
+
+async def test_ride_along_put_does_not_claim_a_generated_pot(client_for) -> None:
+    """The member dialog posts every field it rendered. PUTting the unchanged number back is not
+    an override decision, and claiming it as one would permanently opt the pot out of #264."""
+    t = await make_tenant("recompute-ridealong")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _member(c, headers, "e@example.com")
+        types = await _types(c, headers)
+        contract = await _add_contract(c, headers, member.id)  # open-ended, 40 h → 160
+        assert await _statutory(c, headers, member.id, types["vacation_statutory"]) == 160.0
+
+        res = await c.put(
+            "/api/v1/leave/entitlements",
+            json={
+                "user_id": str(member.id),
+                "leave_type_id": types["vacation_statutory"],
+                "year": _YEAR,
+                "hours": 160,
+            },
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        assert res.json()["source"] == "generated"
+
+        # The proof that matters: a later contract correction still reprorates the pot.
+        res = await c.patch(
+            f"/api/v1/leave/contracts/{contract['id']}",
+            json={"end_date": f"{_YEAR}-06-30"},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        assert await _statutory(
+            c, headers, member.id, types["vacation_statutory"]
+        ) == _prorated_statutory([(date(_YEAR, 1, 1), date(_YEAR, 6, 30), 40)])
+
+
+async def test_clearing_an_override_re_derives_the_pot(client_for) -> None:
+    """The manual badge promises "clear it to let it be derived again" — deleting the row brings
+    the contract-derived figure back in the same request, as a `generated` row the recompute
+    owns once more."""
+    t = await make_tenant("recompute-revert")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _member(c, headers, "e@example.com")
+        types = await _types(c, headers)
+        await _add_contract(c, headers, member.id)  # open-ended, 40 h → 160
+        res = await c.put(
+            "/api/v1/leave/entitlements",
+            json={
+                "user_id": str(member.id),
+                "leave_type_id": types["vacation_statutory"],
+                "year": _YEAR,
+                "hours": 100,
+            },
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        assert res.json()["source"] == "manual"
+        assert await _statutory(c, headers, member.id, types["vacation_statutory"]) == 100.0
+
+        res = await c.delete(
+            "/api/v1/leave/entitlements",
+            params={
+                "user_id": str(member.id),
+                "leave_type_id": types["vacation_statutory"],
+                "year": _YEAR,
+            },
+            headers=headers,
+        )
+        assert res.status_code == 204, res.text
+        assert await _statutory(c, headers, member.id, types["vacation_statutory"]) == 160.0
+        rows = (
+            await c.get(
+                "/api/v1/leave/entitlements",
+                params={"year": _YEAR, "user_id": str(member.id)},
+                headers=headers,
+            )
+        ).json()
+        row = next(e for e in rows if e["leave_type_id"] == types["vacation_statutory"])
+        assert row["source"] == "generated"

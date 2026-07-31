@@ -2386,6 +2386,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/instance/impersonation/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Claim Impersonation
+         * @description Exchange a handoff ticket for the two cookies this host needs (#288).
+         *
+         *     Deliberately session-less, and therefore paranoid: everything the issuing route checked is
+         *     checked again here against live state, because the ticket may have been sitting in a redirect
+         *     for two minutes. The refusal is one undifferentiated 403 — the browser is told the handoff
+         *     failed, never which of the eight ways it did.
+         */
+        post: operations["claim_impersonation_api_v1_instance_impersonation_claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/instance/impersonation/stop": {
         parameters: {
             query?: never;
@@ -2557,6 +2582,29 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instance/orgs/{org_id}/domain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Org Domain
+         * @description Routing state is platform data (it decides which hostname reaches the org), so this
+         *     stays PIN-free like the org list — it exposes no tenant content.
+         */
+        get: operations["org_domain_api_v1_instance_orgs__org_id__domain_get"];
+        /** Set Org Domain */
+        put: operations["set_org_domain_api_v1_instance_orgs__org_id__domain_put"];
+        post?: never;
+        /** Clear Org Domain */
+        delete: operations["clear_org_domain_api_v1_instance_orgs__org_id__domain_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3750,7 +3798,13 @@ export interface paths {
         /** Upsert Entitlement */
         put: operations["upsert_entitlement_api_v1_leave_entitlements_put"];
         post?: never;
-        delete?: never;
+        /**
+         * Delete Entitlement
+         * @description Drop a pot and let generation re-derive it — the revert behind "clear it to let it be
+         *     derived again". A current/next-year pot reappears with the derived figure in the same
+         *     request; a past year's simply goes (history is never backfilled).
+         */
+        delete: operations["delete_entitlement_api_v1_leave_entitlements_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4688,6 +4742,10 @@ export interface paths {
          * Clear Domain
          * @description Remove the custom domain (and any pending claim). The org keeps resolving via
          *     ``<slug>.<base_domain>`` — the UI warns that this changes the org's address.
+         *
+         *     ``pending_only=true`` abandons just the in-flight claim. That is what the wizard's
+         *     *cancel setup* means while a domain is already live: changing your mind about moving to a
+         *     new domain must never take the working one down with it.
          */
         delete: operations["clear_domain_api_v1_meta_tenant_domain_delete"];
         options?: never;
@@ -4695,7 +4753,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/meta/tenant/domain/verify": {
+    "/api/v1/meta/tenant/domain/check": {
         parameters: {
             query?: never;
             header?: never;
@@ -4704,8 +4762,16 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Verify Domain */
-        post: operations["verify_domain_api_v1_meta_tenant_domain_verify_post"];
+        /**
+         * Check Domain
+         * @description Probe the current stage's DNS/edge conditions, advance whatever they satisfy, and
+         *     report each layer separately (ownership TXT, traffic DNS, hostname, certificate).
+         *
+         *     Deliberately a 200 even when nothing is satisfied yet: "your record has not propagated"
+         *     is a diagnostic, not an HTTP failure — the old single-shot verify's 400 is exactly the
+         *     collapsed error #292 replaces.
+         */
+        post: operations["check_domain_api_v1_meta_tenant_domain_check_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5024,6 +5090,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/dashboard-budgets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Dashboard Budgets
+         * @description The budgeted active projects burning hottest — the My Day tile, already sorted and cut.
+         *
+         *     Mirrors ``/tasks/dashboard-groups``: the widget asked for 200 rows and kept four
+         *     (docs/PERFORMANCE.md).
+         */
+        get: operations["dashboard_budgets_api_v1_projects_dashboard_budgets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}": {
         parameters: {
             query?: never;
@@ -5143,7 +5232,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Service Accounts */
+        /**
+         * List Service Accounts
+         * @description Each account with its keys — one grouped read, not one request per account (#290).
+         */
         get: operations["list_service_accounts_api_v1_service_accounts_get"];
         put?: never;
         /** Create Service Account */
@@ -5620,6 +5712,46 @@ export interface paths {
         head?: never;
         /** Update Checklist Template */
         patch: operations["update_checklist_template_api_v1_tasks_checklist_templates__template_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/tasks/dashboard-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Dashboard Groups
+         * @description Open-task counts grouped by project, then company, in one compact query.
+         */
+        get: operations["dashboard_groups_api_v1_tasks_dashboard_groups_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/dashboard-mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Dashboard Mine
+         * @description Compact personal task list for the dashboard tile.
+         */
+        get: operations["dashboard_mine_api_v1_tasks_dashboard_mine_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/tasks/labels": {
@@ -6252,6 +6384,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/time/stats/team-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Team Time Summary
+         * @description One-query hours + revenue payload for the manager dashboard tile.
+         */
+        get: operations["team_time_summary_api_v1_time_stats_team_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/time/summary": {
         parameters: {
             query?: never;
@@ -6329,6 +6481,26 @@ export interface paths {
         };
         /** Timesheet */
         get: operations["timesheet_api_v1_time_timesheet_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/time/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Time Workspace
+         * @description The interactive Hours screen in one request, reusing its weekly entry scan.
+         */
+        get: operations["time_workspace_api_v1_time_workspace_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -8558,6 +8730,23 @@ export interface components {
             /** Vat Number */
             vat_number?: string | null;
         };
+        /**
+         * DashboardBudgetProject
+         * @description The four fields the My Day burn tile draws — nothing else (#290).
+         *
+         *     The widget used to request 200 active projects with full budget enrichment, then keep the
+         *     hottest four. This is the same aggregate, sorted and cut server-side.
+         */
+        DashboardBudgetProject: {
+            hours: components["schemas"]["BudgetHours"];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
         /** DashboardPrefs */
         DashboardPrefs: {
             /** Source */
@@ -8569,6 +8758,38 @@ export interface components {
         DashboardPrefsUpdate: {
             /** Widgets */
             widgets: string[];
+        };
+        /**
+         * DashboardTaskGroup
+         * @description Compact open-task aggregate for the dashboard; no 200-row lookup payloads.
+         */
+        DashboardTaskGroup: {
+            /** Count */
+            count: number;
+            /** Entity Id */
+            entity_id: string | null;
+            /** Entity Type */
+            entity_type: string;
+            /** Label */
+            label: string | null;
+            /** Overdue */
+            overdue: number;
+        };
+        /**
+         * DashboardTaskItem
+         * @description Only the four fields rendered by the personal dashboard task tile.
+         */
+        DashboardTaskItem: {
+            /** Due Date */
+            due_date: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            priority: components["schemas"]["TaskPriority"];
+            /** Title */
+            title: string;
         };
         /**
          * DayView
@@ -8612,6 +8833,32 @@ export interface components {
             password: string;
         };
         /**
+         * DnsRecordCard
+         * @description One record to create at the customer's DNS provider, renderable as a copy-paste card.
+         */
+        DnsRecordCard: {
+            /** Host */
+            host: string;
+            /** Name */
+            name: string;
+            /** Purpose */
+            purpose: string;
+            /**
+             * Temporary
+             * @default false
+             */
+            temporary: boolean;
+            /**
+             * Ttl
+             * @default 3600
+             */
+            ttl: number;
+            /** Type */
+            type: string;
+            /** Value */
+            value: string;
+        };
+        /**
          * DocumentSend
          * @description POST /send: stamp ``sent_at`` and (by default) e-mail the document summary to the
          *     customer through the org's transport (#17). ``email=false`` records a send that
@@ -8627,6 +8874,52 @@ export interface components {
             message?: string | null;
             /** To */
             to?: string | null;
+        };
+        /**
+         * DomainCheck
+         * @description One probe's outcome, with the diagnostic answer #292 demands: which layer, what was
+         *     expected, what was observed, and (via ``code`` → i18n) what to do next.
+         */
+        DomainCheck: {
+            /** Code */
+            code: string;
+            /** Expected */
+            expected?: string | null;
+            /** Key */
+            key: string;
+            /** Message Key */
+            message_key: string;
+            /** Observed */
+            observed?: string | null;
+            /** State */
+            state: string;
+        };
+        /** DomainCheckReport */
+        DomainCheckReport: {
+            /**
+             * Advanced
+             * @default false
+             */
+            advanced: boolean;
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at: string;
+            /**
+             * Checks
+             * @default []
+             */
+            checks: components["schemas"]["DomainCheck"][];
+            /** Correlation Id */
+            correlation_id: string;
+            /** Provider */
+            provider?: string | null;
+            /** Provider Name */
+            provider_name?: string | null;
+            status: components["schemas"]["app__core__domainflow__DomainStatus"];
+            /** Zone */
+            zone?: string | null;
         };
         /** DomainClaim */
         DomainClaim: {
@@ -9738,6 +10031,21 @@ export interface components {
              */
             user_id: string;
         };
+        /**
+         * ImpersonateHandoff
+         * @description Where to send the browser, and the one-time ticket to present there (#288).
+         */
+        ImpersonateHandoff: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Host */
+            host: string;
+            /** Ticket */
+            ticket: string;
+        };
         /** ImpersonateRequest */
         ImpersonateRequest: {
             /**
@@ -9760,6 +10068,38 @@ export interface components {
              * Format: date-time
              */
             expires_at: string;
+            handoff?: components["schemas"]["ImpersonateHandoff"] | null;
+            /** Token */
+            token?: string | null;
+        };
+        /** ImpersonationClaimRequest */
+        ImpersonationClaimRequest: {
+            /**
+             * Ticket
+             * @default
+             */
+            ticket: string;
+        };
+        /**
+         * ImpersonationClaimResponse
+         * @description The two cookies the tenant host has to set, and how long both may live.
+         */
+        ImpersonationClaimResponse: {
+            /** Console Host */
+            console_host: string | null;
+            /** Cookie */
+            cookie: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Max Age */
+            max_age: number;
+            /** Session Cookie */
+            session_cookie: string;
+            /** Session Token */
+            session_token: string;
             /** Token */
             token: string;
         };
@@ -12134,6 +12474,13 @@ export interface components {
         OrgCreate: {
             /** Brand Name */
             brand_name?: string | null;
+            /** Custom Domain */
+            custom_domain?: string | null;
+            /**
+             * Custom Domain Mode
+             * @default activate
+             */
+            custom_domain_mode: string;
             /** Enabled Modules */
             enabled_modules?: string[] | null;
             /** Locale */
@@ -12149,6 +12496,8 @@ export interface components {
         OrgDetail: {
             /** Brand Name */
             brand_name: string | null;
+            /** Canonical Host */
+            canonical_host: string;
             /**
              * Created At
              * Format: date-time
@@ -12156,6 +12505,11 @@ export interface components {
             created_at: string;
             /** Custom Domain */
             custom_domain: string | null;
+            /**
+             * Custom Domain Live
+             * @default false
+             */
+            custom_domain_live: boolean;
             /** Custom Domain Verified */
             custom_domain_verified: boolean;
             /** Default Locale */
@@ -12199,6 +12553,16 @@ export interface components {
             terminates_at?: string | null;
             /** Trial Ends At */
             trial_ends_at?: string | null;
+        };
+        /** OrgDomainUpdate */
+        OrgDomainUpdate: {
+            /** Domain */
+            domain: string;
+            /**
+             * Mode
+             * @default activate
+             */
+            mode: string;
         };
         /** OrgMember */
         OrgMember: {
@@ -12251,6 +12615,8 @@ export interface components {
         };
         /** OrgSummary */
         OrgSummary: {
+            /** Canonical Host */
+            canonical_host: string;
             /**
              * Created At
              * Format: date-time
@@ -12258,6 +12624,11 @@ export interface components {
             created_at: string;
             /** Custom Domain */
             custom_domain: string | null;
+            /**
+             * Custom Domain Live
+             * @default false
+             */
+            custom_domain_live: boolean;
             /** Custom Domain Verified */
             custom_domain_verified: boolean;
             /** Deleted At */
@@ -13272,6 +13643,13 @@ export interface components {
         ProvisionOrgRequest: {
             /** Brand Name */
             brand_name?: string | null;
+            /** Custom Domain */
+            custom_domain?: string | null;
+            /**
+             * Custom Domain Mode
+             * @default activate
+             */
+            custom_domain_mode: string;
             /** Enabled Modules */
             enabled_modules?: string[] | null;
             /** Locale */
@@ -13299,12 +13677,26 @@ export interface components {
         };
         /** ProvisionedOrg */
         ProvisionedOrg: {
+            /** Custom Domain */
+            custom_domain?: string | null;
+            /**
+             * Custom Domain Active
+             * @default false
+             */
+            custom_domain_active: boolean;
+            /**
+             * Dns Records
+             * @default []
+             */
+            dns_records: components["schemas"]["DnsRecordCard"][];
             /** Id */
             id: string;
             /** Name */
             name: string;
             /** Owner Email */
             owner_email?: string | null;
+            /** Pending Domain */
+            pending_domain?: string | null;
             /** Plan */
             plan: string | null;
             /** Slug */
@@ -14095,6 +14487,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Keys */
+            keys?: components["schemas"]["ApiKeyRead"][];
             /** Name */
             name: string;
             /**
@@ -15433,6 +15827,30 @@ export interface components {
             /** User Name */
             user_name: string;
         };
+        /**
+         * TeamTimeSummary
+         * @description Compact manager dashboard aggregate for one bounded period.
+         */
+        TeamTimeSummary: {
+            /** Billable Minutes */
+            billable_minutes: number;
+            /**
+             * Date From
+             * Format: date
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
+            /** Minutes */
+            minutes: number;
+            /** Open Minutes */
+            open_minutes: number;
+            /** Revenue */
+            revenue: number;
+        };
         /** TemplateApply */
         TemplateApply: {
             /**
@@ -15594,6 +16012,8 @@ export interface components {
             app_icon_url?: string | null;
             /** Brand Name */
             brand_name: string;
+            /** Canonical Host */
+            canonical_host?: string | null;
             /** Currency */
             currency: string;
             /**
@@ -15613,6 +16033,11 @@ export interface components {
              * @default 60
              */
             demo_reset_minutes: number;
+            /**
+             * Domain Unhealthy
+             * @default false
+             */
+            domain_unhealthy: boolean;
             /** Enabled Modules */
             enabled_modules: string[];
             /** Ends Warning Until */
@@ -16019,6 +16444,16 @@ export interface components {
             /** Minutes */
             minutes: number;
             running: components["schemas"]["TimeEntryRead"] | null;
+        };
+        /**
+         * TimeWorkspace
+         * @description Everything that changes together when the interactive Hours page changes day/week.
+         */
+        TimeWorkspace: {
+            day: components["schemas"]["DayView"];
+            recent: components["schemas"]["TimeEntryRead"] | null;
+            running: components["schemas"]["TimeEntryRead"] | null;
+            week: components["schemas"]["Timesheet"];
         };
         /**
          * TimerStart
@@ -16731,21 +17166,47 @@ export interface components {
             };
         };
         /** DomainStatus */
-        app__core__domains__DomainStatus: {
+        app__core__domainflow__DomainStatus: {
+            /** Apex */
+            apex?: boolean | null;
+            /** Canonical Host */
+            canonical_host?: string | null;
+            /** Cert Expires At */
+            cert_expires_at?: string | null;
+            /** Check Error */
+            check_error?: string | null;
+            /** Checked At */
+            checked_at?: string | null;
             /** Cname Target */
             cname_target?: string | null;
             /** Custom Domain */
             custom_domain: string | null;
             /** Custom Domain Verified At */
             custom_domain_verified_at: string | null;
+            /** Dns Ok */
+            dns_ok?: boolean | null;
+            /** Hostname Status */
+            hostname_status?: string | null;
+            /**
+             * Live
+             * @default false
+             */
+            live: boolean;
+            /** Ownership Verified At */
+            ownership_verified_at: string | null;
             /** Pending Domain */
             pending_domain: string | null;
-            /** Txt Record Name */
-            txt_record_name: string | null;
-            /** Txt Record Value */
-            txt_record_value: string | null;
-            /** Verification Token */
-            verification_token: string | null;
+            /**
+             * Records
+             * @default []
+             */
+            records: components["schemas"]["DnsRecordCard"][];
+            /** Recovery Host */
+            recovery_host?: string | null;
+            /** Ssl Status */
+            ssl_status?: string | null;
+            /** Stage */
+            stage: string;
         };
         /**
          * DomainStatus
@@ -19045,6 +19506,8 @@ export interface operations {
                 q?: string | null;
                 /** @description first_name | last_name | email | job_title | company | …, '-' desc */
                 sort?: string | null;
+                /** @description Compute the total. False for pickers and name-only lookups. */
+                count?: boolean;
             };
             header?: never;
             path?: never;
@@ -22112,6 +22575,39 @@ export interface operations {
             };
         };
     };
+    claim_impersonation_api_v1_instance_impersonation_claim_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImpersonationClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpersonationClaimResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     stop_impersonation_api_v1_instance_impersonation_stop_post: {
         parameters: {
             query?: never;
@@ -22488,6 +22984,103 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    org_domain_api_v1_instance_orgs__org_id__domain_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app__core__domainflow__DomainStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_org_domain_api_v1_instance_orgs__org_id__domain_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrgDomainUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app__core__domainflow__DomainStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_org_domain_api_v1_instance_orgs__org_id__domain_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app__core__domainflow__DomainStatus"];
                 };
             };
             /** @description Validation Error */
@@ -23075,6 +23668,10 @@ export interface operations {
                 sort?: string | null;
                 limit?: number;
                 offset?: number;
+                /** @description Compute the total. False skips a second full pass over the filter. */
+                count?: boolean;
+                /** @description Include each row's full body_text. Off by default — the list draws snippet. */
+                with_body?: boolean;
             };
             header?: never;
             path?: never;
@@ -23607,6 +24204,8 @@ export interface operations {
                 q?: string | null;
                 /** @description number | status | issue_date | due_date | total | created_at */
                 sort?: string | null;
+                /** @description Include each row's lines and tax groups. False for list views (#290). */
+                lines?: boolean;
             };
             header?: never;
             path?: never;
@@ -24314,6 +24913,8 @@ export interface operations {
                 q?: string | null;
                 /** @description number | status | issue_date | valid_until | total | created_at */
                 sort?: string | null;
+                /** @description Include each row's lines and tax groups. False for list views (#290). */
+                lines?: boolean;
             };
             header?: never;
             path?: never;
@@ -25315,6 +25916,37 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["LeaveEntitlementRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_entitlement_api_v1_leave_entitlements_delete: {
+        parameters: {
+            query: {
+                year: number;
+                user_id: string;
+                leave_type_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -27124,7 +27756,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__core__domains__DomainStatus"];
+                    "application/json": components["schemas"]["app__core__domainflow__DomainStatus"];
                 };
             };
         };
@@ -27148,7 +27780,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__core__domains__DomainStatus"];
+                    "application/json": components["schemas"]["app__core__domainflow__DomainStatus"];
                 };
             };
             /** @description Validation Error */
@@ -27164,7 +27796,9 @@ export interface operations {
     };
     clear_domain_api_v1_meta_tenant_domain_delete: {
         parameters: {
-            query?: never;
+            query?: {
+                pending_only?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -27177,12 +27811,21 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__core__domains__DomainStatus"];
+                    "application/json": components["schemas"]["app__core__domainflow__DomainStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
     };
-    verify_domain_api_v1_meta_tenant_domain_verify_post: {
+    check_domain_api_v1_meta_tenant_domain_check_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -27197,7 +27840,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__core__domains__DomainStatus"];
+                    "application/json": components["schemas"]["DomainCheckReport"];
                 };
             };
         };
@@ -27908,6 +28551,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dashboard_budgets_api_v1_projects_dashboard_budgets_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardBudgetProject"][];
                 };
             };
             /** @description Validation Error */
@@ -29566,6 +30240,57 @@ export interface operations {
             };
         };
     };
+    dashboard_groups_api_v1_tasks_dashboard_groups_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardTaskGroup"][];
+                };
+            };
+        };
+    };
+    dashboard_mine_api_v1_tasks_dashboard_mine_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardTaskItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_labels_api_v1_tasks_labels_get: {
         parameters: {
             query?: never;
@@ -30858,6 +31583,8 @@ export interface operations {
                 all_users?: boolean;
                 /** @description date | employee | company | project | task | minutes | …, '-' desc */
                 sort?: string | null;
+                /** @description Compute total; set false for lightweight lookups */
+                count?: boolean;
             };
             header?: never;
             path?: never;
@@ -31349,6 +32076,38 @@ export interface operations {
             };
         };
     };
+    team_time_summary_api_v1_time_stats_team_summary_get: {
+        parameters: {
+            query: {
+                date_from: string;
+                date_to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamTimeSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     summary_api_v1_time_summary_get: {
         parameters: {
             query?: {
@@ -31473,6 +32232,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Timesheet"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    time_workspace_api_v1_time_workspace_get: {
+        parameters: {
+            query: {
+                week_start: string;
+                day: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeWorkspace"];
                 };
             };
             /** @description Validation Error */

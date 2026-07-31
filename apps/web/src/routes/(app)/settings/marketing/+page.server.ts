@@ -10,7 +10,7 @@ import type { Actions, PageServerLoad } from "./$types";
 // rather than as instance env config. Admin-only (marketing.link.manage); the token is write-only —
 // the API reports `ads_developer_token_configured` and never plays the value back.
 export const load: PageServerLoad = async (event) => {
-  if (!can(event.locals.user, "marketing.link.manage")) throw redirect(303, "/");
+  if (!can(event.locals.user, "marketing.link.manage")) throw redirect(303, "/settings");
   const { data } = await apiFor(event).GET("/api/v1/marketing/settings");
   return { settings: data ?? null };
 };

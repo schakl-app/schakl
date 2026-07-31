@@ -110,11 +110,21 @@ async def list_interactions(
     ),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    count: bool = Query(
+        True,
+        description="Compute the total. False skips a second full pass over the filter.",
+    ),
+    with_body: bool = Query(
+        False,
+        description="Include each row's full body_text. Off by default — the list draws snippet.",
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[InteractionRead]:
     items, total = await InteractionService(ctx).list(
         limit=limit,
         offset=offset,
+        count=count,
+        with_body=with_body,
         company_id=company_id,
         project_id=project_id,
         task_id=task_id,

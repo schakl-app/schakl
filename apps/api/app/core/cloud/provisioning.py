@@ -21,6 +21,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, select
 
 from app.config import settings
+from app.core import domainflow
 from app.core.apikeys.keys import parse, verify_secret
 from app.core.auth.models import User
 from app.core.cloud.deps import require_cloud
@@ -114,6 +115,12 @@ class ProvisionedOrg(BaseModel):
     trial_ends_at: datetime | None
     url: str
     owner_email: str | None = None
+    # Custom-domain state (#292). ``dns_records`` are the records the customer must create
+    # (Type/Name/Value/TTL) — the operator's checkout can show or mail them verbatim.
+    custom_domain: str | None = None
+    custom_domain_active: bool = False
+    pending_domain: str | None = None
+    dns_records: list[domainflow.DnsRecordCard] = []
 
 
 class ProvisionOrgRequest(BaseModel):
@@ -131,6 +138,13 @@ class ProvisionOrgRequest(BaseModel):
     # no expiration at all.
     plan: str = Field(default="trial")
     trial_days: int | None = Field(default=None, ge=1, le=365)
+    # Configure a custom domain in the same call (#292). ``activate`` = operator-asserted
+    # ownership: the TXT challenge is skipped (audited as such), the edge hostname is
+    # provisioned fail-closed, and the response's ``dns_records`` say what the customer's
+    # DNS must carry. ``claim`` only reserves the name + issues the ownership challenge; the
+    # org's admin finishes the wizard themselves.
+    custom_domain: str | None = Field(default=None, min_length=4, max_length=255)
+    custom_domain_mode: str = Field(default="activate", pattern="^(activate|claim)$")
 
 
 class PlanUpdate(BaseModel):
@@ -142,13 +156,12 @@ class PlanUpdate(BaseModel):
 
 
 def _org_url(org: Org) -> str:
-    host = (
-        org.custom_domain
-        if org.custom_domain and org.custom_domain_verified_at is not None
-        else f"{org.slug}.{settings.base_domain}"
-    )
+    # The canonical host (#291): the custom domain only while it is actually live, so the
+    # billing system never mails out a link whose edge cannot serve it.
+    from app.core.hosts import canonical_host
+
     scheme = "https" if settings.auth_cookie_secure else "http"
-    return f"{scheme}://{host}"
+    return f"{scheme}://{canonical_host(org)}"
 
 
 def _provisioned(org: Org, owner_email: str | None = None) -> ProvisionedOrg:
@@ -161,6 +174,10 @@ def _provisioned(org: Org, owner_email: str | None = None) -> ProvisionedOrg:
         trial_ends_at=org.trial_ends_at,
         url=_org_url(org),
         owner_email=owner_email,
+        custom_domain=org.custom_domain,
+        custom_domain_active=org.custom_domain_verified_at is not None,
+        pending_domain=org.pending_domain,
+        dns_records=domainflow.record_cards(org),
     )
 
 
@@ -199,6 +216,16 @@ async def provision_org(
     await set_plan(
         ctx.session, ctx.actor, org, plan=payload.plan, trial_days=payload.trial_days
     )
+    if payload.custom_domain:
+        # Same transaction: a domain that cannot be configured rolls the whole org back, so
+        # the billing system retries one idempotent call instead of repairing half an org.
+        await domainflow.attach(
+            ctx.session,
+            ctx.actor,
+            org,
+            payload.custom_domain,
+            activate=payload.custom_domain_mode == "activate",
+        )
     # Full auto-configure: the caller may hand the owner a working password (their own
     # checkout already verified the email address). Without one, the owner sets a password
     # through the forgot-password flow, exactly like an invited member.

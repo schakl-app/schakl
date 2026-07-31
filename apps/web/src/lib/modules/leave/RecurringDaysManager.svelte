@@ -35,6 +35,8 @@
     leave_type_id: string;
     anchor_date: string;
     interval_weeks: number;
+    /** Spread mode (#107): set = "N days a year"; null = the fixed cadence above. */
+    days_per_year?: number | null;
     /** Optional in the generated client (the API schema carries defaults). */
     start_time?: string | null;
     end_time?: string | null;
@@ -89,6 +91,15 @@
       : t("leave.recurring.every_n", { n: weeks });
   }
 
+  /** A spread pattern says its day count, like the wizard does; `interval_weeks` on such a
+   *  pattern is only the rollback-image fallback cadence and misstates both mode and number. */
+  function rhythmText(pattern: RecurringPattern): string {
+    if (pattern.days_per_year) {
+      return t("leave.recurring.days_per_year", { count: pattern.days_per_year });
+    }
+    return intervalText(pattern.interval_weeks);
+  }
+
   function windowText(pattern: RecurringPattern): string | null {
     if (pattern.start_time && pattern.end_time) {
       return `${fmtClockTime(pattern.start_time)} – ${fmtClockTime(pattern.end_time)}`;
@@ -113,7 +124,7 @@
             <span class="font-medium capitalize text-text">
               {fmtWeekdayShort(pattern.anchor_date)}
               <span class="font-normal normal-case text-text-muted">
-                · {intervalText(pattern.interval_weeks)}
+                · {rhythmText(pattern)}
                 {#if windowText(pattern)}
                   · {windowText(pattern)}
                 {/if}

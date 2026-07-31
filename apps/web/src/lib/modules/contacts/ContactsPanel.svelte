@@ -52,8 +52,40 @@
       is_primary: Boolean(c.is_primary),
     })),
   );
+  // The picker searches server-side (#290). The panel used to ship up to 500 unlinked contacts
+  // with every render of the client page, to fill a dropdown most visits never open; it now
+  // carries a short opening list and asks the API as the user types. `searchResults` is null
+  // until the first search, so the panel's own candidates stay the initial options.
+  let searchResults = $state<PanelContact[] | null>(null);
+  let searching = $state(false);
+  let searchSeq = 0;
+  async function searchContacts(query: string) {
+    const mine = ++searchSeq;
+    if (!query) {
+      searchResults = null;
+      searching = false;
+      return;
+    }
+    searching = true;
+    const params = new URLSearchParams({ q: query, limit: "20", count: "false" });
+    const response = await fetch(`/api/v1/contacts?${params}`, {
+      headers: { accept: "application/json" },
+    });
+    if (mine !== searchSeq) return; // a later keystroke already superseded this fetch
+    const page_ = response.ok ? await response.json() : { items: [] };
+    const linked = new Set(contacts.map((c) => c.id));
+    // Already-attached people are not attachable — the same rule the API's candidate list
+    // applies, kept here because a free-text search cannot know this company's links.
+    searchResults = (page_.items ?? []).filter((c: PanelContact) => !linked.has(c.id));
+    searching = false;
+  }
+
   const pickItems = $derived(
-    candidates.map((c) => ({ value: c.id, label: fullName(c), hint: c.email ?? undefined })),
+    (searchResults ?? candidates).map((c) => ({
+      value: c.id,
+      label: fullName(c),
+      hint: c.email ?? undefined,
+    })),
   );
 
   // Use mode is the default; the ⋯ menu opens edit mode (docs/UX.md §3).
@@ -118,6 +150,8 @@
     remove: t("contacts.unlink"),
   }}
   oncreate={openCreate}
+  onsearch={searchContacts}
+  {searching}
 />
 
 <!-- Quick-add without entering edit mode (owner feedback): the same full create-and-attach

@@ -7,6 +7,7 @@
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle, renderTabTitle } from "$lib/core/title";
   import Button from "$lib/core/ui/Button.svelte";
+  import ImageField from "$lib/core/ui/ImageField.svelte";
   import { getLocale } from "$lib/paraglide/runtime";
 
   let { data, form } = $props();
@@ -58,6 +59,13 @@
       })}
       class="rounded-xl border border-border bg-surface-raised p-5"
     >
+      <!-- Two subjects, one save. The card used to mix the brand with the org's clock, money and
+           country in one eleven-control grid, so "waar stel ik de valuta in?" had no scent to
+           follow; naming the halves costs nothing and answers it. Still one form and one save
+           button (docs/UX.md: one save per editing surface, never per field). -->
+      <h2 class="mb-3 text-sm font-semibold text-text">
+        {t("settings.branding.identity_heading")}
+      </h2>
       <div class="grid gap-3 sm:grid-cols-2">
         <div>
           <label for="brand_name" class="mb-1 block text-sm font-medium text-text"
@@ -79,6 +87,100 @@
             {t("settings.branding.show_brand_name")}
           </label>
         </div>
+        <div>
+          <label for="tab_title_template" class="mb-1 block text-sm font-medium text-text"
+            >{t("settings.branding.tab_title")}</label
+          >
+          <input
+            id="tab_title_template"
+            name="tab_title_template"
+            bind:value={tabTemplate}
+            defaultValue={data.branding?.tab_title_template ?? ""}
+            placeholder={"{page} · {brand}"}
+            class={inputClass}
+          />
+          <p class="mt-1 text-xs text-text-muted">
+            {t("settings.branding.tab_title_help", { pageToken: "{page}", brandToken: "{brand}" })}
+            {#if !tabTemplateInvalid}
+              · {t("settings.branding.tab_title_preview", { preview: tabPreview })}
+            {/if}
+          </p>
+          {#if tabTemplateInvalid}
+            <p class="mt-1 text-xs text-red-600 dark:text-red-400">
+              {t("settings.branding.tab_title_invalid", {
+                pageToken: "{page}",
+                brandToken: "{brand}",
+              })}
+            </p>
+          {/if}
+        </div>
+        <ImageField
+          id="logo_file"
+          name="logo_url"
+          fileName="logo_file"
+          label={t("settings.branding.logo")}
+          value={branding.logo_url}
+          accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+        />
+        <ImageField
+          id="favicon_file"
+          name="favicon_url"
+          fileName="favicon_file"
+          label={t("settings.branding.favicon")}
+          value={branding.favicon_url}
+          accept="image/png,image/svg+xml,image/x-icon,image/vnd.microsoft.icon"
+        />
+        <!-- The installable-app icon (#198): a different asset from the favicon — a square
+             raster the PWA manifest and the iOS home-screen icon derive their sizes from. -->
+        <ImageField
+          id="app_icon_file"
+          name="app_icon_url"
+          fileName="app_icon_file"
+          label={t("settings.branding.app_icon")}
+          value={branding.app_icon_url}
+          accept="image/png,image/jpeg,image/webp"
+          help={t("settings.branding.app_icon_help")}
+        />
+        <div class="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label for="primary_color" class="mb-1 block text-sm font-medium text-text"
+              >{t("settings.branding.primary_color")}</label
+            >
+            <div class="flex items-center gap-2">
+              <input
+                id="primary_color"
+                name="primary_color"
+                type="color"
+                bind:value={primary}
+                defaultValue={data.branding?.primary_color ?? "#4f46e5"}
+                class="h-9 w-12 cursor-pointer rounded border border-border"
+              />
+              <span class="font-mono text-sm text-text-muted">{primary}</span>
+            </div>
+          </div>
+          <div>
+            <label for="accent_color" class="mb-1 block text-sm font-medium text-text"
+              >{t("settings.branding.accent_color")}</label
+            >
+            <div class="flex items-center gap-2">
+              <input
+                id="accent_color"
+                name="accent_color"
+                type="color"
+                bind:value={accent}
+                defaultValue={data.branding?.accent_color ?? "#0ea5e9"}
+                class="h-9 w-12 cursor-pointer rounded border border-border"
+              />
+              <span class="font-mono text-sm text-text-muted">{accent}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <h2 class="mb-3 mt-6 border-t border-border pt-5 text-sm font-semibold text-text">
+        {t("settings.branding.region_heading")}
+      </h2>
+      <div class="grid gap-3 sm:grid-cols-2">
         <div>
           <label for="default_locale" class="mb-1 block text-sm font-medium text-text"
             >{t("settings.branding.default_locale")}</label
@@ -144,133 +246,6 @@
           </select>
           <p class="mt-1 text-xs text-text-muted">{t("settings.branding.currency_help")}</p>
         </div>
-        <div class="sm:col-span-2">
-          <label for="tab_title_template" class="mb-1 block text-sm font-medium text-text"
-            >{t("settings.branding.tab_title")}</label
-          >
-          <input
-            id="tab_title_template"
-            name="tab_title_template"
-            bind:value={tabTemplate}
-            placeholder={"{page} · {brand}"}
-            class={inputClass}
-          />
-          <p class="mt-1 text-xs text-text-muted">
-            {t("settings.branding.tab_title_help", { pageToken: "{page}", brandToken: "{brand}" })}
-            {#if !tabTemplateInvalid}
-              · {t("settings.branding.tab_title_preview", { preview: tabPreview })}
-            {/if}
-          </p>
-          {#if tabTemplateInvalid}
-            <p class="mt-1 text-xs text-red-600 dark:text-red-400">
-              {t("settings.branding.tab_title_invalid", {
-                pageToken: "{page}",
-                brandToken: "{brand}",
-              })}
-            </p>
-          {/if}
-        </div>
-        <div>
-          <label for="logo_file" class="mb-1 block text-sm font-medium text-text"
-            >{t("settings.branding.logo")}</label
-          >
-          <input
-            id="logo_file"
-            name="logo_file"
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
-            class="block w-full text-sm text-text-muted file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-solid file:border-border file:bg-transparent file:px-3 file:py-1.5 file:text-sm file:text-text hover:file:border-brand"
-          />
-          <label for="logo_url" class="mb-1 mt-2 block text-xs text-text-muted"
-            >{t("settings.branding.logo_url")}</label
-          >
-          <input
-            id="logo_url"
-            name="logo_url"
-            value={branding.logo_url ?? ""}
-            placeholder="https://…"
-            class={inputClass}
-          />
-          <p class="mt-1 text-xs text-text-muted">{t("settings.branding.upload_help")}</p>
-        </div>
-        <div>
-          <label for="favicon_file" class="mb-1 block text-sm font-medium text-text"
-            >{t("settings.branding.favicon")}</label
-          >
-          <input
-            id="favicon_file"
-            name="favicon_file"
-            type="file"
-            accept="image/png,image/svg+xml,image/x-icon,image/vnd.microsoft.icon"
-            class="block w-full text-sm text-text-muted file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-solid file:border-border file:bg-transparent file:px-3 file:py-1.5 file:text-sm file:text-text hover:file:border-brand"
-          />
-          <label for="favicon_url" class="mb-1 mt-2 block text-xs text-text-muted"
-            >{t("settings.branding.favicon_url")}</label
-          >
-          <input
-            id="favicon_url"
-            name="favicon_url"
-            value={branding.favicon_url ?? ""}
-            placeholder="https://…"
-            class={inputClass}
-          />
-          <p class="mt-1 text-xs text-text-muted">{t("settings.branding.upload_help")}</p>
-        </div>
-        <div>
-          <!-- The installable-app icon (#198): a different asset from the favicon — a square
-               raster the PWA manifest and the iOS home-screen icon derive their sizes from. -->
-          <label for="app_icon_file" class="mb-1 block text-sm font-medium text-text"
-            >{t("settings.branding.app_icon")}</label
-          >
-          <input
-            id="app_icon_file"
-            name="app_icon_file"
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            class="block w-full text-sm text-text-muted file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-solid file:border-border file:bg-transparent file:px-3 file:py-1.5 file:text-sm file:text-text hover:file:border-brand"
-          />
-          <label for="app_icon_url" class="mb-1 mt-2 block text-xs text-text-muted"
-            >{t("settings.branding.app_icon_url")}</label
-          >
-          <input
-            id="app_icon_url"
-            name="app_icon_url"
-            value={branding.app_icon_url ?? ""}
-            placeholder="https://…"
-            class={inputClass}
-          />
-          <p class="mt-1 text-xs text-text-muted">{t("settings.branding.app_icon_help")}</p>
-        </div>
-        <div>
-          <label for="primary_color" class="mb-1 block text-sm font-medium text-text"
-            >{t("settings.branding.primary_color")}</label
-          >
-          <div class="flex items-center gap-2">
-            <input
-              id="primary_color"
-              name="primary_color"
-              type="color"
-              bind:value={primary}
-              class="h-9 w-12 cursor-pointer rounded border border-border"
-            />
-            <span class="font-mono text-sm text-text-muted">{primary}</span>
-          </div>
-        </div>
-        <div>
-          <label for="accent_color" class="mb-1 block text-sm font-medium text-text"
-            >{t("settings.branding.accent_color")}</label
-          >
-          <div class="flex items-center gap-2">
-            <input
-              id="accent_color"
-              name="accent_color"
-              type="color"
-              bind:value={accent}
-              class="h-9 w-12 cursor-pointer rounded border border-border"
-            />
-            <span class="font-mono text-sm text-text-muted">{accent}</span>
-          </div>
-        </div>
       </div>
       <p class="mt-3 text-xs text-text-muted">{t("settings.branding.hint")}</p>
       {#if form?.error}<p class="mt-2 text-sm text-red-600 dark:text-red-400">
@@ -309,117 +284,33 @@
     </aside>
   </div>
 
-  <!-- Custom domain (issue #26): claimed here, proven via DNS TXT, only then routed. -->
-  <section class="mt-4 max-w-2xl rounded-xl border border-border bg-surface-raised p-5">
-    <h2 class="text-sm font-semibold text-text">{t("settings.branding.domain.title")}</h2>
-    <p class="mt-1 text-xs text-text-muted">{t("settings.branding.domain.subtitle")}</p>
-
-    {#if data.domain?.custom_domain}
-      <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p class="font-mono text-sm text-text">{data.domain.custom_domain}</p>
-          <p class="mt-0.5 text-xs text-green-600 dark:text-green-400">
-            {t("settings.branding.domain.verified")}
-          </p>
-        </div>
-        <form method="POST" action="?/clearDomain" use:enhance={busy.wrap("removeDomain")}>
-          <Button
-            variant="secondary"
-            size="sm"
-            loading={busy.is("removeDomain")}
-            disabled={busy.active}
-          >
-            {t("settings.branding.domain.remove")}
-          </Button>
-        </form>
-      </div>
-    {/if}
-
-    {#if data.domain?.pending_domain}
-      <div
-        class="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30"
-      >
-        <p class="text-sm font-medium text-text">
-          {t("settings.branding.domain.pending", { domain: data.domain.pending_domain })}
+  <!-- Custom domain (#292): the guided wizard owns claim → ownership → DNS → activation. -->
+  <section
+    class="mt-4 flex max-w-2xl flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-raised p-5"
+  >
+    <div>
+      <h2 class="text-sm font-semibold text-text">{t("settings.branding.domain.title")}</h2>
+      <p class="mt-1 text-xs text-text-muted">{t("settings.branding.domain.subtitle")}</p>
+      {#if data.domain?.custom_domain || data.domain?.pending_domain}
+        <p class="mt-2 font-mono text-sm text-text">
+          {data.domain.pending_domain ?? data.domain.custom_domain}
         </p>
-        <p class="mt-2 text-xs text-text-muted">
-          {t("settings.branding.domain.txt_instructions")}
-        </p>
-        <dl class="mt-2 space-y-1 font-mono text-xs text-text">
-          <div class="flex gap-2">
-            <dt class="shrink-0 text-text-muted">TXT</dt>
-            <dd class="break-all">{data.domain.txt_record_name}</dd>
-          </div>
-          <div class="flex gap-2">
-            <dt class="shrink-0 text-text-muted">→</dt>
-            <dd class="break-all">{data.domain.txt_record_value}</dd>
-          </div>
-        </dl>
-        {#if data.domain.cname_target}
-          <!-- Cloud (#202): traffic + automatic TLS need the CNAME besides the TXT proof. -->
-          <p class="mt-3 text-xs text-text-muted">
-            {t("settings.branding.domain.cname_instructions")}
-          </p>
-          <dl class="mt-1 space-y-1 font-mono text-xs text-text">
-            <div class="flex gap-2">
-              <dt class="shrink-0 text-text-muted">CNAME</dt>
-              <dd class="break-all">{data.domain.pending_domain}</dd>
-            </div>
-            <div class="flex gap-2">
-              <dt class="shrink-0 text-text-muted">→</dt>
-              <dd class="break-all">{data.domain.cname_target}</dd>
-            </div>
-          </dl>
-        {/if}
-        <div class="mt-3 flex gap-2">
-          <form method="POST" action="?/verifyDomain" use:enhance={busy.wrap("verifyDomain")}>
-            <Button size="sm" loading={busy.is("verifyDomain")} disabled={busy.active}>
-              {t("settings.branding.domain.verify")}
-            </Button>
-          </form>
-          <form method="POST" action="?/clearDomain" use:enhance={busy.wrap("cancelDomain")}>
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={busy.is("cancelDomain")}
-              disabled={busy.active}
-            >
-              {t("common.cancel")}
-            </Button>
-          </form>
-        </div>
-      </div>
-    {:else}
-      <form
-        method="POST"
-        action="?/claimDomain"
-        use:enhance={busy.wrap("claimDomain")}
-        class="mt-4 flex flex-wrap items-end gap-3"
+      {/if}
+      <p
+        class="mt-1 text-xs {data.domain?.stage === 'active'
+          ? 'text-green-600 dark:text-green-400'
+          : 'text-text-muted'}"
       >
-        <div class="grow">
-          <label for="domain" class="mb-1 block text-sm font-medium text-text">
-            {t("settings.branding.domain.claim_label")}
-          </label>
-          <input
-            id="domain"
-            name="domain"
-            placeholder={t("settings.branding.domain.placeholder")}
-            class="{inputClass} font-mono"
-          />
-        </div>
-        <Button variant="secondary" loading={busy.is("claimDomain")} disabled={busy.active}>
-          {t("settings.branding.domain.claim")}
-        </Button>
-      </form>
-    {/if}
-
-    {#if form?.error && form?.domainError}
-      <p class="mt-2 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
-    {/if}
-    {#if form?.domainVerified}
-      <p class="mt-2 text-sm text-green-600 dark:text-green-400">
-        {t("settings.branding.domain.verified_now")}
+        {t(`settings.domain.stage.${data.domain?.stage ?? "none"}`)}
       </p>
-    {/if}
+    </div>
+    <a
+      href="/settings/domain"
+      class="rounded-lg border border-border px-3 py-2 text-sm font-medium text-text hover:bg-surface"
+    >
+      {data.domain?.stage === "none"
+        ? t("settings.domain.manage")
+        : t("settings.domain.manage_existing")}
+    </a>
   </section>
 {/if}

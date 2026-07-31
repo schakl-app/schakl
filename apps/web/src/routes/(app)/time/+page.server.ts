@@ -62,8 +62,19 @@ export const load: PageServerLoad = async (event) => {
   // is already hidden, so a direct URL redirects instead of erroring (#253).
   if (!can(event.locals.user, "time.entry.read")) throw redirect(303, "/");
   const api = apiFor(event);
-  const selectedDate = event.url.searchParams.get("date") || todayIso();
-  const week_start = event.url.searchParams.get("week") || weekStartOf(selectedDate);
+  const requestedWeek = event.url.searchParams.get("week");
+  // A week-only deep link selects its Monday. Keeping day inside the requested week lets the
+  // workspace endpoint reuse one bounded scan and is less surprising than showing today's
+  // detail beside an unrelated historical grid.
+  const selectedDate = event.url.searchParams.get("date") || requestedWeek || todayIso();
+  const requestedWeekEnd = requestedWeek ? isoAddDays(requestedWeek, 6) : null;
+  const week_start =
+    requestedWeek &&
+    requestedWeekEnd &&
+    requestedWeek <= selectedDate &&
+    selectedDate <= requestedWeekEnd
+      ? requestedWeek
+      : weekStartOf(selectedDate);
   // Deep link from a client page: ?company= presets the entry form's client, beating the
   // last-used default.
   const presetCompanyId = event.url.searchParams.get("company") ?? "";
@@ -72,12 +83,12 @@ export const load: PageServerLoad = async (event) => {
   // Lookups (companies/projects/tasks/members) come from the /time layout load, which does
   // not rerun on day/week navigation — keep this load down to what actually changes.
   const weekEnd = isoAddDays(week_start, 6);
-  const [timer, week, day, recent, leave, holidays] = await Promise.all([
-    api.GET("/api/v1/time/timer"),
-    api.GET("/api/v1/time/timesheet", { params: { query: { week_start } } }),
-    api.GET("/api/v1/time/day", { params: { query: { date: selectedDate } } }),
-    // Most recent entry drives the smart defaults (last-used client/project).
-    api.GET("/api/v1/time/entries", { params: { query: { limit: 1, offset: 0 } } }),
+  const [workspace, leave, holidays] = await Promise.all([
+    // Timer + week + selected day + recent defaults share one auth/context round-trip. The API
+    // also reuses the weekly entry scan for the selected day instead of querying it twice.
+    api.GET("/api/v1/time/workspace", {
+      params: { query: { week_start, day: selectedDate } },
+    }),
     // Approved leave overlaps into the timesheet as its own row (§14, no double count).
     leaveEnabled && event.locals.user
       ? api.GET("/api/v1/leave/team", {
@@ -94,15 +105,15 @@ export const load: PageServerLoad = async (event) => {
       : Promise.resolve({ data: null }),
   ]);
 
-  const lastEntry = recent.data?.items?.[0] ?? null;
-  const weekDays = week.data?.days ?? [];
+  const lastEntry = workspace.data?.recent ?? null;
+  const weekDays = workspace.data?.week.days ?? [];
   const holidayByDate = new Map(
     (holidays.data ?? []).map((h) => [h.date, holidayName(h.name_i18n, event.locals.locale)]),
   );
   return {
-    running: timer.data ?? null,
-    week: week.data ?? null,
-    day: day.data ?? null,
+    running: workspace.data?.running ?? null,
+    week: workspace.data?.week ?? null,
+    day: workspace.data?.day ?? null,
     selectedDate,
     week_start,
     today: todayIso(),

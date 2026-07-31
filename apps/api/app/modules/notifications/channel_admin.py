@@ -263,7 +263,17 @@ class ChannelService:
                     brand=brand,
                 )
             else:
-                ok, error = await send_via_apprise(decrypt(channel.url_enc), message)
+                # A webhook to somebody else's server, on a request holding a pooled DB
+                # connection (docs/PERFORMANCE.md). Everything the block needs — the brand, the
+                # channel row, the decrypted URL — is already resolved above, and nothing after
+                # it touches the session, so this is safe to release across.
+                #
+                # The e-mail branch deliberately keeps its connection: `send_org_email`
+                # interleaves session reads with the send, so releasing here would run those
+                # without the RLS GUC bound and fail closed.
+                url = decrypt(channel.url_enc)
+                async with self.ctx.release_db():
+                    ok, error = await send_via_apprise(url, message)
         except SsrfError as exc:
             return ChannelTestResult(ok=False, error=f"blocked target: {exc}")
         except Exception as exc:  # noqa: BLE001 - surface the provider failure, don't 500

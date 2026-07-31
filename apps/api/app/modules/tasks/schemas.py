@@ -170,6 +170,27 @@ class TaskListItem(TaskRead):
     comment_count: int = 0
 
 
+class DashboardTaskGroup(BaseModel):
+    """Compact open-task aggregate for the dashboard; no 200-row lookup payloads."""
+
+    entity_type: str
+    entity_id: uuid.UUID | None
+    label: str | None
+    count: int
+    overdue: int
+
+
+class DashboardTaskItem(BaseModel):
+    """Only the four fields rendered by the personal dashboard task tile."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    title: str
+    priority: TaskPriority
+    due_date: date | None
+
+
 # --------------------------------------------------------------------------- #
 # Checklists
 # --------------------------------------------------------------------------- #

@@ -54,25 +54,32 @@ export const load: PageServerLoad = async (event) => {
   const resolved = resolveColumns(TIME_REPORT_COLUMNS, pref);
   const sort = q.get("sort") ?? resolved.sort ?? undefined;
 
-  const { data: report } = await api.GET("/api/v1/time/report", {
-    params: {
-      query: {
-        limit: 500,
-        offset: 0,
-        user_id: filters.user_id || undefined,
-        company_id: filters.company_id || undefined,
-        project_id: filters.project_id || undefined,
-        date_from: filters.date_from || undefined,
-        date_to: filters.date_to || undefined,
-        entry_type: filters.entry_type || undefined,
-        sort,
-        ...statusFlags(filters.status),
+  // Returned unawaited so the shell — filters, column menu, the range the user just picked —
+  // renders immediately and the table fills in behind it (#290). This is the widest read in the
+  // app: 500 entries over an arbitrary date range, and the totals are computed over the whole
+  // matching set, not the page.
+  const report = api
+    .GET("/api/v1/time/report", {
+      params: {
+        query: {
+          limit: 500,
+          offset: 0,
+          user_id: filters.user_id || undefined,
+          company_id: filters.company_id || undefined,
+          project_id: filters.project_id || undefined,
+          date_from: filters.date_from || undefined,
+          date_to: filters.date_to || undefined,
+          entry_type: filters.entry_type || undefined,
+          sort,
+          ...statusFlags(filters.status),
+        },
       },
-    },
-  });
+    })
+    .then((r) => r.data ?? null)
+    .catch(() => null);
 
   return {
-    report: report ?? null,
+    report,
     filters,
     table: { pref, sort: sort ?? null, widths: resolved.widths },
   };

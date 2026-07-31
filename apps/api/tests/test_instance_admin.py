@@ -3,14 +3,16 @@ domain verification, export/import — including the gates that keep it all shut
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from sqlalchemy import select
 
 from app.config import settings
 from app.core.auth.models import User
 from app.core.models import InstanceAuditLog, Org
-from app.db import async_session_maker
-from tests.conftest import Tenant, auth_cookie, make_tenant
+from app.db import async_session_maker, set_current_org
+from tests.conftest import Tenant, add_membership, auth_cookie, make_tenant
 
 
 @pytest.fixture
@@ -260,6 +262,31 @@ async def test_org_modules_update(client_for, instance_admin_enabled) -> None:
 # --------------------------------------------------------------------------- #
 # Impersonation
 # --------------------------------------------------------------------------- #
+async def start_handoff(
+    client_for, admin: Tenant, target_org_id, target_user_id, *, minutes: int = 30
+) -> dict:
+    """Ask for a crossing from the admin's own host and return the handoff payload (#288)."""
+    async with client_for(admin.host) as client:
+        response = await client.post(
+            f"/api/v1/instance/orgs/{target_org_id}/impersonate",
+            json={"user_id": str(target_user_id), "minutes": minutes},
+            headers=await auth_cookie(admin.user),
+        )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    # Crossing hosts, so no usable grant may come back here — only a ticket for the other host.
+    assert body["token"] is None
+    assert body["handoff"] is not None
+    return body["handoff"]
+
+
+async def claim(client_for, host: str, ticket: str):
+    async with client_for(host) as client:
+        return await client.post(
+            "/api/v1/instance/impersonation/claim", json={"ticket": ticket}
+        )
+
+
 async def test_impersonation_is_time_boxed_audited_and_visible(
     client_for, instance_admin_enabled
 ) -> None:
@@ -268,24 +295,29 @@ async def test_impersonation_is_time_boxed_audited_and_visible(
     admin_headers = await auth_cookie(admin.user)
     target = await make_tenant("imp-target", email="member@example.org", role="member")
 
-    async with client_for(admin.host) as client:
-        grant = await client.post(
-            f"/api/v1/instance/orgs/{target.org.id}/impersonate",
-            json={"user_id": str(target.user.id), "minutes": 9999},
-            headers=admin_headers,
-        )
-        assert grant.status_code == 200
-        body = grant.json()
-        token = body["token"]
+    # The console runs on its own host, so the crossing is a handoff (#288).
+    handoff = await start_handoff(
+        client_for, admin, target.org.id, target.user.id, minutes=9999
+    )
+    assert handoff["host"] == target.host
 
-    # Clamped to the configured maximum (60 min).
+    redeemed = await claim(client_for, target.host, handoff["ticket"])
+    assert redeemed.status_code == 200, redeemed.text
+    body = redeemed.json()
+    token = body["token"]
+    session_token = body["session_token"]
+
+    # Clamped to the configured maximum (60 min) — and the admin's session on this host is
+    # minted to lapse with the grant, never for the ordinary week.
     from datetime import UTC, datetime, timedelta
 
     expires_at = datetime.fromisoformat(body["expires_at"])
     max_allowed = timedelta(minutes=settings.impersonation_max_minutes + 1)
     assert expires_at <= datetime.now(UTC) + max_allowed
+    assert 0 < body["max_age"] <= (settings.impersonation_max_minutes + 1) * 60
+    assert body["session_cookie"] == settings.auth_cookie_name
 
-    both_cookies = {"Cookie": f"{admin_headers['Cookie']}; schakl_impersonate={token}"}
+    both_cookies = {"Cookie": f"schakl_auth={session_token}; schakl_impersonate={token}"}
 
     # On the target org's host the admin now *is* the member — visibly.
     async with client_for(target.host) as client:
@@ -307,6 +339,14 @@ async def test_impersonation_is_time_boxed_audited_and_visible(
     async with client_for(target.host) as client:
         assert (await client.get("/api/v1/meta/me", headers=hijack)).status_code == 403
 
+    # …and neither does the grant on its own: it authenticates nobody (#288's promise that a
+    # stolen grant stays insufficient).
+    async with client_for(target.host) as client:
+        alone = await client.get(
+            "/api/v1/meta/me", headers={"Cookie": f"schakl_impersonate={token}"}
+        )
+        assert alone.status_code == 401
+
     # Disabling the flag kills outstanding grants instantly.
     settings.instance_admin_enabled = False
     try:
@@ -320,7 +360,189 @@ async def test_impersonation_is_time_boxed_audited_and_visible(
         stopped = await client.post("/api/v1/instance/impersonation/stop", headers=admin_headers)
         assert stopped.status_code == 204
     actions = await audit_actions()
+    assert "impersonate.handoff" in actions
     assert "impersonate.start" in actions and "impersonate.stop" in actions
+
+
+async def test_a_handoff_ticket_is_single_use(client_for, instance_admin_enabled) -> None:
+    admin = await make_tenant("hand-once-admin")
+    await make_instance_owner(admin)
+    target = await make_tenant("hand-once", email="once@example.org", role="member")
+
+    handoff = await start_handoff(client_for, admin, target.org.id, target.user.id)
+    assert (await claim(client_for, target.host, handoff["ticket"])).status_code == 200
+
+    # Replaying the link — browser history, a proxy log, a screen share — opens nothing.
+    replayed = await claim(client_for, target.host, handoff["ticket"])
+    assert replayed.status_code == 403
+    assert replayed.json()["error"]["message"] == "errors.impersonation_handoff_invalid"
+
+
+async def test_a_handoff_ticket_only_works_on_the_host_it_names(
+    client_for, instance_admin_enabled
+) -> None:
+    admin = await make_tenant("hand-host-admin")
+    await make_instance_owner(admin)
+    target = await make_tenant("hand-host", email="host@example.org", role="member")
+    bystander = await make_tenant("hand-host-other")
+
+    handoff = await start_handoff(client_for, admin, target.org.id, target.user.id)
+
+    # Presented anywhere else it is refused — including on the console's own host, which is
+    # where a leaked URL would most plausibly be re-opened.
+    for host in (bystander.host, admin.host):
+        wrong = await claim(client_for, host, handoff["ticket"])
+        assert wrong.status_code == 403, host
+        assert wrong.json()["error"]["message"] == "errors.impersonation_handoff_invalid"
+
+    # A refusal elsewhere must not burn the ticket: the operator's own tab still works.
+    assert (await claim(client_for, target.host, handoff["ticket"])).status_code == 200
+
+
+async def test_an_expired_handoff_ticket_is_refused(client_for, instance_admin_enabled) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from app.core.instance.impersonation import ImpersonationHandoff
+
+    admin = await make_tenant("hand-exp-admin")
+    await make_instance_owner(admin)
+    target = await make_tenant("hand-exp", email="exp@example.org", role="member")
+
+    handoff = await start_handoff(client_for, admin, target.org.id, target.user.id)
+    async with async_session_maker() as session:
+        row = await session.scalar(select(ImpersonationHandoff))
+        row.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        await session.commit()
+
+    lapsed = await claim(client_for, target.host, handoff["ticket"])
+    assert lapsed.status_code == 403
+    assert lapsed.json()["error"]["message"] == "errors.impersonation_handoff_invalid"
+
+
+async def test_a_garbled_or_absent_ticket_refuses_rather_than_422(
+    client_for, instance_admin_enabled
+) -> None:
+    """The one session-less route on this surface still refuses like the rest of it."""
+    tenant = await make_tenant("hand-garbled")
+    for payload in ({}, {"ticket": ""}, {"ticket": "not-a-ticket"}):
+        async with client_for(tenant.host) as client:
+            response = await client.post(
+                "/api/v1/instance/impersonation/claim", json=payload
+            )
+        assert response.status_code == 403, payload
+
+
+async def test_a_handoff_is_refused_once_the_capability_is_gone(
+    client_for, instance_admin_enabled
+) -> None:
+    """A crossing that has not happened yet is re-authorized, unlike a grant already in flight
+    (docs/CLOUD.md): withdrawing ``instance.impersonate`` stops the pending link dead."""
+    from app.core.instance import capabilities as caps
+    from app.core.models import InstanceAdmin
+
+    admin = await make_tenant("hand-revoked-admin")
+    async with async_session_maker() as session:
+        session.add(
+            InstanceAdmin(
+                user_id=admin.user.id,
+                capabilities=[caps.ORGS_READ, caps.IMPERSONATE],
+                granted_by_email="owner@example.com",
+            )
+        )
+        await session.commit()
+    target = await make_tenant("hand-revoked", email="revoked@example.org", role="member")
+
+    handoff = await start_handoff(client_for, admin, target.org.id, target.user.id)
+
+    async with async_session_maker() as session:
+        row = await session.scalar(
+            select(InstanceAdmin).where(InstanceAdmin.user_id == admin.user.id)
+        )
+        row.capabilities = [caps.ORGS_READ]
+        await session.commit()
+
+    refused = await claim(client_for, target.host, handoff["ticket"])
+    assert refused.status_code == 403
+    assert refused.json()["error"]["message"] == "errors.impersonation_handoff_invalid"
+
+
+async def test_impersonation_crosses_to_a_verified_custom_domain(
+    client_for, instance_admin_enabled
+) -> None:
+    """The bug in #288: an org on its own domain is exactly where cookies cannot be shared."""
+    from datetime import UTC, datetime
+
+    admin = await make_tenant("hand-cd-admin")
+    await make_instance_owner(admin)
+    target = await make_tenant("hand-cd", email="cd@example.org", role="member")
+    domain = "support.klant-eigen-domein.example"
+    async with async_session_maker() as session:
+        org = await session.get(Org, target.org.id)
+        org.custom_domain = domain
+        org.custom_domain_verified_at = datetime.now(UTC)
+        await session.commit()
+
+    handoff = await start_handoff(client_for, admin, target.org.id, target.user.id)
+    # The handoff addresses the org the way hostname resolution does — the custom domain wins.
+    assert handoff["host"] == domain
+
+    redeemed = await claim(client_for, domain, handoff["ticket"])
+    assert redeemed.status_code == 200, redeemed.text
+    body = redeemed.json()
+    cookies = {
+        "Cookie": f"schakl_auth={body['session_token']}; schakl_impersonate={body['token']}"
+    }
+    async with client_for(domain) as client:
+        me = await client.get("/api/v1/meta/me", headers=cookies)
+        assert me.status_code == 200
+        assert me.json()["email"] == "cd@example.org"
+        assert me.json()["impersonated_by"] == admin.user.email
+
+    # The org's slug host still resolves to the same org, and the ticket was for the domain.
+    assert (await claim(client_for, target.host, handoff["ticket"])).status_code == 403
+
+
+async def test_same_host_impersonation_still_sets_the_cookie_directly(
+    client_for, instance_admin_enabled
+) -> None:
+    """A self-hosted box administering its own org shares one hostname, so there is nothing to
+    hand off: the grant comes straight back and no ticket is minted."""
+    admin = await make_tenant("imp-samehost")
+    await make_instance_owner(admin)
+    async with async_session_maker() as session:
+        member = User(
+            id=uuid.uuid4(),
+            email="samehost-member@example.org",
+            hashed_password="",
+            is_active=True,
+            is_verified=True,
+        )
+        session.add(member)
+        await session.flush()
+        await set_current_org(session, admin.org.id)
+        await add_membership(session, admin.org.id, member.id, "member")
+        await session.commit()
+        member_id = member.id
+
+    async with client_for(admin.host) as client:
+        response = await client.post(
+            f"/api/v1/instance/orgs/{admin.org.id}/impersonate",
+            json={"user_id": str(member_id), "minutes": 15},
+            headers=await auth_cookie(admin.user),
+        )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["handoff"] is None
+    assert body["token"]
+
+    cookies = {
+        "Cookie": f"{(await auth_cookie(admin.user))['Cookie']}; "
+        f"schakl_impersonate={body['token']}"
+    }
+    async with client_for(admin.host) as client:
+        me = await client.get("/api/v1/meta/me", headers=cookies)
+        assert me.status_code == 200
+        assert me.json()["email"] == "samehost-member@example.org"
 
 
 # --------------------------------------------------------------------------- #
@@ -421,20 +643,11 @@ async def test_import_rejects_schema_mismatch(client_for, instance_admin_enabled
 # --------------------------------------------------------------------------- #
 # Custom-domain claim & verify (tenant manager surface)
 # --------------------------------------------------------------------------- #
-async def test_domain_claim_verify_and_uniqueness(client_for, monkeypatch) -> None:
+async def test_domain_claim_check_and_uniqueness(client_for, fake_dns) -> None:
     a = await make_tenant("dom-a")
     b = await make_tenant("dom-b")
     a_headers = await auth_cookie(a.user)
     b_headers = await auth_cookie(b.user)
-
-    published: dict[str, list[str]] = {}
-
-    async def fake_txt(name: str) -> list[str]:
-        return published.get(name, [])
-
-    from app.core import domains as domains_module
-
-    monkeypatch.setattr(domains_module.dnscheck, "txt_records", fake_txt)
 
     async with client_for(a.host) as client:
         # Hosts under the base domain are routed by slug — not claimable.
@@ -447,20 +660,39 @@ async def test_domain_claim_verify_and_uniqueness(client_for, monkeypatch) -> No
             "/api/v1/meta/tenant/domain", json={"domain": "crm.agency.test"}, headers=a_headers
         )
         assert claimed.status_code == 200
-        challenge = claimed.json()
-        assert challenge["txt_record_name"] == "_schakl-challenge.crm.agency.test"
-        token = challenge["txt_record_value"]
+        status = claimed.json()
+        assert status["stage"] == "ownership_pending"
+        card = next(r for r in status["records"] if r["purpose"] == "ownership")
+        assert card["name"] == "_schakl-challenge.crm.agency.test"
+        token = card["value"]
 
-        # Verification fails until the TXT record exists…
-        failed = await client.post("/api/v1/meta/tenant/domain/verify", headers=a_headers)
-        assert failed.status_code == 400
-        assert failed.json()["error"]["message"] == "errors.domain_verification_failed"
+        # NXDOMAIN reads as propagation (pending), SERVFAIL as a broken zone (failed) —
+        # the distinct diagnoses #292 requires instead of one generic failure.
+        from app.core import dnscheck
 
-        published["_schakl-challenge.crm.agency.test"] = ["something-else", token]
-        verified = await client.post("/api/v1/meta/tenant/domain/verify", headers=a_headers)
-        assert verified.status_code == 200
-        assert verified.json()["custom_domain"] == "crm.agency.test"
-        assert verified.json()["pending_domain"] is None
+        fake_dns.txt["_schakl-challenge.crm.agency.test"] = dnscheck.NXDOMAIN
+        report = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=a_headers)
+        ).json()
+        assert (report["checks"][0]["state"], report["checks"][0]["code"]) == (
+            "pending", "txt_nxdomain",
+        )
+        fake_dns.txt["_schakl-challenge.crm.agency.test"] = dnscheck.SERVFAIL
+        report = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=a_headers)
+        ).json()
+        assert (report["checks"][0]["state"], report["checks"][0]["code"]) == (
+            "failed", "dns_servfail",
+        )
+
+        fake_dns.txt["_schakl-challenge.crm.agency.test"] = ["something-else", token]
+        report = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=a_headers)
+        ).json()
+        # Self-host: ownership is the whole story — one good check activates.
+        assert report["advanced"] is True
+        assert report["status"]["custom_domain"] == "crm.agency.test"
+        assert report["status"]["pending_domain"] is None
 
     # The verified domain now resolves to org A.
     async with client_for("crm.agency.test") as client:
@@ -481,3 +713,97 @@ async def test_domain_claim_verify_and_uniqueness(client_for, monkeypatch) -> No
             "/api/v1/meta/tenant/domain", headers=await auth_cookie(member.user)
         )
         assert denied.status_code == 403
+
+
+async def test_instance_admin_configures_domain_directly(
+    client_for, fake_dns, instance_admin_enabled
+) -> None:
+    """The operator path (#292): set a custom domain on an org from the instance surface —
+    operator-asserted ownership skips the TXT challenge and is audited as such."""
+    admin = await make_tenant("dom-admin")
+    await make_instance_owner(admin)
+    target = await make_tenant("dom-target")
+    other = await make_tenant("dom-other")
+    headers = await auth_cookie(admin.user)
+
+    async with client_for(admin.host) as client:
+        set_resp = await client.put(
+            f"/api/v1/instance/orgs/{target.org.id}/domain",
+            json={"domain": "Portaal.Klant.example."},
+            headers=headers,
+        )
+        assert set_resp.status_code == 200
+        status = set_resp.json()
+        # Normalized, active immediately, no ownership challenge issued.
+        assert status["custom_domain"] == "portaal.klant.example"
+        assert status["stage"] == "active"
+        assert status["pending_domain"] is None
+
+        # Global uniqueness holds on the operator path too.
+        conflict = await client.put(
+            f"/api/v1/instance/orgs/{other.org.id}/domain",
+            json={"domain": "portaal.klant.example"},
+            headers=headers,
+        )
+        assert conflict.status_code == 409
+
+        # claim mode only reserves + issues the challenge; the org admin finishes the wizard.
+        claim_resp = await client.put(
+            f"/api/v1/instance/orgs/{other.org.id}/domain",
+            json={"domain": "crm.ander.example", "mode": "claim"},
+            headers=headers,
+        )
+        assert claim_resp.status_code == 200
+        assert claim_resp.json()["stage"] == "ownership_pending"
+        assert claim_resp.json()["custom_domain"] is None
+
+        read_back = await client.get(
+            f"/api/v1/instance/orgs/{other.org.id}/domain", headers=headers
+        )
+        assert read_back.json()["pending_domain"] == "crm.ander.example"
+
+        cleared = await client.delete(
+            f"/api/v1/instance/orgs/{target.org.id}/domain", headers=headers
+        )
+        assert cleared.status_code == 200
+        assert cleared.json()["stage"] == "none"
+
+    # The audit trail records the operator assertion.
+    async with async_session_maker() as session:
+        actions = (
+            (
+                await session.execute(
+                    select(InstanceAuditLog.action, InstanceAuditLog.detail).order_by(
+                        InstanceAuditLog.created_at.asc()
+                    )
+                )
+            )
+            .all()
+        )
+        attach = next(row for row in actions if row[0] == "domain.attach")
+        assert attach[1]["ownership"] == "operator-asserted"
+
+
+async def test_instance_org_create_with_custom_domain(
+    client_for, fake_dns, instance_admin_enabled
+) -> None:
+    admin = await make_tenant("dom-create-admin")
+    await make_instance_owner(admin)
+    headers = await auth_cookie(admin.user)
+    async with client_for(admin.host) as client:
+        created = await client.post(
+            "/api/v1/instance/orgs",
+            json={
+                "name": "Klant BV",
+                "slug": "klantbv-dom",
+                "custom_domain": "app.klantbv.example",
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201
+        assert created.json()["custom_domain"] == "app.klantbv.example"
+        assert created.json()["custom_domain_verified"] is True
+
+    # The domain resolves to the new org straight away (DNS willing).
+    async with client_for("app.klantbv.example") as client:
+        assert (await client.get("/api/v1/meta/tenant")).json()["slug"] == "klantbv-dom"

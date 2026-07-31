@@ -1,6 +1,6 @@
 import { fail, redirect } from "@sveltejs/kit";
 
-import { apiErrorKey, lookupItems } from "$lib/core/errors";
+import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
@@ -21,29 +21,29 @@ export const load: PageServerLoad = async (event) => {
   const overdue = event.url.searchParams.get("overdue") === "1";
   const q = event.url.searchParams.get("q") ?? undefined;
 
-  const [invoices, summary, companies] = await Promise.all([
-    api.GET("/api/v1/invoicing/invoices", {
-      params: {
-        query: {
-          limit: 200,
-          offset: 0,
-          sort,
-          status: statusFilter,
-          company_id: companyFilter,
-          overdue,
-          q,
-        },
+  // Only the URL-dependent read; the tiles and the client picker come from the section layout,
+  // which does not rerun on a filter or sort click (#290).
+  const invoices = await api.GET("/api/v1/invoicing/invoices", {
+    params: {
+      query: {
+        limit: 200,
+        offset: 0,
+        sort,
+        status: statusFilter,
+        company_id: companyFilter,
+        overdue,
+        q,
+        // The index draws number, client, date, status and total — never a line. Loading
+        // every line of 200 invoices to derive tax groups nobody renders was the heaviest
+        // thing this response did (#290, docs/PERFORMANCE.md).
+        lines: false,
       },
-    }),
-    api.GET("/api/v1/invoicing/summary"),
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, count: false, sort: "name" } } }),
-  ]);
+    },
+  });
 
   return {
     invoices: invoices.data?.items ?? [],
     total: invoices.data?.total ?? 0,
-    summary: summary.data ?? null,
-    companies: lookupItems(companies, "companies").map((c) => ({ id: c.id, name: c.name })),
     table: { pref, sort: sort ?? null, widths: resolved.widths },
     statusFilter: statusFilter ?? "",
     companyFilter: companyFilter ?? "",

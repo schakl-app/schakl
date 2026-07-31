@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from tests.conftest import auth_cookie, make_tenant
 
 
@@ -50,6 +52,56 @@ async def test_my_open_tasks(client_for) -> None:
         assert mine.status_code == 200
         titles = [row["title"] for row in mine.json()]
         assert titles == ["Mine"]
+        compact = await c.get("/api/v1/tasks/dashboard-mine", headers=headers)
+        assert compact.status_code == 200
+        assert list(compact.json()[0]) == ["id", "title", "priority", "due_date"]
+        assert compact.json()[0]["title"] == "Mine"
+
+
+async def test_dashboard_groups_are_compact_and_exclude_terminal_tasks(client_for) -> None:
+    t = await make_tenant("task-dashboard-groups")
+    headers = await auth_cookie(t.user)
+    overdue = (datetime.now(UTC).date() - timedelta(days=1)).isoformat()
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Grouped Co"}, headers=headers)
+        ).json()
+        project = (
+            await c.post(
+                "/api/v1/projects",
+                json={"name": "Grouped Project", "company_id": company["id"]},
+                headers=headers,
+            )
+        ).json()
+        await c.post(
+            "/api/v1/tasks",
+            json={"title": "Late project task", "project_id": project["id"], "due_date": overdue},
+            headers=headers,
+        )
+        finished = (
+            await c.post(
+                "/api/v1/tasks",
+                json={"title": "Finished", "company_id": company["id"]},
+                headers=headers,
+            )
+        ).json()
+        await c.patch(
+            f"/api/v1/tasks/{finished['id']}",
+            json={"status": "done"},
+            headers=headers,
+        )
+
+        response = await c.get("/api/v1/tasks/dashboard-groups", headers=headers)
+        assert response.status_code == 200
+        assert response.json() == [
+            {
+                "entity_type": "project",
+                "entity_id": project["id"],
+                "label": "Grouped Project",
+                "count": 1,
+                "overdue": 1,
+            }
+        ]
 
 
 async def test_tasks_panel_on_company(client_for) -> None:

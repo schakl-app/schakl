@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { enhance } from "$app/forms";
+  import { applyAction, enhance } from "$app/forms";
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -125,6 +125,75 @@
     </form>
   </section>
 
+  <!-- Custom domain (#292): operator-side configuration, ownership asserted + audited. -->
+  <section class={sectionClass}>
+    <h2 class={sectionTitle}>{t("instance.domain.title")}</h2>
+    <p class="mt-1 text-xs text-text-muted">{t("instance.domain.hint")}</p>
+    {#if data.domain && data.domain.stage !== "none"}
+      <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p class="font-mono text-sm text-text">
+            {data.domain.pending_domain ?? data.domain.custom_domain}
+          </p>
+          <p class="mt-0.5 text-xs text-text-muted">
+            {t(`settings.domain.stage.${data.domain.stage}`)}
+          </p>
+        </div>
+        <form method="POST" action="?/clearDomain" use:enhance={busy.wrap("clearDomain")}>
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={busy.is("clearDomain")}
+            disabled={busy.active}
+          >
+            {t("instance.domain.remove")}
+          </Button>
+        </form>
+      </div>
+      {#if data.domain.records.length}
+        <div class="mt-3">
+          <p class="text-xs font-medium text-text-muted">{t("instance.domain.records")}</p>
+          <dl class="mt-1 space-y-1 font-mono text-xs text-text">
+            {#each data.domain.records as record (record.purpose)}
+              <div class="flex gap-2">
+                <dt class="shrink-0 text-text-muted">{record.type}</dt>
+                <dd class="break-all">{record.name} → {record.value}</dd>
+              </div>
+            {/each}
+          </dl>
+        </div>
+      {/if}
+    {/if}
+    <form
+      method="POST"
+      action="?/setDomain"
+      use:enhance={busy.keep("setDomain")}
+      class="mt-4 grid gap-3 sm:grid-cols-2"
+    >
+      <input
+        name="domain"
+        placeholder="crm.klant.nl"
+        aria-label={t("instance.domain.label")}
+        class="{inputClass} font-mono"
+      />
+      <select name="mode" class={inputClass} aria-label={t("instance.domain.mode")}>
+        <option value="activate">{t("instance.domain.mode_activate")}</option>
+        <option value="claim">{t("instance.domain.mode_claim")}</option>
+      </select>
+      <div class="sm:col-span-2">
+        <Button variant="secondary" loading={busy.is("setDomain")} disabled={busy.active}>
+          {t("instance.domain.set")}
+        </Button>
+        {#if form?.domainSaved}<span class="ml-3 text-sm text-text-muted"
+            >{t("instance.domain.saved")}</span
+          >{/if}
+      </div>
+      {#if form?.error && form?.domainError}
+        <p class="text-sm text-red-600 dark:text-red-400 sm:col-span-2">{t(form.error)}</p>
+      {/if}
+    </form>
+  </section>
+
   <!-- Members + impersonation -->
   <section class={sectionClass}>
     <h2 class={sectionTitle}>{t("instance.members")}</h2>
@@ -141,7 +210,21 @@
             </p>
           </div>
           {#if org.status === "active" && member.is_active}
-            <form method="POST" action="?/impersonate">
+            <!-- Another org's host needs a script navigation, not a redirect: `form-action 'self'`
+                 blocks a form submission that leaves this origin (#288). Impersonating a member of
+                 *this* org stays a plain same-origin redirect from the action. -->
+            <form
+              method="POST"
+              action="?/impersonate"
+              use:enhance={() =>
+                async ({ result }) => {
+                  if (result.type === "success" && result.data?.handoffUrl) {
+                    window.location.href = String(result.data.handoffUrl);
+                    return;
+                  }
+                  await applyAction(result);
+                }}
+            >
               <input type="hidden" name="user_id" value={member.user_id} />
               <button class={buttonSecondary}>{t("instance.impersonate")}</button>
             </form>

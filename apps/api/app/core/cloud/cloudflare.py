@@ -17,11 +17,16 @@ Design rules:
   used from the provisioning path). Nothing account-level; never a Global API Key.
 * **Off unless configured.** :func:`cloudflare_configured` gates every call, so a self-host
   box and the test suite never touch the network.
-* **The SNI override is the point of ``custom_origin_sni``.** Cloudflare opens a second TLS
-  connection to the origin and, by default, presents the *customer's* hostname — which no
-  origin certificate covers, so Full (strict) fails with a 526. Pinning SNI to the operator's
-  own edge hostname makes the origin certificate match again. The HTTP ``Host`` header is
-  untouched, so tenant resolution still sees the customer's domain (CLAUDE.md §7).
+* **The custom origin is what saves Full (strict); the SNI rewrite is not.** Cloudflare opens
+  a second TLS connection to the origin and presents the **custom origin server's** name as
+  SNI by default — which is the operator's own edge hostname, exactly what the wildcard origin
+  certificate covers. So ``custom_origin_server`` is all this flow needs, and the HTTP ``Host``
+  header stays the customer's domain either way, so tenant resolution is unaffected
+  (CLAUDE.md §7). ``custom_origin_sni`` is the *rewrite* on top of that default, it is an
+  **Enterprise-only entitlement**, and sending it on a Free/Pro/Business zone fails the whole
+  create with *"Access to setting a custom origin SNI has not been granted"* (#293). It is
+  therefore sent only when an operator explicitly configures
+  ``SCHAKL_CLOUD_CF_ORIGIN_SNI`` — never derived.
 * **The token never reaches a log line or an exception message.** It lives only in the
   request headers, and nothing here formats headers into an error.
 """
@@ -58,6 +63,32 @@ class CloudflareError(RuntimeError):
         self.status = status
 
 
+class CloudflareNotEntitledError(CloudflareError):
+    """Cloudflare refused the call over a **permission or plan entitlement**, not a hiccup.
+
+    Worth its own class because the response to it is the opposite of every other failure:
+    retrying can never succeed, and nobody in the tenant can fix it. Only the operator can —
+    by widening the API token's scopes or by removing a setting their zone's plan does not
+    include (#293) — so the message carries a diagnostic aimed at them and the caller maps it
+    to its own error code instead of the generic "try again in a moment".
+    """
+
+
+#: Fragments of Cloudflare's own error text that mean "your token or your plan, not our edge".
+#: Deliberately narrow — a wrong guess here would report a transient failure as a permanent
+#: one and tell the tenant not to retry something a retry would have fixed.
+_NOT_ENTITLED_MARKERS = (
+    "has not been granted",
+    "not entitled",
+    "not authorized",
+    "unauthorized",
+    "insufficient permission",
+    "requires enterprise",
+    "enterprise plan",
+    "not available on your plan",
+)
+
+
 def cloudflare_configured() -> bool:
     """Whether this instance can talk to Cloudflare. Mirrors ``storage.s3.s3_configured``."""
     return bool(
@@ -65,13 +96,15 @@ def cloudflare_configured() -> bool:
     )
 
 
-def origin_sni() -> str:
-    """What Cloudflare should present to the origin as SNI for a custom hostname.
+def origin_sni() -> str | None:
+    """The explicit SNI **rewrite** for a custom hostname, or None when there is none.
 
-    Defaults to the CNAME target — the hostname customers already point at, and the one the
-    operator's wildcard origin certificate covers.
+    Never derived. Cloudflare already presents the custom origin server's name as SNI, which is
+    the value this instance would have derived anyway; asking for it explicitly is an
+    Enterprise-only entitlement that fails the create outright on every other plan (#293). So
+    an unset ``SCHAKL_CLOUD_CF_ORIGIN_SNI`` means *omit the field*, not *compute one*.
     """
-    return settings.cloud_cf_origin_sni or cname_target()
+    return settings.cloud_cf_origin_sni or None
 
 
 def _client() -> httpx.AsyncClient:
@@ -97,9 +130,13 @@ def _fail(response: httpx.Response) -> CloudflareError:
         )
     except (ValueError, AttributeError):
         detail = ""
-    return CloudflareError(
-        detail or f"Cloudflare returned HTTP {response.status_code}", status=response.status_code
-    )
+    message = detail or f"Cloudflare returned HTTP {response.status_code}"
+    lowered = detail.lower()
+    if response.status_code in (401, 403) or any(
+        marker in lowered for marker in _NOT_ENTITLED_MARKERS
+    ):
+        return CloudflareNotEntitledError(message, status=response.status_code)
+    return CloudflareError(message, status=response.status_code)
 
 
 async def _request(
@@ -151,44 +188,81 @@ async def find_custom_hostname(hostname: str) -> dict[str, Any] | None:
 
 
 async def create_custom_hostname(hostname: str) -> dict[str, Any]:
-    """Register a custom hostname, pinning the origin SNI so Full (strict) keeps working.
+    """Register a custom hostname routed at the operator's own origin.
 
     Validation is ``http``: by the time schakl verifies a domain the customer has already
     pointed their CNAME at us (that is what makes the domain reach this instance at all), so
     Cloudflare can answer its own challenge at the edge. ``txt`` would make the customer add
     a second DNS record for no benefit.
+
+    ``custom_origin_server`` is the CNAME target and is never taken from the SNI setting — an
+    entitled operator rewriting SNI to some other name must not silently re-route the origin
+    with it (#293).
     """
-    origin = origin_sni()
-    return await _request(
-        "POST",
-        _zone_path("/custom_hostnames"),
-        json={
-            "hostname": hostname,
-            "ssl": {
-                "method": "http",
-                "type": "dv",
-                "settings": {"min_tls_version": "1.2"},
-            },
-            "custom_origin_server": origin,
-            "custom_origin_sni": origin,
+    payload: dict[str, Any] = {
+        "hostname": hostname,
+        "ssl": {
+            "method": "http",
+            "type": "dv",
+            "settings": {"min_tls_version": "1.2"},
         },
-    )
+        "custom_origin_server": cname_target(),
+    }
+    sni = origin_sni()
+    if sni:
+        payload["custom_origin_sni"] = sni
+    try:
+        return await _request("POST", _zone_path("/custom_hostnames"), json=payload)
+    except CloudflareNotEntitledError as exc:
+        if sni and "sni" in str(exc).lower():
+            origin = payload["custom_origin_server"]
+            raise CloudflareNotEntitledError(
+                f"{exc} — SCHAKL_CLOUD_CF_ORIGIN_SNI is set to {sni!r}, but 'SNI Rewrite for "
+                "Custom Origin' is an Enterprise-only entitlement. Leave the setting empty: "
+                f"Cloudflare then presents the custom origin server ({origin}) as SNI on its "
+                "own, which is the value this instance wants anyway.",
+                status=exc.status,
+            ) from exc
+        raise
 
 
-async def ensure_custom_hostname(hostname: str) -> str:
-    """Idempotent create → the Cloudflare custom-hostname id.
+async def ensure_custom_hostname_record(hostname: str) -> dict[str, Any]:
+    """Idempotent create → the full Cloudflare custom-hostname record.
 
     Adopts an existing record rather than duplicating it, so a retried verification (or a
-    hostname registered by hand during the manual era) converges instead of erroring.
+    hostname registered by hand during the manual era) converges instead of erroring. The
+    full record (not just the id) comes back so the caller can seed the domain-health state
+    (#291) without a second round-trip.
     """
     existing = await find_custom_hostname(hostname)
     if existing and existing.get("id"):
-        return str(existing["id"])
+        return existing
     created = await create_custom_hostname(hostname)
-    hostname_id = (created or {}).get("id")
-    if not hostname_id:
+    if not (created or {}).get("id"):
         raise CloudflareError("Cloudflare accepted the custom hostname but returned no id")
-    return str(hostname_id)
+    return created
+
+
+async def ensure_custom_hostname(hostname: str) -> str:
+    """Idempotent create → the Cloudflare custom-hostname id."""
+    return str((await ensure_custom_hostname_record(hostname))["id"])
+
+
+async def get_custom_hostname(hostname_id: str) -> dict[str, Any] | None:
+    """The current custom-hostname record, or None when it no longer exists (deleted by hand,
+    or moved to another zone).
+
+    Both readers of the lifecycle want the same fields — ``status``, ``ssl.status``,
+    ``ssl.validation_errors``, ``verification_errors``: the wizard's activation step polls it
+    rather than treating "created" as "live" (#292), and the daily health sweep reconciles
+    against it (#291).
+    """
+    try:
+        return await _request("GET", _zone_path(f"/custom_hostnames/{hostname_id}"))
+    except CloudflareError as exc:
+        if exc.status == 404:
+            return None
+        raise
 
 
 async def delete_custom_hostname(hostname_id: str) -> None:

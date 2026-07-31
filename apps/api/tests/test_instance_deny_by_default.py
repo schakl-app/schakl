@@ -146,7 +146,16 @@ def test_every_instance_route_declares_a_guard() -> None:
     exempt_names = {
         # Map the exception list onto route names once, so a rename fails loudly here rather
         # than silently widening the exemption.
-        "instance_me"
+        "instance_me",
+        # The cross-host impersonation handoff (#288). It *cannot* carry an instance guard: the
+        # whole reason it exists is that the administrator has no session on the tenant's
+        # hostname yet (cookies are host-scoped), so a session-based gate would refuse the one
+        # caller it is for. Its credential is the single-use ticket, which was minted behind
+        # `instance.impersonate` and is re-checked here against host, org, impersonator,
+        # capability and target. Unlike `instance_me` it is deliberately **not** in
+        # `_EXEMPT_OPERATIONS`, so both behavioural sweeps below still call it and still
+        # demand a refusal — introspection is waived, behaviour is not.
+        "claim_impersonation",
     }
     del paths  # selector B is asserted in the anti-vacuum test; this layer walks the routes
     offenders: list[str] = []
@@ -205,10 +214,11 @@ def test_declared_capabilities_exist_in_the_catalog() -> None:
 
 
 #: Exempt *and* not owner-gated: the only routes on the cross-tenant surface that any admin
-#: can reach whatever they hold. Both report or act on the caller's own session and nothing
-#: else. This list is the thing to argue about in review; everything else that is exempt is so
-#: because a **stricter** gate (owner-only) applies, which is not a hole.
-_UNGATED_BY_DESIGN = frozenset({"instance_me", "stop_impersonation"})
+#: can reach whatever they hold. Each reports or acts on something the caller already holds and
+#: nothing else — their own session, or a single-use ticket that was itself issued behind
+#: `instance.impersonate` (#288). This list is the thing to argue about in review; everything
+#: else that is exempt is so because a **stricter** gate (owner-only) applies, which is not a hole.
+_UNGATED_BY_DESIGN = frozenset({"instance_me", "stop_impersonation", "claim_impersonation"})
 
 
 def test_capability_exemptions_are_owner_gated_or_explicitly_harmless() -> None:

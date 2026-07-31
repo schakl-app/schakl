@@ -34,6 +34,7 @@
     manualKinds,
     PROTECTED_KIND,
   } from "./format";
+  import { contactsForScope, forgetContacts } from "./contacts";
   import { loadLinkLookups, type LinkOption, type ProjectOption, type TaskOption } from "./lookups";
 
   let {
@@ -320,26 +321,9 @@
     [],
   );
   $effect(() => {
-    // Host company's roster first; an org without links there falls back to all contacts.
-    const scope = hostCompanyId ? `&company_id=${hostCompanyId}` : "";
+    const scope = hostCompanyId ?? "";
     void (async () => {
-      let response = await fetch(`/api/v1/contacts?limit=200&sort=first_name${scope}`, {
-        headers: { accept: "application/json" },
-      });
-      interface ContactRow {
-        id: string;
-        first_name: string;
-        last_name?: string | null;
-        email?: string | null;
-        companies?: { name: string }[];
-      }
-      let items: ContactRow[] = response.ok ? ((await response.json()).items ?? []) : [];
-      if (items.length === 0 && scope) {
-        response = await fetch("/api/v1/contacts?limit=200&sort=first_name", {
-          headers: { accept: "application/json" },
-        });
-        items = response.ok ? ((await response.json()).items ?? []) : [];
-      }
+      const items = await contactsForScope(scope);
       contactOptions = items.map((c) => ({
         value: c.id,
         label: `${c.first_name} ${c.last_name ?? ""}`.trim(),
@@ -434,6 +418,9 @@
         contactOptions = [...contactOptions, { value: created.id, label: qcName || "—" }];
       }
       contactId = created.id;
+      // The shared roster cache must not outlive the person it does not know about (#290):
+      // the next form to open would offer a picker missing the contact just created here.
+      forgetContacts();
     } else if (created.slot === "interaction_company") {
       handledCreate = created.id;
       if (!linkCompanies.some((c) => c.value === created.id)) {

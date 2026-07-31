@@ -7,7 +7,7 @@ import { apiFor } from "$lib/core/session";
 import type { Actions, PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async (event) => {
-  if (!can(event.locals.user, "invoicing.settings.manage")) throw redirect(303, "/");
+  if (!can(event.locals.user, "invoicing.settings.manage")) throw redirect(303, "/settings");
   const api = apiFor(event);
   const [settings, taxRates, templates, providers, products] = await Promise.all([
     api.GET("/api/v1/invoicing/settings"),

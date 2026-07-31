@@ -15,17 +15,19 @@
 # Requires, in the Traefik stack: --providers.swarm=true, --providers.swarm.network=proxy,
 # and an external overlay network named `proxy`.
 #
-# SECRETS — create these five in Portainer → Secrets BEFORE the first deploy. Swarm refuses
+# SECRETS — create these seven in Portainer → Secrets BEFORE the first deploy. Swarm refuses
 # to deploy a stack whose secrets do not exist, which is the failure you want: loud, up front,
 # rather than a container that starts and quietly runs without a credential.
 #
 # The secret is named after the setting it feeds, so the mapping needs no lookup:
 #
 #   SCHAKL_SECRET_KEY                      openssl rand -hex 32
+#   SCHAKL_ENCRYPTION_KEY                  openssl rand -hex 32
 #   SCHAKL_DATABASE_URL                    postgresql+asyncpg://USER:PASS@172.16.8.3:5432/rdb
 #   SCHAKL_STORAGE_S3_ACCESS_KEY_ID        the Scaleway access key (SCW…)
 #   SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY    the Scaleway secret key (shown once at creation)
 #   SCHAKL_CLOUD_CF_API_TOKEN              the Cloudflare zone token
+#   SCHAKL_INSTANCE_EMAIL_API_KEY          the SMTP2GO API key
 #
 # They are mounted at /run/secrets/<name> and read via SCHAKL_<SETTING>_FILE, so none of them
 # appears in this file, in Portainer's database, or in `docker service inspect`. Everything
@@ -37,11 +39,15 @@ x-api-env: &api-env
   SCHAKL_DEPLOYMENT: cloud
   SCHAKL_ENVIRONMENT: production
   SCHAKL_BASE_DOMAIN: ${SCHAKL_BASE_DOMAIN:?e.g. schakl.cloud}
+  # Schakl accepts customer custom domains, so its Traefik routers otherwise match every host.
+  # Exclude Portainer explicitly to keep Schakl's /api catch-all from intercepting Portainer.
+  PORTAINER_HOST: ${PORTAINER_HOST:?e.g. portainer.example.com}
   # Signs sessions AND derives the key that encrypts every stored secret, so it is the root of
   # trust: the API refuses to boot in production on a weak or sample value.
   SCHAKL_SECRET_KEY_FILE: /run/secrets/SCHAKL_SECRET_KEY
-  # Optional, separate key for secrets at rest; defaults to deriving from SECRET_KEY.
-  SCHAKL_ENCRYPTION_KEY: ${SCHAKL_ENCRYPTION_KEY:-}
+  # Separate key for secrets at rest. Read from a Docker secret so the value never appears in
+  # the stack definition or `docker service inspect`.
+  SCHAKL_ENCRYPTION_KEY_FILE: /run/secrets/SCHAKL_ENCRYPTION_KEY
   # Forced true in production anyway; stated so the intent is visible.
   SCHAKL_AUTH_COOKIE_SECURE: "true"
   # A public multi-tenant console should not let strangers mint accounts.
@@ -99,8 +105,10 @@ x-api-env: &api-env
   # Portainer's database and in `docker service inspect`, which is what the secret avoids.
   SCHAKL_CLOUD_CF_API_TOKEN: ${SCHAKL_CLOUD_CF_API_TOKEN:-}
   SCHAKL_CLOUD_CF_ZONE_ID: ${SCHAKL_CLOUD_CF_ZONE_ID:-}
-  # Presented to the origin as SNI so Full (strict) validates against your wildcard origin
-  # certificate instead of the customer's hostname. Empty derives it from the CNAME target.
+  # Leave empty unless the zone is Enterprise: an explicit SNI rewrite is an Enterprise-only
+  # entitlement and setting it elsewhere fails every custom-hostname create. Cloudflare presents
+  # the custom origin server (the CNAME target below) as SNI on its own, which is what your
+  # wildcard origin certificate covers. Empty means the field is not sent at all.
   SCHAKL_CLOUD_CF_ORIGIN_SNI: ${SCHAKL_CLOUD_CF_ORIGIN_SNI:-}
   # What customers CNAME at, and the Cloudflare for SaaS fallback origin.
   SCHAKL_CLOUD_CNAME_TARGET: ${SCHAKL_CLOUD_CNAME_TARGET:-}
@@ -135,7 +143,7 @@ x-api-env: &api-env
   SCHAKL_INSTANCE_EMAIL_SECURITY: ${SCHAKL_INSTANCE_EMAIL_SECURITY:-starttls}
   SCHAKL_INSTANCE_EMAIL_USERNAME: ${SCHAKL_INSTANCE_EMAIL_USERNAME:-}
   SCHAKL_INSTANCE_EMAIL_PASSWORD: ${SCHAKL_INSTANCE_EMAIL_PASSWORD:-}
-  SCHAKL_INSTANCE_EMAIL_API_KEY: ${SCHAKL_INSTANCE_EMAIL_API_KEY:-}
+  SCHAKL_INSTANCE_EMAIL_API_KEY_FILE: /run/secrets/SCHAKL_INSTANCE_EMAIL_API_KEY
 
   # --- Optional integrations -----------------------------------------------------------------------
   # Google and AI credentials stay bring-your-own PER ORG on cloud; these are the documented
@@ -158,10 +166,12 @@ services:
       - storage-data:/data/storage
     secrets:
       - SCHAKL_SECRET_KEY
+      - SCHAKL_ENCRYPTION_KEY
       - SCHAKL_DATABASE_URL
       - SCHAKL_STORAGE_S3_ACCESS_KEY_ID
       - SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY
       - SCHAKL_CLOUD_CF_API_TOKEN
+      - SCHAKL_INSTANCE_EMAIL_API_KEY
     networks: [proxy, internal]
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
@@ -185,11 +195,29 @@ services:
         # Swarm reads routing labels from deploy.labels, not the service's top-level labels.
         - "traefik.enable=true"
         # API + MCP on ANY host: tenant subdomains, the apex console, verified custom domains.
-        - "traefik.http.routers.schakl-api.rule=PathPrefix(`/api/`) || PathPrefix(`/mcp`)"
+        - "traefik.http.routers.schakl-api.rule=!Host(`${PORTAINER_HOST}`) && (PathPrefix(`/api/`) || PathPrefix(`/mcp`))"
         - "traefik.http.routers.schakl-api.priority=1000"
         - "traefik.http.routers.schakl-api.entrypoints=${TRAEFIK_ENTRYPOINT:-web-secure}"
         - "traefik.http.routers.schakl-api.tls=true"
         - "traefik.http.services.schakl-api.loadbalancer.server.port=8000"
+        # Compress JSON at the edge rather than in the API process (#290). The list responses
+        # behind every screen are highly compressible text and this is the one place that can
+        # gzip them without a Python worker spending CPU per request.
+        #
+        # EXCLUDING text/event-stream IS LOAD-BEARING, not tidiness: the AI assistant answers as
+        # SSE, and a compressor that buffers it turns token-by-token delivery into one late blob.
+        #
+        # Under ~1 KB the Content-Encoding header and the CPU cost more than the saving, so the
+        # small hot responses (/prefs, /meta/me) stay uncompressed.
+        #
+        # The middleware is declared here, on the service that uses it, so its definition and
+        # its reference can never drift apart or land in different deploys. `web` declares its
+        # own under a different name for the same reason — one shared name defined twice is a
+        # conflict the moment someone edits one copy.
+        - "traefik.http.middlewares.schakl-api-compress.compress=true"
+        - "traefik.http.middlewares.schakl-api-compress.compress.minresponsebodybytes=1024"
+        - "traefik.http.middlewares.schakl-api-compress.compress.excludedcontenttypes=text/event-stream"
+        - "traefik.http.routers.schakl-api.middlewares=schakl-api-compress"
 
   worker:
     image: ghcr.io/schakl-app/schakl-api:${SCHAKL_TAG:?pin a release tag, e.g. 1.4.0}
@@ -200,10 +228,12 @@ services:
     # The worker needs it too: the lifecycle sweep releases Cloudflare records on termination.
     secrets:
       - SCHAKL_SECRET_KEY
+      - SCHAKL_ENCRYPTION_KEY
       - SCHAKL_DATABASE_URL
       - SCHAKL_STORAGE_S3_ACCESS_KEY_ID
       - SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY
       - SCHAKL_CLOUD_CF_API_TOKEN
+      - SCHAKL_INSTANCE_EMAIL_API_KEY
     networks: [internal]
     deploy:
       mode: replicated
@@ -236,11 +266,17 @@ services:
         # HostRegexp — a regex would contain `$`, which Compose/Portainer would try to
         # interpolate before Traefik ever sees it (it must be written `$$` to survive).
         # The Host header decides whether this renders a tenant or the instance console.
-        - "traefik.http.routers.schakl-web.rule=PathPrefix(`/`)"
+        - "traefik.http.routers.schakl-web.rule=!Host(`${PORTAINER_HOST}`) && PathPrefix(`/`)"
         - "traefik.http.routers.schakl-web.priority=1"
         - "traefik.http.routers.schakl-web.entrypoints=${TRAEFIK_ENTRYPOINT:-web-secure}"
         - "traefik.http.routers.schakl-web.tls=true"
         - "traefik.http.services.schakl-web.loadbalancer.server.port=3000"
+        # The SSR HTML is the most compressible thing this stack serves, and with Cloudflare in
+        # front the saving lands on origin egress — which is metered — as well as on the wire.
+        # Its own middleware name, not a shared one: see the api service above.
+        - "traefik.http.middlewares.schakl-web-compress.compress=true"
+        - "traefik.http.middlewares.schakl-web-compress.compress.minresponsebodybytes=1024"
+        - "traefik.http.routers.schakl-web.middlewares=schakl-web-compress"
 
   redis:
     image: redis:7-alpine
@@ -271,6 +307,8 @@ services:
 secrets:
   SCHAKL_SECRET_KEY:
     external: true
+  SCHAKL_ENCRYPTION_KEY:
+    external: true
   SCHAKL_DATABASE_URL:
     external: true
   SCHAKL_STORAGE_S3_ACCESS_KEY_ID:
@@ -278,6 +316,8 @@ secrets:
   SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY:
     external: true
   SCHAKL_CLOUD_CF_API_TOKEN:
+    external: true
+  SCHAKL_INSTANCE_EMAIL_API_KEY:
     external: true
 
 networks:

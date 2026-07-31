@@ -154,6 +154,17 @@ class ProductivityStats(BaseModel):
     rows: list[ProductivityRow]
 
 
+class TeamTimeSummary(BaseModel):
+    """Compact manager dashboard aggregate for one bounded period."""
+
+    date_from: date
+    date_to: date
+    minutes: int
+    billable_minutes: int
+    open_minutes: int
+    revenue: float
+
+
 class ClientRevenue(BaseModel):
     company_id: uuid.UUID | None
     revenue: float
@@ -274,3 +285,12 @@ class Timesheet(BaseModel):
     total: int                # grand total
     #: Days this week where the caller has an autosaved draft (#44) — the tab dots.
     draft_days: list[date] = Field(default_factory=list)
+
+
+class TimeWorkspace(BaseModel):
+    """Everything that changes together when the interactive Hours page changes day/week."""
+
+    running: TimeEntryRead | None
+    week: Timesheet
+    day: DayView
+    recent: TimeEntryRead | None

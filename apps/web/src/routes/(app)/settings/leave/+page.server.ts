@@ -28,7 +28,7 @@ function parseYear(raw: string | null): number {
 }
 
 export const load: PageServerLoad = async (event) => {
-  if (!can(event.locals.user, "leave.type.write")) throw redirect(303, "/");
+  if (!can(event.locals.user, "leave.type.write")) throw redirect(303, "/settings");
   const api = apiFor(event);
   const year = parseYear(event.url.searchParams.get("year"));
 
@@ -199,15 +199,35 @@ export const actions: Actions = {
     if (!userId) return fail(400, { error: "errors.required" });
 
     const api = apiFor(event);
-    // Entitlement inputs are posted as ent_<leave_type_id>.
+    // Entitlement inputs are posted as ent_<leave_type_id>, each with its prefill riding along
+    // as orig_<id>. Only the fields the admin actually changed are written: a ride-along PUT of
+    // the unchanged number would claim the pot as a manual override, permanently opting it out
+    // of the contract recompute (#264). An emptied field is the manual badge's promised revert
+    // ("clear it to let it be derived again"): the row is deleted and generation re-derives it.
     for (const [name, value] of form.entries()) {
       if (!name.startsWith("ent_")) continue;
-      const hours = Number(String(value).trim());
+      const typeId = name.slice(4);
+      const raw = String(value).trim().replace(",", ".");
+      const orig = String(form.get(`orig_${typeId}`) ?? "")
+        .trim()
+        .replace(",", ".");
+      if (raw === orig) continue;
+      if (raw === "") {
+        const { error } = await api.DELETE("/api/v1/leave/entitlements", {
+          params: { query: { user_id: userId, leave_type_id: typeId, year } },
+        });
+        // Not-found = there was no row to revert (the prefill was the derived 0) — fine.
+        if (error && apiErrorKey(error).key !== "errors.not_found") {
+          return fail(400, { error: apiErrorKey(error).key });
+        }
+        continue;
+      }
+      const hours = Number(raw);
       if (!Number.isFinite(hours) || hours < 0) continue;
       const { error } = await api.PUT("/api/v1/leave/entitlements", {
         body: {
           user_id: userId,
-          leave_type_id: name.slice(4),
+          leave_type_id: typeId,
           year,
           hours,
         },

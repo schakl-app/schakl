@@ -28,11 +28,12 @@ from app.core.permissions.horizon import resolve_client_role_floor
 from app.core.permissions.models import MembershipRole, Role, RolePermission
 from app.core.permissions.permset import PermissionSet
 from app.core.permissions.spec import SCOPE_ANY, SCOPE_OWN, SCOPES, WILDCARD, PermissionSpec
-from app.core.scope import register_company_scope_resolver
+from app.core.scope import SCOPE_SOURCE_CLIENT_ROLE, register_company_scope_resolver
 
 # The client-role horizon floor (#252) rides the same seam the modules' resolvers use, so
-# both auth paths — session and API key — get it without knowing it exists.
-register_company_scope_resolver(resolve_client_role_floor)
+# both auth paths — session and API key — get it without knowing it exists. It is keyed
+# because both of those paths already resolved the fact it queries for, and hand it in.
+register_company_scope_resolver(resolve_client_role_floor, key=SCOPE_SOURCE_CLIENT_ROLE)
 
 __all__ = [
     "CORE_PERMISSIONS",

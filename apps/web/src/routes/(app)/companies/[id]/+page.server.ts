@@ -2,6 +2,7 @@ import { error, fail, redirect } from "@sveltejs/kit";
 
 import { parseAssignees } from "$lib/core/assignees";
 import { apiBaseUrl } from "$lib/core/api/client";
+import { dedupeGets } from "$lib/core/api/dedupe";
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
@@ -45,38 +46,47 @@ function parseContacts(raw: FormDataEntryValue | null): ContactSelection[] | und
 }
 
 export const load: PageServerLoad = async (event) => {
-  const api = apiFor(event);
+  const api = dedupeGets(apiFor(event));
   const company_id = event.params.id;
 
-  const { data: company } = await api.GET("/api/v1/companies/{company_id}", {
-    params: { path: { company_id } },
-  });
+  // The entity rides *in* the fan, not in front of it (#290). Awaiting it first made every
+  // other call wait a full round-trip for an answer none of them needed — they are all keyed by
+  // the id in the URL, not by anything the company row says. The 404 check simply moves below;
+  // the panels call answers 404 too if the id is not ours, so nothing leaks by asking.
+  const [companyRes, panels, definitions, templates, members] = await Promise.all([
+    api.GET("/api/v1/companies/{company_id}", { params: { path: { company_id } } }),
+    api.GET("/api/v1/companies/{company_id}/panels", { params: { path: { company_id } } }),
+    api.GET("/api/v1/custom-fields/definitions", {
+      params: { query: { entity_type: "company" } },
+    }),
+    // The template applier only renders for holders of the permission (#253), so a viewer
+    // who can't apply one shouldn't pay for the fetch either.
+    can(event.locals.user, "tasks.template.apply")
+      ? api.GET("/api/v1/tasks/templates").then((r) => r.data ?? [])
+      : [],
+    api.GET("/api/v1/members/lookup"),
+  ]);
+  const company = companyRes.data;
   if (!company) throw error(404, { code: "not_found", message: "errors.not_found" });
 
-  // The edit modal shows every editable field, contact persons included, so it needs the org's
-  // contacts to pick from. One call covers both jobs: each `ContactRead` carries the companies it
-  // is linked to with the per-company `is_primary`, so the client's current contacts are a filter
-  // over this list rather than a second request (docs/PERFORMANCE.md).
-  const [panels, definitions, templates, members, contacts, contactDefinitions] = await Promise.all(
-    [
-      api.GET("/api/v1/companies/{company_id}/panels", { params: { path: { company_id } } }),
-      api.GET("/api/v1/custom-fields/definitions", {
-        params: { query: { entity_type: "company" } },
-      }),
-      // The template applier only renders for holders of the permission (#253), so a viewer
-      // who can't apply one shouldn't pay for the fetch either.
-      can(event.locals.user, "tasks.template.apply")
-        ? api.GET("/api/v1/tasks/templates").then((r) => r.data ?? [])
-        : [],
-      api.GET("/api/v1/members/lookup"),
-      api.GET("/api/v1/contacts", {
-        params: { query: { limit: 200, offset: 0, sort: "first_name" } },
-      }),
-      api.GET("/api/v1/custom-fields/definitions", {
-        params: { query: { entity_type: "contact" } },
-      }),
-    ],
-  );
+  // The edit modal's own lookups stream in behind the page (the `createForm` pattern): nothing
+  // on the client page draws them, and most visits never open the modal. One call covers both
+  // jobs — each `ContactRead` carries the companies it is linked to with the per-company
+  // `is_primary`, so the client's current contacts are a filter over this list rather than a
+  // second request (docs/PERFORMANCE.md).
+  const editForm = Promise.all([
+    api.GET("/api/v1/contacts", {
+      params: { query: { limit: 200, offset: 0, count: false, sort: "first_name" } },
+    }),
+    api.GET("/api/v1/custom-fields/definitions", {
+      params: { query: { entity_type: "contact" } },
+    }),
+  ])
+    .then(([contacts, contactDefinitions]) => ({
+      contacts: contacts.data?.items ?? [],
+      contactDefinitions: contactDefinitions.data ?? [],
+    }))
+    .catch(() => ({ contacts: [], contactDefinitions: [] }));
 
   return {
     company,
@@ -84,8 +94,7 @@ export const load: PageServerLoad = async (event) => {
     definitions: definitions.data ?? [],
     templates,
     members: members.data ?? [],
-    contacts: contacts.data?.items ?? [],
-    contactDefinitions: contactDefinitions.data ?? [],
+    editForm,
     locale: event.locals.locale,
   };
 };

@@ -160,6 +160,9 @@ class Interaction(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Auditable
     __table_args__ = (
         Index("ix_interactions_org_occurred", "org_id", "occurred_at"),
         Index("ix_interactions_org_status", "org_id", "status"),
+        # One client's timeline — the company panel and the `?company_id=` filter, both newest
+        # first (#290). The org-wide index above scans the whole tenant's history to find them.
+        Index("ix_interactions_org_company_occurred", "org_id", "company_id", "occurred_at"),
         # Poll idempotency: one row per message per mailbox. Partial — manual rows carry NULLs.
         Index(
             "uq_interactions_org_owner_gmail_message",

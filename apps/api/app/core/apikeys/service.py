@@ -142,6 +142,34 @@ class ApiKeyService:
             .all()
         )
 
+    async def keys_by_account(
+        self, account_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, list[ApiKey]]:
+        """Every account's keys in one grouped read (#290).
+
+        The Service-toegang screen shows each account with its keys, and fetched them one
+        request per account — an N+1 across HTTP, which is the expensive kind. Permission is
+        the caller's, checked once here rather than per account.
+        """
+        self.ctx.require("apikeys.service_account.manage")
+        if not account_ids:
+            return {}
+        rows = (
+            (
+                await self.ctx.session.execute(
+                    self.keys.scoped_select()
+                    .where(ApiKey.service_account_id.in_(account_ids))
+                    .order_by(ApiKey.created_at.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        grouped: dict[uuid.UUID, list[ApiKey]] = {}
+        for key in rows:
+            grouped.setdefault(key.service_account_id, []).append(key)
+        return grouped
+
     async def create_personal(self, data: ApiKeyCreate) -> tuple[ApiKey, str]:
         """A member mints a key for themselves. Its scopes must be a subset of what they hold."""
         self.ctx.require("apikeys.personal.manage")

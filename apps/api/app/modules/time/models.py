@@ -17,10 +17,12 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
@@ -54,6 +56,26 @@ class TimeEntryType(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
 
 class TimeEntry(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     __tablename__ = "time_entries"
+    __table_args__ = (
+        # Every tenant request carries org_id; the time UI then narrows by owner and range.
+        Index("ix_time_entries_org_user_started", "org_id", "user_id", "started_at"),
+        # Manager reports and dashboard aggregates scan one tenant over a bounded period.
+        Index("ix_time_entries_org_started", "org_id", "started_at"),
+        # Budget burn/report panels commonly scope the same range to one project.
+        Index("ix_time_entries_org_project_started", "org_id", "project_id", "started_at"),
+        # The client's own hours: the company panel's recent list and the unbudgeted-hours
+        # aggregate both narrow to one company (#290). The project variant above does not
+        # cover it — a leftmost prefix of ``(org_id, project_id, …)`` is not ``company_id``,
+        # and entries booked straight onto a client carry no project at all.
+        Index("ix_time_entries_org_company_started", "org_id", "company_id", "started_at"),
+        # The timer bar asks for this on every time/dashboard navigation.
+        Index(
+            "ix_time_entries_running",
+            "org_id",
+            "user_id",
+            postgresql_where=text("ended_at IS NULL"),
+        ),
+    )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),

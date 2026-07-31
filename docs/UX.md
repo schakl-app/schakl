@@ -320,6 +320,21 @@
   un-quiet a surface on purpose kept calm, and quiet is a design decision, not a gap.
   `Spinner` (a lucide loader on Tailwind's `animate-spin`) is `aria-hidden` — it always
   accompanies visible text, never replaces it.
+- **An uploaded image is shown, not spelled out.** A file input paired with a text field holding the
+  stored address is how Huisstijl shipped, so uploading a logo wrote `/api/v1/files/<uuid>/public`
+  into a box the admin then stared at: an implementation detail of where the bytes went, answering
+  no question anyone has and inviting an edit that must never be made by hand. `core/ui/ImageField`
+  is the shape — a thumbnail of what is set, **Bestand kiezen** / **Vervangen** and **Verwijderen**
+  beside it, and a chosen file previewed locally (`createObjectURL`) and named before the save, so
+  the picture is confirmed *before* it is stored. The URL folds behind "een gehoste URL gebruiken",
+  because pointing at an already-hosted asset is a real if rare need; it opens by default only when
+  the stored value genuinely is such an address, never for an upload. It posts exactly what the
+  plain markup did (a URL field, an optional file field, empty URL clears), so no form action
+  changes shape. The account page's avatar was already right — thumbnail, upload, remove, no URL —
+  and branding was the outlier. Two details worth keeping: a dead address falls back to the empty
+  placeholder rather than leaving a browser's broken-image glyph in the card, and the file input is
+  `sr-only`, never `hidden`, because a `display:none` control is not focusable and the upload would
+  be unreachable by keyboard.
 - **A password reveal (eye) toggle sits on user-password fields only** (#235, owner call): login,
   setup, reset-password and the account page's password fields use the shared
   `core/ui/PasswordInput` — the places where a mistyped password locks someone out. Write-only
@@ -475,6 +490,40 @@
   screen** (#229, after the task-templates precedent). The Instellingen index card deep-links
   to the tab (`/subscriptions/templates`, like `/tasks/templates`), and a retired settings
   route 301-redirects there so old links keep working.
+- **Instellingen is a registry, not a page** (`core/settings-nav.ts`). Its thirty-five screens were
+  described in four places at once — the index card grid, the permission list that decides whether
+  the sidebar item appears, the breadcrumb slug→title map, and each screen's own guard — and the
+  copies had drifted: two entries named permissions no screen guards on, eight screens appeared in
+  none of them, so an admin holding only `settings.nav.manage` could not reach Instellingen at all.
+  One entry per screen now carries its href, its title/subtitle keys, the permission(s) that open
+  it, the module that owns it and its posture flags; the grid, the section rail, the crumbs and
+  `canAccessSettings` all read that list, so a new settings screen is one entry rather than four
+  edits three of which someone will forget.
+  Visibility has **three** gates, all of them UX (the route still guards itself, CLAUDE.md §15):
+  **permission** — holding any one of the listed keys; **module** — a tenant who switched `leave`
+  off has no Verlof to configure, and without this the owner's `*` opened a screen whose API routes
+  are not even mounted; **posture** — cloud-only or instance-owner-only, which permission cannot
+  express, because `*` satisfies a check for a capability the box does not have.
+  The index also **searches** — title, subtitle, and a hidden `settings.search.*` keyword line per
+  screen. Past about twenty entries, typing "btw" beats reading five group headings, and the
+  keywords are where the words that are *not* on the card go ("wachtwoord" → Mijn account, "smtp" →
+  E-mail). And a refusal inside the section lands on `/settings`, never on the dashboard: being
+  thrown out of the whole area you were navigating is disorienting, and the index refuses again,
+  honestly, if the visitor may open nothing there.
+  The **grouping** is part of the same job. "Modules & workflows" had become a fifteen-card junk
+  drawer holding the org's dashboard defaults, its outgoing mail transport, its AI provider and a
+  cloud support switch side by side, while Google Workspace sat two groups away from the other two
+  third-party integrations. Five groups, each answering one question: what this workspace looks
+  like (Werkruimte), who may use it (Team & toegang), what shape our data takes (Gegevens &
+  keuzelijsten), how each module behaves (Modules & werkprocessen), what it talks to (Communicatie
+  & koppelingen). A card is named after what is *on* it — the screen holding only client numbering
+  is "Klantnummering", not "Bedrijven", which read as a sibling of Klantgroepen and was neither.
+- **The Instellingen rail** (`settings/+layout.svelte`) renders from `xl` up, and never on the index
+  itself — there the cards *are* the navigation, with subtitles the rail has no room for. Below
+  `xl` the content keeps the full column: a 13 rem rail on a laptop costs every settings form a
+  fifth of its width to save one click, and the app-wide breadcrumb row is already the way back. It
+  lists exactly what the index would show that viewer, marks the current screen, and resolves a
+  deep link (`/settings/roles/<id>`) to its section by longest matching href.
 - The header holds only the profile menu (avatar → name, personal settings, logout).
   Language lives in personal settings, not the header.
 
@@ -494,6 +543,11 @@
 - Branding (logo, colors, brand name incl. hide-name option, favicon) is runtime, per
   tenant, via Huisstijl — never hardcoded. Charts use their own validated, colorblind-safe
   palette (see the dataviz procedure), not the tenant color.
+  Huisstijl carries two subjects and says so: **Merk** (name, tab title, logo/favicon/app icon,
+  colors) and **Regio & formaat** (language, timezone, country, currency). They were one
+  eleven-control grid under a heading that promised only "logo, kleuren en merknaam", so "waar stel
+  ik de valuta in?" had no scent to follow. Naming the halves costs nothing; it is still one form
+  and one save button, because splitting the save is the mistake this page would make next.
 
 ## Known mistakes to not repeat
 
@@ -551,6 +605,19 @@
   `tests/test_rbac_deny_by_default.py::test_client_role_is_read_only_except_own_comments` (it walks
   the live route table, so a new write route ships covered); the UI side has no automated guard, so
   audit every write control by hand when you add a client-reachable panel, list or shared row.
+- **An index that renders every card and lets the routes sort it out.** Instellingen showed all
+  thirty-odd screens to anyone who could open *one* of them, so an agency that granted
+  `settings.branding.write` and nothing else handed that person a wall of cards, twenty-nine of
+  which 303'd them back to the dashboard on click. It is #253's rule ("a control that renders
+  without checking `can()`") applied to a whole grid rather than a button, and the fix is the same
+  one: render from what the viewer may actually open. A landing page for a section is not exempt
+  from the rule because it only contains links — a link that always refuses is a broken control.
+- **A screen with no guard at all, because "the API enforces it".** Instellingen → E-mail and →
+  Single sign-on had no `can()` in their loads, so any member could open the outgoing-mail
+  transport and the identity-provider form: three guaranteed 403s and an empty admin form that
+  could never save. The API being the boundary is why this was not a data *leak*; it is still a
+  screen that lies about what the visitor may do, and it is why every settings route declares its
+  permission (#19) rather than trusting the call it makes.
 - **A whole *screen* that leaks, not just a control.** The pass above gated the controls inside
   client-reachable pages and missed the page that *is* a write surface: `/tasks/templates` — the
   org-wide task-automation and checklist repositories — hung off the tasks sub-nav and read behind

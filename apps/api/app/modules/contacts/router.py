@@ -101,6 +101,9 @@ async def list_contacts(
     sort: str | None = Query(
         None, description="first_name | last_name | email | job_title | company | …, '-' desc"
     ),
+    count: bool = Query(
+        True, description="Compute the total. False for pickers and name-only lookups."
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[ContactRead]:
     items, total = await ContactService(ctx).list(
@@ -110,6 +113,7 @@ async def list_contacts(
         contact_type_id=contact_type_id,
         q=q,
         sort=sort,
+        count=count,
     )
     return Page(
         items=[ContactRead.model_validate(c) for c in items],

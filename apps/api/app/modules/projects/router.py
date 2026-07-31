@@ -9,11 +9,34 @@ from fastapi import APIRouter, Depends, Query
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.modules.projects.models import ProjectStatus
-from app.modules.projects.schemas import ProjectCreate, ProjectRead, ProjectUpdate
+from app.modules.projects.schemas import (
+    DashboardBudgetProject,
+    ProjectCreate,
+    ProjectRead,
+    ProjectUpdate,
+)
 from app.modules.projects.service import ProjectService
 from app.schemas import Page
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+
+
+# Literal path before the dynamic ``/{project_id}``, or the segment swallows it.
+@router.get(
+    "/dashboard-budgets",
+    response_model=list[DashboardBudgetProject],
+    dependencies=[require_permission("projects.project.read")],
+)
+async def dashboard_budgets(
+    limit: int = Query(4, ge=1, le=20),
+    ctx: RequestContext = Depends(require_context),
+) -> list[DashboardBudgetProject]:
+    """The budgeted active projects burning hottest — the My Day tile, already sorted and cut.
+
+    Mirrors ``/tasks/dashboard-groups``: the widget asked for 200 rows and kept four
+    (docs/PERFORMANCE.md).
+    """
+    return await ProjectService(ctx).dashboard_budgets(limit=limit)
 
 
 @router.get(

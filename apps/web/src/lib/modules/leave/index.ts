@@ -8,6 +8,7 @@ import { isoAddDays } from "$lib/core/calendar";
 import { apiErrorKey } from "$lib/core/errors";
 import { fmtClockTime } from "$lib/core/format";
 import { hasPermission } from "$lib/core/permissions";
+import { getTimeZone } from "$lib/core/timezone";
 import { t } from "$lib/core/i18n";
 import { TreePalm } from "@lucide/svelte";
 
@@ -77,7 +78,11 @@ registerWebModule({
       category: "dashboard.category.leave",
       size: "sm",
       load: (api) => {
-        const today = new Date().toISOString().slice(0, 10);
+        // "Today" is the org's calendar day (§8), not the server's UTC one: this load runs
+        // server-side, and between 00:00 and 02:00 Amsterdam time the UTC date is yesterday.
+        const today = new Intl.DateTimeFormat("en-CA", { timeZone: getTimeZone() }).format(
+          new Date(),
+        );
         return api
           .GET("/api/v1/leave/team", {
             params: { query: { date_from: today, date_to: today } },

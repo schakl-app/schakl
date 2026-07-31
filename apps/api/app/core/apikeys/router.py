@@ -94,7 +94,16 @@ async def revoke_key(
 async def list_service_accounts(
     ctx: RequestContext = Depends(require_context),
 ) -> list[ServiceAccountRead]:
-    return [ServiceAccountRead.model_validate(a) for a in await ApiKeyService(ctx).list_accounts()]
+    """Each account with its keys — one grouped read, not one request per account (#290)."""
+    service = ApiKeyService(ctx)
+    accounts = await service.list_accounts()
+    keys = await service.keys_by_account([a.id for a in accounts])
+    return [
+        ServiceAccountRead.model_validate(account).model_copy(
+            update={"keys": [_key_read(k) for k in keys.get(account.id, [])]}
+        )
+        for account in accounts
+    ]
 
 
 @router.post(

@@ -69,6 +69,47 @@ capability is checked when the grant is *issued*, and the grant is signed and ti
 **revoking `instance.impersonate` does not kill a session already in flight** — it lapses
 within one window (`SCHAKL_IMPERSONATION_MAX_MINUTES`, ≤60). Revoking the admin, or
 deactivating the account, is the immediate lever; every grant is on the audit trail either way.
+A crossing that has *not* happened yet is a different matter and is re-authorized on arrival, so
+withdrawing the capability does stop a link still sitting in a redirect.
+
+### Impersonating across hosts (#288)
+
+The grant only works alongside the administrator's own session, and both are cookies — which are
+**host-scoped**. The console runs on the apex, the org runs on `<slug>.<base_domain>` or on a
+domain the customer owns, so there is nothing to share and, for a customer domain, no parent to
+widen a cookie to. Handing the grant over in a query string put it on a host that had a grant and
+no session: the API refused before the grant could be applied and the browser landed on the
+tenant's login screen.
+
+So the crossing is an explicit, single-use **handoff**:
+
+1. `POST /instance/orgs/{id}/impersonate` on the console host stores an `impersonation_handoffs`
+   row and returns `{handoff: {host, ticket, expires_at}}` — and **no grant**. The grant JWT does
+   not exist yet, so an unclaimed handoff leaves nothing usable anywhere.
+2. The console sends the browser to `https://<host>/impersonate?ticket=…`. That SSR route
+   redeems the ticket over `POST /instance/impersonation/claim` — the one route on the instance
+   surface that answers without a session, because the whole point is that there isn't one yet.
+3. The claim re-checks everything against live state (host, org still active, administrator still
+   an instance principal *holding* `instance.impersonate`, service PIN still claimed, target still
+   an active member), burns the ticket under `FOR UPDATE`, and returns the grant plus a session
+   token for the **real administrator**, minted to expire *with* the grant. Both are set as
+   httpOnly cookies on the tenant host; the operator's footprint there dies with the window.
+4. Anything wrong — expired, already redeemed, wrong host, revoked capability — is one
+   undifferentiated `403 errors.impersonation_handoff_invalid`, rendered as a page that says the
+   link is spent, never a login redirect.
+
+Two constraints shaped the plumbing, and both are easy to undo by accident:
+
+- **The crossing cannot be an HTTP redirect.** Our own CSP sends `form-action 'self'` (audit F14)
+  and Chrome applies it to a form submission's *whole* redirect chain, so a 303 off-origin is
+  blocked before the browser asks for it. The action returns the address and the page navigates
+  itself (with a plain link as the no-JavaScript fallback). Same reason **stopping** lands on the
+  tenant host's own `/impersonate?stopped=1` page, which offers the link back to the console.
+- **Ending it drops the minted session too.** The administrator is usually not a member of that
+  org, so leaving the session behind would strand them on a 403 that looks like a login screen.
+
+`tests/test_instance_admin.py` covers single use, host binding, expiry, revocation and the custom
+domain; `apps/web/tests/e2e/cloud.spec.ts` drives it in a browser across two real hosts.
 
 ## Service PIN: tenant consent for operator access
 
@@ -108,10 +149,27 @@ POST   /api/v1/instance/provisioning/orgs/{slug}/activate …and reactivation
 ```
 
 Create payload: `{name, slug, owner_email, owner_password?, owner_full_name?, brand_name?,
-locale?, enabled_modules?, plan?, trial_days?}`. With `owner_password` the org is fully
-auto-configured (the owner can log in immediately at the returned `url`); without it the
-owner arrives via the forgot-password flow like an invited member. The provisioned owner is
-a plain org `owner`, **never** `is_superuser` (#201).
+locale?, enabled_modules?, plan?, trial_days?, custom_domain?, custom_domain_mode?}`. With
+`owner_password` the org is fully auto-configured (the owner can log in immediately at the
+returned `url`); without it the owner arrives via the forgot-password flow like an invited
+member. The provisioned owner is a plain org `owner`, **never** `is_superuser` (#201).
+
+`custom_domain` configures the customer's own domain in the same call (#292).
+`custom_domain_mode` defaults to `"activate"`: **operator-asserted ownership** — the TXT
+challenge is skipped (recorded on the audit trail as `domain.attach` /
+`ownership: operator-asserted`), the Cloudflare custom hostname is provisioned fail-closed
+in the same transaction (a Cloudflare failure rolls the whole org back — retry the call),
+and the response's `dns_records` lists exactly what the customer's DNS must carry
+(Type / Name / Value / TTL) so the checkout can show or mail them. The response's `url` stays
+the **slug host** until the domain is live: the hostname was created moments ago and its
+certificate is still being issued, and a provisioning response must hand the caller an
+address that already serves (#291). It flips to the custom domain once the certificate is
+active — the daily sweep or a check on the wizard notices. `"claim"` only reserves
+the name and issues the challenge — the response carries the TXT card, and the org's own
+admin finishes the wizard. The same two modes exist on the console and instance-admin org
+pages (`PUT/GET/DELETE /api/v1/instance/orgs/{org_id}/domain`, capability
+`instance.orgs.write` to change, `instance.orgs.read` to read) and as an optional field on
+both org-creation forms.
 
 ### Plans
 
@@ -135,8 +193,8 @@ There is **no org** on the instance-management domain. On cloud, the base domain
 
 - `/setup` (first run) creates the instance owner — a user with `is_superuser`, no org.
 - `/console` — login, org list (status, plan, domains), org creation, per-org detail with
-  PIN entry, plan control, lifecycle actions, impersonation (jumps to the org's own host),
-  instance API keys, and the instance audit trail.
+  PIN entry, plan control, lifecycle actions, impersonation (crosses to the org's own host over
+  the single-use handoff above), instance API keys, and the instance audit trail.
 - Tenant hosts never serve `/console`; the apex never serves an org.
 
 The web app decides via `GET /api/v1/meta/instance` (`{deployment, is_instance_host,
@@ -151,15 +209,15 @@ Two mechanisms, chosen per org:
    `*.<base_domain>`, mounted into Traefik (`infra/certs/origin.pem` + `origin.key`, or
    `SCHAKL_ORIGIN_CERT_DIR`) as the default certificate. Wildcard routers in
    `infra/traefik/dynamic.cloud.yml` route any subdomain; nothing per-org to do.
-2. **Custom domain (CNAME + Let's Encrypt):** the org claims a domain under Instellingen →
-   Branding, points a CNAME at the target shown there (`SCHAKL_CLOUD_CNAME_TARGET`,
-   default `edge.<base_domain>` — give that name an A/AAAA record to the server), proves
-   ownership via the existing DNS-TXT challenge, and verifies. On verification the API
-   writes `custom-domains.yml` (one router pair per **verified** domain, each with
-   `certResolver: letsencrypt`) into the shared ingress volume; Traefik watches it and
-   issues/renews the certificate. Unverified hosts get no router and no certificate —
-   the allow-list is the verified-domains table, so the box is never an open cert factory
-   and never trips LE rate limits.
+2. **Custom domain (CNAME + Let's Encrypt):** the org sets a domain up through the guided
+   wizard under Instellingen → Branding → Eigen domein (#292): it claims the name, proves
+   ownership via the DNS-TXT challenge, then points a CNAME at the target shown
+   (`SCHAKL_CLOUD_CNAME_TARGET`, default `edge.<base_domain>` — give that name an A/AAAA
+   record to the server). On activation the API writes `custom-domains.yml` (one router
+   pair per **active** domain, each with `certResolver: letsencrypt`) into the shared
+   ingress volume; Traefik watches it and issues/renews the certificate. Unverified hosts
+   get no router and no certificate — the allow-list is the verified-domains table, so the
+   box is never an open cert factory and never trips LE rate limits.
 
 The fragment is rewritten on verify/clear, at API boot, and by a daily worker cron
 (`SCHAKL_CLOUD_INGRESS_DIR`, set by the overlay; unset = sync off, e.g. in dev).
@@ -175,7 +233,7 @@ every host.
 ```
 SCHAKL_CLOUD_CF_API_TOKEN=…        # or _FILE, pointing at a Docker secret
 SCHAKL_CLOUD_CF_ZONE_ID=…
-SCHAKL_CLOUD_CF_ORIGIN_SNI=        # optional; defaults to the CNAME target
+SCHAKL_CLOUD_CF_ORIGIN_SNI=        # leave empty; Enterprise-only SNI rewrite (#293)
 ```
 
 **The API token needs exactly two scopes, both Zone-level, on the one zone:**
@@ -194,22 +252,163 @@ stored in the database, never returned by an endpoint, never in the OpenAPI spec
 reaches the web app. Use the `*_FILE` form with a Docker secret so it does not show up in
 `docker inspect`.
 
-**Why `custom_origin_sni` matters.** Cloudflare opens a *second* TLS connection to the origin
-and by default presents the customer's hostname as SNI — which no origin certificate covers,
-so Full (strict) answers **526**. schakl pins SNI to the operator's own edge hostname, so the
-wildcard origin certificate matches again. The HTTP `Host` header is untouched, so tenant
-resolution still sees the customer's domain.
+**What keeps Full (strict) working — and why the SNI rewrite is not it.** Cloudflare opens a
+*second* TLS connection to the origin. Every custom hostname schakl creates carries a
+`custom_origin_server` of the CNAME target (`edge.<base_domain>`), and Cloudflare presents that
+custom origin's own name as SNI by default — which is exactly what the operator's wildcard origin
+certificate covers, so Full (strict) validates. Nothing extra is needed. The HTTP `Host` header is
+untouched either way, so tenant resolution still sees the customer's domain.
+
+`SCHAKL_CLOUD_CF_ORIGIN_SNI` is a *rewrite* of that default, and **"SNI Rewrite for Custom Origin"
+is an Enterprise-only entitlement** — Custom Origins themselves are available on Free, Pro and
+Business, the SNI rewrite is not. So schakl sends `custom_origin_sni` **only** when the setting is
+explicitly configured, and never derives it (#293): sending it on a non-Enterprise zone fails the
+create with *"Access to setting a custom origin SNI has not been granted"* and leaves the
+customer's domain unverified. Leave the setting empty unless you have the entitlement *and* need
+an SNI that differs from the origin server; it never changes `custom_origin_server`.
+
+Should Cloudflare refuse a call over a token scope or a plan entitlement, retrying is pointless
+until the operator acts, so neither path says "try again in a moment". Provisioning an org's
+subdomain answers `502 errors.cloudflare_not_entitled` rather than the retryable
+`errors.cloudflare_failed`; the customer-facing domain wizard reports the same refusal as a
+*failed* `cloudflare_auth` / `cloudflare_entitlement` check (see below) instead of an HTTP error,
+because a 502 there would throw away the progress the customer has already made. Either way the
+API log carries Cloudflare's own words plus what the operator has to change. A hostname added by
+hand in SSL/TLS → Custom Hostnames is adopted by the next check (exact name match), so a manual
+workaround needs no cleanup.
 
 **Fallback origin.** Cloudflare for SaaS routes every custom hostname to one proxied record in
 your zone — use the CNAME target (`edge.<base_domain>`), set under SSL/TLS → Custom Hostnames.
 It must be proxied, and it must be Active before any custom hostname resolves.
 
-Verification order on `POST /meta/tenant/domain/verify`: the DNS TXT challenge, then global
-uniqueness, then **Cloudflare, before the org row is touched**. A Cloudflare outage therefore
-leaves the domain *unverified* (`502 errors.cloudflare_failed`) rather than verified with no
-certificate behind it. Clearing a domain takes the opposite trade-off: the removal is
-best-effort, because an org must always be able to drop its domain, and a leftover custom
-hostname routes nothing and is adopted again on the next verify.
+### The domain wizard (#292)
+
+Customer-side onboarding is a resumable four-step flow on `/meta/tenant/domain`:
+
+1. **Choose** (`POST /meta/tenant/domain`) — normalize + validate the name, refuse anything
+   under the base domain, check global uniqueness, issue the ownership token. The org's
+   current custom domain (if any) keeps routing until the new one activates.
+2. **Prove ownership** — only the `_schakl-challenge.<domain>` TXT card is shown; the
+   customer is never asked to cut traffic over before control is proven.
+3. **Point DNS** — after ownership succeeds the Cloudflare custom hostname is provisioned
+   and the traffic CNAME card appears (the TXT card stays, flagged *temporary*).
+4. **Activate & monitor** — the domain activates only when every production condition is
+   ready: traffic DNS observed, hostname active, certificate issued. On self-host, ownership
+   alone activates (routing is the operator's own ingress); on cloud without Cloudflare,
+   ownership + observed DNS activate and Let's Encrypt takes it from there.
+
+`POST /meta/tenant/domain/check` is the single probe-and-advance action the wizard polls.
+It always answers 200 with per-layer `checks` — `ownership`, `dns_target`, `hostname`,
+`certificate` — each carrying `state` (`ok` / `pending` / `failed`), a machine `code`, the
+**expected** and **observed** values, and an i18n message. Conditions that plausibly mean
+"still propagating" (missing TXT, NXDOMAIN, timeout) read as *pending*, never as failure —
+the wizard does not declare defeat while Cloudflare validates asynchronously. `GET` reads
+only persisted state (no DNS probes), which is what makes the wizard resumable across
+sessions. Cloudflare is still contacted **before** the org row says anything is live, so an
+edge outage leaves the claim in `routing_pending` rather than active-without-certificate.
+Clearing a domain takes the opposite trade-off: the removal is best-effort, because an org
+must always be able to drop its domain, and a leftover custom hostname routes nothing and
+is adopted again on the next check.
+
+Past `active` the same endpoint keeps answering, and becomes the **lifecycle** view (#291):
+it re-reads the hostname and certificate, re-resolves the traffic record, and writes the
+health columns `app.core.hosts.custom_domain_live` decides canonicality from. So the wizard
+does not end at activation — the fourth step is where a customer sees a certificate that
+stopped renewing or DNS that moved away, with the same expected/observed diagnostics.
+
+#### Operator troubleshooting
+
+Every non-ok check logs `domain check <correlation_id> org=<slug> …` API-side; the customer
+sees the same correlation id, so a support ticket maps to the exact probe. Codes:
+
+| code | meaning | operator action |
+|---|---|---|
+| `txt_missing` / `txt_nxdomain` | challenge not visible yet | usually propagation; verify the record name with the customer |
+| `txt_wrong_value` | TXT exists, wrong token | customer pasted stale/partial value |
+| `dns_servfail` | customer zone broken (often DNSSEC) | point customer at their DNS provider |
+| `target_missing` / `target_nxdomain` | traffic CNAME absent | propagation or record not created |
+| `target_wrong` | domain resolves elsewhere | another CDN/proxy in front, or wrong target |
+| `hostname_pending` | Cloudflare still validating | wait; check the fallback origin is Active |
+| `hostname_moved` / `hostname_blocked` / `hostname_deleted` | Cloudflare hostname state | inspect the custom hostname in the CF dashboard |
+| `cloudflare_auth` | token rejected (401/403) | rotate/rescope `SCHAKL_CLOUD_CF_API_TOKEN` |
+| `cloudflare_entitlement` | plan/quota refusal (#293) | raise the custom-hostnames quota / plan |
+| `cloudflare_unavailable` | CF API unreachable / 5xx | transient; retries on the next check |
+| `cert_pending` | certificate being issued | wait (up to ~1 h) |
+| `cert_failed` | validation errors (CAA, expired token) | the check's `observed` carries Cloudflare's own validation message |
+
+The Cloudflare API token never appears in any diagnostic, log line or response — only
+Cloudflare's own error text does. Optional customer-side Cloudflare **DNS automation**
+("Connect Cloudflare", #292) is deliberately not implemented: there is no
+operator-independent OAuth flow to a customer's zone that meets the least-privilege bar, so
+the wizard ships the precise manual record cards instead.
+
+## Canonical host & custom-domain lifecycle (#291)
+
+After a custom domain verifies, the org has **two valid origins**: the operator-controlled
+`<slug>.<base_domain>` host and the customer's domain. Neither is removed; one is canonical.
+
+**Verified is ownership; live is activation.** With Cloudflare for SaaS, creating the custom
+hostname is not activation: the domain counts as **live** only once Cloudflare reports the
+hostname `active`, its DV certificate `active`, and the DNS drift check still sees the domain
+pointing at the SaaS target. That state lives on `orgs` (`cf_hostname_status`,
+`cf_ssl_status`, `domain_dns_ok`, `domain_cert_expires_at`, `domain_checked_at`,
+`domain_check_error`) and is written in three places, all of them the same reconciliation:
+activation seeds it from the custom-hostname record it already holds (the wizard's
+`_activate`, and `attach` for an operator-set domain), `POST /meta/tenant/domain/check`
+re-reads it whenever the wizard polls, and the daily `cloud_domains_sweep` cron (04:30) does
+it unattended. The wizard's own check is deliberately the *only* customer-facing one — one
+probe feeds both the per-layer diagnostics the customer reads and the columns
+`custom_domain_live` consults, so the two can never disagree. Without Cloudflare (self-host,
+or the
+Traefik/Let's Encrypt posture) there is no state to poll: the router and certificate follow
+the verification directly, so verified = live — today's behaviour, unchanged. Orgs verified
+before this state existed stay live until the first sweep records the truth: an upgrade must
+never silently demote a working domain.
+
+**The policy, per surface** (`app.core.hosts` is the one helper):
+
+| Surface | Behaviour |
+|---|---|
+| Browser navigation | While live, top-level GET/HEAD document requests on the slug host 307 to the custom domain (`hooks.server.ts`, from `canonical_host` on `/meta/tenant`). `no-store`, never a 308 — health is state, a cached permanent redirect would brick recovery. |
+| Generated links, e-mail | `org_base_url()` → the live custom domain, else the slug host. Used by e-mail branding, password/invite mails, task links. |
+| OAuth / OIDC | Callback URLs derive from `org_base_url()` (`docs/SSO.md`); the runtime OIDC callback stays request-derived. While a domain is unhealthy the displayed callback flips to the slug host — matching reality, since the broken domain serves nothing. No WebAuthn surface exists today. |
+| API / MCP | **Never redirected.** Both origins keep answering — a blind 307 would break non-idempotent requests and cookie-less clients. Canonical is a recommendation for API consumers, not an enforcement. |
+| Instance console | Org rows carry `canonical_host` (live-aware); the impersonation jump uses it, so the operator lands on an origin that serves — which matters most exactly when the customer domain is broken. |
+
+**Loop-safety, by construction:** only one direction ever redirects (toward `canonical_host`),
+the canonical host compares equal to itself, and an unhealthy domain advertises no canonical
+host at all — so at most one hop, and the slug host silently resumes serving the moment
+health degrades. Sessions are host-only cookies: switching origins means signing in again,
+deliberately — a customer domain must never share the base domain's cookie scope.
+
+**Recovery:** the slug host always resolves (`resolve_org` is untouched by health), an
+unhealthy domain shows a banner to holders of `settings.domain.write` instead of a generic
+TLS failure, and **Instellingen → Eigen domein** — the wizard's own screen, at its *Actief*
+step — shows the raw hostname/certificate/DNS state, the last error and the re-check button.
+Huisstijl keeps only a summary card linking there: one screen owns the domain, setup and
+lifecycle alike.
+
+### Certificate renewal, HTTP DCV and Delegated DCV
+
+The custom hostnames schakl creates are **exact, non-wildcard** names validated with
+`ssl.method=http`. Cloudflare renews their DV certificates through the same automatic HTTP
+DCV **as long as the hostname stays `active` and keeps resolving to the SaaS target** — the
+customer does not need Cloudflare as their DNS provider and does not need to proxy anything
+in their own zone; the CNAME routes their traffic through the schakl edge, which answers the
+renewal challenge itself. Renewal breaks when the domain stops pointing at the target,
+another CDN sits in front of it, or a CAA record blocks the CA — which is exactly what the
+sweep watches: it re-reads every hostname's status/SSL state, runs the DNS drift check, and
+mails the org's domain managers **once per distinct problem** (`orgs.domain_alerted_for`
+fingerprint) — on any not-live state, and ahead of an expiry closer than 15 days (Cloudflare
+renews ~30 days out, so 15 means renewal has been failing for weeks).
+
+**Delegated DCV is deliberately deferred.** It would let certificates renew even while the
+domain points elsewhere, at the cost of every customer adding a permanent `_acme-challenge`
+CNAME (and conflict-checking any existing `_acme-challenge` TXT). For exact hostnames that
+actually point at the platform, HTTP DCV renews unattended — and when it can't, the sweep
+says so before browsers do. Revisit alongside the guided setup wizard (#292), which will
+consume the same state this lifecycle work records. Cloudflare webhooks are likewise deferred
+(account-level configuration; the daily sweep is the safety net).
 
 ## Automatic subdomain provisioning (#199)
 

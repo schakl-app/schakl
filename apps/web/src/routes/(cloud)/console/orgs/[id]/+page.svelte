@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { enhance } from "$app/forms";
+  import { applyAction, enhance } from "$app/forms";
   import { fmtDateTime, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -20,10 +20,10 @@
   // A datetime from the API rendered back into the <input type="date"> value it came from.
   const asDateValue = (iso: string | null | undefined) => (iso ? iso.slice(0, 10) : "");
   const stageKey = $derived(
-    ({
+    {
       warning: "cloud.lifecycle.stage_warning",
       suspended: "cloud.lifecycle.stage_suspended",
-    })[summary?.lifecycle_stage ?? "active"] ?? "cloud.lifecycle.stage_active",
+    }[summary?.lifecycle_stage ?? "active"] ?? "cloud.lifecycle.stage_active",
   );
 </script>
 
@@ -39,8 +39,15 @@
   <div>
     <h1 class="text-xl font-semibold text-text">{summary?.name}</h1>
     <p class="mt-1 font-mono text-sm text-text-muted">
-      {summary?.custom_domain ?? `${summary?.slug}.${data.baseDomain}`}
+      {summary?.canonical_host ?? `${summary?.slug}.${data.baseDomain}`}
       · {t(`instance.status_${summary?.status}`)}
+      {#if summary?.custom_domain && summary?.custom_domain_verified && !summary?.custom_domain_live}
+        <!-- Verified custom domain that is not serving (#291): the console shows the working
+             (recovery) address above, and flags the broken one for the operator. -->
+        · <span class="text-amber-600 dark:text-amber-400"
+          >{t("cloud.console.domain_unhealthy", { domain: summary.custom_domain })}</span
+        >
+      {/if}
     </p>
   </div>
 </div>
@@ -85,6 +92,21 @@
 
   <!-- Members -->
   <section class="mt-6 overflow-x-auto rounded-xl border border-border bg-surface-raised">
+    {#if form?.handoffUrl}
+      <!-- Fallback for a submit that was not enhanced — JavaScript off, or a click that beat
+           hydration. The crossing cannot be a redirect (`form-action 'self'`, #288), so hand the
+           address over as a link rather than doing nothing at all. -->
+      <p class="border-b border-border px-4 py-3 text-sm">
+        <a
+          href={String(form.handoffUrl)}
+          class="text-brand underline"
+          data-testid="handoff-continue"
+          data-sveltekit-reload
+        >
+          {t("instance.handoff_continue")}
+        </a>
+      </p>
+    {/if}
     <table class="w-full text-sm">
       <thead>
         <tr
@@ -102,10 +124,24 @@
             <td class="px-4 py-3 text-text-muted">{member.role}</td>
             <td class="px-4 py-3 text-right">
               {#if member.is_active && data.org.status === "active"}
+                <!-- The crossing to the org's own hostname is a *script* navigation on purpose
+                     (#288): a 303 out of this origin is blocked by our own
+                     `form-action 'self'` CSP, which Chrome applies to a form submission's whole
+                     redirect chain. So the action returns the address and we go there. -->
                 <form
                   method="POST"
                   action="?/impersonate"
-                  use:enhance={busy.wrap(`impersonate:${member.user_id}`)}
+                  use:enhance={busy.wrap(
+                    `impersonate:${member.user_id}`,
+                    () =>
+                      async ({ result }) => {
+                        if (result.type === "success" && result.data?.handoffUrl) {
+                          window.location.href = String(result.data.handoffUrl);
+                          return;
+                        }
+                        await applyAction(result);
+                      },
+                  )}
                   class="inline"
                 >
                   <input type="hidden" name="user_id" value={member.user_id} />
@@ -157,6 +193,75 @@
     {/if}
     <Button variant="secondary" loading={busy.is("plan")} disabled={busy.active}>
       {t("common.save")}
+    </Button>
+  </form>
+</section>
+
+<!-- Custom domain (#292). PIN-free: routing is platform data, not tenant content. -->
+<section class="mt-6 max-w-md rounded-xl border border-border bg-surface-raised p-6">
+  <h2 class="text-base font-semibold text-text">{t("instance.domain.title")}</h2>
+  <p class="mt-1 text-sm text-text-muted">{t("instance.domain.hint")}</p>
+
+  {#if data.domain && data.domain.stage !== "none"}
+    <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <p class="font-mono text-sm text-text">
+          {data.domain.pending_domain ?? data.domain.custom_domain}
+        </p>
+        <p class="mt-0.5 text-xs text-text-muted">
+          {t(`settings.domain.stage.${data.domain.stage}`)}
+        </p>
+      </div>
+      <form method="POST" action="?/clearDomain" use:enhance={busy.wrap("clearDomain")}>
+        <Button
+          variant="secondary"
+          size="sm"
+          loading={busy.is("clearDomain")}
+          disabled={busy.active}
+        >
+          {t("instance.domain.remove")}
+        </Button>
+      </form>
+    </div>
+    {#if data.domain.records.length}
+      <div class="mt-3">
+        <p class="text-xs font-medium text-text-muted">{t("instance.domain.records")}</p>
+        <dl class="mt-1 space-y-1 font-mono text-xs text-text">
+          {#each data.domain.records as record (record.purpose)}
+            <div class="flex gap-2">
+              <dt class="shrink-0 text-text-muted">{record.type}</dt>
+              <dd class="break-all">{record.name} → {record.value}</dd>
+            </div>
+          {/each}
+        </dl>
+      </div>
+    {/if}
+  {/if}
+
+  <form
+    method="POST"
+    action="?/setDomain"
+    use:enhance={busy.keep("setDomain")}
+    class="mt-4 space-y-3"
+  >
+    <input
+      name="domain"
+      placeholder="crm.klant.nl"
+      aria-label={t("instance.domain.label")}
+      class="{inputClass} font-mono"
+    />
+    <select name="mode" class={inputClass} aria-label={t("instance.domain.mode")}>
+      <option value="activate">{t("instance.domain.mode_activate")}</option>
+      <option value="claim">{t("instance.domain.mode_claim")}</option>
+    </select>
+    {#if form?.error && form?.domainError}
+      <p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
+    {/if}
+    {#if form?.domainSaved}
+      <p class="text-sm text-emerald-700 dark:text-emerald-400">{t("instance.domain.saved")}</p>
+    {/if}
+    <Button variant="secondary" loading={busy.is("setDomain")} disabled={busy.active}>
+      {t("instance.domain.set")}
     </Button>
   </form>
 </section>

@@ -11,16 +11,29 @@ const SELECT_TYPES = new Set(["select", "multi_select"]);
 
 export const load: PageServerLoad = async (event) => {
   // Manager-only screen (the API also enforces this on writes).
-  if (!can(event.locals.user, "settings.customfields.write")) throw redirect(303, "/");
+  if (!can(event.locals.user, "settings.customfields.write")) throw redirect(303, "/settings");
 
   const api = apiFor(event);
-  const entityTypesRes = await api.GET("/api/v1/custom-fields/entity-types");
+  // With `?entity_type=` in the URL — which is every click of the tab rail — the definitions do
+  // not depend on the entity-type list, so the two go out together instead of one after the
+  // other (#290). Only the first, parameterless visit still has to wait to learn the default.
+  const requested = event.url.searchParams.get("entity_type") || "";
+  const [entityTypesRes, requestedDefs] = await Promise.all([
+    api.GET("/api/v1/custom-fields/entity-types"),
+    requested
+      ? api.GET("/api/v1/custom-fields/definitions", {
+          params: { query: { entity_type: requested, include_inactive: true } },
+        })
+      : null,
+  ]);
   const entityTypes = entityTypesRes.data ?? [];
-  const entity_type = event.url.searchParams.get("entity_type") || entityTypes[0] || "company";
+  const entity_type = requested || entityTypes[0] || "company";
 
-  const definitions = await api.GET("/api/v1/custom-fields/definitions", {
-    params: { query: { entity_type, include_inactive: true } },
-  });
+  const definitions =
+    requestedDefs ??
+    (await api.GET("/api/v1/custom-fields/definitions", {
+      params: { query: { entity_type, include_inactive: true } },
+    }));
 
   return {
     entityTypes,

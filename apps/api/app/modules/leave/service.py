@@ -494,13 +494,18 @@ class LeaveService:
 
         ``on`` asks *which week applied on that date*: the working week lives on the employment
         contract, so a date covered by a contract carrying one resolves to it. Omit ``on`` for
-        "the current arrangement" (settings screens, the dashboard widget) — it skips the
-        contract lookup entirely and answers from the profile, exactly as before.
+        "the current arrangement" (settings screens, the dashboard widget), which is the same
+        question asked of org-local **today** — the Dienstverband wizard writes the week onto
+        the contract and nothing else, so a dateless read that skipped the contract lookup
+        answered "40 h, 8 h/day" for anyone the wizard onboarded, while ``compute_hours`` and
+        the preview priced the very same person's requests per contract. Two surfaces, two
+        numbers, one request.
         """
-        if on is not None:
-            week = await self._contract_schedule_on(user_id, on)
-            if week is not None:
-                return week, sched.week_hours(week), False
+        if on is None:
+            on = await self._org_today()
+        week = await self._contract_schedule_on(user_id, on)
+        if week is not None:
+            return week, sched.week_hours(week), False
         return self._effective(await self._profile(user_id), await self.default_schedule())
 
     async def _contract_schedule_on(
@@ -567,15 +572,34 @@ class LeaveService:
         return hours
 
     async def list_profiles(self) -> list[tuple[uuid.UUID, Decimal, sched.WorkSchedule | None]]:
-        """Every profile row for the managers' roster (``leave.profile.manage``).
+        """Every employee's current arrangement for the managers' roster
+        (``leave.profile.manage``).
 
         Returns each employee's **own** schedule (``None`` = follows the org default) rather
         than the merged one: the settings screen already holds the default and rendering
-        "inherited" is the whole point of the distinction.
+        "inherited" is the whole point of the distinction. "Own" is answered the way
+        :meth:`profile_for` answers it — the contract in force today first, the profile as the
+        legacy fallback — and covers members who have a contract but no profile row at all,
+        which is everyone the Dienstverband wizard onboarded. Two queries for the whole
+        roster, never one per member (docs/PERFORMANCE.md).
         """
         self.ctx.require("leave.profile.manage")
         rows = (await self.ctx.session.execute(self.profiles.scoped_select())).scalars().all()
-        return [(p.user_id, p.hours_per_week, sched.parse(p.schedule)) for p in rows]
+        by_user: dict[uuid.UUID, tuple[Decimal, sched.WorkSchedule | None]] = {
+            p.user_id: (p.hours_per_week, sched.parse(p.schedule)) for p in rows
+        }
+        today = await self._org_today()
+        contract_rows = (
+            (await self.ctx.session.execute(self.contracts.scoped_select())).scalars().all()
+        )
+        for contract in contract_rows:
+            if not contract.start_date <= today <= (contract.end_date or date.max):
+                continue
+            week = sched.parse(contract.schedule)
+            if week is None:
+                continue
+            by_user[contract.user_id] = (sched.week_hours(week), week)
+        return [(uid, hours, week) for uid, (hours, week) in by_user.items()]
 
     async def set_profile(self, user_id: uuid.UUID, data: LeaveProfileUpdate) -> LeaveProfile:
         """Save a schedule (and derive ``hours_per_week`` from it) or, legacy, bare hours."""
@@ -619,10 +643,18 @@ class LeaveService:
         just saved is the best answer anyone has for it.
         """
         today = await self._org_today()
+        touched = False
         for contract in await self._user_contracts(user_id):
             if contract.end_date is not None and contract.end_date < today:
                 continue
             await self.contracts.update(contract, schedule=schedule)
+            touched = True
+        if touched:
+            # The same rule as update_contract: the week feeds the entitlement (the half-day
+            # rounding, and the contract-less legacy fallback), so a rewritten contract week
+            # re-derives the generated pots — this path must not be the one door that skips
+            # #264 while the contract endpoint honours it for the very same field.
+            await self._recompute_generated_entitlements(user_id)
 
     async def _member_or_404(self, user_id: uuid.UUID) -> None:
         membership = await self.ctx.session.scalar(
@@ -1095,10 +1127,18 @@ class LeaveService:
           consumes no quota, so the next week immediately becomes eligible and the year still ends
           up with the number of days the pot bought. A fixed cadence cannot recover a lost day.
 
-        Never backfills either way — the first attempted date is on or after today.
+          The quota universe runs from the **anchor**, never from today: prorating against the
+          window still ahead re-derives a fresh surplus on every run (the placed days that
+          front-loaded the quota fall out of both the candidate list and the placed count), so
+          the monthly cron would quietly hand out extra days forever. Past candidates therefore
+          *do* appear in the plan — the generator counts the spent ones against the cap and
+          never places the rest, so a re-run at any later date reproduces the original
+          arithmetic and adds nothing.
+
+        Neither shape backfills: interval mode starts at/after today, and spread mode's past
+        candidates exist for bookkeeping only — the generator skips placing them.
         """
         weekday = pattern.anchor_date.weekday()
-        start = max(pattern.anchor_date, today)
         if pattern.days_per_year is None:
             step = timedelta(weeks=pattern.interval_weeks)
             occurrence = pattern.anchor_date
@@ -1112,10 +1152,10 @@ class LeaveService:
             return plan
 
         plan = []
-        for year in range(start.year, horizon.year + 1):
+        for year in range(pattern.anchor_date.year, horizon.year + 1):
             candidates = self._weekday_dates(
                 weekday,
-                max(start, date(year, 1, 1)),
+                max(pattern.anchor_date, date(year, 1, 1)),
                 min(horizon, date(year, 12, 31)),
             )
             if not candidates:
@@ -1193,15 +1233,6 @@ class LeaveService:
             # occurrences, and rebuilding the resolver per day would be two queries a day
             # (docs/PERFORMANCE.md).
             schedule_on = await self.schedule_resolver(pattern.user_id)
-            # Every occurrence shares the anchor's weekday, so the window snapshot is one
-            # resolution per pattern, not one per day.
-            resolved_start, resolved_end = self._resolve_bounds(
-                schedule_on(pattern.anchor_date),
-                pattern.anchor_date,
-                pattern.start_time,
-                pattern.anchor_date,
-                pattern.end_time,
-            )
             plan = self._occurrence_plan(pattern, today, horizon)
 
             spent = set(
@@ -1229,6 +1260,10 @@ class LeaveService:
                     continue
                 if cap is not None and placed_by_year.get(day.year, 0) >= cap:
                     continue  # spread mode: this year is far enough ahead already
+                if day < today:
+                    # An unspent past candidate is quota bookkeeping only (spread mode's
+                    # universe runs from the anchor) — a missed day is never backfilled.
+                    continue
                 hours, _ = await self.compute_hours(
                     pattern.user_id,
                     day,
@@ -1266,10 +1301,17 @@ class LeaveService:
                     if remaining_by_year[day.year] < hours:
                         continue  # the gap earned no more free hours this year
                     remaining_by_year[day.year] -= hours
+                # The display window resolves against *this* occurrence's schedule: the week
+                # can change at a contract boundary inside the horizon, and the hours above
+                # are already priced per day. The resolver answers from memory, so this costs
+                # no queries; a whole-day pattern short-circuits to (None, None).
+                resolved_start, resolved_end = self._resolve_bounds(
+                    schedule_on(day), day, pattern.start_time, day, pattern.end_time
+                )
                 # An auto-approved registration, like a sick report: defining the pattern was
                 # the sanctioned act (a manager's, or the owner's own self-service type), and
                 # the employee moves individual days within the rules.
-                await self.requests.create(
+                request = await self.requests.create(
                     user_id=pattern.user_id,
                     leave_type_id=pattern.leave_type_id,
                     start_date=day,
@@ -1284,6 +1326,10 @@ class LeaveService:
                     recurring_day_id=pattern.id,
                     recurring_date=day,
                 )
+                # Born approved: the mirror hears about it now or never — cancel already told
+                # it (§14), but a *placed* day never did, so a fresh pattern's days existed
+                # in-app and nowhere else. Bus-only; the resolver keeps it one pass.
+                await self._emit_leave("leave.approved", request, [], resolver=schedule_on)
                 placed_by_year[day.year] = placed_by_year.get(day.year, 0) + 1
                 created += 1
         return created
@@ -1420,9 +1466,44 @@ class LeaveService:
         # branch matters most — a correction is usually a PUT over an already-generated row.
         if existing is None:
             return await self.entitlements.create(**data.model_dump(), source="manual")
+        if Decimal(existing.hours) == data.hours:
+            # The member dialog posts every field it rendered, changed or not. A ride-along PUT
+            # of the unchanged number is not an override decision, and claiming it as one would
+            # permanently opt the row out of the #264 contract recompute.
+            if (data.note or None) == (existing.note or None):
+                return existing
+            return await self.entitlements.update(existing, note=data.note)
         return await self.entitlements.update(
             existing, hours=data.hours, note=data.note, source="manual"
         )
+
+    async def delete_entitlement(
+        self, *, user_id: uuid.UUID, leave_type_id: uuid.UUID, year: int
+    ) -> None:
+        """Drop a pot so generation derives it afresh — the revert the manual badge promises
+        ("clear it to let it be derived again"), which until now existed only in the tooltip.
+
+        Deleting alone would leave the pot absent until some later read happened to seed it, so
+        the re-derivation runs here, in the same transaction — but only inside the current/next-
+        year window every other seeding touch honours: a past year is never backfilled (§14),
+        so clearing a historical pot simply removes it. A (user, type, year) the contracts earn
+        nothing for stays absent either way.
+        """
+        self.ctx.require("leave.entitlement.write")
+        await self._member_or_404(user_id)
+        existing = await self.ctx.session.scalar(
+            self.entitlements.scoped_select().where(
+                LeaveEntitlement.user_id == user_id,
+                LeaveEntitlement.leave_type_id == leave_type_id,
+                LeaveEntitlement.year == year,
+            )
+        )
+        if existing is None:
+            raise AppError("not_found", "errors.not_found", status_code=404)
+        await self.entitlements.delete(existing)
+        current = (await self._org_today()).year
+        if current <= year <= current + 1:
+            await self.seed_entitlements(year, only_users={user_id})
 
     async def generate_entitlements(self, year: int) -> int:
         """Create missing entitlements for a year (#65) — the guarded bulk endpoint."""
@@ -1430,7 +1511,11 @@ class LeaveService:
         return await self.seed_entitlements(year)
 
     async def seed_entitlements(
-        self, year: int, *, only_users: set[uuid.UUID] | None = None
+        self,
+        year: int,
+        *,
+        only_users: set[uuid.UUID] | None = None,
+        skip_users: set[uuid.UUID] | None = None,
     ) -> int:
         """The generation core: create **missing** entitlements for a year (#65).
 
@@ -1501,6 +1586,12 @@ class LeaveService:
         staff = legacy_staff | contract_staff
         if only_users is not None:
             staff &= only_users
+        if skip_users:
+            # A read-triggered seeding (the roster, #282) leaves anyone who already has rows for
+            # the year completely alone — the same "an admin who deliberately zeroed a grant
+            # keeps their zero" rule as _ensure_entitlements. The explicit Genereer/cron paths
+            # pass nothing here and still fill per-type gaps.
+            staff -= skip_users
 
         # Straight off the repo, not ``list_entitlements``: that read narrows to the caller's own
         # rows for anyone without ``leave.entitlement.read:any``, and a half-blind "existing" set
@@ -1643,36 +1734,40 @@ class LeaveService:
 
     @staticmethod
     def _allocate_pots(
-        pots: list[dict], consumption_by_year: dict[int, Decimal], display_year: int
+        pots: list[dict], consumption: list[tuple[date, Decimal]], display_year: int
     ) -> Decimal:
         """FIFO-by-expiry consumption across one group's pots (#265) — "favour the employee" made
         concrete.
 
-        For each consumption year in ascending order, its hours are drawn from the pots still
-        valid that year (accrued by then, not yet expired at the year's start) **soonest-expiry-
-        first**, so short-lived statutory hours are spent before long-lived extra ones and nothing
-        lapses that could have been used. Mutates each pot's ``allocated`` and snapshots
-        ``allocated_before`` — allocation from years strictly before ``display_year``, i.e. the
-        carry-in state at the start of the shown year. Returns the ``display_year`` over-request
-        shortfall (consumption no pot could cover), which makes that year read negative (#109);
-        a shortfall in any other year stays in its own year and never dents a later fresh grant.
+        Each consumption item is ``(request start date, hours)``, processed chronologically and
+        drawn from the pots still valid **on that date** (accrued by then, not yet expired)
+        **soonest-expiry-first**, so short-lived statutory hours are spent before long-lived
+        extra ones and nothing lapses that could have been used. Validity is per *date*, not per
+        year: a statutory pot that lapses 1 July may fund a June request but never an August one
+        — a year-granular pass quietly let post-expiry requests spend hours that had already
+        lapsed, over-reporting what remained. Mutates each pot's ``allocated`` and snapshots
+        ``allocated_before`` — allocation from requests dated strictly before ``display_year``,
+        i.e. the carry-in state at the start of the shown year. Returns the ``display_year``
+        over-request shortfall (consumption no pot could cover), which makes that year read
+        negative (#109); a shortfall in any other year stays in its own year and never dents a
+        later fresh grant.
         """
+        display_start = date(display_year, 1, 1)
         snapshotted = False
         shortfall = Decimal(0)
-        for yc in sorted(consumption_by_year):
-            if yc >= display_year and not snapshotted:
+        for start, hours in sorted(consumption, key=lambda item: item[0]):
+            if start >= display_start and not snapshotted:
                 for pot in pots:
                     pot["allocated_before"] = pot["allocated"]
                 snapshotted = True
-            need = consumption_by_year[yc]
+            need = hours
             if need <= 0:
                 continue
-            year_start = date(yc, 1, 1)
             candidates = [
                 pot
                 for pot in pots
-                if pot["accrual_year"] <= yc
-                and (pot["expiry"] is None or pot["expiry"] > year_start)
+                if pot["accrual_year"] <= start.year
+                and (pot["expiry"] is None or pot["expiry"] > start)
             ]
             candidates.sort(key=lambda pot: (pot["expiry"] or date.max, pot["accrual_year"]))
             for pot in candidates:
@@ -1684,7 +1779,7 @@ class LeaveService:
                 need -= take
                 if need <= 0:
                     break
-            if need > 0 and yc == display_year:
+            if need > 0 and start.year == display_year:
                 shortfall += need
         if not snapshotted:
             for pot in pots:
@@ -1692,7 +1787,7 @@ class LeaveService:
         return shortfall
 
     async def _ledger(
-        self, *, year: int, uid: uuid.UUID
+        self, *, year: int, uid: uuid.UUID, exclude_request_id: uuid.UUID | None = None
     ) -> tuple[list[LeaveBalance], list[LeaveGroupBalance]]:
         """The pot ledger (#265) for one employee: carry-over + expiry over every tracked type,
         yielding both the per-type balances (shape unchanged) and the combined per-group balances.
@@ -1700,30 +1795,42 @@ class LeaveService:
         First touch of an ungenerated current/next-year pot seeds it (#108); prior years are read
         for carry-over, never seeded (history is not backfilled, §14). The assembly itself is
         :meth:`_assemble_ledger`, shared with the batched roster read (#282).
+
+        ``exclude_request_id`` prices the ledger *as if that request did not exist* — the edit
+        preview's give-back (#109): the request's own hours leave consumption before the ledger
+        runs, so the credit flows through the same carry-over and expiry rules as everything
+        else, which a flat "add its hours back" cannot do across a year boundary.
         """
         await self._ensure_entitlements(uid, year)
         tracked = [t for t in await self.list_types() if t.tracks_balance]
         if not tracked:
             return [], []
         today = await self._org_today()
+        occ_reqs = [
+            r
+            for r in await self._occupying_requests_upto(uid, year)
+            if r.id != exclude_request_id
+        ]
         return self._assemble_ledger(
             uid=uid,
             year=year,
             tracked=tracked,
             today=today,
             ent_rows=await self._entitlement_rows_upto(uid, year),
-            occ_reqs=await self._occupying_requests_upto(uid, year),
+            occ_reqs=occ_reqs,
         )
 
     async def group_balances_all(self, *, year: int) -> list[LeaveGroupBalance]:
         """Every member's combined balances in a handful of bulk queries — the manager team table
         (#282). Each carries its ``user_id`` so the roster keys a figure to a member.
 
-        Unlike the single-user ledger this does **not** seed on read: the roster is a read-only
-        overview (the pre-#282 team table read raw entitlement rows and never seeded either), and a
-        manager glancing at next year should not trigger a bulk write of everyone's pots. The
-        per-user assembly (carry-over, FIFO-by-expiry, lapse) is identical — only the fetch is
-        batched, two org-wide selects instead of two per member (docs/PERFORMANCE.md).
+        Seeds an ungenerated current/next-year pot exactly like the single-user ledger does
+        (#108): §14 promises the manager's table and the employee's own page can never show a
+        different Vakantieverlof number, and a roster that skips the seeding shows "0 / 0" for
+        every member nobody's own read happened to touch yet. Idempotent — only missing rows are
+        created — so after the first roster view of a new year it costs reads only. The per-user
+        assembly (carry-over, FIFO-by-expiry, lapse) is identical — only the fetch is batched,
+        two org-wide selects instead of two per member (docs/PERFORMANCE.md).
 
         Whose rows: the union of members with an entitlement pot up to the year and members with an
         occupying request in it. A member with neither has an all-zero balance the caller renders
@@ -1734,6 +1841,25 @@ class LeaveService:
             return []
         tracked_ids = {t.id for t in tracked}
         today = await self._org_today()
+        # The same guards as _ensure_entitlements, batched: current or next org year only (never
+        # a backfill of history), never a write for a caller who cannot hold leave, and a member
+        # who already has rows for the year — even a deliberate zero — is left alone.
+        if self.ctx.can("leave.request.write") and today.year <= year <= today.year + 1:
+            have_rows = set(
+                (
+                    await self.ctx.session.execute(
+                        select(LeaveEntitlement.user_id)
+                        .where(
+                            LeaveEntitlement.org_id == self.ctx.org.id,
+                            LeaveEntitlement.year == year,
+                        )
+                        .distinct()
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            await self.seed_entitlements(year, skip_users=have_rows)
 
         ent_by_user: dict[uuid.UUID, list[LeaveEntitlement]] = {}
         ent_rows = (
@@ -1838,12 +1964,13 @@ class LeaveService:
             )
             pots = [pot for tid in gtype_ids for pot in pots_by_type[tid]]
 
-            consumption_by_year: dict[int, Decimal] = {}
-            for (tid, yc, _status), hours in occ.items():
-                if tid in gtype_id_set:
-                    consumption_by_year[yc] = consumption_by_year.get(yc, Decimal(0)) + hours
+            consumption = [
+                (req.start_date, Decimal(req.hours))
+                for req in occ_reqs
+                if req.leave_type_id in gtype_id_set
+            ]
 
-            shortfall = self._allocate_pots(pots, consumption_by_year, year)
+            shortfall = self._allocate_pots(pots, consumption, year)
 
             entitled_by_type = {tid: Decimal(0) for tid in gtype_ids}
             remaining_by_type = {tid: Decimal(0) for tid in gtype_ids}
@@ -1856,7 +1983,11 @@ class LeaveService:
                 granted = pot["granted"]
                 leftover = max(Decimal(0), granted - pot["allocated"])
                 expiry = pot["expiry"]
-                expired = expiry is not None and expiry <= today
+                # Dead by *today*, or dead by the start of the year being viewed — a next-year
+                # read taken in December must not count a pot the FIFO pass above will never let
+                # that year spend (free time carries 0: its pot dies the exact moment the viewed
+                # year begins, and "64 u over van 52 u" is an impossible balance).
+                expired = expiry is not None and expiry <= max(today, year_start)
 
                 if pot["accrual_year"] == year:
                     entitled_contrib = granted
@@ -1938,14 +2069,22 @@ class LeaveService:
         grouped.sort(key=lambda item: (item[0], item[1]))
         return ordered_per_type, [gb for _, _, gb in grouped]
 
-    async def balances(self, *, year: int, user_id: uuid.UUID | None = None) -> list[LeaveBalance]:
+    async def balances(
+        self,
+        *,
+        year: int,
+        user_id: uuid.UUID | None = None,
+        exclude_request_id: uuid.UUID | None = None,
+    ) -> list[LeaveBalance]:
         """Per-type balances (#265): entitled + carried − approved − pending, expiry-aware.
 
         Shape unchanged so ``preview``, ``summary``, the recurring generator and existing clients
         keep working; ``remaining_hours`` now reflects the FIFO-by-expiry pot ledger.
         """
         uid = self._effective_user_id(user_id)
-        per_type, _ = await self._ledger(year=year, uid=uid)
+        per_type, _ = await self._ledger(
+            year=year, uid=uid, exclude_request_id=exclude_request_id
+        )
         return per_type
 
     # --- free time overview (#65's card, and the wizard's reconciliation) ---------------- #
@@ -2083,7 +2222,12 @@ class LeaveService:
         return cancelled, skipped
 
     async def group_balances(
-        self, *, year: int, user_id: uuid.UUID | None = None, all_users: bool = False
+        self,
+        *,
+        year: int,
+        user_id: uuid.UUID | None = None,
+        all_users: bool = False,
+        exclude_request_id: uuid.UUID | None = None,
     ) -> list[LeaveGroupBalance]:
         """The employee-facing combined balances (#265): one figure per group, per-pot breakdown
         alongside. ``vacation_statutory`` + ``vacation_extra`` roll up into one "Vakantieverlof".
@@ -2096,7 +2240,9 @@ class LeaveService:
         if all_users and self.ctx.can("leave.request.read", scope="any"):
             return await self.group_balances_all(year=year)
         uid = self._effective_user_id(user_id)
-        _, grouped = await self._ledger(year=year, uid=uid)
+        _, grouped = await self._ledger(
+            year=year, uid=uid, exclude_request_id=exclude_request_id
+        )
         return grouped
 
     # --- the hour calculation (#48) --------------------------------------------------- #
@@ -2234,7 +2380,17 @@ class LeaveService:
         # Tell the form whether saving would need (re-)approval (#72): a past span always does; a
         # future one only if the chosen type requires approval. The form knows the request's
         # current status, so it decides whether to warn "this moves it back to pending".
-        touches_past = data.start_date < await self._org_today()
+        # On an edit the rule mirrors update(): the span touches the past when the *new* span
+        # reaches before today or the *original* already did — pulling leave out of history is
+        # as guarded as writing into it, and the form must warn before submit, not 403 after
+        # (#114).
+        today = await self._org_today()
+        touches_past = data.start_date < today
+        current: LeaveRequest | None = None
+        if data.request_id is not None:
+            current = await self.requests.get_or_404(data.request_id)
+            if current.user_id == uid and current.start_date < today:
+                touches_past = True
         requires_approval = touches_past
         remaining: Decimal | None = None
         if data.leave_type_id is not None:
@@ -2245,13 +2401,29 @@ class LeaveService:
                 # form's own balance props belong to the *viewer*, which on the manager's
                 # register-for-someone flow is the wrong employee (#109).
                 year = data.start_date.year
+                # Editing: the balance is priced *as if the edited request did not exist*, so its
+                # current hours flow back through the ledger's own carry-over and expiry rules.
+                # A flat "add its hours back" broke twice: it skipped the give-back entirely when
+                # the edit crossed a year boundary (the freed December hours do reach January via
+                # carry-over), and it over-credited when the freed hours sat in a pot that lapses
+                # before the new span's year. Exclusion is also pool-agnostic for free — removing
+                # the request from consumption cannot inflate a pool it never drew from.
+                exclude = (
+                    current.id
+                    if current is not None
+                    and current.user_id == uid
+                    and current.status in _OCCUPYING
+                    else None
+                )
                 if leave_type.balance_group:
                     # A grouped type spends one combined "Vakantieverlof" pool (#265) — the warning
                     # is the group remaining, not the single stored type's.
                     group = next(
                         (
                             g
-                            for g in await self.group_balances(year=year, user_id=uid)
+                            for g in await self.group_balances(
+                                year=year, user_id=uid, exclude_request_id=exclude
+                            )
                             if leave_type.id in g.leave_type_ids
                         ),
                         None,
@@ -2259,28 +2431,13 @@ class LeaveService:
                     remaining = group.remaining_hours if group else Decimal(0)
                 else:
                     balances = {
-                        b.leave_type_id: b for b in await self.balances(year=year, user_id=uid)
+                        b.leave_type_id: b
+                        for b in await self.balances(
+                            year=year, user_id=uid, exclude_request_id=exclude
+                        )
                     }
                     balance = balances.get(leave_type.id)
                     remaining = balance.remaining_hours if balance else Decimal(0)
-                if data.request_id is not None:
-                    # Editing: the request's own current hours still occupy the balance, so they
-                    # are given back before the form compares against the new span — but only when
-                    # the edit stays in the same pool (same group, or the same standalone type), so
-                    # moving leave between pools never over-credits the target.
-                    current = await self.requests.get_or_404(data.request_id)
-                    if (
-                        current.user_id == uid
-                        and current.start_date.year == year
-                        and current.status in _OCCUPYING
-                    ):
-                        current_type = await self.types.get_or_404(current.leave_type_id)
-                        same_pool = current.leave_type_id == leave_type.id or (
-                            leave_type.balance_group is not None
-                            and current_type.balance_group == leave_type.balance_group
-                        )
-                        if same_pool:
-                            remaining += Decimal(current.hours)
         return LeavePreviewResult(
             hours=hours,
             days=days,
@@ -2440,6 +2597,13 @@ class LeaveService:
             await self._emit_leave(
                 "leave.requested", request, await self._approvers_for(request)
             )
+        else:
+            # Born approved, so the approval subscribers hear about it now — nobody will ever
+            # call decide() on it. Without this the Google mirror only saw an auto-approved
+            # absence if someone happened to *move* it later (leave.updated), which pushed the
+            # moved sick day and skipped every untouched one. Bus-only: no recipients — a
+            # registration notifies nobody, exactly as above.
+            await self._emit_leave("leave.approved", request, [])
         return request
 
     async def _managers(self) -> list[uuid.UUID]:
@@ -2458,12 +2622,19 @@ class LeaveService:
         return [m for m in await self._managers() if m != request.user_id]
 
     async def _emit_leave(
-        self, event: str, request: LeaveRequest, recipients: Sequence[uuid.UUID]
+        self,
+        event: str,
+        request: LeaveRequest,
+        recipients: Sequence[uuid.UUID],
+        *,
+        resolver: Callable[[date], sched.WorkSchedule] | None = None,
     ) -> None:
         """Announce a leave decision on the bus (CLAUDE.md §6 — no cross-module imports).
 
         ``user_id`` and the resolved window ride along so a subscriber that mirrors leave
         elsewhere (the Google Calendar push, issue #22) never reads this module's internals.
+        ``resolver`` lets a bulk caller (the recurring generator, which emits once per placed
+        day) reuse its already-built ``date → week`` lookup instead of two queries per emit.
         """
         payload: dict[str, Any] = {
             "leave_request_id": request.id,
@@ -2486,32 +2657,44 @@ class LeaveService:
                 request.resolved_start_time or request.start_time,
                 request.end_date,
                 request.resolved_end_time or request.end_time,
+                resolver=resolver,
             )
             payload["breakdown"] = [
                 {"date": row.date.isoformat(), "hours": float(row.hours)}
                 for row in breakdown
                 if row.hours
             ]
-            # A "timed" type is drawn as an hour block on every calendar (#270), so the Google
-            # mirror must push a timed event — not an all-day banner — even for a whole-day
-            # request that carries no times of its own (free time / vrije tijd). Resolve its
-            # scheduled window here, where the schedule lives, so the mirror never reads leave
-            # internals (§6) and draws the same shape the in-app agenda does. Single-day only;
-            # a multi-day span stays all-day everywhere. An `all_day` type is left untouched.
+            # #270 is a *type-level* choice, and the mirror follows it in both directions. A
+            # "timed" type is drawn as an hour block on every calendar, so the Google mirror
+            # must push a timed event — not an all-day banner — even for a whole-day request
+            # that carries no times of its own (free time / vrije tijd): its scheduled window
+            # resolves here, where the schedule lives, so the mirror never reads leave
+            # internals (§6). Single-day only; a multi-day span stays all-day everywhere.
+            display = await self._type_calendar_display(request.leave_type_id)
             if payload["start_time"] is None or payload["end_time"] is None:
                 if (
                     request.start_date == request.end_date
-                    and await self._type_calendar_display(request.leave_type_id)
-                    == LeaveCalendarDisplay.TIMED.value
+                    and display == LeaveCalendarDisplay.TIMED.value
                 ):
-                    schedule = await self.effective_schedule(
-                        request.user_id, request.start_date
+                    schedule = (
+                        resolver(request.start_date)
+                        if resolver is not None
+                        else await self.effective_schedule(
+                            request.user_id, request.start_date
+                        )
                     )
                     start, end = self._single_day_window(
                         request, schedule, (payload["start_time"], payload["end_time"])
                     )
                     payload["start_time"] = start
                     payload["end_time"] = end
+            elif display == LeaveCalendarDisplay.ALL_DAY.value:
+                # And the inverse: the in-app agenda draws an `all_day` type's part-day absence
+                # as a full-width chip, so the mirror pushes an all-day event too — the hours
+                # stay in the description's per-day breakdown. Without this, one absence read
+                # as a chip in-app and an hour block in Google.
+                payload["start_time"] = None
+                payload["end_time"] = None
         await emit(event, self.ctx, payload)
 
     async def _type_calendar_display(self, type_id: uuid.UUID) -> str:
@@ -2551,6 +2734,12 @@ class LeaveService:
         start_time = values.get("start_time", request.start_time)
         end_date = values.get("end_date", request.end_date)
         end_time = values.get("end_time", request.end_time)
+        span_changed = (
+            start_date != request.start_date
+            or start_time != request.start_time
+            or end_date != request.end_date
+            or end_time != request.end_time
+        )
         override = values.get("hours_override", request.hours_override)
         # Setting or clearing the override is an approver's act; leaving a stored one alone isn't.
         # On your own request, while self-approval is off, it needs another approver (audit F20).
@@ -2558,6 +2747,16 @@ class LeaveService:
             self.ctx.require("leave.request.approve")
             if not await self._acts_as_approver(request.user_id):
                 raise AppError("self_approval", "errors.leave_self_approval", status_code=403)
+        elif span_changed and request.hours_override is not None:
+            # The override priced one specific span ("four hours agreed on a day they were not
+            # scheduled"). A PATCH that moves the span without restating it would keep charging
+            # that number for a different absence — with the original approver still attributed —
+            # so the stale override is dropped and the new span is priced from the schedule like
+            # any other edit (§14: recomputed on every edit). An approver who means to keep it
+            # simply restates it in the same PATCH, which the form already does.
+            override = None
+            values["hours_override"] = None
+            values["hours_override_by_user_id"] = None
 
         # Recomputed on every edit, so a request moved into Kerst week gets cheaper (#48).
         values["hours"] = await self._resolve_hours(
@@ -2600,13 +2799,8 @@ class LeaveService:
         needs_approval = leave_type.requires_approval or touches_past
         # Moving a request into or within the past is a manager's act (#65 §6). A note-only edit
         # leaves the span alone and is never blocked — that is why the guard keys off the span
-        # changing, not merely off the request already touching the past.
-        span_changed = (
-            start_date != request.start_date
-            or start_time != request.start_time
-            or end_date != request.end_date
-            or end_time != request.end_time
-        )
+        # changing (computed above, where the override rule needs it too), not merely off the
+        # request already touching the past.
         if span_changed:
             await self._ensure_may_backdate(
                 touches_past, own=request.user_id == self.ctx.user.id
@@ -3024,11 +3218,19 @@ class LeaveService:
 
     # --- dashboard widget ---------------------------------------------------------------- #
     async def summary(self) -> LeaveSummary:
-        today = _now().date()
+        # Org-local, like every other "today" in this module (§8): around midnight the UTC date
+        # is still yesterday, and the widget would report last year's balance every 1 January.
+        today = await self._org_today()
         year = today.year
         schedule, hours_week, _ = await self.profile_for(self.ctx.user.id)
+        # The widget's one figure is *verlof* — free time stays out of it (§14): its pot has its
+        # own card, and before the generator places the days it would inflate "verlof over" by a
+        # whole year of vrije tijd that is not vacation anyone can request.
+        gap_ids = {t.id for t in await self.list_types() if t.accrues_schedule_gap}
         balances = await self.balances(year=year)
-        remaining = sum((b.remaining_hours for b in balances), Decimal(0))
+        remaining = sum(
+            (b.remaining_hours for b in balances if b.leave_type_id not in gap_ids), Decimal(0)
+        )
         pending = await self.ctx.session.scalar(
             select(func.count())
             .select_from(LeaveRequest)

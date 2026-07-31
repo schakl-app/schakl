@@ -79,6 +79,7 @@ if settings.is_cloud:
     # Cloud posture only (epic #199): trial enforcement and the custom-domain ingress drift
     # guard. Imported lazily so a self-hosted worker never loads the business-licensed code.
     from app.core.cloud.jobs import (
+        cloud_domains_sweep,
         cloud_expire_trials,
         cloud_lifecycle_sweep,
         cloud_sync_ingress,
@@ -90,6 +91,9 @@ if settings.is_cloud:
         # After the trial sweep: a trial that expires today suspends first, and the end-date
         # machinery then sees a consistent picture rather than racing it.
         cron(cloud_lifecycle_sweep, hour=4, minute=0),
+        # Custom-domain certificate lifecycle (#291): reconcile Cloudflare hostname/SSL state
+        # + DNS drift, and alert before a renewal failure becomes a browser TLS error.
+        cron(cloud_domains_sweep, hour=4, minute=30),
     ]
 
 

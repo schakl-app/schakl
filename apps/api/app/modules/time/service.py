@@ -320,8 +320,25 @@ class TimeService:
         date_from: date | None = None,
         date_to: date | None = None,
     ) -> tuple[int, int]:
-        """Team-wide logged minutes for a company/project/task (budget burn-down)."""
-        stmt = self.repo.scoped_select().where(TimeEntry.ended_at.is_not(None))
+        """Team-wide logged minutes for a company/project/task (budget burn-down).
+
+        Summed in SQL, never in Python: this answers two numbers, and loading every entry a
+        client has ever booked to add them up costs the whole history in transfer and memory
+        for a budget bar (docs/PERFORMANCE.md). The horizon is carried explicitly — the row
+        query got it from ``scoped_select()``, so the aggregate that replaces it must ask for
+        it by name, or a scoped login reads a total over rows it cannot see (§15).
+        """
+        stmt = (
+            select(self._sum(), self._sum(TimeEntry.billable.is_(True)))
+            .select_from(TimeEntry)
+            .where(
+                TimeEntry.org_id == self.ctx.org.id,
+                TimeEntry.ended_at.is_not(None),
+            )
+        )
+        horizon = self.repo.horizon_condition()
+        if horizon is not None:
+            stmt = stmt.where(horizon)
         if company_id is not None:
             stmt = stmt.where(TimeEntry.company_id == company_id)
         if project_id is not None:
@@ -337,10 +354,8 @@ class TimeService:
                 TimeEntry.started_at
                 < datetime.combine(date_to, time.min, tzinfo=UTC) + timedelta(days=1)
             )
-        entries = (await self.ctx.session.execute(stmt)).scalars().all()
-        minutes = sum(e.minutes for e in entries)
-        billable = sum(e.minutes for e in entries if e.billable)
-        return minutes, billable
+        row = (await self.ctx.session.execute(stmt)).one()
+        return int(row[0]), int(row[1])
 
     # --- drafts (#44) ---------------------------------------------------------- #
     # Author-only, stricter than the rest of the platform: every path filters on
@@ -518,6 +533,7 @@ class TimeService:
         all_users: bool = False,
         sort: str | None = None,
         entry_type: str | None = None,
+        count: bool = True,
     ) -> tuple[Sequence[TimeEntry], int]:
         """Entries, by default the caller's own.
 
@@ -574,15 +590,17 @@ class TimeService:
             .offset(offset)
         )
         items = (await self.ctx.session.execute(stmt)).scalars().all()
-        total = int(
-            await self.ctx.session.scalar(
-                # Horizon-carrying (#285). The default per-user filter hid this: with
-                # ``all_users`` — the manager report — the hand-built count totalled every
-                # client's hours above the rows the horizon actually returned.
-                self.repo.scoped_count_select().where(*conditions)
+        total = len(items)
+        if count:
+            total = int(
+                await self.ctx.session.scalar(
+                    # Horizon-carrying (#285). The default per-user filter hid this: with
+                    # ``all_users`` — the manager report — the hand-built count totalled every
+                    # client's hours above the rows the horizon actually returned.
+                    self.repo.scoped_count_select().where(*conditions)
+                )
+                or 0
             )
-            or 0
-        )
         return items, total
 
     # --- approval / invoicing (manager surface) -------------------------------- #
@@ -698,6 +716,12 @@ class TimeService:
             .select_from(TimeEntry)
             .where(TimeEntry.org_id == self.ctx.org.id, *conditions)
         )
+        # The rows ride ``scoped_select()``; a hand-built aggregate must carry the same
+        # company horizon or a group-scoped caller reads org-wide totals above their
+        # own filtered rows (#285's rule 3).
+        horizon = self.repo.horizon_condition()
+        if horizon is not None:
+            base = base.where(horizon)
         row = (await self.ctx.session.execute(base)).one()
         totals = {
             "count": int(row[0]),
@@ -753,6 +777,61 @@ class TimeService:
         ]
         result.sort(key=lambda r: r["minutes"], reverse=True)  # type: ignore[arg-type, return-value]
         return result
+
+    async def team_summary(self, *, date_from: date, date_to: date) -> dict[str, object]:
+        """The manager dashboard's bounded hours/revenue aggregate in one database query.
+
+        The old widget called ``report(limit=1)`` plus the full two-year/top-client revenue
+        report: four queries and far more grouping than four tiles need. Keep the pricing chain
+        identical to :meth:`revenue` while restricting all work to the requested period.
+        """
+        self.ctx.require("time.report.read")
+        start = datetime.combine(date_from, time.min, tzinfo=UTC)
+        end = datetime.combine(date_to, time.min, tzinfo=UTC) + timedelta(days=1)
+        row = (
+            await self.ctx.session.execute(
+                sql_text(
+                    """
+                    SELECT COALESCE(SUM(te.minutes), 0) AS minutes,
+                           COALESCE(SUM(te.minutes) FILTER (WHERE te.billable), 0)
+                               AS billable_minutes,
+                           COALESCE(SUM(te.minutes) FILTER (
+                               WHERE te.approved_at IS NULL
+                           ), 0) AS open_minutes,
+                           COALESCE(SUM(
+                               te.minutes / 60.0
+                               * COALESCE(lp.hourly_rate, ls.default_hourly_rate)
+                           ) FILTER (
+                               WHERE te.billable
+                                 AND COALESCE(
+                                     lp.hourly_rate, ls.default_hourly_rate
+                                 ) IS NOT NULL
+                           ), 0) AS revenue
+                    FROM time_entries te
+                    LEFT JOIN leave_profiles lp
+                           ON lp.org_id = te.org_id AND lp.user_id = te.user_id
+                    LEFT JOIN leave_settings ls ON ls.org_id = te.org_id
+                    WHERE te.org_id = :org_id
+                      AND te.ended_at IS NOT NULL
+                      AND te.started_at >= :start
+                      AND te.started_at < :end
+                    """
+                ),
+                {
+                    "org_id": str(self.ctx.org.id),
+                    "start": start,
+                    "end": end,
+                },
+            )
+        ).one()
+        return {
+            "date_from": date_from,
+            "date_to": date_to,
+            "minutes": int(row[0]),
+            "billable_minutes": int(row[1]),
+            "open_minutes": int(row[2]),
+            "revenue": round(float(row[3]), 2),
+        }
 
     async def revenue(self, *, year: int) -> dict[str, object]:
         """Omzet per month (selected + previous year) and per client (selected year).
@@ -978,7 +1057,16 @@ class TimeService:
         uid = self._effective_user_id(user_id)
         start = datetime.combine(week_start, time.min, tzinfo=UTC)
         entries = await self._entries_between(uid, start, start + timedelta(days=7))
+        draft_days = await self.draft_days(week_start) if uid == self.ctx.user.id else []
+        return self._build_timesheet(week_start, entries, draft_days)
 
+    @staticmethod
+    def _build_timesheet(
+        week_start: date,
+        entries: Sequence[TimeEntry],
+        draft_days: Sequence[date],
+    ) -> Timesheet:
+        """Build the weekly grid without another query (also used by ``workspace``)."""
         days = [week_start + timedelta(days=i) for i in range(7)]
         # rows keyed by (company_id, project_id, task_id)
         rows: dict[
@@ -1003,9 +1091,69 @@ class TimeService:
             rows=row_models,
             day_totals=day_totals,
             total=sum(day_totals),
-            # Drafts are the author's alone (#44): another user's sheet never shows yours.
-            draft_days=await self.draft_days(week_start) if uid == self.ctx.user.id else [],
+            draft_days=list(draft_days),
         )
+
+    async def workspace(
+        self,
+        *,
+        week_start: date,
+        day: date,
+    ) -> tuple[
+        TimeEntry | None,
+        Timesheet,
+        Sequence[TimeEntry],
+        TimeEntryDraft | None,
+        TimeEntry | None,
+    ]:
+        """Hours-page payload with one shared scan for the week and selected day.
+
+        Four separate HTTP requests used to repeat context/RBAC resolution and query the
+        selected day's entries after the weekly query had already loaded them. Keep timer and
+        recent-entry lookups explicit (they may live outside the viewed week), while reusing
+        the bounded weekly rows and loading all weekly drafts once.
+        """
+        if not week_start <= day < week_start + timedelta(days=7):
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"date": "errors.validation"},
+            )
+
+        uid = self.ctx.user.id
+        start = datetime.combine(week_start, time.min, tzinfo=UTC)
+        week_entries = await self._entries_between(uid, start, start + timedelta(days=7))
+        drafts = (
+            await self.ctx.session.execute(
+                self._own_draft_select()
+                .where(
+                    TimeEntryDraft.entry_date >= week_start,
+                    TimeEntryDraft.entry_date < week_start + timedelta(days=7),
+                )
+                .order_by(TimeEntryDraft.entry_date)
+            )
+        ).scalars().all()
+        running = await self.running()
+        recent = (
+            await self.ctx.session.execute(
+                self.repo.scoped_select()
+                .where(TimeEntry.user_id == uid)
+                .order_by(TimeEntry.started_at.desc())
+                .limit(1)
+            )
+        ).scalars().first()
+
+        day_entries = [
+            entry for entry in week_entries if entry.started_at.astimezone(UTC).date() == day
+        ]
+        draft = next((item for item in drafts if item.entry_date == day), None)
+        week = self._build_timesheet(
+            week_start,
+            week_entries,
+            [item.entry_date for item in drafts],
+        )
+        return running, week, day_entries, draft, recent
 
 
 class TimeEntryTypeService:

@@ -2,6 +2,39 @@
 
 ## Unreleased
 
+### Fixed
+
+- **Cloudflare for SaaS custom domains activate on a Free, Pro or Business zone again** (#293).
+  Every custom-hostname request carried `custom_origin_sni`, which is an Enterprise-only
+  entitlement, so Cloudflare refused the whole create with *"Access to setting a custom origin SNI
+  has not been granted"* and the customer's domain stayed unverified even with correct DNS. The
+  field is now sent only when an operator explicitly configures `SCHAKL_CLOUD_CF_ORIGIN_SNI` —
+  never derived — and it no longer doubles as the origin server, so an entitled operator's SNI
+  rewrite cannot re-route the origin with it. Cloudflare presents the custom origin server's own
+  name as SNI by default, which is the value that was being derived anyway, so Full (strict) is
+  unaffected. A refusal over a token scope or a plan entitlement now answers
+  `errors.cloudflare_not_entitled` instead of the retryable "try again in a moment", and the API
+  log names what the operator has to change. A hostname added by hand in the Cloudflare dashboard
+  is still adopted by the next verify.
+- **An import preview now names the row a bad phone number is on** (#289). Phone numbers were
+  only checked once the import was already being written, so a file with one malformed number
+  previewed clean and then failed as a whole with no row, no column and nothing to correct —
+  leaving the blank cells and the ninety valid numbers looking equally guilty. Phone columns
+  are validated with every other column type now, read in the row's own country exactly as
+  saving that record would read it, and an empty cell stays what it always was: nothing to
+  import, not a rejection.
+- **Signing in as a member of another organisation now works from the console** (#288). On a
+  cloud installation the console lives on its own address, so the administrator's session was
+  simply not present on the organisation's address — and on a customer's own domain it never can
+  be. The jump landed on that organisation's login screen instead of opening it. It now crosses
+  over a **single-use, two-minute link**: the organisation's address redeems it server-side for
+  the session and the grant, everything is re-checked on arrival (the address it was issued for,
+  the administrator still holding the right, the organisation's service PIN still standing), and a
+  link that was already used — reopened from history, or from a shared screen — refuses and says
+  so instead of quietly signing anyone in again. No long-lived credential travels in a URL, a
+  stolen grant on its own is still worthless, and the administrator's session on a customer's
+  address expires together with the impersonation. Ending it returns to the console.
+
 ## v0.19.0 — 2026-07-29
 
 Almost everything here is for whoever *runs* an installation rather than whoever uses one.

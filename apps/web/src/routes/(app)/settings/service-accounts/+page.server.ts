@@ -9,22 +9,20 @@ import type { Actions, PageServerLoad } from "./$types";
 export const load: PageServerLoad = async (event) => {
   if (!can(event.locals.user, "apikeys.service_account.manage")) throw redirect(303, "/settings");
   const api = apiFor(event);
-  const [{ data: accounts }, { data: catalog }] = await Promise.all([
+  // The catalog comes from the settings layout (#290) — a layout load does not rerun on tab
+  // navigation, so the three screens that render it now share one fetch. Awaited alongside the
+  // accounts, never before them.
+  const [{ data: accounts }, parent] = await Promise.all([
     api.GET("/api/v1/service-accounts"),
-    api.GET("/api/v1/permissions/catalog"),
+    event.parent(),
   ]);
+  const catalog = parent.permissionCatalog;
 
-  // One parallel fan-out for the keys — the list is small (a handful of automations), and the
-  // page shows every account's keys, so there is nothing to defer (docs/PERFORMANCE.md).
+  // The keys ride the list response (#290). This used to fan one authenticated request per
+  // account — an N+1 across HTTP, the expensive kind, and it grew with the number of
+  // automations an agency runs (docs/PERFORMANCE.md).
   const keysByAccount = Object.fromEntries(
-    await Promise.all(
-      (accounts ?? []).map(async (account) => {
-        const { data } = await api.GET("/api/v1/service-accounts/{account_id}/keys", {
-          params: { path: { account_id: account.id } },
-        });
-        return [account.id, data ?? []] as const;
-      }),
-    ),
+    (accounts ?? []).map((account) => [account.id, account.keys ?? []]),
   );
 
   // A key's scopes are capped by the *creator's* grants (#20), so offer exactly what this

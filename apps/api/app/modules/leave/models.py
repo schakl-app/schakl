@@ -19,6 +19,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -247,6 +248,12 @@ class LeaveRequest(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "leave_requests"
+    __table_args__ = (
+        # Nearly every leave read is "this employee, this year": the FIFO pot ledger (#265),
+        # the balance, the recurring generator's overlap check, the dossier. Three separate
+        # single-column indexes make PostgreSQL combine or scan-and-filter (#290).
+        Index("ix_leave_requests_org_user_start", "org_id", "user_id", "start_date"),
+    )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),

@@ -41,7 +41,7 @@
 
   import CloseTaskDialog from "./CloseTaskDialog.svelte";
   import EmlUploadForm from "./EmlUploadForm.svelte";
-  import { type InteractionItem, isGmailRow, kindIcon } from "./format";
+  import { type InteractionItem, isGmailRow, kindIcon, withBody } from "./format";
   import { snippetPreview } from "./snippet";
   import InteractionConversationDialog from "./InteractionConversationDialog.svelte";
   import InteractionDetailModal from "./InteractionDetailModal.svelte";
@@ -137,8 +137,10 @@
       entries.push({
         label: t("common.edit"),
         icon: Pencil,
-        onclick: () => {
-          editing = item;
+        onclick: async () => {
+          // The row's body is fetched before the form opens (#290) — the form posts that
+          // field, so editing a list row without it would blank the notes on save.
+          editing = await withBody(item);
           showEdit = true;
         },
       });

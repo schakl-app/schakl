@@ -11,7 +11,7 @@ import { defaultSchedule } from "$lib/modules/leave/schedule";
 import type { Actions, PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async (event) => {
-  if (!can(event.locals.user, "members.member.read")) throw redirect(303, "/");
+  if (!can(event.locals.user, "members.member.read")) throw redirect(303, "/settings");
 
   // Work schedules are employment data, so they live on the person (#46) — but only when the
   // tenant runs `leave` and the caller may manage them. Two calls, not one per member: the

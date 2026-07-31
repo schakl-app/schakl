@@ -18,13 +18,17 @@ export const load: LayoutServerLoad = async (event) => {
   }
   const api = apiFor(event);
   const [companies, projects, tasks, members, entryTypes] = await Promise.all([
-    api.GET("/api/v1/companies", { params: { query: { limit: 200, offset: 0, sort: "name" } } }),
+    api.GET("/api/v1/companies", {
+      params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
+    }),
     // No `hours=true` here, unlike the /time layout: this lookup only names projects for the
     // report's filters and its edit modal. The budget burn is an opt-in aggregate and the
     // report never draws one (docs/PERFORMANCE.md).
-    api.GET("/api/v1/projects", { params: { query: { limit: 200, offset: 0 } } }),
+    api.GET("/api/v1/projects", {
+      params: { query: { limit: 200, offset: 0, count: false } },
+    }),
     api.GET("/api/v1/tasks", {
-      params: { query: { limit: 200, offset: 0, meta: false, sort: "title" } },
+      params: { query: { limit: 200, offset: 0, meta: false, count: false, sort: "title" } },
     }),
     api.GET("/api/v1/members/lookup"),
     // Entry-type labels for the report's type column/filter (#176) — inactive included so a

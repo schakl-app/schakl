@@ -1,5 +1,6 @@
 <script lang="ts">
   /** My Day widget: who is off today (approved leave), so nobody plans a meeting blind. */
+  import { fmtClockTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import DashboardWidgetCard from "$lib/core/ui/DashboardWidgetCard.svelte";
 
@@ -9,6 +10,8 @@
     id: string;
     user_name: string;
     status: string;
+    start_date: string;
+    end_date: string;
     resolved_start_time?: string | null;
     resolved_end_time?: string | null;
   }
@@ -27,9 +30,12 @@
       {#each absences as absence (absence.id)}
         <li class="flex items-center justify-between gap-2 text-sm">
           <span class="min-w-0 truncate text-text">{absence.user_name}</span>
-          {#if absence.resolved_start_time && absence.resolved_end_time}
+          <!-- Single-day spans only, like the calendar feed: a Thu-15:00 → Fri-12:00 request
+               snapshots (15:00, 12:00), a window that describes neither day. Times follow the
+               personal clock preference (#13). -->
+          {#if absence.start_date === absence.end_date && absence.resolved_start_time && absence.resolved_end_time}
             <span class="shrink-0 tabular-nums text-xs text-text-muted">
-              {absence.resolved_start_time}–{absence.resolved_end_time}
+              {fmtClockTime(absence.resolved_start_time)}–{fmtClockTime(absence.resolved_end_time)}
             </span>
           {/if}
         </li>

@@ -97,21 +97,15 @@ registerWebModule({
       load: async (api) => {
         const today = new Date().toISOString().slice(0, 10);
         const monthStart = today.slice(0, 8) + "01";
-        const year = Number(today.slice(0, 4));
-        const [report, revenue] = await Promise.all([
-          api.GET("/api/v1/time/report", {
-            params: { query: { limit: 1, offset: 0, date_from: monthStart, date_to: today } },
-          }),
-          api.GET("/api/v1/time/stats/revenue", { params: { query: { year } } }),
-        ]);
-        const totals = report.data?.totals;
-        if (!totals) return null;
-        const month = Number(today.slice(5, 7)) - 1;
+        const { data } = await api.GET("/api/v1/time/stats/team-summary", {
+          params: { query: { date_from: monthStart, date_to: today } },
+        });
+        if (!data) return null;
         return {
-          minutes: totals.minutes,
-          billable_minutes: totals.billable_minutes,
-          open_minutes: totals.open_minutes,
-          revenue_month: revenue.data?.months_current?.[month] ?? 0,
+          minutes: data.minutes,
+          billable_minutes: data.billable_minutes,
+          open_minutes: data.open_minutes,
+          revenue_month: data.revenue,
         };
       },
       component: TeamMonthWidget,
