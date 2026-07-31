@@ -102,9 +102,13 @@
     <p class="text-sm text-text-muted">{t("marketing.ads_not_configured")}</p>
   {:else if response?.error}
     <p class="text-sm text-red-600 dark:text-red-400">{t(response.error)}</p>
-    <a href={connectHref([source])} class="text-sm font-medium text-brand hover:underline">
-      {t("marketing.reconnect")}
-    </a>
+    <!-- A disabled Cloud API is not a token problem: a reconnect mints the same token against
+         the same project and fails identically, so don't offer it as the cure. -->
+    {#if response?.error !== "marketing.api_not_enabled"}
+      <a href={connectHref([source])} class="text-sm font-medium text-brand hover:underline">
+        {t("marketing.reconnect")}
+      </a>
+    {/if}
   {:else if items.length === 0}
     <p class="text-sm text-text-muted">{t("marketing.picker.none")}</p>
   {:else}

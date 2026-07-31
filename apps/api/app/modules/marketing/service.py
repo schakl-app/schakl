@@ -550,10 +550,20 @@ class MarketingService:
                         source=source, connected=True, has_scope=False, connect_flag=flag,
                         error="errors.google_connection_error",
                     )
-                logger.warning("marketing accounts fetch failed for %s: %s", source.value, exc)
+                detail = google_client.describe_api_error(exc)
+                logger.warning(
+                    "marketing accounts fetch failed for %s (%s): %s",
+                    source.value,
+                    await google_client.oauth_client_hint(self.ctx.session, self.ctx.org.id),
+                    detail or exc,
+                )
                 return AccountsResponse(
                     source=source, connected=True, has_scope=True, connect_flag=flag,
-                    error="marketing.accounts_error",
+                    error=(
+                        "marketing.api_not_enabled"
+                        if detail is not None and detail.api_disabled
+                        else "marketing.accounts_error"
+                    ),
                 )
             options = [
                 AvailableAccount(
@@ -830,8 +840,19 @@ class MarketingService:
                 )
                 reason = "marketing.disconnected"
             else:
-                logger.warning("marketing drilldown failed (%s/%s): %s", link.source, kind, exc)
-                reason = "marketing.accounts_error"
+                detail = google_client.describe_api_error(exc)
+                logger.warning(
+                    "marketing drilldown failed (%s/%s, %s): %s",
+                    link.source,
+                    kind,
+                    await google_client.oauth_client_hint(self.ctx.session, self.ctx.org.id),
+                    detail or exc,
+                )
+                reason = (
+                    "marketing.api_not_enabled"
+                    if detail is not None and detail.api_disabled
+                    else "marketing.accounts_error"
+                )
             return DrilldownResponse(
                 source=source, kind=kind, available=False, unavailable_reason=reason,
                 deep_link=deep_link,
@@ -1160,8 +1181,20 @@ async def sync_link_range(
             await google_client.mark_connection_error(session, org, connection, str(exc))
             link.last_error = "errors.google_connection_error"
             return
-        logger.warning("marketing sync failed for link %s: %s", link.id, exc)
-        link.last_error = str(exc)[:500]
+        detail = google_client.describe_api_error(exc)
+        logger.warning(
+            "marketing sync failed for link %s (%s): %s",
+            link.id,
+            await google_client.oauth_client_hint(session, org.id),
+            detail or exc,
+        )
+        # A disabled API is an i18n key the link card can teach from; anything else keeps
+        # Google's own sentence, which is more useful to an admin than the status line was.
+        link.last_error = (
+            "marketing.api_not_enabled"
+            if detail is not None and detail.api_disabled
+            else str(detail or exc)[:500]
+        )
         return
 
     await _upsert_daily(session, link, daily)

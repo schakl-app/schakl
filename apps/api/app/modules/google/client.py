@@ -16,14 +16,17 @@ from __future__ import annotations
 import logging
 import uuid
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+import httpx
 from authlib.integrations.base_client.errors import OAuthError
 from authlib.integrations.httpx_client import AsyncOAuth2Client
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.core.crypto import decrypt, encrypt
 from app.core.events import SystemContext
 from app.core.models import Org
@@ -183,10 +186,95 @@ async def is_oauth_error(exc: Exception) -> bool:
     return isinstance(exc, OAuthError)
 
 
+# --------------------------------------------------------------------------- #
+# Reading what Google actually said
+# --------------------------------------------------------------------------- #
+#: Google's machine-readable reason for "the API is off in this Cloud project". Nothing the
+#: user can do in-app fixes it — reconnecting mints the same token against the same project.
+_API_DISABLED_REASONS = frozenset({"SERVICE_DISABLED", "accessNotConfigured"})
+#: The bearer is valid but was minted without the scope this call needs — that *is* a reconnect.
+_SCOPE_REASONS = frozenset(
+    {"ACCESS_TOKEN_SCOPE_INSUFFICIENT", "insufficientPermissions", "insufficientScopes"}
+)
+
+
+@dataclass(frozen=True)
+class GoogleApiError:
+    """Google's own account of a failed REST call, pulled out of the error body.
+
+    ``httpx``'s ``HTTPStatusError`` stringifies to the status line and the URL only, so a call
+    site that logs ``str(exc)`` throws away the entire diagnosis: a 403 reads the same whether
+    the API is disabled, the token is under-scoped, or the account simply has no access. The
+    body carries a ``reason`` naming which, and a ``message`` that names the Cloud **project**.
+    """
+
+    status_code: int
+    #: ``error.details[].reason`` / ``error.errors[].reason`` — the machine-readable cause.
+    reason: str | None
+    #: ``error.status`` — the canonical code (``PERMISSION_DENIED``, ``RESOURCE_EXHAUSTED``, …).
+    status: str | None
+    #: ``error.message`` — Google's own sentence. Log it verbatim; it names the project number.
+    message: str
+
+    @property
+    def api_disabled(self) -> bool:
+        return self.reason in _API_DISABLED_REASONS
+
+    @property
+    def scope_insufficient(self) -> bool:
+        return self.reason in _SCOPE_REASONS
+
+    def __str__(self) -> str:
+        return f"{self.status_code} {self.status or ''} {self.reason or ''}: {self.message}".strip()
+
+
+def describe_api_error(exc: Exception) -> GoogleApiError | None:
+    """Google's error body, or ``None`` when this isn't an HTTP error from Google."""
+    response = getattr(exc, "response", None)
+    if not isinstance(exc, httpx.HTTPStatusError) or response is None:
+        return None
+    try:
+        error = (response.json() or {}).get("error") or {}
+    except ValueError:
+        error = {}
+    if not isinstance(error, dict):
+        error = {}
+    reason: str | None = None
+    for detail in error.get("details") or []:
+        if isinstance(detail, dict) and detail.get("reason"):
+            reason = str(detail["reason"])
+            break
+    if reason is None:
+        for legacy in error.get("errors") or []:  # the older Google JSON error shape
+            if isinstance(legacy, dict) and legacy.get("reason"):
+                reason = str(legacy["reason"])
+                break
+    return GoogleApiError(
+        status_code=response.status_code,
+        reason=reason,
+        status=str(error["status"]) if error.get("status") else None,
+        message=str(error.get("message") or response.text[:500]),
+    )
+
+
+async def oauth_client_hint(session: AsyncSession, org_id: uuid.UUID) -> str:
+    """Which OAuth client this org speaks to Google as, for a failure log line.
+
+    The APIs a call needs must be enabled in the Cloud project **of this client** — and an org
+    that never filled in Instellingen → Google silently rides the instance-wide env client, whose
+    project is somebody else's. That mismatch is invisible in every other symptom, so name the
+    client (public — it rides every consent URL; its leading digits are the project number).
+    """
+    row = await google_settings_row(session, org_id)
+    if row is not None and row.client_id and row.client_secret_encrypted:
+        return f"org client {row.client_id}"
+    if settings.google_client_id:
+        return f"instance env client {settings.google_client_id}"
+    return "no client configured"
+
+
 async def revoke(connection: GoogleConnection) -> None:
     """Best-effort revocation at Google on disconnect — local deletion must not depend on it."""
-    import httpx
-
     try:
         token = decrypt(connection.refresh_token_encrypted)
     except ValueError:

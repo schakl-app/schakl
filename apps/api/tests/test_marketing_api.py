@@ -11,14 +11,18 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, date, datetime, timedelta
 
+import httpx
 import pytest
 from pwdlib import PasswordHash
 from sqlalchemy import select
 
 from app.core.activity.models import ActivityLog
 from app.core.auth.models import User
-from app.core.crypto import decrypt
+from app.core.crypto import decrypt, encrypt
 from app.db import async_session_maker, set_current_org
+from app.modules.google.client import describe_api_error
+from app.modules.google.models import GoogleConnection, GoogleSettings
+from app.modules.google.oauth import SCOPE_ANALYTICS
 from app.modules.marketing.layout import SourceLayout, resolve_event_label
 from app.modules.marketing.models import (
     MarketingLink,
@@ -31,6 +35,17 @@ from app.modules.marketing.sources.ga4 import GA4Adapter
 from tests.conftest import add_membership, auth_cookie, make_tenant
 
 _ph = PasswordHash.recommended()
+
+
+class _FakeRedis:
+    def __init__(self) -> None:
+        self.store: dict[str, str] = {}
+
+    async def get(self, key: str):
+        return self.store.get(key)
+
+    async def set(self, key: str, value: str, ex: int | None = None) -> None:  # noqa: ARG002
+        self.store[key] = value
 
 
 async def _add_member(org_id, email: str, role: str = "member") -> User:
@@ -1250,3 +1265,114 @@ async def test_summary_is_horizon_scoped_for_portal_logins(client_for) -> None:
         empty = (await co.get("/api/v1/marketing/summary", headers=o_headers)).json()
         assert empty["linked_total"] == 0
         assert empty["rows"] == []
+
+
+# --- what Google actually said (a 403 is not one failure) ------------------------------------ #
+def _http_403(body: dict) -> httpx.HTTPStatusError:
+    request = httpx.Request("GET", "https://analyticsadmin.googleapis.com/v1beta/accountSummaries")
+    response = httpx.Response(403, json=body, request=request)
+    return httpx.HTTPStatusError("Client error '403 Forbidden'", request=request, response=response)
+
+
+_SERVICE_DISABLED = {
+    "error": {
+        "code": 403,
+        "status": "PERMISSION_DENIED",
+        "message": (
+            "Google Analytics Admin API has not been used in project 123456789012 before or "
+            "it is disabled."
+        ),
+        "details": [
+            {"@type": "type.googleapis.com/google.rpc.ErrorInfo", "reason": "SERVICE_DISABLED"}
+        ],
+    }
+}
+
+
+def test_describe_api_error_reads_googles_own_reason() -> None:
+    """``str(exc)`` is the status line and the URL; the diagnosis is in the body."""
+    disabled = describe_api_error(_http_403(_SERVICE_DISABLED))
+    assert disabled is not None
+    assert disabled.api_disabled and not disabled.scope_insufficient
+    assert disabled.status == "PERMISSION_DENIED"
+    assert "123456789012" in str(disabled)  # the Cloud project, the whole point of logging it
+
+    scoped = describe_api_error(
+        _http_403(
+            {
+                "error": {
+                    "code": 403,
+                    "message": "Request had insufficient authentication scopes.",
+                    "details": [{"reason": "ACCESS_TOKEN_SCOPE_INSUFFICIENT"}],
+                }
+            }
+        )
+    )
+    assert scoped is not None and scoped.scope_insufficient and not scoped.api_disabled
+
+    # The older Google JSON shape, and a plain 403 that explains nothing.
+    legacy = describe_api_error(
+        _http_403({"error": {"code": 403, "errors": [{"reason": "accessNotConfigured"}]}})
+    )
+    assert legacy is not None and legacy.api_disabled
+    bare = describe_api_error(_http_403({"error": {"code": 403, "message": "Forbidden"}}))
+    assert bare is not None and not bare.api_disabled and not bare.scope_insufficient
+    assert describe_api_error(RuntimeError("not http at all")) is None
+
+
+async def _seed_google(tenant, user_id: uuid.UUID) -> None:
+    """An org OAuth client plus an active connection carrying the GA4 scope."""
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        session.add(
+            GoogleSettings(
+                org_id=tenant.org.id,
+                client_id="123456789012-abc.apps.googleusercontent.com",
+                client_secret_encrypted=encrypt("client-secret"),
+            )
+        )
+        session.add(
+            GoogleConnection(
+                org_id=tenant.org.id,
+                user_id=user_id,
+                google_sub="sub-mktg",
+                email="marketeer@agency.nl",
+                scopes=["openid", "email", SCOPE_ANALYTICS],
+                refresh_token_encrypted=encrypt("refresh-token-plain"),
+            )
+        )
+        await session.commit()
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        (_SERVICE_DISABLED, "marketing.api_not_enabled"),
+        ({"error": {"code": 403, "message": "Forbidden"}}, "marketing.accounts_error"),
+    ],
+)
+async def test_accounts_picker_separates_a_disabled_api_from_a_bad_token(
+    client_for, monkeypatch: pytest.MonkeyPatch, body: dict, expected: str
+) -> None:
+    """A disabled Cloud API and a dead grant both 403; only one is cured by reconnecting, so
+    the picker must not answer "try reconnecting" to both (the GA4 symptom this came from)."""
+    t = await make_tenant("mktg-accounts-403")
+    headers = await auth_cookie(t.user)
+    await _seed_google(t, t.user.id)
+
+    fake_redis = _FakeRedis()
+    monkeypatch.setattr("app.modules.marketing.service.get_redis", lambda: fake_redis)
+
+    async def _boom(self, client):  # noqa: ANN001, ARG001
+        raise _http_403(body)
+
+    monkeypatch.setattr(GA4Adapter, "list_accounts", _boom)
+
+    async with client_for(t.host) as c:
+        res = await c.get("/api/v1/marketing/accounts?source=ga4", headers=headers)
+    assert res.status_code == 200
+    payload = res.json()
+    assert payload["connected"] is True and payload["has_scope"] is True
+    assert payload["error"] == expected
+    assert payload["accounts"] == []
+    assert fake_redis.store == {}  # a failure is never cached as "this account list is empty"

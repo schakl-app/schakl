@@ -127,6 +127,41 @@ agency tool — so, direct.
 - **Privacy:** mailbox connection is per-user and opt-in; let users scope it to a label/query.
   "The CRM reads all my email" is a trust landmine even internally.
 
+## 7. Marketing sources — enabled APIs are a *project* fact, not a token fact
+
+The `marketing` module (#134) rides this same OAuth client, so it adds no login and no second
+grant. What it does add is a dependency the other surfaces don't have: **each source calls one
+or two Google APIs that must be switched on in the Cloud project the OAuth client belongs to.**
+
+| Source | Scope | APIs to enable in the Cloud project |
+|--------|-------|--------------------------------------|
+| GA4    | `analytics.readonly` | **Google Analytics Admin API** (the property picker, `analyticsadmin.googleapis.com`) **and** **Google Analytics Data API** (every metric, `analyticsdata.googleapis.com`) |
+| Search Console | `webmasters.readonly` | Google Search Console API |
+| Google Ads | `adwords` | Google Ads API, **plus** a per-org developer token (§ the module's own settings) |
+
+Two APIs for GA4 is the trap: enabling only the Data API leaves the picker dead while the rest
+of the module looks configured, because listing properties is an *Admin* API call.
+
+**A disabled API and a dead grant both come back 403.** They are not the same failure and they
+do not have the same cure: a disabled API is refused before the token is even considered, so
+reconnecting mints an identical token against the same project and fails identically. Google
+says which is which in the response *body*, and `httpx` throws it away —
+`str(HTTPStatusError)` is the status line and the URL, nothing more. So every Google call site
+runs its exception through `google.client.describe_api_error`, which lifts out
+`error.details[].reason` (`SERVICE_DISABLED` → the API is off, `ACCESS_TOKEN_SCOPE_INSUFFICIENT`
+→ the grant is short) and Google's own message — **which names the Cloud project number**. The
+picker maps the first to `marketing.api_not_enabled` and deliberately drops the "reconnect"
+link there.
+
+**Which project, though?** `client_credentials` falls back to the instance-wide
+`SCHAKL_GOOGLE_CLIENT_ID` whenever an org has not filled in Instellingen → Google. That org is
+then talking to Google as *the instance operator's* Cloud project, and an admin who enables the
+Analytics APIs in their own project changes nothing. Nothing else in the product makes this
+visible — the connect flow, the consent screen and the granted scopes all look right — so the
+failure log names the client in use (`org client …` vs `instance env client …`; a client id is
+public and its leading digits *are* the project number). Expect this on a **cloud** instance in
+particular, where instance-wide credentials are the norm and a per-org client is the exception.
+
 ## Suggested build order within P3
 
 1. `google` core: OAuth connect flow + encrypted token vault + client factory (per-user first).
@@ -145,3 +180,5 @@ agency tool — so, direct.
 - [ ] Watch channels renewed by an ARQ cron job.
 - [ ] `org_id` on every table; webhook maps back to org + connection.
 - [ ] Minimum scopes requested; restricted scopes justified by the "Internal" app model.
+- [ ] The APIs the surface calls are listed in §7, and a failure reports Google's own reason
+      (`describe_api_error`) plus the OAuth client in use — never a bare status line.
