@@ -740,6 +740,357 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cloudflare/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Accounts
+         * @description Configured Cloudflare accounts. The API token is never part of the response.
+         */
+        get: operations["list_accounts_api_v1_cloudflare_accounts_get"];
+        put?: never;
+        /** Create Account */
+        post: operations["create_account_api_v1_cloudflare_accounts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/accounts/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Account Options
+         * @description Names only, for the "which account" picker — choosing one is ``zone.manage``'s job, and
+         *     should not require holding the credential screen's permission.
+         */
+        get: operations["list_account_options_api_v1_cloudflare_accounts_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/accounts/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Account
+         * @description Forget the credential and its synced inventory. Nothing at Cloudflare is deleted.
+         */
+        delete: operations["delete_account_api_v1_cloudflare_accounts__account_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Account
+         * @description Rename, repoint or rotate. An omitted ``api_token`` keeps the stored one.
+         */
+        patch: operations["update_account_api_v1_cloudflare_accounts__account_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/cloudflare/accounts/{account_id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Account
+         * @description Pull the account's zones and Pages projects, matching zones to domains by apex.
+         */
+        post: operations["sync_account_api_v1_cloudflare_accounts__account_id__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/accounts/{account_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Account
+         * @description Probe what this token can do and store the answer, so the UI can name a missing scope.
+         */
+        post: operations["verify_account_api_v1_cloudflare_accounts__account_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/domains/{domain_id}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cloudflare Check Domain
+         * @description Ask Cloudflare what it actually has: drift, conflicting redirects, whether the apex is
+         *     proxied at all. Persists the observation; every probe fails softly and names itself.
+         */
+        post: operations["cloudflare_check_domain_api_v1_cloudflare_domains__domain_id__check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/domains/{domain_id}/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Connect Domain
+         * @description Adopt this domain's existing Cloudflare zone, or create one. Adoption always wins.
+         */
+        post: operations["connect_domain_api_v1_cloudflare_domains__domain_id__connect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/domains/{domain_id}/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link Pages Project
+         * @description Serve a hostname of this domain from a Pages project (registers it *and* points DNS).
+         */
+        post: operations["link_pages_project_api_v1_cloudflare_domains__domain_id__pages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/domains/{domain_id}/redirect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Redirect
+         * @description Set the domain-wide redirect and push it to Cloudflare as a Redirect Rule.
+         */
+        put: operations["set_redirect_api_v1_cloudflare_domains__domain_id__redirect_put"];
+        post?: never;
+        /**
+         * Remove Redirect
+         * @description Delete the rule we created at Cloudflare. Rules we did not create are never touched.
+         */
+        delete: operations["remove_redirect_api_v1_cloudflare_domains__domain_id__redirect_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/domains/{domain_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cloudflare Domain Status
+         * @description Stored state only — no Cloudflare call, so this is safe on a page load.
+         */
+        get: operations["cloudflare_domain_status_api_v1_cloudflare_domains__domain_id__status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/pages/links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unlink Pages Project
+         * @description Detach the hostname from the project. Its DNS record is left alone on purpose.
+         */
+        delete: operations["unlink_pages_project_api_v1_cloudflare_pages_links__link_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/pages/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Pages Projects
+         * @description Synced Pages projects — the picker's source, so it never waits on Cloudflare.
+         */
+        get: operations["list_pages_projects_api_v1_cloudflare_pages_projects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/zones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Zones */
+        get: operations["list_zones_api_v1_cloudflare_zones_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/zones/{zone_id}/dns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Dns
+         * @description The zone's records, read live from Cloudflare — never a cached copy (see schemas).
+         */
+        get: operations["list_dns_api_v1_cloudflare_zones__zone_id__dns_get"];
+        put?: never;
+        /** Create Dns Record */
+        post: operations["create_dns_record_api_v1_cloudflare_zones__zone_id__dns_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/zones/{zone_id}/dns/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Dns
+         * @description The zone as a BIND file (Cloudflare's own export) or a CSV built here.
+         */
+        get: operations["export_dns_api_v1_cloudflare_zones__zone_id__dns_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/zones/{zone_id}/dns/{record_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Dns Record */
+        delete: operations["delete_dns_record_api_v1_cloudflare_zones__zone_id__dns__record_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Dns Record */
+        patch: operations["update_dns_record_api_v1_cloudflare_zones__zone_id__dns__record_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/cloudflare/zones/{zone_id}/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link Zone
+         * @description Match a synced zone to a domain by hand, where the apex did not match automatically.
+         */
+        post: operations["link_zone_api_v1_cloudflare_zones__zone_id__link_post"];
+        /**
+         * Unlink Zone
+         * @description Forget the match. The zone keeps serving at Cloudflare.
+         */
+        delete: operations["unlink_zone_api_v1_cloudflare_zones__zone_id__link_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/companies": {
         parameters: {
             query?: never;
@@ -6806,6 +7157,147 @@ export interface components {
             /** Tokens Total */
             tokens_total: number;
         };
+        /** AccountCreate */
+        AccountCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Api Token */
+            api_token: string;
+            /** Cf Account Id */
+            cf_account_id?: string | null;
+            /** Name */
+            name: string;
+            /** Provider Id */
+            provider_id?: string | null;
+        };
+        /**
+         * AccountOption
+         * @description An account as a *picker* needs it: a name to choose between, nothing else.
+         *
+         *     Separate from :class:`AccountRead` because the two have different readers. Choosing which
+         *     Cloudflare account to create a zone in is part of ``cloudflare.zone.manage``; seeing how a
+         *     credential is configured, what it may do and why it last failed is ``settings.manage``. One
+         *     endpoint serving both would have forced the picker's holder to hold the credential screen's
+         *     permission (docs/UX.md: a control that renders without checking `can()` — inverted).
+         */
+        AccountOption: {
+            /** Active */
+            active: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * AccountRead
+         * @description A configured Cloudflare account. Never carries the token.
+         */
+        AccountRead: {
+            /** Active */
+            active: boolean;
+            /** Capabilities */
+            capabilities?: {
+                [key: string]: boolean;
+            };
+            /** Cf Account Id */
+            cf_account_id?: string | null;
+            /** Cf Account Name */
+            cf_account_name?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Synced At */
+            last_synced_at?: string | null;
+            /** Last Verified At */
+            last_verified_at?: string | null;
+            /** Name */
+            name: string;
+            /** Provider Id */
+            provider_id?: string | null;
+            /** Provider Name */
+            provider_name?: string | null;
+            /** Status */
+            status: string;
+            /**
+             * Token Configured
+             * @default true
+             */
+            token_configured: boolean;
+            /**
+             * Zone Count
+             * @default 0
+             */
+            zone_count: number;
+        };
+        /**
+         * AccountSyncResult
+         * @description The outcome of pulling an account's inventory. Counts, not rows — the lists are paginated
+         *     endpoints of their own.
+         */
+        AccountSyncResult: {
+            /**
+             * Pages Projects Synced
+             * @default 0
+             */
+            pages_projects_synced: number;
+            /** Warnings */
+            warnings?: string[];
+            /**
+             * Zones Matched
+             * @default 0
+             */
+            zones_matched: number;
+            /**
+             * Zones Synced
+             * @default 0
+             */
+            zones_synced: number;
+        };
+        /** AccountUpdate */
+        AccountUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Api Token */
+            api_token?: string | null;
+            /** Cf Account Id */
+            cf_account_id?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Provider Id */
+            provider_id?: string | null;
+        };
+        /**
+         * AccountVerifyResult
+         * @description What a verify learned. ``account`` is filled when the token sees exactly one account.
+         */
+        AccountVerifyResult: {
+            /** Account Choices */
+            account_choices?: {
+                [key: string]: string;
+            }[];
+            /** Capabilities */
+            capabilities?: {
+                [key: string]: boolean;
+            };
+            /** Cf Account Id */
+            cf_account_id?: string | null;
+            /** Cf Account Name */
+            cf_account_name?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Ok */
+            ok: boolean;
+        };
         /**
          * AccountsResponse
          * @description A picker's option list plus the state that lets an empty list *teach* (#132).
@@ -8391,6 +8883,19 @@ export interface components {
             website?: string | null;
         };
         /**
+         * ConnectRequest
+         * @description "Connect this domain to Cloudflare" — adopt the existing zone, or create one.
+         */
+        ConnectRequest: {
+            /** Account Id */
+            account_id?: string | null;
+            /**
+             * Create If Missing
+             * @default true
+             */
+            create_if_missing: boolean;
+        };
+        /**
          * ConnectionOwner
          * @description Whose Google grant a link (or an available account) rides on.
          *
@@ -8898,6 +9403,18 @@ export interface components {
             password: string;
         };
         /**
+         * DnsExport
+         * @description A zone export. ``content`` is the file body; the client saves it under ``filename``.
+         */
+        DnsExport: {
+            /** Content */
+            content: string;
+            /** Content Type */
+            content_type: string;
+            /** Filename */
+            filename: string;
+        };
+        /**
          * DnsRecordCard
          * @description One record to create at the customer's DNS provider, renderable as a copy-paste card.
          */
@@ -8922,6 +9439,58 @@ export interface components {
             type: string;
             /** Value */
             value: string;
+        };
+        /**
+         * DnsRecordRead
+         * @description One record as Cloudflare reports it. Read live — never stored (a DNS record is not our
+         *     data, and a cached copy would be wrong within minutes of any change).
+         */
+        DnsRecordRead: {
+            /** Comment */
+            comment?: string | null;
+            /** Content */
+            content: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Priority */
+            priority?: number | null;
+            /**
+             * Proxied
+             * @default false
+             */
+            proxied: boolean;
+            /**
+             * Ttl
+             * @default 1
+             */
+            ttl: number;
+            /** Type */
+            type: string;
+        };
+        /** DnsRecordWrite */
+        DnsRecordWrite: {
+            /** Comment */
+            comment?: string | null;
+            /** Content */
+            content: string;
+            /** Name */
+            name: string;
+            /** Priority */
+            priority?: number | null;
+            /**
+             * Proxied
+             * @default false
+             */
+            proxied: boolean;
+            /**
+             * Ttl
+             * @default 1
+             */
+            ttl: number;
+            /** Type */
+            type: string;
         };
         /**
          * DocumentSend
@@ -9135,6 +9704,56 @@ export interface components {
          * @enum {string}
          */
         "DomainStatus-Input": "active" | "redirect" | "parked" | "expired" | "inactive";
+        /**
+         * DomainStatusRead
+         * @description Everything known about one domain's Cloudflare state.
+         *
+         *     ``live`` says whether Cloudflare was actually asked. The stored read (``GET .../status``) is
+         *     the cheap one a page load uses; ``POST .../check`` is the one that talks to Cloudflare and
+         *     fills in ``conflicts``, ``origin`` and the redirect observation (docs/PERFORMANCE.md — a
+         *     detail page must not depend on an outside API being up).
+         */
+        DomainStatusRead: {
+            /** Candidates */
+            candidates?: components["schemas"]["ZoneCandidate"][];
+            /** Conflicts */
+            conflicts?: components["schemas"]["RedirectConflict"][];
+            /**
+             * Domain Id
+             * Format: uuid
+             */
+            domain_id: string;
+            /** Domain Name */
+            domain_name: string;
+            /** Domain Redirect Url */
+            domain_redirect_url?: string | null;
+            /** Domain Status */
+            domain_status?: string | null;
+            /** Expected Nameservers */
+            expected_nameservers?: string[];
+            /** Issues */
+            issues?: string[];
+            /**
+             * Live
+             * @default false
+             */
+            live: boolean;
+            /**
+             * Nameservers Delegated
+             * @default false
+             */
+            nameservers_delegated: boolean;
+            /** Observed Nameservers */
+            observed_nameservers?: string[];
+            origin?: components["schemas"]["OriginState"] | null;
+            /** Pages Links */
+            pages_links?: components["schemas"]["PagesLinkRead"][];
+            redirect?: components["schemas"]["RedirectRead"] | null;
+            redirect_live?: components["schemas"]["RedirectObservation"] | null;
+            /** Unavailable */
+            unavailable?: string[];
+            zone?: components["schemas"]["ZoneRead"] | null;
+        };
         /** DomainUpdate */
         DomainUpdate: {
             /** Company Id */
@@ -12796,6 +13415,30 @@ export interface components {
             /** Slug */
             slug?: string | null;
         };
+        /**
+         * OriginState
+         * @description Whether traffic for this domain reaches Cloudflare's edge at all.
+         *
+         *     A redirect rule on a zone with no proxied record for the apex is inert. This is the check
+         *     that turns "I set the redirect and nothing happens" into a sentence.
+         */
+        OriginState: {
+            /**
+             * Apex Proxied
+             * @default false
+             */
+            apex_proxied: boolean;
+            /**
+             * Has Records
+             * @default false
+             */
+            has_records: boolean;
+            /**
+             * Www Proxied
+             * @default false
+             */
+            www_proxied: boolean;
+        };
         /** OverviewResponse */
         OverviewResponse: {
             /** Range Days */
@@ -12993,6 +13636,76 @@ export interface components {
             offset: number;
             /** Total */
             total: number;
+        };
+        /** Page[ZoneRead] */
+        Page_ZoneRead_: {
+            /** Items */
+            items: components["schemas"]["ZoneRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** PagesLinkCreate */
+        PagesLinkCreate: {
+            /** Hostname */
+            hostname?: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+        };
+        /** PagesLinkRead */
+        PagesLinkRead: {
+            /**
+             * Domain Id
+             * Format: uuid
+             */
+            domain_id: string;
+            /** Hostname */
+            hostname: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Checked At */
+            last_checked_at?: string | null;
+            /** Last Error */
+            last_error?: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Name */
+            project_name?: string | null;
+            /** Status */
+            status?: string | null;
+        };
+        /** PagesProjectRead */
+        PagesProjectRead: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Account Name */
+            account_name?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Production Branch */
+            production_branch?: string | null;
+            /** Subdomain */
+            subdomain?: string | null;
         };
         /**
          * PanelData
@@ -14034,6 +14747,117 @@ export interface components {
          * @enum {string}
          */
         RecurrenceMode: "after_completion" | "schedule";
+        /**
+         * RedirectConflict
+         * @description Something *else* on this zone that already redirects, or could.
+         *
+         *     Reported rather than resolved: Cloudflare evaluates redirect rules top-down and we cannot
+         *     evaluate a tenant's filter expression to know whether it catches this hostname. Naming it
+         *     lets the admin decide; silently appending our rule below it would look like it worked.
+         */
+        RedirectConflict: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "redirect_rule" | "page_rule";
+        };
+        /**
+         * RedirectObservation
+         * @description What Cloudflare currently has for our rule, next to what we asked for.
+         */
+        RedirectObservation: {
+            /** Differences */
+            differences?: string[];
+            /**
+             * Present
+             * @default false
+             */
+            present: boolean;
+            /** Status Code */
+            status_code?: number | null;
+            /** Target */
+            target?: string | null;
+        };
+        /** RedirectRead */
+        RedirectRead: {
+            /**
+             * Domain Id
+             * Format: uuid
+             */
+            domain_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Include Subdomains */
+            include_subdomains: boolean;
+            /** Last Checked At */
+            last_checked_at?: string | null;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Pushed At */
+            last_pushed_at?: string | null;
+            /** Last Status */
+            last_status: string;
+            /** Preserve Path */
+            preserve_path: boolean;
+            /** Preserve Query */
+            preserve_query: boolean;
+            /** Status Code */
+            status_code: number;
+            /** Target Url */
+            target_url: string;
+            /**
+             * Zone Id
+             * Format: uuid
+             */
+            zone_id: string;
+        };
+        /**
+         * RedirectWrite
+         * @description The tenant's intent for a domain-wide redirect.
+         */
+        RedirectWrite: {
+            /**
+             * Ensure Origin
+             * @default true
+             */
+            ensure_origin: boolean;
+            /**
+             * Include Subdomains
+             * @default true
+             */
+            include_subdomains: boolean;
+            /**
+             * Preserve Path
+             * @default true
+             */
+            preserve_path: boolean;
+            /**
+             * Preserve Query
+             * @default true
+             */
+            preserve_query: boolean;
+            /**
+             * Status Code
+             * @default 301
+             */
+            status_code: number;
+            /** Target Url */
+            target_url: string;
+        };
         /** ReportCreate */
         ReportCreate: {
             /**
@@ -17263,6 +18087,86 @@ export interface components {
             title?: string | null;
         };
         /**
+         * ZoneCandidate
+         * @description One account's answer to "do you have this zone?" — the shape ambiguity is reported in.
+         */
+        ZoneCandidate: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Account Name */
+            account_name: string;
+            /** Cf Zone Id */
+            cf_zone_id: string;
+            /** Name Servers */
+            name_servers?: string[];
+            /** Status */
+            status: string;
+        };
+        /** ZoneLink */
+        ZoneLink: {
+            /**
+             * Domain Id
+             * Format: uuid
+             */
+            domain_id: string;
+        };
+        /** ZoneRead */
+        ZoneRead: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Account Name */
+            account_name?: string | null;
+            /** Cf Zone Id */
+            cf_zone_id: string;
+            /** Domain Id */
+            domain_id?: string | null;
+            /** Domain Name */
+            domain_name?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Synced At */
+            last_synced_at?: string | null;
+            /** Name */
+            name: string;
+            /** Name Servers */
+            name_servers?: string[];
+            /** Original Name Servers */
+            original_name_servers?: string[];
+            /**
+             * Paused
+             * @default false
+             */
+            paused: boolean;
+            /** Plan */
+            plan?: string | null;
+            /** Status */
+            status: string;
+        };
+        /**
+         * ZoneRecords
+         * @description A zone's live records plus the state of the read itself.
+         */
+        ZoneRecords: {
+            /** Records */
+            records?: components["schemas"]["DnsRecordRead"][];
+            /**
+             * Zone Id
+             * Format: uuid
+             */
+            zone_id: string;
+            /** Zone Name */
+            zone_name: string;
+        };
+        /**
          * ActivityItem
          * @description One line of a record's paper trail.
          */
@@ -19062,6 +19966,731 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Page_RunRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_accounts_api_v1_cloudflare_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountRead"][];
+                };
+            };
+        };
+    };
+    create_account_api_v1_cloudflare_accounts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_account_options_api_v1_cloudflare_accounts_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountOption"][];
+                };
+            };
+        };
+    };
+    delete_account_api_v1_cloudflare_accounts__account_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_account_api_v1_cloudflare_accounts__account_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_account_api_v1_cloudflare_accounts__account_id__sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountSyncResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_account_api_v1_cloudflare_accounts__account_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountVerifyResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cloudflare_check_domain_api_v1_cloudflare_domains__domain_id__check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainStatusRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    connect_domain_api_v1_cloudflare_domains__domain_id__connect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZoneRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_pages_project_api_v1_cloudflare_domains__domain_id__pages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PagesLinkCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagesLinkRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_redirect_api_v1_cloudflare_domains__domain_id__redirect_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RedirectWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RedirectRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_redirect_api_v1_cloudflare_domains__domain_id__redirect_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cloudflare_domain_status_api_v1_cloudflare_domains__domain_id__status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainStatusRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlink_pages_project_api_v1_cloudflare_pages_links__link_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_pages_projects_api_v1_cloudflare_pages_projects_get: {
+        parameters: {
+            query?: {
+                account_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagesProjectRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_zones_api_v1_cloudflare_zones_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                account_id?: string | null;
+                domain_id?: string | null;
+                /** @description true: matched to a domain; false: orphans */
+                linked?: boolean | null;
+                q?: string | null;
+                /** @description Compute the total. False for pickers. */
+                count?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ZoneRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_dns_api_v1_cloudflare_zones__zone_id__dns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                zone_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZoneRecords"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_dns_record_api_v1_cloudflare_zones__zone_id__dns_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                zone_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DnsRecordWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DnsRecordRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_dns_api_v1_cloudflare_zones__zone_id__dns_export_get: {
+        parameters: {
+            query?: {
+                format?: string;
+            };
+            header?: never;
+            path: {
+                zone_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DnsExport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_dns_record_api_v1_cloudflare_zones__zone_id__dns__record_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                zone_id: string;
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_dns_record_api_v1_cloudflare_zones__zone_id__dns__record_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                zone_id: string;
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DnsRecordWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DnsRecordRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_zone_api_v1_cloudflare_zones__zone_id__link_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                zone_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ZoneLink"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZoneRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlink_zone_api_v1_cloudflare_zones__zone_id__link_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                zone_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZoneRead"];
                 };
             };
             /** @description Validation Error */

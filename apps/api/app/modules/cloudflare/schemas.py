@@ -47,6 +47,21 @@ class AccountRead(BaseModel):
     zone_count: int = 0
 
 
+class AccountOption(BaseModel):
+    """An account as a *picker* needs it: a name to choose between, nothing else.
+
+    Separate from :class:`AccountRead` because the two have different readers. Choosing which
+    Cloudflare account to create a zone in is part of ``cloudflare.zone.manage``; seeing how a
+    credential is configured, what it may do and why it last failed is ``settings.manage``. One
+    endpoint serving both would have forced the picker's holder to hold the credential screen's
+    permission (docs/UX.md: a control that renders without checking `can()` — inverted).
+    """
+
+    id: uuid.UUID
+    name: str
+    active: bool
+
+
 class AccountCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     #: A **scoped API token**. Cloudflare's legacy Global API Key is refused on purpose: it is

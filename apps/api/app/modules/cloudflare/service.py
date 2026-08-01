@@ -288,6 +288,19 @@ class CloudflareService:
             for a in accounts
         ]
 
+    async def account_options(self) -> list[dict[str, Any]]:
+        """Just enough to choose an account from: id, name, whether it is in use."""
+        accounts = list(
+            (
+                await self.ctx.session.execute(
+                    self.accounts.scoped_select().order_by(func.lower(CloudflareAccount.name))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return [{"id": a.id, "name": a.name, "active": a.active} for a in accounts]
+
     async def create_account(self, payload: AccountCreate) -> CloudflareAccount:
         await self._assert_account_name_free(payload.name)
         account = await self.accounts.create(

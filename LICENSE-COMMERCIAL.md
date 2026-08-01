@@ -13,6 +13,7 @@ and their web counterparts — currently:
 
 - `apps/api/app/core/cloud/`
 - `apps/api/app/core/mcp/`
+- `apps/api/app/modules/cloudflare/`
 - `apps/api/app/modules/automation/`
 - `apps/api/app/modules/domains/`
 - `apps/api/app/modules/google/`
@@ -27,6 +28,7 @@ and their web counterparts — currently:
 - `apps/api/app/modules/time/`
 - `apps/api/app/modules/websites/`
 - `apps/web/src/lib/cloud/`
+- `apps/web/src/lib/modules/cloudflare/`
 - `apps/web/src/lib/modules/automation/`
 - `apps/web/src/lib/modules/domains/`
 - `apps/web/src/lib/modules/google/`
@@ -50,6 +52,7 @@ and their web counterparts — currently:
 - `apps/web/src/routes/(app)/subscriptions/`
 - `apps/web/src/routes/(app)/time/`
 - `apps/web/src/routes/(app)/websites/`
+- `apps/web/src/routes/(app)/settings/cloudflare/`
 - `apps/web/src/routes/(app)/settings/automation/`
 - `apps/web/src/routes/(app)/settings/google/`
 - `apps/web/src/routes/(app)/settings/hosting/`

@@ -420,6 +420,16 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     permissions: ["marketing.link.manage"],
     module: "marketing",
   },
+  {
+    key: "cloudflare",
+    href: "/settings/cloudflare",
+    titleKey: "settings.cloudflare.title",
+    subtitleKey: "settings.cloudflare.subtitle",
+    keywordsKey: "settings.search.cloudflare",
+    group: "integrations",
+    permissions: ["cloudflare.settings.manage"],
+    module: "cloudflare",
+  },
 
   // --- Systeem ----------------------------------------------------------- //
   {

@@ -9,6 +9,9 @@ import {
 } from "$lib/core/quickcreate.server";
 import { entityPanelsFor } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
+// The Cloudflare panel edits through this page's actions, the way the Drive panels do — a panel
+// cannot own form actions, so the host spreads them in (CLAUDE.md §6: one import, no internals).
+import { cloudflareActions } from "$lib/modules/cloudflare/cloudflare-actions.server";
 import "$lib/modules";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -71,6 +74,8 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
+  ...cloudflareActions,
+
   update: async (event) => {
     const form = await event.request.formData();
     const email_enabled = form.get("email_enabled") !== null;

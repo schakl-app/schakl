@@ -18,6 +18,7 @@ from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.modules.cloudflare.schemas import (
     AccountCreate,
+    AccountOption,
     AccountRead,
     AccountSyncResult,
     AccountUpdate,
@@ -51,6 +52,19 @@ router = APIRouter(prefix="/cloudflare", tags=["cloudflare"])
 async def list_accounts(ctx: RequestContext = Depends(require_context)) -> list[AccountRead]:
     """Configured Cloudflare accounts. The API token is never part of the response."""
     return [AccountRead(**row) for row in await CloudflareService(ctx).list_accounts()]
+
+
+@router.get(
+    "/accounts/options",
+    response_model=list[AccountOption],
+    dependencies=[require_permission("cloudflare.dns.read")],
+)
+async def list_account_options(
+    ctx: RequestContext = Depends(require_context),
+) -> list[AccountOption]:
+    """Names only, for the "which account" picker — choosing one is ``zone.manage``'s job, and
+    should not require holding the credential screen's permission."""
+    return [AccountOption(**row) for row in await CloudflareService(ctx).account_options()]
 
 
 @router.post(
