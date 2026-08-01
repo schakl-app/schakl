@@ -93,8 +93,10 @@ class Org(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # (`app.core.hosts.custom_domain_live`).
     cf_hostname_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     cf_ssl_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    # Tri-state DNS drift check: does custom_domain still resolve toward the CNAME target?
-    # NULL = never checked or resolver unavailable — a lookup timeout must not read as
+    # Tri-state routing check (`app.core.domainflow.routing_check`): does traffic for
+    # custom_domain still reach this instance? NULL = no verdict — never checked, the resolver
+    # was unavailable, or the domain sits behind a proxy that neither DNS nor a fetch could
+    # see through. Only positive evidence writes False; "we could not tell" must never read as
     # "the customer moved their DNS away".
     domain_dns_ok: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     domain_cert_expires_at: Mapped[datetime | None] = mapped_column(

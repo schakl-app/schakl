@@ -6,8 +6,9 @@ keep pointing at the SaaS target — and certificate *renewal* silently depends 
 staying true. This module owns that state:
 
 - :func:`refresh_domain_health` — one reconciliation: fetch the custom hostname from
-  Cloudflare, run the DNS drift check, write the result onto the org row. Called from the
-  verify flow (seed), the settings page's "check now" endpoint, and the sweep.
+  Cloudflare, run the shared routing check (``domainflow.routing_check``), write the result
+  onto the org row. Called from the verify flow (seed), the settings page's "check now"
+  endpoint, and the sweep.
 - :func:`sweep_domain_health` — the daily safety sweep over every org with a Cloudflare
   custom hostname. It alerts the org's domain managers **once per distinct problem**
   (``orgs.domain_alerted_for`` fingerprint) when the domain stops being live, and ahead of a
@@ -30,7 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.core import dnscheck
+from app.core import domainflow
 from app.core.cloud import cloudflare as cf
 from app.core.cloud.ingress import cname_target
 from app.core.email.senders import OutgoingEmail
@@ -93,14 +94,16 @@ def parse_hostname_record(record: dict[str, Any]) -> HostnameHealth:
 
 
 async def refresh_domain_health(org: Org) -> None:
-    """One reconciliation for one org: Cloudflare state + DNS drift → the org row.
+    """One reconciliation for one org: Cloudflare state + the routing check → the org row.
 
     Mutates the loaded ORM object only (no queries), so a request handler may run it inside
-    ``ctx.release_db()`` — the two network calls here are exactly what that seam exists for.
+    ``ctx.release_db()`` — the network calls here (Cloudflare, DNS, and the routing check's own
+    fetch of the domain) are exactly what that seam exists for.
     A Cloudflare API failure keeps the previous statuses (an API blip is not a state change)
     and records the error text instead.
     """
     error: str | None = None
+    edge_ok: bool | None = None
     if org.cf_hostname_id and cf.cloudflare_configured():
         try:
             record = await cf.get_custom_hostname(org.cf_hostname_id)
@@ -119,11 +122,19 @@ async def refresh_domain_health(org: Org) -> None:
                 org.cf_hostname_status = health.hostname_status
                 org.cf_ssl_status = health.ssl_status
                 org.domain_cert_expires_at = health.cert_expires_at
+                edge_ok = health.hostname_status == "active" and health.ssl_status == "active"
                 error = health.error
         except cf.CloudflareError as exc:
             error = str(exc)
     if org.custom_domain:
-        org.domain_dns_ok = await dnscheck.points_at(org.custom_domain, cname_target())
+        # The same function the wizard's "check now" runs, with the same signals in the same
+        # order — one question, one answer. Two implementations of "does it still point here"
+        # is how a customer ends up reading "your domain is fine" on a page while this sweep
+        # mails them that it is not.
+        check = await domainflow.routing_check(
+            org.custom_domain, cname_target(), slug=org.slug, edge_ok=edge_ok
+        )
+        org.domain_dns_ok = domainflow.dns_verdict(check)
     org.domain_checked_at = datetime.now(UTC)
     org.domain_check_error = error[:500] if error else None
 

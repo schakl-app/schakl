@@ -39,6 +39,10 @@ _EXEMPT_OPERATIONS = frozenset(
     {
         ("get", "/api/v1/meta/tenant"),
         ("get", "/api/v1/meta/modules"),
+        # The custom-domain routing proof (#291 follow-up): fetched over the public internet
+        # from a hostname that has no session at all — that is the whole point of it. Says
+        # which org a hostname reaches and echoes the caller's nonce; nothing else.
+        ("get", "/api/v1/meta/domain-probe"),
         # Instance posture (epic #199): like /meta/tenant, the web shell needs it before any
         # session exists (it routes the cloud apex host to the console on it). No tenant data.
         ("get", "/api/v1/meta/instance"),

@@ -350,8 +350,8 @@ After a custom domain verifies, the org has **two valid origins**: the operator-
 
 **Verified is ownership; live is activation.** With Cloudflare for SaaS, creating the custom
 hostname is not activation: the domain counts as **live** only once Cloudflare reports the
-hostname `active`, its DV certificate `active`, and the DNS drift check still sees the domain
-pointing at the SaaS target. That state lives on `orgs` (`cf_hostname_status`,
+hostname `active`, its DV certificate `active`, and the routing check has not established that
+the domain stopped pointing here. That state lives on `orgs` (`cf_hostname_status`,
 `cf_ssl_status`, `domain_dns_ok`, `domain_cert_expires_at`, `domain_checked_at`,
 `domain_check_error`) and is written in three places, all of them the same reconciliation:
 activation seeds it from the custom-hostname record it already holds (the wizard's
@@ -365,6 +365,38 @@ Traefik/Let's Encrypt posture) there is no state to poll: the router and certifi
 the verification directly, so verified = live — today's behaviour, unchanged. Orgs verified
 before this state existed stay live until the first sweep records the truth: an upgrade must
 never silently demote a working domain.
+
+### "Does it still point here?" — and why addresses cannot answer it
+
+The routing check (`domainflow.routing_check`) is the one answer both the wizard's *check now*
+and the sweep use. It exists in that shape because the first version of it did not: it compared
+the addresses the custom domain resolves to against the edge hostname's, and **a domain fronted
+by the customer's own Cloudflare publishes their zone's anycast addresses and no CNAME at all**.
+That configuration — orange-to-orange, a supported Cloudflare for SaaS setup — mismatches on
+every comparison no matter how correctly it is set up, which demoted healthy domains to the slug
+host and mailed their owners about an outage that was not happening.
+
+So evidence is now ranked, addresses are the weakest kind, and the first row that applies wins:
+
+| Signal | Verdict | Why it is trusted at that strength |
+|---|---|---|
+| CNAME to the edge, or matching addresses | **ok** (`target_ok`) | DNS proves it outright; nothing else is fetched. |
+| A fetch of `https://<domain>/api/v1/meta/domain-probe?nonce=…` that this instance answers for this org | **ok** (`target_proxied`) | End-to-end proof, through any proxy, CDN or apex flattening. The nonce is what a cache cannot echo. |
+| A fetch something *else* answered — a 200 that is not ours, a stranger's 404 | **failed** (`target_wrong`) | Positive proof of the opposite: the hostname serves someone else now. |
+| Cloudflare reporting the hostname `active` | **ok** (`target_edge_confirmed`) | The edge would not, if the customer's DNS had stopped reaching it. Carries the case where a WAF blocks our fetch — which outranks the row below, since serving beats record shape. |
+| A visible CNAME pointing elsewhere | **failed** (`target_wrong`) | An observed wrong value; the wizard must still say *where* it went (#292). A proxied domain has no visible CNAME, so this never fires for one. |
+| Nothing conclusive | **pending** (`target_unconfirmed`) | No consequence at all: `domain_dns_ok` stays `NULL`, the domain keeps serving and nobody is mailed. |
+
+The fetch is skipped where it could only stall: the name resolving to nothing (the wizard's
+most-polled state while a record propagates) and a zone answering SERVFAIL both mean nobody is
+there to answer, and a connection timeout per poll is the slowest possible way to learn that.
+
+**Only positive evidence writes `domain_dns_ok = false`.** "We could not tell" is a first-class
+outcome with no side effects — a domain that is serving must never be demoted because a firewall
+declined to answer us. The probe is not a security boundary: ownership is proven by the TXT
+challenge long before anything is fetched, and the endpoint reveals only what the equally public
+`/meta/tenant` already does. It refuses to fetch loopback/private addresses (a custom domain is
+customer-controlled), follows no redirects, and stops reading at 16 KiB.
 
 **The policy, per surface** (`app.core.hosts` is the one helper):
 
@@ -396,9 +428,10 @@ The custom hostnames schakl creates are **exact, non-wildcard** names validated 
 DCV **as long as the hostname stays `active` and keeps resolving to the SaaS target** — the
 customer does not need Cloudflare as their DNS provider and does not need to proxy anything
 in their own zone; the CNAME routes their traffic through the schakl edge, which answers the
-renewal challenge itself. Renewal breaks when the domain stops pointing at the target,
-another CDN sits in front of it, or a CAA record blocks the CA — which is exactly what the
-sweep watches: it re-reads every hostname's status/SSL state, runs the DNS drift check, and
+renewal challenge itself. They *may* proxy it (orange-to-orange), and the routing check above
+is what keeps that supported rather than merely tolerated. Renewal breaks when the domain stops
+pointing at the target or a CAA record blocks the CA — which is exactly what the
+sweep watches: it re-reads every hostname's status/SSL state, runs the routing check, and
 mails the org's domain managers **once per distinct problem** (`orgs.domain_alerted_for`
 fingerprint) — on any not-live state, and ahead of an expiry closer than 15 days (Cloudflare
 renews ~30 days out, so 15 means renewal has been failing for weeks).

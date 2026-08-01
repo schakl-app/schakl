@@ -10,12 +10,12 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.config import settings
-from app.core import hosts
+from app.core import domainprobe, hosts
 from app.core.ai.service import enabled_features as ai_enabled_features
 from app.core.auth import sso
 from app.core.auth.models import User
@@ -83,6 +83,19 @@ class TenantBranding(BaseModel):
     # (necessarily on the recovery host) sees a domain-health warning instead of guessing at
     # a generic TLS/login failure.
     domain_unhealthy: bool = False
+
+
+class DomainProbe(BaseModel):
+    """The routing proof a custom-domain check fetches over the public internet.
+
+    Deliberately three constants and nothing else: the software marker that says the answer
+    came from this application at all, the org the requested hostname resolves to, and the
+    caller's own nonce echoed back so a cached body cannot pass for a live one.
+    """
+
+    instance: str = domainprobe.INSTANCE_MARKER
+    org: str
+    nonce: str
 
 
 _HEX_COLOR = r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
@@ -281,6 +294,30 @@ def _ends_warning_until(org) -> datetime | None:  # noqa: ANN001 — Org, avoidi
     if lifecycle.stage_for(org, datetime.now(UTC)) != lifecycle.STAGE_WARNING:
         return None
     return lifecycle.terminate_at(org)
+
+
+@router.get(
+    "/domain-probe",
+    response_model=DomainProbe,
+    dependencies=[
+        no_permission_required("routing proof: which org this hostname reaches, if any")
+    ],
+)
+async def domain_probe(request: Request, nonce: str = Query(pattern=r"^[a-f0-9]{8,64}$")) -> (
+    DomainProbe
+):
+    """Answer, to whoever can reach this hostname, that *this* instance serves *that* org.
+
+    The custom-domain check fetches this over the public internet (:mod:`app.core.domainprobe`)
+    because a DNS comparison cannot see through a proxy. It reveals nothing the equally public
+    ``/meta/tenant`` does not — a slug for a hostname — and the echoed nonce is what makes a
+    cached or replayed body distinguishable from a live answer.
+    """
+    async with async_session_maker() as session:
+        org = await resolve_org(session, request_hostname(request))
+        if org is None:
+            raise AppError("unknown_host", "errors.unknown_host", status_code=404)
+        return DomainProbe(org=org.slug, nonce=nonce)
 
 
 @router.get(

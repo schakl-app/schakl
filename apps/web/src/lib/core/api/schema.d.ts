@@ -4651,6 +4651,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/meta/domain-probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Domain Probe
+         * @description Answer, to whoever can reach this hostname, that *this* instance serves *that* org.
+         *
+         *     The custom-domain check fetches this over the public internet (:mod:`app.core.domainprobe`)
+         *     because a DNS comparison cannot see through a proxy. It reveals nothing the equally public
+         *     ``/meta/tenant`` does not — a slug for a hostname — and the echoed nonce is what makes a
+         *     cached or replayed body distinguishable from a live answer.
+         */
+        get: operations["domain_probe_api_v1_meta_domain_probe_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/meta/instance": {
         parameters: {
             query?: never;
@@ -9000,6 +9025,25 @@ export interface components {
             start_date?: string | null;
             /** @default active */
             status: components["schemas"]["DomainStatus-Input"];
+        };
+        /**
+         * DomainProbe
+         * @description The routing proof a custom-domain check fetches over the public internet.
+         *
+         *     Deliberately three constants and nothing else: the software marker that says the answer
+         *     came from this application at all, the org the requested hostname resolves to, and the
+         *     caller's own nonce echoed back so a cached body cannot pass for a live one.
+         */
+        DomainProbe: {
+            /**
+             * Instance
+             * @default schakl
+             */
+            instance: string;
+            /** Nonce */
+            nonce: string;
+            /** Org */
+            org: string;
         };
         /** DomainRead */
         DomainRead: {
@@ -27675,6 +27719,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    domain_probe_api_v1_meta_domain_probe_get: {
+        parameters: {
+            query: {
+                nonce: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainProbe"];
+                };
             };
             /** @description Validation Error */
             422: {

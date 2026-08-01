@@ -13,7 +13,7 @@ import pytest
 from sqlalchemy import select
 
 from app.config import settings
-from app.core import domainflow
+from app.core import domainflow, domainprobe
 from app.core.auth.models import User
 from app.core.cloud import cloudflare as cf
 from app.core.cloud.ingress import render_fragment, sync_ingress, verified_domains
@@ -1473,17 +1473,40 @@ async def test_self_host_provisioning_touches_no_dns(monkeypatch) -> None:
 # Canonical host & custom-domain lifecycle (#291)
 # --------------------------------------------------------------------------- #
 @pytest.fixture
-def dns_points(monkeypatch) -> dict:
-    """Stand in for the DNS drift check; tests flip `value` between True/False/None."""
-    state = {"value": True}
+def probe_answers(monkeypatch) -> dict:
+    """Scriptable stand-in for the public fetch of a custom domain (:mod:`app.core.domainprobe`).
 
-    async def fake_points_at(host: str, target: str) -> bool | None:
-        return state["value"]
+    Map a hostname to the org slug this instance answers with there, or to a ready-made
+    ``httpx.Response`` to script anything else — a WAF challenge, a stranger's page. An
+    unmapped host fails to connect, exactly like a name nothing serves.
+    """
+    answers: dict[str, str | httpx.Response] = {}
 
-    from app.core import dnscheck as dnscheck_module
+    def handler(request: httpx.Request) -> httpx.Response:
+        entry = answers.get(request.url.host)
+        if entry is None:
+            raise httpx.ConnectError("nothing there", request=request)
+        if isinstance(entry, httpx.Response):
+            return entry
+        return httpx.Response(
+            200,
+            json={
+                "instance": domainprobe.INSTANCE_MARKER,
+                "org": entry,
+                "nonce": request.url.params.get("nonce", ""),
+            },
+        )
 
-    monkeypatch.setattr(dnscheck_module, "points_at", fake_points_at)
-    return state
+    monkeypatch.setattr(domainprobe, "_transport", httpx.MockTransport(handler))
+    return answers
+
+
+def _proxied(fake_dns, domain: str, target: str = "edge.localhost") -> None:
+    """Publish ``domain`` the way a Cloudflare-proxied zone does: **no CNAME survives** to be
+    compared, and the addresses are the customer's own proxy, never the edge hostname's."""
+    fake_dns.cname[domain] = []
+    fake_dns.a[domain] = ["172.67.131.94", "104.21.3.245"]
+    fake_dns.a[target] = ["188.114.96.0", "188.114.97.0"]
 
 
 async def _attached_tenant(fake_dns, slug: str, domain: str):
@@ -1554,7 +1577,7 @@ async def test_check_flips_the_canonical_host_when_all_three_are_ready(
 
 
 async def test_dns_moved_away_demotes_the_domain_and_alerts_nobody_twice(
-    client_for, cloudflare, fake_dns, dns_points, monkeypatch
+    client_for, cloudflare, fake_dns, probe_answers, monkeypatch
 ) -> None:
     """The customer re-points their DNS: the domain stops being canonical, the slug host
     carries the org, and the daily sweep mails the domain managers exactly once."""
@@ -1565,11 +1588,11 @@ async def test_dns_moved_away_demotes_the_domain_and_alerts_nobody_twice(
             await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
         ).json()["status"]["live"] is True
 
-    # The customer re-points the record. Both probes have to see it: the wizard's check
-    # resolves the name itself (so it can tell the customer *where* it went), while the
-    # unattended sweep uses the cheaper drift check — one question, two callers.
+    # The customer re-points the record at another provider, which answers on the domain.
+    # That answer — not the addresses — is what establishes the move, and the wizard's check
+    # and the unattended sweep run the very same function to reach it.
     fake_dns.cname["crm.verhuisd.test"] = ["cdn.elders.example"]
-    dns_points["value"] = False
+    probe_answers["crm.verhuisd.test"] = httpx.Response(200, html="<h1>Elders</h1>")
     async with client_for(tenant.host) as client:
         demoted = (
             await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
@@ -1603,7 +1626,8 @@ async def test_dns_moved_away_demotes_the_domain_and_alerts_nobody_twice(
         await session.commit()
     assert second["alerted"] == 0 and len(sent) == 1  # same problem, no repeat mail
 
-    dns_points["value"] = True
+    fake_dns.cname["crm.verhuisd.test"] = ["edge.localhost"]
+    del probe_answers["crm.verhuisd.test"]
     async with async_session_maker() as session:
         recovered = await domain_health.sweep_domain_health(session)
         await session.commit()
@@ -1614,7 +1638,7 @@ async def test_dns_moved_away_demotes_the_domain_and_alerts_nobody_twice(
 
 
 async def test_sweep_warns_ahead_of_a_failing_renewal(
-    client_for, cloudflare, fake_dns, dns_points, monkeypatch
+    client_for, cloudflare, fake_dns, probe_answers, monkeypatch
 ) -> None:
     """Healthy statuses but an expiry closing in means HTTP DCV renewal is not happening —
     that is discovered here, not by browsers rejecting TLS."""
@@ -1736,6 +1760,173 @@ async def test_a_pre_291_row_is_not_demoted_by_the_upgrade() -> None:
         org.cf_hostname_status = "moved"
         assert custom_domain_live(org) is False
         assert canonical_host(org) == f"{org.slug}.{settings.base_domain}"
+
+
+# --------------------------------------------------------------------------- #
+# Domains behind the customer's own proxy (#291 follow-up)
+#
+# Orange-to-orange: the customer's zone is itself proxied by Cloudflare, so their domain
+# publishes *their* anycast addresses and no CNAME at all. Every address comparison mismatches
+# no matter how correctly the domain is set up, which is what used to demote a healthy domain
+# and mail its owner about an outage that was not happening.
+# --------------------------------------------------------------------------- #
+async def test_a_proxied_domain_is_live_because_the_fetch_says_so(
+    client_for, cloudflare, fake_dns, probe_answers, monkeypatch
+) -> None:
+    tenant, headers = await _attached_tenant(fake_dns, "cf-proxy", "crm.proxy.test")
+    cloudflare.set_state("ch1", status="active", ssl_status="active")
+    _proxied(fake_dns, "crm.proxy.test")
+    probe_answers["crm.proxy.test"] = tenant.org.slug
+
+    async with client_for(tenant.host) as client:
+        report = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
+        ).json()
+        target = next(c for c in report["checks"] if c["key"] == "dns_target")
+        assert (target["state"], target["code"]) == ("ok", "target_proxied")
+        assert report["status"]["dns_ok"] is True
+        assert report["status"]["live"] is True
+        assert report["status"]["canonical_host"] == "crm.proxy.test"
+
+    # …and the unattended sweep reaches the same verdict, so nobody is mailed.
+    from app.core.cloud import domain_health
+
+    sent: list[OutgoingEmail] = []
+
+    async def fake_send(session, org_id, mail):  # noqa: ANN001
+        sent.append(mail)
+        return True, None
+
+    monkeypatch.setattr(domain_health, "send_org_email", fake_send)
+    async with async_session_maker() as session:
+        counts = await domain_health.sweep_domain_health(session)
+        await session.commit()
+    assert (counts["alerted"], sent) == (0, [])
+
+
+async def test_a_proxy_that_blocks_the_fetch_falls_back_to_the_edge(
+    client_for, cloudflare, fake_dns, probe_answers
+) -> None:
+    """A challenge page is not an answer. The edge network reporting the hostname active is —
+    Cloudflare would not, if the customer's DNS had stopped reaching it."""
+    tenant, headers = await _attached_tenant(fake_dns, "cf-waf", "crm.waf.test")
+    cloudflare.set_state("ch1", status="active", ssl_status="active")
+    _proxied(fake_dns, "crm.waf.test")
+    probe_answers["crm.waf.test"] = httpx.Response(403, html="<h1>Checking your browser</h1>")
+
+    async with client_for(tenant.host) as client:
+        report = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
+        ).json()
+        target = next(c for c in report["checks"] if c["key"] == "dns_target")
+        assert (target["state"], target["code"]) == ("ok", "target_edge_confirmed")
+        assert report["status"]["live"] is True
+
+
+async def test_nothing_conclusive_leaves_the_domain_alone(
+    client_for, cloudflare, fake_dns, probe_answers
+) -> None:
+    """No fetch, no edge verdict, only mismatching addresses: the honest answer is "we do not
+    know", and a domain that is serving must not be demoted on that."""
+    tenant, headers = await _attached_tenant(fake_dns, "cf-unsure", "crm.onzeker.test")
+    cloudflare.set_state("ch1", status="active", ssl_status="active")
+    _proxied(fake_dns, "crm.onzeker.test")
+    async with client_for(tenant.host) as client:
+        await client.post("/api/v1/meta/tenant/domain/check", headers=headers)  # seed as live
+        cloudflare.fail_with = [500, 500]  # no edge verdict this round either
+        report = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
+        ).json()
+        target = next(c for c in report["checks"] if c["key"] == "dns_target")
+        assert (target["state"], target["code"]) == ("pending", "target_unconfirmed")
+        assert report["status"]["dns_ok"] is None
+        assert report["status"]["live"] is True
+
+    async with async_session_maker() as session:
+        org = await session.get(Org, tenant.org.id)
+        assert org.domain_dns_ok is None  # never False on the absence of an answer
+
+
+async def test_the_probe_endpoint_answers_only_for_the_host_it_serves(client_for) -> None:
+    """What the probe fetches: the org a hostname reaches, and the caller's own nonce back."""
+    tenant = await make_tenant("cf-echo")
+    async with client_for(tenant.host) as client:
+        answer = await client.get("/api/v1/meta/domain-probe?nonce=" + "ab" * 8)
+        assert answer.status_code == 200
+        assert answer.json() == {
+            "instance": "schakl",
+            "org": tenant.org.slug,
+            "nonce": "ab" * 8,
+        }
+        # Junk nonces are refused rather than reflected.
+        assert (await client.get("/api/v1/meta/domain-probe?nonce=<x>")).status_code == 422
+
+    async with client_for("niemand.test") as client:
+        unknown = await client.get("/api/v1/meta/domain-probe?nonce=" + "cd" * 8)
+        assert unknown.status_code == 404
+        assert unknown.json()["error"]["code"] == "unknown_host"
+
+
+async def test_the_probe_refuses_to_fetch_private_addresses(monkeypatch) -> None:
+    """A custom domain is customer-controlled, so its addresses are too: neither the API nor
+    the worker fetches a loopback or private address on a customer's say-so."""
+    fetched: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        fetched.append(str(request.url))
+        return httpx.Response(200, json={"instance": "schakl", "org": "x", "nonce": "n"})
+
+    monkeypatch.setattr(domainprobe, "_transport", httpx.MockTransport(handler))
+    for address in ("127.0.0.1", "10.1.2.3", "169.254.169.254"):
+        verdict = await domainprobe.probe("intern.test", "x", addresses=[address])
+        assert verdict == domainprobe.UNKNOWN
+    assert fetched == []
+
+
+async def test_the_probe_believes_only_a_live_matching_answer(monkeypatch) -> None:
+    """Every way an answer can fail to be proof, and which of them is evidence of a move."""
+    scripted: list = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        entry = scripted.pop(0)
+        return entry(request) if callable(entry) else entry
+
+    monkeypatch.setattr(domainprobe, "_transport", httpx.MockTransport(handler))
+
+    async def verdict(response) -> str:  # noqa: ANN001 — a Response, or one built per request
+        scripted.append(response)
+        return await domainprobe.probe("crm.klant.test", "klant")
+
+    # A cached or replayed body cannot echo a nonce minted for this call.
+    assert await verdict(
+        httpx.Response(200, json={"instance": "schakl", "org": "klant", "nonce": "stale"})
+    ) == domainprobe.UNKNOWN
+    # Another instance, answering live for a different org: that is a move.
+    assert await verdict(
+        lambda request: httpx.Response(
+            200,
+            json={
+                "instance": "schakl",
+                "org": "iemand",
+                "nonce": request.url.params.get("nonce", ""),
+            },
+        )
+    ) == domainprobe.OTHER
+    # Our own "I do not know that hostname" — which is also what a domain still in the wizard
+    # answers, so it can never be read as evidence.
+    assert await verdict(
+        httpx.Response(404, json={"error": {"code": "unknown_host", "message": "errors.x"}})
+    ) == domainprobe.UNKNOWN
+    # A stranger's 404, a redirect, an origin error, a page too large to be ours.
+    assert await verdict(httpx.Response(404, html="<h1>Not found</h1>")) == domainprobe.OTHER
+    assert await verdict(
+        httpx.Response(301, headers={"location": "https://elders.test/"})
+    ) == domainprobe.UNKNOWN
+    assert await verdict(httpx.Response(502, text="bad gateway")) == domainprobe.UNKNOWN
+    assert await verdict(httpx.Response(200, content=b"x" * 20_000)) == domainprobe.OTHER
+    # …but the status is read before the body, so an interstitial larger than the body cap is
+    # still a challenge and not a move. The cap must never be what demotes a domain.
+    assert await verdict(httpx.Response(503, content=b"x" * 20_000)) == domainprobe.UNKNOWN
 
 
 # --------------------------------------------------------------------------- #
