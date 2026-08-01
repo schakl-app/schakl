@@ -1629,7 +1629,7 @@ export interface paths {
         };
         /**
          * Google Oauth Callback
-         * @description Store the grant and land the browser back on the account card.
+         * @description Store the grant and land the browser back where the connect started.
          *
          *     A denied consent or a state mismatch is a redirect with an error marker, never a JSON
          *     envelope — a human is holding this request.
@@ -1656,9 +1656,12 @@ export interface paths {
          *
          *     ``access_type=offline`` + ``prompt=consent`` guarantee a refresh token on every connect;
          *     ``include_granted_scopes`` makes a later reconnect *add* scopes instead of replacing them
-         *     (incremental authorization — the docs/GOOGLE.md §1 bridge). The ``include_analytics`` /
-         *     ``include_search_console`` / ``include_ads`` flags are how the marketing module (epic #134)
-         *     walks a connection up to its GA4/GSC/Ads scopes over this same flow — no second OAuth.
+         *     (incremental authorization — the docs/GOOGLE.md §1 bridge). ``include_marketing`` is how the
+         *     marketing module (epic #134) walks a connection up to GA4 *and* Search Console *and* Ads in
+         *     **one** consent; the per-source flags remain for a caller that genuinely wants only one.
+         *
+         *     ``next`` is where to land afterwards (site-relative only, :func:`safe_return_path`) — consent
+         *     is asked from the page that needed it, so that is the page to come back to.
          */
         get: operations["oauth_connect_api_v1_google_oauth_connect_get"];
         put?: never;
@@ -6800,6 +6803,8 @@ export interface components {
              * @default false
              */
             connected: boolean;
+            /** Connected Via */
+            connected_via?: components["schemas"]["ConnectionOwner"][];
             /** Error */
             error?: string | null;
             /**
@@ -8359,6 +8364,35 @@ export interface components {
             vat_number?: string | null;
             /** Website */
             website?: string | null;
+        };
+        /**
+         * ConnectionOwner
+         * @description Whose Google grant a link (or an available account) rides on.
+         *
+         *     A marketing link syncs through **one person's** connection, and every colleague looking at
+         *     that client sees the result without any hint of whose it is — so a working link reads as
+         *     "connected" to its owner and as nothing in particular to everyone else, and the natural
+         *     reaction is to connect a second account for the same data. Naming the owner is also the
+         *     only warning anyone gets that the link dies the day that person leaves.
+         *
+         *     Both the person and the Google account: they are routinely different addresses, and which
+         *     Google account holds the Ads access is exactly what the next person needs to know.
+         */
+        ConnectionOwner: {
+            /** Email */
+            email: string;
+            /**
+             * Is Me
+             * @default false
+             */
+            is_me: boolean;
+            /** Name */
+            name: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
         };
         /**
          * ConnectionRead
@@ -14607,6 +14641,7 @@ export interface components {
             channels?: {
                 [key: string]: number;
             } | null;
+            connection_owner?: components["schemas"]["ConnectionOwner"] | null;
             /** Currency */
             currency?: string | null;
             /**
@@ -17384,6 +17419,7 @@ export interface components {
              * @default true
              */
             connection_ok: boolean;
+            connection_owner?: components["schemas"]["ConnectionOwner"] | null;
             /** Display Name */
             display_name: string;
             /** External Id */
@@ -21242,9 +21278,11 @@ export interface operations {
         parameters: {
             query?: {
                 include_gmail?: boolean;
+                include_marketing?: boolean;
                 include_analytics?: boolean;
                 include_search_console?: boolean;
                 include_ads?: boolean;
+                next?: string;
             };
             header?: never;
             path?: never;

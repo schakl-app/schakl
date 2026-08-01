@@ -3493,5 +3493,10 @@
   "instance.admins.revoke_confirm": "Alle toegang tot deze installatie intrekken voor {email}?",
   "instance.admins.saved": "Opgeslagen.",
   "instance.admins.invited": "Uitnodiging verstuurd.",
-  "instance.admins.inactive": "Gedeactiveerd"
+  "instance.admins.inactive": "Gedeactiveerd",
+  "google.surface.marketing": "Marketing (Analytics, Search Console, Ads)",
+  "marketing.via": "via {who}",
+  "marketing.via_me": "jou",
+  "marketing.connected_via_other": "Al gekoppeld via {who}. Koppel je eigen Google-account om zelf accounts te kiezen.",
+  "marketing.ads_api_version": "De versie van de Google Ads API die deze release aanroept, is door Google uitgezet. Werk schakl bij of stel SCHAKL_GOOGLE_ADS_API_VERSION in op een actuele versie."
 }

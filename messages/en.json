@@ -3493,5 +3493,10 @@
   "instance.admins.revoke_confirm": "Withdraw all instance access for {email}?",
   "instance.admins.saved": "Saved.",
   "instance.admins.invited": "Invitation sent.",
-  "instance.admins.inactive": "Deactivated"
+  "instance.admins.inactive": "Deactivated",
+  "google.surface.marketing": "Marketing (Analytics, Search Console, Ads)",
+  "marketing.via": "via {who}",
+  "marketing.via_me": "you",
+  "marketing.connected_via_other": "Already connected via {who}. Connect your own Google account to pick accounts yourself.",
+  "marketing.ads_api_version": "The Google Ads API version this release calls has been retired by Google. Update schakl, or set SCHAKL_GOOGLE_ADS_API_VERSION to a current version."
 }

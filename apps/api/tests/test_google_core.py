@@ -206,3 +206,41 @@ async def test_connections_tenant_isolation(client_for) -> None:
     b_headers = await auth_cookie(b.user)
     async with client_for(b.host) as cb:
         assert (await cb.get("/api/v1/google/connections", headers=b_headers)).json() == []
+
+
+def test_marketing_consent_is_one_trip() -> None:
+    """``include_marketing`` asks for GA4 + Search Console + Ads in a *single* consent.
+
+    The regression this pins is a UX one with no server-side symptom: asking per source is a
+    valid grant every time, it just makes the user walk Google's consent screen three times to
+    switch on one module.
+    """
+    from app.modules.google.oauth import MARKETING_SCOPES, scopes_for
+
+    scopes = scopes_for(None, include_gmail=False, include_marketing=True)
+    assert set(MARKETING_SCOPES) <= set(scopes)
+    # Identity still rides along, and nothing the org has not enabled sneaks in.
+    assert "openid" in scopes
+    assert "https://www.googleapis.com/auth/drive" not in scopes
+
+    # A caller that really wants one source keeps that option.
+    only_ads = scopes_for(None, include_gmail=False, include_ads=True)
+    assert "https://www.googleapis.com/auth/adwords" in only_ads
+    assert "https://www.googleapis.com/auth/analytics.readonly" not in only_ads
+
+
+def test_return_path_only_honours_site_relative_paths() -> None:
+    """``next`` comes off a URL, so an off-site value must never become a redirect."""
+    from app.modules.google.oauth import safe_return_path
+
+    fallback = "/settings/account"
+    assert safe_return_path("/companies/abc/marketing", fallback) == "/companies/abc/marketing"
+    assert safe_return_path("/companies?tab=marketing", fallback) == "/companies?tab=marketing"
+    assert safe_return_path("", fallback) == fallback
+    assert safe_return_path(None, fallback) == fallback
+    # Protocol-relative and backslash forms both navigate off-site in real browsers.
+    assert safe_return_path("//evil.example/pwn", fallback) == fallback
+    assert safe_return_path("/\\evil.example/pwn", fallback) == fallback
+    assert safe_return_path("https://evil.example", fallback) == fallback
+    assert safe_return_path("javascript:alert(1)", fallback) == fallback
+    assert safe_return_path("/ok\nLocation: https://evil.example", fallback) == fallback

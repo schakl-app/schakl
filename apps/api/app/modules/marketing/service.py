@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.activity import ActivityService
+from app.core.auth.models import User
 from app.core.cache import get_redis
 from app.core.crypto import decrypt, encrypt
 from app.core.jobs import enqueue
@@ -57,6 +58,7 @@ from app.modules.marketing.schemas import (
     AvailableAccount,
     CompanyMarketing,
     CompanySettingsRead,
+    ConnectionOwner,
     DrilldownResponse,
     DrilldownRowOut,
     KpiValue,
@@ -115,12 +117,20 @@ def _delta_pct(current: float, previous: float) -> float | None:
     return round((current - previous) / previous * 100, 1)
 
 
-def _failure_key(detail: google_client.GoogleApiError | None, fallback: str) -> str:
+def _failure_key(
+    detail: google_client.GoogleApiError | None, fallback: str, *, source: str | None = None
+) -> str:
     """Which message a live Google failure earns — the two 403s have opposite cures.
 
     A disabled Cloud API and an under-scoped token are both ``403``: reconnecting fixes the
     second and is a dead end for the first, so a single "try reconnecting" is wrong half the
     time. Anything Google didn't diagnose keeps the caller's own fallback.
+
+    A **404 from Google Ads** is its own case, and only there: the Ads API carries its version
+    in the URL and sunsets it about a year after release, so every path under a dead version
+    answers 404 with a valid token, an enabled API and a correct account. Nothing in the UI
+    described that, and the only trace was a 404 in the container log — so it gets named. (For
+    GA4/GSC a 404 means the property or site is gone, which is not the same advice at all.)
     """
     if detail is None:
         return fallback
@@ -128,6 +138,8 @@ def _failure_key(detail: google_client.GoogleApiError | None, fallback: str) -> 
         return "marketing.api_not_enabled"
     if detail.scope_insufficient:
         return "marketing.scope_insufficient"
+    if source == MarketingSource.GADS.value and detail.status_code == 404:
+        return "marketing.ads_api_version"
     return fallback
 
 
@@ -233,17 +245,41 @@ class MarketingService:
         stmt = stmt.order_by(MarketingLink.source, MarketingLink.display_name)
         return list((await self.ctx.session.execute(stmt)).scalars().all())
 
-    async def _connections_by_id(self) -> dict[uuid.UUID, GoogleConnection]:
+    async def _connections_by_id(
+        self,
+    ) -> tuple[dict[uuid.UUID, GoogleConnection], dict[uuid.UUID, ConnectionOwner]]:
+        """Every Google connection in the org, and **whose** each one is — one joined query.
+
+        The owner's name is not decoration: a marketing link syncs through one colleague's
+        grant, so every screen that renders its numbers should be able to say through whom.
+        Joined here rather than resolved per link, so a client with five linked properties
+        still costs one statement (docs/PERFORMANCE.md). **Outer** joined, because the owner is
+        a display concern and the connection is a sync fact: a link whose owning account has
+        gone must still read as connected — an inner join would silently turn it into
+        "disconnected" and send someone chasing a grant that is working fine.
+        """
         rows = (
-            (
-                await self.ctx.session.execute(
-                    select(GoogleConnection).where(GoogleConnection.org_id == self.ctx.org.id)
-                )
+            await self.ctx.session.execute(
+                select(GoogleConnection, User.full_name, User.email)
+                .outerjoin(User, User.id == GoogleConnection.user_id)
+                .where(GoogleConnection.org_id == self.ctx.org.id)
             )
-            .scalars()
-            .all()
-        )
-        return {row.id: row for row in rows}
+        ).all()
+        connections: dict[uuid.UUID, GoogleConnection] = {}
+        owners: dict[uuid.UUID, ConnectionOwner] = {}
+        for connection, full_name, user_email in rows:
+            connections[connection.id] = connection
+            if user_email is None:
+                continue  # the account is gone; the link still syncs, it just names nobody
+            owners[connection.id] = ConnectionOwner(
+                user_id=connection.user_id,
+                # A colleague who never filled in a name is still a person to point at: their
+                # login address names them better than an empty string does.
+                name=(full_name or "").strip() or user_email,
+                email=connection.email,
+                is_me=connection.user_id == self.ctx.user.id,
+            )
+        return connections, owners
 
     async def _any_connection(self) -> bool:
         return bool(
@@ -291,17 +327,18 @@ class MarketingService:
         # existence of a company outside the caller's org; an own company with no links is [].
         await self._company_or_404(company_id)
         links = await self._links(company_id=company_id, include_inactive=True)
-        connections = await self._connections_by_id()
+        connections, owners = await self._connections_by_id()
         website_names = await self._website_names(
             {link.website_id for link in links if link.website_id is not None}
         )
-        return [self._link_read(link, connections, website_names) for link in links]
+        return [self._link_read(link, connections, website_names, owners) for link in links]
 
     def _link_read(
         self,
         link: MarketingLink,
         connections: dict[uuid.UUID, GoogleConnection],
         website_names: dict[uuid.UUID, str] | None = None,
+        owners: dict[uuid.UUID, ConnectionOwner] | None = None,
     ) -> LinkRead:
         connection = connections.get(link.connection_id) if link.connection_id else None
         return LinkRead(
@@ -318,6 +355,7 @@ class MarketingService:
             last_error=link.last_error,
             backfill_done=link.backfill_done,
             connection_ok=bool(connection and connection.status == ConnectionStatus.ACTIVE.value),
+            connection_owner=(owners or {}).get(link.connection_id) if link.connection_id else None,
         )
 
     async def create_link(self, data: LinkCreate) -> LinkRead:
@@ -400,8 +438,21 @@ class MarketingService:
                 )
             except Exception:
                 logger.warning("could not enqueue marketing backfill for link %s", link.id)
+        # A link is always created against the *caller's* own connection, so its owner is known
+        # here without a second lookup.
         connections = {connection.id: connection} if connection else {}
-        return self._link_read(link, connections, website_names)
+        owners = (
+            {connection.id: self._me_as_owner(connection.email)} if connection else {}
+        )
+        return self._link_read(link, connections, website_names, owners)
+
+    def _me_as_owner(self, google_email: str) -> ConnectionOwner:
+        return ConnectionOwner(
+            user_id=self.ctx.user.id,
+            name=(self.ctx.user.full_name or "").strip() or self.ctx.user.email,
+            email=google_email,
+            is_me=True,
+        )
 
     async def deactivate_link(self, link_id: uuid.UUID) -> None:
         self.ctx.require("marketing.link.manage")
@@ -510,6 +561,23 @@ class MarketingService:
         )
 
     # --- pickers (#132) ------------------------------------------------------------------- #
+    async def _others_with_scope(self, scope: str) -> list[ConnectionOwner]:
+        """Colleagues whose active connection already carries ``scope``.
+
+        Only ever asked on the *empty* branches of the picker, so it costs a query exactly where
+        there is nothing else to show. Names, not counts: "already connected via Stan" tells you
+        whom to ask; "1 other connection" tells you nothing you can act on.
+        """
+        connections, owners = await self._connections_by_id()
+        return [
+            owners[connection.id]
+            for connection in connections.values()
+            if connection.user_id != self.ctx.user.id
+            and connection.status == ConnectionStatus.ACTIVE.value
+            and scope in set(connection.scopes or [])
+            and connection.id in owners
+        ]
+
     async def available_accounts(self, source: MarketingSource) -> AccountsResponse:
         self.ctx.require("marketing.link.manage")
         adapter = source_for(source.value)
@@ -518,11 +586,20 @@ class MarketingService:
             self.ctx.session, self.ctx.org.id, self.ctx.user.id
         )
         if connection is None:
-            return AccountsResponse(source=source, connected=False, connect_flag=flag)
+            return AccountsResponse(
+                source=source,
+                connected=False,
+                connect_flag=flag,
+                connected_via=await self._others_with_scope(adapter.scope),
+            )
         has_scope = adapter.scope in set(connection.scopes or [])
         if not has_scope or connection.status != ConnectionStatus.ACTIVE.value:
             return AccountsResponse(
-                source=source, connected=True, has_scope=has_scope, connect_flag=flag
+                source=source,
+                connected=True,
+                has_scope=has_scope,
+                connect_flag=flag,
+                connected_via=await self._others_with_scope(adapter.scope),
             )
 
         # Google Ads needs a per-org developer token; with none the picker teaches "not configured"
@@ -579,7 +656,7 @@ class MarketingService:
                     source=source, connected=True,
                     has_scope=detail is None or not detail.scope_insufficient,
                     connect_flag=flag,
-                    error=_failure_key(detail, "marketing.accounts_error"),
+                    error=_failure_key(detail, "marketing.accounts_error", source=source.value),
                 )
             options = [
                 AvailableAccount(
@@ -612,7 +689,7 @@ class MarketingService:
 
         show_key_events, layout = await self._company_settings(company_id)
         links = await self._links(company_id=company_id)
-        connections = await self._connections_by_id()
+        connections, owners = await self._connections_by_id()
         # The client's websites: group labels for linked sources + options for the pickers.
         websites = await self._company_websites(company_id)
         website_names = {w.id: w.name for w in websites}
@@ -640,6 +717,7 @@ class MarketingService:
                     show_key_events=show_key_events,
                     layout=layout,
                     website_names=website_names,
+                    owners=owners,
                 )
                 sm.hidden = hidden
                 sources.append(sm)
@@ -699,6 +777,7 @@ class MarketingService:
         show_key_events: bool = True,
         layout: dict | None = None,
         website_names: dict[uuid.UUID, str] | None = None,
+        owners: dict[uuid.UUID, ConnectionOwner] | None = None,
     ) -> SourceMetrics:
         adapter = source_for(link.source)
         current_rows = [m for day, m in daily.items() if cur_start <= day <= cur_end]
@@ -750,6 +829,9 @@ class MarketingService:
             health=self._health(link, connections, bool(daily)),
             last_error=link.last_error,
             last_synced_at=link.last_synced_at,
+            connection_owner=(
+                (owners or {}).get(link.connection_id) if link.connection_id else None
+            ),
             currency=currency,
             deep_link=adapter.deep_link(link.external_id, link.config or {}),
             primary_metric=resolved_primary(link.source, src_layout, metrics),
@@ -864,7 +946,7 @@ class MarketingService:
                     await google_client.oauth_client_hint(self.ctx.session, self.ctx.org.id),
                     detail or exc,
                 )
-                reason = _failure_key(detail, "marketing.accounts_error")
+                reason = _failure_key(detail, "marketing.accounts_error", source=link.source)
             return DrilldownResponse(
                 source=source, kind=kind, available=False, unavailable_reason=reason,
                 deep_link=deep_link,
@@ -1202,7 +1284,7 @@ async def sync_link_range(
         )
         # A cause Google named is an i18n key the link card can teach from; anything else keeps
         # Google's own sentence, which is more useful to an admin than the status line was.
-        link.last_error = _failure_key(detail, str(detail or exc)[:500])
+        link.last_error = _failure_key(detail, str(detail or exc)[:500], source=link.source)
         return
 
     await _upsert_daily(session, link, daily)

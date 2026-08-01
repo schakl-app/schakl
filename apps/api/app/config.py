@@ -189,6 +189,12 @@ class Settings(BaseSettings):
     # the OAuth grant (Basic access reads your own accounts). Left empty the Ads source stays a
     # presentable "not configured" state; GA4/GSC need no such token.
     google_ads_developer_token: str = ""
+    # Google Ads is the one Google API that versions its *URL* and sunsets each version about a
+    # year after release — a pinned version silently turns every Ads call into a 404 on its
+    # sunset date (v18 died 2025-08-20 and took the account picker with it). So the version is
+    # a setting, not only a constant: an install that outlives a release can bump it from the
+    # compose file the day Google mails the sunset reminder, without waiting for us.
+    google_ads_api_version: str = "v25"
 
     # --- i18n ---
     # Shared message catalogs (single source of truth with the web app).

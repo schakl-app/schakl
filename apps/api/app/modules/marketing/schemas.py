@@ -18,6 +18,28 @@ class WebsiteRef(BaseModel):
     name: str
 
 
+class ConnectionOwner(BaseModel):
+    """Whose Google grant a link (or an available account) rides on.
+
+    A marketing link syncs through **one person's** connection, and every colleague looking at
+    that client sees the result without any hint of whose it is — so a working link reads as
+    "connected" to its owner and as nothing in particular to everyone else, and the natural
+    reaction is to connect a second account for the same data. Naming the owner is also the
+    only warning anyone gets that the link dies the day that person leaves.
+
+    Both the person and the Google account: they are routinely different addresses, and which
+    Google account holds the Ads access is exactly what the next person needs to know.
+    """
+
+    user_id: uuid.UUID
+    #: The colleague's own name (their login e-mail when they have no name set).
+    name: str
+    #: The connected Google account.
+    email: str
+    #: This is the caller's own connection — the UI says "via jou", not "via <naam>".
+    is_me: bool = False
+
+
 class LinkRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -37,6 +59,8 @@ class LinkRead(BaseModel):
     backfill_done: bool = False
     #: Whether the syncing connection still exists + is active (else: "reconnect Google").
     connection_ok: bool = True
+    #: Whose Google grant syncs this link — ``None`` only for a link whose connection is gone.
+    connection_owner: ConnectionOwner | None = None
 
 
 class LinkCreate(BaseModel):
@@ -76,6 +100,11 @@ class AccountsResponse(BaseModel):
     error: str | None = None
     #: The ``/google/oauth/connect`` query flag that adds this scope (for the connect deep-link).
     connect_flag: str = ""
+    #: Colleagues whose connection already reaches this source. A picker that only knows about
+    #: the *caller's* grant tells the second person in the agency "not connected" about accounts
+    #: their colleague linked minutes ago, so they connect again — this is what turns that empty
+    #: state into "already connected via X; connect your own to pick accounts yourself".
+    connected_via: list[ConnectionOwner] = Field(default_factory=list)
 
 
 # --- metrics (#133): panel + tab ------------------------------------------------------------- #
@@ -107,6 +136,9 @@ class SourceMetrics(BaseModel):
     health: str = "pending"
     last_error: str | None = None
     last_synced_at: datetime | None = None
+    #: Whose Google grant syncs this source (``None`` when its connection is gone) — the panel
+    #: and the tab name it, so "disconnected" points at a person instead of at nobody.
+    connection_owner: ConnectionOwner | None = None
     currency: str | None = None
     deep_link: str = ""
     primary_metric: str = ""
