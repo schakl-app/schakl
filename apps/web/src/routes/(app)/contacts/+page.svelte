@@ -121,6 +121,42 @@
     ...customFieldColumns(data.definitions, data.locale),
   ]);
 
+  // --- grouped by client -----------------------------------------------------
+  // The sections are the clients *on this page*, alphabetically, with the unattached people
+  // last. Built from the rows rather than from the client picker: 200 sections, 190 of them
+  // empty, is not a list of contacts.
+  //
+  // A person linked to several clients is listed under **each** of them — one record drawn
+  // where you would look for it, not a record forced to pick a home. That is why the `companies`
+  // column stays: from inside the Acme section it is the only thing that says this person also
+  // sits under Globex. It loses its `sortKey` instead (docs/UX.md: a sort orders rows within a
+  // section and never reorders the sections, so sorting by client would visibly do nothing).
+  const NO_COMPANY = "__no_company";
+  const groups = $derived.by(() => {
+    // A plain record, not a Map: `svelte/prefer-svelte-reactivity` rejects a mutated Map even
+    // in a derived, and this one is a throwaway index rather than state.
+    const named: Record<string, string> = {};
+    let unattached = false;
+    for (const contact of data.contacts) {
+      const links = contact.companies ?? [];
+      if (links.length === 0) unattached = true;
+      for (const link of links) named[link.company_id] = link.name;
+    }
+    const sections = Object.entries(named)
+      .map(([key, label]) => ({ key, label, collapsible: true }))
+      .sort((a, b) => a.label.localeCompare(b.label, data.locale));
+    if (unattached)
+      sections.push({
+        key: NO_COMPANY,
+        label: t("contacts.group.no_company"),
+        collapsible: true,
+      });
+    return sections;
+  });
+
+  const groupOf = (contact: Contact): string | string[] =>
+    contact.companies?.length ? contact.companies.map((link) => link.company_id) : NO_COMPANY;
+
   const table = createTableLayout<Contact>({
     all: () => allColumns,
     pref: () => data.table.pref,
@@ -454,6 +490,15 @@
   </form>
 {/if}
 
+{#if data.contacts.length < data.total}
+  <!-- The list is one page of 100. Sectioned by client, "Acme (2)" above a client that has seven
+       contacts reads as the whole answer, so say what is actually on screen — a cap is reported,
+       never silent (docs/PERFORMANCE.md). -->
+  <p class="mb-3 text-sm text-amber-700 dark:text-amber-400">
+    {t("contacts.truncated", { shown: data.contacts.length, total: data.total })}
+  </p>
+{/if}
+
 <DataTable
   rows={data.contacts}
   columns={table.columns}
@@ -461,6 +506,10 @@
   widths={table.widths}
   definitions={data.definitions}
   locale={data.locale}
+  {groups}
+  groupBy={groupOf}
+  collapsed={table.collapsed}
+  oncollapse={table.onCollapse}
   rowHref={(contact) => `/contacts/${contact.id}`}
   actions={canWrite || canDelete ? rowActions : undefined}
   {mobileRow}

@@ -496,6 +496,8 @@
   "contacts.panel.custom": "Aangepaste velden",
   "contacts.delete_confirm": "{name} verwijderen? Dit kan niet ongedaan worden gemaakt.",
   "contacts.companies": "Klanten",
+  "contacts.group.no_company": "Zonder klant",
+  "contacts.truncated": "De eerste {shown} van {total} worden getoond. Verfijn met zoeken of het klantfilter om de rest te zien.",
   "contacts.primary": "Primair",
   "contacts.make_primary": "Als primair instellen",
   "contacts.unlink": "Loskoppelen",

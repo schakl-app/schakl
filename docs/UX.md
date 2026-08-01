@@ -224,6 +224,21 @@
     the sections; so a board that groups by status declares no status column, because sorting one
     would visibly do nothing. Which sections are folded is a personal view option, saved with the
     columns.
+  - **A row may belong to several sections.** `groupBy` may return more than one key, and the
+    record is then drawn under each — a contact linked to two clients is listed under both,
+    because the alternative is picking one client to be "theirs" and that fact does not exist
+    (`is_primary` marks the primary contact *for a company*, not a person's primary company).
+    It is one record shown twice, not two, so the id repeats across sections and never within
+    one. A row that matched *no* declared section still falls to "Overig" — but one that matched
+    at least one does not, or a two-client contact whose second client fell off the page would
+    appear both where it belongs and under "Overig". The grouped-by column may still be worth
+    keeping when it says something the section heading cannot: from inside the Acme section, the
+    client chips are the only thing that says this person also sits under Globex. It loses its
+    `sortKey` rather than the whole column.
+  - **A sectioned list must say when it is only a page.** Counts in section headings read as
+    complete answers — "Acme (2)" above a client that has seven contacts is a wrong answer, not a
+    partial one. A capped list therefore prints what is on screen out of the total, and says how
+    to narrow it (`contacts.truncated`). A cap is reported, never silent (docs/PERFORMANCE.md).
 - **A panel is how a number opens.** A module hangs a panel off another module's detail page by
   registering an `EntityPanelSpec` (`core/registry.ts`), never by having the host page import it —
   a tenant with the module disabled then simply never renders it, and pays for no call. The panel

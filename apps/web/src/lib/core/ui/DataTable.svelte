@@ -75,7 +75,13 @@
      * alphabet, so the caller's order wins and no sort may disturb it.
      */
     groups?: { key: string; label: string; collapsible?: boolean }[];
-    groupBy?: (row: T) => string;
+    /**
+     * The section(s) a row belongs to. Returning **several** keys lists the same record under
+     * each — a contact linked to two clients belongs under both, and picking one would be a lie
+     * either way. It is one record drawn twice, not two: the id repeats *across* sections and
+     * never within one, so the keyed `{#each}` and the id-keyed selection both stay correct.
+     */
+    groupBy?: (row: T) => string | string[];
     /** Per-group figures in the header row (#277) — the caller's, from the API's own
      *  aggregate, for exactly the reason the footer never sums `rows`. */
     groupSummary?: Snippet<[string]>;
@@ -120,9 +126,19 @@
     // "that's all of them" (docs/PERFORMANCE.md), and here it would read as "that task is gone".
     const strays: T[] = [];
     for (const row of rows) {
-      const bucket = buckets.get(groupBy(row));
-      if (bucket) bucket.push(row);
-      else strays.push(row);
+      const keys = groupBy(row);
+      let placed = false;
+      for (const key of typeof keys === "string" ? [keys] : keys) {
+        const bucket = buckets.get(key);
+        if (bucket) {
+          bucket.push(row);
+          placed = true;
+        }
+      }
+      // Undeclared *for every one of its keys* — a row that landed in at least one section is
+      // not a stray, or a two-client contact whose second client fell outside the page would be
+      // listed twice: once where it belongs and once under "Other".
+      if (!placed) strays.push(row);
     }
     const declared = groups.map((group) => ({
       ...group,
@@ -284,7 +300,12 @@
             <tr class="bg-surface">
               <th scope="colgroup" colspan={columnCount} class="px-4 py-2 text-left">
                 <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-                  {@render groupToggle(group.key, group.label, group.rows.length, group.collapsible)}
+                  {@render groupToggle(
+                    group.key,
+                    group.label,
+                    group.rows.length,
+                    group.collapsible,
+                  )}
                   {#if groupSummary}{@render groupSummary(group.key)}{/if}
                 </div>
               </th>
@@ -340,8 +361,7 @@
       : ''}"
     onclick={onRowClick
       ? (e) => {
-          if (!(e.target as HTMLElement).closest("a,button,input,label,select"))
-            onRowClick(row);
+          if (!(e.target as HTMLElement).closest("a,button,input,label,select")) onRowClick(row);
         }
       : undefined}
   >
@@ -399,7 +419,7 @@
            covered and navigates, while positioned inline controls — the ⋯ menu (already
            `relative`), the checkbox and toggles lifted with `relative z-10` — paint above it and
            keep their own tap. -->
-      <a href={href} class="absolute inset-0" aria-label={t("table.open_row")}></a>
+      <a {href} class="absolute inset-0" aria-label={t("table.open_row")}></a>
     {/if}
     {#if selectable}
       <!-- A phone gets the same bulk actions; it has rows, it just has no header row. -->
