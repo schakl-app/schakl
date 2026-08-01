@@ -115,6 +115,22 @@ def _delta_pct(current: float, previous: float) -> float | None:
     return round((current - previous) / previous * 100, 1)
 
 
+def _failure_key(detail: google_client.GoogleApiError | None, fallback: str) -> str:
+    """Which message a live Google failure earns — the two 403s have opposite cures.
+
+    A disabled Cloud API and an under-scoped token are both ``403``: reconnecting fixes the
+    second and is a dead end for the first, so a single "try reconnecting" is wrong half the
+    time. Anything Google didn't diagnose keeps the caller's own fallback.
+    """
+    if detail is None:
+        return fallback
+    if detail.api_disabled:
+        return "marketing.api_not_enabled"
+    if detail.scope_insufficient:
+        return "marketing.scope_insufficient"
+    return fallback
+
+
 def aggregate(source: str, rows: list[dict[str, Any]]) -> dict[str, float]:
     """Collapse a list of daily ``metrics`` dicts into one period total for ``source``."""
     out: dict[str, float] = {}
@@ -557,13 +573,13 @@ class MarketingService:
                     await google_client.oauth_client_hint(self.ctx.session, self.ctx.org.id),
                     detail or exc,
                 )
+                # Google saying the token lacks this scope *is* ``has_scope=False`` — the picker
+                # already teaches that case by name, with the reconnect that actually cures it.
                 return AccountsResponse(
-                    source=source, connected=True, has_scope=True, connect_flag=flag,
-                    error=(
-                        "marketing.api_not_enabled"
-                        if detail is not None and detail.api_disabled
-                        else "marketing.accounts_error"
-                    ),
+                    source=source, connected=True,
+                    has_scope=detail is None or not detail.scope_insufficient,
+                    connect_flag=flag,
+                    error=_failure_key(detail, "marketing.accounts_error"),
                 )
             options = [
                 AvailableAccount(
@@ -848,11 +864,7 @@ class MarketingService:
                     await google_client.oauth_client_hint(self.ctx.session, self.ctx.org.id),
                     detail or exc,
                 )
-                reason = (
-                    "marketing.api_not_enabled"
-                    if detail is not None and detail.api_disabled
-                    else "marketing.accounts_error"
-                )
+                reason = _failure_key(detail, "marketing.accounts_error")
             return DrilldownResponse(
                 source=source, kind=kind, available=False, unavailable_reason=reason,
                 deep_link=deep_link,
@@ -1188,13 +1200,9 @@ async def sync_link_range(
             await google_client.oauth_client_hint(session, org.id),
             detail or exc,
         )
-        # A disabled API is an i18n key the link card can teach from; anything else keeps
+        # A cause Google named is an i18n key the link card can teach from; anything else keeps
         # Google's own sentence, which is more useful to an admin than the status line was.
-        link.last_error = (
-            "marketing.api_not_enabled"
-            if detail is not None and detail.api_disabled
-            else str(detail or exc)[:500]
-        )
+        link.last_error = _failure_key(detail, str(detail or exc)[:500])
         return
 
     await _upsert_daily(session, link, daily)

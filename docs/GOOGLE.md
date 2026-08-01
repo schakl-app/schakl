@@ -149,9 +149,20 @@ says which is which in the response *body*, and `httpx` throws it away —
 `str(HTTPStatusError)` is the status line and the URL, nothing more. So every Google call site
 runs its exception through `google.client.describe_api_error`, which lifts out
 `error.details[].reason` (`SERVICE_DISABLED` → the API is off, `ACCESS_TOKEN_SCOPE_INSUFFICIENT`
-→ the grant is short) and Google's own message — **which names the Cloud project number**. The
-picker maps the first to `marketing.api_not_enabled` and deliberately drops the "reconnect"
-link there.
+→ the grant is short) and Google's own message — **which names the Cloud project number**.
+
+One classifier, `marketing.service._failure_key`, turns that into the message, so the picker,
+the drill-down and the nightly sync can never disagree about what a given 403 meant:
+
+| Google's reason | Message | Reconnect offered? |
+|-----------------|---------|--------------------|
+| `SERVICE_DISABLED` / `accessNotConfigured` | `marketing.api_not_enabled` | **No** — it mints the same token against the same project and fails identically |
+| `ACCESS_TOKEN_SCOPE_INSUFFICIENT` (and friends) | `marketing.scope_insufficient` | Yes — this is the one case reconnecting genuinely cures |
+| anything Google didn't name | the caller's fallback (`marketing.accounts_error`; the sync keeps Google's own sentence) | Yes |
+
+A scope-short 403 on the account picker also comes back as `has_scope=false`, because that is
+precisely what the field means — so the picker renders the "reconnect to grant access to this
+source" branch it already had, rather than a generic error with a reconnect link bolted on.
 
 **Which project, though?** `client_credentials` falls back to the instance-wide
 `SCHAKL_GOOGLE_CLIENT_ID` whenever an org has not filled in Instellingen → Google. That org is

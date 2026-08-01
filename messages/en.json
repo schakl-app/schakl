@@ -2758,6 +2758,7 @@
   "marketing.reconnect": "Reconnect Google",
   "marketing.accounts_error": "Could not load accounts from Google. Try reconnecting.",
   "marketing.api_not_enabled": "Google refused: this source's API is not enabled in the Google Cloud project of the OAuth client this workspace uses. Enable it there (GA4 needs both the Analytics Admin API and the Analytics Data API), then try again. Reconnecting does not help.",
+  "marketing.scope_insufficient": "Google refused: the connection was granted without the permission this source needs. Reconnect Google and approve access to this source.",
   "marketing.ads_not_configured": "Google Ads needs a developer token; ask your administrator.",
   "marketing.disconnected": "This link's Google connection is gone. Reconnect to resume.",
   "marketing.unlink_confirm": "Unlink {name}? Synced history is kept.",

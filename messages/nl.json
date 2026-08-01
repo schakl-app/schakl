@@ -2758,6 +2758,7 @@
   "marketing.reconnect": "Google opnieuw koppelen",
   "marketing.accounts_error": "Kon accounts niet ophalen bij Google. Probeer opnieuw te koppelen.",
   "marketing.api_not_enabled": "Google weigert het verzoek: de API van deze bron staat niet aan in het Google Cloud-project van de OAuth-client die deze werkomgeving gebruikt. Zet hem daar aan (GA4 heeft zowel de Analytics Admin API als de Analytics Data API nodig) en probeer het opnieuw. Opnieuw koppelen helpt niet.",
+  "marketing.scope_insufficient": "Google weigert het verzoek: de koppeling is gemaakt zonder de rechten die deze bron nodig heeft. Koppel Google opnieuw en geef toegang tot deze bron.",
   "marketing.ads_not_configured": "Google Ads vereist een ontwikkelaarstoken; vraag je beheerder.",
   "marketing.disconnected": "De Google-verbinding van deze koppeling is weg. Koppel opnieuw om verder te gaan.",
   "marketing.unlink_confirm": "{name} ontkoppelen? De gesynchroniseerde historie blijft bewaard.",

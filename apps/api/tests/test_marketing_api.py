@@ -29,7 +29,7 @@ from app.modules.marketing.models import (
     MarketingMetricDaily,
     MarketingSettings,
 )
-from app.modules.marketing.service import resolve_ads_developer_token
+from app.modules.marketing.service import _failure_key, resolve_ads_developer_token
 from app.modules.marketing.sources import gads
 from app.modules.marketing.sources.ga4 import GA4Adapter
 from tests.conftest import add_membership, auth_cookie, make_tenant
@@ -1320,6 +1320,30 @@ def test_describe_api_error_reads_googles_own_reason() -> None:
     assert describe_api_error(RuntimeError("not http at all")) is None
 
 
+def test_failure_key_routes_each_403_to_its_own_cure() -> None:
+    """The three failure paths share one classifier, so the nightly sync and the picker can
+    never disagree about what a given 403 means."""
+    disabled = describe_api_error(_http_403(_SERVICE_DISABLED))
+    scoped = describe_api_error(
+        _http_403(
+            {
+                "error": {
+                    "code": 403,
+                    "message": "Request had insufficient authentication scopes.",
+                    "details": [{"reason": "ACCESS_TOKEN_SCOPE_INSUFFICIENT"}],
+                }
+            }
+        )
+    )
+    assert _failure_key(disabled, "fallback") == "marketing.api_not_enabled"
+    assert _failure_key(scoped, "fallback") == "marketing.scope_insufficient"
+    # A cause Google did not name keeps the caller's fallback — for the sync that is Google's
+    # own sentence, which beats the status line it used to store.
+    bare = describe_api_error(_http_403({"error": {"code": 403, "message": "Forbidden"}}))
+    assert _failure_key(bare, "403 : Forbidden") == "403 : Forbidden"
+    assert _failure_key(None, "marketing.accounts_error") == "marketing.accounts_error"
+
+
 async def _seed_google(tenant, user_id: uuid.UUID) -> None:
     """An org OAuth client plus an active connection carrying the GA4 scope."""
     async with async_session_maker() as session:
@@ -1344,15 +1368,30 @@ async def _seed_google(tenant, user_id: uuid.UUID) -> None:
         await session.commit()
 
 
+_SCOPE_INSUFFICIENT = {
+    "error": {
+        "code": 403,
+        "message": "Request had insufficient authentication scopes.",
+        "details": [{"reason": "ACCESS_TOKEN_SCOPE_INSUFFICIENT"}],
+    }
+}
+
+
 @pytest.mark.parametrize(
-    ("body", "expected"),
+    ("body", "expected", "has_scope"),
     [
-        (_SERVICE_DISABLED, "marketing.api_not_enabled"),
-        ({"error": {"code": 403, "message": "Forbidden"}}, "marketing.accounts_error"),
+        (_SERVICE_DISABLED, "marketing.api_not_enabled", True),
+        # Google saying the token lacks the scope is exactly what ``has_scope=False`` means.
+        (_SCOPE_INSUFFICIENT, "marketing.scope_insufficient", False),
+        ({"error": {"code": 403, "message": "Forbidden"}}, "marketing.accounts_error", True),
     ],
 )
 async def test_accounts_picker_separates_a_disabled_api_from_a_bad_token(
-    client_for, monkeypatch: pytest.MonkeyPatch, body: dict, expected: str
+    client_for,
+    monkeypatch: pytest.MonkeyPatch,
+    body: dict,
+    expected: str,
+    has_scope: bool,
 ) -> None:
     """A disabled Cloud API and a dead grant both 403; only one is cured by reconnecting, so
     the picker must not answer "try reconnecting" to both (the GA4 symptom this came from)."""
@@ -1372,7 +1411,7 @@ async def test_accounts_picker_separates_a_disabled_api_from_a_bad_token(
         res = await c.get("/api/v1/marketing/accounts?source=ga4", headers=headers)
     assert res.status_code == 200
     payload = res.json()
-    assert payload["connected"] is True and payload["has_scope"] is True
+    assert payload["connected"] is True and payload["has_scope"] is has_scope
     assert payload["error"] == expected
     assert payload["accounts"] == []
     assert fake_redis.store == {}  # a failure is never cached as "this account list is empty"
