@@ -253,7 +253,7 @@ async def test_avatar_file_delete_is_personal(client_for, tmp_path, monkeypatch)
             await set_current_org(session, t.org.id)
             await add_membership(session, t.org.id, other.user.id, "admin")
             await session.commit()
-        other_headers = await auth_cookie(other.user)
+        other_headers = await auth_cookie(other.user, org_id=t.org.id)
         refused = await c.delete(f"/api/v1/files/{file_id}", headers=other_headers)
         assert refused.status_code == 403
 

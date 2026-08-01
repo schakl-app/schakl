@@ -802,7 +802,9 @@ async def test_a_plain_member_holds_none_of_it(client_for, cloudflare) -> None:
         await add_membership(session, t.org.id, member.user.id, role="member")
         await session.commit()
     owner_headers = await auth_cookie(t.user)
-    member_headers = await auth_cookie(member.user)
+    # ``member`` was conjured with its own tenant, so it holds two memberships; the session
+    # under test is the one in ``t`` (a session names its org — CLAUDE.md §5).
+    member_headers = await auth_cookie(member.user, org_id=t.org.id)
 
     async with client_for(t.host) as c:
         company = await _company(c, owner_headers)
@@ -837,7 +839,9 @@ async def test_the_company_horizon_reaches_zones_and_the_status_report(
         membership_id = membership.id
         await session.commit()
     owner_headers = await auth_cookie(t.user)
-    member_headers = await auth_cookie(member.user)
+    # ``member`` was conjured with its own tenant, so it holds two memberships; the session
+    # under test is the one in ``t`` (a session names its org — CLAUDE.md §5).
+    member_headers = await auth_cookie(member.user, org_id=t.org.id)
 
     cloudflare.add_zone("alpha.nl")
     cloudflare.add_zone("beta.nl")

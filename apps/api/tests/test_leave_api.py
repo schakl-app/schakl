@@ -548,6 +548,7 @@ async def test_leave_tenant_isolation(client_for) -> None:
             headers=b_headers,
         )
         assert res.json() == []
-        # A's session on B's host is not a member there.
+        # A's session is not a session on B's host at all — a session names its org
+        # (CLAUDE.md §5), so it is refused before membership is even asked about.
         res = await cb.get("/api/v1/leave/requests", headers=a_headers)
-        assert res.status_code == 403
+        assert res.status_code == 401

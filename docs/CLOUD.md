@@ -201,6 +201,28 @@ There is **no org** on the instance-management domain. On cloud, the base domain
 The web app decides via `GET /api/v1/meta/instance` (`{deployment, is_instance_host,
 needs_setup, base_domain}`).
 
+### A session belongs to one org — and a console session to none
+
+`users` is instance-level and the password check is tenant-blind, so on a multi-org box "these
+credentials are correct" and "these credentials are correct **here**" were the same sentence:
+org A's login screen minted a real session for a member of org B. Two ends now agree
+([`core/auth/backend.py`](../apps/api/app/core/auth/backend.py), CLAUDE.md §5):
+
+- the **account lookup** is narrowed to the org the hostname resolves to, so login,
+  password-reset and request-verify all answer as if the address did not exist — one tenant
+  cannot enumerate, or mail, another's people;
+- the **token names its org**, and `require_context` refuses anything else with a 401 (an
+  authentication answer — the membership check is a separate question).
+
+The console's own session is the deliberate `None` case: the apex resolves to no org, so it
+mints an **org-less** session that reaches the instance surface and no tenant data whatsoever.
+Entering a tenant is the impersonation handoff, which mints a session naming *that* org for
+exactly the grant's lifetime — so an operator on a customer's hostname is there on a credential
+that says which customer, and expires with the reason it was created.
+
+One operational consequence, worth putting in release notes: a token issued before the claim
+existed names no org, which fails closed. Everyone signs in once after the upgrade.
+
 ## Domains & TLS (#202)
 
 Two mechanisms, chosen per org:

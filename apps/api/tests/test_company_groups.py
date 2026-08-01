@@ -31,7 +31,9 @@ async def _setup(client_for, slug: str, *, role: str = "member"):
         await session.commit()
     membership = type("M", (), {"id": membership_id})()
     owner_headers = await auth_cookie(t.user)
-    member_headers = await auth_cookie(member.user)
+    # ``member`` was conjured with its own tenant, so it holds two memberships; the session
+    # under test is the one in ``t`` (a session names its org — CLAUDE.md §5).
+    member_headers = await auth_cookie(member.user, org_id=t.org.id)
 
     async with client_for(t.host) as c:
         company_a = (

@@ -403,13 +403,15 @@ async def test_template_scope_requires_template_manage(client_for) -> None:
     t = await make_tenant("subs-bump-perm")
     writer = await make_tenant("subs-bump-perm-w", email="writer-bump@example.com")
     owner_headers = await auth_cookie(t.user)
-    writer_headers = await auth_cookie(writer.user)
     today = datetime.now(UTC).date()
 
     async with async_session_maker() as session:
         await set_current_org(session, t.org.id)
         await add_membership(session, t.org.id, writer.user.id, role="member")
         await session.commit()
+    # After the membership, and naming ``t``: the writer was conjured with a tenant of their
+    # own, and a session belongs to one org (CLAUDE.md §5).
+    writer_headers = await auth_cookie(writer.user, org_id=t.org.id)
 
     async with client_for(t.host) as c:
         company = await _company(c, owner_headers)

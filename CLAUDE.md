@@ -107,6 +107,22 @@ stay bring-your-own per org.
 
 - **Hostname resolution is strict**: a verified custom domain (`orgs.custom_domain`) or
   `<slug>.<base_domain>` — an unknown host is an explicit error, never "the only org".
+- **A session belongs to one org, and the token says which** (`app/core/auth/backend.py`).
+  `users` is instance-level and the password check is tenant-blind, so "the credentials are
+  right" and "the credentials are right *here*" were the same sentence only because a
+  self-hosted box has one org. On any multi-org instance the login route on org A's hostname
+  minted a real session for a member of org B. Both ends now agree: the **account lookup** is
+  narrowed to the request's org (`UserManager.get_by_email`, so login, password-reset and
+  request-verify all answer as if the address did not exist — no cross-tenant enumeration),
+  every **mint site** stamps the resolved org into the JWT (`/auth/login`, the 2FA challenge
+  *and* its redemption, the OIDC callback, the impersonation handoff), and `require_context`
+  refuses anything whose claim is not this org — **401, not 403**: it is an authentication
+  answer, and the membership check is a different question that passing would not fix. A host
+  that resolves to no org (the cloud console's apex) mints an org-less session on purpose: it
+  reaches the instance surface and no tenant data at all, which is the same rule, not an
+  exception to it. A missing claim therefore always fails closed, which includes tokens
+  predating the claim — a session-format change costs one re-login and is worth stating in the
+  release notes.
 - **Org lifecycle & instance administration** (issue #26) live in `app/core/instance/`:
   the one sanctioned unscoped crossing (`repo.py`, for global slug/domain uniqueness), the
   audit trail, org lifecycle, export/import, and time-boxed impersonation. Disabled by default

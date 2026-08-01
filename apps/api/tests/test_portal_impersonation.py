@@ -22,7 +22,7 @@ from app.config import settings
 from app.core.activity.models import ActivityLog
 from app.core.auth.models import User
 from app.db import async_session_maker, set_current_org
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import add_membership, auth_cookie, make_tenant
 
 IMPERSONATE = "contacts.portal.impersonate"
 
@@ -144,7 +144,14 @@ async def test_a_grant_is_useless_to_anyone_else(client_for) -> None:
         client_for, "imp-bound"
     )
     other = await make_tenant("imp-bound-2")
-    other_headers = await auth_cookie(other.user)
+    # Deliberately a colleague *in this org* with a valid session here: a session names the org
+    # it was minted for (CLAUDE.md §5), so an outsider's cookie would be refused on the host
+    # boundary and prove nothing about the grant's own binding.
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        await add_membership(session, tenant.org.id, other.user.id, role="member")
+        await session.commit()
+    other_headers = await auth_cookie(other.user, org_id=tenant.org.id)
 
     async with client_for(tenant.host) as c:
         token = (
@@ -155,10 +162,12 @@ async def test_a_grant_is_useless_to_anyone_else(client_for) -> None:
             )
         ).json()["token"]
 
-        # Another org's owner, on this host, carrying the stolen grant: they are not a member
-        # here, so they are refused outright — and certainly not admitted as the contact.
+        # A colleague carrying the stolen grant stays themselves: the grant names its
+        # impersonator, and is applied to nobody else.
         hijack = await c.get("/api/v1/meta/me", headers=_both_cookies(other_headers, token))
-        assert hijack.status_code == 403
+        assert hijack.status_code == 200
+        assert hijack.json()["email"] == other.user.email
+        assert hijack.json()["impersonated_by"] is None
         # The grant alone, with no session at all, authenticates nothing.
         assert (
             await c.get("/api/v1/meta/me", headers={"Cookie": f"schakl_impersonate={token}"})
@@ -481,14 +490,15 @@ async def test_impersonation_is_tenant_scoped(client_for) -> None:
             )
         ).status_code == 404
     async with client_for(tenant.host) as c:
-        # …and on the target's own host they are not a member at all.
+        # …and their session is not a session on this host at all (CLAUDE.md §5), so the
+        # request is refused before the contact is ever looked up.
         assert (
             await c.post(
                 f"/api/v1/contacts/{contact['id']}/portal/impersonate",
                 json={"minutes": 5},
                 headers=other_headers,
             )
-        ).status_code == 403
+        ).status_code == 401
 
 
 async def test_a_scoped_membership_can_only_enter_its_own_clients_contacts(client_for) -> None:

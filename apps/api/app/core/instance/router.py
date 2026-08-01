@@ -754,7 +754,7 @@ async def claim_impersonation(
         max_age = max(1, int((expires_at - datetime.now(UTC)).total_seconds()))
         # The admin's session on *this* host lapses with the grant: an operator's footprint on a
         # customer's hostname should not outlive the reason it was created.
-        session_token = await issue_session_token(admin, max_age)
+        session_token = await issue_session_token(admin, max_age, org.id)
         await audit.record(
             session,
             actor=admin,

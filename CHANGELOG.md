@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Security
+
+- **A sign-in now belongs to the organisation you signed in to.** The account list is shared by
+  the whole installation and the password check never looked at which organisation the address
+  was typed on, so on an installation running **more than one** organisation the sign-in screen
+  of organisation A accepted a member of organisation B and gave them a real session on A's
+  address. They could not read A's data — every screen refused them — but the session existed,
+  and no boundary should depend on every future screen remembering to refuse. The address is
+  now looked up **within the organisation being signed in to**: someone else's credentials
+  answer exactly like a wrong password, and a password-reset or verification mail can no longer
+  be triggered from an organisation the account has nothing to do with. The session itself
+  names its organisation and is not a session anywhere else — not even for someone who is a
+  member of both. A single-organisation installation is unaffected in every respect but one:
+  **everyone signs in again once** after this upgrade, because sessions issued before it name
+  no organisation.
+
 ### Fixed
 
 - **The "your domain is not working" mail now says which record is wrong, and reaches only

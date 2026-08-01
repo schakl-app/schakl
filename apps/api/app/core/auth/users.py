@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncGenerator
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi_users import FastAPIUsers
 from fastapi_users.db import SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,9 +23,12 @@ async def get_user_db(
 
 
 async def get_user_manager(
+    request: Request,
     user_db: SQLAlchemyUserDatabase = Depends(get_user_db),
 ) -> AsyncGenerator[UserManager, None]:
-    yield UserManager(user_db)
+    """The request rides along so the account lookup can be org-scoped (``manager.py``). It
+    costs nothing here — the org is resolved only if ``get_by_email`` is actually called."""
+    yield UserManager(user_db, request=request)
 
 
 fastapi_users = FastAPIUsers[User, uuid.UUID](get_user_manager, [auth_backend])

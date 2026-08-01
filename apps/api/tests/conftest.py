@@ -34,10 +34,10 @@ os.environ.setdefault("SCHAKL_PASSWORD_RESET_RATE_LIMIT_PER_MINUTE", "0")
 
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 from pwdlib import PasswordHash  # noqa: E402
-from sqlalchemy import text  # noqa: E402
+from sqlalchemy import select, text  # noqa: E402
 
 from app.core import dnscheck  # noqa: E402
-from app.core.auth.backend import get_jwt_strategy  # noqa: E402
+from app.core.auth.backend import write_session_token  # noqa: E402
 from app.core.auth.models import User  # noqa: E402
 from app.core.models import Membership, Org, OrgSettings  # noqa: E402
 from app.core.permissions.service import create_membership, seed_system_roles  # noqa: E402
@@ -75,7 +75,7 @@ _DOMAIN_TABLES = (
     "membership_company_groups, company_group_members, company_groups, hr_documents, "
     "files, activity_log, dashboard_prefs, nav_prefs, user_prefs, companies, "
     "api_keys, service_accounts, "
-    "email_settings, org_email_templates, org_auth_settings, "
+    "email_settings, org_email_templates, org_auth_settings, org_sso_provisions, "
     "role_audit_log, membership_roles, role_permissions, roles, memberships, org_settings, "
     "service_access_grants, instance_api_keys, impersonation_handoffs, "
     "instance_audit_log, user_two_factor, users, orgs"
@@ -178,9 +178,42 @@ def leave_workday(index: int = 0) -> date:
     return monday + timedelta(weeks=index // 5, days=index % 5)
 
 
-async def auth_cookie(user: User) -> dict[str, str]:
-    """A Cookie header carrying a valid session for ``user`` (skips the login form)."""
-    token = await get_jwt_strategy().write_token(user)
+#: ``auth_cookie(user)`` with no org named — "the org this user obviously means".
+INFER_ORG = object()
+
+
+async def auth_cookie(user: User, org_id: Any = INFER_ORG) -> dict[str, str]:
+    """A Cookie header carrying a valid session for ``user`` (skips the login form).
+
+    A session is minted **for one org** (``app/core/auth/backend.py``), so the token needs one.
+    Almost every test has a user with exactly one membership, which is the org they mean, so it
+    is looked up rather than threaded through a thousand call sites. Pass ``org_id`` explicitly
+    when the user belongs to several — or ``None`` deliberately, to build the org-less session
+    the cloud console's apex mints, which must reach no tenant data at all.
+    """
+    if org_id is INFER_ORG:
+        # ``memberships`` is RLS-forced and the GUC is per transaction, so "every org this user
+        # belongs to" cannot be one statement — it is asked once per org, which a truncated-
+        # between-tests database makes cheap (`orgs` itself has no RLS).
+        async with async_session_maker() as session:
+            candidates = (await session.execute(select(Org.id))).scalars().all()
+            org_ids = []
+            for candidate in candidates:
+                await set_current_org(session, candidate)
+                found = await session.scalar(
+                    select(Membership.id).where(
+                        Membership.org_id == candidate, Membership.user_id == user.id
+                    )
+                )
+                if found is not None:
+                    org_ids.append(candidate)
+        if len(org_ids) > 1:
+            raise AssertionError(
+                f"{user.email} is a member of {len(org_ids)} orgs — pass auth_cookie(user, "
+                "org_id=…) to say which session you mean."
+            )
+        org_id = org_ids[0] if org_ids else None
+    token = await write_session_token(user, org_id)
     return {"Cookie": f"schakl_auth={token}"}
 
 

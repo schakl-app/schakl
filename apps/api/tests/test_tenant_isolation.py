@@ -17,7 +17,7 @@ from sqlalchemy import text
 from app.core.tenancy import TenantScopedRepository
 from app.db import async_session_maker, set_current_org
 from app.modules.companies.models import Company
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import add_membership, auth_cookie, make_tenant
 
 
 async def _make_company(org_id: uuid.UUID, name: str) -> uuid.UUID:
@@ -89,8 +89,32 @@ async def test_api_cross_tenant_isolation(client_for) -> None:
         fetch = await cb.get(f"/api/v1/companies/{a_company_id}", headers=b_headers)
         assert fetch.status_code == 404
 
-    # A's *valid* session against B's host → 403 (A is not a member of B).
+    # A's session against B's host → 401. It is a valid *token*, but not a session here: a
+    # session is minted for one org and names it (`core/auth/backend.py`), so the request is
+    # unauthenticated on B before the question of A's membership in B is ever reached.
     async with client_for(b.host) as cx:
         r = await cx.get("/api/v1/companies", headers=a_headers)
-        assert r.status_code == 403
-        assert r.json()["error"]["message"] == "errors.forbidden"
+        assert r.status_code == 401
+        assert r.json()["error"]["message"] == "errors.unauthorized"
+
+
+async def test_session_is_minted_for_one_org(client_for) -> None:
+    """The membership check is not the only thing standing between tenants (the session-minting
+    hole): a member of *both* orgs still cannot carry one org's cookie onto the other's host,
+    and an org-less session — what the cloud console's apex mints — reaches no tenant at all."""
+    a = await make_tenant("mint-a")
+    b = await make_tenant("mint-b")
+    async with async_session_maker() as session:
+        await set_current_org(session, b.org.id)
+        await add_membership(session, b.org.id, a.user.id, role="admin")
+        await session.commit()
+
+    for_a = await auth_cookie(a.user, org_id=a.org.id)
+    for_b = await auth_cookie(a.user, org_id=b.org.id)
+    orgless = await auth_cookie(a.user, org_id=None)
+
+    async with client_for(b.host) as cb:
+        # Genuinely a member of B — but only the session minted for B is a session on B.
+        assert (await cb.get("/api/v1/companies", headers=for_b)).status_code == 200
+        assert (await cb.get("/api/v1/companies", headers=for_a)).status_code == 401
+        assert (await cb.get("/api/v1/companies", headers=orgless)).status_code == 401

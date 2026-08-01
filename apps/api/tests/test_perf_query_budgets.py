@@ -162,7 +162,8 @@ async def _member_of(t, slug: str, *, role: str = "member"):
         await set_current_org(session, t.org.id)
         await add_membership(session, t.org.id, other.user.id, role=role)
         await session.commit()
-    return await auth_cookie(other.user)
+    # They hold two memberships (their own tenant and ``t``); the session under test is ``t``.
+    return await auth_cookie(other.user, org_id=t.org.id)
 
 
 #: Statements an ordinary member's ``GET /meta/me`` issues, end to end: the auth user, the two

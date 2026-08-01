@@ -35,11 +35,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.auth import twofactor as tf
-from app.core.auth.backend import auth_backend
+from app.core.auth.backend import auth_backend, session_response
 from app.core.auth.models import User
 from app.core.auth.users import current_active_user, get_user_manager
 from app.core.models import OrgSettings
-from app.core.tenancy import request_hostname, resolve_org
+from app.core.tenancy import request_hostname, request_org_id, resolve_org
 from app.db import get_session, set_current_org
 from app.errors import AppError
 from app.i18n import resolve_locale, translate
@@ -48,6 +48,11 @@ logger = logging.getLogger("schakl.auth")
 
 CHALLENGE_AUDIENCE = "schakl:twofactor"
 _E164 = re.compile(r"^\+[1-9]\d{6,14}$")
+#: The org a challenge was issued for. A challenge is half a login, so it is bound exactly like
+#: the session it becomes (``backend.py``): issued on one tenant's hostname, redeemable only
+#: there. Without it the password check could be passed on the host where the account belongs
+#: and the *cookie* collected on another.
+CHALLENGE_ORG_CLAIM = "org"
 
 login_router = APIRouter()
 router = APIRouter(prefix="/2fa")
@@ -124,24 +129,37 @@ class SmsSendOut(BaseModel):
 # --------------------------------------------------------------------------- #
 
 
-def make_challenge_token(user: User) -> str:
+def make_challenge_token(user: User, org_id: uuid.UUID | None) -> str:
+    payload: dict[str, object] = {"sub": str(user.id), "aud": CHALLENGE_AUDIENCE}
+    if org_id is not None:
+        payload[CHALLENGE_ORG_CLAIM] = str(org_id)
     return generate_jwt(
-        {"sub": str(user.id), "aud": CHALLENGE_AUDIENCE},
+        payload,
         settings.secret_key,
         settings.twofactor_challenge_lifetime_seconds,
     )
 
 
-async def _challenge_user(session: AsyncSession, token: str) -> tuple[User, tf.UserTwoFactor]:
-    """Resolve a challenge token to its (active) user and confirmed 2FA row, or 401."""
+async def _challenge_user(
+    session: AsyncSession, token: str, org_id: uuid.UUID | None
+) -> tuple[User, tf.UserTwoFactor]:
+    """Resolve a challenge token to its (active) user and confirmed 2FA row, or 401.
+
+    ``org_id`` is the org the *redeeming* request's hostname resolves to; a challenge issued
+    elsewhere is refused as invalid, undifferentiated from expired and forged.
+    """
     invalid = AppError(
         "two_factor_challenge_invalid", "errors.two_factor_challenge_invalid", status_code=401
     )
     try:
         payload = decode_jwt(token, settings.secret_key, audience=[CHALLENGE_AUDIENCE])
         user_id = uuid.UUID(str(payload["sub"]))
+        raw_org = payload.get(CHALLENGE_ORG_CLAIM)
+        claimed_org = uuid.UUID(str(raw_org)) if raw_org is not None else None
     except Exception:  # noqa: BLE001 — expired/forged/malformed all read the same to the caller
         raise invalid from None
+    if claimed_org != org_id:
+        raise invalid
     user = await session.get(User, user_id)
     row = await tf.row_for(session, user_id) if user is not None else None
     if user is None or not user.is_active or not tf.is_active(row):
@@ -170,9 +188,16 @@ async def login(
     request: Request,
     credentials: OAuth2PasswordRequestForm = Depends(),
     user_manager=Depends(get_user_manager),  # noqa: ANN001 — FastAPI Users' provider
-    strategy=Depends(auth_backend.get_strategy),  # noqa: ANN001
     session: AsyncSession = Depends(get_session),
 ):
+    """Password login, **for the org this hostname resolves to**.
+
+    ``user_manager.authenticate`` looks the account up through the org-scoped ``get_by_email``
+    (``manager.py``), so a correct password belonging to a *different* tenant answers exactly
+    like a wrong one — the caller is never told that the address exists somewhere else. The
+    org then rides into the token, because a session is minted for one tenant (``backend.py``).
+    """
+    org_id = await request_org_id(request)
     user = await user_manager.authenticate(credentials)
     if user is None or not user.is_active:
         raise HTTPException(
@@ -184,10 +209,10 @@ async def login(
         # The password is right, but that is only the first factor: no cookie leaves the
         # server until /auth/2fa/verify redeems this token with a valid code.
         challenge = LoginChallenge(
-            challenge_token=make_challenge_token(user), methods=tf.methods_for(row)
+            challenge_token=make_challenge_token(user, org_id), methods=tf.methods_for(row)
         )
         return JSONResponse(status_code=status.HTTP_200_OK, content=challenge.model_dump())
-    response = await auth_backend.login(strategy, user)
+    response = await session_response(user, org_id)
     await user_manager.on_after_login(user, request, response)
     return response
 
@@ -202,11 +227,11 @@ async def verify_challenge(
     payload: ChallengeVerify,
     request: Request,
     user_manager=Depends(get_user_manager),  # noqa: ANN001
-    strategy=Depends(auth_backend.get_strategy),  # noqa: ANN001
     session: AsyncSession = Depends(get_session),
 ):
     """Redeem a login challenge with a code from any enrolled factor → session cookie."""
-    user, row = await _challenge_user(session, payload.challenge_token)
+    org_id = await request_org_id(request)
+    user, row = await _challenge_user(session, payload.challenge_token, org_id)
     tf.check_not_locked(row)
 
     if payload.method == "totp":
@@ -222,7 +247,7 @@ async def verify_challenge(
         raise AppError("two_factor_code_invalid", "errors.two_factor_code_invalid")
     tf.record_success(row)
     await session.commit()
-    response = await auth_backend.login(strategy, user)
+    response = await session_response(user, org_id)
     await user_manager.on_after_login(user, request, response)
     return response
 
@@ -234,7 +259,9 @@ async def send_challenge_sms(
     session: AsyncSession = Depends(get_session),
 ) -> SmsSendOut:
     """Text a login code to the enrolled number — only for accounts that confirmed one."""
-    user, row = await _challenge_user(session, payload.challenge_token)
+    user, row = await _challenge_user(
+        session, payload.challenge_token, await request_org_id(request)
+    )
     if "sms" not in tf.methods_for(row):
         raise AppError("sms_not_configured", "errors.sms_not_configured")
     tf.check_not_locked(row)

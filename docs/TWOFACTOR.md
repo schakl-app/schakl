@@ -16,7 +16,10 @@ framework's own primitives (`app/core/auth/twofactor.py` + `twofactor_router.py`
 - The challenge token is a short-lived JWT (`fastapi_users.jwt`, its own audience, default
   5 minutes — `SCHAKL_TWOFACTOR_CHALLENGE_LIFETIME_SECONDS`). It proves a fresh password
   check and is redeemable only at `POST /auth/2fa/verify {challenge_token, code, method}`,
-  which is what finally issues the session cookie.
+  which is what finally issues the session cookie. It also names the **org it was issued for**
+  and is refused on any other hostname — half a login is bound exactly like the session it
+  becomes (CLAUDE.md §5), or the password step could be passed where the account lives and the
+  cookie collected somewhere else.
 - One row per enrolled user in `user_two_factor`. Like `users` this is **global identity,
   not tenant data** (CLAUDE.md §5): no `org_id`, no RLS — a user's factor follows them
   across every org they belong to.

@@ -26,6 +26,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.auth.backend import session_org
 from app.core.auth.models import User
 from app.core.auth.users import current_active_user_optional
 from app.core.models import Membership, Org, OrgStatus
@@ -78,6 +79,31 @@ async def resolve_org(session: AsyncSession, host: str) -> Org | None:
     if org is None or org.status == OrgStatus.DELETED.value:
         return None
     return org
+
+
+#: Where :func:`request_org_id` parks its answer. Not an optimisation for the request path —
+#: ``require_context`` resolves the org on its own session and never reads this — but for the
+#: **pre-auth** flows, where the same host is resolved by a guard, by the account lookup and by
+#: the route that mints the session, each on its own throwaway session (``manager.py``).
+_ORG_ID_STATE = "schakl_request_org_id"
+_UNRESOLVED = object()
+
+
+async def request_org_id(request: Request) -> uuid.UUID | None:
+    """The org this request's hostname resolves to, or ``None`` for a host that names no tenant.
+
+    ``None`` is a real answer, not a failure: the cloud console runs on the apex, where no org
+    resolves (docs/CLOUD.md). Callers decide what that means for them — the pre-auth ones treat
+    it as "nothing to narrow", ``require_context`` never sees it (it 404s the unknown host).
+    """
+    cached = getattr(request.state, _ORG_ID_STATE, _UNRESOLVED)
+    if cached is not _UNRESOLVED:
+        return cached  # type: ignore[return-value]
+    async with async_session_maker() as session:
+        org = await resolve_org(session, request_hostname(request))
+    org_id = org.id if org is not None else None
+    setattr(request.state, _ORG_ID_STATE, org_id)
+    return org_id
 
 
 # --------------------------------------------------------------------------- #
@@ -192,6 +218,18 @@ async def require_context(
 
         # No key → a session is required.
         if user is None:
+            raise AppError("unauthorized", "errors.unauthorized", status_code=401)
+
+        # …and it must be a session **for this org** (``core/auth/backend.py``). The account
+        # table is instance-level and the password check is tenant-blind, so "a valid session"
+        # and "a session belonging here" were the same sentence only because a self-hosted box
+        # has one org. Anything else — no claim at all (an instance session from the console's
+        # apex, or a token minted before the claim existed) or a claim naming another org — is
+        # not a session here, and says so with the same 401 as no session at all: it is an
+        # authentication answer, and the browser's job is identical either way (log in). The
+        # membership check below is a *different* question and stays where it is; passing it
+        # would not make someone else's session ours.
+        if session_org(request) != org.id:
             raise AppError("unauthorized", "errors.unauthorized", status_code=401)
 
         # Impersonation (issues #26, #296): a valid, time-boxed grant swaps the effective user;

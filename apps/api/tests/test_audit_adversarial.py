@@ -58,13 +58,17 @@ async def test_cross_tenant_company_crud_is_404_every_verb(client_for) -> None:
 
 
 async def test_valid_session_on_foreign_host_is_forbidden(client_for) -> None:
-    """A's genuine cookie replayed against B's hostname → 403 (A is not a member of B)."""
+    """A's genuine cookie replayed against B's hostname → 401.
+
+    It used to be 403 — a real session, refused for want of a membership. A session now names
+    the org it was minted for (CLAUDE.md §5), so replaying it elsewhere is not a session there
+    at all and the answer is an authentication one, reached before membership is considered."""
     a = await make_tenant("adv-host-a")
     await make_tenant("adv-host-b")  # b exists as a distinct tenant/host
     a_headers = await auth_cookie(a.user)
     async with client_for("adv-host-b.localhost") as c:
         r = await c.get("/api/v1/companies", headers=a_headers)
-        assert r.status_code == 403
+        assert r.status_code == 401
 
 
 async def test_org_id_in_body_cannot_reassign_tenant(client_for) -> None:
@@ -194,7 +198,10 @@ async def test_FINDING_forged_session_with_public_default_secret(client_for) -> 
     # The old default from config.py / .env.example — publicly known, must never verify.
     public_default_secret = "change-me-in-production-please-32bytes-min"
     forged = generate_jwt(
-        {"sub": str(a.user.id), "aud": ["fastapi-users:auth"]},
+        # The ``org`` claim (CLAUDE.md §5) is forged along with the rest, deliberately: it is a
+        # tenant binding, not a secret, so leaving it out would make this test pass for the
+        # wrong reason and stop documenting the exposure it exists to document.
+        {"sub": str(a.user.id), "aud": ["fastapi-users:auth"], "org": str(a.org.id)},
         public_default_secret,
         3600,
     )
