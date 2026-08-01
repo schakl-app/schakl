@@ -1,7 +1,7 @@
 """invoicing_add_delivery_date
 
 Revision ID: c4e8a1b2d7f3
-Revises: b3f1c07a92de
+Revises: a1c6d3e70f42
 Create Date: 2026-08-01 12:00:00.000000
 
 One nullable column: ``invoices.delivery_date`` — the *leverdatum* a Dutch invoice states when
@@ -24,7 +24,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "c4e8a1b2d7f3"
-down_revision: str | None = "b3f1c07a92de"
+down_revision: str | None = "a1c6d3e70f42"
 branch_labels: str | None = None
 depends_on: str | None = None
 
