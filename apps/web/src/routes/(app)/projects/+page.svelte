@@ -7,6 +7,7 @@
   import { editHref } from "$lib/core/edit-intent";
   import { fmtNumber, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { can } from "$lib/core/permissions";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { customFieldColumns } from "$lib/core/table/columns";
@@ -193,7 +194,9 @@
        share one surface instead of a duplicate inline form. -->
   {#if canWrite}
     <form method="POST" action="?/create" use:enhance>
-      <button class="shrink-0 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+      <button
+        class="shrink-0 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+      >
         {t("projects.new")}
       </button>
     </form>
@@ -227,6 +230,19 @@
       id="filter-company"
     />
   </div>
+  <ImpexBar
+    entity="project"
+    readPermission="projects.project.read"
+    writePermission="projects.project.write"
+    filters={{
+      q: page.url.searchParams.get("q"),
+      company_id: data.companyFilter,
+      mine: data.mine,
+      sort: data.table.sort,
+    }}
+    locale={data.locale}
+    {form}
+  />
   <ColumnPicker
     all={table.pickerColumns}
     visible={table.visibleKeys}

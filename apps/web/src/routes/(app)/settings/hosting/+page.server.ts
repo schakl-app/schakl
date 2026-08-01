@@ -1,6 +1,7 @@
 import { fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey, lookupItems } from "$lib/core/errors";
+import { impexAction } from "$lib/core/impex/actions.server";
 import { parseParty } from "$lib/core/party";
 import { can } from "$lib/core/permissions";
 import {
@@ -40,7 +41,9 @@ export const load: PageServerLoad = async (event) => {
     }),
     api.GET("/api/v1/providers"),
     api.GET("/api/v1/members/lookup"),
-    api.GET("/api/v1/contacts", { params: { query: { limit: 200, offset: 0, sort: "first_name" } } }),
+    api.GET("/api/v1/contacts", {
+      params: { query: { limit: 200, offset: 0, sort: "first_name" } },
+    }),
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "hosting" } },
     }),
@@ -83,6 +86,8 @@ function hostingBody(form: FormData) {
 }
 
 export const actions: Actions = {
+  /** Import/export from this list's own toolbar (issue #77) — the shared wizard's three steps. */
+  impex: (event) => impexAction(event, "hosting"),
   save: async (event) => {
     const form = await event.request.formData();
     const hosting_id = String(form.get("id") ?? "");

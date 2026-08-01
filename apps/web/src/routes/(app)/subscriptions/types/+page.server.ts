@@ -1,5 +1,6 @@
 import { redirect } from "@sveltejs/kit";
 
+import { impexAction } from "$lib/core/impex/actions.server";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
@@ -79,6 +80,8 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
+  /** Import/export from this list's own toolbar (issue #77) — the shared wizard's three steps. */
+  impex: (event) => impexAction(event, "subscription_type"),
   /** Persist this user's column layout. Personal, in-view — never org settings (docs/UX.md §6). */
   saveTable: async (event) => {
     const form = await event.request.formData();

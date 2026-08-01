@@ -7,6 +7,7 @@
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import { fmtDayMonth, fmtLongDay, fmtWeekdayShort } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -393,7 +394,17 @@
     </form>
   </div>
 
-  <div class="flex items-center gap-3">
+  <div class="flex flex-wrap items-center gap-3">
+    <!-- Scoped to the week on screen (issue #77): a timesheet export is only ever useful for a
+         period, and "everything since we started" is the one thing nobody asks for. -->
+    <ImpexBar
+      entity="time_entry"
+      readPermission="time.entry.read"
+      writePermission="time.entry.write"
+      filters={{ date_from: data.week_start, date_to: lastVisibleDay, sort: "date" }}
+      locale={data.locale}
+      {form}
+    />
     {#if data.running}
       <div class="flex items-center gap-2">
         <span class="h-2.5 w-2.5 animate-pulse rounded-full bg-green-500"></span>

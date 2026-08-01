@@ -198,6 +198,16 @@
     off, and the active sort is named at the top. Headers stay clickable on desktop; they are the
     shortcut, never the only way in. Sorting by a *person* (assigned employee) orders by their
     display name — never by a user id, which is what a naive `ORDER BY` on the FK would do.
+  - **A list that can travel by spreadsheet says so on the list.** Export and Import are one
+    shared component (`core/impex/ImpexBar`) sitting beside the Kolommen popover on every such
+    screen — clients, contacts, projects, taken, urenstaat, abonnementen and their two catalogs,
+    domeinen, websites, hosting, domeintarieven. Not a per-page decision: the first round shipped
+    the pair hand-written on two screens and absent from the other ten, so someone holding a
+    spreadsheet of domains had to guess it lived in Instellingen. Export carries the list's
+    **current** filters (so the file is the list on screen, whole — not the loaded page), Import
+    opens the shared wizard, and both controls check the bulk permission *and* the entity's own
+    before they render, mirroring the two gates the API declares. Instellingen → Import & export
+    stays as the overview of what can travel at all; it is never the only way in.
   - **A hidden column costs nothing.** An expensive column (the budget roll-up) is an opt-in
     aggregate: the page's `load` asks the API for it only when the column is visible. This is why
     column metadata is a plain module and the cell renderers are snippets — a server load can read

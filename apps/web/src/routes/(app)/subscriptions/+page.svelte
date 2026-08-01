@@ -6,6 +6,7 @@
   import { page } from "$app/state";
   import { fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
@@ -392,6 +393,18 @@
       {t("tasks.filter.clear")}
     </button>
   {/if}
+  <ImpexBar
+    entity="subscription"
+    readPermission="subscriptions.subscription.read"
+    writePermission="subscriptions.subscription.write"
+    filters={{
+      status: data.statusFilter,
+      company_id: data.companyFilter,
+      sort: data.table.sort,
+    }}
+    locale={data.locale}
+    {form}
+  />
   <ColumnPicker
     all={table.pickerColumns}
     visible={table.visibleKeys}

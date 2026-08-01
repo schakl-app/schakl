@@ -5,6 +5,7 @@
   import { page } from "$app/state";
   import { fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
   import { customFieldColumns } from "$lib/core/table/columns";
@@ -203,7 +204,18 @@
 </div>
 
 <!-- The personal column picker: every sort is reachable from here too (docs/UX.md). -->
-<div class="mb-4 flex items-center justify-end">
+<div class="mb-4 flex flex-wrap items-center justify-end gap-2">
+  <ImpexBar
+    entity="domain"
+    readPermission="domains.domain.read"
+    writePermission="domains.domain.write"
+    filters={{
+      q: page.url.searchParams.get("q"),
+      sort: data.table.sort,
+    }}
+    locale={data.locale}
+    {form}
+  />
   <ColumnPicker
     all={table.pickerColumns}
     visible={table.visibleKeys}

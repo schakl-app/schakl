@@ -1,6 +1,7 @@
 import { fail } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
+import { impexAction } from "$lib/core/impex/actions.server";
 import { parseParty } from "$lib/core/party";
 import {
   createCompanyAction,
@@ -50,6 +51,8 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
+  /** Import/export from this list's own toolbar (issue #77) — the shared wizard's three steps. */
+  impex: (event) => impexAction(event, "domain"),
   /** Persist this user's column layout. Personal, in-view — never org settings (docs/UX.md §6). */
   saveTable: async (event) => {
     const form = await event.request.formData();

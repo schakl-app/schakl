@@ -1,6 +1,7 @@
 import { fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
+import { impexAction } from "$lib/core/impex/actions.server";
 import { can } from "$lib/core/permissions";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
@@ -120,12 +121,15 @@ export const load: PageServerLoad = async (event) => {
     presetCompanyId,
     lastCompanyId: lastEntry?.company_id ?? "",
     lastProjectId: lastEntry?.project_id ?? "",
+    locale: event.locals.locale,
     leaveHours: leave.data ? leaveHoursForWeek(leave.data, weekDays) : null,
     holidays: holidays.data ? weekDays.map((d) => holidayByDate.get(d) ?? null) : null,
   };
 };
 
 export const actions: Actions = {
+  /** Import/export from this list's own toolbar (issue #77) — the shared wizard's three steps. */
+  impex: (event) => impexAction(event, "time_entry"),
   startTimer: async (event) => {
     const form = await event.request.formData();
     await apiFor(event).POST("/api/v1/time/timer/start", {

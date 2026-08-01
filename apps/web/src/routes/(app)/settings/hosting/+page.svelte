@@ -4,6 +4,7 @@
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -73,9 +74,20 @@
     <h1 class="text-xl font-semibold text-text">{t("hosting.title")}</h1>
     <p class="mt-1 text-sm text-text-muted">{t("hosting.count", { count: data.total })}</p>
   </div>
-  <button class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white" onclick={openCreate}
-    >{t("hosting.new")}</button
-  >
+  <div class="flex flex-wrap items-center gap-2">
+    <ImpexBar
+      entity="hosting"
+      readPermission="hosting.hosting.read"
+      writePermission="hosting.hosting.write"
+      filters={{ sort: "name" }}
+      locale={data.locale}
+      {form}
+    />
+    <button
+      class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"
+      onclick={openCreate}>{t("hosting.new")}</button
+    >
+  </div>
 </div>
 
 <section class="rounded-xl border border-border bg-surface-raised">

@@ -11,6 +11,7 @@
   import { page } from "$app/state";
   import { fmtMoney } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
@@ -191,6 +192,13 @@
       {t("tasks.filter.clear")}
     </button>
   {/if}
+  <ImpexBar
+    entity="subscription_template"
+    readPermission="subscriptions.subscription.read"
+    writePermission="subscriptions.template.manage"
+    locale={data.locale}
+    {form}
+  />
   <ColumnPicker
     all={table.pickerColumns}
     visible={table.visibleKeys}
