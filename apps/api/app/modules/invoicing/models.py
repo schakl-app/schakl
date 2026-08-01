@@ -360,6 +360,11 @@ class Invoice(
         String(20), nullable=False, default=InvoiceStatus.DRAFT.value, index=True
     )
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    #: When the goods or service were actually delivered — the *leverdatum* a Dutch invoice
+    #: states when it differs from the invoice date. Nullable and printed only by a template
+    #: whose layout asks for it: most invoices are dated the day they are delivered, and a
+    #: field repeating the date above it is noise.
+    delivery_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     template_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("invoicing_templates.id", ondelete="SET NULL"),

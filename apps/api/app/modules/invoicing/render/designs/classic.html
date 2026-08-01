@@ -1,0 +1,17 @@
+{#
+  The design the product has always shipped: heading and logo left, seller block right, an
+  accent keel under the header, then the body stack.
+
+  Kept faithful to what tenants already have on file. A release that redesigns every existing
+  invoice because the renderer changed underneath it would be a bug, not a feature — the new
+  look is a *choice* (`letterhead`), not an upgrade.
+#}
+{% extends "_shell.html" %}
+
+{% block design_css %}
+{% include "classic.css" %}
+{% endblock %}
+
+{% block body %}
+{% include "classic.body.html" %}
+{% endblock %}

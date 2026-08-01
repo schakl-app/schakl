@@ -1,0 +1,77 @@
+.head { display: flex; justify-content: space-between; gap: 20mm; margin-bottom: 14mm; }
+  .logo { max-height: 22mm; max-width: 70mm; }
+  .brand-word { font-size: 20pt; font-weight: 800; letter-spacing: -0.02em; }
+
+  .sender { font-size: 8.5pt; line-height: 1.6; min-width: 62mm; }
+  .sender .name { font-weight: 700; font-size: 9.5pt; }
+  .sender-grid { border-collapse: collapse; }
+  .sender-grid td { padding: 0; font-size: 8.5pt; }
+  .sender-grid .k { color: var(--ink); font-weight: 700; padding-right: 5mm;
+                    white-space: nowrap; }
+  /* The identity rows (IBAN, Btw-nr, KvK) read as a second group, not a continuation. */
+  .sender-grid tr.group-start td { padding-top: 4mm; }
+
+  h1 { margin: 0 0 4mm; font-size: 17pt; font-weight: 700; color: var(--accent); }
+
+  .middle { display: flex; justify-content: space-between; gap: 16mm; margin-bottom: 10mm; }
+  .middle-left { min-width: 0; flex: 1; }
+  .middle-right { min-width: 66mm; }
+
+  .bill-to { font-size: 9.5pt; line-height: 1.55; margin-bottom: 8mm; }
+  .bill-to .name { font-weight: 700; }
+
+  .meta { width: 100%; }
+  .meta td { padding: 0.7mm 0; font-size: 9pt; }
+  .meta .meta-label { color: var(--ink); padding-right: 8mm; white-space: nowrap; }
+  .meta .meta-value { font-weight: 700; text-align: left; }
+  /* Klantnummer / Leverdatum sit apart from the invoice's own numbers, as on paper. */
+  .meta tr.group-start td { padding-top: 4mm; }
+
+  .payment-card { border: 1px solid var(--rule); border-radius: 3px; padding: 4mm 5mm 4mm;
+                  position: relative; margin-top: 3mm; }
+  .payment-card-title {
+    position: absolute; top: -2.6mm; left: 4mm; background: #fff; padding: 0 2mm;
+    border: 1px solid var(--rule); border-radius: 2px; color: var(--ink);
+  }
+  .payment-card td { padding: 0.6mm 0; font-size: 9pt; }
+  .payment-card td:first-child { padding-right: 10mm; white-space: nowrap; }
+
+  .intro { margin-bottom: 6mm; font-size: 9.5pt; }
+
+  .lines { margin-bottom: 3mm; }
+  .lines th {
+    padding: 2mm 3mm; background: var(--accent-soft); border-bottom: 1px solid var(--rule);
+    font-size: 8pt; color: var(--ink); letter-spacing: 0.04em;
+  }
+  .lines th:first-child, .lines td:first-child { padding-left: 0; }
+  .lines th:last-child, .lines td:last-child { padding-right: 0; }
+  .lines td { padding: 2.2mm 3mm; border-bottom: 1px solid var(--rule); font-size: 9.5pt; }
+  .lines .section td { background: var(--accent-wash); border-bottom: 0; padding: 1.5mm 3mm; }
+  .lines .section-total td { border-bottom: 0; padding-top: 1.5mm; font-size: 8.5pt; }
+  .col-quantity { width: 20mm; }
+  .col-unit { width: 16mm; }
+  .col-unit_price { width: 24mm; }
+  .col-tax { width: 20mm; }
+  .col-amount { width: 26mm; }
+
+  /* The end of the document: VAT breakdown left, what is owed right, on one line. */
+  .tax-summary { float: left; width: 72mm; margin-top: 8mm; }
+  .tax-summary th { padding: 0 4mm 1mm 0; border-bottom: 1px solid var(--ink);
+                    color: var(--ink); }
+  .tax-summary th:last-child, .tax-summary td:last-child { padding-right: 0; }
+  .tax-summary td { padding: 1.2mm 4mm 0 0; font-size: 8.5pt; }
+
+  .totals { float: right; width: 76mm; margin-top: 8mm; }
+  .totals td { padding: 1.2mm 0; font-size: 9.5pt; }
+  .totals td:first-child { color: var(--ink); }
+  .totals .strong-row td {
+    padding-top: 2mm; margin-top: 2mm; border-top: 1px solid var(--ink); font-weight: 700;
+  }
+
+  .reverse-charge { clear: both; padding-top: 8mm; font-size: 8.5pt; }
+  .notes { clear: both; padding-top: 8mm; font-size: 9.5pt; }
+  .notes :first-child { margin-top: 0; }
+  .notes p, .notes ul, .notes ol { margin: 0 0 3mm; }
+  .notes ul, .notes ol { padding-left: 6mm; }
+  .payment-note { clear: both; padding-top: 8mm; font-size: 9.5pt; }
+  .doc-footer { clear: both; padding-top: 10mm; font-size: 8.5pt; }

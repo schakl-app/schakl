@@ -1,0 +1,42 @@
+  <header class="head">
+    <div class="head-left">
+      {% if logo %}<img class="logo" src="{{ logo }}" alt="{{ brand_name }}" />{% endif %}
+      <h1>{{ heading }}</h1>
+      {% if number %}<p class="doc-number">{{ number }}</p>{% endif %}
+    </div>
+    <div class="head-right">
+      {% for entry in seller %}
+        <p class="{{ 'strong' if entry.key == 'name' }}">
+          {% if entry.label %}{{ entry.label }} {% endif %}{{ entry.value | nl2br }}
+        </p>
+      {% endfor %}
+    </div>
+  </header>
+
+  <hr class="keel" />
+
+  <div class="parties">
+    <div class="bill-to">
+      {% for entry in customer %}
+        {% if entry.key == 'label' %}
+          <p class="micro">{{ entry.value }}</p>
+        {% else %}
+          <p class="{{ 'name' if entry.key == 'name' else 'muted' }}">
+            {% if entry.label %}{{ entry.label }} {% endif %}{{ entry.value | nl2br }}
+          </p>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <table class="meta">
+      {% for entry in meta %}
+        <tr>
+          <td class="meta-label">{{ entry.label }}</td>
+          <td class="meta-value">{{ entry.value }}</td>
+        </tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  {% for key in body_order %}
+    {{ blocks.block(key, ctx) }}
+  {% endfor %}

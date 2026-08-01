@@ -23,6 +23,7 @@ from app.modules.invoicing.models import (
     QuoteStatus,
     TaxCategory,
 )
+from app.modules.invoicing.render.engine import MAX_CUSTOM_CSS, MAX_CUSTOM_HTML
 
 
 def _blank_to_none(value: Any) -> Any:
@@ -56,6 +57,10 @@ class SellerDetails(BaseModel):
     vat_number: str | None = Field(default=None, max_length=32)
     coc_number: str | None = Field(default=None, max_length=32)
     iban: str | None = Field(default=None, max_length=42)
+    #: Only a document that prints it needs it — a SEPA invoice does not, an international
+    #: one often does. Off by default in the block catalog for the same reason.
+    bic: str | None = Field(default=None, max_length=16)
+    website: str | None = Field(default=None, max_length=255)
     email: EmailStr | None = None
     phone: str | None = Field(default=None, max_length=40)
 
@@ -204,7 +209,14 @@ class ProductRead(ProductBase):
 # Templates
 # --------------------------------------------------------------------------- #
 class TemplateColumns(BaseModel):
-    """Which line columns the rendered document shows."""
+    """Which line columns the rendered document shows.
+
+    **Superseded by** ``TemplateConfig.layout``'s ``lines`` block, which orders the columns as
+    well as toggling them. Kept because every template stored before layouts existed carries
+    one, and it is still the input while a template has no layout of its own — upgrading a
+    release must not redesign a document a tenant has already approved. The service writes it
+    back from the layout on save, so the two can never disagree.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -214,6 +226,55 @@ class TemplateColumns(BaseModel):
     tax: bool = True
 
 
+class TemplateField(BaseModel):
+    """One field inside a block. Position in the list is its print order."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = Field(min_length=1, max_length=40)
+    enabled: bool = True
+
+
+class TemplateBlock(BaseModel):
+    """One block of the document. Position in ``layout`` is its print order.
+
+    Both this and its fields are a **partial** statement: keys the catalog knows and this
+    layout does not are resolved at their catalog position with their catalog default
+    (``render.blocks.resolve_layout``). That is what lets a field added by a later release
+    appear on documents whose layout was written before it existed.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = Field(min_length=1, max_length=40)
+    enabled: bool = True
+    fields: list[TemplateField] = Field(default_factory=list, max_length=40)
+
+
+class TemplateBackground(BaseModel):
+    """The mark printed behind the page — a letterhead, not a watermark.
+
+    ``file_id`` is a tenant file (the same store the logo lives in); absent, the tenant's own
+    logo is used, which is what makes the letterhead design work the moment it is picked. The
+    numbers are percentages of the page, and every one of them is re-clamped at render time:
+    this is tenant-writable config, and an opacity of 40 would black out the text.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    file_id: uuid.UUID | None = None
+    #: Fall back to the org logo when no file of its own is set.
+    use_logo: bool = True
+    opacity: float = Field(default=0.04, ge=0, le=1)
+    #: Width as a percentage of the page.
+    scale: float = Field(default=78, ge=5, le=200)
+    x: float = Field(default=50, ge=-50, le=150)
+    y: float = Field(default=50, ge=-50, le=150)
+    rotate: float = Field(default=0, ge=-180, le=180)
+    repeat: bool = False
+
+
 class TemplateConfig(BaseModel):
     """The design knobs. ``None`` accent color = the tenant's brand color at render time
     (branding is runtime, Golden Rule 4). Text blocks are per-locale dicts, so a document
@@ -221,15 +282,32 @@ class TemplateConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    #: Which shipped design draws the document, or ``custom`` for the tenant's own ``html``.
+    design: Literal["classic", "letterhead", "custom"] = "classic"
     accent_color: str | None = Field(default=None, max_length=32)
     show_logo: bool = True
     columns: TemplateColumns = Field(default_factory=TemplateColumns)
+    #: Which blocks print, in which order, with which fields. Empty = the design's defaults.
+    layout: list[TemplateBlock] = Field(default_factory=list, max_length=40)
+    background: TemplateBackground = Field(default_factory=TemplateBackground)
+    #: A tenant-authored design (``design == "custom"``): sandboxed Jinja, rendered against
+    #: the same context the shipped designs get. Authoring is gated on its own permission.
+    html: str | None = Field(default=None, max_length=MAX_CUSTOM_HTML)
+    #: Extra CSS. On a shipped design it layers on top; on a custom one it *is* the design.
+    css: str | None = Field(default=None, max_length=MAX_CUSTOM_CSS)
     #: Per-locale text blocks: {"nl": "...", "en": "..."} — shown above the lines.
     intro_i18n: dict[str, str] = Field(default_factory=dict)
     #: Below the totals: payment instructions ("Gelieve te betalen binnen {days} dagen …").
     payment_i18n: dict[str, str] = Field(default_factory=dict)
     #: Small print at the very bottom (registrations, legal footer).
     footer_i18n: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _custom_needs_a_body(self) -> TemplateConfig:
+        # A custom design with nothing in it renders a blank page, which reads as data loss.
+        if self.design == "custom" and not (self.html or "").strip():
+            raise ValueError("errors.invoicing.template_body_required")
+        return self
 
 
 class TemplateBase(BaseModel):
@@ -259,6 +337,28 @@ class TemplateRead(TemplateBase):
     org_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+
+
+class TemplateCatalog(BaseModel):
+    """What the template editor needs to draw itself. Keys only — the client owns labels."""
+
+    blocks: list[dict[str, Any]]
+    designs: list[str]
+    #: Whether this caller may write ``html``/``css`` — hides the tab, never the boundary.
+    can_author: bool
+
+
+class TemplateSource(BaseModel):
+    """A shipped design's own source, for branching a custom template off it."""
+
+    html: str
+    css: str
+
+
+class TemplatePreview(BaseModel):
+    """Render a sample document with a config that has not been saved."""
+
+    config: TemplateConfig
 
 
 # --------------------------------------------------------------------------- #
@@ -338,6 +438,10 @@ class CustomerRead(BaseModel):
     vat_number: str | None = None
     coc_number: str | None = None
     email: str | None = None
+    #: The contact the document was addressed to (*t.a.v.*), frozen with the rest.
+    attn: str | None = None
+    #: The client's own number in the tenant's books, so a template can print *Klantnummer*.
+    client_number: str | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -356,6 +460,8 @@ class InvoiceCreate(BaseModel):
     template_id: uuid.UUID | None = None
     issue_date: date | None = None
     due_date: date | None = None
+    #: Only stated when it differs from the invoice date; printed by a template that asks.
+    delivery_date: date | None = None
     prices_include_tax: bool | None = None
     lines: list[LineWrite] = Field(default_factory=list, max_length=200)
     custom: dict[str, Any] = Field(default_factory=dict)
@@ -380,6 +486,7 @@ class InvoiceUpdate(BaseModel):
     template_id: uuid.UUID | None = None
     issue_date: date | None = None
     due_date: date | None = None
+    delivery_date: date | None = None
     prices_include_tax: bool | None = None
     reminders_paused: bool | None = None
     lines: list[LineWrite] | None = Field(default=None, max_length=200)
@@ -435,6 +542,7 @@ class InvoiceRead(BaseModel):
     overdue: bool = False
     issue_date: date | None
     due_date: date | None
+    delivery_date: date | None = None
     currency: str
     exchange_rate: Decimal | None
     locale: str

@@ -1,0 +1,56 @@
+  <header class="head">
+    <div>
+      {% if logo %}
+        <img class="logo" src="{{ logo }}" alt="{{ brand_name }}" />
+      {% else %}
+        <p class="brand-word">{{ brand_name }}</p>
+      {% endif %}
+    </div>
+    <div class="sender">
+      {% set labelled = seller | selectattr('label') | list %}
+      {% for entry in seller if not entry.label %}
+        <p class="{{ 'name' if entry.key == 'name' }}">{{ entry.value | nl2br }}</p>
+      {% endfor %}
+      {% if labelled %}
+        <table class="sender-grid">
+          {% for entry in labelled %}
+            <tr class="{{ 'group-start' if entry.key == 'iban' }}">
+              <td class="k">{{ entry.label }}</td>
+              <td>{{ entry.value }}</td>
+            </tr>
+          {% endfor %}
+        </table>
+      {% endif %}
+    </div>
+  </header>
+
+  <div class="middle">
+    <div class="middle-left">
+      <h1>{{ heading }}</h1>
+      <div class="bill-to">
+        {% for entry in customer if entry.key != 'label' %}
+          <p class="{{ 'name' if entry.key == 'name' }}">
+            {% if entry.label %}{{ entry.label }} {% endif %}{{ entry.value | nl2br }}
+          </p>
+        {% endfor %}
+      </div>
+      {% if payment_box %}
+        {{ blocks.payment_card(payment_box, t('invoicing.doc.payment_details')) }}
+      {% endif %}
+    </div>
+    <div class="middle-right">
+      <table class="meta">
+        {% for entry in meta %}
+          <tr class="{{ 'group-start' if entry.key == 'client_number' }}">
+            <td class="meta-label">{{ entry.label }}</td>
+            <td class="meta-value">{{ entry.value }}</td>
+          </tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+
+  {# The payment card is drawn above, beside the addressee — this design gives it a place. #}
+  {% for key in body_order if key != 'payment_box' %}
+    {{ blocks.block(key, ctx) }}
+  {% endfor %}

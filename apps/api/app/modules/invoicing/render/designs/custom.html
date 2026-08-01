@@ -1,0 +1,24 @@
+{#
+  The shell a tenant's own design renders inside.
+
+  Their template produces the *content* of the document; the page itself — A4 geometry, the
+  type stack, the palette variables, the draft watermark and the background mark — stays ours.
+  That is the difference between "bring your own template" and "bring your own bug report":
+  an author who forgets a margin gets a slightly odd invoice, not one that prints edge to edge
+  with no CONCEPT stamp on a draft.
+
+  `custom_body` is already-rendered output from the sandboxed environment, which autoescaped
+  every value it interpolated — so it is markup by the time it reaches here.
+#}
+{% extends "_shell.html" %}
+
+{#
+  Deliberately no design CSS: a custom template's stylesheet *is* the tenant's own, which the
+  editor prefills from whichever design they branched from. Layering `classic.css` under an
+  author who started from `letterhead` would have the two fighting over every selector.
+#}
+{% block design_css %}{% endblock %}
+
+{% block body %}
+{{ custom_body | safe }}
+{% endblock %}

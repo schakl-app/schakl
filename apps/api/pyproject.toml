@@ -33,7 +33,16 @@ dependencies = [
     "boto3>=1.43.49",
     "pyotp>=2.9",
     "segno>=1.6",
-    "fpdf2>=2.8.7",
+    # Documents render as HTML and are printed by WeasyPrint, so the on-screen preview and
+    # the PDF a client receives are the *same artefact* — and a tenant's own HTML/CSS
+    # template can render at all. Jinja is sandboxed for that case (render/engine.py); the
+    # url fetcher is pinned to the tenant's own stored files, never the network.
+    "weasyprint>=63",
+    "jinja2>=3.1",
+    # The document renderer needs markdown to become markup (an invoice's notes render as a
+    # list, not as literal asterisks). Pure Python, one transitive dep, and its output still
+    # goes through nh3 — see app/core/richtext.markdown_to_html.
+    "markdown-it-py>=3.0",
     "phonenumbers>=8.13",
     # Excel import (issue #77): pure-Python, universal wheel, one dependency (et-xmlfile).
     # Read-only + zip-vetted in app/core/impex/parsing.py — an uploaded workbook is untrusted.

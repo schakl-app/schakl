@@ -15,6 +15,7 @@ from app.core.tenancy import RequestContext, require_context
 from app.errors import AppError
 from app.modules.invoicing import accounting
 from app.modules.invoicing.models import InvoiceStatus
+from app.modules.invoicing.render import BUILTIN_DESIGNS, builtin_source, catalog_payload
 from app.modules.invoicing.schemas import (
     BillableSubscription,
     DocumentSend,
@@ -38,8 +39,11 @@ from app.modules.invoicing.schemas import (
     TaxRateCreate,
     TaxRateRead,
     TaxRateUpdate,
+    TemplateCatalog,
     TemplateCreate,
+    TemplatePreview,
     TemplateRead,
+    TemplateSource,
     TemplateUpdate,
     UnbilledRead,
     UninvoicedGroupBy,
@@ -190,6 +194,15 @@ async def delete_product(
     await ProductService(ctx).delete(product_id)
 
 
+#: A rendered document is a standalone page: it must not become the frame of another site,
+#: and it has no scripts of its own to allow. The preview iframe sets the same on its side.
+_PREVIEW_HEADERS = {
+    "Content-Security-Policy": "default-src 'none'; img-src data:; style-src 'unsafe-inline'",
+    "X-Frame-Options": "SAMEORIGIN",
+    "Cache-Control": "no-store",
+}
+
+
 # --- templates ------------------------------------------------------------------ #
 @router.get(
     "/templates",
@@ -240,6 +253,66 @@ async def delete_template(
     ctx: RequestContext = Depends(require_context),
 ) -> None:
     await TemplateService(ctx).delete(template_id)
+
+
+@router.get(
+    "/template-blocks",
+    response_model=TemplateCatalog,
+    dependencies=[require_permission("invoicing.settings.manage")],
+)
+async def template_blocks(ctx: RequestContext = Depends(require_context)) -> TemplateCatalog:
+    """What a template may rearrange: the block/field catalog plus the shipped designs.
+
+    Keys only — the editor resolves `invoicing.block.*` / `invoicing.field.*` in the
+    *viewer's* locale, because the API does not pick a locale for someone else's screen
+    (§17's rule). ``can_author`` is here so the editor can hide the HTML/CSS tab rather than
+    offer a control whose save will 403; the API is still the boundary (§15).
+    """
+    return TemplateCatalog(
+        blocks=catalog_payload(),
+        designs=list(BUILTIN_DESIGNS),
+        can_author=ctx.can("invoicing.template.author"),
+    )
+
+
+@router.get(
+    "/template-blocks/{design}/source",
+    response_model=TemplateSource,
+    dependencies=[require_permission("invoicing.template.author")],
+)
+async def template_source(design: str) -> TemplateSource:
+    """A shipped design's own HTML and CSS, to start a custom template from.
+
+    Writing one from a blank page means knowing the whole render context by heart; branching
+    from the design they already like means changing the two things they want changed. These
+    are the same files the shipped design renders from, so what they get is what they saw.
+    """
+    html, css = builtin_source(design)
+    return TemplateSource(html=html, css=css)
+
+
+@router.post(
+    "/templates/preview",
+    response_class=Response,
+    dependencies=[require_permission("invoicing.settings.manage")],
+)
+async def preview_template(
+    payload: TemplatePreview,
+    ctx: RequestContext = Depends(require_context),
+) -> Response:
+    """Render a **sample** document with an unsaved config — the editor's live preview.
+
+    Against a sample rather than a real invoice on purpose: the editor is reached from
+    Settings, where no document is in hand, and a design must be judged on one that exercises
+    every block (two line kinds, a paid amount, a VAT split) rather than on whichever invoice
+    happened to be first. It renders the tenant's real seller identity and branding, because
+    those are what the design has to sit around.
+    """
+    return Response(
+        content=await TemplateService(ctx).preview(payload.config),
+        media_type="text/html; charset=utf-8",
+        headers=_PREVIEW_HEADERS,
+    )
 
 
 # --- accounting seam -------------------------------------------------------------- #
@@ -545,6 +618,49 @@ async def download_quote_pdf(
         content=content,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get(
+    "/invoices/{invoice_id}/preview",
+    response_class=Response,
+    dependencies=[require_permission("invoicing.invoice.read")],
+)
+async def preview_invoice(
+    invoice_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> Response:
+    """The invoice as HTML — **the same artefact** ``/pdf`` prints.
+
+    The detail page and the print route render this in a frame rather than drawing the
+    document a second time in Svelte. That is what makes "the preview and the PDF disagree"
+    unrepresentable, and it is the only way a tenant's own HTML template can be previewed at
+    all: a Svelte component cannot render someone else's Jinja.
+    """
+    service = InvoiceService(ctx)
+    invoice = await service.get(invoice_id)
+    return Response(
+        content=await service.document_html(invoice, "invoice"),
+        media_type="text/html; charset=utf-8",
+        headers=_PREVIEW_HEADERS,
+    )
+
+
+@router.get(
+    "/quotes/{quote_id}/preview",
+    response_class=Response,
+    dependencies=[require_permission("invoicing.quote.read")],
+)
+async def preview_quote(
+    quote_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> Response:
+    service = QuoteService(ctx)
+    quote = await service.get(quote_id)
+    return Response(
+        content=await service.document_html(quote, "quote"),
+        media_type="text/html; charset=utf-8",
+        headers=_PREVIEW_HEADERS,
     )
 
 

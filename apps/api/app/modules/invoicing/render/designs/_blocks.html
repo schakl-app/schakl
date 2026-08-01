@@ -1,0 +1,124 @@
+{#
+  The body blocks both designs draw from.
+
+  A block is a macro, and a design's body is a dispatch over `body_order` — so "move the
+  notes above the totals" is a layout change, not a template change, and a block added here
+  becomes available to every design at once. What a design *does* own is the page furniture
+  the layout has no opinion about: which column the seller sits in, how the header reads.
+#}
+
+{% macro table(columns, sections, grouped, palette) %}
+  <table class="lines">
+    <thead>
+      <tr>
+        {% for column in columns %}
+          <th class="micro col-{{ column.key }} {{ 'right' if column.align == 'right' }}">
+            {{ column.label }}
+          </th>
+        {% endfor %}
+      </tr>
+    </thead>
+    {% for section in sections %}
+      <tbody>
+        {% if grouped %}
+          <tr class="section">
+            <td class="micro accent" colspan="{{ columns | length }}">{{ section.label }}</td>
+          </tr>
+        {% endif %}
+        {% for row in section.rows %}
+          <tr class="line">
+            {% for cell in row.cells %}
+              <td class="col-{{ cell.key }}{{ ' right num' if cell.key not in ('description', 'unit') }}{{ ' muted' if cell.key in ('unit', 'tax') }}">
+                {{ cell.value }}
+              </td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+        {% if grouped %}
+          <tr class="section-total">
+            <td class="right muted" colspan="{{ (columns | length) - 1 }}">
+              {{ section.subtotal_label }}
+            </td>
+            <td class="right num strong">{{ section.subtotal }}</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    {% endfor %}
+  </table>
+{% endmacro %}
+
+{% macro totals_card(totals) %}
+  <div class="totals avoid-break">
+    <table>
+      {% for row in totals %}
+        <tr class="{{ 'strong-row' if row.strong }}">
+          <td class="{{ '' if row.strong else 'muted' }}">{{ row.label }}</td>
+          <td class="right num {{ 'accent' if row.strong }}">{{ row.value }}</td>
+        </tr>
+      {% endfor %}
+    </table>
+  </div>
+{% endmacro %}
+
+{% macro tax_summary(rows, labels) %}
+  <div class="tax-summary avoid-break">
+    <table>
+      <thead>
+        <tr>
+          <th class="micro">{{ labels.rate }}</th>
+          <th class="micro right">{{ labels.base }}</th>
+          <th class="micro right">{{ labels.tax }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            <td class="num">{{ row.rate }}</td>
+            <td class="right num">{{ row.base }}</td>
+            <td class="right num">{{ row.tax }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endmacro %}
+
+{% macro payment_card(entries, title) %}
+  <div class="payment-card avoid-break">
+    <p class="payment-card-title micro">{{ title }}</p>
+    <table>
+      {% for entry in entries %}
+        <tr>
+          <td class="muted">{{ entry.label }}</td>
+          <td class="strong">{{ entry.value }}</td>
+        </tr>
+      {% endfor %}
+    </table>
+  </div>
+{% endmacro %}
+
+{#
+  One body block, by key. Designs call this from their `body_order` loop; a design that wants
+  to draw one of these itself simply omits it from the loop and places it by hand.
+#}
+{% macro block(key, ctx) %}
+  {% if key == 'intro' and ctx.intro %}
+    <p class="intro">{{ ctx.intro | nl2br }}</p>
+  {% elif key == 'payment_box' and ctx.payment_box %}
+    {{ payment_card(ctx.payment_box, ctx.t('invoicing.doc.payment_details')) }}
+  {% elif key == 'lines' %}
+    {{ table(ctx.columns, ctx.sections, ctx.grouped, ctx.palette) }}
+  {% elif key == 'tax_summary' %}
+    {{ tax_summary(ctx.tax_summary, ctx.tax_summary_labels) }}
+  {% elif key == 'totals' %}
+    {{ totals_card(ctx.totals) }}
+  {% elif key == 'reverse_charge' and ctx.has_reverse_charge %}
+    <p class="reverse-charge muted">{{ ctx.reverse_charge_text }}</p>
+  {% elif key == 'notes' and ctx.notes_html %}
+    <div class="notes">{{ ctx.notes_html | safe }}</div>
+  {% elif key == 'payment' and ctx.payment_text %}
+    <p class="payment-note">{{ ctx.payment_text | nl2br }}</p>
+  {% elif key == 'footer' and ctx.footer_text %}
+    <p class="doc-footer muted center">{{ ctx.footer_text | nl2br }}</p>
+  {% endif %}
+{% endmacro %}

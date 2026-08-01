@@ -1,0 +1,23 @@
+{#
+  Letterhead: the shape a Dutch agency invoice usually takes on paper.
+
+  Wordmark top-left and the sender's full identity top-right; the addressee and a boxed
+  "Betaalgegevens" card down the left; the document's own numbers down the right; the lines
+  under a quiet band; and the VAT breakdown beside the totals at the end. Behind all of it,
+  the tenant's mark at a few percent opacity — a background, not a watermark: `CONCEPT` still
+  stamps over the top when the document is a draft.
+
+  Where it differs from `classic` is deliberate. Labels here are words in a two-column grid
+  rather than a right-aligned stack, because this design gives the seller block half the
+  header instead of a corner. The accent is used sparingly — the heading and the amount owed
+  — so a tenant with a loud brand colour still gets a document that reads as paperwork.
+#}
+{% extends "_shell.html" %}
+
+{% block design_css %}
+{% include "letterhead.css" %}
+{% endblock %}
+
+{% block body %}
+{% include "letterhead.body.html" %}
+{% endblock %}

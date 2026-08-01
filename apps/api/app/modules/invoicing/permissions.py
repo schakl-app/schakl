@@ -22,4 +22,10 @@ INVOICING_PERMISSIONS: list[PermissionSpec] = [
     PermissionSpec("invoicing.payment.write", position=90),
     # Tax rates, templates, numbering, reminders, seller identity, accounting.
     PermissionSpec("invoicing.settings.manage", position=100),
+    # Writing a document template's own HTML/CSS. Split from `settings.manage` because it is
+    # a strictly larger act: arranging blocks and picking a colour configures a design we
+    # ship, while authoring Jinja is running code on the agency's own server. It is sandboxed
+    # and fetches nothing (app/modules/invoicing/render/engine.py), but a tenant should still
+    # be able to let an office manager rearrange an invoice without handing them that.
+    PermissionSpec("invoicing.template.author", position=110),
 ]

@@ -18,6 +18,7 @@ The decisions, where they are enforced:
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
@@ -28,7 +29,7 @@ from sqlalchemy import bindparam, func, select, text, tuple_
 
 from app.core.activity import ActivityService
 from app.core.activity.service import snapshot
-from app.core.branding import load_brand_logo
+from app.core.branding import load_brand_logo, load_org_image
 from app.core.customfields import CustomFieldsService
 from app.core.events import emit
 from app.core.models import OrgSettings
@@ -64,6 +65,14 @@ from app.modules.invoicing.models import (
     QuoteStatus,
     TaxRate,
 )
+from app.modules.invoicing.render import (
+    DocumentBrand,
+    render_document_html,
+    render_document_pdf,
+    resolve_layout,
+    validate_custom_source,
+)
+from app.modules.invoicing.sample import sample_document
 from app.modules.invoicing.schemas import (
     DocumentSend,
     InvoiceCreate,
@@ -93,7 +102,7 @@ ENTITY_QUOTE = "quote"
 _AUDITED_INVOICE_FIELDS = (
     "status", "number", "company_id", "contact_id", "issue_date", "due_date", "currency",
     "exchange_rate", "locale", "reference", "template_id", "prices_include_tax",
-    "subtotal", "total", "reminders_paused",
+    "subtotal", "total", "reminders_paused", "delivery_date",
 )
 _AUDITED_QUOTE_FIELDS = (
     "status", "number", "company_id", "contact_id", "issue_date", "valid_until", "currency",
@@ -103,8 +112,10 @@ _AUDITED_QUOTE_FIELDS = (
 
 #: Fields an issued (non-draft) document may still edit: rendering and process, never money.
 _POST_ISSUE_INVOICE_FIELDS = frozenset(
+    # `delivery_date` is a rendering/process fact, not money: correcting the leverdatum on a
+    # sent invoice is exactly the kind of edit this set exists to allow.
     {"contact_id", "reference", "intro", "notes", "template_id", "locale", "due_date",
-     "reminders_paused", "exchange_rate", "custom"}
+     "reminders_paused", "exchange_rate", "custom", "delivery_date"}
 )
 _POST_ISSUE_QUOTE_FIELDS = frozenset(
     {"contact_id", "reference", "intro", "notes", "template_id", "locale", "valid_until",
@@ -153,7 +164,7 @@ _UNINVOICED_GROUP_LABEL = {
 #: Company columns a document snapshot copies (models.Company, issue #11).
 _CUSTOMER_FIELDS = (
     "name", "address_line1", "address_line2", "postal_code", "city", "country",
-    "vat_number", "coc_number",
+    "vat_number", "coc_number", "client_number",
 )
 
 
@@ -266,6 +277,25 @@ async def _ensure_tax_rate(ctx: RequestContext, tax_rate_id: uuid.UUID) -> TaxRa
             fields={"tax_rate_id": "errors.not_found"},
         )
     return rate
+
+
+async def _load_background(
+    ctx: RequestContext, config: dict[str, Any]
+) -> tuple[bytes | None, str | None]:
+    """The template's own background image, if it has one.
+
+    Only its *own*: when the config has no ``file_id``, the renderer falls back to the org
+    logo, which the caller has already loaded. Fetching the same bytes twice for the common
+    case would be one storage read per document for nothing.
+    """
+    raw = config.get("background") or {}
+    if not isinstance(raw, dict) or not raw.get("enabled") or not raw.get("file_id"):
+        return None, None
+    try:
+        file_id = uuid.UUID(str(raw["file_id"]))
+    except (TypeError, ValueError):
+        return None, None
+    return await load_org_image(ctx, file_id, what="document background")
 
 
 async def _ensure_template(ctx: RequestContext, template_id: uuid.UUID) -> None:
@@ -437,6 +467,7 @@ class TemplateService:
         self.ctx.require("invoicing.settings.manage")
         values = data.model_dump(mode="json")
         values["name"] = values["name"].strip()
+        values["config"] = self._vet_config(values.get("config") or {}, previous=None)
         template = await self.repo.create(**values)
         if template.is_default:
             await self._make_sole_default(template)
@@ -448,15 +479,90 @@ class TemplateService:
         values = data.model_dump(mode="json", exclude_unset=True)
         if values.get("name"):
             values["name"] = values["name"].strip()
+        if "config" in values and values["config"] is not None:
+            values["config"] = self._vet_config(values["config"], previous=template.config or {})
         template = await self.repo.update(template, **values)
         if template.is_default:
             await self._make_sole_default(template)
         return template
 
+    def _vet_config(self, config: dict[str, Any], *, previous: dict[str, Any] | None) -> dict:
+        """Authorize, validate and normalise a template config before it is stored.
+
+        Three things happen here rather than in the schema, because each needs the caller or
+        the row and a Pydantic validator has neither:
+
+        * **Authoring code is its own permission.** ``invoicing.settings.manage`` lets an
+          admin arrange blocks and pick colours; writing Jinja that runs on the agency's
+          server is a strictly larger act, so ``html``/``css`` need
+          ``invoicing.template.author``. Unchanged values pass — otherwise an admin without
+          the permission could not rename a template that happens to have custom HTML, and
+          would have to delete it to edit it (§17's grandfathering rule, applied to authoring).
+        * **A template that cannot render is refused at save.** A Jinja syntax error found
+          now is a red field under the editor; found at send time it is an invoice that will
+          not go out, discovered by whoever was trying to send it.
+        * **The legacy knobs are rewritten from the layout.** ``show_logo`` and ``columns``
+          predate layouts and are still what an un-laid-out template renders from; deriving
+          them here is what keeps the two from ever disagreeing.
+        """
+        previous = previous or {}
+        for key in ("html", "css"):
+            new, old = config.get(key), previous.get(key)
+            if (new or "") != (old or "") and (new or "").strip():
+                self.ctx.require("invoicing.template.author")
+        validate_custom_source(config.get("html"), config.get("css"))
+
+        layout = config.get("layout") or []
+        if layout:
+            resolved = resolve_layout(layout)
+            config["show_logo"] = resolved.enabled("logo")
+            config["columns"] = {
+                key: resolved.shows("lines", key)
+                for key in ("quantity", "unit", "unit_price", "tax")
+            }
+        return config
+
     async def delete(self, template_id: uuid.UUID) -> None:
         self.ctx.require("invoicing.settings.manage")
         template = await self.repo.get_or_404(template_id)
         await self.repo.delete(template)
+
+    async def preview(self, config: Any) -> str:
+        """A sample document rendered with an **unsaved** config — the editor's live preview.
+
+        Unsaved is the whole point: the author is judging a change before committing to it.
+        So this goes through the same authorization the save does (writing Jinja that runs on
+        the server needs ``invoicing.template.author``, whether or not it is stored) and the
+        same render path, and it never touches a real document.
+        """
+        self.ctx.require("invoicing.settings.manage")
+        values = config.model_dump(mode="json") if hasattr(config, "model_dump") else dict(config)
+        self._vet_config(values, previous=None)
+
+        settings_row = await InvoicingSettingsService(self.ctx).row()
+        org_settings = await self.ctx.session.scalar(
+            select(OrgSettings).where(OrgSettings.org_id == self.ctx.org.id)
+        )
+        currency, locale = await _org_defaults(self.ctx)
+        doc, lines, groups = sample_document(locale, currency, await org_today(self.ctx))
+        logo, logo_type = await load_brand_logo(self.ctx, org_settings)
+        background, background_type = await _load_background(self.ctx, values)
+        return render_document_html(
+            kind="invoice",
+            doc=doc,
+            lines=lines,
+            seller=settings_row.company_details or {},
+            config=values,
+            brand=DocumentBrand(
+                name=(org_settings.brand_name if org_settings else None) or self.ctx.org.name,
+                primary_color=org_settings.primary_color if org_settings else None,
+                logo=logo,
+                logo_content_type=logo_type,
+                background=background,
+                background_content_type=background_type,
+            ),
+            tax_groups=groups,
+        )
 
     async def _make_sole_default(self, template: DocumentTemplate) -> None:
         others = await self.ctx.session.scalars(
@@ -477,7 +583,7 @@ async def _company_row(ctx: Any, company_id: uuid.UUID) -> Any:
         await ctx.session.execute(
             text(
                 "SELECT id, name, invoice_email, vat_number, coc_number, address_line1,"
-                " house_number, address_line2, postal_code, city, country"
+                " house_number, address_line2, postal_code, city, country, client_number"
                 " FROM companies WHERE id = :cid AND org_id = :oid"
             ),
             {"cid": company_id, "oid": ctx.org.id},
@@ -488,10 +594,19 @@ async def _company_row(ctx: Any, company_id: uuid.UUID) -> Any:
     return row
 
 
-async def _contact_email(ctx: Any, contact_id: uuid.UUID) -> str | None:
+async def _contact_party(ctx: Any, contact_id: uuid.UUID) -> tuple[str | None, str | None]:
+    """``(email, display name)`` of a contact, tenant-scoped.
+
+    The name is what a document prints as *t.a.v.* — snapshotted onto the invoice like every
+    other addressee field (#64's rule), so a contact who later leaves the client does not
+    rewrite the invoice that was sent to them.
+    """
     row = (
         await ctx.session.execute(
-            text("SELECT id, email FROM contacts WHERE id = :cid AND org_id = :oid"),
+            text(
+                "SELECT id, email, first_name, last_name FROM contacts"
+                " WHERE id = :cid AND org_id = :oid"
+            ),
             {"cid": contact_id, "oid": ctx.org.id},
         )
     ).mappings().first()
@@ -500,13 +615,19 @@ async def _contact_email(ctx: Any, contact_id: uuid.UUID) -> str | None:
             "validation", "errors.validation", status_code=400,
             fields={"contact_id": "errors.not_found"},
         )
-    return row["email"]
+    name = " ".join(part for part in (row["first_name"], row["last_name"]) if part)
+    return row["email"], (name or None)
 
 
-def _customer_snapshot(company: Any, *, email: str | None) -> dict[str, Any]:
+def _customer_snapshot(
+    company: Any, *, email: str | None, attn: str | None = None
+) -> dict[str, Any]:
     data = {field: company[field] for field in _CUSTOMER_FIELDS}
     data["address_line1"] = street_line(company["address_line1"], company["house_number"])
     data["email"] = email or company["invoice_email"]
+    # The contact the document is addressed to. Frozen here with the rest of the addressee,
+    # so a template that prints it prints who it was actually sent to.
+    data["attn"] = attn
     return data
 
 
@@ -610,19 +731,15 @@ class _DocumentService:
         self.settings = InvoicingSettingsService(ctx)
         self.custom_fields = CustomFieldsService(ctx)
 
-    async def document_pdf(self, doc: Any, kind: str) -> tuple[bytes, str]:
-        """Render this document as PDF bytes + a filename (owner feedback: the API, not the
-        browser's print dialog, is where an invoice document comes from). ``doc`` must have
-        its lines attached (``get()`` does).
+    async def _render_inputs(self, doc: Any, kind: str) -> dict[str, Any]:
+        """Everything the renderer needs, resolved here rather than there.
 
-        Everything white-label the renderer prints is resolved here — logo bytes, brand
-        colour, brand name — because ``pdf.py`` may not own a default identity of its own
-        (Golden Rule 4). The template resolves exactly as ``DocumentView`` resolves it: the
-        document's own, and nothing implied when it has none, so the paper a client receives
-        and the preview on screen can never be two different designs.
+        White-label identity — logo bytes, brand colour, brand name — is loaded at this
+        boundary because ``render/`` may not own a default identity of its own (Golden Rule
+        4). The template resolves as the document's own and nothing implied when it has none,
+        so the paper a client receives and the preview on screen are the same design; they
+        are in fact the same HTML.
         """
-        from app.modules.invoicing.pdf import DocumentBrand, render_document_pdf
-
         settings_row = await self.settings.row()
         config: dict[str, Any] = {}
         if doc.template_id is not None:
@@ -637,22 +754,43 @@ class _DocumentService:
             select(OrgSettings).where(OrgSettings.org_id == self.ctx.org.id)
         )
         logo, logo_type = await load_brand_logo(self.ctx, org_settings)
-        content = render_document_pdf(
-            kind=kind,
-            doc=doc,
-            lines=list(doc.lines),
-            seller=settings_row.company_details or {},
-            config=config,
-            brand=DocumentBrand(
+        background, background_type = await _load_background(self.ctx, config)
+        return {
+            "kind": kind,
+            "doc": doc,
+            "lines": list(doc.lines),
+            "seller": settings_row.company_details or {},
+            "config": config,
+            "brand": DocumentBrand(
                 name=(org_settings.brand_name if org_settings else None) or self.ctx.org.name,
                 primary_color=org_settings.primary_color if org_settings else None,
                 logo=logo,
                 logo_content_type=logo_type,
+                background=background,
+                background_content_type=background_type,
             ),
-            tax_groups=_totals_from_rows(
+            "tax_groups": _totals_from_rows(
                 list(doc.lines), prices_include_tax=doc.prices_include_tax
             ).groups,
-        )
+        }
+
+    async def document_html(self, doc: Any, kind: str) -> str:
+        """The document as a standalone HTML page — what the preview shows.
+
+        The *same* artefact :meth:`document_pdf` prints, which is the point: there is no
+        second renderer to keep in step. ``doc`` must have its lines attached (``get()`` does).
+        """
+        return render_document_html(**await self._render_inputs(doc, kind))
+
+    async def document_pdf(self, doc: Any, kind: str) -> tuple[bytes, str]:
+        """The same document, printed. Returns the bytes and a filename.
+
+        Printing is CPU-bound and blocking, so it runs in a thread — the rule the storage
+        routes follow (#190). A long invoice would otherwise stall every other request on the
+        worker for the duration of the layout.
+        """
+        inputs = await self._render_inputs(doc, kind)
+        content = await asyncio.to_thread(lambda: render_document_pdf(**inputs))
         prefix = "offerte" if kind == "quote" else "factuur"
         return content, f"{doc.number or f'{prefix}-{doc.id}'}.pdf"
 
@@ -840,8 +978,10 @@ class InvoiceService(_DocumentService):
     async def create(self, data: InvoiceCreate) -> Invoice:
         self.ctx.require("invoicing.invoice.write")
         company = await _company_row(self.ctx, data.company_id)
-        contact_email = (
-            await _contact_email(self.ctx, data.contact_id) if data.contact_id else None
+        contact_email, contact_name = (
+            await _contact_party(self.ctx, data.contact_id)
+            if data.contact_id
+            else (None, None)
         )
         if data.template_id is not None:
             await _ensure_template(self.ctx, data.template_id)
@@ -862,7 +1002,7 @@ class InvoiceService(_DocumentService):
             company_id=data.company_id,
             contact_id=data.contact_id,
             kind=data.kind.value,
-            customer=_customer_snapshot(company, email=contact_email),
+            customer=_customer_snapshot(company, email=contact_email, attn=contact_name),
             currency=(data.currency or currency).upper(),
             exchange_rate=data.exchange_rate,
             locale=doc_locale,
@@ -873,6 +1013,7 @@ class InvoiceService(_DocumentService):
             template_id=data.template_id or settings_row.default_template_id,
             issue_date=data.issue_date,
             due_date=data.due_date,
+            delivery_date=data.delivery_date,
             prices_include_tax=include_tax,
             custom=custom,
         )
@@ -901,7 +1042,7 @@ class InvoiceService(_DocumentService):
 
         values: dict[str, Any] = {}
         for field in (
-            "reference", "intro", "notes", "issue_date", "due_date",
+            "reference", "intro", "notes", "issue_date", "due_date", "delivery_date",
             "exchange_rate", "reminders_paused",
         ):
             if field in sent:
@@ -916,9 +1057,10 @@ class InvoiceService(_DocumentService):
             values["prices_include_tax"] = data.prices_include_tax
         if "contact_id" in sent:
             if data.contact_id is not None:
-                email = await _contact_email(self.ctx, data.contact_id)
+                email, name = await _contact_party(self.ctx, data.contact_id)
                 customer = dict(invoice.customer)
                 customer["email"] = email or customer.get("email")
+                customer["attn"] = name
                 values["customer"] = customer
             values["contact_id"] = data.contact_id
         if "template_id" in sent:
@@ -980,7 +1122,8 @@ class InvoiceService(_DocumentService):
         )
         # Freeze the bill-to at the moment the document becomes real.
         company = await _company_row(self.ctx, invoice.company_id)
-        email = invoice.customer.get("email") if invoice.customer else None
+        snapshot = invoice.customer or {}
+        email, attn = snapshot.get("email"), snapshot.get("attn")
         number = await self.settings.allocate_number("invoice")
         invoice = await self.repo.update(
             invoice,
@@ -988,7 +1131,7 @@ class InvoiceService(_DocumentService):
             status=InvoiceStatus.OPEN.value,
             issue_date=issue_date,
             due_date=due_date,
-            customer=_customer_snapshot(company, email=email),
+            customer=_customer_snapshot(company, email=email, attn=attn),
         )
         await ActivityService(self.ctx).record(
             self.entity_type, invoice.id, "issued", {"number": number}
@@ -1910,8 +2053,10 @@ class QuoteService(_DocumentService):
     async def create(self, data: QuoteCreate) -> Quote:
         self.ctx.require("invoicing.quote.write")
         company = await _company_row(self.ctx, data.company_id)
-        contact_email = (
-            await _contact_email(self.ctx, data.contact_id) if data.contact_id else None
+        contact_email, contact_name = (
+            await _contact_party(self.ctx, data.contact_id)
+            if data.contact_id
+            else (None, None)
         )
         if data.template_id is not None:
             await _ensure_template(self.ctx, data.template_id)
@@ -1931,7 +2076,7 @@ class QuoteService(_DocumentService):
         quote = await self.repo.create(
             company_id=data.company_id,
             contact_id=data.contact_id,
-            customer=_customer_snapshot(company, email=contact_email),
+            customer=_customer_snapshot(company, email=contact_email, attn=contact_name),
             currency=(data.currency or currency).upper(),
             exchange_rate=data.exchange_rate,
             locale=doc_locale,
@@ -1977,9 +2122,10 @@ class QuoteService(_DocumentService):
             values["prices_include_tax"] = data.prices_include_tax
         if "contact_id" in sent:
             if data.contact_id is not None:
-                email = await _contact_email(self.ctx, data.contact_id)
+                email, name = await _contact_party(self.ctx, data.contact_id)
                 customer = dict(quote.customer)
                 customer["email"] = email or customer.get("email")
+                customer["attn"] = name
                 values["customer"] = customer
             values["contact_id"] = data.contact_id
         if "template_id" in sent:
@@ -2033,7 +2179,8 @@ class QuoteService(_DocumentService):
             issue_date + timedelta(days=settings_row.quote_valid_days)
         )
         company = await _company_row(self.ctx, quote.company_id)
-        email = quote.customer.get("email") if quote.customer else None
+        snapshot = quote.customer or {}
+        email, attn = snapshot.get("email"), snapshot.get("attn")
         number = await self.settings.allocate_number("quote")
         quote = await self.repo.update(
             quote,
@@ -2041,7 +2188,7 @@ class QuoteService(_DocumentService):
             status=QuoteStatus.OPEN.value,
             issue_date=issue_date,
             valid_until=valid_until,
-            customer=_customer_snapshot(company, email=email),
+            customer=_customer_snapshot(company, email=email, attn=attn),
         )
         await ActivityService(self.ctx).record(
             self.entity_type, quote.id, "issued", {"number": number}
