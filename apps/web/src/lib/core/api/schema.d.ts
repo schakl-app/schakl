@@ -18150,6 +18150,8 @@ export interface components {
          */
         TemplatePreview: {
             config: components["schemas"]["TemplateConfig"];
+            /** Template Id */
+            template_id?: string | null;
         };
         /**
          * TemplateSource

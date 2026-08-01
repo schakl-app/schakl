@@ -466,3 +466,45 @@ async def test_authoring_html_needs_its_own_permission(client_for) -> None:
             headers=headers,
         )
         assert renamed.status_code == 200, renamed.text
+
+
+async def test_rendering_costs_a_fixed_number_of_queries_however_many_lines(
+    client_for, count_queries
+) -> None:
+    """Rendering is per-document work, so its query count must not follow the line count.
+
+    The shape this pins is invisible in the output: a design that reached for a tax rate or a
+    product row per line would render an identical document and cost one query per line, and
+    only a three-hundred-line invoice would ever show it (docs/PERFORMANCE.md).
+    """
+    tenant: Tenant = await make_tenant("render-budget")
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as client:
+        company = await client.post(
+            "/api/v1/companies", json={"name": "Klant BV"}, headers=headers
+        )
+
+        async def render(line_count: int) -> int:
+            created = await client.post(
+                "/api/v1/invoicing/invoices",
+                json={
+                    "company_id": company.json()["id"],
+                    "lines": [
+                        {"description": f"Regel {i}", "quantity": "1", "unit_price": "10"}
+                        for i in range(line_count)
+                    ],
+                },
+                headers=headers,
+            )
+            invoice_id = created.json()["id"]
+            with count_queries() as counter:
+                resp = await client.get(
+                    f"/api/v1/invoicing/invoices/{invoice_id}/preview", headers=headers
+                )
+            assert resp.status_code == 200
+            assert f"Regel {line_count - 1}" in resp.text
+            return len(counter.statements)
+
+        two_lines = await render(2)
+        forty_lines = await render(40)
+        assert forty_lines == two_lines, "the render must not pay per line"

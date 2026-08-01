@@ -25,10 +25,14 @@
     config = $bindable(),
     catalog,
     canAuthor = false,
+    templateId = null,
   }: {
     config: TemplateConfig;
     catalog: BlockSpec[];
     canAuthor?: boolean;
+    /** The template being edited, if it is saved. Lets the preview treat its *stored* code
+     *  as the baseline, so redrawing a custom design needs no authoring permission. */
+    templateId?: string | null;
   } = $props();
 
   type Tab = "design" | "layout" | "texts" | "source";
@@ -159,20 +163,46 @@
 
   // --- source ----------------------------------------------------------------------- #
   let sourceFrom = $state<"classic" | "letterhead">("classic");
-  async function loadSource() {
-    if ((config.html ?? "").trim() && !confirm(t("settings.invoicing.source_overwrite_confirm")))
+  async function loadSource(design = sourceFrom, { confirmFirst = true } = {}) {
+    if (
+      confirmFirst &&
+      (config.html ?? "").trim() &&
+      !confirm(t("settings.invoicing.source_overwrite_confirm"))
+    )
       return;
-    const res = await fetch(`/settings/invoicing/source?design=${sourceFrom}`);
+    const res = await fetch(`/settings/invoicing/source?design=${design}`);
     if (!res.ok) return;
     const body = (await res.json()) as { html: string; css: string };
     config = { ...config, html: body.html, css: body.css, design: "custom" };
+  }
+
+  /**
+   * Picking "Custom HTML" with nothing written yet starts from the design already selected.
+   *
+   * An empty custom template is refused by the API (it would print a blank page), so without
+   * this the radio button puts the editor into a state whose only feedback is the preview
+   * failing — and the fix, on a tab they may not have opened, is not discoverable.
+   */
+  async function chooseDesign(design: TemplateConfig["design"]) {
+    if (design !== "custom") {
+      config = { ...config, design };
+      return;
+    }
+    const from = config.design === "letterhead" ? "letterhead" : "classic";
+    sourceFrom = from;
+    if ((config.html ?? "").trim()) {
+      config = { ...config, design };
+      return;
+    }
+    await loadSource(from, { confirmFirst: false });
+    tab = "source";
   }
 
   // --- live preview ------------------------------------------------------------------ #
   let previewHtml = $state("");
   let previewBusy = $state(false);
   let previewError = $state("");
-  const serialized = $derived(JSON.stringify(config));
+  const serialized = $derived(JSON.stringify({ config, template_id: templateId }));
 
   $effect(() => {
     // Debounced rather than per-keystroke: this renders a real document server-side, and a
@@ -243,7 +273,7 @@
                   name="design"
                   value={design}
                   checked={config.design === design}
-                  onchange={() => (config = { ...config, design })}
+                  onchange={() => chooseDesign(design)}
                   class="border-border"
                 />
                 {t(`settings.invoicing.design.${design}`)}
@@ -485,7 +515,7 @@
         <button
           type="button"
           class="rounded-lg border border-border px-3 py-2 text-sm text-text hover:bg-surface"
-          onclick={loadSource}>{t("settings.invoicing.source_load")}</button
+          onclick={() => loadSource()}>{t("settings.invoicing.source_load")}</button
         >
       </div>
       <div>

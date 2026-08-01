@@ -770,6 +770,7 @@
       bind:config={tplConfig}
       catalog={data.blockCatalog}
       canAuthor={data.canAuthorTemplates}
+      templateId={editingTemplate?.id ?? null}
     />
 
     {#if form?.error}

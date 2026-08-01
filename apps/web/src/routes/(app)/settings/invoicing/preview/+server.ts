@@ -13,13 +13,10 @@ import type { RequestEvent } from "./$types";
  * `invoicing.template.author` gets for sending HTML.
  */
 export const POST = async (event: RequestEvent) => {
-  const config = await event.request.json();
+  const body = await event.request.json();
   const { data, error, response } = await apiFor(event).POST(
     "/api/v1/invoicing/templates/preview",
-    {
-      body: { config },
-      parseAs: "text",
-    },
+    { body, parseAs: "text" },
   );
   if (error || data == null) {
     // The render errors the author needs to see (a Jinja syntax error) come back as a 422

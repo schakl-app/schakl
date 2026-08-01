@@ -527,17 +527,27 @@ class TemplateService:
         template = await self.repo.get_or_404(template_id)
         await self.repo.delete(template)
 
-    async def preview(self, config: Any) -> str:
+    async def preview(self, config: Any, template_id: uuid.UUID | None = None) -> str:
         """A sample document rendered with an **unsaved** config — the editor's live preview.
 
-        Unsaved is the whole point: the author is judging a change before committing to it.
-        So this goes through the same authorization the save does (writing Jinja that runs on
-        the server needs ``invoicing.template.author``, whether or not it is stored) and the
-        same render path, and it never touches a real document.
+        Unsaved is the whole point: the author is judging a change before committing to it. So
+        it goes through the same authorization the save does — writing Jinja that runs on the
+        server needs ``invoicing.template.author`` whether or not the result is stored — and
+        the same render path. It never touches a real document.
         """
         self.ctx.require("invoicing.settings.manage")
         values = config.model_dump(mode="json") if hasattr(config, "model_dump") else dict(config)
-        self._vet_config(values, previous=None)
+        # The saved template is the baseline, so an admin who holds `settings.manage` but not
+        # `template.author` can still *see* a custom design they are allowed to open — they
+        # just cannot change its code. Absent an id every non-empty body reads as newly
+        # written, which is the safe way round.
+        previous: dict[str, Any] | None = None
+        if template_id is not None:
+            stored = await self.ctx.session.scalar(
+                self.repo.scoped_select().where(DocumentTemplate.id == template_id)
+            )
+            previous = (stored.config or {}) if stored is not None else None
+        self._vet_config(values, previous=previous)
 
         settings_row = await InvoicingSettingsService(self.ctx).row()
         org_settings = await self.ctx.session.scalar(

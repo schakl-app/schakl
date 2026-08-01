@@ -313,7 +313,7 @@ async def preview_template(
     those are what the design has to sit around.
     """
     return Response(
-        content=await TemplateService(ctx).preview(payload.config),
+        content=await TemplateService(ctx).preview(payload.config, payload.template_id),
         media_type="text/html; charset=utf-8",
         headers=_PREVIEW_HEADERS,
     )

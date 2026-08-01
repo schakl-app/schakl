@@ -359,6 +359,10 @@ class TemplatePreview(BaseModel):
     """Render a sample document with a config that has not been saved."""
 
     config: TemplateConfig
+    #: The template being edited, when there is one. It supplies the *stored* source as the
+    #: baseline for the authoring check, so redrawing a saved custom template needs no
+    #: `invoicing.template.author` — only changing its code does.
+    template_id: uuid.UUID | None = None
 
 
 # --------------------------------------------------------------------------- #
