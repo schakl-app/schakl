@@ -107,6 +107,7 @@ def test_paid_module_set_is_pinned() -> None:
     }
     assert module_skus == {
         "automation": "automation",
+        "cloudflare": "cloudflare",
         "domains": "domains",
         "google": "google",
         "hosting": "hosting",

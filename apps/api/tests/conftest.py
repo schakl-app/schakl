@@ -67,6 +67,8 @@ _DOMAIN_TABLES = (
     "interactions, interaction_kinds, "
     "calendar_event_links, google_calendar_events, google_calendar_channels, "
     "drive_links, drive_folder_jobs, gmail_suppressions, google_connections, google_settings, "
+    "cloudflare_pages_links, cloudflare_pages_projects, cloudflare_redirects, "
+    "cloudflare_zones, cloudflare_accounts, "
     "websites, hosting, domain_tld_prices, domains, providers, "
     "time_entry_drafts, time_entries, time_entry_types, tasks, projects, contacts, contact_types, "
     "custom_field_definitions, "
@@ -82,7 +84,7 @@ _ENABLED_MODULES = [
     "hr",
     "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
     "domains", "hosting", "websites", "subscriptions", "invoicing", "automation",
-    "interactions", "google", "marketing",
+    "interactions", "google", "marketing", "cloudflare",
 ]
 
 
