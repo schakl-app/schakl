@@ -292,6 +292,8 @@ class CommentRead(BaseModel):
     # rather than dropping their name.
     author_name: str | None = None
     author_deleted: bool = False
+    #: Set when the comment was written by someone signed in *as* the author (#296).
+    impersonator_name: str | None = None
     body: str
     # Users @mentioned in the body (issue #63), extracted from the markers on write.
     mentioned_user_ids: list[uuid.UUID] = Field(default_factory=list)
@@ -312,6 +314,9 @@ class ActivityRead(BaseModel):
     # A named actor with no live account is a deleted user; an unnamed one is the system
     # (the recurrence cron). Without this the two collapse into each other (issue #64).
     actor_deleted: bool = False
+    #: Set when someone was signed in *as* the actor at the time (#296) — the line then reads
+    #: "the client (via Jan)". ``None`` on every ordinary row.
+    impersonator_name: str | None = None
     action: str
     payload: dict[str, Any]
     created_at: datetime

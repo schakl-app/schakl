@@ -4,12 +4,16 @@ import { error, fail, redirect } from "@sveltejs/kit";
 
 import { parseAssignees } from "$lib/core/assignees";
 import { apiErrorKey } from "$lib/core/errors";
+import { IMPERSONATION_COOKIE, PORTAL_RETURN_COOKIE } from "$lib/core/impersonation";
 import { can } from "$lib/core/permissions";
 import { entityPanelsFor } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
 import { interactionActions } from "$lib/modules/interactions/actions.server";
 
 import type { Actions, PageServerLoad } from "./$types";
+
+/** How long a "sign in as this contact" session lasts. The API clamps it to its own maximum. */
+const PORTAL_IMPERSONATION_MINUTES = 30;
 
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
@@ -23,6 +27,9 @@ export const load: PageServerLoad = async (event) => {
 
   // Portal state (#193): manager-only (managing logins is member management), one call.
   const canPortal = can(event.locals.user, "members.member.write");
+  // Signing in as them is its own capability (#296), and never implied by managing the login.
+  // The API is the boundary; this only decides whether the affordance renders.
+  const canImpersonate = can(event.locals.user, "contacts.portal.impersonate");
   // The contact custom fields, the company ones and the client picker all come from the section
   // layout now (#290) — they do not change between contacts, so refetching them per row click
   // was three round-trips per navigation for identical answers. The member lookup stays: the
@@ -42,6 +49,7 @@ export const load: PageServerLoad = async (event) => {
     members: members.data ?? [],
     portal: portal.data ?? null,
     canPortal,
+    canImpersonate,
     context,
     panels: panels.map((panel, index) => ({
       key: panel.key,
@@ -156,11 +164,11 @@ export const actions: Actions = {
 
   // Client portal (#193): enable (invite), resend, disable — the API is the boundary.
   portalEnable: async (event) => {
-    const { data, error: err } = await apiFor(event).POST(
-      "/api/v1/contacts/{contact_id}/portal",
-      { params: { path: { contact_id: event.params.id } } },
-    );
-    if (err) return fail(400, { portalError: apiErrorKey(err).fields?.email ?? apiErrorKey(err).key });
+    const { data, error: err } = await apiFor(event).POST("/api/v1/contacts/{contact_id}/portal", {
+      params: { path: { contact_id: event.params.id } },
+    });
+    if (err)
+      return fail(400, { portalError: apiErrorKey(err).fields?.email ?? apiErrorKey(err).key });
     return { portalSaved: true, portalEmail: data?.invite_email_sent ?? null };
   },
 
@@ -174,12 +182,43 @@ export const actions: Actions = {
   },
 
   portalDisable: async (event) => {
-    const { error: err } = await apiFor(event).DELETE(
-      "/api/v1/contacts/{contact_id}/portal",
-      { params: { path: { contact_id: event.params.id } } },
-    );
+    const { error: err } = await apiFor(event).DELETE("/api/v1/contacts/{contact_id}/portal", {
+      params: { path: { contact_id: event.params.id } },
+    });
     if (err) return fail(400, { portalError: apiErrorKey(err).key });
     return { portalSaved: true };
+  },
+
+  // Sign in as this contact (#296). The grant cookie sits *beside* the staff session — the API
+  // swaps only the effective user, so stopping puts the staff member straight back. The return
+  // path is stored with it so "Stoppen" lands on this contact instead of the dashboard.
+  portalImpersonate: async (event) => {
+    const { data, error: err } = await apiFor(event).POST(
+      "/api/v1/contacts/{contact_id}/portal/impersonate",
+      {
+        params: { path: { contact_id: event.params.id } },
+        body: { minutes: PORTAL_IMPERSONATION_MINUTES },
+      },
+    );
+    if (err || !data) {
+      return fail(400, { portalError: err ? apiErrorKey(err).key : "errors.server" });
+    }
+    // The API clamps the window; mirror what it actually granted rather than what we asked for.
+    const maxAge = Math.max(
+      1,
+      Math.floor((new Date(data.expires_at).getTime() - Date.now()) / 1000),
+    );
+    const options = {
+      path: "/",
+      httpOnly: true,
+      sameSite: "lax",
+      secure: event.url.protocol === "https:",
+      maxAge,
+    } as const;
+    event.cookies.set(IMPERSONATION_COOKIE, data.token, options);
+    event.cookies.set(PORTAL_RETURN_COOKIE, `/contacts/${event.params.id}`, options);
+    // Home, because that is the portal's own landing page — the point is to see what they see.
+    throw redirect(303, "/");
   },
 
   // Contactmomenten panel contract (lib/modules/interactions).

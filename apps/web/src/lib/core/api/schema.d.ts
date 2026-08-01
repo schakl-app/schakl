@@ -1305,6 +1305,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/contacts/portal/impersonation/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop Portal Impersonation */
+        post: operations["stop_portal_impersonation_api_v1_contacts_portal_impersonation_stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/contacts/types": {
         parameters: {
             query?: never;
@@ -1409,6 +1426,26 @@ export interface paths {
         post: operations["enable_portal_api_v1_contacts__contact_id__portal_post"];
         /** Disable Portal */
         delete: operations["disable_portal_api_v1_contacts__contact_id__portal_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/contacts/{contact_id}/portal/impersonate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impersonate Portal Login
+         * @description Sign in as this contact's portal login, time-boxed and on the contact's trail (#296).
+         */
+        post: operations["impersonate_portal_login_api_v1_contacts__contact_id__portal_impersonate_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -7379,6 +7416,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Impersonator Name */
+            impersonator_name?: string | null;
             /** Payload */
             payload: {
                 [key: string]: unknown;
@@ -8581,6 +8620,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Impersonator Name */
+            impersonator_name?: string | null;
             /** Mentioned Contact Ids */
             mentioned_contact_ids?: string[];
             /** Mentioned Task Ids */
@@ -12925,6 +12966,8 @@ export interface components {
             impersonated_by?: string | null;
             /** Impersonation Expires At */
             impersonation_expires_at?: string | null;
+            /** Impersonation Kind */
+            impersonation_kind?: string | null;
             /**
              * Is Instance Admin
              * @default false
@@ -13871,6 +13914,30 @@ export interface components {
             trial_days?: number | null;
             /** Trial Ends At */
             trial_ends_at?: string | null;
+        };
+        /** PortalImpersonateRequest */
+        PortalImpersonateRequest: {
+            /**
+             * Minutes
+             * @default 30
+             */
+            minutes: number;
+        };
+        /** PortalImpersonateResponse */
+        PortalImpersonateResponse: {
+            /** Cookie */
+            cookie: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Target Email */
+            target_email: string;
+            /** Target Name */
+            target_name?: string | null;
+            /** Token */
+            token: string;
         };
         /** PortalState */
         PortalState: {
@@ -18202,6 +18269,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Impersonator Name */
+            impersonator_name?: string | null;
             /** Payload */
             payload?: {
                 [key: string]: unknown;
@@ -21336,6 +21405,24 @@ export interface operations {
             };
         };
     };
+    stop_portal_impersonation_api_v1_contacts_portal_impersonation_stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     list_contact_types_api_v1_contacts_types_get: {
         parameters: {
             query?: {
@@ -21740,6 +21827,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PortalState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impersonate_portal_login_api_v1_contacts__contact_id__portal_impersonate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortalImpersonateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalImpersonateResponse"];
                 };
             };
             /** @description Validation Error */

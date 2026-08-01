@@ -38,5 +38,24 @@ class PermissionSet:
         # scope is None (a route's floor) or "own": a broad grant satisfies a narrow ask.
         return f"{key}:{SCOPE_OWN}" in granted or f"{key}:{SCOPE_ANY}" in granted
 
+    def covers(self, other: PermissionSet) -> bool:
+        """Does this set hold everything ``other`` holds, at least as broadly?
+
+        The one question impersonation has to answer before it hands someone another account
+        (#296): entering a login must never *gain* the impersonator a capability. Roles are
+        tenant-editable, so "the target is only a client" is not a bound on what the client role
+        was granted — this is. A wildcard holder covers everything; nothing but a wildcard
+        covers a wildcard.
+        """
+        if self.wildcard:
+            return True
+        if other.wildcard:
+            return False
+        for stored in other.granted:
+            key, _, scope = stored.partition(":")
+            if not self.has(key, scope or None):
+                return False
+        return True
+
     def keys(self) -> list[str]:
         return sorted(self.granted)

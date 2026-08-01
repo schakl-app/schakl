@@ -188,9 +188,7 @@
       editContactsFor = companyId;
     })();
   });
-  const assigneeContacts = $derived(
-    fCompany && editContactsFor === fCompany ? editContacts : [],
-  );
+  const assigneeContacts = $derived(fCompany && editContactsFor === fCompany ? editContacts : []);
   const contactName = (id?: string | null) =>
     id ? (assigneeContacts.find((c) => c.id === id)?.name ?? null) : null;
 
@@ -931,7 +929,21 @@
             {@const canDeleteComment = canEditComment || canDeleteAnyComment}
             <li id="comment-{comment.id}" class="rounded-lg border border-border bg-surface/50 p-3">
               <div class="mb-1 flex items-center justify-between gap-2">
-                <span class="text-xs font-semibold text-text">{authorLabel(comment)}</span>
+                <span class="flex items-center gap-1.5 text-xs font-semibold text-text">
+                  {authorLabel(comment)}
+                  <!-- Written through this account by someone else (#296): the agency's own words
+                       would otherwise sit under the client's name with nothing to say so. -->
+                  {#if comment.impersonator_name}
+                    <span
+                      class="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-300"
+                      title={t("activity.impersonated_title", {
+                        actor: comment.impersonator_name,
+                      })}
+                    >
+                      {t("activity.via_impersonator", { actor: comment.impersonator_name })}
+                    </span>
+                  {/if}
+                </span>
                 <div class="flex items-center gap-1 text-[11px] text-text-muted">
                   <span>{when(comment.created_at)}</span>
                   {#if comment.edited_at}<span>({t("tasks.comments.edited")})</span>{/if}
@@ -1032,6 +1044,18 @@
                 >
                 <span class="text-text">
                   <span class="font-medium">{actorLabel(activity)}</span>
+                  <!-- Someone was signed in as them (#296) — a client's comment written by the
+                       agency reads as the client's until this says otherwise. -->
+                  {#if activity.impersonator_name}
+                    <span
+                      class="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-300"
+                      title={t("activity.impersonated_title", {
+                        actor: activity.impersonator_name,
+                      })}
+                    >
+                      {t("activity.via_impersonator", { actor: activity.impersonator_name })}
+                    </span>
+                  {/if}
                   {#if href}
                     <a class="hover:text-brand hover:underline" {href}>{activityText(activity)}</a>
                   {:else}

@@ -23,6 +23,9 @@ async def on_file_event(ctx: EmitContext, payload: dict[str, Any]) -> None:
         raise AppError("not_found", "errors.not_found", status_code=404)
     action = "attachment_added" if payload["action"] == "attached" else "attachment_deleted"
     actor = ctx.user
+    # An attachment can be added through an impersonated session too (#296); ``getattr`` because
+    # a ``SystemContext`` has no such field.
+    impersonator = getattr(ctx, "impersonated_by", None)
     ctx.session.add(
         TaskActivity(
             org_id=ctx.org.id,
@@ -30,6 +33,10 @@ async def on_file_event(ctx: EmitContext, payload: dict[str, Any]) -> None:
             actor_user_id=actor.id if actor else None,
             # Snapshotted, so deleting the account doesn't hand this line to "System" (#64).
             actor_name=(actor.full_name or actor.email) if actor else None,
+            impersonator_user_id=impersonator.id if impersonator else None,
+            impersonator_name=(
+                (impersonator.full_name or impersonator.email) if impersonator else None
+            ),
             action=action,
             payload={"filename": payload.get("filename")},
         )

@@ -14,6 +14,7 @@ from typing import Any
 
 from sqlalchemy import and_, bindparam, case, column, func, select, table
 from sqlalchemy import text as sql_text
+from sqlalchemy.orm import aliased
 
 from app.core.auth.models import User
 from app.core.events import emit
@@ -238,6 +239,9 @@ class TaskService:
     async def _record(
         self, task_id: uuid.UUID, action: str, payload: dict | None = None
     ) -> None:
+        # Whoever is really at the keyboard, when the actor is an account they were handed
+        # (#296). Snapshotted for the same reason the actor is.
+        impersonator = self.ctx.impersonated_by
         self.ctx.session.add(
             TaskActivity(
                 org_id=self.ctx.org.id,
@@ -245,6 +249,8 @@ class TaskService:
                 actor_user_id=self.ctx.user.id,
                 # Snapshotted, so deleting the account doesn't hand this line to "System" (#64).
                 actor_name=_display_name(self.ctx.user),
+                impersonator_user_id=impersonator.id if impersonator else None,
+                impersonator_name=_display_name(impersonator),
                 action=action,
                 payload=payload or {},
             )
@@ -543,12 +549,19 @@ class TaskService:
         # unbounded, and opening the card would load every comment ever written on it. Newest
         # ``_COMMENT_CAP`` selected, then reversed — the card reads oldest-first, so taking the
         # *first* 200 would have shown the oldest and hidden the conversation people came for.
+        # A second alias for whoever was signed in as the author (#296) — one statement, not a
+        # lookup per comment.
+        comment_impersonator = aliased(User)
         comment_rows = list(
             reversed(
                 (
                     await self.ctx.session.execute(
-                        select(TaskComment, User)
+                        select(TaskComment, User, comment_impersonator)
                         .outerjoin(User, User.id == TaskComment.author_user_id)
+                        .outerjoin(
+                            comment_impersonator,
+                            comment_impersonator.id == TaskComment.impersonator_user_id,
+                        )
                         .where(
                             TaskComment.org_id == self.ctx.org.id,
                             TaskComment.task_id == task_id,
@@ -560,18 +573,30 @@ class TaskService:
             )
         )
         detail.comments = []
-        for comment, author in comment_rows:
+        for comment, author, wrote_as in comment_rows:
             name, deleted = _attribution(author, comment.author_name)
+            via, _ = _attribution(wrote_as, comment.impersonator_name)
             detail.comments.append(
                 CommentRead.model_validate(comment).model_copy(
-                    update={"author_name": name, "author_deleted": deleted}
+                    update={
+                        "author_name": name,
+                        "author_deleted": deleted,
+                        "impersonator_name": via,
+                    }
                 )
             )
 
+        # The impersonator resolves like the actor — live name while the account exists, snapshot
+        # once it doesn't — on a second alias, so it costs no query per row (#296).
+        impersonator_user = aliased(User)
         activity_rows = (
             await self.ctx.session.execute(
-                select(TaskActivity, User)
+                select(TaskActivity, User, impersonator_user)
                 .outerjoin(User, User.id == TaskActivity.actor_user_id)
+                .outerjoin(
+                    impersonator_user,
+                    impersonator_user.id == TaskActivity.impersonator_user_id,
+                )
                 .where(
                     TaskActivity.org_id == self.ctx.org.id,
                     TaskActivity.task_id == task_id,
@@ -581,11 +606,16 @@ class TaskService:
             )
         ).all()
         detail.activities = []
-        for activity, actor in activity_rows:
+        for activity, actor, impersonator in activity_rows:
             name, deleted = _attribution(actor, activity.actor_name)
+            via, _ = _attribution(impersonator, activity.impersonator_name)
             detail.activities.append(
                 ActivityRead.model_validate(activity).model_copy(
-                    update={"actor_name": name, "actor_deleted": deleted}
+                    update={
+                        "actor_name": name,
+                        "actor_deleted": deleted,
+                        "impersonator_name": via,
+                    }
                 )
             )
         links = (
@@ -1337,10 +1367,14 @@ class TaskService:
         mentioned = await self._valid_mentions(_extract_mentions(body))
         mentioned_contacts = await self._valid_contact_mentions(extract_contact_mention_ids(body))
         mentioned_tasks = await self._valid_task_mentions(extract_task_mention_ids(body))
+        impersonator = self.ctx.impersonated_by
         comment = await self.ctx.repo(TaskComment).create(
             task_id=task_id,
             author_user_id=self.ctx.user.id,
             author_name=_display_name(self.ctx.user),
+            # Words written through this account by someone else keep both names (#296).
+            impersonator_user_id=impersonator.id if impersonator else None,
+            impersonator_name=_display_name(impersonator),
             body=body,
             mentioned_user_ids=[str(uid) for uid in mentioned],
             mentioned_contact_ids=[str(cid) for cid in mentioned_contacts],

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Pencil, Trash2 } from "@lucide/svelte";
+  import { Pencil, Trash2, VenetianMask } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
@@ -32,6 +32,9 @@
   const canWrite = $derived(can(page.data.user, "contacts.contact.write"));
   const canDelete = $derived(can(page.data.user, "contacts.contact.delete"));
   let confirmDelete = $state(false);
+  // Signing in as this contact is confirmed first (#296): it is recorded under your name, and
+  // the next screen is theirs, not yours — worth one deliberate click.
+  let confirmImpersonate = $state(false);
   const contact = $derived(data.contact);
   const custom = $derived((contact.custom ?? {}) as Record<string, unknown>);
   const fullName = $derived([contact.first_name, contact.last_name].filter(Boolean).join(" "));
@@ -347,8 +350,25 @@
                 {t("contacts.portal.disable")}
               </Button>
             </form>
+            <!-- Sign in as them (#296): its own permission, never implied by managing the login,
+                 and confirmed first — it is recorded on this contact's trail under your name. -->
+            {#if data.canImpersonate}
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={busy.active}
+                onclick={() => (confirmImpersonate = true)}
+              >
+                <VenetianMask size={14} class="mr-1.5 inline" />
+                {t("contacts.portal.impersonate")}
+              </Button>
+            {/if}
           {/if}
         </div>
+        {#if data.canImpersonate && (data.portal.status === "active" || data.portal.status === "invited")}
+          <p class="mt-3 text-xs text-text-muted">{t("contacts.portal.impersonate_hint")}</p>
+        {/if}
       </section>
     {/if}
   </div>
@@ -371,6 +391,16 @@
   title={t("common.delete")}
   message={t("contacts.delete_confirm", { name: fullName })}
   action="?/delete"
+/>
+
+<!-- Destroys nothing, so a primary confirm rather than the default red one (ConfirmDialog). -->
+<ConfirmDialog
+  bind:open={confirmImpersonate}
+  title={t("contacts.portal.impersonate")}
+  message={t("contacts.portal.impersonate_confirm", { name: fullName })}
+  confirmLabel={t("contacts.portal.impersonate")}
+  variant="primary"
+  action="?/portalImpersonate"
 />
 
 <!-- Quick-create a new client and attach it to this contact, without leaving the page. -->

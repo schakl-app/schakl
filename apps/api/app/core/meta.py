@@ -181,6 +181,10 @@ class MeInfo(BaseModel):
     is_instance_owner: bool = False
     impersonated_by: str | None = None
     impersonation_expires_at: datetime | None = None
+    #: Which impersonation this is — ``instance`` (issue #26) or ``portal`` (#296). The banner
+    #: is the same either way; the **stop** differs (a different endpoint audits it to a
+    #: different trail), so the web has to know which one it is looking at.
+    impersonation_kind: str | None = None
     #: AI features usable in this tenant (epic #131): empty until an admin configures a
     #: provider under Instellingen → AI — "off means invisible". Rides the payload the web
     #: already fetches per request, so gating an affordance costs no extra call.
@@ -222,6 +226,7 @@ def _me_info(
         is_instance_owner=user.is_superuser and ctx.impersonated_by is None,
         impersonated_by=ctx.impersonated_by.email if ctx.impersonated_by else None,
         impersonation_expires_at=ctx.impersonation_expires_at,
+        impersonation_kind=ctx.impersonation_kind,
     )
 
 

@@ -64,6 +64,12 @@ _EXEMPT_OPERATIONS = frozenset(
         # Branding assets render on the login screen before a session exists; only rows
         # tagged with a public entity type are reachable, anything else 404s.
         ("get", "/api/v1/files/{file_id}/public"),
+        # Ending your own portal impersonation (#296). It runs *as the impersonated client*, who
+        # holds none of the agency's permissions — gating the only way out behind a permission
+        # the impersonated account cannot have would trap someone inside the session. With no
+        # grant on the request it mutates nothing and answers 204, which is what both sweeps see
+        # here; with one, it records the stop on the contact's trail and clears the cookie.
+        ("post", "/api/v1/contacts/portal/impersonation/stop"),
         # Google Calendar push notifications carry no user session at all; the route
         # authenticates with our own per-channel token and 404s anything that doesn't match
         # (docs/GOOGLE.md — webhooks map back to org + connection via our own channel token).

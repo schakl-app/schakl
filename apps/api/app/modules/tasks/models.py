@@ -380,6 +380,16 @@ class TaskComment(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     # name is what keeps the comment attributable. The live join still wins while the account
     # exists — a rename should show through — so this is a fallback, not the display value.
     author_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Written *through* the author's account by someone signed in as them (#296). A comment is
+    # the most visible thing an impersonated session produces — a client portal login's whole
+    # write surface — so the bubble names both, or the agency's own words sit under the client's
+    # name with nothing to say otherwise. Snapshotted like the author's, for the same reason.
+    impersonator_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    impersonator_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     # Users @mentioned in the body (issue #63), captured structurally rather than re-parsed on every
     # render. Extracted from the `@[Name](mention:<uuid>)` markers by the service and validated
@@ -424,6 +434,16 @@ class TaskActivity(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         nullable=True,
     )
     actor_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Who was really at the keyboard, when that is not the actor (#296) — the same pair core's
+    # ``activity_log`` carries. A task is where a client portal login actually *writes* (its
+    # comments, its checklist ticks), so it is the trail most likely to record an impersonated
+    # act, and the one place the omission would be most misleading.
+    impersonator_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    impersonator_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     action: Mapped[str] = mapped_column(String(50), nullable=False)
     payload: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default="{}"

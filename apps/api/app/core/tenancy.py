@@ -105,10 +105,15 @@ class RequestContext:
     #: that "the client role marks a login as external", and gating these narrowings on the
     #: contact link alone left a directly-invited client reading the whole address book.
     is_portal: bool = False
-    # Set only during an instance-admin impersonation (issue #26): ``user`` is then the
-    # impersonated member and ``impersonated_by`` the real, authenticated instance owner.
+    # Set only during an impersonation: ``user`` is then the impersonated member and
+    # ``impersonated_by`` the real, authenticated principal behind them — an instance owner
+    # (issue #26) or an agency staff member signed in as a client's contact (#296).
+    # ``impersonation_kind`` says which (``app/core/impersonation.py``), because ending it and
+    # recording it differ per kind. Every write made in this request carries the impersonator
+    # onto the activity trail (§16), so a change is never attributed to the client alone.
     impersonated_by: User | None = None
     impersonation_expires_at: Any | None = None
+    impersonation_kind: str | None = None
 
     def repo(self, model: type[ModelT]) -> TenantScopedRepository[ModelT]:
         return TenantScopedRepository(
@@ -189,18 +194,21 @@ async def require_context(
         if user is None:
             raise AppError("unauthorized", "errors.unauthorized", status_code=401)
 
-        # Instance-admin impersonation (issue #26): a valid, time-boxed grant swaps the
-        # effective user; authentication above stays the real (superuser) principal.
-        from app.core.instance.impersonation import read_impersonation
+        # Impersonation (issues #26, #296): a valid, time-boxed grant swaps the effective user;
+        # authentication above stays the real principal. The grant names the org it was issued
+        # for, so one can never be carried onto another tenant's hostname.
+        from app.core.impersonation import read_impersonation
 
         impersonator: User | None = None
         expires_at = None
+        impersonation_kind: str | None = None
         claims = read_impersonation(request, user)
         if claims is not None and claims.org_id == org.id:
             target = await session.get(User, claims.target_user_id)
             if target is not None and target.is_active:
                 impersonator, user = user, target
                 expires_at = claims.expires_at
+                impersonation_kind = claims.kind
 
         # Verify membership *through* RLS. The permission fetch rides along on the same statement
         # — one round-trip, whatever the role count. It must stay *below* the impersonation swap
@@ -273,6 +281,7 @@ async def require_context(
             is_portal=is_portal,
             impersonated_by=impersonator,
             impersonation_expires_at=expires_at,
+            impersonation_kind=impersonation_kind,
         )
         try:
             yield ctx

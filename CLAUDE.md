@@ -594,6 +594,17 @@ It is a **core, cross-cutting capability**, like custom fields (§13) — not pe
   account, not our rows, and leaks nothing), and Instellingen → Gebruikers badges the account
   (`MemberRead.company_scope_empty`). Writes that would land outside a client's horizon are refused
   *before* the row is written, never after.
+- **Signing in as someone else is one mechanism with two kinds** (`docs/IMPERSONATION.md`). The
+  instance owner's cross-tenant impersonation (#26) and an agency staff member signing in as a
+  client's contact person (#296) share the grant: a short-lived JWT in its own cookie *beside* the
+  real session, with permissions resolving for the **target**, so an impersonated session is never
+  more powerful than the account it entered. The tenant-level kind carries what an untrusted-by-
+  default caller needs: its own permission (`contacts.portal.impersonate`, never implied by
+  managing the login), a target that can only be a contact-linked portal login, the company
+  horizon, and a hard refusal when the target holds a permission the caller does not
+  (`PermissionSet.covers` — roles are tenant-editable, so "it's only a client" bounds nothing).
+  **Stopping declares no permission on purpose**: it runs as the impersonated account, and gating
+  the way out behind a permission that account cannot hold would trap someone inside the session.
 - **A module that ships later** brings its own permissions; a startup reconciler grants them to
   each org's system roles exactly once, tracked in `org_settings.applied_permission_defaults`.
   A migration must never import the catalog (`docs/WORKFLOW.md`).
@@ -613,6 +624,12 @@ This is a **core, cross-cutting capability** (issue #67), like custom fields (§
   attribute `CustomizableMixin` reads); that registers it as auditable. A core-contributed panel then
   renders the trail on its detail page — the company hub via an API `PanelSpec`, a project/contact via
   a typed `EntityPanelSpec`, both reading `GET /api/v1/activity`.
+- **A write made while impersonating names the impersonator** (#296). An impersonated request runs
+  as the target — its permissions, its horizon, its writes — so a trail carrying only the actor
+  would say the *client* did it, and the single fact worth auditing (someone acted through that
+  account) is the one missing. `activity_log` and the tasks module's own `task_activities` both
+  carry `impersonator_user_id` + `impersonator_name`, written by whichever service records the
+  change and snapshotted for the same reason the actor is.
 - **The actor is snapshotted, never joined live** (§14's #64 rule, generalised). `actor_name` is
   written at record time; the live account wins while it exists, a departed one reads
   "Naam (verwijderd)", and a genuinely absent actor is the system. An audit trail whose actor

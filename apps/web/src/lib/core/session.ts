@@ -26,9 +26,13 @@ export interface SessionUser {
   /** Instance owner (users.is_superuser) regardless of the admin-surface flag — gates
    *  license management (issue #137). */
   isInstanceOwner: boolean;
-  /** Set while an instance owner impersonates this user — drives the banner. */
+  /** Set while someone is signed in as this user — drives the banner. */
   impersonatedBy: string | null;
   impersonationExpiresAt: string | null;
+  /** Which impersonation: `instance` (issue #26) or `portal` (#296, agency staff signed in as a
+   *  client's contact). The banner is the same; the stop goes to a different endpoint, which is
+   *  why the web has to know. Never taken from the form — the API says which one this is. */
+  impersonationKind: string | null;
   /** AI features usable in this tenant (epic #131). Empty until an admin configures a
    *  provider under Instellingen → AI — "off means invisible", so an empty list renders
    *  no AI affordance anywhere. */
@@ -93,6 +97,7 @@ export async function fetchUser(event: ApiEvent): Promise<SessionUser | null> {
     isInstanceOwner: data.is_instance_owner ?? false,
     impersonatedBy: data.impersonated_by ?? null,
     impersonationExpiresAt: data.impersonation_expires_at ?? null,
+    impersonationKind: data.impersonation_kind ?? null,
     aiFeatures: data.ai_features ?? [],
   };
 }
