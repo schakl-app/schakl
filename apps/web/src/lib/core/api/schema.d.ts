@@ -5288,7 +5288,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Email Settings */
+        /**
+         * Get Email Settings
+         * @description The org's stored transport *and* the one actually sending (epic #199).
+         *
+         *     Always an object, never ``null``: "nothing stored" and "nothing sending" are different
+         *     answers on cloud, and a null body could only ever say the first.
+         */
         get: operations["get_email_settings_api_v1_settings_email_get"];
         /** Save Email Settings */
         put: operations["save_email_settings_api_v1_settings_email_put"];
@@ -9358,12 +9364,31 @@ export interface components {
         };
         /**
          * EmailSettingsRead
-         * @description The stored configuration minus its secrets: enough to repopulate the form.
+         * @description The stored configuration minus its secrets (enough to repopulate the form), **plus
+         *     what is actually sending right now**.
+         *
+         *     The two differ exactly where it matters: an org on the cloud's included e-mail (epic
+         *     #199) stores nothing at all, so a read that only described storage said "nothing
+         *     configured" while every mail was leaving through the operator's transport. The
+         *     ``active_*`` fields are the answer to "which transport is live, and as whom" — always
+         *     present, so no client has to re-derive it from instance config it cannot see.
          */
         EmailSettingsRead: {
-            /** From Email */
+            /** Active From Email */
+            active_from_email?: string | null;
+            /** Active From Name */
+            active_from_name?: string | null;
+            /** Active Provider */
+            active_provider?: ("smtp" | "brevo" | "sendgrid" | "smtp2go" | "instance") | null;
+            /**
+             * From Email
+             * @default
+             */
             from_email: string;
-            /** From Name */
+            /**
+             * From Name
+             * @default
+             */
             from_name: string;
             /**
              * Has Secret
@@ -9372,13 +9397,15 @@ export interface components {
             has_secret: boolean;
             /** Host */
             host?: string | null;
+            /**
+             * Instance Email Available
+             * @default false
+             */
+            instance_email_available: boolean;
             /** Port */
             port?: number | null;
-            /**
-             * Provider
-             * @enum {string}
-             */
-            provider: "smtp" | "brevo" | "sendgrid" | "smtp2go" | "instance";
+            /** Provider */
+            provider?: ("smtp" | "brevo" | "sendgrid" | "smtp2go" | "instance") | null;
             /** Reply To */
             reply_to?: string | null;
             /** Security */
@@ -12481,6 +12508,11 @@ export interface components {
              * @default activate
              */
             custom_domain_mode: string;
+            /**
+             * Email Included
+             * @default true
+             */
+            email_included: boolean;
             /** Enabled Modules */
             enabled_modules?: string[] | null;
             /** Locale */
@@ -12516,6 +12548,11 @@ export interface components {
             default_locale: string | null;
             /** Deleted At */
             deleted_at: string | null;
+            /**
+             * Email Included
+             * @default true
+             */
+            email_included: boolean;
             /** Enabled Modules */
             enabled_modules: string[];
             /** Ends At */
@@ -12633,6 +12670,11 @@ export interface components {
             custom_domain_verified: boolean;
             /** Deleted At */
             deleted_at: string | null;
+            /**
+             * Email Included
+             * @default true
+             */
+            email_included: boolean;
             /** Ends At */
             ends_at?: string | null;
             /** Exported At */
@@ -12669,6 +12711,8 @@ export interface components {
         };
         /** OrgUpdate */
         OrgUpdate: {
+            /** Email Included */
+            email_included?: boolean | null;
             /** Name */
             name?: string | null;
             /** Slug */
@@ -13650,6 +13694,11 @@ export interface components {
              * @default activate
              */
             custom_domain_mode: string;
+            /**
+             * Email Included
+             * @default true
+             */
+            email_included: boolean;
             /** Enabled Modules */
             enabled_modules?: string[] | null;
             /** Locale */
@@ -13689,6 +13738,11 @@ export interface components {
              * @default []
              */
             dns_records: components["schemas"]["DnsRecordCard"][];
+            /**
+             * Email Included
+             * @default true
+             */
+            email_included: boolean;
             /** Id */
             id: string;
             /** Name */
@@ -29136,7 +29190,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EmailSettingsRead"] | null;
+                    "application/json": components["schemas"]["EmailSettingsRead"];
                 };
             };
         };

@@ -85,6 +85,9 @@ class OrgSummary(BaseModel):
     lifecycle_stage: str = "active"
     suspends_at: datetime | None = None
     terminates_at: datetime | None = None
+    # May this org use the operator's own e-mail transport (epic #199)? Only bites while the
+    # instance actually has one configured; the org still chooses whether to use it.
+    email_included: bool = True
 
 
 class OrgMember(BaseModel):
@@ -110,6 +113,9 @@ class OrgCreate(BaseModel):
     enabled_modules: list[str] | None = None
     # Optional first owner; invited like a member (password via forgot-password flow).
     owner_email: EmailStr | None = None
+    # Included e-mail (epic #199): on unless the operator says otherwise, which is what an
+    # org gets today. False leaves the org bring-your-own-transport.
+    email_included: bool = True
     # Configure a custom domain in the same call (#292). ``activate`` is operator-asserted
     # ownership (the TXT challenge is skipped and audited as such; the domain routes as soon
     # as its DNS points at the edge); ``claim`` only pre-claims, so the org's own admin
@@ -126,6 +132,9 @@ class OrgDomainUpdate(BaseModel):
 class OrgUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     slug: str | None = Field(default=None, min_length=1, max_length=63)
+    #: NULL = leave the entitlement alone, so a rename can never silently switch an org's
+    #: included e-mail off (this is a partial update, not a wholesale PUT).
+    email_included: bool | None = None
 
 
 class OrgModulesUpdate(BaseModel):
@@ -243,6 +252,7 @@ def _summary(org: Org) -> OrgSummary:
         lifecycle_stage=org.lifecycle_stage,
         suspends_at=suspends_at,
         terminates_at=terminates_at,
+        email_included=org.email_included,
     )
 
 
@@ -285,6 +295,7 @@ async def create_org(
         locale=payload.locale,
         enabled_modules=payload.enabled_modules,
         owner_email=payload.owner_email,
+        email_included=payload.email_included,
     )
     if payload.custom_domain:
         # In the same transaction: a domain that cannot be configured rolls the org back,
@@ -411,7 +422,12 @@ async def update_org(
 ) -> OrgSummary:
     org = await _org_or_404(ctx, org_id)
     org = await service.update_org(
-        ctx.session, ctx.user, org, name=payload.name, slug=payload.slug
+        ctx.session,
+        ctx.user,
+        org,
+        name=payload.name,
+        slug=payload.slug,
+        email_included=payload.email_included,
     )
     return _summary(org)
 

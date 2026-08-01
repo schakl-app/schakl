@@ -197,6 +197,35 @@
   </form>
 </section>
 
+<!-- Included e-mail (epic #199). Also PIN-free: an entitlement on `orgs`, not tenant data.
+     Withdrawing it can stop an org's mail, so it says so rather than silently toggling. -->
+<section class="mt-6 max-w-md rounded-xl border border-border bg-surface-raised p-6">
+  <h2 class="text-base font-semibold text-text">{t("cloud.email_included.label")}</h2>
+  <p class="mt-1 text-sm text-text-muted">{t("cloud.email_included.hint")}</p>
+  <form
+    method="POST"
+    action="?/emailIncluded"
+    use:enhance={busy.keep("emailIncluded")}
+    class="mt-4 space-y-3"
+  >
+    <label class="flex items-center gap-2 text-sm text-text">
+      <input
+        type="checkbox"
+        name="email_included"
+        checked={summary?.email_included ?? true}
+        class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
+      />
+      {t("cloud.email_included.enabled")}
+    </label>
+    {#if form?.emailSaved}
+      <p class="text-sm text-emerald-700 dark:text-emerald-400">{t("cloud.email_included.saved")}</p>
+    {/if}
+    <Button variant="secondary" loading={busy.is("emailIncluded")} disabled={busy.active}>
+      {t("common.save")}
+    </Button>
+  </form>
+</section>
+
 <!-- Custom domain (#292). PIN-free: routing is platform data, not tenant content. -->
 <section class="mt-6 max-w-md rounded-xl border border-border bg-surface-raised p-6">
   <h2 class="text-base font-semibold text-text">{t("instance.domain.title")}</h2>

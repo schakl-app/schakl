@@ -162,6 +162,20 @@
       <p class="mt-1 text-xs text-text-muted">{t("instance.domain.create_hint")}</p>
     </div>
     <div>
+      <label class="flex items-start gap-2 text-sm text-text">
+        <input
+          type="checkbox"
+          name="email_included"
+          checked
+          class="mt-0.5 h-4 w-4 rounded border-border text-brand focus:ring-brand"
+        />
+        <span>
+          {t("cloud.email_included.label")}
+          <span class="mt-0.5 block text-xs text-text-muted">{t("cloud.email_included.hint")}</span>
+        </span>
+      </label>
+    </div>
+    <div>
       <label for="new-plan" class="mb-1 block text-sm font-medium text-text">
         {t("cloud.plan.label")}
       </label>

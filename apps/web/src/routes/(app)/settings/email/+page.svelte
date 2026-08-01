@@ -9,16 +9,25 @@
   let { data, form } = $props();
 
   // "instance" = the operator-provided transport (epic #199), offered only while the
-  // instance actually has one configured.
+  // instance has one configured *and* this org is entitled to it.
   const PROVIDERS = $derived(
-    data.instanceEmailAvailable
+    data.settings?.instance_email_available
       ? (["instance", "smtp", "brevo", "sendgrid", "smtp2go"] as const)
       : (["smtp", "brevo", "sendgrid", "smtp2go"] as const),
   );
 
-  // "" = keep showing the stored provider; a click switches the form's field set.
+  // What is sending *today* — the stored provider, or the operator's transport this org
+  // falls back to without storing anything. null = this org can send no mail at all.
+  const active = $derived(data.settings?.active_provider ?? null);
+  // Included e-mail carrying the org without a stored row: nothing to edit, yet everything
+  // works. The screen used to render this as "not configured" + a blank SMTP form.
+  const includedByDefault = $derived(active === "instance" && !data.settings?.provider);
+
+  // "" = keep showing the stored provider; a click switches the form's field set. With
+  // nothing stored the form opens on whatever is actually sending, so the picker agrees
+  // with the status above it instead of defaulting to an empty SMTP form.
   let chosen = $state("");
-  const provider = $derived(chosen || data.settings?.provider || "smtp");
+  const provider = $derived(chosen || data.settings?.provider || active || "smtp");
   // The stored secret only "carries over" while the provider is unchanged (API rule).
   const secretStored = $derived(
     Boolean(data.settings?.has_secret) && provider === data.settings?.provider,
@@ -53,11 +62,33 @@
 <h1 class="mb-1 mt-2 text-xl font-semibold text-text">{t("settings.email.title")}</h1>
 <p class="mb-6 text-sm text-text-muted">{t("settings.email.subtitle")}</p>
 
-{#if !data.settings}
-  <p class="mb-4 rounded-lg border border-border bg-surface px-4 py-3 text-sm text-text-muted">
-    {t("settings.email.not_configured")}
-  </p>
-{/if}
+<!-- Which transport is live, stated before the form that edits it: on the cloud's included
+     e-mail an org stores nothing, so "what is saved here" and "what sends" are different
+     answers and only the second one is what the admin came to check. -->
+<div class="mb-6 max-w-2xl rounded-xl border border-border bg-surface px-4 py-3">
+  <div class="flex flex-wrap items-center gap-2">
+    <span
+      class="h-2 w-2 shrink-0 rounded-full {active ? 'bg-emerald-500' : 'bg-amber-500'}"
+      aria-hidden="true"
+    ></span>
+    <span class="text-sm font-medium text-text">
+      {active
+        ? t("settings.email.active", { provider: t(`settings.email.provider.${active}`) })
+        : t("settings.email.not_configured")}
+    </span>
+  </div>
+  {#if active}
+    <p class="mt-1 text-sm text-text-muted">
+      {t("settings.email.active_sender", {
+        name: data.settings?.active_from_name ?? "",
+        email: data.settings?.active_from_email ?? "",
+      })}
+    </p>
+    {#if includedByDefault}
+      <p class="mt-1 text-sm text-text-muted">{t("settings.email.active_included_hint")}</p>
+    {/if}
+  {/if}
+</div>
 
 <section class="max-w-2xl rounded-xl border border-border bg-surface-raised p-5">
   <form
@@ -100,7 +131,7 @@
           id="email-from-name"
           name="from_name"
           required
-          value={data.settings?.from_name ?? ""}
+          value={data.settings?.from_name || data.settings?.active_from_name || ""}
           class={inputClass}
         />
       </div>
@@ -250,7 +281,9 @@
       <div class="flex gap-2">
         <Button loading={busy.is("save")} disabled={busy.active}>{t("common.save")}</Button>
       </div>
-      {#if data.settings}
+      <!-- Only a stored configuration can be removed; falling back to included e-mail is
+           not something this org has to delete. -->
+      {#if data.settings?.provider}
         <button
           type="button"
           class="rounded-lg border border-border px-4 py-2 text-sm text-red-600 dark:text-red-400"
@@ -260,7 +293,9 @@
     </div>
   </form>
 
-  {#if data.settings}
+  <!-- Testable whenever something can send — including the included-e-mail fallback, which
+       stores nothing and used to leave this button hidden while mail worked fine. -->
+  {#if active}
     <form
       method="POST"
       action="?/test"
@@ -291,7 +326,7 @@
     <h2 class="text-lg font-semibold text-text">{t("settings.email.templates.title")}</h2>
     <p class="mt-1 text-sm text-text-muted">{t("settings.email.templates.subtitle")}</p>
 
-    {#if !data.settings}
+    {#if !active}
       <p
         class="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-200"
       >
@@ -418,7 +453,7 @@
                   loading={busy.is(`tpl-${tpl.kind}-${tpl.locale}`) && tplSubmit === "save"}
                   disabled={busy.active}>{t("common.save")}</Button
                 >
-                {#if data.settings}
+                {#if active}
                   <Button
                     variant="secondary"
                     size="sm"

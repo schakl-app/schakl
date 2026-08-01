@@ -163,6 +163,22 @@
       />
       <p class="mt-1 text-xs text-text-muted">{t("instance.domain.create_hint")}</p>
     </div>
+    <!-- Included e-mail (epic #199): may this org fall back to the instance's own transport?
+         Ticked by default, and simply inert on an instance that has no transport configured. -->
+    <div>
+      <label class="flex items-start gap-2 text-sm text-text">
+        <input
+          type="checkbox"
+          name="email_included"
+          checked
+          class="mt-0.5 h-4 w-4 rounded border-border text-brand focus:ring-brand"
+        />
+        <span>
+          {t("cloud.email_included.label")}
+          <span class="mt-0.5 block text-xs text-text-muted">{t("cloud.email_included.hint")}</span>
+        </span>
+      </label>
+    </div>
     {#if form?.error && !form?.importError}
       <p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
     {/if}

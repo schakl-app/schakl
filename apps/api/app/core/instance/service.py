@@ -86,6 +86,7 @@ async def create_org(
     locale: str | None = None,
     enabled_modules: list[str] | None = None,
     owner_email: str | None = None,
+    email_included: bool = True,
 ) -> Org:
     slug = validate_slug(slug)
     if await repo.slug_taken(session, slug):
@@ -108,7 +109,10 @@ async def create_org(
     # Licensed modules need a covering license even on the instance-admin path (issue #137).
     await ensure_modules_enableable(modules, current=[])
 
-    org = Org(slug=slug, name=name)
+    # Included e-mail (epic #199) is an entitlement, so it is set at provisioning time and
+    # only from here — the tenant chooses whether to *use* the operator's transport, never
+    # whether they have it. Default on: an org nobody made a decision about gets it.
+    org = Org(slug=slug, name=name, email_included=email_included)
     session.add(org)
     await session.flush()
 
@@ -125,7 +129,11 @@ async def create_org(
     # A new org gets the four system roles before anyone can be a member of it (issue #19).
     await seed_system_roles(session, org.id)
 
-    detail: dict[str, Any] = {"name": name, "modules": modules}
+    detail: dict[str, Any] = {
+        "name": name,
+        "modules": modules,
+        "email_included": email_included,
+    }
     if owner_email:
         owner = await _get_or_create_user(session, owner_email)
         await create_membership(session, org.id, owner.id, ROLE_OWNER)
@@ -246,9 +254,15 @@ async def update_org(
     *,
     name: str | None = None,
     slug: str | None = None,
+    email_included: bool | None = None,
 ) -> Org:
     _ensure_not_deleted(org)
     changes: dict[str, Any] = {}
+    if email_included is not None and email_included != org.email_included:
+        # Withdrawing it can stop an org's mail (they fall back to it silently), so the change
+        # goes on the instance audit trail like every other entitlement.
+        changes["email_included"] = {"from": org.email_included, "to": email_included}
+        org.email_included = email_included
     if name is not None and name != org.name:
         changes["name"] = {"from": org.name, "to": name}
         org.name = name

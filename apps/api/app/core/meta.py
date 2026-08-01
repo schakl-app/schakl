@@ -138,8 +138,10 @@ class ModulesMeta(BaseModel):
     # Instance posture (epic #199): "self_hosted" or "cloud". The web routes the apex host
     # to the instance console (instead of a tenant) only on cloud.
     deployment: str = "self_hosted"
-    # The instance-level e-mail transport is configured (config.py): Instellingen → E-mail
-    # offers "included e-mail" and an org without its own transport falls back to it.
+    # The instance-level e-mail transport is configured (config.py) **and the resolved org is
+    # entitled to it** (``orgs.email_included``): Instellingen → E-mail offers "included
+    # e-mail" and an org without its own transport falls back to it. Instance-wide on a host
+    # where no org resolves.
     instance_email_available: bool = False
 
 
@@ -442,6 +444,9 @@ async def modules(request: Request) -> ModulesMeta:
     local_login_enabled = True
     oidc_enabled = False
     oidc_name: str | None = None
+    # Instance-wide until an org resolves, then narrowed to that org's entitlement (#199):
+    # an org the operator took off included e-mail must not be offered it.
+    instance_email_available = settings.instance_email_available
     async with async_session_maker() as session:
         org = await resolve_org(session, request_hostname(request))
         if org is not None:
@@ -450,6 +455,7 @@ async def modules(request: Request) -> ModulesMeta:
             oidc_enabled = sso.sso_configured(row)
             oidc_name = row.oidc_name if row is not None and oidc_enabled else None
             local_login_enabled = sso.local_login_enabled_for(row)
+            instance_email_available = instance_email_available and org.email_included
     state = await license_state()
     module_skus = {
         name: sku for name, sku in licensed_skus().items() if registry.get(name) is not None
@@ -468,7 +474,7 @@ async def modules(request: Request) -> ModulesMeta:
             name for name, sku in module_skus.items() if state.writable(sku)
         ),
         deployment=settings.deployment,
-        instance_email_available=settings.instance_email_available,
+        instance_email_available=instance_email_available,
     )
 
 

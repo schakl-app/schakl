@@ -525,6 +525,179 @@ async def test_explicit_instance_provider_choice(
         assert refused.json()["error"]["message"] == "errors.instance_email_unavailable"
 
 
+async def test_settings_read_states_the_active_transport(client_for, instance_email) -> None:
+    """The screen's whole complaint (#199 follow-up): included e-mail was sending while the
+    settings page said "not configured" and offered a blank SMTP form. The read now says
+    which transport is live, and — because the org never entered them — as whom."""
+    tenant = await make_tenant("cl-active")
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as client:
+        # Nothing stored, yet mail leaves through the operator's transport.
+        body = (await client.get("/api/v1/settings/email", headers=headers)).json()
+        assert body["provider"] is None
+        assert body["active_provider"] == "instance"
+        assert body["active_from_email"] == "post@cloud.example"
+        assert body["active_from_name"] == "Cl-Active"  # the org's own brand
+        assert body["instance_email_available"] is True
+
+        # A stored transport of their own is what is active instead.
+        await client.put(
+            "/api/v1/settings/email",
+            headers=headers,
+            json={
+                "provider": "brevo",
+                "from_name": "Bureau X",
+                "from_email": "post@bureau.example",
+                "api_key": "secret",
+            },
+        )
+        body = (await client.get("/api/v1/settings/email", headers=headers)).json()
+        assert body["provider"] == "brevo"
+        assert body["active_provider"] == "brevo"
+        assert body["active_from_email"] == "post@bureau.example"
+
+
+async def test_settings_read_without_any_transport(client_for) -> None:
+    """No instance transport and nothing stored: an object that says nothing is sending —
+    not a ``null`` body, which could only ever mean "nothing stored"."""
+    tenant = await make_tenant("cl-inactive")
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as client:
+        body = (await client.get("/api/v1/settings/email", headers=headers)).json()
+        assert body["provider"] is None
+        assert body["active_provider"] is None
+        assert body["instance_email_available"] is False
+
+
+# --------------------------------------------------------------------------- #
+# Included e-mail is a per-org entitlement
+# --------------------------------------------------------------------------- #
+async def _set_email_included(org_id, value: bool) -> None:  # noqa: ANN001
+    async with async_session_maker() as session:
+        org = await session.get(Org, org_id)
+        org.email_included = value
+        await session.commit()
+
+
+async def test_org_without_email_included_does_not_fall_back(instance_email) -> None:
+    """The entitlement, not just the instance config, decides: an org the operator took off
+    included e-mail is exactly as unconfigured as one on a box with no transport at all."""
+    tenant = await make_tenant("cl-noincl")
+    await _set_email_included(tenant.org.id, False)
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        assert await email_configured(session, tenant.org.id) is False
+        ok, error = await send_org_email(
+            session, tenant.org.id, OutgoingEmail(to="a@b.example", subject="s", text="t")
+        )
+    assert not ok and error == "errors.email_not_configured"
+
+
+async def test_stored_instance_choice_stops_when_entitlement_is_withdrawn(
+    client_for, instance_email
+) -> None:
+    """A stored ``provider="instance"`` row outlives the entitlement, so the send seam has to
+    re-check it — sending nowhere, never through some other transport."""
+    tenant = await make_tenant("cl-inclrevoke")
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as client:
+        assert (
+            await client.put(
+                "/api/v1/settings/email",
+                headers=headers,
+                json={"provider": "instance", "from_name": "Bureau X"},
+            )
+        ).status_code == 200
+
+    await _set_email_included(tenant.org.id, False)
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        ok, error = await send_org_email(
+            session, tenant.org.id, OutgoingEmail(to="a@b.example", subject="s", text="t")
+        )
+    assert not ok and error == "errors.email_not_configured"
+
+    # …and the choice can no longer be (re)saved, nor is it offered any more.
+    async with client_for(tenant.host) as client:
+        refused = await client.put(
+            "/api/v1/settings/email",
+            headers=headers,
+            json={"provider": "instance", "from_name": "Bureau X"},
+        )
+        assert refused.status_code == 409
+        body = (await client.get("/api/v1/settings/email", headers=headers)).json()
+        assert body["instance_email_available"] is False
+        assert body["active_provider"] is None
+        assert (await client.get("/api/v1/meta/modules")).json()[
+            "instance_email_available"
+        ] is False
+
+
+async def test_provisioning_defaults_to_included_email(client_for, cloud_mode) -> None:
+    """Default on, opt-out explicit: a checkout that never heard of the field must not
+    provision orgs that silently cannot mail."""
+    admin = await make_tenant("cl-prov-mail")
+    await make_instance_owner(admin)
+    headers = await auth_cookie(admin.user)
+    async with client_for(admin.host) as client:
+        key_headers = {"X-API-Key": await mint_instance_key(client_for, (client, headers))}
+        default = await client.post(
+            "/api/v1/instance/provisioning/orgs",
+            headers=key_headers,
+            json={"name": "Mailed", "slug": "mailed", "owner_email": "a@mailed.example"},
+        )
+        assert default.status_code == 201
+        assert default.json()["email_included"] is True
+
+        byo = await client.post(
+            "/api/v1/instance/provisioning/orgs",
+            headers=key_headers,
+            json={
+                "name": "Own Mail",
+                "slug": "own-mail",
+                "owner_email": "a@own-mail.example",
+                "email_included": False,
+            },
+        )
+        assert byo.status_code == 201
+        assert byo.json()["email_included"] is False
+        assert (
+            await client.get(
+                "/api/v1/instance/provisioning/orgs/own-mail", headers=key_headers
+            )
+        ).json()["email_included"] is False
+
+
+async def test_console_creates_and_toggles_included_email(client_for, cloud_mode) -> None:
+    """The console's own path: ticked by default at creation, and changeable afterwards
+    without touching anything else about the org."""
+    admin = await make_tenant("cl-console-mail")
+    await make_instance_owner(admin)
+    headers = await auth_cookie(admin.user)
+    async with client_for(admin.host) as client:
+        created = await client.post(
+            "/api/v1/instance/orgs",
+            headers=headers,
+            json={"name": "Console Org", "slug": "console-org"},
+        )
+        assert created.status_code == 201
+        assert created.json()["email_included"] is True
+        org_id = created.json()["id"]
+
+        off = await client.patch(
+            f"/api/v1/instance/orgs/{org_id}", headers=headers, json={"email_included": False}
+        )
+        assert off.status_code == 200
+        assert off.json()["email_included"] is False
+        # A rename leaves the entitlement alone — it is a partial update, not a wholesale PUT.
+        renamed = await client.patch(
+            f"/api/v1/instance/orgs/{org_id}", headers=headers, json={"name": "Renamed"}
+        )
+        assert renamed.json()["name"] == "Renamed"
+        assert renamed.json()["email_included"] is False
+
+
+
 # --------------------------------------------------------------------------- #
 # Custom-domain ingress rendering (#202)
 # --------------------------------------------------------------------------- #

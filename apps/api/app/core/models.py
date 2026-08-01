@@ -131,6 +131,16 @@ class Org(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # May this org send through the operator's own transport — the cloud "included e-mail"
+    # (epic #199)? An *entitlement*, so it lives beside `plan` on `orgs` and is written only
+    # from the instance surface; the tenant chooses whether to use it, never whether they
+    # have it. True by default (what an org gets when nobody said otherwise, and what every
+    # pre-existing org already behaved as); False leaves the org bring-your-own-transport,
+    # exactly as if the instance had none. Inert wherever the instance transport is unset.
+    email_included: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+
 
 class Membership(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     """Links a (global) user to an org; what they may do lives in ``membership_roles`` (#19)."""

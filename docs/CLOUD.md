@@ -149,7 +149,8 @@ POST   /api/v1/instance/provisioning/orgs/{slug}/activate …and reactivation
 ```
 
 Create payload: `{name, slug, owner_email, owner_password?, owner_full_name?, brand_name?,
-locale?, enabled_modules?, plan?, trial_days?, custom_domain?, custom_domain_mode?}`. With
+locale?, enabled_modules?, plan?, trial_days?, email_included?, custom_domain?,
+custom_domain_mode?}`. `email_included` defaults to **true** (see *Included e-mail* below). With
 `owner_password` the org is fully auto-configured (the owner can log in immediately at the
 returned `url`); without it the owner arrives via the forgot-password flow like an invited
 member. The provisioned owner is a plain org `owner`, **never** `is_superuser` (#201).
@@ -497,6 +498,24 @@ usable on self-host):
   domain — displayed as the org's brand name), and Instellingen → E-mail offers the
   explicit choice: *included e-mail* (`provider="instance"`, stores only from-name and
   reply-to) or any bring-your-own provider, exactly as before.
+
+**Per org, not per instance.** `orgs.email_included` (default **true**) decides whether a
+given org may use the operator's transport at all — an entitlement beside `plan`, written
+only from the instance surface: the `email_included` field on org creation (both org-creation
+forms and `POST /instance/provisioning/orgs`, ticked/true by default) and the toggle on the
+console / instance-admin org page (`PATCH /instance/orgs/{org_id}`, a partial update, so a
+rename never carries an entitlement change). False makes the org exactly as unconfigured as
+one on a box with no instance transport: no fallback, the choice is refused (`409
+errors.instance_email_unavailable`), and a *stored* `provider="instance"` row stops sending
+rather than being rerouted. Default true because an operator who never touches the field
+must not provision orgs that silently cannot mail.
+
+**The tenant's screen says which transport is live.** Included e-mail stores nothing, so
+Instellingen → E-mail used to read "not configured" over a blank SMTP form while mail was
+leaving happily. `GET /settings/email` now always returns an object with `active_provider`,
+`active_from_email`, `active_from_name` and this org's `instance_email_available`; the page
+states the active transport and the address it sends as, offers a test send, and opens the
+form on what is actually sending. See `docs/EMAIL.md` → *Which transport sends*.
 
 Google Workspace and LLM providers deliberately stay **bring-your-own-keys per org** on
 cloud — no platform-owned OAuth broker (that remains its own issue, #203) and no shared AI

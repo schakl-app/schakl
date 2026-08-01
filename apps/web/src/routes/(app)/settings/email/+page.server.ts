@@ -14,17 +14,17 @@ export const load: PageServerLoad = async (event) => {
   if (!can(event.locals.user, "settings.email.manage")) throw redirect(303, "/settings");
   const api = apiFor(event);
   // Transport config + the tenant's auth-mail templates (#161 tier 2), both admin-gated.
-  const [settings, templates, modules] = await Promise.all([
+  // The transport read also carries what is *actually* sending and whether the operator's
+  // own transport is available to this org (epic #199) — which is why the meta call this
+  // load used to make for that one flag is gone rather than moved.
+  const [settings, templates] = await Promise.all([
     api.GET("/api/v1/settings/email"),
     api.GET("/api/v1/settings/email/templates"),
-    api.GET("/api/v1/meta/modules"),
   ]);
   return {
     settings: settings.data ?? null,
     templates: templates.data ?? null,
     locale: event.locals.locale,
-    // The operator-provided transport (epic #199): offered as an explicit choice when set.
-    instanceEmailAvailable: modules.data?.instance_email_available ?? false,
   };
 };
 

@@ -59,6 +59,18 @@ export const actions: Actions = {
     return { updated: true };
   },
 
+  // Included e-mail (epic #199). Sent on its own rather than folded into ?/update, so a
+  // rename can never carry an entitlement change with it; an unchecked box submits nothing.
+  emailIncluded: async (event) => {
+    const form = await event.request.formData();
+    const { error } = await apiFor(event).PATCH("/api/v1/instance/orgs/{org_id}", {
+      ...orgPath(event),
+      body: { email_included: form.get("email_included") !== null },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { emailSaved: true };
+  },
+
   // Operator-side custom domain (#292): activate asserts ownership (audited); claim only
   // reserves it and issues the TXT challenge for the org's own admin to complete.
   setDomain: async (event) => {

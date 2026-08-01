@@ -34,11 +34,20 @@ class EmailSettingsWrite(BaseModel):
 
 
 class EmailSettingsRead(BaseModel):
-    """The stored configuration minus its secrets: enough to repopulate the form."""
+    """The stored configuration minus its secrets (enough to repopulate the form), **plus
+    what is actually sending right now**.
 
-    provider: EmailProvider
-    from_email: str
-    from_name: str
+    The two differ exactly where it matters: an org on the cloud's included e-mail (epic
+    #199) stores nothing at all, so a read that only described storage said "nothing
+    configured" while every mail was leaving through the operator's transport. The
+    ``active_*`` fields are the answer to "which transport is live, and as whom" — always
+    present, so no client has to re-derive it from instance config it cannot see.
+    """
+
+    #: The org's *own* stored choice. NULL = nothing stored (included e-mail, or no e-mail).
+    provider: EmailProvider | None = None
+    from_email: str = ""
+    from_name: str = ""
     reply_to: str | None = None
     host: str | None = None
     port: int | None = None
@@ -47,6 +56,19 @@ class EmailSettingsRead(BaseModel):
     #: A secret (password / API key) is stored; the value itself is never returned.
     has_secret: bool = False
     signature_html: str | None = None
+    #: Which transport a mail sent right now would leave through — the stored provider, or
+    #: ``"instance"`` for the operator's own (chosen explicitly *or* fallen back to). NULL =
+    #: this org can currently send no mail at all.
+    active_provider: EmailProvider | None = None
+    #: …and the address + display name it would leave as. Worth stating because on included
+    #: e-mail the org never entered either of them: the address is the instance's, the name
+    #: its own brand.
+    active_from_email: str | None = None
+    active_from_name: str | None = None
+    #: The operator's transport is available *to this org* — the instance has one configured
+    #: and the org is entitled to it (``orgs.email_included``). Drives whether the UI offers
+    #: "included e-mail" as a choice at all.
+    instance_email_available: bool = False
 
 
 class EmailTestResult(BaseModel):

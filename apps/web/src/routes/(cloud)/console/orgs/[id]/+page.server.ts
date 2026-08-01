@@ -89,6 +89,19 @@ export const actions: Actions = {
     return { planSaved: true };
   },
 
+  // Included e-mail (#199). Platform state on `orgs` like the plan, so PIN-free — and sent
+  // on its own rather than folded into ?/update, so a rename can never carry an entitlement
+  // change with it. An unchecked checkbox submits nothing, hence the presence test.
+  emailIncluded: async (event) => {
+    const form = await event.request.formData();
+    const { error } = await apiFor(event).PATCH("/api/v1/instance/orgs/{org_id}", {
+      ...orgPath(event),
+      body: { email_included: form.get("email_included") !== null },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { emailSaved: true };
+  },
+
   // End date (#199). An empty date means unlimited and switches the whole mechanism off for
   // this org — which is why it is sent as an explicit null rather than simply omitted.
   lifecycle: async (event) => {
