@@ -77,12 +77,18 @@ async def _upsert_event(
             GoogleCalendarEvent.google_event_id == event_id,
         )
     )
-    if item.get("status") == "cancelled":
+    start_at, start_date = _parse_when(item.get("start"))
+    end_at, end_date = _parse_when(item.get("end"))
+    if item.get("status") == "cancelled" and start_at is None and start_date is None:
+        # A *bare* cancellation is a tombstone — a deleted event, or a dropped instance of a
+        # recurring one — and Google's own instruction is to drop the local copy. A meeting the
+        # organiser cancelled is the other thing wearing this status: it stays on the attendee's
+        # calendar, struck through, and keeps its summary and start. The payload is the only
+        # thing that tells the two apart, so the start is what we read it from: a tombstone is
+        # only ever guaranteed an ``id``, and one carrying a time is still a meeting to show.
         if row is not None:
             await session.delete(row)
         return
-    start_at, start_date = _parse_when(item.get("start"))
-    end_at, end_date = _parse_when(item.get("end"))
     updated = item.get("updated")
     values = dict(
         calendar_id=calendar_id,
@@ -156,6 +162,12 @@ async def _sync_with_token(
     else:
         time_min = datetime.now(UTC) - timedelta(days=INITIAL_WINDOW_DAYS)
         params["timeMin"] = time_min.isoformat().replace("+00:00", "Z")
+        # Deliberately no ``showDeleted``: on a *listing* Google hands back soft-deleted events
+        # with their fields still populated, which the cancelled-vs-tombstone rule in
+        # ``_upsert_event`` would read as live cancelled meetings and resurrect things the user
+        # deleted. The cost is that a full refill (an expired syncToken) forgets the cancelled
+        # copies until Google mentions them again — it loses a strikethrough rather than
+        # inventing an event, which is the right way round.
 
     async with acting_as(session, org, connection) as client:
         page_token: str | None = None
@@ -259,6 +271,7 @@ async def events_feed(
                 "ends_at": (row.end_at or row.start_at).isoformat() if row.start_at else None,
                 "html_link": row.html_link,
                 "tentative": row.status == "tentative",
+                "cancelled": row.status == "cancelled",
             }
         )
     items.sort(key=lambda item: (item["start"], item["title"]))

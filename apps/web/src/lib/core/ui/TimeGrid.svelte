@@ -18,7 +18,13 @@
    * its *window* is deliberately not offered — that is a different edit, with its own snapping and
    * validation, and it lives in the request form.
    */
-  import { eventChipParts, eventLinkAttrs, eventsByDayMap, isoDiffDays } from "$lib/core/calendar";
+  import {
+    eventChipParts,
+    eventLinkAttrs,
+    eventsByDayMap,
+    eventTitleAttr,
+    isoDiffDays,
+  } from "$lib/core/calendar";
   import { fmtWeekdayShort } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { getTimeZone } from "$lib/core/timezone";
@@ -230,7 +236,7 @@
                   {...eventLinkAttrs(event.href)}
                   class="{parts.class} {event.draggable && onmove ? 'cursor-grab' : ''}"
                   style={parts.style}
-                  title={event.title}
+                  title={eventTitleAttr(event)}
                   draggable={Boolean(event.draggable && onmove)}
                   ondragstart={(e) => dragStart(e, event, day)}
                   ondragend={() => (dragging = null)}
@@ -239,7 +245,7 @@
                   {event.title}
                 </a>
               {:else}
-                <span class={parts.class} style={parts.style} title={event.title}>
+                <span class={parts.class} style={parts.style} title={eventTitleAttr(event)}>
                   {#if event.tentative}?{/if}
                   {event.title}
                 </span>
@@ -308,7 +314,7 @@
                 class="{parts.class} {block.event.draggable && onmove ? 'cursor-grab' : ''}"
                 style="top: {top}px; height: {height}px; left: {block.lane *
                   width}%; width: {width}%; {parts.style}"
-                title={block.event.title}
+                title={eventTitleAttr(block.event)}
                 draggable={Boolean(block.event.draggable && onmove)}
                 ondragstart={(e) => dragStart(e, block.event, day)}
                 ondragend={() => (dragging = null)}
@@ -321,7 +327,7 @@
                 class={parts.class}
                 style="top: {top}px; height: {height}px; left: {block.lane *
                   width}%; width: {width}%; {parts.style}"
-                title={block.event.title}
+                title={eventTitleAttr(block.event)}
               >
                 {#if block.event.tentative}?{/if}
                 {block.event.title}

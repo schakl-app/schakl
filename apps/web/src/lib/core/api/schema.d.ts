@@ -8209,6 +8209,11 @@ export interface components {
         CalendarFeedItem: {
             /** All Day */
             all_day: boolean;
+            /**
+             * Cancelled
+             * @default false
+             */
+            cancelled: boolean;
             /** End */
             end: string;
             /** Ends At */

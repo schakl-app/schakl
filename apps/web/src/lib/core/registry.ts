@@ -196,6 +196,12 @@ export interface CalendarEvent {
   /** Tentative events (e.g. pending leave) render muted with a "?" marker. */
   tentative?: boolean;
   /**
+   * Called off, but still on the calendar — a Google meeting whose organiser cancelled it.
+   * Renders struck through and faded, the way Google itself draws it: the slot being free again
+   * is the useful information, and silently removing the chip loses it.
+   */
+  cancelled?: boolean;
+  /**
    * `"holiday"` renders as a quiet full-width marking rather than a chip: a public holiday is
    * not somebody's absence, it is nobody's working day, and drawing it as one more coloured
    * pill next to three people's leave says the opposite.

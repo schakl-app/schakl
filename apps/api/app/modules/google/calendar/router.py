@@ -41,6 +41,9 @@ class CalendarFeedItem(BaseModel):
     ends_at: str | None = None
     html_link: str | None = None
     tentative: bool = False
+    #: The organiser cancelled the meeting and it is still on the viewer's calendar — Google
+    #: keeps showing it struck through, so the Agenda mirrors that rather than dropping it.
+    cancelled: bool = False
 
 
 @router.get(

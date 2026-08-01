@@ -143,6 +143,7 @@
   "calendar.empty.day": "Niets gepland deze dag.",
   "calendar.day_empty": "Niets gepland.",
   "calendar.tentative": "in afwachting",
+  "calendar.cancelled": "Geannuleerd",
   "calendar.nav.previous": "Vorige",
   "calendar.nav.next": "Volgende",
   "calendar.view.label": "Weergave",
