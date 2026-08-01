@@ -9,7 +9,7 @@
 
 Two documents, one engine. `invoices` and `quotes` are separate tables and endpoints (their
 statuses and numbering differ) sharing the calculation (`calc.py`), the tax snapshots, the
-templates and the rendering (`DocumentView.svelte`). Everything is org-scoped + RLS-forced,
+templates and the rendering (`render/`). Everything is org-scoped + RLS-forced,
 custom-fieldable (§13) and auditable (§16), like every module.
 
 ```
@@ -183,36 +183,116 @@ and `＋ abonnement` — which lists the client's active agreements from
 `GET /invoicing/billable-subscriptions` with the amount, the period and, for a period a
 document already holds, `al gefactureerd`. Shown, never hidden: "did I invoice March yet?"
 is answered on the picker instead of by a duplicate. UBL downloads proxy through
-`/invoices/[id]/ubl` (the impex pattern: the browser can't reach the API host). Instellingen → Facturatie holds seller
-identity, tax rates, templates (with live preview), numbering, defaults, reminders and the
-accounting section.
+`/invoices/[id]/ubl` (the impex pattern: the browser can't reach the API host), and so does
+the rendered document: `/invoices/[id]/preview` serves the API's HTML same-origin so
+`DocumentFrame` can measure and print it. Instellingen → Facturatie holds seller identity, tax
+rates, templates, numbering, defaults, reminders and the accounting section.
 
-## The document: one design, two renderers
+The **document is shown in a frame, not redrawn** (`DocumentFrame.svelte`). It is the page the
+API rendered and the PDF prints, scaled to fit rather than resized so the document's own CSS
+keeps working in the pixels it was written for. The print pages ask the *frame* to print, so
+the document's `@page` rules reach the printer instead of a screenshot of the app — which is
+why they no longer carry a `@media print` block hiding the shell.
 
-`DocumentView.svelte` (preview + print page) and `pdf.py` (the download and the PDF the send
-path attaches) are a **matched pair**: same blocks in the same order, same palette, same
-grouping, same accent. Change one, change the other — a client who reads the preview and
-then opens the PDF must not see two different documents. Three rules hold them together:
+The **template editor** (`TemplateEditor.svelte`) is design / layout / texts / code beside a
+live preview, and that preview is the API's real renderer working on the unsaved config —
+debounced, because it renders a real document server-side. `templateConfig.ts`'s `mergeLayout`
+mirrors `resolve_layout()` so the list and the paper agree about order; a drift shows up as
+the two disagreeing on screen, which is the failure mode we want. The code tab only appears
+for a caller holding `invoicing.template.author`, and that is UX — the API is the boundary.
 
-- **Branding is runtime, per-tenant** (Golden Rule 4). The PDF draws the tenant logo from
-  its own stored bytes (`app/core/branding.py` reads the file id out of
-  `org_settings.logo_url` and pulls it from the storage backend — never an outbound fetch of
-  an org-controlled URL) and the accent falls back to the tenant's `primary_color`. A PDF
-  with a hardcoded hex is a white-label product printing someone else's identity.
-- **The accent is contrast-corrected against paper.** `document_accent()` / `documentAccent()`
-  darken the tenant colour in HSL, hue preserved, until it clears 4.5:1 on white — the
-  `deriveOnDark` trick from `lib/core/theme.ts` pointed the other way, because the accent
-  carries small text (section labels, the total) and a pale-yellow brand would otherwise
-  print an invisible heading. The two implementations must agree byte for byte.
+## The document: one artefact (`render/`)
+
+There used to be two renderers — `DocumentView.svelte` drew the invoice in Svelte, `pdf.py`
+drew it again in fpdf2, and each carried a comment telling you to keep it in step with the
+other. There is now **one**: `render/` builds a context, a Jinja design turns it into a
+standalone HTML page, and WeasyPrint prints *that*. The preview endpoint serves the same
+page and the web frames it. "The preview and the PDF disagree" is no longer expressible.
+
+```
+service._render_inputs ─┬─▶ context.build_context ──▶ engine.render_html ──▶ HTML
+   (brand, seller,      │        (one dict:                (Jinja)            │
+    template config,    │      strings, no ORM)                               ├─▶ /preview
+    tax groups)         │                                                     └─▶ engine.html_to_pdf
+                        └─ the layout, resolved against blocks.BLOCK_CATALOG        (WeasyPrint) ──▶ /pdf
+```
+
+- **The context is strings, never rows.** A tenant's own template renders against that exact
+  dict in a Jinja sandbox; if it held ORM objects, "print the customer's name" and "walk the
+  session to another org's invoices" would be the same expression.
+- **Formatting is a property of the document, not the viewer.** Money, dates and labels
+  resolve in the *document's* `locale` — a Dutch invoice to a German client prints
+  `€ 1.234,56` and `30-06-2026` whoever opens it. Same rule the document e-mails follow.
+- **Branding is runtime, per-tenant** (Golden Rule 4). The logo comes from its own stored
+  bytes (`app/core/branding.py` reads the file id out of `org_settings.logo_url` and pulls it
+  from the storage backend — never an outbound fetch of an org-controlled URL), and the
+  accent falls back to `primary_color`. Nothing below `service` owns a default hex.
+- **The accent is contrast-corrected against paper.** `document_accent()` darkens the tenant
+  colour in HSL, hue preserved, until it clears 4.5:1 on white — `deriveOnDark` from
+  `lib/core/theme.ts` pointed the other way, because the accent carries small text and a
+  pale-yellow brand would otherwise print an invisible heading. `documentAccent()` in
+  `types.ts` still mirrors it for swatches in the editor.
 - **It reads like the app.** Ink, muted text, rules and washes are the light values of
-  `app.css`'s tokens; the PDF face is **Inter**, installed by `apps/api/Dockerfile`. Without
-  a real font on disk fpdf2 falls back to the built-in Helvetica, which is latin-1 only —
-  that is what printed every `€` as `?`.
+  `app.css`'s tokens; the face is **Inter**, installed by `apps/api/Dockerfile`.
+- **Page numbers arrive as a second stylesheet**, so a one-page invoice stays unnumbered.
+  That costs a second layout pass, and only on documents that really run to two pages.
 
-The template resolves the same way in both: the document's own template, and nothing implied
-when it has none. Row heights are measured from the wrapped description (`dry_run`) before
-the row is drawn, so a two-line description can never be overprinted by the next row, and
-the table header repeats after a page break.
+### What a template may rearrange (`render/blocks.py`)
+
+A template carries a **layout**: an ordered list of blocks, each toggleable, each with its own
+ordered list of toggleable fields. `BLOCK_CATALOG` is the registry those keys are drawn from —
+§15's "registry, not free text" applied to design.
+
+- **A stored layout is a diff, not a snapshot.** Resolution starts from the catalog and lets
+  the layout reorder and toggle what it *mentions*; a block or field it has never heard of
+  lands at its catalog position with its catalog default. Without that, every field added by a
+  later release would be invisible to every existing tenant, and the first person to notice
+  would be a customer reading an invoice missing its VAT number.
+- **Regions belong to the design.** Only the body is genuinely a stack, so only the body
+  reorders. A design may place a block by hand (the letterhead's payment card sits beside the
+  addressee) — and when it does, it must still consult `enabled`, which `_entries()` now does
+  centrally. It did not once, and the switch silently did nothing.
+- **Legality is not a preference.** Locked blocks and fields — the number, the date, the VAT
+  breakdown, the reverse-charge notice — may be moved but never switched off.
+- `show_logo` and `columns` predate layouts. They stay the input while a template has no
+  layout of its own (so a release cannot redesign a document a tenant already approved), and
+  the service rewrites them *from* the layout on save so the two can never disagree.
+
+### The shipped designs
+
+`classic` is what the product has always printed. `letterhead` is the shape a Dutch agency
+invoice usually takes: sender across half the header, a boxed *Betaalgegevens* card by the
+addressee, the VAT breakdown beside the totals, and the tenant's mark behind the page.
+
+The background is **opt-in**: a template stored before it existed has no `background` key, and
+reading that as "yes please" would have put a mark behind every invoice every tenant had
+already approved. Absent an image of its own it uses the org logo, so the design works the
+moment it is picked. Every number in it is re-clamped at render time — the config is
+tenant-writable and a stored opacity of `40` would black out the text.
+
+### Bring your own design
+
+`design: "custom"` renders the tenant's own Jinja against the same context, inside our shell
+(A4 geometry, the palette, the draft watermark). Authoring is gated on
+`invoicing.template.author` — arranging blocks is `settings.manage`, but writing code that
+runs on the agency's server is a strictly larger act. An **unchanged** body passes the check,
+so an admin without the permission can still rename a template that carries custom HTML.
+
+Two walls, both tested in `tests/test_invoicing_render.py`:
+
+- **A sandboxed environment with no loader.** `SandboxedEnvironment` refuses attribute
+  traversal into Python internals, so `{{ ''.__class__.__mro__ }}` raises instead of
+  resolving; `{% include %}`/`{% extends %}` have nothing to resolve against.
+- **Nothing is fetched.** WeasyPrint's `url_fetcher` answers `data:` and raises on everything
+  else — one rule covering `file:///etc/passwd`, `http://169.254.169.254/` and a slow CDN
+  alike. Every image a document legitimately shows is inlined as a data URI upstream, so the
+  shipped designs never need the network either. A refused image costs the image, not the
+  invoice: WeasyPrint logs and skips it, and the document still prints.
+
+The block macros reach templates through the *context* rather than `{% import %}`, which is
+what makes a design's body file portable: the same markup runs as a shipped design and as the
+starting point of a tenant's own. "Start from this design" hands over the very files the
+shipped design renders from.
 
 ## Extending
 

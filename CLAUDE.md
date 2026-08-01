@@ -42,6 +42,7 @@ other identifiers; the dot appears solely when the official product name is disp
 | Web app       | SvelteKit (SSR) + `@vite-pwa/sveltekit` · TailwindCSS · Bits UI / shadcn-svelte |
 | i18n (web)    | Paraglide JS (inlang) — flat JSON message catalogs, type-safe, tree-shaken |
 | API           | FastAPI · Pydantic v2 · SQLAlchemy 2.0 · Alembic → auto OpenAPI |
+| Documents     | Jinja → HTML → **WeasyPrint** (`invoicing/render/`): the page the browser previews *is* the page the PDF prints, and a tenant may bring their own design (sandboxed Jinja, no network) — `docs/INVOICING.md` |
 | Typed client  | `openapi-typescript` client generated from the API's OpenAPI spec |
 | Database      | PostgreSQL (with Row-Level Security) |
 | Jobs & cache  | Redis + ARQ |
