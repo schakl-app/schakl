@@ -359,6 +359,8 @@
   "auth.invalid_credentials": "Onjuist e-mailadres of wachtwoord.",
   "auth.local_login_disabled": "Inloggen met wachtwoord is uitgeschakeld. Log in met je organisatieaccount.",
   "auth.sign_in_with_sso": "Inloggen met {name}",
+  "auth.sso_failed": "Inloggen via de aanbieder van je organisatie is niet gelukt. Probeer het opnieuw.",
+  "auth.sso_no_access": "Je account is geen lid van deze organisatie. Vraag een beheerder om toegang.",
   "auth.unknown_host": "Dit adres hoort bij geen enkele organisatie op deze installatie. Controleer de URL of vraag je beheerder.",
   "auth.org_suspended": "Deze organisatie is geschorst. Neem contact op met je beheerder.",
   "auth.two_factor_title": "Verificatie in twee stappen",

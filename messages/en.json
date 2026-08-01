@@ -359,6 +359,8 @@
   "auth.invalid_credentials": "Incorrect email or password.",
   "auth.local_login_disabled": "Password login is disabled. Sign in with your organization account.",
   "auth.sign_in_with_sso": "Sign in with {name}",
+  "auth.sso_failed": "Signing in through your organization's provider did not work. Please try again.",
+  "auth.sso_no_access": "Your account is not a member of this organization. Ask an administrator for access.",
   "auth.unknown_host": "This address does not belong to any organization on this installation. Check the URL, or ask your administrator.",
   "auth.org_suspended": "This organization is suspended. Contact your administrator.",
   "auth.two_factor_title": "Two-step verification",

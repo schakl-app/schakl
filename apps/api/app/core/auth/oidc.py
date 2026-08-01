@@ -8,6 +8,14 @@ client for exactly that config. An org that has SSO disabled or half-configured 
 login button's invariant (shown iff the flow works) survives the move to per-org config.
 
 Enabling, disabling or enforcing SSO is a settings write; nothing here is decided at boot.
+
+Two rules the flow itself carries:
+
+* **PKCE on every authorization request** (``sso.oauth_client``, ``code_challenge_method``).
+* **JIT provisioning is first contact, per org** — never "no membership, so make one", which
+  handed removed users their access back on their next sign-in (``sso.OrgSsoProvision``). A
+  caller the IdP authenticates but this org has no membership for gets **no session at all**:
+  a cookie nobody may use is a credential, not a courtesy.
 """
 
 from __future__ import annotations
@@ -22,7 +30,7 @@ from fastapi.responses import RedirectResponse
 
 from app.config import settings
 from app.core.auth import sso
-from app.core.auth.backend import cookie_transport, get_jwt_strategy
+from app.core.auth.backend import cookie_transport, write_session_token
 from app.core.auth.models import User
 from app.db import async_session_maker, set_current_org
 from app.errors import AppError
@@ -161,23 +169,54 @@ async def oidc_callback(request: Request):
         # Grant a membership in the resolved org, otherwise a JIT-provisioned SSO user would
         # authenticate but be locked out (no membership → 403 in require_context). Per-org
         # policy now: the org's stored auto-provision flag and default role (issue #76).
-        if resolved.auto_provision:
-            await set_current_org(session, resolved.org_id)
-            existing = await session.scalar(
-                select(Membership).where(
-                    Membership.org_id == resolved.org_id, Membership.user_id == user.id
+        await set_current_org(session, resolved.org_id)
+        membership = await session.scalar(
+            select(Membership).where(
+                Membership.org_id == resolved.org_id, Membership.user_id == user.id
+            )
+        )
+        if membership is None and resolved.auto_provision:
+            # **First contact only.** "No membership" used to be the whole condition, which
+            # made an admin's removal last exactly until the person's next sign-in — the JIT
+            # path handed the access straight back, with the same default role, silently. The
+            # provision row is the memory that distinguishes "never been here" from "was here
+            # and was removed" (``sso.OrgSsoProvision``).
+            provisioned = await session.scalar(
+                select(sso.OrgSsoProvision.id).where(
+                    sso.OrgSsoProvision.org_id == resolved.org_id,
+                    sso.OrgSsoProvision.user_id == user.id,
                 )
             )
-            if existing is None:
+            if provisioned is None:
                 # Goes through the RBAC helper so a JIT-provisioned user also holds the
                 # system role that carries their permissions (issue #19) — a membership
                 # without one authenticates and can then do nothing at all.
-                await create_membership(
+                membership = await create_membership(
                     session, resolved.org_id, user.id, resolved.default_role
                 )
+                session.add(
+                    sso.OrgSsoProvision(org_id=resolved.org_id, user_id=user.id)
+                )
+            else:
+                logger.info(
+                    "OIDC login: not re-provisioning %s in org %s — access was removed after "
+                    "an earlier provisioning",
+                    email,
+                    resolved.org_id,
+                )
+
+        if membership is None:
+            # Authenticated by the IdP, but not a member here — auto-provisioning is off, or
+            # their access was withdrawn. Do not mint a session: it would be a real credential
+            # on this hostname that every endpoint then has to refuse, and the honest answer is
+            # that this org has no account for them.
+            await session.commit()
+            return RedirectResponse(url="/login?error=oidc_no_access")
+
         await session.commit()
 
-    jwt = await get_jwt_strategy().write_token(user)
+    # The session belongs to the org whose hostname this callback arrived on (``backend.py``).
+    jwt = await write_session_token(user, resolved.org_id)
     response = RedirectResponse(url="/")
     response.set_cookie(
         key=cookie_transport.cookie_name,

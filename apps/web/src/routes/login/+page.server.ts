@@ -12,6 +12,15 @@ import { apiFor } from "$lib/core/session";
 
 import type { Actions, PageServerLoad, RequestEvent } from "./$types";
 
+/** Why an SSO round-trip bounced back here. The API redirects to `/login?error=…` — the only
+ * way it can report anything at all, since the browser is mid-redirect and there is no
+ * response body to carry an error envelope. An unrecognised value says nothing rather than
+ * echoing whatever was in the URL. */
+const SSO_ERRORS: Record<string, string> = {
+  oidc: "auth.sso_failed",
+  oidc_no_access: "auth.sso_no_access",
+};
+
 export const load: PageServerLoad = async (event) => {
   if (event.locals.user) throw redirect(303, "/");
   // Per-org at request time (#76): the API resolves the org from the hostname and answers
@@ -21,6 +30,7 @@ export const load: PageServerLoad = async (event) => {
     localLoginEnabled: data?.local_login_enabled ?? true,
     oidcEnabled: data?.oidc_enabled ?? false,
     oidcName: data?.oidc_name ?? null,
+    error: SSO_ERRORS[event.url.searchParams.get("error") ?? ""] ?? null,
   };
 };
 

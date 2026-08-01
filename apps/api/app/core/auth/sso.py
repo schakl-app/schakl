@@ -32,7 +32,17 @@ from urllib.parse import urlsplit
 
 import httpx
 from fastapi import Request
-from sqlalchemy import Boolean, DateTime, String, Text, UniqueConstraint, select, text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    String,
+    Text,
+    UniqueConstraint,
+    select,
+    text,
+)
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -84,6 +94,36 @@ class OrgAuthSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base)
     )
     oidc_tested_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+
+class OrgSsoProvision(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """"This org has already JIT-provisioned this account" — written once, never removed.
+
+    Auto-provisioning asked the wrong question. It looked for a *membership*, found none, and
+    created one — which is right exactly once and wrong every time after, because "this person
+    has never signed in here" and "an admin took their access away" look identical from the
+    membership table. Removing an SSO user from Instellingen → Gebruikers therefore lasted
+    until their next sign-in, silently, with the removal on the audit trail and the person back
+    in the org. Off-boarding that undoes itself is worse than no off-boarding: it is believed.
+
+    So provisioning is **first contact, per org**, and this row is the memory of it. It records
+    a fact about the past, so nothing ever deletes it: an admin who removed access and wants it
+    back grants the membership themselves (a deliberate act, on the trail, with the role they
+    intend), and the JIT path stays out of it. It is per org, not per account, so an SSO user
+    who is genuinely new to a *second* tenant is still provisioned there.
+    """
+
+    __tablename__ = "org_sso_provisions"
+    __table_args__ = (
+        UniqueConstraint("org_id", "user_id", name="uq_org_sso_provisions_org_user"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
 
 
@@ -195,7 +235,18 @@ def oauth_client(row: OrgAuthSettings) -> Any:
         server_metadata_url=row.oidc_discovery_url,
         client_id=row.oidc_client_id,
         client_secret=decrypt(row.oidc_client_secret_encrypted or ""),
-        client_kwargs={"scope": "openid email profile"},
+        client_kwargs={
+            "scope": "openid email profile",
+            # PKCE (RFC 7636), required of every OAuth 2.1 client and free here: Authlib
+            # generates the verifier, stores it with the state in the server-side session and
+            # replays it at the token exchange. Without it the authorization code is
+            # bearer-only for the length of the redirect — anything that observes the callback
+            # URL (a proxy log, browser history, a rogue extension, a mis-registered redirect
+            # on the IdP) can redeem it, because the client secret alone is a constant that
+            # does not bind the code to *this* login attempt. `state` defends against CSRF,
+            # not against a stolen code.
+            "code_challenge_method": "S256",
+        },
     )
     client = oauth.sso
     _client_cache[row.org_id] = (fingerprint, client)

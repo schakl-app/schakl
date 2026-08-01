@@ -17,6 +17,24 @@
   member of both. A single-organisation installation is unaffected in every respect but one:
   **everyone signs in again once** after this upgrade, because sessions issued before it name
   no organisation.
+- **Single sign-on now proves the browser that started the sign-in finished it** (PKCE, RFC
+  7636). The one-time code the identity provider hands back travelled the redirect on its own,
+  so anything that could observe that address — a proxy log, browser history, an extension, a
+  redirect URI registered a little too loosely at the provider — could have redeemed it. Every
+  sign-in now carries a challenge whose answer never leaves the server. Nothing to configure;
+  providers that ignore it behave exactly as before.
+- **Removing someone who signs in with SSO now sticks.** "Create a membership on first sign-in"
+  was really "create one whenever there isn't one", so taking a person out of Instellingen →
+  Gebruikers lasted until their next sign-in and then quietly undid itself — with the removal
+  sitting on the audit trail. An organisation now remembers that it once admitted an account,
+  and only a genuine first sign-in provisions. Restoring access is a deliberate act again: add
+  the membership back, with the role you mean. Someone signing in at a *different* organisation
+  for the first time is still provisioned there. Existing memberships were all counted as
+  "already admitted", so nobody is re-provisioned by the upgrade itself.
+- **Someone the identity provider knows but this organisation does not is now refused**, with
+  *"Your account is not a member of this organisation"* on the sign-in screen, instead of being
+  handed a session every screen then had to turn away. The sign-in screen also finally shows
+  why a federated attempt bounced back to it; before, it silently redisplayed the form.
 
 ### Fixed
 

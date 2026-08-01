@@ -148,6 +148,13 @@
       <p class="text-center text-sm text-text-muted">{t("auth.local_login_disabled")}</p>
     {/if}
 
+    <!-- Why an SSO attempt bounced back to this page. Outside the local-login branch on
+         purpose: an org that *enforces* SSO renders no form at all, and that is exactly the
+         org whose people arrive here after a refused federated sign-in. -->
+    {#if data.error && !challenge}
+      <p class="mt-4 text-center text-sm text-red-600 dark:text-red-400">{t(data.error)}</p>
+    {/if}
+
     {#if data.oidcEnabled && !challenge}
       <a
         href="/api/v1/auth/oidc/login"
