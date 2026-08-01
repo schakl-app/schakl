@@ -8,12 +8,16 @@ staying true. This module owns that state:
 - :func:`refresh_domain_health` — one reconciliation: fetch the custom hostname from
   Cloudflare, run the shared routing check (``domainflow.routing_check``), write the result
   onto the org row. Called from the verify flow (seed), the settings page's "check now"
-  endpoint, and the sweep.
+  endpoint, and the sweep. It returns the per-layer :class:`DomainDiagnosis` behind the
+  verdict it wrote, which is what lets the alert mail name the record that is wrong.
 - :func:`sweep_domain_health` — the daily safety sweep over every org with a Cloudflare
-  custom hostname. It alerts the org's domain managers **once per distinct problem**
+  custom hostname. It alerts the org's **administrators** — the people who can actually change
+  the setting, never a client login — **once per distinct problem**
   (``orgs.domain_alerted_for`` fingerprint) when the domain stops being live, and ahead of a
   certificate expiry that automatic HTTP DCV renewal evidently is not solving — renewal
-  failure must be discovered here, not by browsers rejecting TLS.
+  failure must be discovered here, not by browsers rejecting TLS. The fingerprint is recorded
+  only when a mail actually went out: a problem nobody was told about must stay unreported,
+  not be silently marked as handled.
 
 What is *not* here: Delegated DCV. Deliberately deferred — exact, non-wildcard hostnames
 renew through automatic HTTP DCV as long as the hostname stays active and keeps pointing at
@@ -23,7 +27,7 @@ the SaaS target, which is precisely what this module monitors. See docs/CLOUD.md
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -33,19 +37,34 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core import domainflow
 from app.core.cloud import cloudflare as cf
+from app.core.cloud.domain_alert import compose_domain_alert
 from app.core.cloud.ingress import cname_target
-from app.core.email.senders import OutgoingEmail
+from app.core.domainflow import DomainCheck
+from app.core.email.branding import DEFAULT_PRIMARY
 from app.core.email.service import send_org_email
-from app.core.hosts import custom_domain_live, slug_host
+from app.core.hosts import custom_domain_live
 from app.core.models import Membership, Org, OrgSettings, OrgStatus
 from app.db import set_current_org
-from app.i18n import translate
 
 logger = logging.getLogger(__name__)
 
 #: Cloudflare renews DV certificates ~30 days before expiry; one this close means every
 #: renewal attempt has been failing for weeks and someone has to act.
 EXPIRY_ALERT_DAYS = 15
+
+
+@dataclass(frozen=True)
+class DomainDiagnosis:
+    """The evidence behind one reconciliation, per layer — DNS routing, edge hostname, TLS.
+
+    ``refresh_domain_health`` writes the *verdict* onto the org row (that is what
+    ``custom_domain_live`` reads); this carries the *reasoning* — which layer, what was
+    expected, what was observed — so the alert mail can name the wrong record instead of
+    telling an admin to go and look. Same objects the settings screen renders, so the mail
+    and the screen cannot phrase the same problem differently.
+    """
+
+    checks: tuple[DomainCheck, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -93,7 +112,7 @@ def parse_hostname_record(record: dict[str, Any]) -> HostnameHealth:
     )
 
 
-async def refresh_domain_health(org: Org) -> None:
+async def refresh_domain_health(org: Org) -> DomainDiagnosis:
     """One reconciliation for one org: Cloudflare state + the routing check → the org row.
 
     Mutates the loaded ORM object only (no queries), so a request handler may run it inside
@@ -101,9 +120,15 @@ async def refresh_domain_health(org: Org) -> None:
     fetch of the domain) are exactly what that seam exists for.
     A Cloudflare API failure keeps the previous statuses (an API blip is not a state change)
     and records the error text instead.
+
+    Returns the per-layer checks it reached the verdict with. They cost nothing extra — the
+    lookups already happened — and they are the difference between an alert that says "your
+    domain is broken" and one that says which record points where.
     """
     error: str | None = None
     edge_ok: bool | None = None
+    edge_checks: list[DomainCheck] = []
+    routing: DomainCheck | None = None
     if org.cf_hostname_id and cf.cloudflare_configured():
         try:
             record = await cf.get_custom_hostname(org.cf_hostname_id)
@@ -124,19 +149,25 @@ async def refresh_domain_health(org: Org) -> None:
                 org.domain_cert_expires_at = health.cert_expires_at
                 edge_ok = health.hostname_status == "active" and health.ssl_status == "active"
                 error = health.error
+            edge_checks = domainflow.hostname_checks(record)
         except cf.CloudflareError as exc:
+            # No edge verdict at all this round: the previous statuses stand and the error
+            # text below is what the mail reports. Inventing a failed check here would
+            # alert on our own outage.
             error = str(exc)
     if org.custom_domain:
         # The same function the wizard's "check now" runs, with the same signals in the same
         # order — one question, one answer. Two implementations of "does it still point here"
         # is how a customer ends up reading "your domain is fine" on a page while this sweep
         # mails them that it is not.
-        check = await domainflow.routing_check(
+        routing = await domainflow.routing_check(
             org.custom_domain, cname_target(), slug=org.slug, edge_ok=edge_ok
         )
-        org.domain_dns_ok = domainflow.dns_verdict(check)
+        org.domain_dns_ok = domainflow.dns_verdict(routing)
     org.domain_checked_at = datetime.now(UTC)
     org.domain_check_error = error[:500] if error else None
+    # Display order, as on the settings screen: routing first, then the edge's own layers.
+    return DomainDiagnosis(checks=tuple(([routing] if routing else []) + edge_checks))
 
 
 def _alert_fingerprint(org: Org) -> str | None:
@@ -157,14 +188,31 @@ def _alert_fingerprint(org: Org) -> str | None:
     return None
 
 
-async def _domain_manager_emails(session: AsyncSession, org: Org) -> list[str]:
-    """Who can act on a domain problem: members whose roles grant the domain setting."""
+async def _admin_emails(session: AsyncSession, org: Org) -> list[str]:
+    """The org's administrators: active **staff** whose roles grant the domain setting.
+
+    Two narrowings, and the alert needs both. *Can they fix it* — only a holder of
+    ``settings.domain.write`` (or the owner's wildcard) can change a thing here, so nobody
+    else is told about infrastructure they cannot touch. And *are they ours* — an external
+    login is never a recipient: a client-role membership or a contact-linked portal account
+    (#274 treats both as external) must not receive the agency's own operational mail, even
+    if a misconfigured role handed it the permission. The seeded roles already land on
+    owner + admin; the permission is checked rather than the role key so a tenant who
+    delegates the domain to their own technical role still gets warned.
+    """
     from app.core.auth.models import User
-    from app.core.permissions.models import MembershipRole, RolePermission
+    from app.core.permissions.catalog import ROLE_CLIENT
+    from app.core.permissions.models import MembershipRole, Role, RolePermission
+    from app.core.portal import portal_user_ids
 
     await set_current_org(session, org.id)
+    external_roles = (
+        select(MembershipRole.membership_id)
+        .join(Role, Role.id == MembershipRole.role_id)
+        .where(MembershipRole.org_id == org.id, Role.key == ROLE_CLIENT)
+    )
     rows = await session.execute(
-        select(User.email)
+        select(User.id, User.email)
         .join(Membership, Membership.user_id == User.id)
         .join(MembershipRole, MembershipRole.membership_id == Membership.id)
         .join(RolePermission, RolePermission.role_id == MembershipRole.role_id)
@@ -172,36 +220,54 @@ async def _domain_manager_emails(session: AsyncSession, org: Org) -> list[str]:
             Membership.org_id == org.id,
             User.is_active.is_(True),
             RolePermission.permission.in_(["*", "settings.domain.write"]),
+            Membership.id.not_in(external_roles),
         )
     )
-    return sorted({email for (email,) in rows if email})
+    candidates = {user_id: email for user_id, email in rows if email}
+    portal = await portal_user_ids(session, org.id, set(candidates))
+    return sorted({email for user_id, email in candidates.items() if user_id not in portal})
 
 
-async def _notify(session: AsyncSession, org: Org, fingerprint: str) -> None:
-    """Mail the org's domain managers. Best effort — a mail outage must not stall the sweep."""
+async def _notify(
+    session: AsyncSession, org: Org, fingerprint: str, diagnosis: DomainDiagnosis
+) -> bool:
+    """Mail the org's administrators; report whether any of them was actually reached.
+
+    Best effort — a mail outage must not stall the sweep — but *not* silently: the sweep only
+    remembers a problem it managed to tell someone about, so an org with no administrator
+    holding the permission, or with no working transport, is alerted again tomorrow instead of
+    having its outage marked as handled.
+    """
     try:
         await set_current_org(session, org.id)
         row = await session.scalar(select(OrgSettings).where(OrgSettings.org_id == org.id))
-        locale = (row.default_locale if row else None) or settings.default_locale
-        brand = row.brand_name if row else org.name
-        kind = "expiry" if fingerprint.startswith("expiry:") else "unhealthy"
-        key = f"cloud.domain.email_{kind}"
-        expires = org.domain_cert_expires_at
-        body = translate(
-            key,
-            locale,
-            brand=brand,
-            domain=org.custom_domain or "",
-            host=slug_host(org),
-            date=expires.date().isoformat() if expires else "",
-        )
-        subject = translate(f"{key}_subject", locale, brand=brand, domain=org.custom_domain or "")
-        for address in await _domain_manager_emails(session, org):
-            await send_org_email(
-                session, org.id, OutgoingEmail(to=address, subject=subject, text=body)
+        recipients = await _admin_emails(session, org)
+        if not recipients:
+            logger.warning(
+                "custom domain %s (org %s) needs attention but no administrator holds "
+                "settings.domain.write",
+                org.custom_domain,
+                org.slug,
             )
+            return False
+        message = compose_domain_alert(
+            org,
+            kind="expiry" if fingerprint.startswith("expiry:") else "unhealthy",
+            checks=diagnosis.checks,
+            locale=(row.default_locale if row else None) or settings.default_locale,
+            # Golden Rule 4: the displayed brand, never the internal org name (docs/EMAIL.md).
+            brand=(row.brand_name if row else org.name),
+            primary_color=(row.primary_color if row else None) or DEFAULT_PRIMARY,
+            recipients=recipients,
+        )
+        sent = False
+        for address in recipients:
+            ok, _error = await send_org_email(session, org.id, replace(message, to=address))
+            sent = sent or ok
+        return sent
     except Exception:  # noqa: BLE001 — notification is best effort by contract
         logger.exception("domain health notification failed for org %s", org.slug)
+        return False
 
 
 async def sweep_domain_health(session: AsyncSession) -> dict[str, int]:
@@ -223,18 +289,18 @@ async def sweep_domain_health(session: AsyncSession) -> dict[str, int]:
     ).scalars().all()
     checked = alerted = 0
     for org in orgs:
-        await refresh_domain_health(org)
+        diagnosis = await refresh_domain_health(org)
         checked += 1
         fingerprint = _alert_fingerprint(org)
         if fingerprint is None:
             org.domain_alerted_for = None
             continue
         if fingerprint != org.domain_alerted_for:
-            await _notify(session, org, fingerprint)
-            org.domain_alerted_for = fingerprint
-            alerted += 1
             logger.warning(
                 "custom domain %s (org %s) needs attention: %s",
                 org.custom_domain, org.slug, fingerprint,
             )
+            if await _notify(session, org, fingerprint, diagnosis):
+                org.domain_alerted_for = fingerprint
+                alerted += 1
     return {"checked": checked, "alerted": alerted}

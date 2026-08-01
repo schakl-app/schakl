@@ -4,6 +4,20 @@
 
 ### Fixed
 
+- **The "your domain is not working" mail now says which record is wrong, and reaches only
+  administrators** (#291). It listed no evidence at all: an admin was told the hostname, the
+  certificate *or* the DNS needed attention and had to go and find out which. The daily sweep
+  already knew — it decides the verdict from a per-layer check — so the mail now carries that
+  reasoning: the records the domain needs, the value each must hold, what DNS answers instead,
+  and every failing layer's own explanation, in the same strings the settings screen renders.
+  Links point at the organization's slug host, since the custom domain is exactly what may not
+  be answering. Recipients are the people who can act on it — holders of `settings.domain.write`
+  or the owner wildcard — and never an external login: a client-role or portal account is
+  excluded even where a misconfigured role granted it the permission. The mail names its own
+  recipients, so an admin can see a colleague already has it. Finally, a problem is remembered
+  as reported only once a mail actually went out: an organization whose administrators are all
+  inactive, or whose e-mail transport is down, is alerted again tomorrow instead of having its
+  outage silently marked as handled.
 - **Cloudflare for SaaS custom domains activate on a Free, Pro or Business zone again** (#293).
   Every custom-hostname request carried `custom_origin_sni`, which is an Enterprise-only
   entitlement, so Cloudflare refused the whole create with *"Access to setting a custom origin SNI

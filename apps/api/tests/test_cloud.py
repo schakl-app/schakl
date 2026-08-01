@@ -1618,8 +1618,16 @@ async def test_dns_moved_away_demotes_the_domain_and_alerts_nobody_twice(
         first = await domain_health.sweep_domain_health(session)
         await session.commit()
     assert first["alerted"] == 1
-    assert len(sent) == 1  # the tenant owner holds "*", so they are the domain manager
+    assert len(sent) == 1  # the tenant owner holds "*", so they are the administrator
     assert tenant.user.email == sent[0].to
+
+    # The mail carries the diagnosis, not just the verdict: the record that must exist, the
+    # value it must hold, what DNS answers instead, and who else was told.
+    for body in (sent[0].text, sent[0].html):
+        assert "crm.verhuisd.test" in body  # the record's name
+        assert "edge.localhost" in body  # what it must point at
+        assert "cdn.elders.example" in body  # what it points at now
+        assert tenant.user.email in body  # sent to the administrators, and it says so
 
     async with async_session_maker() as session:
         second = await domain_health.sweep_domain_health(session)
@@ -1635,6 +1643,112 @@ async def test_dns_moved_away_demotes_the_domain_and_alerts_nobody_twice(
     async with async_session_maker() as session:
         org = await session.get(Org, tenant.org.id)
         assert org.domain_alerted_for is None  # a future problem alerts again
+
+
+async def _moved_away(fake_dns, probe_answers, domain: str) -> None:
+    """Re-point ``domain`` at somebody else, and have that somebody answer on it."""
+    fake_dns.cname[domain] = ["cdn.elders.example"]
+    probe_answers[domain] = httpx.Response(200, html="<h1>Elders</h1>")
+
+
+async def test_the_domain_alert_reaches_administrators_only(
+    client_for, cloudflare, fake_dns, probe_answers, monkeypatch
+) -> None:
+    """Only someone who can change the setting is told, and never an external login.
+
+    A colleague who cannot touch the domain gets no mail about it, and a client-role account
+    gets none even when a misconfigured role hands it ``settings.domain.write`` — an external
+    login (#274) is not an administrator of the agency's own infrastructure.
+    """
+    import uuid as uuid_module
+
+    from app.core.permissions.models import Role, RolePermission
+    from tests.conftest import add_membership
+
+    tenant, headers = await _attached_tenant(fake_dns, "cf-admins", "crm.beheer.test")
+    cloudflare.set_state("ch1", status="active", ssl_status="active")
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        for email, role in (("collega@example.com", "member"), ("klant@example.com", "client")):
+            user = User(
+                id=uuid_module.uuid4(),
+                email=email,
+                hashed_password="x",
+                is_active=True,
+                is_verified=True,
+            )
+            session.add(user)
+            await session.flush()
+            await add_membership(session, tenant.org.id, user.id, role)
+        client_role = await session.scalar(
+            select(Role).where(Role.org_id == tenant.org.id, Role.key == "client")
+        )
+        session.add(
+            RolePermission(
+                org_id=tenant.org.id, role_id=client_role.id, permission="settings.domain.write"
+            )
+        )
+        await session.commit()
+
+    await _moved_away(fake_dns, probe_answers, "crm.beheer.test")
+    from app.core.cloud import domain_health
+
+    sent: list[OutgoingEmail] = []
+
+    async def fake_send(session, org_id, mail):  # noqa: ANN001
+        sent.append(mail)
+        return True, None
+
+    monkeypatch.setattr(domain_health, "send_org_email", fake_send)
+    async with async_session_maker() as session:
+        counts = await domain_health.sweep_domain_health(session)
+        await session.commit()
+    assert counts["alerted"] == 1
+    assert [mail.to for mail in sent] == [tenant.user.email]
+
+
+async def test_an_alert_nobody_could_receive_is_not_marked_as_handled(
+    client_for, cloudflare, fake_dns, probe_answers, monkeypatch
+) -> None:
+    """No reachable administrator means the problem stays unreported, not handled.
+
+    Recording the fingerprint on a mail that went nowhere would silence the alert forever:
+    tomorrow's sweep sees the same fingerprint and says nothing.
+    """
+    tenant, headers = await _attached_tenant(fake_dns, "cf-nobody", "crm.niemand.test")
+    cloudflare.set_state("ch1", status="active", ssl_status="active")
+    async with async_session_maker() as session:
+        user = await session.get(User, tenant.user.id)
+        user.is_active = False
+        await session.commit()
+
+    await _moved_away(fake_dns, probe_answers, "crm.niemand.test")
+    from app.core.cloud import domain_health
+
+    sent: list[OutgoingEmail] = []
+
+    async def fake_send(session, org_id, mail):  # noqa: ANN001
+        sent.append(mail)
+        return True, None
+
+    monkeypatch.setattr(domain_health, "send_org_email", fake_send)
+    async with async_session_maker() as session:
+        counts = await domain_health.sweep_domain_health(session)
+        await session.commit()
+    assert counts["checked"] == 1 and counts["alerted"] == 0 and sent == []
+    async with async_session_maker() as session:
+        org = await session.get(Org, tenant.org.id)
+        assert org.domain_alerted_for is None
+
+    # The account comes back; the same problem is reported now.
+    async with async_session_maker() as session:
+        user = await session.get(User, tenant.user.id)
+        user.is_active = True
+        await session.commit()
+    async with async_session_maker() as session:
+        counts = await domain_health.sweep_domain_health(session)
+        await session.commit()
+    assert counts["alerted"] == 1 and len(sent) == 1
 
 
 async def test_sweep_warns_ahead_of_a_failing_renewal(

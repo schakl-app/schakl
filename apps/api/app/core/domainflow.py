@@ -218,7 +218,7 @@ def _relative_host(name: str, domain: str, zone: str | None) -> str:
     return name
 
 
-def _is_apex(domain: str, zone: str | None = None) -> bool:
+def is_apex(domain: str, zone: str | None = None) -> bool:
     if zone is not None:
         return domain == zone
     return domain.count(".") == 1
@@ -272,7 +272,7 @@ def status_for(org: Org, *, zone: str | None = None) -> DomainStatus:
         custom_domain_verified_at=org.custom_domain_verified_at,
         pending_domain=org.pending_domain,
         ownership_verified_at=org.pending_domain_ownership_verified_at,
-        apex=_is_apex(domain, zone) if domain else None,
+        apex=is_apex(domain, zone) if domain else None,
         records=record_cards(org, zone=zone),
         cname_target=_cname_target(),
         hostname_status=org.cf_hostname_status,
@@ -712,7 +712,7 @@ def dns_verdict(check: DomainCheck) -> bool | None:
     return {"ok": True, "failed": False}.get(check.state)
 
 
-def _hostname_checks(record: dict | None) -> list[DomainCheck]:
+def hostname_checks(record: dict | None) -> list[DomainCheck]:
     """Map one Cloudflare custom-hostname record to hostname + certificate checks."""
     if record is None:
         return [_check("hostname", "failed", "hostname_deleted")]
@@ -789,7 +789,7 @@ async def _routing_checks(org: Org) -> tuple[list[DomainCheck], bool, dict | Non
                 org.pending_cf_hostname_id = None
                 edge_checks.append(_check("hostname", "failed", "hostname_deleted"))
             else:
-                edge_checks = _hostname_checks(record)
+                edge_checks = hostname_checks(record)
                 edge_ok = all(item.state == "ok" for item in edge_checks)
         except CloudflareError as exc:
             code, state = _classify_cloudflare(exc, exc.status)
@@ -869,7 +869,7 @@ async def run_checks(session: AsyncSession, actor, org: Org) -> DomainCheckRepor
 
             try:
                 record = await get_custom_hostname(org.cf_hostname_id)
-                edge_checks = _hostname_checks(record)
+                edge_checks = hostname_checks(record)
                 edge_ok = all(item.state == "ok" for item in edge_checks)
                 error = _apply_hostname_health(org, record)
             except CloudflareError as exc:

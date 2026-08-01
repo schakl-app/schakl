@@ -432,9 +432,26 @@ renewal challenge itself. They *may* proxy it (orange-to-orange), and the routin
 is what keeps that supported rather than merely tolerated. Renewal breaks when the domain stops
 pointing at the target or a CAA record blocks the CA — which is exactly what the
 sweep watches: it re-reads every hostname's status/SSL state, runs the routing check, and
-mails the org's domain managers **once per distinct problem** (`orgs.domain_alerted_for`
+mails the org's administrators **once per distinct problem** (`orgs.domain_alerted_for`
 fingerprint) — on any not-live state, and ahead of an expiry closer than 15 days (Cloudflare
 renews ~30 days out, so 15 means renewal has been failing for weeks).
+
+**The alert carries the diagnosis, not just the verdict** (`cloud/domain_alert.py`). The
+reconciliation returns the per-layer `DomainCheck`s it decided with, so the mail lists the
+records the domain needs, the value each must hold, what DNS answers instead, and each failing
+layer's own explanation — in the same `settings.domain.*` catalog strings the settings screen
+renders, because a mail that phrased the problem its own way would be a second implementation
+of the diagnosis. Its links point at the **slug** host: the custom domain is exactly what may
+not be answering.
+
+**Who is told: administrators, and only them.** Recipients hold `settings.domain.write` (or
+the owner wildcard) — nobody is mailed about infrastructure they cannot change — *and* are
+staff: a `client`-role or contact-linked portal account is never a recipient even if a
+misconfigured role grants it the permission (#274's definition of an external login). The
+mail names its own recipients, so an admin knows whether a colleague already has it. The
+fingerprint is recorded **only when a mail actually went out**; an org whose administrators
+are all inactive, or whose transport is down, is alerted again tomorrow instead of having its
+outage silently marked as handled.
 
 **Delegated DCV is deliberately deferred.** It would let certificates renew even while the
 domain points elsewhere, at the cost of every customer adding a permanent `_acme-challenge`
