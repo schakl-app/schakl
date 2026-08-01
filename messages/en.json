@@ -3688,5 +3688,6 @@
   "cloudflare.pages.unlink": "Unlink",
   "cloudflare.pages.unlink_confirm": "Detach {hostname} from {project}? The DNS record stays as it is.",
   "cloudflare.pages.linked": "Hostname linked to the project.",
-  "cloudflare.pages.status": "Status"
+  "cloudflare.pages.status": "Status",
+  "module.cloudflare.label": "Cloudflare"
 }

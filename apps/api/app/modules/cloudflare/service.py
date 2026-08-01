@@ -103,6 +103,10 @@ PROXIABLE_TYPES = ("A", "AAAA", "CNAME")
 #: Cloudflare error codes worth their own message. Everything else falls back to the generic
 #: key — a wrong-but-specific message is worse than an honest generic one.
 _ERROR_CODES: dict[int, tuple[str, str, int]] = {
+    # A malformed credential answers **400/6003**, not 401 — Cloudflare rejects the header before
+    # it ever looks the token up. Left on the generic key it read as "Cloudflare refused this
+    # request", which points at Cloudflare; the thing to fix is the token the admin just pasted.
+    6003: ("cloudflare_token_rejected", "errors.cloudflare_token_rejected", 409),
     1061: ("cloudflare_zone_exists", "errors.cloudflare_zone_exists", 409),
     1049: ("cloudflare_zone_not_found", "errors.cloudflare_zone_not_found", 409),
     81053: ("cloudflare_record_exists", "errors.cloudflare_record_exists", 409),

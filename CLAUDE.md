@@ -245,6 +245,16 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   reports, and the **MCP server** (read-first tools per module, starting with `companies`).
 - **Attachable assets** (`websites`, `hosting`) slot in as modules — target P2, but the
   module + company-panel pattern must be proven in P0.
+- **`cloudflare`** (epic #278, `docs/CLOUDFLARE.md`) is what finally puts a mechanism behind
+  `Domain.status = redirect`: a Redirect Rule schakl owns on the client's own Cloudflare zone,
+  plus DNS view/export and Pages linking. Two rules generalise beyond it. The credential is a
+  **row, not a per-org setting** — an agency holds its own account and its clients bring theirs,
+  and the same apex can legally exist in two of them, so nothing ever picks an account for you.
+  And an integration that mirrors outside state stores **what it decided** and **what it last
+  observed** in separate columns, so "somebody changed this in the provider's dashboard" is
+  expressible at all: a reconcile reports drift instead of silently overwriting it. The
+  registrar half (OXXA nameserver sync + write-back) is split out — no credentials or real API
+  docs exist yet, and §11 forbids writing an integration from memory.
 
 ## 11. Working agreement (for Claude Code)
 

@@ -11,11 +11,14 @@
    * at a button three screens away. And **which zones are not matched to a domain**: an unknown
    * zone in a client's account is exactly what an agency taking over a setup wants to see.
    */
+  import { Pencil, Trash2 } from "@lucide/svelte";
+
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
   import { fmtDateTime } from "$lib/core/format";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
+  import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import { CAPABILITIES, type AccountRead, type ZoneRead } from "$lib/modules/cloudflare/types";
@@ -192,25 +195,26 @@
               {t("cloudflare.accounts.sync")}
             </Button>
           </form>
-          <Button
-            type="button"
-            variant="secondary"
-            size="xs"
-            onclick={() => (editing = editing === account.id ? null : account.id)}
-          >
-            {t("common.edit")}
-          </Button>
-          <Button
-            type="button"
-            variant="danger-outline"
-            size="xs"
-            onclick={() => {
-              deleteTarget = account;
-              confirmDelete = true;
-            }}
-          >
-            {t("common.delete")}
-          </Button>
+          <!-- Edit and delete live in the ⋯ menu, never as bare buttons on a row header
+               (docs/UX.md, "known mistakes"); the delete confirms. -->
+          <ActionsMenu
+            items={[
+              {
+                label: t("common.edit"),
+                icon: Pencil,
+                onclick: () => (editing = editing === account.id ? null : account.id),
+              },
+              {
+                label: t("common.delete"),
+                icon: Trash2,
+                danger: true,
+                onclick: () => {
+                  deleteTarget = account;
+                  confirmDelete = true;
+                },
+              },
+            ]}
+          />
         </div>
       </div>
 
@@ -317,7 +321,7 @@
             <table class="w-full min-w-[28rem] text-sm">
               <thead class="text-left text-xs text-text-muted">
                 <tr>
-                  <th class="py-1 pr-3 font-medium">{t("cloudflare.zones.title")}</th>
+                  <th class="py-1 pr-3 font-medium">{t("cloudflare.dns.name")}</th>
                   <th class="py-1 pr-3 font-medium">{t("cloudflare.pages.status")}</th>
                   <th class="py-1 pr-3 font-medium">{t("cloudflare.zones.domain")}</th>
                   <th class="py-1"><span class="sr-only">…</span></th>

@@ -3688,5 +3688,6 @@
   "cloudflare.pages.unlink": "Ontkoppelen",
   "cloudflare.pages.unlink_confirm": "{hostname} loskoppelen van {project}? Het DNS-record blijft staan.",
   "cloudflare.pages.linked": "Hostnaam gekoppeld aan het project.",
-  "cloudflare.pages.status": "Status"
+  "cloudflare.pages.status": "Status",
+  "module.cloudflare.label": "Cloudflare"
 }

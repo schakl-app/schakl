@@ -56,6 +56,9 @@ class FakeCloudflare:
         self.pages_domains: dict[str, dict[str, list[dict]]] = {}
         #: Path fragments this token is not allowed to touch → 403.
         self.deny: set[str] = set()
+        #: Answer every call the way Cloudflare answers a malformed credential: 400/6003, before
+        #: it ever looks the token up — deliberately *not* a 401 (observed against the live API).
+        self.malformed_token = False
         #: Every (method, path) that arrived, for asserting what was *not* called.
         self.calls: list[tuple[str, str]] = []
 
@@ -117,6 +120,8 @@ class FakeCloudflare:
         method = request.method
         self.calls.append((method, path))
         token = request.headers.get("Authorization", "").removeprefix("Bearer ")
+        if self.malformed_token:
+            return _err(400, "Invalid format for Authorization header", 6003)
         for fragment in self.deny:
             if fragment in path:
                 return _err(403, "Actor is not authorized to perform this action", 10000)

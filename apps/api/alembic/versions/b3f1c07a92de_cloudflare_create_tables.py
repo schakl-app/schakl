@@ -1,7 +1,7 @@
 """cloudflare_create_tables
 
 Revision ID: b3f1c07a92de
-Revises: c9e4a71d5b28
+Revises: a1d3f7b25c94
 Create Date: 2026-08-01 09:00:00.000000
 
 The cloudflare module's five tables (epic #278), all org-scoped and RLS-forced (CLAUDE.md §5).
@@ -35,7 +35,7 @@ from app.core.rls import disable_rls, enable_rls
 
 # revision identifiers, used by Alembic.
 revision: str = 'b3f1c07a92de'
-down_revision: str | None = 'c9e4a71d5b28'
+down_revision: str | None = 'a1d3f7b25c94'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

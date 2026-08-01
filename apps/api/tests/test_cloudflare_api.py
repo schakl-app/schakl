@@ -155,6 +155,29 @@ async def test_an_invalid_token_is_recorded_not_raised(client_for, cloudflare) -
         assert row["status"] == "error" and row["last_error"]
 
 
+async def test_a_malformed_token_names_the_token_not_cloudflare(client_for, cloudflare) -> None:
+    """Cloudflare rejects a malformed credential with **400/6003**, before it looks the token
+    up at all. On the generic key that reads as "Cloudflare refused this request", which points
+    the admin at Cloudflare; the thing to fix is the token they just pasted (seen live)."""
+    t = await make_tenant("cf-malformed")
+    headers = await auth_cookie(t.user)
+    cloudflare.malformed_token = True
+    async with client_for(t.host) as c:
+        company = await _company(c, headers)
+        account = await _account(c, headers)
+        domain = await _domain(c, headers, "klant.nl", company)
+        await c.patch(
+            f"/api/v1/cloudflare/accounts/{account['id']}",
+            json={"cf_account_id": "acct-1"},
+            headers=headers,
+        )
+        refused = await c.post(
+            f"/api/v1/cloudflare/domains/{domain['id']}/connect", json={}, headers=headers
+        )
+        assert refused.status_code == 409
+        assert refused.json()["error"]["code"] == "cloudflare_token_rejected"
+
+
 async def test_accounts_are_tenant_isolated(client_for, cloudflare) -> None:
     """Golden Rule 1: another tenant's credential is not readable, not even by id."""
     a = await make_tenant("cf-iso-a")
