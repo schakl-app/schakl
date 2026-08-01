@@ -6,6 +6,7 @@ shared registry. It contributes no company panel — a website renders under *it
 
 from __future__ import annotations
 
+from app.modules.websites.impex import WEBSITE_IMPEX
 from app.modules.websites.panels import websites_company_panel
 from app.modules.websites.permissions import WEBSITE_PERMISSIONS
 from app.modules.websites.router import router
@@ -20,6 +21,7 @@ module = ModuleDescriptor(
     sku="websites",
     panels=[websites_company_panel],
     permissions=WEBSITE_PERMISSIONS,
+    impex=[WEBSITE_IMPEX],
 )
 
 registry.register(module)

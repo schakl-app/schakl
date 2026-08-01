@@ -71,6 +71,63 @@ def name_or_id_resolver(table_name: str):
     return resolve
 
 
+def provider_resolver(kind: str):
+    """A resolver over the provider catalog (§89), **narrowed to one kind**.
+
+    Not :func:`name_or_id_resolver` over ``providers``: a tenant who works with Cloudflare for
+    both DNS and registration has two rows called "Cloudflare", and the generic resolver would
+    call every such reference ambiguous. The kind is known from the column ("dns_provider" can
+    only be a DNS provider), so narrowing turns an unusable column into an exact one.
+    """
+    providers = table(
+        "providers", column("id"), column("name"), column("kind"), column("org_id")
+    )
+
+    async def resolve(ctx: RequestContext, refs: list[str]) -> dict[str, uuid.UUID | str]:
+        by_id: dict[str, uuid.UUID] = {}
+        names: list[str] = []
+        for ref in refs:
+            try:
+                by_id[ref] = uuid.UUID(ref)
+            except ValueError:
+                names.append(ref)
+
+        resolved: dict[str, uuid.UUID | str] = {}
+        scope = (providers.c.org_id == ctx.org.id, providers.c.kind == kind)
+        if by_id:
+            found = set(
+                (
+                    await ctx.session.execute(
+                        select(providers.c.id).where(*scope, providers.c.id.in_(by_id.values()))
+                    )
+                ).scalars()
+            )
+            for ref, ref_id in by_id.items():
+                resolved[ref] = (
+                    ref_id if ref_id in found else "impex.errors.unresolved_reference"
+                )
+        if names:
+            matches: dict[str, list[uuid.UUID]] = {}
+            rows = await ctx.session.execute(
+                select(providers.c.id, providers.c.name).where(
+                    *scope, providers.c.name.in_(names)
+                )
+            )
+            for row_id, name in rows:
+                matches.setdefault(name, []).append(row_id)
+            for name in names:
+                found_ids = matches.get(name, [])
+                if len(found_ids) == 1:
+                    resolved[name] = found_ids[0]
+                elif not found_ids:
+                    resolved[name] = "impex.errors.unresolved_reference"
+                else:
+                    resolved[name] = "impex.errors.ambiguous_match"
+        return resolved
+
+    return resolve
+
+
 async def resolve_member_email(
     ctx: RequestContext, refs: list[str]
 ) -> dict[str, uuid.UUID | str]:

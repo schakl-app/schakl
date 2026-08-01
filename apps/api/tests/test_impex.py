@@ -151,21 +151,59 @@ async def test_export_applies_the_list_filters(client_for) -> None:
 # --------------------------------------------------------------------------- #
 # Permission gates (§15) — the deny-by-default sweep also covers the zero-permission case
 # --------------------------------------------------------------------------- #
-async def test_member_can_export_but_not_import(client_for) -> None:
-    # The system member role holds companies.company.read but not .write.
+async def test_member_holds_neither_bulk_gate_by_default(client_for) -> None:
+    """Bulk is not an employee's capability by default (owner call, catalog.py).
+
+    The member role still holds ``companies.company.read``, so this is the second gate doing
+    its whole job: reading a client is not the same act as downloading every client, and an
+    agency decides who may do the latter deliberately. Granting ``impex.export`` back to the
+    role is a click in Instellingen → Rollen — and it covers every entity at once, which is
+    exactly why the pair is one capability rather than one per screen.
+    """
     t = await make_tenant("impex-member", role="member")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
         assert (
-            await c.get("/api/v1/impex/company/export", headers=headers)
-        ).status_code == 200
-        r = await c.post(
-            "/api/v1/impex/company/import",
-            files=_file(_csv_bytes(["name"], [["Nope"]])),
-            headers=headers,
+            await c.get("/api/v1/companies", headers=headers)
+        ).status_code == 200  # the entity read the member does hold
+        for response in (
+            await c.get("/api/v1/impex/company/export", headers=headers),
+            await c.post(
+                "/api/v1/impex/company/import",
+                files=_file(_csv_bytes(["name"], [["Nope"]])),
+                headers=headers,
+            ),
+        ):
+            assert response.status_code == 403
+            assert response.json()["error"]["message"] == "errors.forbidden"
+
+
+async def test_granting_impex_export_reaches_every_entity(client_for) -> None:
+    """One capability across the whole surface: granting it once opens each entity the role
+    can already read, and opens nothing it cannot."""
+    t = await make_tenant("impex-grant", role="member")
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        await session.execute(
+            text(
+                "INSERT INTO role_permissions (id, org_id, role_id, permission) "
+                "SELECT gen_random_uuid(), :org, id, 'impex.export' FROM roles "
+                "WHERE org_id = :org AND key = 'member'"
+            ),
+            {"org": t.org.id},
         )
-        assert r.status_code == 403
-        assert r.json()["error"]["message"] == "errors.forbidden"
+        await session.commit()
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        # Readable by the member role: companies, contacts, domains, hosting, websites.
+        for entity in ("company", "contact", "domain", "hosting", "website"):
+            r = await c.get(f"/api/v1/impex/{entity}/export", headers=headers)
+            assert r.status_code == 200, entity
+        # Not readable: subscriptions are admin-only money (subscriptions/permissions.py), so
+        # the bulk grant alone changes nothing there.
+        assert (
+            await c.get("/api/v1/impex/subscription/export", headers=headers)
+        ).status_code == 403
 
 
 async def test_export_requires_the_read_permission(client_for) -> None:

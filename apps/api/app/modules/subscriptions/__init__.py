@@ -8,7 +8,11 @@ from __future__ import annotations
 
 from arq import cron
 
-from app.modules.subscriptions.impex import SUBSCRIPTION_IMPEX
+from app.modules.subscriptions.impex import (
+    SUBSCRIPTION_IMPEX,
+    SUBSCRIPTION_TEMPLATE_IMPEX,
+    SUBSCRIPTION_TYPE_IMPEX,
+)
 from app.modules.subscriptions.jobs import advance_subscriptions
 from app.modules.subscriptions.panels import subscriptions_company_panel
 from app.modules.subscriptions.permissions import SUBSCRIPTION_PERMISSIONS
@@ -24,7 +28,7 @@ module = ModuleDescriptor(
     sku="subscriptions",
     panels=[subscriptions_company_panel],
     permissions=SUBSCRIPTION_PERMISSIONS,
-    impex=[SUBSCRIPTION_IMPEX],
+    impex=[SUBSCRIPTION_IMPEX, SUBSCRIPTION_TYPE_IMPEX, SUBSCRIPTION_TEMPLATE_IMPEX],
     # Daily, early org-morning: fire subscription.due and advance the cycle (#30).
     cron_jobs=[cron(advance_subscriptions, hour=5, minute=30)],
 )

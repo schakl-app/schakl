@@ -716,8 +716,41 @@ its shape**, exactly as it does for custom fields (§13) and panels (§6).
   byte cap before decoding, the zip's declared sizes before decompressing, the column cap while
   reading); and over any limit is an error, never a truncation — silently importing the first
   2000 rows of a 2500-row list is the worst outcome available, because it looks like it worked.
-- **Bulk is its own capability.** `impex.export` / `impex.import` are staff-only and sit *on top
-  of* each entity's own read/write permission: a client-portal login holds `companies.company.read`
-  for its own company and must never be able to download the client list.
+- **A reference is whatever the resolver says it is.** `fk_resolvers` batch-resolve a column's
+  raw cells once per file, and the contract is one line: **a `str` return is an error key, and
+  anything else is the resolved value.** That is what lets `party` exist without core learning
+  its shape — the cell is a token (`agency`, `company`, `company:Acme`, `employee:jan@bureau.nl`,
+  `contact:info@klant.nl`, `app/core/impex/party.py`) and what lands in the values dict is a
+  `PartyRef` the owning service validates exactly as it would one from the form. An unprefixed
+  cell is *refused*, never guessed: one e-mail address is an equally plausible colleague and
+  client contact, and picking one writes the wrong kind of party with every row valid.
+  `provider_resolver(kind)` exists for the same reason in miniature — a tenant with a
+  "Cloudflare" registrar *and* a "Cloudflare" DNS row makes the generic name resolver useless.
+- **`clearable` governs references too, and a reference may be the upsert key.** Whether an
+  emptied cell detaches is a property of the link, not of it being a link: hosting with no
+  client is shared infrastructure (a real state the file must express), a domain with no client
+  is nonsense. And a website has no name of its own, so `natural_keys=("domain",)` matches on
+  the raw cells `find_existing` is handed — matching and resolution are independent lookups and
+  neither waits on the other. Without it, re-importing an export hits the unique index on every
+  row: the worst answer available to "I edited two cells and imported it again".
+- **A pre-check must normalise the way the write does.** `find_existing` matches domains on the
+  *normalised* name because `DomainCreate` normalises too — matching the raw text finds nothing,
+  decides the row is a create, and then 409s on a name that was already there. Same failure
+  shape as #289's, one layer up: the check the report can name has to model the write.
+- **Bulk is its own capability, and it is not an employee's by default.** `impex.export` /
+  `impex.import` are staff-only and sit *on top of* each entity's own read/write permission: a
+  client-portal login holds `companies.company.read` for its own company and must never be able
+  to download the client list. They default to **admin only** (owner call): taking the client
+  list or the domain register out of the building in one file is a different act from opening a
+  record, and one an agency decides per person. The pair is one capability across every entity,
+  so that decision is made once rather than per screen — granting `impex.export` opens exactly
+  the entities the role can already read.
+- **One entry point, everywhere.** Every list that can travel by spreadsheet renders the same
+  `ImpexBar` (`$lib/core/impex/ImpexBar.svelte`) beside its column picker — Export carrying the
+  list's current filters, Import opening the shared wizard — and every download goes through the
+  one proxy at `/impex/[entity]/export`. Both gates are mirrored client-side (bulk *and* the
+  entity's own), so a control that would 403 is never drawn. Instellingen → Import & export is
+  the overview of what can travel at all and exports the whole unfiltered set; it is not where a
+  user with a spreadsheet of domains should have to look.
 - Large imports as a background job are still deferred (issue #77); `MAX_IMPORT_ROWS` is what
   keeps the synchronous path honest until that lands.
