@@ -23,6 +23,7 @@ from app.config import settings
 from app.core.activity import ActivityService
 from app.core.activity.service import snapshot
 from app.core.auth.models import User
+from app.core.directory import ids_by_email, visible_ids
 from app.core.events import emit
 from app.core.models import Membership
 from app.core.richtext import extract_contact_mention_ids, extract_mention_ids, sanitize_markdown
@@ -870,18 +871,16 @@ class InteractionService:
         return [uid for uid in ids if uid in members]
 
     async def _valid_contact_mentions(self, ids: list[uuid.UUID]) -> list[uuid.UUID]:
-        """Keep only the mentioned contact ids that belong to this org (#165) — a reference
-        into the CRM, never a notification: contacts have no inbox here."""
+        """Keep only the mentioned contact ids **this caller can see** (#165) — a reference
+        into the CRM, never a notification: contacts have no inbox here.
+
+        Through the reference seam for the same reason as ``_participant_contacts``: "belongs
+        to this org" was the whole test, so a company-group-scoped member could paste any
+        contact id in the tenant into a note and have it render as that person's name.
+        """
         if not ids:
             return []
-        stmt = text("SELECT id FROM contacts WHERE org_id = :oid AND id IN :ids").bindparams(
-            bindparam("ids", expanding=True)
-        )
-        found = set(
-            (
-                await self.ctx.session.execute(stmt, {"oid": self._org_id, "ids": list(ids)})
-            ).scalars()
-        )
+        found = await visible_ids(self.ctx, "contact", ids)
         return [cid for cid in ids if cid in found]
 
     async def _notify_mentions(self, row: Interaction, mentioned: list[uuid.UUID]) -> None:
@@ -1092,22 +1091,22 @@ class InteractionService:
         )
 
     async def _participant_contacts(self, rows: list[Interaction]) -> dict[str, uuid.UUID]:
-        """Which participant addresses exist as org contacts (#160) — one batched,
-        org-scoped query over the page's distinct emails, matched at read time so a contact
-        created after the email was logged still links up. Display data, never authz."""
+        """Which participant addresses exist as contacts **this caller may see** (#160).
+
+        One batched query over the page's distinct emails, matched at read time so a contact
+        created after the email was logged still links up. Display data, never authz — but it
+        goes through the cross-module reference seam (``core/directory.py``) rather than a bare
+        ``WHERE org_id`` read, because a contact's client lives in ``company_contacts`` and not
+        in a column here: org-scoped alone, this chipped every other client's people onto a
+        thread a company-group-scoped member could legitimately open.
+        """
         emails: set[str] = set()
         for row in rows:
             for participant in row.participants or []:
                 email = (participant.get("email") or "").lower()
                 if email:
                     emails.add(email)
-        if not emails:
-            return {}
-        stmt = text(
-            "SELECT lower(email), id FROM contacts WHERE org_id = :oid AND lower(email) IN :emails"
-        ).bindparams(bindparam("emails", expanding=True))
-        result = await self.ctx.session.execute(stmt, {"oid": self._org_id, "emails": list(emails)})
-        return dict(result.all())
+        return await ids_by_email(self.ctx, "contact", emails)
 
     async def _participant_members(self, rows: list[Interaction]) -> dict[str, uuid.UUID]:
         """Which participant addresses belong to org employees (#167) — the same batched,

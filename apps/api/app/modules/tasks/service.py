@@ -12,11 +12,12 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, bindparam, case, column, func, select, table
+from sqlalchemy import and_, case, column, func, select, table
 from sqlalchemy import text as sql_text
 from sqlalchemy.orm import aliased
 
 from app.core.auth.models import User
+from app.core.directory import visible_ids
 from app.core.events import emit
 from app.core.models import Membership
 from app.core.parent import ensure_parent_in_tenant
@@ -1326,20 +1327,17 @@ class TaskService:
         return [uid for uid in ids if uid in members]
 
     async def _valid_contact_mentions(self, ids: list[uuid.UUID]) -> list[uuid.UUID]:
-        """Keep only the mentioned contact ids that belong to this org (#165) — a reference
-        into the CRM, never a notification: contacts have no inbox here."""
+        """Keep only the mentioned contact ids **this caller can see** (#165) — a reference
+        into the CRM, never a notification: contacts have no inbox here.
+
+        Through the cross-module reference seam (``core/directory.py``), not a bare
+        ``WHERE org_id`` read: a contact's client hangs off ``company_contacts``, so "in this
+        org" let a company-group-scoped member mention anyone in the tenant and have the
+        comment render that person's name back at them.
+        """
         if not ids:
             return []
-        stmt = sql_text(
-            "SELECT id FROM contacts WHERE org_id = :oid AND id IN :ids"
-        ).bindparams(bindparam("ids", expanding=True))
-        found = set(
-            (
-                await self.ctx.session.execute(
-                    stmt, {"oid": self.ctx.org.id, "ids": list(ids)}
-                )
-            ).scalars()
-        )
+        found = await visible_ids(self.ctx, "contact", ids)
         return [cid for cid in ids if cid in found]
 
     async def _valid_task_mentions(self, ids: list[uuid.UUID]) -> list[uuid.UUID]:

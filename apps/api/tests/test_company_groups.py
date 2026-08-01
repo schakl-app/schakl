@@ -859,3 +859,99 @@ async def test_group_trail_is_not_readable_by_the_people_it_restricts(client_for
         assert (await c.get("/api/v1/activity", params=params, headers=member_h)).status_code == 403
         owner_feed = await c.get("/api/v1/activity", params=params, headers=owner_h)
         assert owner_feed.status_code == 200 and owner_feed.json() != []
+
+
+async def test_horizon_reaches_references_into_another_module(client_for) -> None:
+    """A borrowed *reference* is a fifth way the horizon leaked, and it is the seam's job.
+
+    An interaction's participant chips and a note's @mentions name **contacts**, which no
+    module may import (§6) — so each read them off the bare table with nothing but ``org_id``.
+    A contact carries no ``company_id`` at all (its client lives in ``company_contacts``), so
+    that read was tenant-correct and horizon-blind: a member scoped to Alpha saw Beta's people
+    named on a thread they could legitimately open, and could mention any of them by id.
+    """
+    t, member, membership, owner_h, member_h, a, b, group = await _setup(
+        client_for, "horiz-ref", role="admin"
+    )
+
+    async with client_for(t.host) as c:
+        made = await _seed_for_both(c, owner_h, a, b)
+        for key in ("a", "b"):
+            assert (
+                await c.patch(
+                    f"/api/v1/contacts/{made[key]['contact']['id']}",
+                    json={"email": f"person-{key}@klant.nl"},
+                    headers=owner_h,
+                )
+            ).status_code == 200
+
+        # One company-less note naming both people as participants, and mentioning both.
+        body = (
+            f"@[Person-a](mention:contact:{made['a']['contact']['id']}) en "
+            f"@[Person-b](mention:contact:{made['b']['contact']['id']})"
+        )
+        note = await c.post(
+            "/api/v1/interactions",
+            json={
+                "kind": "physical_meeting",
+                "occurred_at": "2026-07-10T14:30:00+00:00",
+                "subject": "Beide klanten",
+                "body_text": body,
+                "participants": [
+                    {"email": "person-a@klant.nl", "role": "to"},
+                    {"email": "person-b@klant.nl", "role": "cc"},
+                ],
+            },
+            headers=member_h,
+        )
+        assert note.status_code == 201, note.text
+        note_id = note.json()["id"]
+
+        # Unrestricted, both resolve — the seam narrows, it does not break the feature.
+        chips = {
+            p["email"].lower(): p["contact_id"]
+            for p in (
+                await c.get(f"/api/v1/interactions/{note_id}", headers=member_h)
+            ).json()["participants"]
+        }
+        assert chips["person-a@klant.nl"] == made["a"]["contact"]["id"]
+        assert chips["person-b@klant.nl"] == made["b"]["contact"]["id"]
+
+        assert (
+            await c.put(
+                f"/api/v1/companies/groups/{group['id']}/memberships",
+                json={"membership_ids": [str(membership.id)]},
+                headers=owner_h,
+            )
+        ).status_code == 204
+
+        # Scoped to Alpha: Beta's person is a bare address again, never a named chip.
+        chips = {
+            p["email"].lower(): p["contact_id"]
+            for p in (
+                await c.get(f"/api/v1/interactions/{note_id}", headers=member_h)
+            ).json()["participants"]
+        }
+        assert chips["person-a@klant.nl"] == made["a"]["contact"]["id"]
+        assert chips["person-b@klant.nl"] is None
+
+        # …and a mention of the invisible contact is dropped on write, exactly as a
+        # cross-tenant id always was.
+        mentioned = await c.post(
+            "/api/v1/interactions",
+            json={
+                "kind": "call",
+                "occurred_at": "2026-07-10T15:00:00+00:00",
+                "subject": "Vermelding",
+                "body_text": body,
+            },
+            headers=member_h,
+        )
+        assert mentioned.status_code == 201, mentioned.text
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        from app.modules.interactions.models import Interaction
+
+        row = await session.get(Interaction, uuid.UUID(mentioned.json()["id"]))
+        assert row.mentioned_contact_ids == [made["a"]["contact"]["id"]]

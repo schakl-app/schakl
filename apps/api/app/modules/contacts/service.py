@@ -93,15 +93,13 @@ SORTABLE = {
 def _linked_in_scope(scope: frozenset[uuid.UUID] | None):  # noqa: ANN202 — SQLA condition
     """A contact is inside the horizon when a ``company_contacts`` link points at a company
     the membership may see — and *only* then. This is the client-login rule; restricted staff
-    additionally keep unattached contacts (``Contact.__company_horizon_clause__``)."""
-    return (
-        select(CompanyContact.id)
-        .where(
-            CompanyContact.contact_id == Contact.id,
-            CompanyContact.company_id.in_(scope or frozenset()),
-        )
-        .exists()
-    )
+    additionally keep unattached contacts (``Contact.__company_horizon_clause__``).
+
+    Defined on the model (``Contact.__portal_horizon_clause__``) so the repository here and the
+    cross-module reference seam give a client the same answer by construction, not by two
+    predicates happening to agree.
+    """
+    return Contact.__portal_horizon_clause__(scope)
 
 
 class ContactService:

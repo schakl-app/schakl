@@ -35,6 +35,15 @@
   *"Your account is not a member of this organisation"* on the sign-in screen, instead of being
   handed a session every screen then had to turn away. The sign-in screen also finally shows
   why a federated attempt bounced back to it; before, it silently redisplayed the form.
+- **A colleague scoped to a portfolio of clients no longer sees other clients' people named in
+  their e-mail and notes.** Where one part of the app has to *name* a record another part owns
+  — the contact behind a participant address on a logged e-mail, the person behind an @mention
+  in a note — the lookup only checked the organisation, not the client portfolio the reader is
+  limited to. A contact belongs to its client through a link table rather than a column, so the
+  restriction had nothing to match on and did nothing at all. Those lookups now go through one
+  shared route that asks the owning part of the app, so a portfolio restriction applies to a
+  borrowed name exactly as it does to the record itself: an address outside the portfolio reads
+  as a plain address, and an @mention of a person outside it is dropped on save.
 
 ### Fixed
 

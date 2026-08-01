@@ -62,6 +62,10 @@ class Contact(
     __tablename__ = "contacts"
     __entity_type__ = "contact"  # registers as customizable + auditable (issue #67)
     __activity_read_permission__ = "contacts.contact.read"  # trail read gate (audit F7)
+    #: Opts this entity into the address side of the cross-module reference seam
+    #: (``core/directory.py``), so a borrowing module can match a participant address to a
+    #: person without importing anything here — and gets the horizon above for free.
+    __directory_email__ = "email"
 
     __table_args__ = (
         Index("ix_contacts_custom", "custom", postgresql_using="gin"),
@@ -100,6 +104,27 @@ class Contact(
             CompanyContact.contact_id == cls.id, CompanyContact.org_id == cls.org_id
         )
         return links.where(CompanyContact.company_id.in_(scope)).exists() | ~links.exists()
+
+    @classmethod
+    def __portal_horizon_clause__(cls, scope: frozenset[uuid.UUID] | None):  # noqa: ANN206
+        """The stricter rule an **external (client) login** reads by (#193): a link into the
+        horizon and *only* that. An unattached contact is someone else's draft to a client, not
+        shared data — the one clause above that a client does not get.
+
+        It lives on the model rather than in the service because it is not only the contacts
+        list that has to obey it: a module borrowing a contact *reference* through the seam
+        (``core/directory.py``) needs the same answer, and the way that goes wrong is a second
+        copy of the predicate (CLAUDE.md §15).
+        """
+        return (
+            select(CompanyContact.id)
+            .where(
+                CompanyContact.contact_id == cls.id,
+                CompanyContact.org_id == cls.org_id,
+                CompanyContact.company_id.in_(scope or frozenset()),
+            )
+            .exists()
+        )
 
 
 class CompanyContact(

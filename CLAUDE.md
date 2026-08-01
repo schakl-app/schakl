@@ -573,6 +573,18 @@ It is a **core, cross-cutting capability**, like custom fields (§13) — not pe
   own admin-only manage permission, which is what keeps a member from editing it.
   `tests/test_company_groups.py` closes with a sweep over every parameterless `GET /api/v1`
   plus a control run as the owner, so "nothing leaked" cannot quietly mean "nothing matched".
+- **A reference into another module's rows crosses at a seam, never at a bare table read**
+  (`app/core/directory.py`). §6 forbids importing another module's internals, so every borrower
+  grew its own `SELECT … WHERE org_id = :oid` — which is failure mode **(1)** one layer out: an
+  interaction's participant chips and a note's @mentions resolve *contacts*, whose client lives
+  in `company_contacts` and in no column the borrower is allowed to know about, so the read was
+  tenant-correct and horizon-blind. `visible_ids` / `ids_by_email` answer through the target
+  model's own repository (`horizon_condition()`), keyed by the `__entity_type__` registry core
+  already holds, so the rule stays where it was declared and there is exactly one copy of it —
+  including the **stricter client rule**, which a model states as `__portal_horizon_clause__`
+  and the seam prefers for an `is_portal` caller (restricted staff still see an unattached
+  contact; a client never does). Reach for the seam whenever a module must *name* rows it does
+  not own; teaching the borrower the join is the mistake this exists to prevent.
 - **Deny-by-default.** An `/api/v1` route with neither `require_permission(...)` nor an explicit
   `no_permission_required("reason")` is a build break. Two tests enforce it: an introspection
   lint and a behavioural sweep that calls every operation as a member holding nothing.
