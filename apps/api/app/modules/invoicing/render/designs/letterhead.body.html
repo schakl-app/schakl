@@ -7,14 +7,24 @@
       {% endif %}
     </div>
     <div class="sender">
+      {#
+        The identity rows (IBAN, BIC, Btw-nr, KvK) read as a second group, set off by a gap.
+        Which row *starts* it cannot be pinned to one key: any of them can be switched off,
+        and a break attached to a field that is not printing is no break at all. So the gap
+        goes on the first of the group that actually survived the layout.
+      #}
+      {% set identity = ['iban', 'bic', 'vat_number', 'coc_number'] %}
       {% set labelled = seller | selectattr('label') | list %}
+      {% set sender = namespace(grouped=false) %}
       {% for entry in seller if not entry.label %}
         <p class="{{ 'name' if entry.key == 'name' }}">{{ entry.value | nl2br }}</p>
       {% endfor %}
       {% if labelled %}
         <table class="sender-grid">
           {% for entry in labelled %}
-            <tr class="{{ 'group-start' if entry.key == 'iban' }}">
+            {% set starts_group = entry.key in identity and not sender.grouped %}
+            {% if entry.key in identity %}{% set sender.grouped = true %}{% endif %}
+            <tr class="{{ 'group-start' if starts_group }}">
               <td class="k">{{ entry.label }}</td>
               <td>{{ entry.value }}</td>
             </tr>
@@ -39,9 +49,15 @@
       {% endif %}
     </div>
     <div class="middle-right">
+      {# Same rule: the client's own references sit apart from the invoice's numbers, and
+         the gap belongs to whichever of them is the first still printing. #}
+      {% set references = ['client_number', 'delivery_date'] %}
+      {% set doc_meta = namespace(grouped=false) %}
       <table class="meta">
         {% for entry in meta %}
-          <tr class="{{ 'group-start' if entry.key == 'client_number' }}">
+          {% set starts_group = entry.key in references and not doc_meta.grouped %}
+          {% if entry.key in references %}{% set doc_meta.grouped = true %}{% endif %}
+          <tr class="{{ 'group-start' if starts_group }}">
             <td class="meta-label">{{ entry.label }}</td>
             <td class="meta-value">{{ entry.value }}</td>
           </tr>
