@@ -519,7 +519,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Auth:Cookie.Login */
+        /**
+         * Auth:Cookie.Login
+         * @description Password login, **for the org this hostname resolves to**.
+         *
+         *     ``user_manager.authenticate`` looks the account up through the org-scoped ``get_by_email``
+         *     (``manager.py``), so a correct password belonging to a *different* tenant answers exactly
+         *     like a wrong one — the caller is never told that the address exists somewhere else. The
+         *     org then rides into the token, because a session is minted for one tenant (``backend.py``).
+         */
         post: operations["auth_cookie_login_api_v1_auth_login_post"];
         delete?: never;
         options?: never;
