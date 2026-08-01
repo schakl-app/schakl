@@ -32,8 +32,9 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 
-from sqlalchemy import column, func, select, table
+from sqlalchemy import column, select, table
 
+from app.core.directory import ids_by_email, visible_ids
 from app.core.party.models import PartyType
 from app.core.party.schemas import PartyRef
 from app.core.party.service import PartyInput
@@ -41,6 +42,8 @@ from app.core.tenancy import RequestContext
 
 #: Bare tables by name — a token lookup is a lookup, not a data path into another module (§6).
 _companies = table("companies", column("id"), column("name"), column("org_id"))
+#: Export only — turning a *stored* pair back into its token. The import direction
+#: goes through app.core.directory instead (see _by_contact_email).
 _contacts = table("contacts", column("id"), column("email"), column("org_id"))
 _users = table("users", column("id"), column("email"))
 _memberships = table("memberships", column("user_id"), column("org_id"))
@@ -259,43 +262,26 @@ async def _by_member_email(
 async def _by_contact_email(
     ctx: RequestContext, refs: list[str]
 ) -> dict[str, uuid.UUID | str]:
+    """Through :mod:`app.core.directory`, not a bare table.
+
+    A contact carries no ``company_id`` — its client lives in ``company_contacts``, a join this
+    module may not know about — so a hand-rolled ``WHERE org_id`` here would be tenant-correct
+    and horizon-blind, which is the exact shape the seam was introduced to stop being copied
+    (§15's "no anchor", #285). It also matches the address case-insensitively, which matters
+    because ``contacts.email`` is stored as typed: an export writing "Info@Klant.nl" has to
+    re-import, and ``ContactService.find_by_email`` compares the same way.
+    """
     if not refs:
         return {}
     by_id, emails = _split_ids(refs)
     resolved: dict[str, uuid.UUID | str] = {}
     if by_id:
-        found = set(
-            (
-                await ctx.session.execute(
-                    select(_contacts.c.id).where(
-                        _contacts.c.org_id == ctx.org.id,
-                        _contacts.c.id.in_(by_id.values()),
-                    )
-                )
-            ).scalars()
-        )
+        visible = await visible_ids(ctx, "contact", by_id.values())
         resolved.update(
-            {ref: (rid if rid in found else _UNRESOLVED) for ref, rid in by_id.items()}
+            {ref: (rid if rid in visible else _UNRESOLVED) for ref, rid in by_id.items()}
         )
     if emails:
-        # Case-insensitively, because ``contacts.email`` is stored as the user typed it (the
-        # service only strips — see ContactService.find_by_email, which compares the same way).
-        # Matching exactly would mean an export writing "Info@Klant.nl" no longer re-imports.
-        matches: dict[str, list[uuid.UUID]] = {}
-        lowered = [e.lower() for e in emails]
-        rows = await ctx.session.execute(
-            select(_contacts.c.id, func.lower(_contacts.c.email)).where(
-                _contacts.c.org_id == ctx.org.id,
-                func.lower(_contacts.c.email).in_(lowered),
-            )
-        )
-        for row_id, email in rows:
-            matches.setdefault(email, []).append(row_id)
+        found = await ids_by_email(ctx, "contact", emails)
         for ref in emails:
-            # A client's address book may legitimately hold one address twice; erroring beats
-            # attaching the record to whichever row came back first.
-            ids = matches.get(ref.lower(), [])
-            resolved[ref] = (
-                ids[0] if len(ids) == 1 else (_UNRESOLVED if not ids else _AMBIGUOUS)
-            )
+            resolved[ref] = found.get(ref.lower(), _UNRESOLVED)
     return resolved
