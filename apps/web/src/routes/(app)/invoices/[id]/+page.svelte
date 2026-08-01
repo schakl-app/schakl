@@ -17,7 +17,7 @@
   import Modal from "$lib/core/ui/Modal.svelte";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import DocumentForm from "$lib/modules/invoicing/DocumentForm.svelte";
-  import DocumentView from "$lib/modules/invoicing/DocumentView.svelte";
+  import DocumentFrame from "$lib/modules/invoicing/DocumentFrame.svelte";
   import { docMoney } from "$lib/modules/invoicing/types";
 
   let { data, form } = $props();
@@ -47,8 +47,6 @@
   // The invoice's client rides along (#247): the new contact links to it by default.
   let qcContactCompany = $state<{ id: string; name: string } | null>(null);
 
-  const template = $derived(data.templates.find((tpl) => tpl.id === invoice.template_id) ?? null);
-  const theme = $derived(page.data.theme);
   const money = (value: string | number | null | undefined) =>
     docMoney(value, invoice.currency, data.locale);
 
@@ -236,14 +234,10 @@
         <input type="hidden" name="_status" value={invoice.status} form="doc-form-invoice" />
       </div>
     {:else}
-      <DocumentView
-        doc={invoice}
-        kind="invoice"
-        {template}
-        seller={data.settings?.company_details ?? {}}
-        brandName={theme?.brandName ?? ""}
-        logoUrl={theme?.logoUrl ?? null}
-        brandColor={theme?.primaryColor ?? "#4f46e5"}
+      <DocumentFrame
+        src="/invoices/{invoice.id}/preview"
+        title={`${t("invoicing.kind.invoice")} ${invoice.number ?? ""}`}
+        class="mx-auto max-w-3xl"
       />
     {/if}
 

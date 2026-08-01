@@ -51,7 +51,7 @@
   .col-quantity { width: 20mm; }
   .col-unit { width: 16mm; }
   .col-unit_price { width: 24mm; }
-  .col-tax { width: 20mm; }
+  .col-tax { width: 26mm; }
   .col-amount { width: 26mm; }
 
   /* The end of the document: VAT breakdown left, what is owed right, on one line. */

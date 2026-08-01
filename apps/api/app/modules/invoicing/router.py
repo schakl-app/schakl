@@ -194,10 +194,14 @@ async def delete_product(
     await ProductService(ctx).delete(product_id)
 
 
-#: A rendered document is a standalone page: it must not become the frame of another site,
-#: and it has no scripts of its own to allow. The preview iframe sets the same on its side.
+#: A rendered document is a standalone page: no scripts of its own to allow, no fetches to
+#: make (its images are inlined as data URIs), and framable only by the app that renders it.
+#: The web proxy re-states the same policy on its side, because a browser reads the header on
+#: the response it actually loaded — and that is the proxy's, not ours.
 _PREVIEW_HEADERS = {
-    "Content-Security-Policy": "default-src 'none'; img-src data:; style-src 'unsafe-inline'",
+    "Content-Security-Policy": (
+        "default-src 'none'; img-src data:; style-src 'unsafe-inline'; frame-ancestors 'self'"
+    ),
     "X-Frame-Options": "SAMEORIGIN",
     "Cache-Control": "no-store",
 }

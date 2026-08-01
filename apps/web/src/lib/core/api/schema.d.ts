@@ -4154,6 +4154,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoicing/invoices/{invoice_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview Invoice
+         * @description The invoice as HTML — **the same artefact** ``/pdf`` prints.
+         *
+         *     The detail page and the print route render this in a frame rather than drawing the
+         *     document a second time in Svelte. That is what makes "the preview and the PDF disagree"
+         *     unrepresentable, and it is the only way a tenant's own HTML template can be previewed at
+         *     all: a Svelte component cannot render someone else's Jinja.
+         */
+        get: operations["preview_invoice_api_v1_invoicing_invoices__invoice_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoicing/invoices/{invoice_id}/refs": {
         parameters: {
             query?: never;
@@ -4396,6 +4421,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoicing/quotes/{quote_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview Quote */
+        get: operations["preview_quote_api_v1_invoicing_quotes__quote_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoicing/quotes/{quote_id}/reject": {
         parameters: {
             query?: never;
@@ -4504,6 +4546,55 @@ export interface paths {
         patch: operations["update_tax_rate_api_v1_invoicing_tax_rates__tax_rate_id__patch"];
         trace?: never;
     };
+    "/api/v1/invoicing/template-blocks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Template Blocks
+         * @description What a template may rearrange: the block/field catalog plus the shipped designs.
+         *
+         *     Keys only — the editor resolves `invoicing.block.*` / `invoicing.field.*` in the
+         *     *viewer's* locale, because the API does not pick a locale for someone else's screen
+         *     (§17's rule). ``can_author`` is here so the editor can hide the HTML/CSS tab rather than
+         *     offer a control whose save will 403; the API is still the boundary (§15).
+         */
+        get: operations["template_blocks_api_v1_invoicing_template_blocks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/template-blocks/{design}/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Template Source
+         * @description A shipped design's own HTML and CSS, to start a custom template from.
+         *
+         *     Writing one from a blank page means knowing the whole render context by heart; branching
+         *     from the design they already like means changing the two things they want changed. These
+         *     are the same files the shipped design renders from, so what they get is what they saw.
+         */
+        get: operations["template_source_api_v1_invoicing_template_blocks__design__source_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoicing/templates": {
         parameters: {
             query?: never;
@@ -4516,6 +4607,32 @@ export interface paths {
         put?: never;
         /** Create Template */
         post: operations["create_template_api_v1_invoicing_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/templates/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Template
+         * @description Render a **sample** document with an unsaved config — the editor's live preview.
+         *
+         *     Against a sample rather than a real invoice on purpose: the editor is reached from
+         *     Settings, where no document is in hand, and a design must be judged on one that exercises
+         *     every block (two line kinds, a paid amount, a VAT split) rather than on whichever invoice
+         *     happened to be first. It renders the tenant's real seller identity and branding, because
+         *     those are what the design has to sit around.
+         */
+        post: operations["preview_template_api_v1_invoicing_templates_preview_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10197,8 +10314,12 @@ export interface components {
             address_line1?: string | null;
             /** Address Line2 */
             address_line2?: string | null;
+            /** Attn */
+            attn?: string | null;
             /** City */
             city?: string | null;
+            /** Client Number */
+            client_number?: string | null;
             /** Coc Number */
             coc_number?: string | null;
             /** Country */
@@ -12350,6 +12471,8 @@ export interface components {
             custom?: {
                 [key: string]: unknown;
             };
+            /** Delivery Date */
+            delivery_date?: string | null;
             /** Due Date */
             due_date?: string | null;
             /** Exchange Rate */
@@ -12438,6 +12561,8 @@ export interface components {
                 [key: string]: unknown;
             };
             customer?: components["schemas"]["CustomerRead"];
+            /** Delivery Date */
+            delivery_date?: string | null;
             /** Domain Id */
             domain_id: string | null;
             /** Due Date */
@@ -12539,6 +12664,8 @@ export interface components {
             custom?: {
                 [key: string]: unknown;
             } | null;
+            /** Delivery Date */
+            delivery_date?: string | null;
             /** Due Date */
             due_date?: string | null;
             /** Exchange Rate */
@@ -16288,6 +16415,8 @@ export interface components {
             address_line1?: string | null;
             /** Address Line2 */
             address_line2?: string | null;
+            /** Bic */
+            bic?: string | null;
             /** City */
             city?: string | null;
             /** Coc Number */
@@ -16306,6 +16435,8 @@ export interface components {
             postal_code?: string | null;
             /** Vat Number */
             vat_number?: string | null;
+            /** Website */
+            website?: string | null;
         };
         /** SeriesData */
         SeriesData: {
@@ -17755,6 +17886,93 @@ export interface components {
             company_id: string;
         };
         /**
+         * TemplateBackground
+         * @description The mark printed behind the page — a letterhead, not a watermark.
+         *
+         *     ``file_id`` is a tenant file (the same store the logo lives in); absent, the tenant's own
+         *     logo is used, which is what makes the letterhead design work the moment it is picked. The
+         *     numbers are percentages of the page, and every one of them is re-clamped at render time:
+         *     this is tenant-writable config, and an opacity of 40 would black out the text.
+         */
+        TemplateBackground: {
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /** File Id */
+            file_id?: string | null;
+            /**
+             * Opacity
+             * @default 0.04
+             */
+            opacity: number;
+            /**
+             * Repeat
+             * @default false
+             */
+            repeat: boolean;
+            /**
+             * Rotate
+             * @default 0
+             */
+            rotate: number;
+            /**
+             * Scale
+             * @default 78
+             */
+            scale: number;
+            /**
+             * Use Logo
+             * @default true
+             */
+            use_logo: boolean;
+            /**
+             * X
+             * @default 50
+             */
+            x: number;
+            /**
+             * Y
+             * @default 50
+             */
+            y: number;
+        };
+        /**
+         * TemplateBlock
+         * @description One block of the document. Position in ``layout`` is its print order.
+         *
+         *     Both this and its fields are a **partial** statement: keys the catalog knows and this
+         *     layout does not are resolved at their catalog position with their catalog default
+         *     (``render.blocks.resolve_layout``). That is what lets a field added by a later release
+         *     appear on documents whose layout was written before it existed.
+         */
+        TemplateBlock: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Fields */
+            fields?: components["schemas"]["TemplateField"][];
+            /** Key */
+            key: string;
+        };
+        /**
+         * TemplateCatalog
+         * @description What the template editor needs to draw itself. Keys only — the client owns labels.
+         */
+        TemplateCatalog: {
+            /** Blocks */
+            blocks: {
+                [key: string]: unknown;
+            }[];
+            /** Can Author */
+            can_author: boolean;
+            /** Designs */
+            designs: string[];
+        };
+        /**
          * TemplateChecklistItem
          * @description One item of a checklist template — a title and an optional markdown description (issue #66).
          *
@@ -17770,6 +17988,12 @@ export interface components {
         /**
          * TemplateColumns
          * @description Which line columns the rendered document shows.
+         *
+         *     **Superseded by** ``TemplateConfig.layout``'s ``lines`` block, which orders the columns as
+         *     well as toggling them. Kept because every template stored before layouts existed carries
+         *     one, and it is still the input while a template has no layout of its own — upgrading a
+         *     release must not redesign a document a tenant has already approved. The service writes it
+         *     back from the layout on save, so the two can never disagree.
          */
         TemplateColumns: {
             /**
@@ -17802,15 +18026,28 @@ export interface components {
         TemplateConfig: {
             /** Accent Color */
             accent_color?: string | null;
+            background?: components["schemas"]["TemplateBackground"];
             columns?: components["schemas"]["TemplateColumns"];
+            /** Css */
+            css?: string | null;
+            /**
+             * Design
+             * @default classic
+             * @enum {string}
+             */
+            design: "classic" | "letterhead" | "custom";
             /** Footer I18N */
             footer_i18n?: {
                 [key: string]: string;
             };
+            /** Html */
+            html?: string | null;
             /** Intro I18N */
             intro_i18n?: {
                 [key: string]: string;
             };
+            /** Layout */
+            layout?: components["schemas"]["TemplateBlock"][];
             /** Payment I18N */
             payment_i18n?: {
                 [key: string]: string;
@@ -17820,6 +18057,19 @@ export interface components {
              * @default true
              */
             show_logo: boolean;
+        };
+        /**
+         * TemplateField
+         * @description One field inside a block. Position in the list is its print order.
+         */
+        TemplateField: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Key */
+            key: string;
         };
         /** TemplateItemBase */
         TemplateItemBase: {
@@ -17893,6 +18143,23 @@ export interface components {
             requires_interaction: boolean;
             /** Title */
             title: string;
+        };
+        /**
+         * TemplatePreview
+         * @description Render a sample document with a config that has not been saved.
+         */
+        TemplatePreview: {
+            config: components["schemas"]["TemplateConfig"];
+        };
+        /**
+         * TemplateSource
+         * @description A shipped design's own source, for branching a custom template off it.
+         */
+        TemplateSource: {
+            /** Css */
+            css: string;
+            /** Html */
+            html: string;
         };
         /**
          * TemplateTrigger
@@ -28078,6 +28345,35 @@ export interface operations {
             };
         };
     };
+    preview_invoice_api_v1_invoicing_invoices__invoice_id__preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     invoice_refs_api_v1_invoicing_invoices__invoice_id__refs_get: {
         parameters: {
             query?: never;
@@ -28657,6 +28953,35 @@ export interface operations {
             };
         };
     };
+    preview_quote_api_v1_invoicing_quotes__quote_id__preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                quote_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     reject_quote_api_v1_invoicing_quotes__quote_id__reject_post: {
         parameters: {
             query?: never;
@@ -28928,6 +29253,57 @@ export interface operations {
             };
         };
     };
+    template_blocks_api_v1_invoicing_template_blocks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateCatalog"];
+                };
+            };
+        };
+    };
+    template_source_api_v1_invoicing_template_blocks__design__source_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                design: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateSource"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_templates_api_v1_invoicing_templates_get: {
         parameters: {
             query?: {
@@ -28980,6 +29356,37 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["app__modules__invoicing__schemas__TemplateRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_template_api_v1_invoicing_templates_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplatePreview"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

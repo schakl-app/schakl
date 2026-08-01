@@ -84,8 +84,24 @@ def fmt_money(value: Any, currency: str, locale: str) -> str:
     return f"{sign}{symbol} {formatted}" if symbol else f"{sign}{currency} {formatted}"
 
 
-def fmt_qty(value: Any) -> str:
-    return f"{Decimal(str(value or 0)):g}"
+def _trim(value: Any) -> str:
+    """A decimal with its trailing zeros gone — ``1.00`` reads ``1``, ``1.50`` reads ``1.5``.
+
+    Not ``format(x, "g")``: a ``Decimal`` keeps its own exponent, so a ``NUMERIC(10,2)`` column
+    formats as ``1.00`` and a tax rate as ``21.00%``. That is how a quantity of one came to be
+    printed "1.00" on every invoice. ``normalize()`` also rewrites ``100`` as ``1E+2``, so a
+    whole number is quantized back to plain digits afterwards.
+    """
+    amount = Decimal(str(value or 0)).normalize()
+    if amount == amount.to_integral_value():
+        amount = amount.quantize(Decimal(1))
+    return f"{amount:f}"
+
+
+def fmt_qty(value: Any, locale: str = "nl") -> str:
+    # A quantity sits next to the money on the same page: 1,5 uur, not 1.5 uur.
+    text = _trim(value)
+    return text.replace(".", ",") if locale.startswith(("nl", "de")) else text
 
 
 def fmt_date(value: Any) -> str:
@@ -93,7 +109,7 @@ def fmt_date(value: Any) -> str:
 
 
 def _pct(value: Any) -> str:
-    return f"{Decimal(str(value or 0)):g}%"
+    return f"{_trim(value)}%"
 
 
 @dataclass
@@ -107,14 +123,21 @@ class _Entry:
     strong: bool = False
 
 
-def _entries(order: list[str], values: dict[str, tuple[str, str] | None]) -> list[dict]:
-    """Layout order → the entries that actually have something to say.
+def _entries(
+    layout: ResolvedLayout, block: str, values: dict[str, tuple[str, str] | None]
+) -> list[dict]:
+    """A block's fields, in layout order, filtered down to what it can actually say.
 
-    A field switched *on* with nothing behind it prints nothing at all: an empty "KvK-nr."
-    label on a sole trader who has none is worse than the field being absent.
+    Two filters, and both matter. A **disabled block** yields nothing — a design that places
+    a block by hand (the letterhead's payment card sits beside the addressee, not in the body
+    stack) would otherwise draw it however the layout was set, which is a switch that does
+    nothing. And a field switched *on* with nothing behind it prints nothing either: an empty
+    "KvK-nr." label on a sole trader who has none is worse than the field being absent.
     """
+    if not layout.enabled(block):
+        return []
     out: list[dict] = []
-    for key in order:
+    for key in layout.fields(block):
         pair = values.get(key)
         if not pair:
             continue
@@ -377,7 +400,7 @@ def build_context(
         if key == "description":
             return line.description or ""
         if key == "quantity":
-            return fmt_qty(line.quantity)
+            return fmt_qty(line.quantity, locale)
         if key == "unit":
             return line.unit or ""
         if key == "unit_price":
@@ -420,7 +443,9 @@ def build_context(
     }
     # A credit note is money going the other way and a quote is not owed at all: neither
     # gets a "transfer this amount" card, whatever the layout says.
-    show_payment_box = kind == "invoice" and not is_credit_note
+    show_payment_box = (
+        kind == "invoice" and not is_credit_note and layout.enabled("payment_box")
+    )
 
     # --- prose -------------------------------------------------------------------------- #
     def template_text(block: str) -> str:
@@ -469,11 +494,11 @@ def build_context(
         else None,
         "brand_name": brand.name,
         "background": _background(config, brand),
-        "seller": _entries(layout.fields("seller"), seller_values),
+        "seller": _entries(layout, "seller", seller_values),
         "seller_raw": {k: (v or "") for k, v in seller.items() if isinstance(v, str)},
-        "customer": _entries(layout.fields("bill_to"), customer_values),
-        "meta": _entries(layout.fields("meta"), meta_values),
-        "payment_box": _entries(layout.fields("payment_box"), payment_box_values)
+        "customer": _entries(layout, "bill_to", customer_values),
+        "meta": _entries(layout, "meta", meta_values),
+        "payment_box": _entries(layout, "payment_box", payment_box_values)
         if show_payment_box
         else [],
         "columns": columns,

@@ -3,18 +3,22 @@ import { fail, redirect } from "@sveltejs/kit";
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
+import type { BlockSpec } from "$lib/modules/invoicing/templateConfig";
 
 import type { Actions, PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async (event) => {
   if (!can(event.locals.user, "invoicing.settings.manage")) throw redirect(303, "/settings");
   const api = apiFor(event);
-  const [settings, taxRates, templates, providers, products] = await Promise.all([
+  const [settings, taxRates, templates, providers, products, blocks] = await Promise.all([
     api.GET("/api/v1/invoicing/settings"),
     api.GET("/api/v1/invoicing/tax-rates", { params: { query: { include_inactive: true } } }),
     api.GET("/api/v1/invoicing/templates", { params: { query: { include_inactive: true } } }),
     api.GET("/api/v1/invoicing/providers"),
     api.GET("/api/v1/invoicing/products", { params: { query: { include_inactive: true } } }),
+    // What a template may rearrange. Keys only — this page resolves the labels, because the
+    // API does not pick a locale for someone else's screen.
+    api.GET("/api/v1/invoicing/template-blocks"),
   ]);
   return {
     settings: settings.data ?? null,
@@ -22,6 +26,10 @@ export const load: PageServerLoad = async (event) => {
     templates: templates.data ?? [],
     products: products.data ?? [],
     providers: (providers.data ?? []) as { key: string; label: string }[],
+    blockCatalog: (blocks.data?.blocks ?? []) as unknown as BlockSpec[],
+    // Hides the HTML/CSS tab rather than offering a control whose save would 403. The API is
+    // still the boundary — it refuses the write either way (CLAUDE.md §15).
+    canAuthorTemplates: blocks.data?.can_author ?? false,
     locale: event.locals.locale,
   };
 };
@@ -46,6 +54,8 @@ export const actions: Actions = {
           vat_number: text(form, "vat_number") ?? null,
           coc_number: text(form, "coc_number") ?? null,
           iban: text(form, "iban") ?? null,
+          bic: text(form, "bic") ?? null,
+          website: text(form, "website") ?? null,
           email: text(form, "email") ?? null,
           phone: text(form, "phone") ?? null,
         },

@@ -1,51 +1,40 @@
 <script lang="ts">
-  /** The print surface: the rendered document plus a screen-only toolbar. `@media print`
-   * hides the app shell, so the browser's Save-as-PDF produces a clean document — the
-   * pragmatic PDF path until a server-side renderer ships (#207's stated follow-up). */
-  import { page } from "$app/state";
+  /**
+   * The print surface: the rendered document plus a toolbar.
+   *
+   * The document arrives from the API as HTML — the same page `/pdf` prints — so this asks
+   * the *frame* to print rather than the window. That prints the document's own `@page` rules
+   * (A4, its margins, its running page numbers) instead of a screenshot of the app around it,
+   * which is why the `@media print` block that used to hide the shell here is gone: nothing
+   * of the shell reaches the printer any more.
+   *
+   * The server-rendered PDF is the better artefact and the one the send path attaches; this
+   * page stays for whoever wants their own printer's dialog.
+   */
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
-  import DocumentView from "$lib/modules/invoicing/DocumentView.svelte";
+  import DocumentFrame from "$lib/modules/invoicing/DocumentFrame.svelte";
 
   let { data } = $props();
 
   const invoice = $derived(data.invoice);
-  const template = $derived(data.templates.find((tpl) => tpl.id === invoice.template_id) ?? null);
-  const theme = $derived(page.data.theme);
+  let frame = $state<ReturnType<typeof DocumentFrame> | null>(null);
 </script>
 
 <svelte:head>
   <title>{pageTitle(`${t("invoicing.kind.invoice")} ${invoice.number ?? ""}`)}</title>
 </svelte:head>
 
-<div class="print-hide mb-4 flex items-center justify-between gap-3">
+<div class="mb-4 flex items-center gap-3">
   <button
     class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-    onclick={() => window.print()}>{t("invoicing.action.print")}</button
+    onclick={() => frame?.print()}>{t("invoicing.action.print")}</button
   >
 </div>
 
-<DocumentView
-  doc={invoice}
-  kind="invoice"
-  {template}
-  seller={data.settings?.company_details ?? {}}
-  brandName={theme?.brandName ?? ""}
-  logoUrl={theme?.logoUrl ?? null}
-  brandColor={theme?.primaryColor ?? "#4f46e5"}
+<DocumentFrame
+  bind:this={frame}
+  src="/invoices/{invoice.id}/preview"
+  title={`${t("invoicing.kind.invoice")} ${invoice.number ?? ""}`}
+  class="mx-auto max-w-4xl"
 />
-
-<style>
-  @media print {
-    /* Only the document leaves the printer: the shell (sidebar, header) and this page's
-       own toolbar disappear, and the content column loses its padding. */
-    :global(aside),
-    :global(header),
-    .print-hide {
-      display: none !important;
-    }
-    :global(main) {
-      padding: 0 !important;
-    }
-  }
-</style>

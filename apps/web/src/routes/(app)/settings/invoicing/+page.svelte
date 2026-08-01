@@ -14,9 +14,10 @@
   import NumberFormatField from "$lib/core/ui/NumberFormatField.svelte";
   import PhoneInput from "$lib/core/ui/PhoneInput.svelte";
   import { getCurrency } from "$lib/core/currency";
-  import DocumentView from "$lib/modules/invoicing/DocumentView.svelte";
+  import TemplateEditor from "$lib/modules/invoicing/TemplateEditor.svelte";
+  import { layoutForApi, toConfig } from "$lib/modules/invoicing/templateConfig";
+  import type { TemplateConfig } from "$lib/modules/invoicing/templateConfig";
   import { docMoney, taxRateLabel } from "$lib/modules/invoicing/types";
-  import { page } from "$app/state";
 
   let { data, form } = $props();
 
@@ -49,111 +50,31 @@
     productOpen = true;
   }
 
-  // --- template dialog with live preview -------------------------------------- #
+  // --- template dialog --------------------------------------------------------- #
+  // The whole design is one object now, edited by `TemplateEditor` and posted as JSON. It
+  // used to be a handful of `tpl*` scalars mirrored into a hand-built preview document; the
+  // preview is the API's real renderer today, so there is nothing left for them to mirror.
   let templateOpen = $state(false);
   let editingTemplate = $state<Template | null>(null);
   let deleteTemplateId = $state("");
   let confirmDeleteTemplate = $state(false);
   let tplName = $state("");
-  let tplAccent = $state("");
-  let tplShowLogo = $state(true);
-  let tplColumns = $state({ quantity: true, unit: false, unit_price: true, tax: true });
-  let tplTexts = $state<Record<string, Record<string, string>>>({
-    intro_i18n: { nl: "", en: "" },
-    payment_i18n: { nl: "", en: "" },
-    footer_i18n: { nl: "", en: "" },
-  });
   let tplDefault = $state(false);
-  let tplPreviewLocale = $state("nl");
+  let tplConfig = $state<TemplateConfig>(toConfig({}));
 
   function openTemplate(template: Template | null) {
     editingTemplate = template;
-    const config = (template?.config ?? {}) as {
-      accent_color?: string | null;
-      show_logo?: boolean;
-      columns?: Partial<Record<"quantity" | "unit" | "unit_price" | "tax", boolean>>;
-      intro_i18n?: Record<string, string>;
-      payment_i18n?: Record<string, string>;
-      footer_i18n?: Record<string, string>;
-    };
     tplName = template?.name ?? "";
-    tplAccent = config.accent_color ?? "";
-    tplShowLogo = config.show_logo !== false;
-    tplColumns = {
-      quantity: true,
-      unit: false,
-      unit_price: true,
-      tax: true,
-      ...(config.columns ?? {}),
-    };
-    tplTexts = {
-      intro_i18n: { nl: "", en: "", ...(config.intro_i18n ?? {}) },
-      payment_i18n: { nl: "", en: "", ...(config.payment_i18n ?? {}) },
-      footer_i18n: { nl: "", en: "", ...(config.footer_i18n ?? {}) },
-    };
     tplDefault = template?.is_default ?? false;
+    tplConfig = toConfig(template?.config);
     templateOpen = true;
   }
+
+  // `layout` goes over the wire without the editor's own bookkeeping (`locked`, `region`),
+  // which the API re-reads from its catalog anyway — and would reject as extra keys.
   const tplConfigJson = $derived(
-    JSON.stringify({
-      accent_color: tplAccent || null,
-      show_logo: tplShowLogo,
-      columns: tplColumns,
-      intro_i18n: tplTexts.intro_i18n,
-      payment_i18n: tplTexts.payment_i18n,
-      footer_i18n: tplTexts.footer_i18n,
-    }),
+    JSON.stringify({ ...tplConfig, layout: layoutForApi(tplConfig.layout) }),
   );
-  // A sample document so the designer sees the config live, before saving.
-  const previewDoc = $derived({
-    id: "preview",
-    number: "2026-0042",
-    status: "open",
-    locale: tplPreviewLocale,
-    currency: "EUR",
-    issue_date: "2026-07-01",
-    due_date: "2026-07-15",
-    reference: "PO-123",
-    intro: null,
-    notes: null,
-    customer: {
-      name: "Klant BV",
-      address_line1: "Dorpsstraat 1",
-      postal_code: "1234 AB",
-      city: "Utrecht",
-    },
-    subtotal: "1000.00",
-    tax_total: "210.00",
-    total: "1210.00",
-    paid_total: "0.00",
-    outstanding: "1210.00",
-    lines: [
-      {
-        id: "l1",
-        position: 0,
-        description: t("settings.invoicing.preview"),
-        quantity: "10.00",
-        unit: "uur",
-        unit_price: "100.00",
-        tax_rate_id: null,
-        tax_rate_pct: "21.00",
-        tax_name: "21%",
-        tax_category: "standard",
-        amount: "1000.00",
-      },
-    ],
-    tax_groups: [
-      { rate_pct: "21.00", category: "standard", name: "21%", base: "1000.00", tax: "210.00" },
-    ],
-  });
-  const previewTemplate = $derived({
-    id: "preview",
-    name: tplName,
-    config: JSON.parse(tplConfigJson),
-    is_default: false,
-    active: true,
-    position: 0,
-  });
 
   // Bound so the format fields can preview what they will produce (#77) rather than describing
   // their tokens in prose — the hint they replaced said what {seq:4} means, never what you get.
@@ -290,6 +211,20 @@
           >{t("settings.invoicing.iban")}</label
         >
         <input id="seller-iban" name="iban" value={seller.iban ?? ""} class={inputClass} />
+      </div>
+      <!-- BIC and website print only on a template whose layout asks for them (both are off
+           by default): a SEPA invoice needs no BIC, an international one often does. -->
+      <div>
+        <label for="seller-bic" class="mb-1 block text-sm font-medium text-text"
+          >{t("settings.invoicing.bic")}</label
+        >
+        <input id="seller-bic" name="bic" value={seller.bic ?? ""} class={inputClass} />
+      </div>
+      <div>
+        <label for="seller-website" class="mb-1 block text-sm font-medium text-text"
+          >{t("settings.invoicing.website")}</label
+        >
+        <input id="seller-website" name="website" value={seller.website ?? ""} class={inputClass} />
       </div>
       <div>
         <label for="seller-email" class="mb-1 block text-sm font-medium text-text"
@@ -791,107 +726,35 @@
   {/key}
 </Modal>
 
-<!-- Template dialog with live preview -->
+<!-- Template dialog: the editor and the API's own renderer, side by side. -->
 <Modal
   bind:open={templateOpen}
   title={editingTemplate
     ? t("settings.invoicing.edit_template")
     : t("settings.invoicing.new_template")}
-  size="3xl"
+  size="5xl"
 >
-  <div class="grid gap-6 lg:grid-cols-[22rem_1fr]">
-    <form
-      method="POST"
-      action="?/saveTemplate"
-      use:enhance={busy.wrap("template", () => ({ result, update }) => {
-        if (result.type === "success") templateOpen = false;
-        void update({ reset: false });
-      })}
-      class="space-y-3"
-    >
-      {#if editingTemplate}<input type="hidden" name="id" value={editingTemplate.id} />{/if}
-      <input type="hidden" name="config" value={tplConfigJson} />
-      <div>
+  <form
+    method="POST"
+    action="?/saveTemplate"
+    use:enhance={busy.wrap("template", () => ({ result, update }) => {
+      if (result.type === "success") templateOpen = false;
+      // keep(): the dialog stays open on a validation failure, and blanking the design the
+      // author just wrote is the one thing worse than the error.
+      void update({ reset: false });
+    })}
+    class="space-y-4"
+  >
+    {#if editingTemplate}<input type="hidden" name="id" value={editingTemplate.id} />{/if}
+    <input type="hidden" name="config" value={tplConfigJson} />
+    <div class="flex flex-wrap items-end gap-4">
+      <div class="min-w-56 flex-1">
         <label for="tpl-name" class="mb-1 block text-sm font-medium text-text"
           >{t("settings.invoicing.template_name")}</label
         >
         <input id="tpl-name" name="name" required bind:value={tplName} class={inputClass} />
       </div>
-      <div>
-        <label for="tpl-accent" class="mb-1 block text-sm font-medium text-text"
-          >{t("settings.invoicing.accent_color")}</label
-        >
-        <input id="tpl-accent" bind:value={tplAccent} placeholder="#4f46e5" class={inputClass} />
-        <p class="mt-1 text-xs text-text-muted">{t("settings.invoicing.accent_color_hint")}</p>
-      </div>
-      <label class="flex items-center gap-2 text-sm text-text">
-        <input type="checkbox" bind:checked={tplShowLogo} class="rounded border-border" />
-        {t("settings.invoicing.show_logo")}
-      </label>
-      <fieldset>
-        <legend class="mb-1 text-sm font-medium text-text"
-          >{t("settings.invoicing.columns_heading")}</legend
-        >
-        <div class="grid grid-cols-2 gap-1">
-          <label class="flex items-center gap-2 text-sm text-text">
-            <input
-              type="checkbox"
-              bind:checked={tplColumns.quantity}
-              class="rounded border-border"
-            />
-            {t("settings.invoicing.col_quantity")}
-          </label>
-          <label class="flex items-center gap-2 text-sm text-text">
-            <input type="checkbox" bind:checked={tplColumns.unit} class="rounded border-border" />
-            {t("settings.invoicing.col_unit")}
-          </label>
-          <label class="flex items-center gap-2 text-sm text-text">
-            <input
-              type="checkbox"
-              bind:checked={tplColumns.unit_price}
-              class="rounded border-border"
-            />
-            {t("settings.invoicing.col_unit_price")}
-          </label>
-          <label class="flex items-center gap-2 text-sm text-text">
-            <input type="checkbox" bind:checked={tplColumns.tax} class="rounded border-border" />
-            {t("settings.invoicing.col_tax")}
-          </label>
-        </div>
-      </fieldset>
-      {#each ["nl", "en"] as textLocale (textLocale)}
-        <div>
-          <label for="tpl-intro-{textLocale}" class="mb-1 block text-sm font-medium text-text"
-            >{t("settings.invoicing.intro_text", { locale: textLocale })}</label
-          >
-          <textarea
-            id="tpl-intro-{textLocale}"
-            rows="2"
-            bind:value={tplTexts.intro_i18n[textLocale]}
-            class={inputClass}></textarea>
-        </div>
-        <div>
-          <label for="tpl-payment-{textLocale}" class="mb-1 block text-sm font-medium text-text"
-            >{t("settings.invoicing.payment_text", { locale: textLocale })}</label
-          >
-          <textarea
-            id="tpl-payment-{textLocale}"
-            rows="2"
-            bind:value={tplTexts.payment_i18n[textLocale]}
-            class={inputClass}></textarea>
-        </div>
-        <div>
-          <label for="tpl-footer-{textLocale}" class="mb-1 block text-sm font-medium text-text"
-            >{t("settings.invoicing.footer_text", { locale: textLocale })}</label
-          >
-          <textarea
-            id="tpl-footer-{textLocale}"
-            rows="2"
-            bind:value={tplTexts.footer_i18n[textLocale]}
-            class={inputClass}></textarea>
-        </div>
-      {/each}
-      <label class="flex items-center gap-2 text-sm text-text">
+      <label class="flex items-center gap-2 pb-2 text-sm text-text">
         <input
           type="checkbox"
           name="is_default"
@@ -901,43 +764,26 @@
         />
         {t("settings.invoicing.default")}
       </label>
-      {#if form?.error}
-        <p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
-      {/if}
-      <div class="flex justify-end gap-2">
-        <button
-          type="button"
-          class="rounded-lg border border-border px-4 py-2 text-sm text-text"
-          onclick={() => (templateOpen = false)}>{t("common.cancel")}</button
-        >
-        <Button loading={busy.is("template")} disabled={busy.active}>{t("common.save")}</Button>
-      </div>
-    </form>
-    <div class="hidden min-w-0 lg:block">
-      <div class="mb-2 flex items-center justify-between">
-        <p class="text-sm font-medium text-text">{t("settings.invoicing.preview")}</p>
-        <select
-          bind:value={tplPreviewLocale}
-          class="rounded-lg border border-border bg-surface-raised px-2 py-1 text-xs"
-          aria-label={t("invoicing.field.locale")}
-        >
-          <option value="nl">nl</option>
-          <option value="en">en</option>
-        </select>
-      </div>
-      <div class="max-h-[70vh] overflow-y-auto rounded-lg border border-border">
-        <DocumentView
-          doc={previewDoc as never}
-          kind="invoice"
-          template={previewTemplate as never}
-          seller={seller as never}
-          brandName={page.data.theme?.brandName ?? ""}
-          logoUrl={page.data.theme?.logoUrl ?? null}
-          brandColor={page.data.theme?.primaryColor ?? "#4f46e5"}
-        />
-      </div>
     </div>
-  </div>
+
+    <TemplateEditor
+      bind:config={tplConfig}
+      catalog={data.blockCatalog}
+      canAuthor={data.canAuthorTemplates}
+    />
+
+    {#if form?.error}
+      <p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
+    {/if}
+    <div class="flex justify-end gap-2">
+      <button
+        type="button"
+        class="rounded-lg border border-border px-4 py-2 text-sm text-text"
+        onclick={() => (templateOpen = false)}>{t("common.cancel")}</button
+      >
+      <Button loading={busy.is("template")} disabled={busy.active}>{t("common.save")}</Button>
+    </div>
+  </form>
 </Modal>
 
 <Modal

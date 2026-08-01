@@ -5,20 +5,16 @@ import { apiFor } from "$lib/core/session";
 
 import type { PageServerLoad } from "./$types";
 
+/**
+ * Just enough to title the page. The document itself is fetched by `DocumentFrame` from
+ * `/preview`, which renders it server-side — so the template list and the seller settings
+ * this load used to pull are two round trips nothing on the page reads (docs/PERFORMANCE.md).
+ */
 export const load: PageServerLoad = async (event) => {
   if (!can(event.locals.user, "invoicing.quote.read")) throw redirect(303, "/");
-  const api = apiFor(event);
-  const [quote, templates, settings] = await Promise.all([
-    api.GET("/api/v1/invoicing/quotes/{quote_id}", {
-      params: { path: { quote_id: event.params.id } },
-    }),
-    api.GET("/api/v1/invoicing/templates", { params: { query: { include_inactive: true } } }),
-    api.GET("/api/v1/invoicing/settings"),
-  ]);
+  const quote = await apiFor(event).GET("/api/v1/invoicing/quotes/{quote_id}", {
+    params: { path: { quote_id: event.params.id } },
+  });
   if (!quote.data) throw httpError(404);
-  return {
-    quote: quote.data,
-    templates: templates.data ?? [],
-    settings: settings.data ?? null,
-  };
+  return { quote: quote.data };
 };
