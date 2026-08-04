@@ -3826,6 +3826,7 @@
   "cloudflare.issue.redirect_not_pushed": "Deze omleiding is nooit naar Cloudflare gestuurd.",
   "cloudflare.issue.redirect_conflict": "Er is al iets anders op deze zone dat omleidt.",
   "cloudflare.issue.origin_missing": "Geen geproxyd record voor dit domein, dus er bereikt geen verkeer de omleiding.",
+  "cloudflare.issue.origin_www_missing": "Geen geproxyd record voor www, dus verkeer naar www bereikt de omleiding niet.",
   "cloudflare.issue.domain_says_redirect": "Het domein staat hier als omleiding, maar bij Cloudflare is niets ingesteld.",
   "cloudflare.issue.cloudflare_says_redirect": "Bij Cloudflare staat een omleiding, maar het domein staat hier niet als omleiding.",
   "cloudflare.issue.token_error": "Een deel van de controle kon niet worden uitgevoerd met dit token.",

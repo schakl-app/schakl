@@ -629,6 +629,65 @@ async def test_a_rule_with_no_proxied_record_is_reported_and_repaired(
         assert "origin_missing" in greyed["issues"]
 
 
+async def test_a_greyed_www_is_reported_even_when_the_apex_is_fine(client_for, cloudflare) -> None:
+    """The apex answering is not the whole answer.
+
+    `www` fails on its own: the rule matches it, nothing proxied serves it, and every other
+    signal on the page reads healthy — which is the state a domain redirect exists to avoid.
+    Its own key, because `origin_missing`'s "no traffic reaches the redirect" is false here.
+    """
+    t = await make_tenant("cf-origin-www")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, domain, _ = await _connected(c, headers, cloudflare)
+        zone_id = next(iter(cloudflare.zones))
+        await c.put(
+            f"/api/v1/cloudflare/domains/{domain['id']}/redirect",
+            json={"target_url": "https://nieuw.nl", "ensure_origin": True},
+            headers=headers,
+        )
+        for record in cloudflare.dns[zone_id]:
+            if record["name"] == "www.klant.nl":
+                record["proxied"] = False
+
+        checked = (
+            await c.post(f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers)
+        ).json()
+        assert checked["origin"]["apex_proxied"] is True
+        assert checked["origin"]["www_proxied"] is False
+        assert "origin_www_missing" in checked["issues"]
+        assert "origin_missing" not in checked["issues"]
+
+
+async def test_www_is_not_expected_when_the_rule_excludes_subdomains(
+    client_for, cloudflare
+) -> None:
+    """With `include_subdomains` off the rule never matches `www`, so an unproxied one is the
+    configured state rather than a finding."""
+    t = await make_tenant("cf-origin-apex-only")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, domain, _ = await _connected(c, headers, cloudflare)
+        zone_id = next(iter(cloudflare.zones))
+        await c.put(
+            f"/api/v1/cloudflare/domains/{domain['id']}/redirect",
+            json={
+                "target_url": "https://nieuw.nl",
+                "include_subdomains": False,
+                "ensure_origin": True,
+            },
+            headers=headers,
+        )
+        assert {r["name"] for r in cloudflare.dns[zone_id] if r["type"] == "AAAA"} == {"klant.nl"}
+
+        checked = (
+            await c.post(f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers)
+        ).json()
+        assert checked["origin"]["www_proxied"] is False
+        assert "origin_www_missing" not in checked["issues"]
+        assert "origin_missing" not in checked["issues"]
+
+
 async def test_ensure_origin_leaves_an_existing_record_alone(client_for, cloudflare) -> None:
     """Never replace what is already answering on that hostname."""
     t = await make_tenant("cf-origin-keep")

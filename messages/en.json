@@ -3826,6 +3826,7 @@
   "cloudflare.issue.redirect_not_pushed": "This redirect was never sent to Cloudflare.",
   "cloudflare.issue.redirect_conflict": "Something else on this zone already redirects.",
   "cloudflare.issue.origin_missing": "No proxied record for this domain, so no traffic reaches the redirect.",
+  "cloudflare.issue.origin_www_missing": "No proxied record for www, so traffic to www does not reach the redirect.",
   "cloudflare.issue.domain_says_redirect": "The domain is marked as a redirect here, but nothing is set at Cloudflare.",
   "cloudflare.issue.cloudflare_says_redirect": "There is a redirect at Cloudflare, but the domain is not marked as one here.",
   "cloudflare.issue.token_error": "Part of the check could not run with this token.",

@@ -125,6 +125,10 @@ ISSUE_REDIRECT_MISSING = "redirect_missing"
 ISSUE_REDIRECT_UNPUSHED = "redirect_not_pushed"
 ISSUE_REDIRECT_CONFLICT = "redirect_conflict"
 ISSUE_ORIGIN_MISSING = "origin_missing"
+#: Its own key, not folded into ``origin_missing``: with the apex proxied and ``www`` not, traffic
+#: *does* reach the redirect and "no traffic reaches it" would be a lie. The apex is fine, ``www``
+#: serves nothing, and every other signal on the page reads healthy.
+ISSUE_ORIGIN_WWW_MISSING = "origin_www_missing"
 ISSUE_DOMAIN_SAYS_REDIRECT = "domain_says_redirect"
 ISSUE_CLOUDFLARE_SAYS_REDIRECT = "cloudflare_says_redirect"
 ISSUE_TOKEN_ERROR = "token_error"
@@ -1539,9 +1543,15 @@ class CloudflareService:
             elif redirect.last_status == RedirectStatus.DRIFT.value:
                 issues.append(ISSUE_REDIRECT_DRIFT)
             origin: OriginState | None = report.get("origin")
-            if origin is not None and not origin.apex_proxied:
-                # The rule exists and nothing reaches it. Worth its own line: it looks configured.
-                issues.append(ISSUE_ORIGIN_MISSING)
+            if origin is not None:
+                if not origin.apex_proxied:
+                    # The rule exists and nothing reaches it. Worth its own line: it looks
+                    # configured.
+                    issues.append(ISSUE_ORIGIN_MISSING)
+                # Only when the rule actually claims ``www``. With subdomains excluded the rule
+                # never matches it, so an unproxied ``www`` is the configured state, not a finding.
+                if redirect.include_subdomains and not origin.www_proxied:
+                    issues.append(ISSUE_ORIGIN_WWW_MISSING)
         if report["conflicts"]:
             issues.append(ISSUE_REDIRECT_CONFLICT)
 

@@ -289,6 +289,10 @@ class OriginState(BaseModel):
 
     A redirect rule on a zone with no proxied record for the apex is inert. This is the check
     that turns "I set the redirect and nothing happens" into a sentence.
+
+    ``www`` is tracked separately because it fails separately: a proxied apex beside an
+    unproxied ``www`` leaves the one hostname a domain redirect exists to catch serving
+    nothing, while the apex answers and the report otherwise reads healthy.
     """
 
     apex_proxied: bool = False

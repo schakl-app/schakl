@@ -86,6 +86,11 @@ because they need account-level scopes and make per-zone drift detection much ha
   default) adds Cloudflare's documented placeholder — a proxied `AAAA 100::` — where there is no
   proxied record, and the status check reports `origin_missing` when someone greys the cloud
   later. An existing record is never replaced.
+  **The placeholder covers the apex and `www`, and deliberately nothing else.** The rule matches
+  every subdomain, but a set of them cannot be enumerated; `www` is the one that is always meant.
+  The two hostnames also fail *separately*, so they are checked separately: a proxied apex beside
+  an unproxied `www` leaves exactly the hostname this feature exists to catch serving nothing,
+  while every other signal on the page reads healthy (`origin_www_missing`).
 - Setting a redirect also sets `Domain.status = redirect` and `Domain.redirect_url`, and removing
   it walks them back **only if they still say what we put there**. Two screens disagreeing about
   whether a domain redirects is a bug, and a status somebody has since changed by hand is theirs.
@@ -107,6 +112,7 @@ The report's `issues` are stable keys the client resolves to `cloudflare.issue.*
 | `redirect_not_pushed` / `redirect_missing` / `redirect_drift` | our rule was never sent / is gone / has been edited at Cloudflare |
 | `redirect_conflict` | some *other* rule on the zone redirects: another rule in the ruleset, or a legacy forwarding Page Rule |
 | `origin_missing` | the rule exists and no traffic reaches it |
+| `origin_www_missing` | the apex reaches the rule and `www` does not — its own key, because `origin_missing`'s "no traffic reaches it" would be false here. Raised only while `include_subdomains` is on; with it off the rule never matches `www`, so an unproxied one is the configured state |
 | `domain_says_redirect` / `cloudflare_says_redirect` | the domain record and Cloudflare disagree — how a redirect wired outside schakl (#96) shows up, and how a hand-deleted rule does |
 | `token_error` | part of the check could not run; `unavailable` names which parts |
 
