@@ -125,11 +125,53 @@ def test_unknown_keys_in_a_stored_layout_are_ignored() -> None:
 
 def test_catalog_payload_carries_no_labels() -> None:
     """Keys only — the client resolves labels, because the API does not pick someone else's
-    locale (§17). A label leaking in here is how a Dutch admin gets an English invoice field."""
+    locale (§17). A label leaking in here is how a Dutch admin gets an English invoice field.
+
+    ``labelled`` is not a label: it says whether the field prints one at all, which is what
+    lets the editor offer a rewording box for *Telefoon* and not for the street.
+    """
     for block in catalog_payload():
         assert set(block) == {"key", "region", "default", "locked", "movable", "fields"}
         for field in block["fields"]:
-            assert set(field) == {"key", "default", "locked"}
+            assert set(field) == {"key", "default", "locked", "labelled"}
+
+
+def test_a_template_may_reword_a_label_but_not_invent_one() -> None:
+    """"Telefoon" and "t" are the same field; which one prints is the agency's letterhead.
+
+    An override on a field that prints no label is dropped rather than honoured: an address
+    line prints as a line, and a label there would not rename anything — in the letterhead it
+    would move the street out of the address stack and into the labelled grid.
+    """
+    reworded = _render({
+        "layout": [{"key": "seller", "fields": [
+            {"key": "phone", "label_i18n": {"nl": "Tel.", "en": "Phone"}},
+            {"key": "address", "label_i18n": {"nl": "Adres"}},
+        ]}],
+    })
+    assert "Tel." in reworded and "Telefoon" not in reworded
+    assert "Adres" not in reworded
+    # English wording, on a Dutch document, is not the document's — it prints `nl`.
+    assert "Phone" not in reworded
+
+
+def test_a_reworded_label_beats_the_design_s_own_shorthand() -> None:
+    """The letterhead marks the contact rows `t` / `e` / `i` rather than spelling them out.
+    That answers *our* label, never the tenant's — an agency that typed "Tel." must get it,
+    or the box they typed it in did nothing."""
+    import re
+
+    def sender_labels(config: dict) -> list[str]:
+        html = _render({"design": "letterhead", **config})
+        return [cell.strip() for cell in re.findall(r'<td class="k">(.*?)</td>', html, re.S)]
+
+    # The website field is off by default, so the marked rows here are phone and e-mail.
+    assert sender_labels({})[:2] == ["t", "e"]
+    reworded = sender_labels({
+        "layout": [{"key": "seller", "fields": [{"key": "phone", "label_i18n": {"nl": "Tel."}}]}],
+    })
+    # Only the one they reworded; the rest are still the design's.
+    assert reworded[:2] == ["Tel.", "e"]
 
 
 # --------------------------------------------------------------------------- #
@@ -192,7 +234,30 @@ def test_a_block_a_design_places_by_hand_still_honours_its_switch() -> None:
     assert "Betaalgegevens" not in off
 
 
-def test_the_letterhead_draws_the_closing_band_once() -> None:
+def test_a_kind_heads_its_own_table_only_when_there_is_more_than_one() -> None:
+    """Three kinds, three headed tables: *Aantal* means hours in one and licences in the next,
+    and a heading eighteen rows up is not there when the reader needs it. One kind gets the
+    plain table — a lone "UREN" over a table that subtotals to the subtotal beneath it is
+    noise, which is the same rule ``_sections`` already applies to the grouping itself.
+    """
+    doc, lines, groups = sample_document("nl", "EUR", TODAY)
+
+    def render(rows: list) -> str:
+        return render_document_html(
+            kind="invoice", doc=doc, lines=rows, seller=SELLER,
+            config={"design": "letterhead"}, brand=DocumentBrand(name="Agency"),
+            tax_groups=groups,
+        )
+
+    many = render(lines)
+    assert many.count('class="line-group"') == 3
+    # One column-heading row per kind, each carrying the kind as its description heading.
+    assert many.count('class="group-name col-description"') == 3
+    assert many.count("Abonnementen") >= 1
+
+    one = render([lines[0]])
+    assert 'class="line-group"' not in one
+    assert one.count("<thead>") == 1
     """The band is drawn by hand *and* skipped in the body loop; getting one of the two wrong
     prints the VAT breakdown twice, or drops it from a template that asked for it."""
     on = _render({"design": "letterhead",

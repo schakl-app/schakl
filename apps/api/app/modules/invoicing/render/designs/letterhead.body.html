@@ -28,6 +28,9 @@
           against the value, not "Telefoon" spelled out. It is what keeps the block a
           letterhead instead of a form, and the marks are message keys like everything else,
           because the letter that stands for "website" is not the same one in every language.
+
+          A mark answers *our* label, never the tenant's: a template that reworded the field
+          keeps its own word (`entry.relabelled`), or the box they typed it in did nothing.
         #}
         {% set marks = {
           'phone': t('invoicing.doc.phone_mark'),
@@ -52,7 +55,9 @@
               {% set starts_group = entry.key in identity and not sender.grouped %}
               {% if entry.key in identity %}{% set sender.grouped = true %}{% endif %}
               <tr class="{{ 'group-start' if starts_group }}">
-                <td class="k">{{ marks.get(entry.key) or entry.label }}</td>
+                <td class="k">
+                  {{ entry.label if entry.relabelled else (marks.get(entry.key) or entry.label) }}
+                </td>
                 <td>{{ entry.value }}</td>
               </tr>
             {% endfor %}
@@ -97,8 +102,9 @@
   {#
     The body stack, split around the closing band.
 
-    Three blocks are drawn by hand here rather than from the loop — the payment card above,
-    and the VAT breakdown and totals below, which this design sets side by side on one washed
+    Four blocks are drawn by hand here rather than from the loop — the payment card above;
+    the lines, because this design gives each kind its own headed table rather than banding
+    one grid; and the VAT breakdown and totals below, which it sets side by side on one washed
     band at the foot of the document instead of stacking them. `_blocks.html` sanctions
     exactly this: omit the key from the loop and place it yourself. Everything else keeps its
     configured order, and the band lands where `totals` was ordered, so "notes below the
@@ -109,12 +115,16 @@
     it. Pinning the band to the bottom of the sheet instead would need the page's height,
     which no block in normal flow can ask for without risking a page break of its own.
   #}
-  {% set drawn_by_hand = ['payment_box', 'tax_summary', 'totals'] %}
+  {% set drawn_by_hand = ['payment_box', 'lines', 'tax_summary', 'totals'] %}
   {% set closing_at = body_order.index('totals') if 'totals' in body_order else body_order | length %}
 
   <div class="flow">
-    {% for key in body_order[:closing_at] if key not in drawn_by_hand %}
-      {{ blocks.block(key, ctx) }}
+    {% for key in body_order[:closing_at] %}
+      {% if key == 'lines' %}
+        {{ blocks.sectioned(columns, sections, grouped) }}
+      {% elif key not in drawn_by_hand %}
+        {{ blocks.block(key, ctx) }}
+      {% endif %}
     {% endfor %}
   </div>
 

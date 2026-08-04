@@ -3456,6 +3456,7 @@
   "settings.invoicing.design_hint": "Classic puts the title left and the sender right; letterhead gives the sender half the header, with a brand mark behind the page.",
   "settings.invoicing.layout_heading": "Blocks and order",
   "settings.invoicing.layout_hint": "Switch off what does not belong on the document, and order it with the arrows. Required blocks can be moved but not removed — an invoice without its number or VAT breakdown is not one you may send.",
+  "settings.invoicing.field_label": "Own label",
   "settings.invoicing.layout_locked": "Required",
   "settings.invoicing.layout_move_up": "Move up",
   "settings.invoicing.layout_move_down": "Move down",

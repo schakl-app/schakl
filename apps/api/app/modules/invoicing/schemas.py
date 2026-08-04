@@ -233,6 +233,21 @@ class TemplateField(BaseModel):
 
     key: str = Field(min_length=1, max_length=40)
     enabled: bool = True
+    #: The tenant's own wording for this field's label, per locale — "t" where the catalog
+    #: says "Telefoon". Empty (or a field that prints no label at all) keeps the catalog's.
+    #: Bounded because a layout may hold forty of these and it lives in a JSONB column every
+    #: document read touches.
+    label_i18n: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("label_i18n")
+    @classmethod
+    def _bounded_labels(cls, value: dict[str, str]) -> dict[str, str]:
+        if len(value) > 12:
+            raise ValueError("errors.invoicing.template_too_large")
+        for locale, text in value.items():
+            if len(locale) > 12 or len(text) > 60:
+                raise ValueError("errors.invoicing.template_too_large")
+        return {locale: text.strip() for locale, text in value.items() if text.strip()}
 
 
 class TemplateBlock(BaseModel):

@@ -18530,6 +18530,10 @@ export interface components {
             enabled: boolean;
             /** Key */
             key: string;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            };
         };
         /** TemplateItemBase */
         TemplateItemBase: {

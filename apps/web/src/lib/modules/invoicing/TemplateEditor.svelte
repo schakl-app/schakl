@@ -39,6 +39,8 @@
   let tab = $state<Tab>("design");
   /** Which block's field list is unfolded. One at a time — the list is long enough already. */
   let openBlock = $state<string | null>(null);
+  /** Which language the layout tab's label boxes are editing. */
+  let labelLocale = $state("nl");
 
   const TABS: { key: Tab; label: string }[] = $derived([
     { key: "design" as const, label: t("settings.invoicing.tab_design") },
@@ -110,6 +112,32 @@
         index,
         layout.findIndex((b) => b.key === target.key),
       ),
+    );
+  }
+
+  /**
+   * The tenant's own wording for a field's printed label — "t" where we say "Telefoon".
+   *
+   * Per locale, because the document prints in *its* language, not the editor's: a Dutch
+   * invoice and an English one to the same client want different words for the same field.
+   * Blank is not a label; it clears the override so the catalog's wording comes back, which
+   * is also what stops an empty column heading from being saveable.
+   */
+  function setFieldLabel(blockKey: string, fieldKey: string, text: string) {
+    writeLayout(
+      layout.map((block) => {
+        if (block.key !== blockKey) return block;
+        return {
+          ...block,
+          fields: block.fields.map((field) => {
+            if (field.key !== fieldKey) return field;
+            const labels = { ...(field.label_i18n ?? {}) };
+            if (text.trim()) labels[labelLocale] = text;
+            else delete labels[labelLocale];
+            return { ...field, label_i18n: labels };
+          }),
+        };
+      }),
     );
   }
 
@@ -382,6 +410,23 @@
           onclick={resetLayout}>{t("settings.invoicing.layout_reset")}</button
         >
       </div>
+      <!-- Which language the label boxes below are editing. One switch rather than two boxes
+           per field: the list is long enough already, and a label is a word, not a paragraph. -->
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-text-muted">{t("settings.invoicing.field_label")}</span>
+        <div class="flex gap-1">
+          {#each ["nl", "en"] as loc (loc)}
+            <button
+              type="button"
+              class="rounded border px-2 py-0.5 text-xs uppercase {labelLocale === loc
+                ? 'border-brand text-text'
+                : 'border-border text-text-muted'}"
+              aria-pressed={labelLocale === loc}
+              onclick={() => (labelLocale = loc)}>{loc}</button
+            >
+          {/each}
+        </div>
+      </div>
       <ul class="divide-y divide-border rounded-lg border border-border">
         {#each layout as block (block.key)}
           <li>
@@ -435,41 +480,63 @@
             {#if openBlock === block.key && block.fields.length}
               <ul class="border-t border-border bg-surface/50 py-1 pl-8 pr-2">
                 {#each block.fields as field (field.key)}
-                  <li class="flex items-center gap-2 py-0.5">
-                    <label class="flex min-w-0 flex-1 items-center gap-2 text-sm text-text">
-                      <input
-                        type="checkbox"
-                        checked={field.enabled}
-                        disabled={field.locked}
-                        onchange={() => toggleField(block.key, field.key)}
-                        class="rounded border-border"
-                      />
-                      <span class="truncate {field.enabled ? '' : 'text-text-muted'}"
-                        >{fieldLabel(block.key, field.key)}</span
-                      >
-                      {#if field.locked}
-                        <Lock
-                          class="size-3 shrink-0 text-text-muted"
-                          aria-label={t("settings.invoicing.layout_locked")}
+                  <li class="py-0.5">
+                    <div class="flex items-center gap-2">
+                      <label class="flex min-w-0 flex-1 items-center gap-2 text-sm text-text">
+                        <input
+                          type="checkbox"
+                          checked={field.enabled}
+                          disabled={field.locked}
+                          onchange={() => toggleField(block.key, field.key)}
+                          class="rounded border-border"
                         />
-                      {/if}
-                    </label>
-                    <button
-                      type="button"
-                      class={iconButton}
-                      aria-label={t("settings.invoicing.layout_move_up")}
-                      onclick={() => moveField(block.key, field.key, -1)}
-                    >
-                      <ChevronUp class="size-4" />
-                    </button>
-                    <button
-                      type="button"
-                      class={iconButton}
-                      aria-label={t("settings.invoicing.layout_move_down")}
-                      onclick={() => moveField(block.key, field.key, 1)}
-                    >
-                      <ChevronDown class="size-4" />
-                    </button>
+                        <span class="truncate {field.enabled ? '' : 'text-text-muted'}"
+                          >{fieldLabel(block.key, field.key)}</span
+                        >
+                        {#if field.locked}
+                          <Lock
+                            class="size-3 shrink-0 text-text-muted"
+                            aria-label={t("settings.invoicing.layout_locked")}
+                          />
+                        {/if}
+                      </label>
+                      <button
+                        type="button"
+                        class={iconButton}
+                        aria-label={t("settings.invoicing.layout_move_up")}
+                        onclick={() => moveField(block.key, field.key, -1)}
+                      >
+                        <ChevronUp class="size-4" />
+                      </button>
+                      <button
+                        type="button"
+                        class={iconButton}
+                        aria-label={t("settings.invoicing.layout_move_down")}
+                        onclick={() => moveField(block.key, field.key, 1)}
+                      >
+                        <ChevronDown class="size-4" />
+                      </button>
+                    </div>
+                    <!-- The tenant's own wording for the printed label. The placeholder is
+                         what the document says today, so an empty box reads as "ours" rather
+                         than as a field with no name. Only for a field that prints a label,
+                         and only while it is switched on. -->
+                    {#if field.labelled && field.enabled}
+                      <div class="flex items-center gap-2 pb-1 pl-6 pr-[4.5rem] pt-0.5">
+                        <span class="shrink-0 text-xs uppercase text-text-muted">{labelLocale}</span
+                        >
+                        <input
+                          type="text"
+                          maxlength="60"
+                          class="w-full rounded border border-border bg-surface px-2 py-1 text-sm text-text"
+                          placeholder={fieldLabel(block.key, field.key)}
+                          aria-label={t("settings.invoicing.field_label")}
+                          value={field.label_i18n?.[labelLocale] ?? ""}
+                          oninput={(event) =>
+                            setFieldLabel(block.key, field.key, event.currentTarget.value)}
+                        />
+                      </div>
+                    {/if}
                   </li>
                 {/each}
               </ul>

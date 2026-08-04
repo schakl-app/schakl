@@ -40,6 +40,11 @@ class FieldSpec:
     default: bool = True
     #: Legally or structurally required: reorderable, never removable.
     locked: bool = False
+    #: Whether the field prints a label at all, and so whether a tenant may reword it. An
+    #: address line prints as a line, not as "Adres: …"; an override there would not rename
+    #: anything, it would *introduce* a label — and in the letterhead move the name out of
+    #: the address stack and into the labelled grid. Off here means the override is dropped.
+    labelled: bool = True
 
 
 @dataclass(frozen=True)
@@ -55,8 +60,15 @@ class BlockSpec:
         return self.region == "body"
 
 
-def _f(key: str, *, default: bool = True, locked: bool = False) -> FieldSpec:
-    return FieldSpec(key=key, default=default, locked=locked)
+def _f(
+    key: str, *, default: bool = True, locked: bool = False, labelled: bool = True
+) -> FieldSpec:
+    return FieldSpec(key=key, default=default, locked=locked, labelled=labelled)
+
+
+#: A party's own lines print as an address, not as labelled rows — see ``FieldSpec.labelled``.
+def _line(key: str, *, default: bool = True, locked: bool = False) -> FieldSpec:
+    return _f(key, default=default, locked=locked, labelled=False)
 
 
 #: The catalog, in the order a fresh template starts out in. Body blocks print top to bottom.
@@ -67,10 +79,10 @@ BLOCK_CATALOG: tuple[BlockSpec, ...] = (
         "seller",
         "sender",
         fields=(
-            _f("name", locked=True),
-            _f("address"),
-            _f("postal_city"),
-            _f("country", default=False),
+            _line("name", locked=True),
+            _line("address"),
+            _line("postal_city"),
+            _line("country", default=False),
             _f("phone"),
             _f("email"),
             _f("website", default=False),
@@ -85,12 +97,12 @@ BLOCK_CATALOG: tuple[BlockSpec, ...] = (
         "addressee",
         locked=True,
         fields=(
-            _f("label"),
-            _f("name", locked=True),
-            _f("attn"),
-            _f("address"),
-            _f("postal_city"),
-            _f("country"),
+            _line("label"),
+            _line("name", locked=True),
+            _line("attn"),
+            _line("address"),
+            _line("postal_city"),
+            _line("country"),
             _f("vat_number"),
             _f("coc_number"),
             _f("email", default=False),
@@ -166,6 +178,8 @@ class ResolvedField:
     key: str
     enabled: bool
     locked: bool
+    #: The tenant's own wording for this field's label, per locale. Empty = the catalog's.
+    label_i18n: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -205,6 +219,18 @@ class ResolvedLayout:
     def shows(self, block_key: str, field_key: str) -> bool:
         return self.block(block_key).shows(field_key)
 
+    def label_i18n(self, block_key: str, field_key: str) -> dict[str, str]:
+        """The tenant's own wording for a field's label, per locale. Empty = the catalog's.
+
+        "Telefoon" and "t" are the same field; which one prints is the agency's letterhead,
+        not ours. The catalog still owns the *key*, so an override is a display string and
+        never widens what a template can name.
+        """
+        for resolved in self.block(block_key).fields:
+            if resolved.key == field_key:
+                return resolved.label_i18n
+        return {}
+
 
 def _order_by(stored_keys: list[str], catalog_keys: list[str]) -> list[str]:
     """Catalog keys, ordered by the stored layout, with the unmentioned kept in place.
@@ -231,6 +257,23 @@ def _order_by(stored_keys: list[str], catalog_keys: list[str]) -> list[str]:
         at = merged.index(placed[-1]) + 1 if placed else 0
         merged.insert(at, key)
     return merged
+
+
+def _labels(entry: dict | None) -> dict[str, str]:
+    """A stored field's ``label_i18n``, reduced to locale → non-empty string.
+
+    Defensive because the config is tenant-writable JSONB: a blank string is *not* an
+    override (it would print an empty column heading), and a non-string value is not one
+    either.
+    """
+    raw = (entry or {}).get("label_i18n")
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        str(locale): str(text).strip()
+        for locale, text in raw.items()
+        if isinstance(text, str) and text.strip()
+    }
 
 
 def resolve_layout(layout: list[dict] | None) -> ResolvedLayout:
@@ -279,6 +322,7 @@ def resolve_layout(layout: list[dict] | None) -> ResolvedLayout:
                     key=field_spec.key,
                     enabled=True if field_spec.locked else field_enabled,
                     locked=field_spec.locked,
+                    label_i18n=_labels(item) if field_spec.labelled else {},
                 )
             )
         blocks[key] = resolved
@@ -302,7 +346,8 @@ def catalog_payload() -> list[dict]:
             "locked": block.locked,
             "movable": block.movable,
             "fields": [
-                {"key": f.key, "default": f.default, "locked": f.locked} for f in block.fields
+                {"key": f.key, "default": f.default, "locked": f.locked, "labelled": f.labelled}
+                for f in block.fields
             ],
         }
         for block in BLOCK_CATALOG

@@ -17,6 +17,8 @@ export interface FieldSpec {
   key: string;
   default: boolean;
   locked: boolean;
+  /** Whether the field prints a label at all, and so whether it can be reworded. */
+  labelled: boolean;
 }
 
 export interface BlockSpec {
@@ -31,7 +33,11 @@ export interface BlockSpec {
 export interface TemplateLayoutField {
   key: string;
   enabled: boolean;
+  /** The tenant's own wording for the label, per locale. Empty = the catalog's. */
+  label_i18n?: Record<string, string>;
   locked?: boolean;
+  /** Carried for the editor's own use; the API re-reads it from its catalog. */
+  labelled?: boolean;
 }
 
 export interface TemplateLayoutBlock {
@@ -172,7 +178,11 @@ export function mergeLayout(
         return {
           key: fieldKey,
           locked: fieldSpec.locked,
+          labelled: fieldSpec.labelled,
           enabled: fieldSpec.locked ? true : (item?.enabled ?? fieldSpec.default),
+          // Dropped for a field that prints no label: an override there would not rename
+          // anything, it would introduce one. Same rule the API resolves by.
+          label_i18n: fieldSpec.labelled ? (item?.label_i18n ?? {}) : {},
         };
       }),
     };
@@ -184,6 +194,12 @@ export function layoutForApi(layout: TemplateLayoutBlock[]) {
   return layout.map((block) => ({
     key: block.key,
     enabled: block.enabled,
-    fields: block.fields.map((field) => ({ key: field.key, enabled: field.enabled })),
+    // An empty override is not one, and this is stored in a JSONB column every document read
+    // touches: forty fields' worth of `{}` is forty pieces of nothing to carry around.
+    fields: block.fields.map((field) =>
+      Object.keys(field.label_i18n ?? {}).length
+        ? { key: field.key, enabled: field.enabled, label_i18n: field.label_i18n }
+        : { key: field.key, enabled: field.enabled },
+    ),
   }));
 }

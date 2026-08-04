@@ -268,6 +268,15 @@ ordered list of toggleable fields. `BLOCK_CATALOG` is the registry those keys ar
   centrally. It did not once, and the switch silently did nothing.
 - **Legality is not a preference.** Locked blocks and fields — the number, the date, the VAT
   breakdown, the reverse-charge notice — may be moved but never switched off.
+- **A field's label is the catalog's until the template rewords it.** "Telefoon" and "t" are
+  the same field, and which one an agency prints is their letterhead, not ours — so a layout
+  field carries an optional `label_i18n`, per locale like everything else a tenant writes. The
+  catalog still owns the **key**, so an override is a display string and can never widen what a
+  template names. Two rules keep it honest: a field that prints **no** label (`labelled=False` —
+  the address lines) drops the override rather than gaining a label, because in the letterhead
+  that would move the street out of the address stack and into the labelled grid; and a
+  reworded label beats a **design's own shorthand**, so the letterhead's `t` / `e` / `i` answer
+  our wording and never the tenant's, or the box they typed in did nothing.
 - `show_logo` and `columns` predate layouts. They stay the input while a template has no
   layout of its own (so a release cannot redesign a document a tenant already approved), and
   the service rewrites them *from* the layout on save so the two can never disagree.
@@ -293,10 +302,19 @@ it is:
   content.
 - **The tenant's colour is spent once**, on the line-kind headings. Everything else — the
   heading, the amount owed — is ink, so a loud brand still prints as paperwork.
-- **The lines table is ruled, not filled.** Column headings in the words themselves with a rule
-  above and below; no fill, no per-row borders. A section is set off by air and one hairline:
-  on an invoice that mixes worked hours, agreements and sales the reader has to *find* the
-  three groups, not be walled off from them.
+- **The paper is ruled in the tenant's colour.** `--accent-line` under the column headings and
+  over the amount owed, `--accent-hairline` for the quieter separations, and the two washes
+  (payment card, closing band) tinted to match. Both are *tints* of the accent, not the accent:
+  a solid brand colour under every heading competes with the words above it, and
+  `document_accent` darkened the hue to carry text, not lines. It is also what lets the type
+  stay black — the colour is in the ruling, so the heading and the total need not shout it.
+- **A line kind gets its own headed table, not a band across a shared grid** (`sectioned` in
+  `_blocks.html`). One grid banded three times made *Aantal* mean hours at the top and licences
+  in the middle, with the heading that said so eighteen rows up. The kind names the description
+  column — it is the heading of exactly that — so it costs no row of its own, and living in the
+  `thead` it reprints when a long group runs over the page. One kind falls through to the plain
+  ruled table: a lone "UREN" over a table that subtotals to the subtotal beneath it is noise,
+  the same rule `_sections` already applies to the grouping itself.
 - **One washed band closes the document**, VAT breakdown left and totals right, settled onto
   the same baseline rather than the same top — the last row of the breakdown reads across to
   the amount due, which is the comparison the band is for. It is a **table and not flex**:

@@ -7,6 +7,12 @@
   the layout has no opinion about: which column the seller sits in, how the header reads.
 #}
 
+{#
+  The lines as one table with a band per kind: `classic`'s shape, and the shape of any design
+  that wants a single ruled grid. A document whose lines are all one kind gets no bands at all
+  (`grouped` is false), because a lone "UREN" over a table that subtotals to the subtotal
+  beneath it is noise.
+#}
 {% macro table(columns, sections, grouped, palette) %}
   <table class="lines">
     <thead>
@@ -45,6 +51,64 @@
       </tbody>
     {% endfor %}
   </table>
+{% endmacro %}
+
+{#
+  The same lines, as one small table per kind — each with its own column headings.
+
+  A band across a shared grid says "these rows are hours"; a table of its own says "this is
+  what we worked, priced". On an invoice that carries three kinds at once the second is what
+  the reader actually wants, because *Aantal* means hours in one block and licences in the
+  next, and a heading eighteen rows up is not there when they need it. One kind gets no
+  heading and no subtotal — `grouped` is false, and it falls through to a plain table.
+#}
+{% macro sectioned(columns, sections, grouped) %}
+  {% if not grouped %}
+    {{ table(columns, sections, false, none) }}
+  {% else %}
+    {% for section in sections %}
+      <section class="line-group">
+        <table class="lines">
+          {#
+            The kind names the description column, because that is what it is the heading of:
+            "Uren", and beneath it the things worked. It costs no row of its own that way, and
+            living in the `thead` it reprints when a long group runs over the page — a heading
+            that scrolled off is a heading that is not there when the reader needs it.
+          #}
+          <thead>
+            <tr class="group-head">
+              {% for column in columns %}
+                {% if column.key == 'description' %}
+                  <th class="group-name col-description">{{ section.label }}</th>
+                {% else %}
+                  <th class="micro col-{{ column.key }} {{ 'right' if column.align == 'right' }}">
+                    {{ column.label }}
+                  </th>
+                {% endif %}
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in section.rows %}
+              <tr class="line">
+                {% for cell in row.cells %}
+                  <td class="col-{{ cell.key }}{{ ' right num' if cell.key not in ('description', 'unit') }}{{ ' muted' if cell.key in ('unit', 'tax') }}">
+                    {{ cell.value }}
+                  </td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+            <tr class="section-total">
+              <td class="right muted" colspan="{{ (columns | length) - 1 }}">
+                {{ section.subtotal_label }}
+              </td>
+              <td class="right num strong">{{ section.subtotal }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    {% endfor %}
+  {% endif %}
 {% endmacro %}
 
 {% macro totals_card(totals) %}

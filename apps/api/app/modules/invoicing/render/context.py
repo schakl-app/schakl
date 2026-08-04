@@ -123,8 +123,26 @@ class _Entry:
     strong: bool = False
 
 
+def pick_locale(texts: Any, locale: str) -> str:
+    """A tenant's per-locale text in the document's language, else English, else Dutch.
+
+    The same fallback the template's text blocks use, applied to the smaller pieces too, so
+    "the document is nl" means one thing everywhere on the page.
+    """
+    if not isinstance(texts, dict):
+        return ""
+    for candidate in (locale, "en", "nl"):
+        text = texts.get(candidate)
+        if isinstance(text, str) and text.strip():
+            return text.strip()
+    return ""
+
+
 def _entries(
-    layout: ResolvedLayout, block: str, values: dict[str, tuple[str, ...] | None]
+    layout: ResolvedLayout,
+    block: str,
+    values: dict[str, tuple[str, ...] | None],
+    locale: str = "nl",
 ) -> list[dict]:
     """A block's fields, in layout order, filtered down to what it can actually say.
 
@@ -138,6 +156,10 @@ def _entries(
     of its own — "(voor 14-07-2026)" beside the amount owed. It travels separately so a design
     can set it apart; glued onto the value it was one bold string, and the deadline read as
     part of the sum.
+
+    The **label** is the catalog's until the template rewords it: "Telefoon" and "t" are the
+    same field, and which one an agency prints is their letterhead, not ours. A field that
+    prints no label to begin with keeps none (``FieldSpec.labelled``).
     """
     if not layout.enabled(block):
         return []
@@ -149,8 +171,19 @@ def _entries(
         label, value, *rest = parts
         if value is None or str(value).strip() == "":
             continue
+        # `relabelled` travels with it because a design may have wording of its own — the
+        # letterhead marks the contact rows `t` / `e` / `i` rather than spelling them out.
+        # That is the design's answer to *our* label, not to the tenant's: an agency that
+        # typed "Tel." must get "Tel.", or the box they typed it in did nothing.
+        override = pick_locale(layout.label_i18n(block, key), locale) if label else ""
         out.append(
-            {"key": key, "label": label, "value": str(value), "note": rest[0] if rest else ""}
+            {
+                "key": key,
+                "label": override or label,
+                "relabelled": bool(override),
+                "value": str(value),
+                "note": rest[0] if rest else "",
+            }
         )
     return out
 
@@ -363,12 +396,16 @@ def build_context(
         }
     ]
 
+    def labelled(block: str, key: str, fallback: str) -> str:
+        """A catalog label, unless the template reworded this field. See ``_entries``."""
+        return pick_locale(layout.label_i18n(block, key), locale) or fallback
+
     totals_order = layout.fields("totals")
     totals_rows: list[dict] = []
     for key in totals_order:
         if key == "subtotal":
             totals_rows.append(
-                {"key": key, "label": t("invoicing.doc.subtotal"),
+                {"key": key, "label": labelled("totals", key, t("invoicing.doc.subtotal")),
                  "value": money(doc.subtotal), "strong": False}
             )
         elif key == "tax_rows":
@@ -381,7 +418,8 @@ def build_context(
             # Without that block these rows *are* the statement, and stay per rate.
             if layout.enabled("tax_summary"):
                 totals_rows.append(
-                    {"key": "tax", "label": t("invoicing.doc.tax_total"),
+                    {"key": "tax",
+                     "label": labelled("totals", "tax_rows", t("invoicing.doc.tax_total")),
                      "value": money(getattr(doc, "tax_total", 0)), "strong": False}
                 )
             else:
@@ -391,18 +429,18 @@ def build_context(
                 )
         elif key == "total":
             totals_rows.append(
-                {"key": key, "label": t("invoicing.doc.total"),
+                {"key": key, "label": labelled("totals", key, t("invoicing.doc.total")),
                  "value": money(doc.total), "strong": True}
             )
         elif key == "paid" and kind == "invoice" and paid:
             totals_rows.append(
-                {"key": key, "label": t("invoicing.doc.paid"), "value": money(paid),
-                 "strong": False}
+                {"key": key, "label": labelled("totals", key, t("invoicing.doc.paid")),
+                 "value": money(paid), "strong": False}
             )
         elif key == "to_pay" and kind == "invoice" and paid:
             totals_rows.append(
-                {"key": key, "label": t("invoicing.doc.to_pay"), "value": money(outstanding),
-                 "strong": True}
+                {"key": key, "label": labelled("totals", key, t("invoicing.doc.to_pay")),
+                 "value": money(outstanding), "strong": True}
             )
 
     # --- lines ---------------------------------------------------------------------------- #
@@ -410,7 +448,7 @@ def build_context(
     columns = [
         {
             "key": key,
-            "label": t(f"invoicing.line.{key}"),
+            "label": labelled("lines", key, t(f"invoicing.line.{key}")),
             "align": "left" if key in ("description", "unit") else "right",
         }
         for key in column_keys
@@ -470,10 +508,7 @@ def build_context(
 
     # --- prose -------------------------------------------------------------------------- #
     def template_text(block: str) -> str:
-        texts = config.get(block) or {}
-        if not isinstance(texts, dict):
-            return ""
-        return texts.get(locale) or texts.get("en") or texts.get("nl") or ""
+        return pick_locale(config.get(block), locale)
 
     payment_text = template_text("payment_i18n")
     # The fallback sentence exists so a document that shows no payment card still says where
@@ -510,6 +545,12 @@ def build_context(
             "accent": accent,
             "accent_wash": rgba(accent_rgb, 0.11),
             "accent_soft": rgba(accent_rgb, 0.06),
+            # Two weights of accent-tinted rule, for a design that rules its paper in the
+            # tenant's colour instead of grey. Tints rather than the accent itself: a solid
+            # brand colour under every column heading competes with the words above it, and
+            # `document_accent` already darkened the hue for text, not for lines.
+            "accent_line": rgba(accent_rgb, 0.55),
+            "accent_hairline": rgba(accent_rgb, 0.22),
             "ink": rgb_hex(INK),
             "muted": rgb_hex(MUTED),
             "rule": rgb_hex(RULE),
@@ -520,11 +561,11 @@ def build_context(
         else None,
         "brand_name": brand.name,
         "background": _background(config, brand),
-        "seller": _entries(layout, "seller", seller_values),
+        "seller": _entries(layout, "seller", seller_values, locale),
         "seller_raw": {k: (v or "") for k, v in seller.items() if isinstance(v, str)},
-        "customer": _entries(layout, "bill_to", customer_values),
-        "meta": _entries(layout, "meta", meta_values),
-        "payment_box": _entries(layout, "payment_box", payment_box_values)
+        "customer": _entries(layout, "bill_to", customer_values, locale),
+        "meta": _entries(layout, "meta", meta_values, locale),
+        "payment_box": _entries(layout, "payment_box", payment_box_values, locale)
         if show_payment_box
         else [],
         "columns": columns,

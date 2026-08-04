@@ -3456,6 +3456,7 @@
   "settings.invoicing.design_hint": "Klassiek zet de titel links en de afzender rechts; briefpapier geeft de afzender de halve kop, met een merkteken op de achtergrond.",
   "settings.invoicing.layout_heading": "Onderdelen en volgorde",
   "settings.invoicing.layout_hint": "Zet uit wat niet op het document hoort; met de pijlen bepaal je de volgorde. Vaste onderdelen mag je verplaatsen, niet weglaten: een factuur zonder nummer of btw-uitsplitsing mag je niet versturen.",
+  "settings.invoicing.field_label": "Eigen label",
   "settings.invoicing.layout_locked": "Verplicht",
   "settings.invoicing.layout_move_up": "Naar boven",
   "settings.invoicing.layout_move_down": "Naar beneden",
