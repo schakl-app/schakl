@@ -64,16 +64,69 @@ list, the summary, the company panel and the reminders cron all compute it the s
   gets **no** section headers — a lone "UREN" band subtotalling to the subtotal beneath it
   is noise; headers earn their place when two kinds must be told apart. A credit note and a
   quote conversion carry the source document's kinds over.
-- **A billed subscription period is claimed, so the cron knows it is already paid**
-  (`invoice_subscription_periods` — `invoice_time_entries` for agreements). One column on
-  `invoices` holds one agreement and one period, while a hand-built invoice routinely
-  carries three subscriptions plus some hours; so the claim moved to its own table, keyed
-  `(org, subscription, period_end)`, and `on_subscription_due` consults it before drafting.
-  A second document claiming the same period is refused with
-  `errors.invoicing.period_already_billed` rather than left to 500 on the unique index. The
-  claim is rebuilt from the lines on every write: drop the subscription line and the period
-  goes back to the cron. The lookup on `invoices.subscription_id` stays as the backstop for
-  rows the cron drafted before the table existed.
+- **A billed period is claimed, so the cron knows it is already paid**
+  (`invoice_subscription_periods`, `invoice_domain_periods` — `invoice_time_entries` for
+  agreements). One column on `invoices` holds one agreement and one period, while a
+  hand-built invoice routinely carries three subscriptions, eleven renewals and some hours;
+  so the claim moved to its own table, keyed `(org, source, period_end)`, and
+  `on_subscription_due` / `on_domain_due` consult it before drafting. A second document
+  claiming the same period is refused with `errors.invoicing.period_already_billed` rather
+  than left to 500 on the unique index. The claim is rebuilt from the lines on every write:
+  drop the line and the period goes back to the cron. The lookups on
+  `invoices.subscription_id` / `.domain_id` stay as the backstop for rows the crons drafted
+  before the tables existed.
+- **A line records what it bills, because the claim tables could not say *which* line did.**
+  `invoice_lines` carries `time_entry_ids` (a **list** — a grouped line covers a project's
+  worth of entries), `subscription_id` / `domain_id` and the period. Without it the round
+  trip was broken in a way no functional test would catch: the editor replaces lines
+  wholesale on save, `LineRead` did not echo the claim, so **opening a draft the cron raised,
+  changing one word and saving released the claim** — and the cron billed the month again.
+  The same gap on the hours side meant `update` never linked or released a time entry at all,
+  so removing an hours line left it stamped invoiced with no line billing it. Both halves are
+  now reconciled from the stored lines on every write.
+  A **legacy guard** keeps the upgrade from re-entering the bug: a document whose lines of a
+  kind all carry no provenance is a pre-upgrade one, and its claims are left alone until
+  someone edits the lines that hold them. The migration also attributes existing claims to
+  their lines, unambiguously where an invoice holds exactly one, and by matching the
+  `dd-mm-yyyy` period both the picker and the cron bake into the description where it holds
+  several. Credit notes and quote conversions copy the kind and deliberately **not** the
+  provenance: a correction claims nothing.
+
+## Automatic invoicing is a level, not a switch (`AutoInvoiceMode`)
+
+`app/core/billing.py` — core vocabulary, because `subscriptions` and `domains` each store an
+agreement's override and put it on their `due` event, and `invoicing` resolves it against the
+org default (`invoicing_settings.auto_invoice_mode`). Four levels, each containing the last:
+
+| level | what the cron does |
+|---|---|
+| `off` | nothing. The period stays outstanding and the editor's picker offers it. |
+| `draft` | a draft appears. **The default** — what every instance did before the level existed. |
+| `issue` | the draft is also issued: number, bill-to freeze, due date. Nobody has seen it. |
+| `send` | and it is e-mailed to the client with the PDF attached. |
+
+`NULL` on an agreement means **inherit**, never *off* — §14's three-state discipline. Where
+per-org config cannot express a per-agreement fact, the agreement wins: an agency automating
+twelve hosting retainers still assembles by hand the one client whose invoice is argued over
+every month, and "turn the feature off" is not an answer to that.
+
+**`issue` and `send` overrule #31's original *"do not auto-finalise financial documents"***.
+That was the right default and is still the shipped one; going further is an owner decision,
+made explicitly, and the two steps it adds are the two a delete cannot undo — an issued
+invoice is corrected by a credit note, and a sent one has been read. So:
+
+- Each step **degrades to the previous one** rather than propagating. An org that cannot issue
+  (no seller name) keeps its draft and gets one `auto_issue_failed` entry on the trail; the
+  month's billing is worth more than the automation.
+- **Sending is a separate pass** (`jobs.py`, `_send_auto_issued`), not part of the drafting
+  handler. `run_per_org` gives a whole org one transaction, so mailing at draft time would let
+  a later agreement's failure roll back an invoice whose e-mail had already reached the client.
+  `auto_send_pending` is written in the drafting transaction and read by the next job, so
+  nothing is ever mailed for an invoice that did not commit. A transient provider failure
+  retries tomorrow; a structural one (no recipient, no transport) clears the flag and records
+  `auto_send_failed` once, the reminders discipline exactly.
+- **The cycle advances either way.** A period nobody drafted is not lost: it stays unclaimed,
+  and that is precisely what the picker enumerates.
 
 ## Tax is tenant data, locale-seeded (`taxseeds.py`)
 
@@ -94,8 +147,11 @@ for accounting packages.
   effective employee rate (#226: personal → leave org default), else the invoicing org
   default — grouped lines split per rate), stamps `invoiced_at` through the published column, and remembers
   exactly which entries in `invoice_time_entries` — so deleting/cancelling the draft un-bills
-  exactly those and nothing else. `GET /invoicing/unbilled` feeds the dialog. An entry can
-  be on one invoice, ever (unique constraint).
+  exactly those and nothing else. An entry can be on one invoice, ever (unique constraint),
+  and each built line records the entries it covers, so an edit of that draft releases exactly
+  the hours whose line went. `GET /invoicing/unbilled` is the capped, counted list behind the
+  Uren picker — the cap bounds the *detail*; the count and the money come from an aggregate
+  over the whole set, so "12 uren nog te factureren" is never a truncated number.
   **Where `billable` comes from (#284)**: the API resolves it, not the browser. A create or
   timer-start that omits the flag inherits the project's `billable_default`, so the form, an
   import and an MCP call all answer the same — and a project a subscription covers has that
@@ -111,15 +167,31 @@ for accounting packages.
   `AT TIME ZONE`. Read-only and gated on `invoicing.invoice.read`: browsing the backlog is
   a view, building the invoice stays `from-time` behind `.write`.
 - **Subscriptions (#30)**: the cycle cron emits `subscription.due`; this module's consumer
-  (`events.py`) drafts one invoice per `(subscription, period)` — a lookup plus a partial
-  unique index make a re-run, resume or double emit unable to double-bill. **Draft, never
-  auto-issued**: a human sends invoices (#31's rule). The org's default tax rate applies;
-  the period rides `period_start`/`period_end`.
+  (`events.py`) drafts one invoice per `(subscription, period)` — a claim lookup plus a partial
+  unique index make a re-run, resume or double emit unable to double-bill. How far past the
+  draft it goes is the tenant's `AutoInvoiceMode`. The org's default tax rate applies; the
+  period rides `period_start`/`period_end`.
 - **Domains (#250)**: the renewal cron emits `domain.due` with the price resolved *at the
   due date* (`price_override`, else the TLD's `domain_tld_prices` row valid then); the
-  same `events.py` drafts one invoice per `(domain, period)` under its own partial unique
-  index (`uq_invoices_domain_period`), one line ("Domeinverlenging …" in the org locale),
-  same draft-only rule.
+  same `events.py` drafts one invoice per `(domain, period)` under its own claim table and
+  partial unique index, one line ("Domeinverlenging …" in the org locale). Same level applies.
+- **What is still outstanding** (`GET /invoicing/outstanding`): the three buckets the editor's
+  sections pick from, in one round trip. Each module answers the half it owns through its
+  published interface (§6) — `SubscriptionService.open_agreements`,
+  `DomainService.open_renewals` — and this module adds the half it owns: whether a period is
+  already claimed.
+  **Periods are walked backwards from the cycle's own `next_invoice_date`** in interval steps
+  (`app/core/billing.period_boundaries`), because that is the grid the cron bills on: it
+  advances by exactly one period per fire whether or not it drafted anything, so stepping back
+  lands on precisely the boundaries it passed — including the ones automation was off for.
+  Deriving the grid from `start_date` is the tempting mistake: `next_invoice_date` is
+  operator-settable and routinely does not sit a whole number of periods from the start.
+  Three bounds keep it honest: a period beginning before the agreement did was never served;
+  the record's own `created_at` is the floor, which is #250's *onboarding an old domain never
+  back-bills history* stated as arithmetic; and a cap of 24, **reported** rather than silently
+  cut. Claimed periods are returned marked `already_billed`, never omitted — "did I invoice
+  March?" is the question the picker exists to answer, and answering by omission produces the
+  duplicate.
 - **Quotes → invoices**: `convert` (accepted only) copies the lines *with their snapshots* —
   the deal keeps the prices it was accepted at. The quote flips to `invoiced` and points at
   the invoice; deleting that draft reverts it to `accepted`.
@@ -177,16 +249,50 @@ grouped by Klant — links to `/invoices/new?company=<id>` to actually build the
 Lists are `DataTable`s with
 summary tiles that filter the list they count (UX §7). The editor (`DocumentForm` +
 `LinesEditor`) posts lines as one JSON field with one save button; issue/send/pay/credit are
-explicit actions with confirms. Lines are added three ways, one per kind: `＋ regel`,
-`＋ urenregel` (unit and the org's default hourly rate prefilled), the product-preset picker,
-and `＋ abonnement` — which lists the client's active agreements from
-`GET /invoicing/billable-subscriptions` with the amount, the period and, for a period a
-document already holds, `al gefactureerd`. Shown, never hidden: "did I invoice March yet?"
-is answered on the picker instead of by a duplicate. UBL downloads proxy through
+explicit actions with confirms. UBL downloads proxy through
 `/invoices/[id]/ubl` (the impex pattern: the browser can't reach the API host), and so does
 the rendered document: `/invoices/[id]/preview` serves the API's HTML same-origin so
 `DocumentFrame` can measure and print it. Instellingen → Facturatie holds seller identity, tax
 rates, templates, numbering, defaults, reminders and the accounting section.
+
+### The line editor is three sections
+
+**Uren · Diensten · Abonnementen**, mirroring the bands the rendered document already prints.
+It used to be one flat repeater with a kind `<select>` and a free `unit` box on every row, and
+both asked a question with no interesting answer:
+
+- A line's **kind** is not a per-row choice. It is which section you added it in — and the
+  section is the thing that knows where to get real data.
+- A line's **unit** is a property of its kind for two of the three. Hours are hours; a
+  recurring fee is one period. Only a service line sells things measured in something (stuks,
+  dagen, woorden), so that is the only section that still shows the field. The hours unit is
+  resolved **API-side in the document's locale** (`invoicing.unit.hour`), so an invoice to a
+  German client says "Std." whoever pressed the button — it used to be the Dutch literal
+  `"uur"`, hardcoded, on every document in every language.
+
+Uren and Abonnementen are **picked, not typed**: each section's control opens
+`OutstandingPicker` over `GET /invoicing/outstanding`, with a count badge on the button. Lines
+arrive priced, dated and carrying what they bill, and that provenance round-trips. The
+Abonnementen picker covers subscription periods **and domain renewals** together, because both
+already print in that band and a picker claiming to show everything outstanding while omitting
+eleven renewals would be lying.
+
+Nothing is added behind your back. The old behaviour dropped **every** unbilled hour onto a
+fresh invoice the moment you chose a client, which is a list to delete rather than a list to
+choose from; the picker is not auto-opened either, because modal thrash on every company
+change is worse than what it replaced.
+
+The editor **always shows all three sections**, an empty one collapsing to its heading and its
+add control — its job is to state where a line goes. The renderer keeps the opposite rule (a
+document whose lines are all one kind gets no headers, because a lone "UREN" band subtotalling
+to the subtotal beneath it is noise). The divergence is deliberate; do not "fix" either to
+match the other. Section order **is** document order: the server takes `position` from the
+posted array index, so the editor serialises section by section.
+
+Instellingen → Facturatie carries **Automatisch factureren** (the org's `AutoInvoiceMode`), and
+a subscription or domain overrides it in its own form with a "follow the organisation setting"
+row that names the inherited level — omitted where the caller cannot know it, because a hint
+naming the wrong level is worse than no hint.
 
 The **document is shown in a frame, not redrawn** (`DocumentFrame.svelte`). It is the page the
 API rendered and the PDF prints, scaled to fit rather than resized so the document's own CSS

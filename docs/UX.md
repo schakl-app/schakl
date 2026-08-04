@@ -590,6 +590,20 @@
 
 - Buttons that configure org-wide behaviour placed inside a working screen (the old "save
   as team default" on the dashboard) — config goes to Settings.
+- **A form filling itself in from the database and leaving the user to delete the wrong
+  parts.** Picking a client on a new invoice used to drop *every* unbilled hour they had onto
+  it as lines. It looked helpful and was the opposite: a partly-billable month became a list to
+  prune rather than a list to choose from, and nothing on screen said where the lines had come
+  from. What replaced it is the shape to copy — the section states what is waiting ("12"), and
+  a picker adds only what was ticked. Offer the count, never the contents.
+- **A per-row field that can only be filled in one way.** The invoice line editor asked for a
+  *unit* on every line, including the hours ones, where the only correct answer is "uur" — and
+  for a *type*, which is just the section the line already sits in. Both were dropped: derive
+  what the kind determines, and ask only where the answer is genuinely open (a service line
+  really is sold in stuks or dagen).
+- **A picker that hides what it has already done.** A billed subscription period is listed and
+  disabled with "al gefactureerd", not omitted: "did I invoice March?" is the question the
+  picker exists to answer, and answering it by omission is what produces the duplicate.
 - Native date and time inputs (US format, AM/PM clock, popup anchored to the window corner) —
   assuming a native control honours our locale hints when it does not.
 - Two favicon `<link>`s competing (static + tenant) — exactly one, tenant-driven.
