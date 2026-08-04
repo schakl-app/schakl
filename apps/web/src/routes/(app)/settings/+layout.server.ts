@@ -1,5 +1,6 @@
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
+import { settingsShellData } from "$lib/core/settings/shell.server";
 
 import type { LayoutServerLoad } from "./$types";
 
@@ -38,23 +39,21 @@ export const load: LayoutServerLoad = async (event) => {
    * answer that: `settings.service_access.manage` is absent from a self-hosted catalog, yet the
    * owner's `*` satisfies a check for it. It lives on the layout so the index grid and the section
    * rail read the same answer, and it is only asked for by someone who could see that card at all,
-   * so an ordinary admin opening Mijn account pays nothing for it.
+   * so an ordinary admin opening Mijn account pays nothing for it. Shared with the three screens
+   * that carry the rail from outside this subtree (#229), so every rail lists the same entries.
    */
-  const mayServiceAccess = can(event.locals.user, "settings.service_access.manage");
   const mayRoles = can(event.locals.user, "settings.roles.manage");
-  const needsCatalog = CATALOG_CONSUMERS.some((permission) =>
-    can(event.locals.user, permission),
-  );
+  const needsCatalog = CATALOG_CONSUMERS.some((permission) => can(event.locals.user, permission));
 
-  const [roles, catalog, instance] = await Promise.all([
+  const [roles, catalog, shell] = await Promise.all([
     mayRoles ? api.GET("/api/v1/roles") : undefined,
     needsCatalog ? api.GET("/api/v1/permissions/catalog") : undefined,
-    mayServiceAccess ? api.GET("/api/v1/meta/instance") : undefined,
+    settingsShellData(event),
   ]);
   return {
     roles: roles?.data ?? [],
     permissionCatalog: catalog?.data ?? null,
     locale,
-    cloud: instance?.data?.deployment === "cloud",
+    ...shell,
   };
 };

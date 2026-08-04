@@ -543,12 +543,24 @@
   keuzelijsten), how each module behaves (Modules & werkprocessen), what it talks to (Communicatie
   & koppelingen). A card is named after what is *on* it — the screen holding only client numbering
   is "Klantnummering", not "Bedrijven", which read as a sibling of Klantgroepen and was neither.
-- **The Instellingen rail** (`settings/+layout.svelte`) renders from `xl` up, and never on the index
-  itself — there the cards *are* the navigation, with subtitles the rail has no room for. Below
-  `xl` the content keeps the full column: a 13 rem rail on a laptop costs every settings form a
-  fifth of its width to save one click, and the app-wide breadcrumb row is already the way back. It
-  lists exactly what the index would show that viewer, marks the current screen, and resolves a
-  deep link (`/settings/roles/<id>`) to its section by longest matching href.
+- **The Instellingen rail** (`core/settings/SettingsShell.svelte`) renders from `xl` up, and never
+  on the index itself — there the cards *are* the navigation, with subtitles the rail has no room
+  for. Below `xl` the content keeps the full column: a 13 rem rail on a laptop costs every settings
+  form a fifth of its width to save one click, and the app-wide breadcrumb row is already the way
+  back. It lists exactly what the index would show that viewer, marks the current screen, and
+  resolves a deep link (`/settings/roles/<id>`) to its section by longest matching href.
+  It is a **component, not a route layout**, because of the bullet two above this one: the three
+  catalogs that live on their working page (#229) are Instellingen screens at a `/tasks/`,
+  `/subscriptions/` or `/domains/` URL, and a layout under `/settings/` can only wrap its own
+  subtree. So they mounted no rail at all — clicking Taaksjablonen, Standaardabonnementen or
+  Domeinprijzen in the rail dropped you out of the section and took the menu with it, on exactly
+  the three screens whose URL gives no hint how to get back. Each now mounts `SettingsShell`
+  through its own one-route `+layout.svelte`, and its `+layout.server.ts` resolves the posture flag
+  the rail needs via the shared `settingsShellData()`, so every rail lists the same entries. On
+  `/tasks/templates` the tasks tab row renders *inside* the shell: the page is a tab of the tasks
+  section **and** an Instellingen screen, and both ways in stay true.
+  `tests/unit/settings-rail.test.ts` fails if a registry entry outside `/settings/` has no shell —
+  nothing else in the build would notice, because the screen renders perfectly well without it.
 - The header holds only the profile menu (avatar → name, personal settings, logout).
   Language lives in personal settings, not the header.
 
