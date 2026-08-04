@@ -135,8 +135,11 @@
         </form>
       {/if}
       {#if can(page.data.user, "time.entry.write")}
+        <!-- Carry the client through: a bare /time landed on the entry form with whatever
+             client was last used, so the one you were looking at was the one thing the trip
+             lost. Same deep link the time panel below already uses. -->
         <a
-          href="/time"
+          href={`/time?company=${company.id}`}
           class="rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:border-brand hover:text-brand"
         >
           {t("companies.actions.log_time")}
