@@ -3,6 +3,7 @@ import type { ColumnMeta } from "$lib/core/table/columns";
 export const INVOICES_TABLE_ID = "invoices";
 export const QUOTES_TABLE_ID = "quotes";
 export const UNINVOICED_TABLE_ID = "uninvoiced";
+export const BACKLOG_TABLE_ID = "invoicing-backlog";
 
 /**
  * The org-wide "still to invoice" report (#277). No `sortKey`s: rows arrive bucketed under
@@ -29,6 +30,36 @@ export const UNINVOICED_COLUMNS: ColumnMeta[] = [
   {
     key: "amount",
     labelKey: "invoicing.uninvoiced.field.amount",
+    align: "right",
+    defaultVisible: true,
+  },
+];
+
+/**
+ * The recurring half of that report (#302): agreement periods and domain renewals no document
+ * claims yet. Same no-`sortKey` rule and the same hide-the-grouped-column rule as above — one
+ * table id for both sources, because a user who widened "Klant" while looking at domains means
+ * it just as much when they switch to subscriptions.
+ */
+export const BACKLOG_COLUMNS: ColumnMeta[] = [
+  { key: "name", labelKey: "invoicing.backlog.field.name", primary: true },
+  { key: "company", labelKey: "invoicing.backlog.field.company", defaultVisible: true },
+  {
+    key: "period",
+    labelKey: "invoicing.backlog.field.period",
+    align: "right",
+    defaultVisible: true,
+    width: 190,
+  },
+  {
+    key: "automation",
+    labelKey: "invoicing.backlog.field.automation",
+    defaultVisible: true,
+    width: 150,
+  },
+  {
+    key: "amount",
+    labelKey: "invoicing.backlog.field.amount",
     align: "right",
     defaultVisible: true,
   },

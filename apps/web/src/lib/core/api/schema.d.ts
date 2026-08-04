@@ -4563,6 +4563,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoicing/recurring-backlog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recurring Backlog
+         * @description Org-wide recurring work still to invoice (#302): agreement periods and domain renewals
+         *     that no document claims yet.
+         *
+         *     The other half of "nog te factureren" — ``/uninvoiced`` answers it for hours. Read-only
+         *     and on ``.read`` for the same reason that one is: browsing the backlog is a view, and
+         *     building the invoice stays a ``.write`` act in the editor.
+         */
+        get: operations["recurring_backlog_api_v1_invoicing_recurring_backlog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoicing/settings": {
         parameters: {
             query?: never;
@@ -8623,6 +8648,13 @@ export interface components {
             display_name: string;
             /** External Id */
             external_id: string;
+        };
+        /** BacklogSourceTotal */
+        BacklogSourceTotal: {
+            /** Amount */
+            amount: string;
+            /** Count */
+            count: number;
         };
         /** BackupCodesOut */
         BackupCodesOut: {
@@ -14414,20 +14446,30 @@ export interface components {
         };
         /**
          * LineKind
-         * @description What a document line *is* — the three things this platform bills for.
+         * @description What a document line *is* — the four things this platform bills for.
          *
-         *     An agency's invoice mixes worked hours, recurring agreements and one-off sales, and the
-         *     reader has to tell them apart: "24 uur × € 95" and "Hosting maart" answer different
-         *     questions. So the kind is a **property of the line**, carried from wherever it was built
-         *     (``from_time`` stamps hours, the subscription cycle stamps subscription, a product pick
-         *     stamps product) through to the rendered document, which groups and subtotals by it.
+         *     An agency's invoice mixes worked hours, recurring agreements, domain renewals and one-off
+         *     sales, and the reader has to tell them apart: "24 uur × € 95", "Hosting maart" and
+         *     "vlotr.nl 2026–2027" answer different questions. So the kind is a **property of the
+         *     line**, carried from wherever it was built (``from_time`` stamps hours, the subscription
+         *     cycle stamps subscription, the renewal cron stamps domain, a product pick stamps product)
+         *     through to the rendered document, which groups and subtotals by it.
          *
          *     It is presentation and provenance, never money: totals are computed from quantity, price
          *     and tax exactly as before, and a tenant who wants one flat table simply keeps every line
          *     on the default.
+         *
+         *     ``DOMAIN`` was folded into ``SUBSCRIPTION`` until #302, on the reasoning that a renewal is
+         *     a recurring line and no reader had asked for the distinction. A reader has: a register of
+         *     forty domains renewing across the year is the item an agency reconciles line by line
+         *     against the registrar's own invoice, and burying it in the band that also holds three
+         *     hosting retainers is what made that reconciliation a manual sort. Rows written before the
+         *     split keep saying ``subscription`` — the kind is a snapshot (§14's #64 rule), so the
+         *     documents a client already read do not change shape underneath them, and every read path
+         *     treats the two as one legacy family where it has to (see ``_CLAIM_SOURCES``).
          * @enum {string}
          */
-        LineKind: "product" | "hours" | "subscription";
+        LineKind: "product" | "hours" | "subscription" | "domain";
         /** LineRead */
         LineRead: {
             /** Amount */
@@ -16688,6 +16730,96 @@ export interface components {
          * @enum {string}
          */
         RecurrenceMode: "after_completion" | "schedule";
+        /** RecurringBacklogGroup */
+        RecurringBacklogGroup: {
+            /** Amount */
+            amount: string;
+            /** Count */
+            count: number;
+            /** Key */
+            key: string;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+        };
+        /**
+         * RecurringBacklogItem
+         * @description One outstanding period: an agreement's month or a domain's renewal year (#302).
+         */
+        RecurringBacklogItem: {
+            /** Amount */
+            amount: string;
+            auto_mode: components["schemas"]["AutoInvoiceMode"];
+            /** Company Id */
+            company_id: string | null;
+            /**
+             * Company Name
+             * @default
+             */
+            company_name: string;
+            /** Currency */
+            currency: string;
+            /**
+             * Future
+             * @default false
+             */
+            future: boolean;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /** Period Start */
+            period_start: string | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "subscription" | "domain";
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+        };
+        /**
+         * RecurringBacklogReport
+         * @description Org-wide recurring work still to invoice (#302) — the other half of "nog te
+         *     factureren", beside :class:`UninvoicedReport`'s hours.
+         */
+        RecurringBacklogReport: {
+            /**
+             * Group
+             * @enum {string}
+             */
+            group: "company" | "month" | "source";
+            /** Groups */
+            groups: components["schemas"]["RecurringBacklogGroup"][];
+            /** Items */
+            items: components["schemas"]["RecurringBacklogItem"][];
+            org_auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "all" | "subscription" | "domain";
+            /** Total Amount */
+            total_amount: string;
+            /** Total Count */
+            total_count: number;
+            /** Totals By Source */
+            totals_by_source?: {
+                [key: string]: components["schemas"]["BacklogSourceTotal"];
+            };
+            /** Truncated */
+            truncated: boolean;
+        };
         /**
          * RedirectConflict
          * @description Something *else* on this zone that already redirects, or could.
@@ -30172,6 +30304,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QuoteRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recurring_backlog_api_v1_invoicing_recurring_backlog_get: {
+        parameters: {
+            query?: {
+                /** @description company | month | source */
+                group?: "company" | "month" | "source";
+                /** @description all | subscription | domain */
+                source?: "all" | "subscription" | "domain";
+                /** @description cap on the item detail, not the totals */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurringBacklogReport"];
                 };
             };
             /** @description Validation Error */

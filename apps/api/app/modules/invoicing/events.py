@@ -32,6 +32,7 @@ from typing import Any
 from sqlalchemy import select, text
 
 from app.core.activity import ActivityService
+from app.core.billing import resolve_auto_invoice_mode
 from app.core.events import EmitContext
 from app.core.models import OrgSettings
 from app.core.timezone import org_zoneinfo
@@ -81,20 +82,12 @@ def _period_label(period_start: date | None, period_end: date) -> str:
 
 
 def _resolve_mode(override: Any, settings_row: InvoicingSettings | None) -> AutoInvoiceMode:
-    """How far this agreement's invoice goes: its own override, else the org's default.
-
-    ``NULL`` on the agreement means *inherit*, never *off* — the three-state discipline §14
-    uses for leave schedules. An unrecognised stored value falls back to the org default
-    rather than guessing, and an org with no settings row yet gets ``DRAFT``, which is what
-    every instance did before the level existed.
-    """
-    for candidate in (override, settings_row.auto_invoice_mode if settings_row else None):
-        if candidate:
-            try:
-                return AutoInvoiceMode(str(candidate))
-            except ValueError:
-                continue
-    return AutoInvoiceMode.DRAFT
+    """This module's binding of the core rule (:func:`resolve_auto_invoice_mode`) to the org's
+    settings row — kept as a named seam because every ``*.due`` handler reads it the same way,
+    and because the backlog report resolves the identical question from the other side."""
+    return resolve_auto_invoice_mode(
+        override, settings_row.auto_invoice_mode if settings_row else None
+    )
 
 
 async def _auto_issue(
@@ -178,6 +171,7 @@ async def _draft_period_invoice(
     reference: str | None,
     currency: str,
     mode: AutoInvoiceMode,
+    line_kind: LineKind,
 ) -> None:
     """The shared drafting core: company snapshot, org tax defaults, snapshotted lines,
     recomputed totals, one DRAFT invoice carrying ``link_field`` for idempotency — then as
@@ -227,8 +221,10 @@ async def _draft_period_invoice(
         line_rows.append(
             {
                 "position": index,
-                # A cycle raises recurring lines by definition — that is what a cycle is.
-                "line_kind": LineKind.SUBSCRIPTION.value,
+                # Whose cycle raised it: an agreement's period is a subscription line, a
+                # registrar's year is a domain line. Both recur; they are not the same item
+                # to the person reconciling the month (#302).
+                "line_kind": line_kind.value,
                 "description": (raw.get("description") or reference or "")[:512] or "—",
                 "quantity": quantity,
                 "unit": None,
@@ -392,6 +388,7 @@ async def on_subscription_due(ctx: EmitContext, payload: dict[str, Any]) -> None
         reference=payload.get("name"),
         currency=payload.get("currency") or "EUR",
         mode=mode,
+        line_kind=LineKind.SUBSCRIPTION,
     )
 
 
@@ -468,4 +465,5 @@ async def on_domain_due(ctx: EmitContext, payload: dict[str, Any]) -> None:
         reference=payload.get("name"),
         currency=payload.get("currency") or "EUR",
         mode=mode,
+        line_kind=LineKind.DOMAIN,
     )

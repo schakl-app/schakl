@@ -222,6 +222,16 @@ class OpenAgreement:
     #: No billing cycle is set, so no period can be named — and a period that cannot be named
     #: cannot be claimed either. Reported so the picker can say *why* it is offering nothing.
     no_cycle: bool
+    #: Whose agreement it is. Redundant when the caller asked for one client and the whole
+    #: answer when it asked for the org (#302) — the backlog report groups by it, and a
+    #: consumer that had to look it up would do so one query per agreement.
+    company_id: uuid.UUID | None = None
+    company_name: str = ""
+    #: How far this agreement's own cron takes an invoice, or ``None`` to follow the org
+    #: (§14's three-state rule). Published because the backlog report has to separate what
+    #: bills itself from what is waiting for a human — resolving the level is `invoicing`'s
+    #: job, but the override lives here and this module will not read that module's settings.
+    auto_invoice_mode: str | None = None
 
 
 @dataclass(frozen=True)
@@ -382,13 +392,23 @@ class SubscriptionService:
             )
         return out
 
-    async def open_agreements(self, company_id: uuid.UUID) -> list[OpenAgreement]:
-        """This client's agreements and **every period of each still outstanding** (§6).
+    async def open_agreements(
+        self, company_id: uuid.UUID | None = None
+    ) -> list[OpenAgreement]:
+        """Agreements and **every period of each still outstanding** (§6), for one client or
+        the whole org.
 
         The arrears half of :meth:`billable_periods`, and the reason the manual path works at
         all: an agreement whose automation is off, that was paused for a quarter, or that
         nobody got round to invoicing owes several periods, and a picker that offered only
         the next one would leave the rest permanently unbillable except by hand-typing.
+
+        ``company_id=None`` is the org-wide read the backlog report is built on (#302). It is
+        the *same* walk over more rows, deliberately: an org-wide answer assembled from a
+        different rule than the per-client picker's would eventually disagree with it, and the
+        two disagreeing about what a client owes is the failure this seam exists to prevent.
+        The reads stay batched — one statement each for the agreements, their lines and their
+        whole price history — so the query count does not grow with the number of clients.
 
         Boundaries come from ``start_date`` forward rather than backwards from
         ``next_invoice_date``, floored at the agreement's own ``created_at``: the cron keeps
@@ -402,20 +422,36 @@ class SubscriptionService:
         `invoicing`'s half of the answer, added by its own service — this one owns the
         interval vocabulary and the price history, nothing about documents.
         """
+        where = [
+            Subscription.status.in_(
+                (SubscriptionStatus.ACTIVE.value, SubscriptionStatus.PAUSED.value)
+            )
+        ]
+        if company_id is not None:
+            where.append(Subscription.company_id == company_id)
         subs = list(
             await self.ctx.session.scalars(
-                self.repo.scoped_select()
-                .where(
-                    Subscription.company_id == company_id,
-                    Subscription.status.in_(
-                        (SubscriptionStatus.ACTIVE.value, SubscriptionStatus.PAUSED.value)
-                    ),
-                )
-                .order_by(func.lower(Subscription.name))
+                self.repo.scoped_select().where(*where).order_by(func.lower(Subscription.name))
             )
         )
         if not subs:
             return []
+        # One read for every client in play, never one per agreement (docs/PERFORMANCE.md).
+        # Bare-table read over a published column (§6), org-filtered like every join here.
+        names: dict[uuid.UUID, str] = {}
+        client_ids = {s.company_id for s in subs if s.company_id is not None}
+        if client_ids:
+            names = {
+                row.id: row.name
+                for row in (
+                    await self.ctx.session.execute(
+                        text(
+                            "SELECT id, name FROM companies WHERE org_id = :oid AND id IN :ids"
+                        ).bindparams(bindparam("ids", expanding=True)),
+                        {"oid": self.ctx.org.id, "ids": list(client_ids)},
+                    )
+                ).mappings()
+            }
         lines_by_sub: dict[uuid.UUID, list[SubscriptionLine]] = {}
         for line in await self.ctx.session.scalars(
             self.lines.scoped_select()
@@ -490,6 +526,9 @@ class SubscriptionService:
                     periods=tuple(periods),
                     truncated=truncated,
                     no_cycle=sub.next_invoice_date is None,
+                    company_id=sub.company_id,
+                    company_name=names.get(sub.company_id, "") if sub.company_id else "",
+                    auto_invoice_mode=sub.auto_invoice_mode,
                 )
             )
         return out

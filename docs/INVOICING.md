@@ -91,16 +91,27 @@ invoice that owes nothing.
   a fully applied one rests at `paid` without a cent having moved, and withdrawing it hands
   its `applied_total` back to the invoice it corrected. What may never be cancelled away is
   *registered money*, which is `paid_total`, not the status.
-- **A line knows what it is** (`line_kind`: `hours` / `subscription` / `product`). An
-  agency's invoice mixes worked hours, recurring agreements and one-off sales, and the
-  reader has to tell them apart — "24 uur × € 95" and "Hosting maart" answer different
-  questions. So the kind is stamped by *whoever builds the line* (`from_time` → hours, the
-  cycle cron → subscription, a product pick or a hand-typed line → product) and travels to
-  the document, which groups and subtotals by it. It is presentation and provenance, never
-  money: totals are computed exactly as before. A document whose lines are all one kind
-  gets **no** section headers — a lone "UREN" band subtotalling to the subtotal beneath it
-  is noise; headers earn their place when two kinds must be told apart. A credit note and a
-  quote conversion carry the source document's kinds over.
+- **A line knows what it is** (`line_kind`: `hours` / `subscription` / `domain` / `product`).
+  An agency's invoice mixes worked hours, recurring agreements, domain renewals and one-off
+  sales, and the reader has to tell them apart — "24 uur × € 95", "Hosting maart" and
+  "vlotr.nl 2026–2027" answer different questions. So the kind is stamped by *whoever builds
+  the line* (`from_time` → hours, the cycle cron → subscription, the renewal cron → domain, a
+  product pick or a hand-typed line → product) and travels to the document, which groups and
+  subtotals by it. It is presentation and provenance, never money: totals are computed exactly
+  as before. A document whose lines are all one kind gets **no** section headers — a lone
+  "UREN" band subtotalling to the subtotal beneath it is noise; headers earn their place when
+  two kinds must be told apart. A credit note and a quote conversion carry the source
+  document's kinds over.
+  **`domain` split out of `subscription` in #302**, reversing the earlier call that a renewal
+  is just a recurring line and the distinction bought nothing. It buys one thing, and it is
+  the thing an agency does every month: a register of forty renewals is reconciled line by
+  line against the registrar's own invoice, and it has to be findable as a block rather than
+  mixed in among three hosting retainers. Rows written before the split keep saying
+  `subscription` — a kind is a snapshot (#64), so documents a client already read do not
+  change shape underneath them. Every read path that has to treats the two as one legacy
+  family; `_CLAIM_SOURCES.legacy_kinds` is where that is declared, and the domain source
+  answers to **both** kinds precisely so the upgrade cannot re-enter the double-billing bug
+  provenance was added to close.
 - **A billed period is claimed, so the cron knows it is already paid**
   (`invoice_subscription_periods`, `invoice_domain_periods` — `invoice_time_entries` for
   agreements). One column on `invoices` holds one agreement and one period, while a
@@ -283,7 +294,28 @@ for accounting packages.
     human being forbidden to bill one are different things, and "why is klant.nl not on the
     invoice" is exactly the question the picker exists to answer. Answering by omission is how
     the duplicate happens — the same rule `already_billed` follows below.
-- **What is still outstanding** (`GET /invoicing/outstanding`): the three buckets the editor's
+- **The recurring backlog (#302)**: `GET /invoicing/recurring-backlog` is the *org-wide* other
+  half of "nog te factureren" — agreement periods and domain renewals that no document claims,
+  bucketed `company | month | source` with exact subtotals and a capped item list. Until it
+  existed the recurring side was reachable only per client from inside the editor's picker, so
+  "what do we have to invoice this month" had no screen, and **arrears had none at all**: the
+  cycle cron advances whether or not it drafted anything, so a period automation was off for
+  sat there with nothing to surface it. Built on the *same* seams the picker uses
+  (`open_agreements()` / `open_renewals()` now answer org-wide when given no `company_id`),
+  deliberately — an org-wide answer assembled from a second rule would eventually disagree
+  with the picker about what a client owes.
+  Two exclusions and one flag, all deliberate. A **claimed** period is not outstanding, which
+  is the exact opposite of the picker's rule and right for the same reason the picker's is: a
+  picker is preventing a duplicate on a document you are building, a backlog is listing work,
+  and work that is on an invoice is done. A **non-invoiceable** domain (#298) is never going to
+  be billed, and a permanent row nobody can clear is how a backlog page stops being read. A
+  **future** period is kept and flagged: billing a retainer in advance is ordinary, so it is
+  the reader's call. Each row carries the `AutoInvoiceMode` its own agreement resolves to —
+  which is what the cron will do at that agreement's **next** boundary, never a promise about
+  the row it sits on, because every period listed here has already been passed by the cycle.
+  `resolve_auto_invoice_mode` lives in `app/core/billing.py` so the report and the `*.due`
+  consumers cannot drift about what "follow the organisation" means.
+- **What is still outstanding** (`GET /invoicing/outstanding`): the four buckets the editor's
   sections pick from, in one round trip. Each module answers the half it owns through its
   published interface (§6) — `SubscriptionService.open_agreements`,
   `DomainService.open_renewals` — and this module adds the half it owns: whether a period is
@@ -350,10 +382,18 @@ invoices a German client in the client's language without leaving its own.
 
 Nav **Facturatie** is a sidebar submenu (#277, the Domeinen & websites pattern): **Facturen**
 → `/invoices` | `/quotes` (submenu tabs) and **Nog te factureren** → `/invoices/uninvoiced`.
-The report page is read-only: a group-by combobox (Dag/Week/Maand/Jaar/Klant/Project/
-Medewerker), per-group subtotals rendered by `DataTable`'s `groupSummary` snippet from the
-API's own aggregate, expand/collapse per section, and every row — plus the group header when
-grouped by Klant — links to `/invoices/new?company=<id>` to actually build the invoice.
+The report page is read-only and covers **all three** sources (#302): four tiles across the
+top — Uren, Abonnementen, Domeinen and the grand total, always counting everything — then a
+source combobox choosing which one the table below details, a group-by combobox whose
+vocabulary follows the source (Dag/Week/Maand/Jaar/Klant/Project/Medewerker for hours,
+Klant/Maand/Soort for the recurring half), per-group subtotals rendered by `DataTable`'s
+`groupSummary` snippet, expand/collapse per section, and every row — plus the group header
+when grouped by Klant — linking to `/invoices/new?company=<id>` to actually build the invoice.
+Two API calls, always both, because a tile that only appeared once you had clicked its tab
+would not be a summary of anything (UX §7); the per-source narrowing is a filter over what
+`source=all` already returned, never a second round trip. The two tables keep **separate**
+column preferences — one shared id would let a renewal layout hide columns the hours table
+has — and the save action reads which is on screen from the same `source` param the load did.
 Lists are `DataTable`s with
 summary tiles that filter the list they count (UX §7). The editor (`DocumentForm` +
 `LinesEditor`) posts lines as one JSON field with one save button; issue/send/pay/credit are
@@ -363,27 +403,28 @@ the rendered document: `/invoices/[id]/preview` serves the API's HTML same-origi
 `DocumentFrame` can measure and print it. Instellingen → Facturatie holds seller identity, tax
 rates, templates, numbering, defaults, reminders and the accounting section.
 
-### The line editor is three sections
+### The line editor is four sections
 
-**Uren · Diensten · Abonnementen**, mirroring the bands the rendered document already prints.
-It used to be one flat repeater with a kind `<select>` and a free `unit` box on every row, and
-both asked a question with no interesting answer:
+**Uren · Abonnementen · Domeinen · Diensten**, mirroring the bands the rendered document
+already prints. It used to be one flat repeater with a kind `<select>` and a free `unit` box on
+every row, and both asked a question with no interesting answer:
 
 - A line's **kind** is not a per-row choice. It is which section you added it in — and the
   section is the thing that knows where to get real data.
-- A line's **unit** is a property of its kind for two of the three. Hours are hours; a
-  recurring fee is one period. Only a service line sells things measured in something (stuks,
-  dagen, woorden), so that is the only section that still shows the field. The hours unit is
-  resolved **API-side in the document's locale** (`invoicing.unit.hour`), so an invoice to a
-  German client says "Std." whoever pressed the button — it used to be the Dutch literal
-  `"uur"`, hardcoded, on every document in every language.
+- A line's **unit** is a property of its kind for three of the four. Hours are hours; a
+  recurring fee is one period; a renewal is one year. Only a service line sells things measured
+  in something (stuks, dagen, woorden), so that is the only section that still shows the field.
+  The hours unit is resolved **API-side in the document's locale** (`invoicing.unit.hour`), so
+  an invoice to a German client says "Std." whoever pressed the button — it used to be the
+  Dutch literal `"uur"`, hardcoded, on every document in every language.
 
-Uren and Abonnementen are **picked, not typed**: each section's control opens
-`OutstandingPicker` over `GET /invoicing/outstanding`, with a count badge on the button. Lines
-arrive priced, dated and carrying what they bill, and that provenance round-trips. The
-Abonnementen picker covers subscription periods **and domain renewals** together, because both
-already print in that band and a picker claiming to show everything outstanding while omitting
-eleven renewals would be lying.
+The first three are **picked, not typed**: each section's control opens `OutstandingPicker`
+over `GET /invoicing/outstanding`, with a count badge on the button. Lines arrive priced, dated
+and carrying what they bill, and that provenance round-trips. Each section's picker shows
+**one** source (#302) — the dialog's title, lead and empty state all name it, and the offer-id
+prefix is what carries the kind back, so a mixed dialog also made the resulting line's kind
+depend on which row you happened to tick. `LINE_KINDS` in `types.ts` and `SECTION_ORDER` in
+`render/context.py` must stay in step, or saving in the editor reorders the printed document.
 
 Nothing is added behind your back. The old behaviour dropped **every** unbilled hour onto a
 fresh invoice the moment you chose a client, which is a list to delete rather than a list to

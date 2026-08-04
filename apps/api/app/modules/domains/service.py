@@ -118,6 +118,12 @@ class OpenRenewal:
     #: automation skips it, but "why is klant.nl not on the invoice" is exactly the question
     #: the picker exists to answer, and answering by omission is how the duplicate happens.
     invoiceable: bool = True
+    #: Whose domain it is, and how far its own cron takes an invoice — the ``OpenAgreement``
+    #: fields, for the same reason (#302): the org-wide backlog groups by client and has to
+    #: separate what bills itself from what is waiting for a human.
+    company_id: uuid.UUID | None = None
+    company_name: str = ""
+    auto_invoice_mode: str | None = None
 
 
 def first_future_anniversary(start: date, today: date) -> date:
@@ -254,13 +260,18 @@ class DomainService:
         await self._attach(items)
         return items
 
-    async def open_renewals(self, company_id: uuid.UUID) -> list[OpenRenewal]:
-        """This client's domains and **every renewal period of each still outstanding** (§6).
+    async def open_renewals(self, company_id: uuid.UUID | None = None) -> list[OpenRenewal]:
+        """Domains and **every renewal period of each still outstanding** (§6), for one client
+        or the whole org.
 
         The published seam `invoicing` builds its picker from — the subscriptions
-        ``open_agreements`` shape, one entity over, because a renewal already prints in a
-        document's subscription section and a picker that omitted it would claim to show
-        everything outstanding while hiding eleven lines of it.
+        ``open_agreements`` shape, one entity over, because a renewal prints in its own band
+        on the document and a picker that omitted it would claim to show everything
+        outstanding while hiding eleven lines of it.
+
+        ``company_id=None`` is the org-wide read behind the backlog report (#302), and it is
+        the same walk over more rows for the same reason ``open_agreements`` gives: two
+        different rules would eventually disagree about what a client owes.
 
         Boundaries walk forward from ``start_date`` in years, floored at the domain's own
         ``created_at``: #250's rule that *onboarding an old domain never back-bills history*
@@ -269,19 +280,32 @@ class DomainService:
         ``price_override``, else the TLD price valid **at that boundary** — and a domain no
         price resolves for is reported rather than offered at zero.
         """
+        where = [Domain.status.in_(BILLABLE_STATUSES)]
+        if company_id is not None:
+            where.append(Domain.company_id == company_id)
         domains = list(
             await self.ctx.session.scalars(
-                self.repo.scoped_select()
-                .where(
-                    Domain.company_id == company_id,
-                    Domain.status.in_(BILLABLE_STATUSES),
-                )
-                .order_by(func.lower(Domain.name))
+                self.repo.scoped_select().where(*where).order_by(func.lower(Domain.name))
             )
         )
         if not domains:
             return []
         await self._attach_invoiceable(domains)
+        # One read for every client in play — see ``open_agreements`` (docs/PERFORMANCE.md).
+        names: dict[uuid.UUID, str] = {}
+        client_ids = {d.company_id for d in domains if d.company_id is not None}
+        if client_ids:
+            names = {
+                row.id: row.name
+                for row in (
+                    await self.ctx.session.execute(
+                        text(
+                            "SELECT id, name FROM companies WHERE org_id = :oid AND id IN :ids"
+                        ).bindparams(bindparam("ids", expanding=True)),
+                        {"oid": self.ctx.org.id, "ids": list(client_ids)},
+                    )
+                ).mappings()
+            }
         tlds = {d.tld for d in domains if d.tld}
         # The whole price history for the TLDs in play, in one read: resolving per domain per
         # year would be one query per renewal (docs/PERFORMANCE.md).
@@ -358,6 +382,9 @@ class DomainService:
                     no_cycle=domain.next_invoice_date is None,
                     no_price=now_priced is None or unpriced,
                     invoiceable=bool(getattr(domain, "invoiceable_effective", True)),
+                    company_id=domain.company_id,
+                    company_name=names.get(domain.company_id, "") if domain.company_id else "",
+                    auto_invoice_mode=domain.auto_invoice_mode,
                 )
             )
         return out

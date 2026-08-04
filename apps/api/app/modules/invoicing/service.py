@@ -30,6 +30,7 @@ from sqlalchemy import bindparam, func, select, text, tuple_
 
 from app.core.activity import ActivityService
 from app.core.activity.service import snapshot
+from app.core.billing import resolve_auto_invoice_mode
 from app.core.branding import load_brand_logo, load_org_image
 from app.core.customfields import CustomFieldsService
 from app.core.events import emit
@@ -141,17 +142,33 @@ class _ClaimSource:
     consults the claim, so the reconcile is written once and parameterised. ``table`` is a
     bare table name (§6): the claim is validated against the owning module's rows without
     importing them, exactly as ``invoice_time_entries`` validates against ``time_entries``.
+
+    ``legacy_kinds`` is which line kinds mean "this document may be a pre-provenance one of
+    mine" — the guard below. Renewals were stamped ``subscription`` until #302 gave them
+    their own kind, so the domain source has to answer to both or the upgrade re-enters the
+    very double-billing bug provenance was added to close.
     """
 
     model: type[Any]
     column: str
     table: str
+    legacy_kinds: frozenset[LineKind]
 
 
 #: Both claim tables, in the order a document's lines are most likely to carry them.
 _CLAIM_SOURCES: tuple[_ClaimSource, ...] = (
-    _ClaimSource(InvoiceSubscriptionPeriod, "subscription_id", "subscriptions"),
-    _ClaimSource(InvoiceDomainPeriod, "domain_id", "domains"),
+    _ClaimSource(
+        InvoiceSubscriptionPeriod,
+        "subscription_id",
+        "subscriptions",
+        frozenset({LineKind.SUBSCRIPTION}),
+    ),
+    _ClaimSource(
+        InvoiceDomainPeriod,
+        "domain_id",
+        "domains",
+        frozenset({LineKind.DOMAIN, LineKind.SUBSCRIPTION}),
+    ),
 )
 
 #: Fields an issued (non-draft) document may still edit: rendering and process, never money.
@@ -197,6 +214,17 @@ _UNINVOICED_GROUP_EXPR = {
     "project": "COALESCE(te.project_id::text, '')",
     "user": "te.user_id::text",
 }
+#: The recurring backlog's groupings (#302) — ``(key, label)`` per item. In Python rather than
+#: SQL because the rows are assembled from two modules' published seams, not from a table this
+#: module may join to: the period grid is arithmetic over each agreement's cycle, and there is
+#: no query to push the bucketing down into. The month key is the period's **end**, which is
+#: the boundary the cron bills on and the date the reader is reconciling against.
+_BACKLOG_GROUP_KEY: dict[str, Any] = {
+    "company": lambda i: (str(i["company_id"] or ""), i["company_name"]),
+    "month": lambda i: (i["period_end"].strftime("%Y-%m"), ""),
+    "source": lambda i: (i["source"], ""),
+}
+
 #: Entity groupings: (label expression, its join). Bare-table reads over published columns
 #: (§6), each side org-filtered like every join in ``_unbilled_rows``.
 _UNINVOICED_GROUP_LABEL = {
@@ -2147,10 +2175,147 @@ class InvoiceService(_DocumentService):
             self.entity_type, invoice.id, "time_attached", {"entries": len(entry_ids)}
         )
 
+    async def recurring_backlog(
+        self, *, group: str, source: str, limit: int
+    ) -> dict[str, Any]:
+        """The org-wide recurring backlog (#302): every agreement period and domain renewal
+        that is outstanding and **not** already claimed by a document.
+
+        The recurring half of "nog te factureren". ``uninvoiced_report`` answers the same
+        question for hours, and between them they are the whole of what an agency still has to
+        bill. Until this existed the recurring half was reachable only per client, from inside
+        the invoice editor's picker — so the question "what do we have to invoice this month"
+        had no screen, and *arrears* had no screen at all: the cycle cron advances whether or
+        not it drafted anything, so a period whose automation was off simply sat there with
+        nothing to surface it.
+
+        Built on the same seams the picker uses, asked org-wide, so the two can never disagree
+        about what a client owes. Three reads plus each seam's own batched set, whatever the
+        number of clients.
+
+        Two things are **excluded** rather than shown, and both are deliberate. A period a
+        document already claims is not outstanding — that is the entire meaning of the claim,
+        and the picker's opposite rule (claimed periods shown, marked) answers a different
+        question: it is preventing a duplicate on a document you are building, not listing
+        work. And a domain the agency does not invoice (#298) genuinely does not need
+        invoicing. What is *not* excluded is a future period: billing in advance is normal for
+        a retainer, so it is flagged (``future``) and left for the reader to decide.
+
+        ``auto_mode`` is what the cron will do with this agreement **when its next boundary
+        comes round** — never a promise about the row it sits on. Every period here has
+        already been passed by the cycle, so nothing in this list bills itself; the level is
+        shown so an agency can tell "nobody drafted this and nobody will" from "this one is
+        automated and simply has arrears from before it was".
+        """
+        self.ctx.require("invoicing.invoice.read")
+        from app.modules.domains.service import DomainService
+        from app.modules.subscriptions.service import SubscriptionService
+
+        org_default = (await self.settings.row()).auto_invoice_mode
+        # **Both** sources are always walked, whatever the filter, because ``totals_by_source``
+        # is what the page's tiles are, and a tile that only counted the source you had already
+        # selected would not be a summary of anything. It costs nothing extra worth having: the
+        # two seams are batched, so this is a fixed handful of statements either way, and the
+        # filter below narrows the answer rather than the work.
+        agreements = await SubscriptionService(self.ctx).open_agreements()
+        renewals = await DomainService(self.ctx).open_renewals()
+        every = self._backlog_items(
+            await self._with_claims(
+                agreements,
+                spec=_CLAIM_SOURCES[0],
+                key=lambda a: a.subscription_id,
+                extra=lambda a: {"interval": a.interval},
+            ),
+            source="subscription",
+            org_default=org_default,
+        ) + self._backlog_items(
+            await self._with_claims(
+                agreements=[r for r in renewals if r.invoiceable],
+                spec=_CLAIM_SOURCES[1],
+                key=lambda d: d.domain_id,
+                extra=lambda d: {"no_price": d.no_price, "invoiceable": d.invoiceable},
+            ),
+            source="domain",
+            org_default=org_default,
+        )
+        totals_by_source = {
+            kind: {
+                "count": sum(1 for i in every if i["source"] == kind),
+                "amount": round_cents(
+                    sum((i["amount"] for i in every if i["source"] == kind), Decimal(0))
+                ),
+            }
+            for kind in ("subscription", "domain")
+        }
+
+        items = every if source == "all" else [i for i in every if i["source"] == source]
+        # Oldest first: the longest-outstanding period leads the page, the same order the
+        # hours report opens on, because "what have we been sitting on" is the first question.
+        items.sort(key=lambda i: (i["period_end"], i["company_name"].lower(), i["name"].lower()))
+        # Bucketed over the **filtered** set and before the cap, so a narrowed view's subtotals
+        # are its own and stay exact past the limit. Computing them in the browser from the
+        # capped ``items`` was the tempting shortcut and is precisely the bug this endpoint's
+        # own cap discipline exists to prevent (docs/PERFORMANCE.md).
+        groups: dict[str, dict[str, Any]] = {}
+        for item in items:
+            key, label = _BACKLOG_GROUP_KEY[group](item)
+            bucket = groups.setdefault(
+                key, {"key": key, "label": label, "count": 0, "amount": Decimal(0)}
+            )
+            bucket["count"] += 1
+            bucket["amount"] += item["amount"]
+        return {
+            "group": group,
+            "source": source,
+            "org_auto_invoice_mode": org_default,
+            # Totals are over the whole (filtered) set; only the detail below is capped,
+            # exactly as the hours report does it — a truncated *count* is the one number a
+            # backlog page may never show (docs/PERFORMANCE.md).
+            "total_count": len(items),
+            "total_amount": round_cents(sum((i["amount"] for i in items), Decimal(0))),
+            "totals_by_source": totals_by_source,
+            "groups": [
+                {**g, "amount": round_cents(g["amount"])}
+                for g in sorted(groups.values(), key=lambda g: g["key"])
+            ],
+            "items": items[:limit],
+            "truncated": len(items) > limit,
+        }
+
+    def _backlog_items(
+        self, agreements: list[dict[str, Any]], *, source: str, org_default: str | None
+    ) -> list[dict[str, Any]]:
+        """Flatten the picker's agreement/period shape into one row per outstanding period."""
+        out: list[dict[str, Any]] = []
+        for agreement in agreements:
+            mode = resolve_auto_invoice_mode(agreement["auto_invoice_mode"], org_default)
+            for period in agreement["periods"]:
+                if period["already_billed"]:
+                    continue
+                out.append(
+                    {
+                        # A period has no id of its own; the pair that is unique is the one
+                        # the claim tables are keyed on, so the row is identified by it.
+                        "id": f"{source}:{agreement['id']}:{period['period_end']}",
+                        "source": source,
+                        "source_id": agreement["id"],
+                        "name": agreement["name"],
+                        "company_id": agreement["company_id"],
+                        "company_name": agreement["company_name"],
+                        "currency": agreement["currency"],
+                        "period_start": period["period_start"],
+                        "period_end": period["period_end"],
+                        "amount": Decimal(str(period["amount"] or 0)),
+                        "future": period["future"],
+                        "auto_mode": mode.value,
+                    }
+                )
+        return out
+
     async def outstanding(self, company_id: uuid.UUID) -> dict[str, Any]:
         """Everything this client still has to be invoiced for — the picker's whole source.
 
-        Three buckets in one round trip, because the editor has three sections and the dialog
+        Four buckets in one round trip, because the editor has four sections and the dialog
         opens on all of them at once. Each bucket's *what is owed* half comes from the module
         that owns the agreement, through its published interface (§6) — they own the interval
         vocabulary and the "price valid at the period boundary" rule, so a hand-picked line and
@@ -2216,6 +2381,11 @@ class InvoiceService(_DocumentService):
                 "amount": agreement.amount,
                 "truncated": agreement.truncated,
                 "no_cycle": agreement.no_cycle,
+                # Both seams publish these (#302). The picker already knows whose client it
+                # is asking about and ignores them; the org-wide backlog is built on them.
+                "company_id": agreement.company_id,
+                "company_name": agreement.company_name,
+                "auto_invoice_mode": agreement.auto_invoice_mode,
                 "periods": [
                     {
                         "period_start": period.period_start,
@@ -2282,13 +2452,11 @@ class InvoiceService(_DocumentService):
         # exists to close, re-entered through the upgrade. So an unattributed document keeps
         # its claims until someone edits the lines that carry them.
         #
-        # ``SUBSCRIPTION`` for **both** sources, and deliberately: a domain renewal is stamped
-        # with that kind too (``events.py`` — a cycle raises recurring lines by definition, and
-        # a renewal prints in the document's subscription band). There is no ``domain`` kind to
-        # look for and adding one would buy a distinction no reader has asked for.
-        legacy = not wanted and any(
-            line.line_kind == LineKind.SUBSCRIPTION for line in lines
-        )
+        # Which kinds count is the *source's* (``legacy_kinds``): renewals were stamped
+        # ``subscription`` before #302, so a domain claim must still recognise a document
+        # whose renewal lines say that — while a subscription claim must not be held alive by
+        # a line that is now plainly a domain's.
+        legacy = not wanted and any(line.line_kind in spec.legacy_kinds for line in lines)
         if legacy:
             return
 

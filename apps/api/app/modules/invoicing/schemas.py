@@ -832,6 +832,80 @@ class UninvoicedReport(BaseModel):
     truncated: bool
 
 
+#: What a recurring backlog row is owed for (#302). Named for the line kind it will become,
+#: because that is what the reader is choosing between on the page and on the document.
+BacklogSource = Literal["subscription", "domain"]
+#: ``all`` is not a source — it is the absence of a filter, and it is the default.
+BacklogSourceFilter = Literal["all", "subscription", "domain"]
+#: What the data model actually has to bucket by: whose it is, when it falls due, what kind
+#: it is. Deliberately not the hours report's day/week/year — a period is not an event.
+BacklogGroupBy = Literal["company", "month", "source"]
+
+
+class RecurringBacklogItem(BaseModel):
+    """One outstanding period: an agreement's month or a domain's renewal year (#302)."""
+
+    #: ``<source>:<source_id>:<period_end>`` — the row's identity, because a period is not a
+    #: record and has no id of its own. It is the *pair* that is unique (one agreement owes
+    #: several months, and the claim tables are keyed the same way), so neither half alone can
+    #: key a list. Deliberately the encoding ``OutstandingPicker`` already uses for its ticks.
+    id: str
+    source: BacklogSource
+    #: The subscription's or domain's id — what the invoice line will carry as provenance.
+    source_id: uuid.UUID
+    name: str
+    company_id: uuid.UUID | None
+    company_name: str = ""
+    currency: str
+    period_start: date | None
+    period_end: date
+    amount: Decimal
+    #: The period has not ended yet: billing it bills in advance, which is ordinary for a
+    #: retainer and worth flagging rather than hiding.
+    future: bool = False
+    #: The level this agreement's cron runs at, already resolved against the org default —
+    #: what it will do at its **next** boundary, never a claim about this row. Every period
+    #: here has been passed by the cycle already, so none of them will bill themselves.
+    auto_mode: AutoInvoiceMode
+
+
+class RecurringBacklogGroup(BaseModel):
+    key: str
+    #: Empty for month and source buckets: the client renders those from the key in its own
+    #: locale, the way the uninvoiced report's date buckets already work.
+    label: str = ""
+    count: int
+    amount: Decimal
+
+
+class BacklogSourceTotal(BaseModel):
+    count: int
+    amount: Decimal
+
+
+class RecurringBacklogReport(BaseModel):
+    """Org-wide recurring work still to invoice (#302) — the other half of "nog te
+    factureren", beside :class:`UninvoicedReport`'s hours."""
+
+    group: BacklogGroupBy
+    source: BacklogSourceFilter
+    #: The org's own default level, so the page can say what "follow the organisation" means
+    #: without a second call to the settings endpoint.
+    org_auto_invoice_mode: AutoInvoiceMode | None = None
+    #: Bucketed over the filtered set and **before** the cap, so a narrowed view's subtotals
+    #: are exact however long the list is.
+    groups: list[RecurringBacklogGroup]
+    #: Capped at the request's ``limit``; every total here is over the whole set.
+    items: list[RecurringBacklogItem]
+    total_count: int
+    total_amount: Decimal
+    #: Each source's whole-set figures, **ignoring** ``source`` — what the page's tiles are.
+    #: A tile that only counted the source already selected would summarise nothing, so these
+    #: are computed over everything even when the list beside them is narrowed to one.
+    totals_by_source: dict[str, BacklogSourceTotal] = Field(default_factory=dict)
+    truncated: bool
+
+
 # --------------------------------------------------------------------------- #
 # Quotes
 # --------------------------------------------------------------------------- #

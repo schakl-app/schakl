@@ -18,8 +18,18 @@ export type Outstanding = components["schemas"]["OutstandingRead"];
 export type UnbilledEntry = components["schemas"]["UnbilledEntry"];
 export type AutoInvoiceMode = components["schemas"]["AutoInvoiceMode"];
 
-/** The order the three kinds appear in: what was worked, what recurs, what was sold. */
-export const LINE_KINDS = ["hours", "subscription", "product"] as const satisfies LineKind[];
+/**
+ * The order the four kinds appear in: what was worked, what recurs, what renews, what was
+ * sold. **Keep in step with `SECTION_ORDER`** in `apps/api/.../render/context.py` — the editor
+ * and the printed document must lay a mixed invoice out the same way, or saving one reorders
+ * the other.
+ */
+export const LINE_KINDS = [
+  "hours",
+  "subscription",
+  "domain",
+  "product",
+] as const satisfies LineKind[];
 
 /** The automation levels, weakest first — each contains the one before it. */
 export const AUTO_INVOICE_MODES = [
@@ -51,12 +61,17 @@ export function lineKindLabel(kind: LineKind): string {
  *
  * Hours are hours: asking the user to type "uur" into every hours line was a field that could
  * only ever be filled in one way, or wrong. A recurring line's quantity is the agreement's
- * own (1 × the monthly fee), so it needs no unit either. Only a service line sells things
- * measured in something — stuks, dagen, woorden — and there the field stays.
+ * own (1 × the monthly fee) and a renewal's is one year, so neither needs a unit. Only a
+ * service line sells things measured in something — stuks, dagen, woorden — and there the
+ * field stays.
  */
 export function unitFor(kind: LineKind): string {
   return kind === "hours" ? t("invoicing.unit.hour") : "";
 }
+
+/** Which kinds are picked from what is actually outstanding rather than typed by hand.
+ *  A product is the only thing the agency invents on the spot. */
+export const PICKED_KINDS = ["hours", "subscription", "domain"] as const;
 
 /** dd-mm-jjjj for text that gets **stored on the document** — European and locale-independent
  *  (docs/UX.md), never the viewer's format: it becomes the line the client reads. */

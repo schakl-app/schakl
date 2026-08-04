@@ -18,6 +18,8 @@ from app.modules.invoicing import accounting
 from app.modules.invoicing.models import InvoiceStatus
 from app.modules.invoicing.render import BUILTIN_DESIGNS, builtin_source, catalog_payload
 from app.modules.invoicing.schemas import (
+    BacklogGroupBy,
+    BacklogSourceFilter,
     DocumentSend,
     ExternalRefRead,
     InvoiceCreate,
@@ -37,6 +39,7 @@ from app.modules.invoicing.schemas import (
     QuoteDecision,
     QuoteRead,
     QuoteUpdate,
+    RecurringBacklogReport,
     TaxRateCreate,
     TaxRateRead,
     TaxRateUpdate,
@@ -408,6 +411,29 @@ async def uninvoiced(
     stays the invoice-build preview, and building happens via ``/invoices/from-time``."""
     return UninvoicedReport.model_validate(
         await InvoiceService(ctx).uninvoiced_report(group=group, limit=limit)
+    )
+
+
+@router.get(
+    "/recurring-backlog",
+    response_model=RecurringBacklogReport,
+    dependencies=[require_permission("invoicing.invoice.read")],
+)
+async def recurring_backlog(
+    group: BacklogGroupBy = Query("company", description="company | month | source"),
+    source: BacklogSourceFilter = Query("all", description="all | subscription | domain"),
+    limit: int = Query(500, ge=1, le=1000, description="cap on the item detail, not the totals"),
+    ctx: RequestContext = Depends(require_context),
+) -> RecurringBacklogReport:
+    """Org-wide recurring work still to invoice (#302): agreement periods and domain renewals
+    that no document claims yet.
+
+    The other half of "nog te factureren" — ``/uninvoiced`` answers it for hours. Read-only
+    and on ``.read`` for the same reason that one is: browsing the backlog is a view, and
+    building the invoice stays a ``.write`` act in the editor.
+    """
+    return RecurringBacklogReport.model_validate(
+        await InvoiceService(ctx).recurring_backlog(group=group, source=source, limit=limit)
     )
 
 

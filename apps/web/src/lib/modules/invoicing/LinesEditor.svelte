@@ -1,17 +1,22 @@
 <script lang="ts">
   /**
-   * The document line editor (issue #207): **three sections** — Uren, Diensten, Abonnementen
-   * — mirroring the bands the rendered document already prints (`lineSections`).
+   * The document line editor (issue #207): **four sections** — Uren, Abonnementen, Domeinen,
+   * Diensten — mirroring the bands the rendered document already prints (`lineSections`).
    *
    * It used to be one flat repeater with a kind `<select>` and a free `unit` box on every
    * row, which asked two questions that have no interesting answer. A line's *kind* is not a
    * per-row choice: it is which section you added it in, and the section is the thing that
-   * knows where to get real data. A line's *unit* is a property of its kind for two of the
-   * three — hours are hours, a recurring fee is one period — so it is derived there and only
-   * typed on a service line, which genuinely sells things measured in something.
+   * knows where to get real data. A line's *unit* is a property of its kind for three of the
+   * four — hours are hours, a recurring fee is one period, a renewal is one year — so it is
+   * derived there and only typed on a service line, which genuinely sells things measured in
+   * something.
    *
-   * Hours and Abonnementen are **picked, not typed**: each opens `OutstandingPicker` over
-   * what the client still owes, so the line arrives priced, dated, and carrying what it bills
+   * Domeinen split out of Abonnementen in #302. Both recur, but a register of forty renewals
+   * is what an agency reconciles line by line against the registrar's own invoice, and it has
+   * to be findable as a block rather than mixed in among three hosting retainers.
+   *
+   * The picked sections are **picked, not typed**: each opens `OutstandingPicker` over what
+   * the client still owes, so the line arrives priced, dated, and carrying what it bills
    * (`time_entry_ids`, or the agreement/domain + period). That provenance travels back to the
    * API, which bills exactly those entries and claims exactly those periods — and is echoed
    * on read, so re-saving a draft cannot make it forget.
@@ -203,16 +208,13 @@
         continue;
       }
       const [sourceId, periodEnd] = rest;
-      const source =
-        prefix === "s"
-          ? subscriptions.find((s) => s.id === sourceId)
-          : domains.find((d) => d.id === sourceId);
+      const isAgreement = prefix === "s";
+      const source = isAgreement
+        ? subscriptions.find((s) => s.id === sourceId)
+        : domains.find((d) => d.id === sourceId);
       const period = source?.periods?.find((p) => p.period_end === periodEnd);
       if (!source || !period) continue;
-      const claim =
-        prefix === "s"
-          ? { subscription_id: source.id }
-          : { domain_id: source.id };
+      const claim = isAgreement ? { subscription_id: source.id } : { domain_id: source.id };
       // An agreement's own lines become the document's, each keeping its own description —
       // "Hosting" and "Onderhoud" on one retainer stay two readable lines, not one lump.
       const offers = period.lines?.length
@@ -223,7 +225,9 @@
         added.push({
           key: lineKey(),
           description: `${offer.description} — ${span}`,
-          line_kind: "subscription",
+          // The kind follows the *source*, not the section the picker was opened from, so a
+          // renewal is a renewal however it was reached.
+          line_kind: isAgreement ? "subscription" : "domain",
           quantity: String(Number(offer.quantity)),
           unit: "",
           unit_price: String(Number(offer.unit_price)),
@@ -241,23 +245,42 @@
     lines = lines.filter((l) => l !== line);
   }
 
-  /** How many pickable things each section still has waiting, for the badge on its button. */
+  /** How many pickable things each section still has waiting, for the badge on its button.
+   *  Already-billed periods are listed by the picker but are not *waiting*, so they do not
+   *  count — a badge that included them would never reach zero. */
   const hoursCount = $derived(hours?.total_count ?? 0);
-  const periodCount = $derived(
-    [...subscriptions, ...domains].reduce(
+  function openPeriods(rows: { periods?: { already_billed?: boolean }[] }[]): number {
+    return rows.reduce(
       (n, row) => n + (row.periods ?? []).filter((p) => !p.already_billed).length,
       0,
-    ),
-  );
+    );
+  }
+  const subscriptionCount = $derived(openPeriods(subscriptions));
+  const domainCount = $derived(openPeriods(domains));
+
+  const PICK_COUNT: Record<string, () => number> = {
+    hours: () => hoursCount,
+    subscription: () => subscriptionCount,
+    domain: () => domainCount,
+  };
+
+  /** Each picked section names what *it* offers: "Uren kiezen", "Periodes kiezen",
+   *  "Verlengingen kiezen". One shared label would have to be vague enough to cover all
+   *  three, which is exactly the button that teaches nobody where their line came from. */
+  function pickLabel(kind: LineKind): string {
+    if (kind === "hours") return t("invoicing.outstanding.pick_hours");
+    if (kind === "domain") return t("invoicing.outstanding.pick_domains");
+    return t("invoicing.outstanding.pick_subscriptions");
+  }
 
   const SECTIONS = $derived(
     LINE_KINDS.map((kind) => ({
       kind,
       label: lineKindLabel(kind),
       rows: lines.filter((l) => l.line_kind === kind),
-      /** Only a service line has a unit worth typing (stuks, dagen); the other two derive it. */
+      /** Only a service line has a unit worth typing (stuks, dagen); the rest derive it. */
       showsUnit: kind === "product",
-      count: kind === "hours" ? hoursCount : kind === "subscription" ? periodCount : 0,
+      count: PICK_COUNT[kind]?.() ?? 0,
     })),
   );
 
@@ -369,9 +392,7 @@
         {#if section.kind !== "product" && pickable}
           <button type="button" class={addClass} onclick={() => openPicker(section.kind)}>
             <Plus size={14} />
-            {section.kind === "hours"
-              ? t("invoicing.outstanding.pick_hours")
-              : t("invoicing.outstanding.pick_subscriptions")}
+            {pickLabel(section.kind)}
             {#if section.count > 0}
               <span
                 class="rounded-full bg-brand/10 px-1.5 py-0.5 text-xs font-semibold tabular-nums text-brand"

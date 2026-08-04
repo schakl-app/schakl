@@ -39,8 +39,16 @@ from app.modules.invoicing.render.colors import (
 )
 
 CURRENCY_SYMBOLS = {"EUR": "€", "USD": "$", "GBP": "£"}
-#: The order sections print in: what was worked, then what recurs, then what was sold.
-SECTION_ORDER = (LineKind.HOURS.value, LineKind.SUBSCRIPTION.value, LineKind.PRODUCT.value)
+#: The order sections print in: what was worked, then what recurs, then what renews, then
+#: what was sold. Domains sit beside subscriptions rather than among them (#302) — both
+#: recur, but a register of renewals is reconciled against the registrar's own invoice and
+#: has to be findable as a block.
+SECTION_ORDER = (
+    LineKind.HOURS.value,
+    LineKind.SUBSCRIPTION.value,
+    LineKind.DOMAIN.value,
+    LineKind.PRODUCT.value,
+)
 #: Images are inlined as data URIs (see ``engine``), so a very large upload would balloon
 #: every render. Beyond this the image is dropped and the document prints without it —
 #: degrading a logo, never an invoice.
@@ -205,7 +213,7 @@ def _address_lines(party: dict[str, Any], *, skip_country: str | None = None) ->
 
 
 def _sections(lines: list[Any], t: Any) -> list[dict]:
-    """Lines grouped into the three kinds, each keeping its own ``position`` order.
+    """Lines grouped into the four kinds, each keeping its own ``position`` order.
 
     A document whose lines are all one kind gets **no** headers: a lone "UREN" band above a
     table of hours, subtotalling to the subtotal directly beneath it, is noise. Headers earn

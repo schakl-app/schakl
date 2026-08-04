@@ -55,6 +55,29 @@ class AutoInvoiceMode(StrEnum):
         return self is AutoInvoiceMode.SEND
 
 
+def resolve_auto_invoice_mode(override: object, org_default: object) -> AutoInvoiceMode:
+    """How far *this* agreement's invoice goes: its own override, else the org's default.
+
+    ``NULL`` on the agreement means **inherit**, never *off* — the three-state discipline §14
+    uses for leave schedules. An unrecognised stored value falls through to the next candidate
+    rather than being guessed at, and an org that has never set a default gets ``DRAFT``, which
+    is what every instance did before the level existed.
+
+    It lives here, beside the enum, because two callers need the identical answer and they sit
+    on opposite sides of a module boundary: the ``*.due`` consumers decide with it what to do,
+    and the backlog report shows the user what those consumers *will* do. A report that
+    resolved the level by its own copy of these rules would eventually tell an agency an
+    agreement bills itself while the cron quietly disagreed.
+    """
+    for candidate in (override, org_default):
+        if candidate:
+            try:
+                return AutoInvoiceMode(str(candidate))
+            except ValueError:
+                continue
+    return AutoInvoiceMode.DRAFT
+
+
 #: How many periods one agreement may offer at once. A bound, not a judgement: an agreement
 #: onboarded with a long history, or one whose automation sat off for a year, would otherwise
 #: hand a picker an unbounded list. Over it is *reported*, never silently cut.

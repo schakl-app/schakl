@@ -77,22 +77,33 @@ class QuoteStatus(StrEnum):
 
 
 class LineKind(StrEnum):
-    """What a document line *is* — the three things this platform bills for.
+    """What a document line *is* — the four things this platform bills for.
 
-    An agency's invoice mixes worked hours, recurring agreements and one-off sales, and the
-    reader has to tell them apart: "24 uur × € 95" and "Hosting maart" answer different
-    questions. So the kind is a **property of the line**, carried from wherever it was built
-    (``from_time`` stamps hours, the subscription cycle stamps subscription, a product pick
-    stamps product) through to the rendered document, which groups and subtotals by it.
+    An agency's invoice mixes worked hours, recurring agreements, domain renewals and one-off
+    sales, and the reader has to tell them apart: "24 uur × € 95", "Hosting maart" and
+    "vlotr.nl 2026–2027" answer different questions. So the kind is a **property of the
+    line**, carried from wherever it was built (``from_time`` stamps hours, the subscription
+    cycle stamps subscription, the renewal cron stamps domain, a product pick stamps product)
+    through to the rendered document, which groups and subtotals by it.
 
     It is presentation and provenance, never money: totals are computed from quantity, price
     and tax exactly as before, and a tenant who wants one flat table simply keeps every line
     on the default.
+
+    ``DOMAIN`` was folded into ``SUBSCRIPTION`` until #302, on the reasoning that a renewal is
+    a recurring line and no reader had asked for the distinction. A reader has: a register of
+    forty domains renewing across the year is the item an agency reconciles line by line
+    against the registrar's own invoice, and burying it in the band that also holds three
+    hosting retainers is what made that reconciliation a manual sort. Rows written before the
+    split keep saying ``subscription`` — the kind is a snapshot (§14's #64 rule), so the
+    documents a client already read do not change shape underneath them, and every read path
+    treats the two as one legacy family where it has to (see ``_CLAIM_SOURCES``).
     """
 
     PRODUCT = "product"
     HOURS = "hours"
     SUBSCRIPTION = "subscription"
+    DOMAIN = "domain"
 
 
 class TaxCategory(StrEnum):
@@ -543,8 +554,8 @@ class _LineColumns:
     document keeps saying what it said."""
 
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    #: Hours / subscription / product — what this line is, so the document can group and
-    #: subtotal by it (see :class:`LineKind`). Snapshotted like every other line column.
+    #: Hours / subscription / domain / product — what this line is, so the document can group
+    #: and subtotal by it (see :class:`LineKind`). Snapshotted like every other line column.
     line_kind: Mapped[str] = mapped_column(
         String(20),
         nullable=False,

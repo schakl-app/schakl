@@ -128,19 +128,26 @@
 
   const offers = $derived.by((): Offer[] => {
     if (kind === "hours") return hourOffers;
-    if (kind === "subscription") {
-      return [...periodOffers(subscriptions, "s"), ...periodOffers(domains, "d")];
-    }
+    // One section, one source (#302). The two used to share this dialog, which meant opening
+    // "Abonnementen" on a client with forty domains buried three retainers in a list of
+    // renewals — and the prefixes are what carry the kind back, so mixing them also made the
+    // resulting line's kind depend on which row you happened to tick.
+    if (kind === "subscription") return periodOffers(subscriptions, "s");
+    if (kind === "domain") return periodOffers(domains, "d");
     return [];
   });
 
   const selectable = $derived(offers.filter((o) => !o.blocked));
   //: Anything capped or cycle-less that the list could not fully show. Reported, never
   //: silent: a truncated list that reads as "this is everything" is the worst answer here.
+  //: Scoped to the source on screen, so a capped domain register does not put a warning over
+  //: a complete list of agreements.
   const truncated = $derived(
-    Boolean(hours?.truncated) ||
-      subscriptions.some((s) => s.truncated) ||
-      domains.some((d) => d.truncated),
+    kind === "hours"
+      ? Boolean(hours?.truncated)
+      : kind === "subscription"
+        ? subscriptions.some((s) => s.truncated)
+        : domains.some((d) => d.truncated),
   );
 
   let picked = $state<Record<string, boolean>>({});
@@ -166,29 +173,37 @@
     open = false;
   }
 
-  const title = $derived(
-    kind === "hours"
-      ? t("invoicing.outstanding.hours_title")
-      : t("invoicing.outstanding.subscriptions_title"),
-  );
+  /** Title, lead and empty state all name the one source on screen. Keyed off `kind` in one
+   *  place so a fourth section cannot pick up a heading that says something else. */
+  const COPY: Record<string, { title: string; hint: string; empty: string }> = {
+    hours: {
+      title: "invoicing.outstanding.hours_title",
+      hint: "invoicing.outstanding.hours_hint",
+      empty: "invoicing.outstanding.hours_empty",
+    },
+    subscription: {
+      title: "invoicing.outstanding.subscriptions_title",
+      hint: "invoicing.outstanding.subscriptions_hint",
+      empty: "invoicing.outstanding.subscriptions_empty",
+    },
+    domain: {
+      title: "invoicing.outstanding.domains_title",
+      hint: "invoicing.outstanding.domains_hint",
+      empty: "invoicing.outstanding.domains_empty",
+    },
+  };
+  const copy = $derived(COPY[kind] ?? COPY.subscription);
+  const title = $derived(t(copy.title));
 </script>
 
 <Modal bind:open {title} size="3xl">
-  <p class="mb-3 text-sm text-text-muted">
-    {kind === "hours"
-      ? t("invoicing.outstanding.hours_hint")
-      : t("invoicing.outstanding.subscriptions_hint")}
-  </p>
+  <p class="mb-3 text-sm text-text-muted">{t(copy.hint)}</p>
 
   {#if loading}
     <!-- "Loading", never "nothing outstanding": the two look identical and only one is true. -->
     <p class="py-6 text-center text-sm text-text-muted">{t("common.loading")}</p>
   {:else if offers.length === 0}
-    <p class="py-6 text-center text-sm text-text-muted">
-      {kind === "hours"
-        ? t("invoicing.outstanding.hours_empty")
-        : t("invoicing.outstanding.subscriptions_empty")}
-    </p>
+    <p class="py-6 text-center text-sm text-text-muted">{t(copy.empty)}</p>
   {:else}
     {#if truncated}
       <p class="mb-3 rounded-lg border border-border px-3 py-2 text-xs text-text-muted">
