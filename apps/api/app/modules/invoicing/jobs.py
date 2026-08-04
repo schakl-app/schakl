@@ -33,6 +33,7 @@ from app.modules.invoicing.emails import (
 )
 from app.modules.invoicing.models import (
     Invoice,
+    InvoiceKind,
     InvoiceStatus,
     InvoicingSettings,
     Quote,
@@ -188,6 +189,25 @@ async def _remind_org(org: Org, session: AsyncSession) -> None:
                     Invoice.reminders_paused.is_(False),
                     Invoice.due_date.is_not(None),
                     Invoice.due_date < today,
+                    # Only chase what is actually still owed. `status = 'open'` alone dunned
+                    # an invoice a credit note had written off, and — since a credit note is
+                    # itself an open document that can never be paid — dunned the credit note
+                    # too, asking the client to transfer a negative amount.
+                    #
+                    # The outstanding predicate below is the operative rule and covers every
+                    # state crediting can reach. The kind filter is the narrower guarantee
+                    # the renderer already makes ("a credit note never asks to be paid",
+                    # test_invoicing_render.py): a credit note hand-written with positive
+                    # lines is odd data, and dunning it would contradict the document it
+                    # would arrive next to.
+                    Invoice.kind != InvoiceKind.CREDIT_NOTE.value,
+                    (
+                        Invoice.total
+                        - Invoice.paid_total
+                        - Invoice.credited_total
+                        + Invoice.applied_total
+                    )
+                    > 0,
                 )
             )
         )

@@ -39,9 +39,7 @@ export const AUTO_INVOICE_MODES = [
  */
 export function readAutoInvoiceMode(value: FormDataEntryValue | null): AutoInvoiceMode | null {
   const raw = String(value ?? "").trim();
-  return (AUTO_INVOICE_MODES as readonly string[]).includes(raw)
-    ? (raw as AutoInvoiceMode)
-    : null;
+  return (AUTO_INVOICE_MODES as readonly string[]).includes(raw) ? (raw as AutoInvoiceMode) : null;
 }
 
 export function lineKindLabel(kind: LineKind): string {
@@ -177,4 +175,41 @@ export function docMoney(
     style: "currency",
     currency: currency || "EUR",
   }).format(Number(value));
+}
+
+/** What a document's state reads as, now that credit notes reach the balance.
+ *
+ * `status` stopped being the whole answer when crediting stopped being paperwork-only. An
+ * invoice a credit note wrote off stays `open` — nobody paid it, and flipping it to `paid`
+ * would book it as revenue — so "gecrediteerd" is derived from `credited_total`, exactly as
+ * "vervallen" is derived from the due date. And a credit note that reaches `paid` was
+ * *settled*: either its source absorbed it, or the money genuinely went back. Telling those
+ * two apart is what `paid_total` answers.
+ *
+ * Derived in one place so the list badge and the detail header can never disagree.
+ */
+export function docStatus(invoice: {
+  kind: string;
+  status: string;
+  overdue?: boolean;
+  credited?: boolean;
+  fully_credited?: boolean;
+  paid_total?: string | number;
+}): { key: string; tone: "danger" | "muted" } {
+  if (invoice.kind === "credit_note") {
+    if (invoice.status === "paid") {
+      return {
+        key:
+          Number(invoice.paid_total ?? 0) !== 0
+            ? "invoicing.status.refunded"
+            : "invoicing.status.settled",
+        tone: "muted",
+      };
+    }
+    return { key: `invoicing.status.${invoice.status}`, tone: "muted" };
+  }
+  if (invoice.overdue) return { key: "invoicing.status.overdue", tone: "danger" };
+  if (invoice.fully_credited) return { key: "invoicing.status.credited", tone: "muted" };
+  if (invoice.credited) return { key: "invoicing.status.partly_credited", tone: "muted" };
+  return { key: `invoicing.status.${invoice.status}`, tone: "muted" };
 }

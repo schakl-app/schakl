@@ -13,11 +13,14 @@ templates and the rendering (`render/`). Everything is org-scoped + RLS-forced,
 custom-fieldable (§13) and auditable (§16), like every module.
 
 ```
-draft ──issue──▶ open ──payments cover total──▶ paid
-  │                │◀───payment removed──────────┘
-  │delete          │cancel (no payments)
+draft ──issue──▶ open ──nothing left outstanding──▶ paid
+  │                │◀───payment removed────────────┘
+  │delete          │cancel (no payments, not credited)
   ▼                ▼
 gone           cancelled
+
+credit note: draft ──issue──▶ open ──┬─ absorbed by its source ──▶ paid (settled)
+                                     └─ refund registered ───────▶ paid (refunded)
 
 quote: draft ──issue──▶ open ──▶ accepted ──convert──▶ (invoice draft)
                           │  └─▶ rejected                    │
@@ -25,8 +28,12 @@ quote: draft ──issue──▶ open ──▶ accepted ──convert──▶
                      accepted ◀─── deleting that draft reverts the quote
 ```
 
-**Overdue is derived, never stored**: `open` + `due_date` before the org-local today. The
-list, the summary, the company panel and the reminders cron all compute it the same way.
+**Overdue is derived, never stored**: `open` + `due_date` before the org-local today **and
+something still outstanding**. The list, the summary, the company panel and the reminders
+cron all compute it the same way. **Credited is derived the same way**, from
+`credited_total` — an invoice a credit note wrote off is not `paid` (nobody paid it, and
+that would book it as revenue) and not `cancelled` (it was a real document); it is an open
+invoice that owes nothing.
 
 ## The rules that bite
 
@@ -51,9 +58,39 @@ list, the summary, the company panel and the reminders cron all compute it the s
   reminders pause, exchange rate) stay editable. Corrections are a **credit note**
   (`POST /invoices/{id}/credit`): a draft mirroring the invoice with negated prices,
   `credit_for_id` pointing home.
+- **A credit note reaches the balance, not just the paperwork.** It used to be a document
+  and nothing else, which left the invoice it corrected `open`, in arrears, and receiving
+  dunning mail for money the client no longer owed — while the credit note itself, whose
+  total is negative, could never satisfy `paid_total >= total` and so stayed open for good.
+  Two counters mirror `paid_total` and fix both ends: **`credited_total`** (how much of this
+  invoice issued credit notes wrote off) and **`applied_total`** (how much of *this* credit
+  note its source absorbed). Outstanding is
+  `total − paid_total − credited_total + applied_total`, in one place (`calc.outstanding_of`
+  and `calc.OUTSTANDING_SQL`, so the hydrated row and the dashboard's raw SQL cannot drift).
+- **Allocation happens once, at issue.** A draft credit note moves nothing — it is not a
+  document yet and its lines are still editable, which is exactly how a *partial* credit
+  works: edit the draft down before issuing. The source absorbs what it has room for; the
+  remainder stays owing on the credit note. That one line is the whole difference between
+  the two cases an agency has:
+  - crediting an **open** invoice — the source has full room, so the note is fully applied
+    and both documents come to rest without a cent moving;
+  - crediting a **paid** one — no room, so the note absorbs nothing and stays open for the
+    refund, which is registered as a **negative payment** on the credit note and settles it.
+  Re-deriving the split on every read instead would let a later payment silently move what a
+  credit note is recorded as having settled.
+- **A credit note is never dunned, and never credited.** The reminders cron chases
+  `outstanding > 0` (not `status = 'open'`) and skips credit notes outright — the renderer
+  already guarantees a credit note never asks to be paid, so the dunning run must not
+  contradict the document it would arrive next to. Crediting a credit note 409s
+  (`errors.invoicing.already_credit_note`): a bookkeeper re-bills with an invoice.
 - **Issued invoices don't delete — they cancel.** Delete is draft-only; cancel requires no
   registered payments and releases any billed time entries — and any claimed subscription
-  periods, so cancelling never retires an agreement's month for good.
+  periods, so cancelling never retires an agreement's month for good. It also refuses an
+  invoice a credit note has written down (`errors.invoicing.has_credit_notes`), which would
+  strand that note's allocation. A **credit note** cancels from `paid` as well as `open` —
+  a fully applied one rests at `paid` without a cent having moved, and withdrawing it hands
+  its `applied_total` back to the invoice it corrected. What may never be cancelled away is
+  *registered money*, which is `paid_total`, not the status.
 - **A line knows what it is** (`line_kind`: `hours` / `subscription` / `product`). An
   agency's invoice mixes worked hours, recurring agreements and one-off sales, and the
   reader has to tell them apart — "24 uur × € 95" and "Hosting maart" answer different

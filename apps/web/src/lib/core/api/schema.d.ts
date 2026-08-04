@@ -10590,6 +10590,25 @@ export interface components {
             /** Phone */
             phone?: string | null;
         };
+        /**
+         * CreditNoteRef
+         * @description A credit note as seen from the invoice it corrects — enough to link to it and say
+         *     how much of it that invoice absorbed.
+         */
+        CreditNoteRef: {
+            /** Applied Total */
+            applied_total: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Number */
+            number?: string | null;
+            status: components["schemas"]["InvoiceStatus"];
+            /** Total */
+            total: string;
+        };
         /** CustomFieldDefinitionCreate */
         CustomFieldDefinitionCreate: {
             /**
@@ -13065,6 +13084,11 @@ export interface components {
         InvoiceKind: "invoice" | "credit_note";
         /** InvoiceRead */
         InvoiceRead: {
+            /**
+             * Applied Total
+             * @default 0
+             */
+            applied_total: string;
             /** Cancelled At */
             cancelled_at: string | null;
             /**
@@ -13086,6 +13110,23 @@ export interface components {
             created_at: string;
             /** Credit For Id */
             credit_for_id: string | null;
+            /**
+             * Credit For Number
+             * @default
+             */
+            credit_for_number: string;
+            /** Credit Notes */
+            credit_notes?: components["schemas"]["CreditNoteRef"][];
+            /**
+             * Credited
+             * @default false
+             */
+            credited: boolean;
+            /**
+             * Credited Total
+             * @default 0
+             */
+            credited_total: string;
             /** Currency */
             currency: string;
             /** Custom */
@@ -13101,6 +13142,11 @@ export interface components {
             due_date: string | null;
             /** Exchange Rate */
             exchange_rate: string | null;
+            /**
+             * Fully Credited
+             * @default false
+             */
+            fully_credited: boolean;
             /**
              * Id
              * Format: uuid

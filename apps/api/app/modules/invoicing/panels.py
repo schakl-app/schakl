@@ -9,6 +9,7 @@ from __future__ import annotations
 import uuid
 
 from app.core.tenancy import RequestContext
+from app.modules.invoicing.calc import outstanding_of
 from app.modules.invoicing.service import InvoiceService, QuoteService, org_today
 from app.registry import PanelSpec
 
@@ -37,10 +38,14 @@ async def _invoicing_provider(ctx: RequestContext, company_id: uuid.UUID) -> dic
                 "issue_date": i.issue_date.isoformat() if i.issue_date else None,
                 "due_date": i.due_date.isoformat() if i.due_date else None,
                 "overdue": bool(
-                    i.status == "open" and i.due_date is not None and i.due_date < today
+                    i.status == "open"
+                    and i.due_date is not None
+                    and i.due_date < today
+                    and outstanding_of(i) > 0
                 ),
                 "total": str(i.total),
-                "outstanding": str(i.total - i.paid_total),
+                "outstanding": str(outstanding_of(i)),
+                "credited": bool(i.credited_total),
                 "currency": i.currency,
             }
             for i in invoices

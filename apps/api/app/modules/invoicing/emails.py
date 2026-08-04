@@ -27,6 +27,7 @@ from app.core.email.senders import OutgoingEmail, Sender, send_email
 from app.core.email.service import get_row
 from app.errors import AppError
 from app.i18n import translate
+from app.modules.invoicing.calc import outstanding_of
 
 
 def _fmt_date(value: Any) -> str:
@@ -73,7 +74,9 @@ def compose_reminder_email(invoice: Any, brand: str, days_overdue: int) -> Outgo
         "number": invoice.number or "",
         "company": (invoice.customer or {}).get("name") or "",
         "total": _fmt_money(invoice.total, invoice.currency),
-        "outstanding": _fmt_money(invoice.total - invoice.paid_total, invoice.currency),
+        # What is still owed after payments *and* credit notes — the figure the cron now
+        # selects on, so a reminder can never name an amount the invoice no longer carries.
+        "outstanding": _fmt_money(outstanding_of(invoice), invoice.currency),
         "due_date": _fmt_date(invoice.due_date),
         "days": days_overdue,
         "brand": brand,

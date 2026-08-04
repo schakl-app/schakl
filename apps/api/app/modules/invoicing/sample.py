@@ -57,6 +57,10 @@ class _SampleDoc:
     tax_total: Decimal
     total: Decimal
     paid_total: Decimal
+    #: The other way a balance comes down (#207 follow-up). Zero on the sample: the preview
+    #: shows a live invoice, and a template designer wants the ordinary shape by default.
+    credited_total: Decimal = Decimal("0")
+    applied_total: Decimal = Decimal("0")
     prices_include_tax: bool = False
     period_start: date | None = None
     period_end: date | None = None

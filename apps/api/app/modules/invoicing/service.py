@@ -43,10 +43,12 @@ from app.core.timezone import org_zoneinfo
 from app.errors import AppError
 from app.i18n import translate
 from app.modules.invoicing.calc import (
+    OUTSTANDING_SQL,
     LineInput,
     Totals,
     compute_totals,
     line_amount,
+    outstanding_of,
     round_cents,
 )
 from app.modules.invoicing.models import (
@@ -1062,6 +1064,12 @@ class InvoiceService(_DocumentService):
         lines_by_doc = await self._doc_lines(ids) if lines else {}
         today = await org_today(self.ctx)
         payment_rows: dict[uuid.UUID, list[InvoicePayment]] = {}
+        # The FK only points one way, so a credited invoice had no way to name the document
+        # that corrected it — the two halves of one correction were unreachable from each
+        # other in the UI. Resolved on the detail read only (one grouped query, never per
+        # row): a list draws the `credited` flag, which is already a column.
+        credit_refs: dict[uuid.UUID, list[dict[str, Any]]] = {}
+        source_numbers: dict[uuid.UUID, str] = {}
         if payments:
             rows = (
                 await self.ctx.session.execute(
@@ -1073,6 +1081,37 @@ class InvoiceService(_DocumentService):
             ).scalars()
             for row in rows:
                 payment_rows.setdefault(row.invoice_id, []).append(row)
+            for credit in (
+                await self.ctx.session.execute(
+                    self.repo.scoped_select()
+                    .where(
+                        Invoice.credit_for_id.in_(ids),
+                        Invoice.status != InvoiceStatus.CANCELLED.value,
+                    )
+                    .order_by(Invoice.issue_date, Invoice.created_at)
+                )
+            ).scalars():
+                credit_refs.setdefault(credit.credit_for_id, []).append(
+                    {
+                        "id": credit.id,
+                        "number": credit.number,
+                        "status": credit.status,
+                        "total": credit.total,
+                        "applied_total": credit.applied_total,
+                    }
+                )
+            # …and the other direction, so a credit note can name the invoice it corrects
+            # rather than showing a bare uuid nobody can follow.
+            sources = [i.credit_for_id for i in invoices if i.credit_for_id]
+            if sources:
+                source_numbers = {
+                    row.id: row.number or ""
+                    for row in (
+                        await self.ctx.session.execute(
+                            self.repo.scoped_select().where(Invoice.id.in_(sources))
+                        )
+                    ).scalars()
+                }
         for invoice in invoices:
             rows = lines_by_doc.get(invoice.id, [])
             invoice.company_name = names.get(invoice.company_id, "")  # type: ignore[attr-defined]
@@ -1090,14 +1129,27 @@ class InvoiceService(_DocumentService):
                 if lines
                 else []
             )
-            invoice.outstanding = invoice.total - invoice.paid_total  # type: ignore[attr-defined]
+            invoice.outstanding = outstanding_of(invoice)  # type: ignore[attr-defined]
+            invoice.credited = invoice.credited_total != 0  # type: ignore[attr-defined]
+            invoice.fully_credited = (  # type: ignore[attr-defined]
+                invoice.total > 0 and invoice.credited_total >= invoice.total
+            )
+            # Overdue means money is still owed *today*: an invoice a credit note wrote off
+            # is not late, it is settled, and dunning it was the whole bug (#207 follow-up).
             invoice.overdue = (  # type: ignore[attr-defined]
                 invoice.status == InvoiceStatus.OPEN.value
                 and invoice.due_date is not None
                 and invoice.due_date < today
+                and invoice.outstanding > 0  # type: ignore[attr-defined]
             )
             if payments:
                 invoice.payments = payment_rows.get(invoice.id, [])  # type: ignore[attr-defined]
+                invoice.credit_notes = credit_refs.get(invoice.id, [])  # type: ignore[attr-defined]
+                invoice.credit_for_number = (  # type: ignore[attr-defined]
+                    source_numbers.get(invoice.credit_for_id, "")
+                    if invoice.credit_for_id
+                    else ""
+                )
 
     # --- writes -------------------------------------------------------------- #
     async def create(self, data: InvoiceCreate) -> Invoice:
@@ -1265,6 +1317,8 @@ class InvoiceService(_DocumentService):
         await ActivityService(self.ctx).record(
             self.entity_type, invoice.id, "issued", {"number": number}
         )
+        # Now that it is a real document, a credit note writes its source down.
+        invoice = await self._apply_credit(invoice)
         await emit(
             "invoice.issued",
             self.ctx,
@@ -1282,10 +1336,27 @@ class InvoiceService(_DocumentService):
     async def cancel(self, invoice_id: uuid.UUID) -> Invoice:
         self.ctx.require("invoicing.invoice.write")
         invoice = await self.repo.get_or_404(invoice_id)
-        if invoice.status != InvoiceStatus.OPEN.value:
+        is_credit = invoice.kind == InvoiceKind.CREDIT_NOTE.value
+        # A fully applied credit note sits at ``paid`` without a cent having moved, so the
+        # open-only rule would make the one document you can still withdraw un-withdrawable.
+        # What must never be cancelled away is *registered money*, and that is `paid_total`.
+        allowed = (
+            (InvoiceStatus.OPEN.value, InvoiceStatus.PAID.value)
+            if is_credit
+            else (InvoiceStatus.OPEN.value,)
+        )
+        if invoice.status not in allowed:
             raise AppError("conflict", "errors.invoicing.wrong_status", status_code=409)
         if invoice.paid_total != 0:
             raise AppError("conflict", "errors.invoicing.has_payments", status_code=409)
+        if invoice.credited_total != 0:
+            # Cancelling an invoice a credit note has written down would leave that credit
+            # note pointing at a document that bills nothing, its allocation stranded.
+            raise AppError(
+                "conflict", "errors.invoicing.has_credit_notes", status_code=409
+            )
+        if is_credit:
+            await self._release_credit(invoice)
         await self._release_time_entries(invoice.id)
         # A cancelled invoice bills nothing, so its periods go back to the cycle cron —
         # otherwise cancelling would silently retire an agreement's month for good.
@@ -1304,6 +1375,32 @@ class InvoiceService(_DocumentService):
         source = await self.repo.get_or_404(invoice_id)
         if source.status not in (InvoiceStatus.OPEN.value, InvoiceStatus.PAID.value):
             raise AppError("conflict", "errors.invoicing.wrong_status", status_code=409)
+        if source.kind == InvoiceKind.CREDIT_NOTE.value:
+            # Mirroring a credit note produces an invoice-shaped document that claims to be
+            # a correction; a bookkeeper re-bills with an invoice instead.
+            raise AppError(
+                "conflict", "errors.invoicing.already_credit_note", status_code=409
+            )
+        # How much of this invoice existing credit notes already correct. `credited_total` is
+        # not that number: it counts only what was *absorbed*, which is zero when the invoice
+        # was paid — so a paid invoice could be credited twice over, owing the client two
+        # refunds for one document. The documents themselves are the honest total.
+        already_credited = -Decimal(
+            await self.ctx.session.scalar(
+                select(func.coalesce(func.sum(Invoice.total), 0)).where(
+                    Invoice.org_id == self.ctx.org.id,
+                    Invoice.credit_for_id == source.id,
+                    Invoice.status.in_(
+                        (InvoiceStatus.OPEN.value, InvoiceStatus.PAID.value)
+                    ),
+                )
+            )
+            or 0
+        )
+        if already_credited >= source.total > 0:
+            raise AppError(
+                "conflict", "errors.invoicing.already_credited", status_code=409
+            )
         source_lines = (await self._doc_lines([source.id])).get(source.id, [])
         credit = await self.repo.create(
             company_id=source.company_id,
@@ -1443,7 +1540,17 @@ class InvoiceService(_DocumentService):
 
     async def _settle(self, invoice: Invoice) -> Invoice:
         """Recompute ``paid_total`` from the payments and flip status accordingly — the sum
-        is the truth, a stored counter is only its cache."""
+        is the truth, a stored counter is only its cache.
+
+        A document settles when it has nothing left to owe **from the side it started on**.
+        The old rule read ``paid_total >= total`` guarded by ``total > 0``, which is that
+        sentence for an invoice and unsatisfiable for a credit note: its total is negative,
+        so an issued one stayed ``open`` for good — padding the open count, and leaving a
+        refund you had already paid out looking like it was still due. Crediting deliberately
+        does **not** settle the invoice it corrects: nobody paid it, and calling it ``paid``
+        would book it as revenue. That invoice leaves arrears through ``outstanding``, which
+        is derived — the same way ``overdue`` is (#207).
+        """
         paid = await self.ctx.session.scalar(
             select(func.coalesce(func.sum(InvoicePayment.amount), 0)).where(
                 InvoicePayment.org_id == self.ctx.org.id,
@@ -1452,7 +1559,14 @@ class InvoiceService(_DocumentService):
         )
         paid_total = Decimal(paid or 0)
         was_paid = invoice.status == InvoiceStatus.PAID.value
-        fully_paid = invoice.total > 0 and paid_total >= invoice.total
+        if invoice.total < 0:
+            # A credit note owes the client; it comes to rest when what it still owes —
+            # after whatever its source absorbed — reaches zero.
+            fully_paid = (
+                invoice.total + Decimal(invoice.applied_total or 0) - paid_total >= 0
+            )
+        else:
+            fully_paid = invoice.total > 0 and paid_total >= invoice.total
         values: dict[str, Any] = {"paid_total": paid_total}
         if fully_paid and not was_paid:
             values["status"] = InvoiceStatus.PAID.value
@@ -1461,7 +1575,10 @@ class InvoiceService(_DocumentService):
             values["status"] = InvoiceStatus.OPEN.value
             values["paid_at"] = None
         invoice = await self.repo.update(invoice, **values)
-        if fully_paid and not was_paid:
+        # ``invoice.paid`` means money came in. A credit note reaching rest is the opposite
+        # (a refund went out, or its source absorbed it), so it stays off this event rather
+        # than teaching every future subscriber to re-check the sign.
+        if fully_paid and not was_paid and invoice.total > 0:
             await emit(
                 "invoice.paid",
                 self.ctx,
@@ -1475,6 +1592,64 @@ class InvoiceService(_DocumentService):
             )
         await self._attach([invoice], payments=True)
         return invoice
+
+    # --- crediting ------------------------------------------------------------ #
+    async def _apply_credit(self, credit: Invoice) -> Invoice:
+        """Write an issued credit note off against the invoice it corrects.
+
+        Allocation happens **once, at issue**. A draft allocates nothing — it is not a
+        document yet and its lines are still being edited — and re-deriving the split on
+        every read would let a later payment silently move what a credit note was recorded
+        as having settled.
+
+        The source absorbs what it has room for; whatever the credit note has left over is
+        money going back to the client. That single line is the whole difference between
+        crediting an open invoice (nothing moves — the two documents cancel) and crediting a
+        paid one (the client is owed a refund, and the credit note stays open until it is
+        registered).
+        """
+        if credit.kind != InvoiceKind.CREDIT_NOTE.value or credit.credit_for_id is None:
+            return credit
+        source = await self.repo.get(credit.credit_for_id)
+        if source is None:  # the source was deleted as a draft; nothing to write off
+            return credit
+        amount = -Decimal(credit.total)
+        room = max(
+            Decimal(0),
+            Decimal(source.total)
+            - Decimal(source.paid_total)
+            - Decimal(source.credited_total or 0),
+        )
+        applied = min(amount, room)
+        if applied <= 0:
+            return credit
+        await self.repo.update(
+            source, credited_total=Decimal(source.credited_total or 0) + applied
+        )
+        credit = await self.repo.update(credit, applied_total=applied)
+        await ActivityService(self.ctx).record(
+            self.entity_type,
+            source.id,
+            "credit_applied",
+            {"credit_id": str(credit.id), "amount": float(applied)},
+        )
+        return await self._settle(credit)
+
+    async def _release_credit(self, credit: Invoice) -> None:
+        """Hand back what a withdrawn credit note had written off, so cancelling it puts the
+        invoice it corrected back on the books instead of leaving it quietly written down."""
+        if credit.credit_for_id is None or not credit.applied_total:
+            return
+        source = await self.repo.get(credit.credit_for_id)
+        if source is not None:
+            await self.repo.update(
+                source,
+                credited_total=max(
+                    Decimal(0),
+                    Decimal(source.credited_total or 0) - Decimal(credit.applied_total),
+                ),
+            )
+        await self.repo.update(credit, applied_total=Decimal(0))
 
     # --- time-tracking bridge (issue #207: deeply connected) ------------------- #
     async def unbilled(
@@ -2222,6 +2397,18 @@ class InvoiceService(_DocumentService):
         """
         today = await org_today(self.ctx)
         base = "COALESCE(exchange_rate, 1)"
+        # "Open" on these tiles means *a client still owes us this*, which is not the same as
+        # ``status = 'open'``: an invoice a credit note wrote off owes nothing, and a credit
+        # note is not a receivable at all. Both used to be counted, so the arrears figure was
+        # a gross total with a negative document mixed into it.
+        open_owing = f"status = 'open' AND {OUTSTANDING_SQL} > 0"
+        # "Paid this year" is money that moved, so it sums `paid_total`, not `total`. Once a
+        # credit note can reach `paid` it lands in this filter too, and at `total` it would
+        # net revenue away that was never received: crediting an *unpaid* invoice would take
+        # €500 off the year's takings while the invoice it cancelled — still `open` — had
+        # never added them. `paid_total` says the honest thing for all three cases: a real
+        # receipt counts, an applied credit note moved nothing (0), and a refunded one moved
+        # money back out (negative).
         scope = self.ctx.company_scope
         # An external login reads its own open/overdue/paid figures — "what do I still owe"
         # is the one number a client page is for — but never a draft count, and never the
@@ -2252,16 +2439,16 @@ class InvoiceService(_DocumentService):
                 _scoped_text(
                     f"""
                     SELECT
-                      COUNT(*) FILTER (WHERE status = 'open') AS open_count,
-                      COALESCE(SUM((total - paid_total) * {base})
-                               FILTER (WHERE status = 'open'), 0) AS open_total,
-                      COUNT(*) FILTER (WHERE status = 'open' AND due_date < :today)
+                      COUNT(*) FILTER (WHERE {open_owing}) AS open_count,
+                      COALESCE(SUM({OUTSTANDING_SQL} * {base})
+                               FILTER (WHERE {open_owing}), 0) AS open_total,
+                      COUNT(*) FILTER (WHERE {open_owing} AND due_date < :today)
                         AS overdue_count,
-                      COALESCE(SUM((total - paid_total) * {base})
-                               FILTER (WHERE status = 'open' AND due_date < :today), 0)
+                      COALESCE(SUM({OUTSTANDING_SQL} * {base})
+                               FILTER (WHERE {open_owing} AND due_date < :today), 0)
                         AS overdue_total,
                       COUNT(*) FILTER (WHERE status = 'draft') AS draft_count,
-                      COALESCE(SUM(total * {base})
+                      COALESCE(SUM(paid_total * {base})
                                FILTER (WHERE status = 'paid'
                                        AND EXTRACT(YEAR FROM paid_at) = :year), 0)
                         AS paid_this_year

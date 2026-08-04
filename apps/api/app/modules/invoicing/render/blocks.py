@@ -158,6 +158,7 @@ BLOCK_CATALOG: tuple[BlockSpec, ...] = (
             _f("tax_rows", locked=True),
             _f("total", locked=True),
             _f("paid"),
+            _f("credited"),
             _f("to_pay"),
         ),
     ),

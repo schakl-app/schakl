@@ -377,7 +377,16 @@ def build_context(
 
     # --- money -------------------------------------------------------------------------- #
     paid = Decimal(str(getattr(doc, "paid_total", 0) or 0))
-    outstanding = Decimal(str(getattr(doc, "total", 0) or 0)) - paid
+    credited = Decimal(str(getattr(doc, "credited_total", 0) or 0))
+    # Credit notes come off the balance the same way payments do — the preview is a live view
+    # of the document (it already reflects payments registered after sending), so an invoice
+    # written off shows nothing outstanding rather than a figure nobody owes.
+    outstanding = (
+        Decimal(str(getattr(doc, "total", 0) or 0))
+        - paid
+        - Decimal(str(getattr(doc, "credited_total", 0) or 0))
+        + Decimal(str(getattr(doc, "applied_total", 0) or 0))
+    )
     groups = list(tax_groups or [])
     tax_rows = [
         {
@@ -437,7 +446,14 @@ def build_context(
                 {"key": key, "label": labelled("totals", key, t("invoicing.doc.paid")),
                  "value": money(paid), "strong": False}
             )
-        elif key == "to_pay" and kind == "invoice" and paid:
+        elif key == "credited" and kind == "invoice" and credited:
+            # Without this row a written-off invoice prints its full total and a "still to
+            # pay" of zero, with nothing on the paper explaining the gap.
+            totals_rows.append(
+                {"key": key, "label": labelled("totals", key, t("invoicing.doc.credited")),
+                 "value": money(-credited), "strong": False}
+            )
+        elif key == "to_pay" and kind == "invoice" and (paid or credited):
             totals_rows.append(
                 {"key": key, "label": labelled("totals", key, t("invoicing.doc.to_pay")),
                  "value": money(outstanding), "strong": True}
@@ -486,11 +502,16 @@ def build_context(
     ]
 
     # --- the payment card (the letterhead's "Betaalgegevens") --------------------------- #
+    # The amount asked for is `outstanding`, full stop. This used to read
+    # `outstanding if paid else doc.total`, which was the same expression twice over while
+    # payments were the only thing that moved a balance — and became wrong the moment credit
+    # notes did too: a written-off invoice showed no payments, fell to `doc.total`, and asked
+    # the client to transfer the whole amount it had just been relieved of.
     deadline = f"({t('invoicing.doc.before_date', date=fmt_date(due_date))})" if due_date else ""
     payment_box_values: dict[str, tuple[str, ...] | None] = {
         "amount": (
             t("invoicing.doc.to_pay"),
-            money(outstanding if paid else doc.total),
+            money(outstanding),
             deadline,
         ),
         "iban": (t("invoicing.doc.to_iban"), seller.get("iban") or ""),
@@ -501,9 +522,15 @@ def build_context(
         ),
     }
     # A credit note is money going the other way and a quote is not owed at all: neither
-    # gets a "transfer this amount" card, whatever the layout says.
+    # gets a "transfer this amount" card, whatever the layout says. Nor does an invoice with
+    # nothing left outstanding — paid, or written off by a credit note. Printing "te betalen
+    # € 0,00" beside an IBAN is at best noise, and on a credited invoice it is the sentence
+    # that used to demand the whole amount back.
     show_payment_box = (
-        kind == "invoice" and not is_credit_note and layout.enabled("payment_box")
+        kind == "invoice"
+        and not is_credit_note
+        and outstanding > 0
+        and layout.enabled("payment_box")
     )
 
     # --- prose -------------------------------------------------------------------------- #
@@ -520,11 +547,12 @@ def build_context(
         and kind == "invoice"
         and seller.get("iban")
         and not is_credit_note
+        and outstanding > 0
         and not show_payment_box
     ):
         payment_text = t(
             "invoicing.doc.payment_fallback",
-            total=money(outstanding if paid else doc.total),
+            total=money(outstanding),
             due=fmt_date(due_date) or "—",
             iban=seller["iban"],
             number=doc.number or heading,

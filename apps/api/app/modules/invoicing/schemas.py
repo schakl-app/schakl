@@ -569,6 +569,19 @@ class PaymentRead(BaseModel):
     created_at: datetime
 
 
+class CreditNoteRef(BaseModel):
+    """A credit note as seen from the invoice it corrects — enough to link to it and say
+    how much of it that invoice absorbed."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    number: str | None = None
+    status: InvoiceStatus
+    total: Decimal
+    applied_total: Decimal
+
+
 class InvoiceRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -604,6 +617,14 @@ class InvoiceRead(BaseModel):
     tax_total: Decimal
     total: Decimal
     paid_total: Decimal
+    #: Written off by issued credit notes (on the invoice) / absorbed by the invoice it
+    #: corrects (on the credit note). What a credit note has left over is the refund.
+    credited_total: Decimal = Decimal(0)
+    applied_total: Decimal = Decimal(0)
+    #: Derived, never stored — like ``overdue``. Payments and credit notes both take a
+    #: document down; ``outstanding`` is what is left whichever way it got there.
+    credited: bool = False
+    fully_credited: bool = False
     outstanding: Decimal = Decimal(0)
     sent_at: datetime | None
     paid_at: datetime | None
@@ -615,6 +636,10 @@ class InvoiceRead(BaseModel):
     lines: list[LineRead] = Field(default_factory=list)
     tax_groups: list[TaxGroupRead] = Field(default_factory=list)
     payments: list[PaymentRead] = Field(default_factory=list)
+    #: Both halves of a correction, resolved on the detail read so either document can link
+    #: to the other. Empty on a list, which draws the ``credited`` flag instead.
+    credit_notes: list[CreditNoteRef] = Field(default_factory=list)
+    credit_for_number: str = ""
     created_at: datetime
     updated_at: datetime
 

@@ -402,8 +402,21 @@ class Invoice(
     period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
     period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
     #: Sum of registered payments, maintained by the payment writes (list pages read it
-    #: without an aggregate); outstanding = total − paid_total.
+    #: without an aggregate); outstanding = total − paid_total − credited_total.
     paid_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    #: How much of this invoice issued credit notes have written off — the second way a
+    #: balance comes down, and the reason a credited invoice leaves arrears and dunning.
+    #: Positive on the invoice being corrected, allocated when the credit note is issued.
+    credited_total: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=0, server_default="0"
+    )
+    #: The mirror of the above on a credit note: how much of it the invoice it corrects
+    #: absorbed. Whatever the source had no room for is a refund the client is owed, which
+    #: is what keeps "credit an open invoice" (nothing moves) apart from "credit a paid one"
+    #: (money goes back). Frozen at issue: an allocation happens once.
+    applied_total: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=0, server_default="0"
+    )
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

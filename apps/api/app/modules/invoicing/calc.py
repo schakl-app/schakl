@@ -30,8 +30,32 @@ CENTS = Decimal("0.01")
 UNTAXED_CATEGORIES = frozenset({TaxCategory.EXEMPT.value, TaxCategory.REVERSE_CHARGE.value})
 
 
+#: What a document still owes, in SQL, for the places that aggregate over the table rather
+#: than over hydrated rows. Kept beside the Python rule below so the two cannot drift: a
+#: dashboard that nets credit notes and a list that does not is worse than neither.
+OUTSTANDING_SQL = "(total - paid_total - credited_total + applied_total)"
+
+
 def round_cents(value: Decimal) -> Decimal:
     return value.quantize(CENTS, rounding=ROUND_HALF_UP)
+
+
+def outstanding_of(doc: object) -> Decimal:
+    """What the document still owes — positive when the client owes us, negative when we
+    owe them, zero when it is settled whichever way it got there.
+
+    Money leaves a balance two ways, and both count: a **payment**, and a **credit note**
+    that wrote part of it off (``credited_total``). The mirror term ``applied_total`` is what
+    a credit note's own source already absorbed, so the credit note is left owing only the
+    part nobody has settled — which is exactly the refund. One expression covers both kinds
+    because a plain invoice never applies and (guarded in the service) is never credited into.
+    """
+    return (
+        Decimal(doc.total)  # type: ignore[attr-defined]
+        - Decimal(doc.paid_total)  # type: ignore[attr-defined]
+        - Decimal(doc.credited_total or 0)  # type: ignore[attr-defined]
+        + Decimal(doc.applied_total or 0)  # type: ignore[attr-defined]
+    )
 
 
 def line_amount(quantity: Decimal, unit_price: Decimal) -> Decimal:

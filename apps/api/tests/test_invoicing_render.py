@@ -11,6 +11,8 @@ uses it, so the escapes get a named test each, and the assertion is on the *refu
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 
 from app.errors import AppError
@@ -684,3 +686,36 @@ async def test_rendering_costs_a_fixed_number_of_queries_however_many_lines(
         two_lines = await render(2)
         forty_lines = await render(40)
         assert forty_lines == two_lines, "the render must not pay per line"
+
+
+def test_a_written_off_invoice_does_not_ask_for_the_money_back() -> None:
+    """The payment ask follows `outstanding`, and crediting is one of the two things that
+    moves it.
+
+    The amount used to read `outstanding if paid else total` — the same expression twice
+    while payments were the only way a balance came down. A credited invoice has no payments,
+    so it fell to `total` and printed "Gelieve € 500,00 over te maken" for money the client
+    had just been relieved of. Nothing outstanding now means no card and no sentence, and the
+    totals block says *why* rather than showing an unexplained zero.
+    """
+    doc, lines, groups = sample_document("nl", "EUR", TODAY)
+    doc.paid_total = Decimal("0")
+    doc.credited_total = doc.total
+    html = render_document_html(
+        kind="invoice", doc=doc, lines=lines, seller=SELLER,
+        config={"design": "letterhead", "layout": [{"key": "payment_box", "enabled": True}]},
+        brand=DocumentBrand(name="Agency"), tax_groups=groups,
+    )
+    assert "Betaalgegevens" not in html
+    assert "Gelieve" not in html
+    assert "Gecrediteerd" in html, "the paper has to explain where the total went"
+
+    # Partly credited: still owed, so the ask comes back — for the netted amount only.
+    doc.credited_total = Decimal("100.00")
+    partial = render_document_html(
+        kind="invoice", doc=doc, lines=lines, seller=SELLER,
+        config={"design": "letterhead", "layout": [{"key": "payment_box", "enabled": True}]},
+        brand=DocumentBrand(name="Agency"), tax_groups=groups,
+    )
+    assert "Betaalgegevens" in partial
+    assert "Gecrediteerd" in partial

@@ -16,7 +16,7 @@
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import { INVOICE_COLUMNS } from "$lib/modules/invoicing/columns";
   import DocTabs from "$lib/modules/invoicing/DocTabs.svelte";
-  import { docMoney } from "$lib/modules/invoicing/types";
+  import { docMoney, docStatus } from "$lib/modules/invoicing/types";
 
   let { data, form } = $props();
 
@@ -209,15 +209,14 @@
 {/snippet}
 
 {#snippet statusCell(invoice: Invoice)}
-  {#if invoice.overdue}
+  {@const state = docStatus(invoice)}
+  {#if state.tone === "danger"}
     <span
       class="rounded-md bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/40 dark:text-red-300"
-      >{t("invoicing.status.overdue")}</span
+      >{t(state.key)}</span
     >
   {:else}
-    <span class="rounded-md bg-surface px-2 py-0.5 text-xs text-text-muted"
-      >{t(`invoicing.status.${invoice.status}`)}</span
-    >
+    <span class="rounded-md bg-surface px-2 py-0.5 text-xs text-text-muted">{t(state.key)}</span>
   {/if}
 {/snippet}
 
