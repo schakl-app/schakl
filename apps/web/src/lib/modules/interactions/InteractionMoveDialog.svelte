@@ -28,8 +28,9 @@
   import ProjectQuickCreate from "$lib/modules/projects/ProjectQuickCreate.svelte";
   import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
 
-  import { contactsForScope, forgetContacts } from "./contacts";
+  import ContactChips from "./ContactChips.svelte";
   import type { InteractionItem } from "./format";
+  import { ContactRoster, initialContacts } from "./roster.svelte";
 
   let {
     interaction,
@@ -63,14 +64,14 @@
   let companies = $state<Option[]>([]);
   let projects = $state<ProjectOption[]>([]);
   let tasks = $state<TaskOption[]>([]);
-  let contacts = $state<Option[]>([]);
   let loading = $state(true);
   let error = $state("");
 
   let companyId = $state(interaction.company_id ?? "");
   let projectId = $state(interaction.project_id ?? "");
   let taskId = $state(interaction.task_id ?? "");
-  let contactId = $state(interaction.contact_id ?? "");
+  // svelte-ignore state_referenced_locally — the dialog is keyed per row; props never swap here.
+  const roster = new ContactRoster(initialContacts(interaction));
 
   // Picks cascade the way the tasks page's filters do: a client narrows the projects, a
   // project narrows the tasks — and picking deeper backfills the levels above.
@@ -102,40 +103,11 @@
    * The contact roster is part of the same cascade — a client narrows it to that client's own
    * people. It used to be loaded once, unscoped, alongside the other three lookups, so re-filing
    * a moment onto client B still offered client A's contacts (and everyone else's) and the
-   * dialog would happily save the mismatch.
-   *
-   * A client the user changed drops a contact the new client does not know, like the task above.
-   * `loadedScope` is `null` only before the first roster lands: the row arrives with a client
-   * and a contact already on it, and re-filing nothing must not clear what is stored — a moment
-   * may legitimately name someone its client is not linked to.
+   * dialog would happily save the mismatch. `ContactRoster` owns that rule now, and the create
+   * form and the .eml upload obey the same copy of it (#300).
    */
-  let loadedScope: string | null = null;
-  let contactCleared = $state(false);
   $effect(() => {
-    const scope = companyId;
-    void (async () => {
-      const items = await contactsForScope(scope);
-      // The client moved on while this flight was out — its answer is already the wrong roster.
-      if (scope !== companyId) return;
-      contacts = items.map((c) => ({
-        value: c.id,
-        label: `${c.first_name} ${c.last_name ?? ""}`.trim(),
-      }));
-      if (contactId && !items.some((c) => c.id === contactId)) {
-        if (loadedScope === null) {
-          // The row's own contact stays pickable even when outside the fetched scope.
-          if (interaction.contact_name) {
-            contacts = [{ value: contactId, label: interaction.contact_name }, ...contacts];
-          }
-        } else {
-          contactId = "";
-          contactCleared = true;
-        }
-      } else if (contactId) {
-        contactCleared = false;
-      }
-      loadedScope = scope;
-    })();
+    void roster.load(companyId);
   });
 
   // --- close the task with this contact moment, while approving (#157 in the review) ------- //
@@ -270,17 +242,9 @@
       companyId = created.id;
     } else if (created.slot === "move_contact") {
       handledCreate = created.id;
-      if (!contacts.some((option) => option.value === created.id)) {
-        contacts = [
-          ...contacts,
-          { value: created.id, label: created.name ?? (contactDraft || "—") },
-        ];
-      }
-      contactId = created.id;
-      contactCleared = false;
-      // The shared roster cache must not outlive the person it does not know about (#290):
-      // the next form to open would offer a picker missing the contact just created here.
-      forgetContacts();
+      // Offers them, adds the chip, and drops the shared per-scope cache so the next form to
+      // open knows about them too (#290).
+      roster.created(created.id, created.name ?? (contactDraft || "—"));
     }
   });
 
@@ -419,26 +383,14 @@
           id="move-task"
         />
       </label>
-      <label class="block text-sm">
-        <span class="mb-1 block font-medium text-text">{t("interactions.field.contact")}</span>
-        <Combobox
-          items={contacts}
-          name="contact_id"
-          value={contactId}
-          placeholder={t("common.none")}
-          onselect={(v) => {
-            contactId = v;
-            contactCleared = false;
-          }}
+      <div class="block text-sm">
+        <span class="mb-1 block font-medium text-text">{t("interactions.field.contacts")}</span>
+        <ContactChips
+          {roster}
+          id="move-contacts"
           oncreate={canCreateContact ? (query) => void startContactCreate(query) : undefined}
-          id="move-contact"
         />
-        {#if contactCleared && !contactId}
-          <span class="mt-1 block text-xs text-text-muted"
-            >{t("interactions.field.contact_recheck")}</span
-          >
-        {/if}
-      </label>
+      </div>
     </div>
 
     {#if canCloseTask && taskId}

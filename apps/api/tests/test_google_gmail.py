@@ -324,6 +324,56 @@ async def test_poll_matches_contact_and_logs_pending(client_for, monkeypatch) ->
     assert await _poll(t, connection_id, stub, monkeypatch) == 0
 
 
+async def test_a_matched_email_lands_on_the_contact_roster(client_for, monkeypatch) -> None:
+    """#300: the gmail seam writes the roster, not only the lead column.
+
+    ``record_email`` is the one write path outside the service, and every read now answers from
+    ``interaction_contacts`` — so a seam that set ``contact_id`` alone would log the message
+    against a person the API then reports as nobody, and drop it out of that contact's own
+    timeline and panel counter with the column still holding their id. Asserted through the
+    HTTP read and the ``?contact_id=`` filter, because that is where the loss would show.
+    """
+    t = await make_tenant("gmail-roster")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Client NL"}, headers=headers)
+        ).json()
+        contact = (
+            await c.post(
+                "/api/v1/contacts",
+                json={
+                    "first_name": "Klant",
+                    "email": "klant@client.nl",
+                    "company_ids": [company["id"]],
+                },
+                headers=headers,
+            )
+        ).json()
+
+        stub = _StubGmail(
+            history=["msg-1"],
+            messages={"msg-1": _message("msg-1", sender="Klant <klant@client.nl>")},
+            history_id="9100",
+        )
+        assert await _poll(t, connection_id, stub, monkeypatch) == 1
+
+        listed = (await c.get("/api/v1/interactions", headers=headers)).json()["items"]
+        assert len(listed) == 1
+        assert [p["id"] for p in listed[0]["contacts"]] == [contact["id"]]
+        # The lead pair still answers, because the roster is where it is derived from.
+        assert listed[0]["contact_id"] == contact["id"]
+        assert listed[0]["contact_name"] == "Klant"
+
+        # …and the message is on that person's own timeline, which is the read that would
+        # have silently gone empty.
+        filtered = (
+            await c.get(f"/api/v1/interactions?contact_id={contact['id']}", headers=headers)
+        ).json()
+        assert [row["id"] for row in filtered["items"]] == [listed[0]["id"]]
+
+
 async def test_portal_contact_mail_still_logs(client_for, monkeypatch) -> None:
     """A portal login (#193) is a membership whose user is a *client's contact* — it must not
     count as a colleague. With the naive all-memberships set, inviting a client to the portal

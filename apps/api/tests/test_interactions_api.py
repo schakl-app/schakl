@@ -1177,3 +1177,212 @@ async def test_task_host_activity_readable(client_for) -> None:
         assert logged, "task activity feed should surface the mirrored contact moment"
         assert logged[0]["payload"]["subject"] == "Kickoff"
         assert logged[0]["payload"]["interaction_id"] == moment.json()["id"]
+
+
+async def test_contact_roster_round_trips_and_leads_with_the_first(client_for) -> None:
+    """#300: a moment names everyone who was in it, and ``contact_id`` is chip 0.
+
+    The lead column is not decoration — the ``contact`` sort orders by it, the gmail thread
+    inheritance copies it forward, and a rolled-back release reads nothing else — so the two
+    must never disagree. An edit that reorders the roster re-leads with the new first person.
+    """
+    t = await make_tenant("inter-roster")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+
+        async def contact(first: str) -> dict:
+            return (
+                await c.post("/api/v1/contacts", json={"first_name": first}, headers=headers)
+            ).json()
+
+        anna, bram, cato = await contact("Anna"), await contact("Bram"), await contact("Cato")
+        created = await c.post(
+            "/api/v1/interactions",
+            json={
+                "kind": "physical_meeting",
+                "occurred_at": _NOW.isoformat(),
+                "subject": "Kwartaaloverleg",
+                "contact_ids": [anna["id"], bram["id"]],
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        row = created.json()
+        assert [p["id"] for p in row["contacts"]] == [anna["id"], bram["id"]]
+        assert [p["name"] for p in row["contacts"]] == ["Anna", "Bram"]
+        assert row["contact_id"] == anna["id"]
+        assert row["contact_name"] == "Anna"
+
+        # The list agrees with the single-row read — both build the roster the same way.
+        listed = (await c.get("/api/v1/interactions", headers=headers)).json()["items"][0]
+        assert [p["id"] for p in listed["contacts"]] == [anna["id"], bram["id"]]
+
+        # Reordering re-leads; adding a third keeps the order it was given.
+        edited = await c.patch(
+            f"/api/v1/interactions/{row['id']}",
+            json={"contact_ids": [bram["id"], cato["id"], anna["id"]]},
+            headers=headers,
+        )
+        assert edited.status_code == 200, edited.text
+        assert [p["id"] for p in edited.json()["contacts"]] == [
+            bram["id"],
+            cato["id"],
+            anna["id"],
+        ]
+        assert edited.json()["contact_id"] == bram["id"]
+
+        # An empty list is "nobody", and it clears the lead with it.
+        cleared = await c.patch(
+            f"/api/v1/interactions/{row['id']}", json={"contact_ids": []}, headers=headers
+        )
+        assert cleared.json()["contacts"] == []
+        assert cleared.json()["contact_id"] is None
+
+
+async def test_single_contact_id_still_writes_a_roster(client_for) -> None:
+    """#300: the pre-roster contract holds — an older client, an MCP tool or a script sending
+    a bare ``contact_id`` writes exactly the one-person roster it always meant, and a PATCH
+    that mentions neither field leaves the roster it found alone (rather than clearing it)."""
+    t = await make_tenant("inter-roster-compat")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        anna = (
+            await c.post("/api/v1/contacts", json={"first_name": "Anna"}, headers=headers)
+        ).json()
+        row = (
+            await c.post(
+                "/api/v1/interactions",
+                json={
+                    "kind": "call",
+                    "occurred_at": _NOW.isoformat(),
+                    "subject": "Terugbelverzoek",
+                    "contact_id": anna["id"],
+                },
+                headers=headers,
+            )
+        ).json()
+        assert [p["id"] for p in row["contacts"]] == [anna["id"]]
+
+        untouched = await c.patch(
+            f"/api/v1/interactions/{row['id']}", json={"subject": "Teruggebeld"}, headers=headers
+        )
+        assert [p["id"] for p in untouched.json()["contacts"]] == [anna["id"]]
+
+        # An explicit null on the old field still means "nobody" — it always did.
+        emptied = await c.patch(
+            f"/api/v1/interactions/{row['id']}", json={"contact_id": None}, headers=headers
+        )
+        assert emptied.json()["contacts"] == []
+
+
+async def test_contact_filter_matches_any_chip(client_for) -> None:
+    """#300: a contact's own timeline shows the moments they were *in*, not only the ones they
+    happened to be listed first on — the filter is an EXISTS over the roster, so a meeting
+    someone attended second still reaches their panel."""
+    t = await make_tenant("inter-roster-filter")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        anna = (
+            await c.post("/api/v1/contacts", json={"first_name": "Anna"}, headers=headers)
+        ).json()
+        bram = (
+            await c.post("/api/v1/contacts", json={"first_name": "Bram"}, headers=headers)
+        ).json()
+        assert (
+            await c.post(
+                "/api/v1/interactions",
+                json={
+                    "kind": "online_meeting",
+                    "occurred_at": _NOW.isoformat(),
+                    "subject": "Demo",
+                    "contact_ids": [anna["id"], bram["id"]],
+                },
+                headers=headers,
+            )
+        ).status_code == 201
+
+        for contact_id in (anna["id"], bram["id"]):
+            page = (
+                await c.get(
+                    "/api/v1/interactions", params={"contact_id": contact_id}, headers=headers
+                )
+            ).json()
+            assert [row["subject"] for row in page["items"]] == ["Demo"]
+            assert page["total"] == 1
+
+
+async def test_roster_refuses_a_contact_from_another_tenant(client_for) -> None:
+    """Golden Rule 1: another org's contact is not a person this moment may name — and it
+    fails the whole write rather than landing a moment with half a roster on it."""
+    a = await make_tenant("inter-roster-a")
+    b = await make_tenant("inter-roster-b")
+    headers_a = await auth_cookie(a.user)
+    headers_b = await auth_cookie(b.user)
+    async with client_for(b.host) as cb:
+        theirs = (
+            await cb.post("/api/v1/contacts", json={"first_name": "Vreemd"}, headers=headers_b)
+        ).json()
+    async with client_for(a.host) as c:
+        mine = (
+            await c.post("/api/v1/contacts", json={"first_name": "Anna"}, headers=headers_a)
+        ).json()
+        refused = await c.post(
+            "/api/v1/interactions",
+            json={
+                "kind": "call",
+                "occurred_at": _NOW.isoformat(),
+                "subject": "Gesprek",
+                "contact_ids": [mine["id"], theirs["id"]],
+            },
+            headers=headers_a,
+        )
+        assert refused.status_code == 422
+        assert (await c.get("/api/v1/interactions", headers=headers_a)).json()["total"] == 0
+
+
+async def test_every_person_on_the_roster_gets_the_activity_mirror(client_for) -> None:
+    """#152 + #300: the moment shows on *both* attendees' trails, and someone dropped from the
+    roster is told they were unlinked — otherwise a call with two people is a call with one
+    on every screen but the one it was logged on."""
+    t = await make_tenant("inter-roster-activity")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        anna = (
+            await c.post("/api/v1/contacts", json={"first_name": "Anna"}, headers=headers)
+        ).json()
+        bram = (
+            await c.post("/api/v1/contacts", json={"first_name": "Bram"}, headers=headers)
+        ).json()
+        row = (
+            await c.post(
+                "/api/v1/interactions",
+                json={
+                    "kind": "call",
+                    "occurred_at": _NOW.isoformat(),
+                    "subject": "Storing besproken",
+                    "contact_ids": [anna["id"], bram["id"]],
+                },
+                headers=headers,
+            )
+        ).json()
+
+        async def actions(contact_id: str) -> list[str]:
+            feed = (
+                await c.get(
+                    f"/api/v1/activity?entity_type=contact&entity_id={contact_id}",
+                    headers=headers,
+                )
+            ).json()
+            return [entry["action"] for entry in feed]
+
+        assert "interaction.logged" in await actions(anna["id"])
+        assert "interaction.logged" in await actions(bram["id"])
+
+        await c.patch(
+            f"/api/v1/interactions/{row['id']}",
+            json={"contact_ids": [anna["id"]]},
+            headers=headers,
+        )
+        assert "interaction.unlinked" in await actions(bram["id"])
+        # Anna never left, so nothing announces that she did.
+        assert "interaction.unlinked" not in await actions(anna["id"])

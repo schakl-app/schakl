@@ -35,7 +35,7 @@
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
 
-  import { type InteractionItem, isMailRow } from "./format";
+  import { contactChips, type InteractionItem, isMailRow } from "./format";
   import { cleanSnippet, snippetPreview } from "./snippet";
   import InteractionMoveDialog from "./InteractionMoveDialog.svelte";
   import { splitQuotedTrail } from "./quoted";
@@ -234,6 +234,24 @@
             >{di.task_title}</a
           >
         {/if}
+      </div>
+    {/if}
+
+    {#if contactChips(di).length}
+      <!-- Who the moment was with (#300). The list row caps its chips to keep the timeline on
+           one line and counts the rest into a "+N"; this is where "the rest" is legible. Kept
+           distinct from the participant chips below, which are e-mail addresses that happen to
+           match a contact — these are the people the moment is *filed* against. -->
+      <div class="flex flex-wrap items-center gap-1">
+        <span class="text-[11px] text-text-muted">{t("interactions.field.contacts")}</span>
+        {#each contactChips(di) as chip (chip.href)}
+          <a
+            href={chip.href}
+            class="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] text-brand ring-1 ring-inset ring-brand/30 hover:underline"
+          >
+            {chip.label}
+          </a>
+        {/each}
       </div>
     {/if}
 

@@ -30,6 +30,7 @@
   import { INTERACTION_COLUMNS } from "$lib/modules/interactions/columns";
   import EmlUploadForm from "$lib/modules/interactions/EmlUploadForm.svelte";
   import {
+    contactChips,
     dayLabel,
     type InteractionItem,
     type InteractionKindDef,
@@ -278,7 +279,12 @@
    * broke the day-grouped timeline's single-line rhythm, so a row shows only the **most
    * specific** organisational link — a task or a project already implies its client — plus the
    * person, and counts the rest into a "+N" the detail modal opens in full.
+   *
+   * A roster (#300) is capped the same way and for the same reason: a meeting with five people
+   * would otherwise re-break the rhythm this cap exists to protect. The lead shows — it is what
+   * the Contactpersoon column sorts by — and the rest join the "+N".
    */
+  const CONTACT_CHIPS = 1;
   interface LinkChip {
     href: string;
     label: string;
@@ -291,11 +297,11 @@
       org.push({ href: `/projects/${item.project_id}`, label: item.project_name });
     if (item.company_id && item.company_name)
       org.push({ href: `/companies/${item.company_id}`, label: item.company_name });
-    const contact: LinkChip[] =
-      item.contact_id && item.contact_name
-        ? [{ href: `/contacts/${item.contact_id}`, label: item.contact_name }]
-        : [];
-    return { visible: [...org.slice(0, 1), ...contact], hidden: org.slice(1) };
+    const people = contactChips(item);
+    return {
+      visible: [...org.slice(0, 1), ...people.slice(0, CONTACT_CHIPS)],
+      hidden: [...org.slice(1), ...people.slice(CONTACT_CHIPS)],
+    };
   }
 
   function kindText(key: string): string {

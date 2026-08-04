@@ -296,6 +296,61 @@ async def test_interaction_count_can_be_skipped(client_for, count_queries) -> No
         assert skipped["total"] == len(skipped["items"]) == 2
 
 
+async def test_interaction_rosters_cost_one_query_per_page(client_for, count_queries) -> None:
+    """#300: the roster is one batched read for the page, and none when nobody is named.
+
+    A chip per person per row is exactly the shape that is invisible at three rows: the JSON is
+    identical either way, and the version that reads ``contacts`` per interaction only shows up
+    when a client's timeline is long enough to matter. So the statement count is pinned twice —
+    once for the batching, once for the claim ``_contact_rosters`` makes in its own docstring,
+    that an all-``NULL`` page provably has no links to fetch.
+    """
+    t = await make_tenant("perf-inter-roster")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers)
+
+        # Nobody named: the lead column is NULL on every row, so there is nothing to look up.
+        for i in range(3):
+            await _interaction(c, headers, company_id=company, subject=f"S{i}", body="x")
+        with count_queries() as counter:
+            listed = (await c.get("/api/v1/interactions", headers=headers)).json()["items"]
+        assert [row["contacts"] for row in listed] == [[], [], []]
+        assert counter.matching("from interaction_contacts") == []
+
+        people = []
+        for i in range(3):
+            res = await c.post(
+                "/api/v1/contacts",
+                json={"first_name": f"P{i}", "company_ids": [company]},
+                headers=headers,
+            )
+            assert res.status_code == 201, res.text
+            people.append(res.json()["id"])
+
+        # Three moments, each naming everybody: nine chips, still one query for the page.
+        for i in range(3):
+            res = await c.post(
+                "/api/v1/interactions",
+                json={
+                    "kind": "note",
+                    "subject": f"M{i}",
+                    "company_id": company,
+                    "contact_ids": people,
+                    "occurred_at": datetime(2026, 3, 3, 9, 0, tzinfo=UTC).isoformat(),
+                },
+                headers=headers,
+            )
+            assert res.status_code == 201, res.text
+
+        with count_queries() as counter:
+            rows = (await c.get("/api/v1/interactions", headers=headers)).json()["items"]
+        named = [row for row in rows if row["contacts"]]
+        assert len(named) == 3
+        assert all(len(row["contacts"]) == 3 for row in named)
+        assert len(counter.matching("from interaction_contacts")) == 1
+
+
 async def test_invoice_rows_carry_no_lines_until_asked(client_for, count_queries) -> None:
     t = await make_tenant("perf-invoice-lines")
     async with client_for(t.host) as c:

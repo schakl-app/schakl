@@ -45,8 +45,9 @@
     manualKinds,
     PROTECTED_KIND,
   } from "./format";
-  import { contactsForScope, forgetContacts } from "./contacts";
+  import ContactChips from "./ContactChips.svelte";
   import { loadLinkLookups, type LinkOption, type ProjectOption, type TaskOption } from "./lookups";
+  import { ContactRoster, initialContacts } from "./roster.svelte";
 
   let {
     interaction = null,
@@ -306,71 +307,26 @@
   // a plain error here would read as "the save failed", which it did not.
   let closeFailedAfterCreate = $state(false);
 
-  // --- contact person (#173): pick, clear, or inline-create — never leave the form ------- //
+  // --- who it was with (#173, a roster since #300): pick several, promote, inline-create ---- //
   // Deliberate initial capture: the host keys this form per row, so props never swap in place.
   // svelte-ignore state_referenced_locally
-  let contactId = $state(
-    interaction?.contact_id ??
-      (typeof prefill.contact_id === "string" ? prefill.contact_id : "") ??
-      "",
-  );
-  let contactOptions = $state<{ value: string; label: string; hint?: string; company?: string }[]>(
-    [],
-  );
+  const roster = new ContactRoster(initialContacts(interaction, prefill));
   /**
-   * The roster follows the moment's **effective** client — `effCompany`, so the client the host
+   * The options follow the moment's **effective** client — `effCompany`, so the client the host
    * pinned, the one picked in the block below, *and* the one backfilled from a project or task
-   * pick all re-scope it. It used to read only what the host pinned, which meant the picker on
-   * the Interacties page offered the agency's whole address book no matter which client the
-   * moment was being filed to; a call logged against someone at another client then reads as
-   * perfectly ordinary on every screen afterwards, because nothing downstream cross-checks it.
-   *
-   * `loadedScope` is `null` until the first roster lands, and that distinction is the whole
-   * point of it: a client the user *changed* drops a pick the new client does not know (the
-   * cascade `onProjectPicked` already runs on tasks), while opening an existing row never does.
-   * A stored moment may legitimately name someone its client is not linked to, and an edit form
-   * that silently unpicked them on open would rewrite history on the next save.
+   * pick all re-scope them. Everything else about that (keeping a stored chip pickable, dropping
+   * one the *changed* client does not know, saying so) lives in `ContactRoster`, shared with the
+   * move dialog and the .eml upload so the three can no longer drift apart.
    */
-  let loadedScope: string | null = null;
-  /** Set when a client change dropped the pick, so the form says so instead of just blanking. */
-  let contactCleared = $state(false);
   $effect(() => {
-    const scope = effCompany;
-    void (async () => {
-      const items = await contactsForScope(scope);
-      // The client moved on while this flight was out — its answer is already the wrong roster.
-      if (scope !== effCompany) return;
-      contactOptions = items.map((c) => ({
-        value: c.id,
-        label: `${c.first_name} ${c.last_name ?? ""}`.trim(),
-        hint: c.email ?? undefined,
-        company: c.companies?.[0]?.name,
-      }));
-      if (contactId && !items.some((c) => c.id === contactId)) {
-        if (loadedScope === null) {
-          // The row's own contact stays pickable even when outside the fetched scope.
-          if (interaction?.contact_name) {
-            contactOptions = [
-              { value: contactId, label: interaction.contact_name },
-              ...contactOptions,
-            ];
-          }
-        } else {
-          contactId = "";
-          contactCleared = true;
-        }
-      } else if (contactId) {
-        contactCleared = false;
-      }
-      loadedScope = scope;
-    })();
+    void roster.load(effCompany);
   });
 
   // The note's @ autocomplete offers both kinds (#165): colleagues (the host's members) and
   // the same host-scoped contacts the picker above already fetched — one fetch serves both.
   const editorMentions = $derived([
     ...mentions.map((m) => ({ ...m, kind: "user" as const })),
-    ...contactOptions.map((c) => ({
+    ...roster.options.map((c) => ({
       id: c.value,
       name: c.label,
       kind: "contact" as const,
@@ -463,17 +419,9 @@
     if (!created || created.id === handledCreate) return;
     if (created.slot === "interaction_contact") {
       handledCreate = created.id;
-      if (!contactOptions.some((c) => c.value === created.id)) {
-        contactOptions = [
-          ...contactOptions,
-          { value: created.id, label: created.name || qcName || "—" },
-        ];
-      }
-      contactId = created.id;
-      contactCleared = false;
-      // The shared roster cache must not outlive the person it does not know about (#290):
-      // the next form to open would offer a picker missing the contact just created here.
-      forgetContacts();
+      // Offers them, adds the chip, and drops the shared per-scope cache so the next form to
+      // open knows about them too (#290).
+      roster.created(created.id, created.name || qcName || "—");
     } else if (created.slot === "interaction_company") {
       handledCreate = created.id;
       if (!linkCompanies.some((c) => c.value === created.id)) {
@@ -614,23 +562,15 @@
   </label>
 
   <!-- Who the moment was *with* comes first (#263): for a logged call or a meeting that is the
-       primary fact, not an afterthought below three organisational pickers. -->
+       primary fact, not an afterthought below three organisational pickers. Several of them
+       since #300 — a meeting is with the people who were in it. -->
   <div class="block text-sm">
-    <span class="mb-1 block font-medium text-text">{t("interactions.field.contact")}</span>
-    <Combobox
-      items={contactOptions}
-      name="contact_id"
-      bind:value={contactId}
-      placeholder={t("interactions.field.contact_placeholder")}
-      onselect={() => (contactCleared = false)}
+    <span class="mb-1 block font-medium text-text">{t("interactions.field.contacts")}</span>
+    <ContactChips
+      {roster}
+      id="interaction-contacts"
       oncreate={canCreateContact ? (query) => void quickCreateContact(query) : undefined}
     />
-    {#if contactCleared && !contactId}
-      <!-- Changing the client narrowed the roster past the person who was picked. Dropping it
-           silently is what the cascade does to a task; saying so is what stops it reading as
-           the form losing the answer on its own. -->
-      <p class="mt-1 text-xs text-text-muted">{t("interactions.field.contact_recheck")}</p>
-    {/if}
   </div>
 
   {#if showLinkPickers && !linksOpen}

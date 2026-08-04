@@ -11,6 +11,33 @@ import { apiFor } from "$lib/core/session";
 
 const LINK_FIELDS = ["company_id", "project_id", "task_id", "contact_id"] as const;
 
+/**
+ * The contact roster the form posted (#300): `ContactChips` serialises its chips into one
+ * comma-separated hidden field, in chip order, because an edit surface has one save button.
+ *
+ * `null` when the form carried no such field at all — the API reads that as "leave the roster
+ * alone", which is what keeps a form that never rendered the picker (there isn't one today, but
+ * there was a contact-only one yesterday) from clearing what it never showed.
+ */
+function contactIds(form: FormData): string[] | null {
+  if (!form.has("contact_ids")) return null;
+  return String(form.get("contact_ids") ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
+/** The link fields plus the roster, as every write path sends them. */
+function linkBody(form: FormData): Record<string, string | string[] | null> {
+  const roster = contactIds(form);
+  return {
+    ...Object.fromEntries(
+      LINK_FIELDS.map((field) => [field, String(form.get(field) ?? "").trim() || null]),
+    ),
+    ...(roster ? { contact_ids: roster } : {}),
+  };
+}
+
 /** "2026-07-10" + "14:30" → the tenant's wall clock, naive; the API attaches the org zone. */
 function occurredAt(form: FormData): string | null {
   const date = String(form.get("occurred_date") ?? "").trim();
@@ -27,12 +54,14 @@ function parseCustom(raw: FormDataEntryValue | null): Record<string, unknown> {
   }
 }
 
-function links(form: FormData): Record<string, string> {
-  const out: Record<string, string> = {};
+function links(form: FormData): Record<string, string | string[]> {
+  const out: Record<string, string | string[]> = {};
   for (const field of LINK_FIELDS) {
     const value = String(form.get(field) ?? "").trim();
     if (value) out[field] = value;
   }
+  const roster = contactIds(form);
+  if (roster) out.contact_ids = roster;
   return out;
 }
 
@@ -145,7 +174,12 @@ export const interactionActions = {
       return fail(400, { error: "errors.required" });
     const body = new FormData();
     body.append("file", upload, upload.name);
-    for (const [field, value] of Object.entries(links(form))) body.append(field, value);
+    for (const [field, value] of Object.entries(links(form))) {
+      // A roster is a repeated field, never a joined string: FastAPI reads `list[UUID]` from
+      // `contact_ids=…&contact_ids=…`, and one comma-joined value parses as no UUID at all.
+      if (Array.isArray(value)) for (const id of value) body.append(field, id);
+      else body.append(field, value);
+    }
     if (form.get("allow_duplicate") === "1") body.append("allow_duplicate", "true");
     const res = await event.fetch(`${apiBaseUrl()}/api/v1/interactions/upload-eml`, {
       method: "POST",
@@ -200,10 +234,9 @@ export const interactionActions = {
         // an edit may set, repoint or clear any of them, the same explicit-null contract the
         // move dialog's PATCH uses. The client rides along as the value the form derived from
         // the project/task — `_resolve_links(partial=True)` does not derive over an explicit
-        // key, so posting a bare null here would drop the client the picker just showed.
-        ...Object.fromEntries(
-          LINK_FIELDS.map((field) => [field, String(form.get(field) ?? "").trim() || null]),
-        ),
+        // key, so posting a bare null here would drop the client the picker just showed. The
+        // roster overrules the (now unrendered) `contact_id` at the API, by contract (#300).
+        ...linkBody(form),
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
@@ -227,12 +260,7 @@ export const interactionActions = {
     if (!id) return fail(400, { error: "errors.required" });
     // Assign links in the same step (#183) only when the approve came from the review dialog
     // (`assign=1`); the one-click inline approve sends no links and touches none.
-    const body =
-      form.get("assign") === "1"
-        ? Object.fromEntries(
-            LINK_FIELDS.map((field) => [field, String(form.get(field) ?? "").trim() || null]),
-          )
-        : undefined;
+    const body = form.get("assign") === "1" ? linkBody(form) : undefined;
     const api = apiFor(event);
     const { error } = await api.POST("/api/v1/interactions/{interaction_id}/approve", {
       params: { path: { interaction_id: id } },
@@ -264,11 +292,7 @@ export const interactionActions = {
     const form = await event.request.formData();
     const id = String(form.get("id") ?? "");
     if (!id) return fail(400, { error: "errors.required" });
-    const body: Record<string, string | null> = {};
-    for (const field of LINK_FIELDS) {
-      const value = String(form.get(field) ?? "").trim();
-      body[field] = value || null;
-    }
+    const body = linkBody(form);
     const api = apiFor(event);
     const { error } =
       String(form.get("source") ?? "") === "gmail"

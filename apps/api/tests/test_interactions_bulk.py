@@ -103,6 +103,85 @@ async def test_bulk_approve_can_file_the_whole_batch_in_one_step(client_for) -> 
             assert row["company_id"] == company["id"]
 
 
+async def test_a_batch_can_name_a_roster_and_an_unsent_one_leaves_each_row_alone(
+    client_for,
+) -> None:
+    """#300 through the batch: filing a run of emails onto the people who were in them.
+
+    The roster obeys the same absent-means-leave-alone rule as the links, and for the same
+    reason — a bulk dialog starts blank over rows that disagree, so treating "sent nothing" as
+    "empty the roster" would strip the matcher's own contact off every row the user did not
+    look at. It is resolved once for the call, so an unseeable id is a 422 for the payload
+    rather than fifty identical row failures.
+    """
+    t = await make_tenant("bulk-roster")
+    owner_headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _member(c, owner_headers, "mailbox@bulk-roster.example")
+        member_headers = await auth_cookie(member)
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Klant BV"}, headers=owner_headers)
+        ).json()
+        people = [
+            (
+                await c.post(
+                    "/api/v1/contacts",
+                    json={"first_name": name, "company_ids": [company["id"]]},
+                    headers=owner_headers,
+                )
+            ).json()
+            for name in ("Jan", "Piet")
+        ]
+        ids = [
+            await _seed_gmail_row(t, member.id, message_id=f"m{i}", thread_id=f"t{i}")
+            for i in range(2)
+        ]
+
+        result = await c.post(
+            "/api/v1/interactions/bulk/assign",
+            json={"ids": ids, "contact_ids": [p["id"] for p in people]},
+            headers=member_headers,
+        )
+        assert result.status_code == 200, result.text
+        assert result.json()["succeeded"] == 2
+        for row_id in ids:
+            row = (await c.get(f"/api/v1/interactions/{row_id}", headers=member_headers)).json()
+            assert [p["id"] for p in row["contacts"]] == [p["id"] for p in people]
+            # Chip 0 is the lead the column mirrors, in the batch exactly as in one write.
+            assert row["contact_id"] == people[0]["id"]
+            # Filing did not approve them — that is the other endpoint.
+            assert row["status"] == "pending"
+
+        # Approving afterwards sends no contact fields at all, and must keep what was filed.
+        approved = await c.post(
+            "/api/v1/interactions/bulk/approve",
+            json={"ids": ids},
+            headers=member_headers,
+        )
+        assert approved.status_code == 200, approved.text
+        for row_id in ids:
+            row = (await c.get(f"/api/v1/interactions/{row_id}", headers=member_headers)).json()
+            assert row["status"] == "logged"
+            assert [p["id"] for p in row["contacts"]] == [p["id"] for p in people]
+
+        # A contact this tenant cannot see fails the call, not the rows (Golden Rule 1).
+        other = await make_tenant("bulk-roster-other", email="other@bulk-roster.example")
+        async with client_for(other.host) as oc:
+            stranger = (
+                await oc.post(
+                    "/api/v1/contacts",
+                    json={"first_name": "Vreemde"},
+                    headers=await auth_cookie(other.user),
+                )
+            ).json()
+        refused = await c.post(
+            "/api/v1/interactions/bulk/assign",
+            json={"ids": ids, "contact_ids": [stranger["id"]]},
+            headers=member_headers,
+        )
+        assert refused.status_code == 422, refused.text
+
+
 async def test_bulk_assign_files_without_approving_and_leaves_unsent_links_alone(
     client_for,
 ) -> None:

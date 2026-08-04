@@ -135,7 +135,8 @@
   A panel that has no page-level edit mode to ride carries its own ⋯ → Bewerken / Klaar (the
   contacts panel on a client does; the client page's own ⋯ edits the *client*, a different
   surface). The pickers used *inside* an edit surface — `AssigneePicker` for the employees on a
-  client or project, `ContactDraftField` for contacts on a not-yet-created client — are always
+  client or project, `ContactDraftField` for contacts on a not-yet-created client,
+  `ContactChips` for the people a contactmoment was with (#300) — are always
   interactive, because the surface itself is already edit mode.
   `AssigneePicker` posts the whole roster in one hidden field (an edit surface has exactly one
   save button); `LinkField` posts per chip, because there each link is its own record.

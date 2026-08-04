@@ -9536,6 +9536,11 @@ export interface components {
             /** Contact Id */
             contact_id?: string | null;
             /**
+             * Contact Ids
+             * @description Everyone the message was with; wins over contact_id
+             */
+            contact_ids?: string[] | null;
+            /**
              * File
              * @description An exported .eml message
              */
@@ -12660,6 +12665,11 @@ export interface components {
             company_id?: string | null;
             /** Contact Id */
             contact_id?: string | null;
+            /**
+             * Contact Ids
+             * @description Everyone the moment was with. Wins over contact_id; [] clears the roster.
+             */
+            contact_ids?: string[] | null;
             /** Project Id */
             project_id?: string | null;
             /** Task Id */
@@ -12676,6 +12686,11 @@ export interface components {
             company_id?: string | null;
             /** Contact Id */
             contact_id?: string | null;
+            /**
+             * Contact Ids
+             * @description Everyone the moment was with. Wins over contact_id; [] clears the roster.
+             */
+            contact_ids?: string[] | null;
             /** Ids */
             ids: string[];
             /** Project Id */
@@ -12693,6 +12708,11 @@ export interface components {
             company_id?: string | null;
             /** Contact Id */
             contact_id?: string | null;
+            /**
+             * Contact Ids
+             * @description Everyone the moment was with. Wins over contact_id; [] clears the roster.
+             */
+            contact_ids?: string[] | null;
             /** Ids */
             ids: string[];
             /** Project Id */
@@ -12741,6 +12761,23 @@ export interface components {
             succeeded: number;
         };
         /**
+         * InteractionContactRef
+         * @description One person on the roster (#300), labelled — what the web draws a chip from.
+         *
+         *     Prefixed with the module's own name on purpose: a bare ``ContactRef`` would make FastAPI
+         *     qualify *every* module's schema of that name in the OpenAPI components, renaming other
+         *     modules' types in the generated client.
+         */
+        InteractionContactRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name?: string | null;
+        };
+        /**
          * InteractionCreate
          * @description A manually logged touchpoint — meetings, calls, notes. Emails only arrive via gmail.
          */
@@ -12751,6 +12788,11 @@ export interface components {
             company_id?: string | null;
             /** Contact Id */
             contact_id?: string | null;
+            /**
+             * Contact Ids
+             * @description Everyone the moment was with. Wins over contact_id; [] clears the roster.
+             */
+            contact_ids?: string[] | null;
             /** @default none */
             direction: components["schemas"]["InteractionDirection"];
             /** Kind */
@@ -12898,6 +12940,8 @@ export interface components {
             contact_id?: string | null;
             /** Contact Name */
             contact_name?: string | null;
+            /** Contacts */
+            contacts?: components["schemas"]["InteractionContactRef"][];
             /**
              * Conversation Count
              * @default 1
@@ -12970,6 +13014,11 @@ export interface components {
             company_id?: string | null;
             /** Contact Id */
             contact_id?: string | null;
+            /**
+             * Contact Ids
+             * @description Everyone the moment was with. Wins over contact_id; [] clears the roster.
+             */
+            contact_ids?: string[] | null;
             /** Project Id */
             project_id?: string | null;
             /** Task Id */
@@ -12993,6 +13042,11 @@ export interface components {
             company_id?: string | null;
             /** Contact Id */
             contact_id?: string | null;
+            /**
+             * Contact Ids
+             * @description Everyone the moment was with. Wins over contact_id; [] clears the roster.
+             */
+            contact_ids?: string[] | null;
             direction?: components["schemas"]["InteractionDirection"] | null;
             /** Kind */
             kind?: string | null;

@@ -20,6 +20,7 @@ from app.core.events import EmitContext
 from app.modules.interactions.models import (
     HOST_ENTITY,
     Interaction,
+    InteractionContact,
     InteractionKind,
     InteractionSource,
     InteractionStatus,
@@ -74,6 +75,22 @@ async def record_email(
     )
     ctx.session.add(row)
     await ctx.session.flush()
+    # The roster is what every read answers from (#300), so a matched contact has to land on it
+    # here too — writing only the column would make a gmail-logged message read as naming
+    # nobody, and drop it out of that person's timeline, their panel counter and their trail.
+    # One chip, deliberately: ``matching.py`` names a contact only when the match is
+    # unambiguous, and widening that to "everyone whose address appeared" is a matching
+    # decision, not a storage one.
+    if row.contact_id is not None:
+        ctx.session.add(
+            InteractionContact(
+                org_id=ctx.org.id,
+                interaction_id=row.id,
+                contact_id=row.contact_id,
+                position=0,
+            )
+        )
+        await ctx.session.flush()
     if not pending:
         # Auto-approved at birth (trusted thread / auto-approve policy): the host records
         # hear about it now (#152), attributed to the system — a pending row stays silent

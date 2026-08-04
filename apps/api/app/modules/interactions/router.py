@@ -175,6 +175,9 @@ async def upload_interaction_eml(
     project_id: uuid.UUID | None = Form(None),
     task_id: uuid.UUID | None = Form(None),
     contact_id: uuid.UUID | None = Form(None),
+    contact_ids: list[uuid.UUID] | None = Form(
+        None, description="Everyone the message was with; wins over contact_id"
+    ),
     allow_duplicate: bool = Form(
         False, description="Log it even though this Message-ID is already on the timeline"
     ),
@@ -201,6 +204,9 @@ async def upload_interaction_eml(
             "project_id": project_id,
             "task_id": task_id,
             "contact_id": contact_id,
+            # Only when the caller actually sent it: an absent key is what lets the service's
+            # one contact contract (schemas.py) fall back to ``contact_id`` for older callers.
+            **({"contact_ids": contact_ids} if contact_ids is not None else {}),
         },
         allow_duplicate=allow_duplicate,
     )

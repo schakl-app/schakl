@@ -29,8 +29,9 @@
   import ProjectQuickCreate from "$lib/modules/projects/ProjectQuickCreate.svelte";
   import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
 
-  import { contactsForScope, forgetContacts } from "./contacts";
+  import ContactChips from "./ContactChips.svelte";
   import { loadLinkLookups, type LinkOption, type ProjectOption, type TaskOption } from "./lookups";
+  import { ContactRoster, initialContacts } from "./roster.svelte";
 
   let {
     prefill = {},
@@ -73,11 +74,11 @@
   let fCompany = $state("");
   let fProject = $state("");
   let fTask = $state("");
-  let fContact = $state("");
   let companies = $state<LinkOption[]>([]);
   let projects = $state<ProjectOption[]>([]);
   let tasks = $state<TaskOption[]>([]);
-  let contacts = $state<LinkOption[]>([]);
+  // svelte-ignore state_referenced_locally — the host keys this form; props never swap in place.
+  const roster = new ContactRoster(initialContacts(null, prefill));
 
   // Candidates load when the dialog opens, never on page render (docs/PERFORMANCE.md).
   $effect(() => {
@@ -121,39 +122,16 @@
   }
 
   /**
-   * The contact roster follows the upload's **effective** client, exactly as the manual form's
-   * does — the host's pinned client, the one picked below, or the one backfilled from a project
-   * or task pick. It used to read only the pinned one, so the picker on the Interacties page
+   * The roster follows the upload's **effective** client, exactly as the manual form's does —
+   * the host's pinned client, the one picked below, or the one backfilled from a project or
+   * task pick. It used to read only the pinned one, so the picker on the Interacties page
    * listed every contact in the org however the message was being filed, and a client change
-   * never narrowed it. Same shared, per-scope cache the manual form uses, so the two modals on
-   * one page share a flight instead of racing (docs/PERFORMANCE.md).
-   *
-   * A client the user changed drops a pick the new client does not know, the way the cascade
-   * above drops a task; `loadedScope` is `null` only before the first roster lands, so nothing
-   * is dropped merely because the dialog opened.
+   * never narrowed it. `ContactRoster` is the one copy of that rule now (#300), and it shares
+   * the per-scope fetch cache, so two modals on one page share a flight instead of racing
+   * (docs/PERFORMANCE.md).
    */
-  let loadedScope: string | null = null;
-  let contactCleared = $state(false);
   $effect(() => {
-    const scope = effCompany;
-    void (async () => {
-      const items = await contactsForScope(scope);
-      // The client moved on while this flight was out — its answer is already the wrong roster.
-      if (scope !== effCompany) return;
-      contacts = items.map((c) => ({
-        value: c.id,
-        label: `${c.first_name} ${c.last_name ?? ""}`.trim(),
-      }));
-      if (fContact && !items.some((c) => c.id === fContact)) {
-        if (loadedScope !== null) {
-          fContact = "";
-          contactCleared = true;
-        }
-      } else if (fContact) {
-        contactCleared = false;
-      }
-      loadedScope = scope;
-    })();
+    void roster.load(effCompany);
   });
 
   // --- inline-create behind the pickers (docs/UX.md) ------------------------------------- //
@@ -225,14 +203,9 @@
     if (!created || created.id === handledCreate) return;
     if (created.slot === "eml_contact") {
       handledCreate = created.id;
-      if (!contacts.some((c) => c.value === created.id)) {
-        contacts = [...contacts, { value: created.id, label: created.name || qcName || "—" }];
-      }
-      fContact = created.id;
-      contactCleared = false;
-      // The shared roster cache must not outlive the person it does not know about (#290):
-      // the next form to open would offer a picker missing the contact just created here.
-      forgetContacts();
+      // Offers them, adds the chip, and drops the shared per-scope cache so the next form to
+      // open knows about them too (#290).
+      roster.created(created.id, created.name || qcName || "—");
     } else if (created.slot === "eml_task") {
       handledCreate = created.id;
       if (!tasks.some((task) => task.value === created.id)) {
@@ -382,26 +355,14 @@
         />
       </label>
     {/if}
-    <label class="block text-sm">
-      <span class="mb-1 block font-medium text-text">{t("interactions.field.contact")}</span>
-      <Combobox
-        items={contacts}
-        name="contact_id"
-        value={fContact}
-        placeholder={t("interactions.field.contact_placeholder")}
-        onselect={(v) => {
-          fContact = v;
-          contactCleared = false;
-        }}
+    <div class="block text-sm">
+      <span class="mb-1 block font-medium text-text">{t("interactions.field.contacts")}</span>
+      <ContactChips
+        {roster}
+        id="eml-contacts"
         oncreate={canCreateContact ? (query) => void quickCreateContact(query) : undefined}
-        id="eml-contact"
       />
-      {#if contactCleared && !fContact}
-        <span class="mt-1 block text-xs text-text-muted"
-          >{t("interactions.field.contact_recheck")}</span
-        >
-      {/if}
-    </label>
+    </div>
   </div>
 
   {#if skipped}
