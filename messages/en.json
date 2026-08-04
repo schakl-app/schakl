@@ -2365,6 +2365,7 @@
   "errors.ai_audio_unsupported": "That audio format is not supported.",
   "voice.start": "Dictate",
   "voice.stop": "Stop recording",
+  "voice.transcribing": "Transcribing…",
   "voice.error_denied": "Microphone access was refused. Allow it in your browser to dictate.",
   "voice.error_no_mic": "No microphone was found.",
   "voice.error_no_speech": "Nothing was understood. Try again, a little closer to the microphone.",

@@ -147,6 +147,9 @@
   // under the input and a flash on the form panel, or an honest "couldn't parse".
   let aiParsedSummary = $state<string | null>(null);
   let aiFlash = $state(false);
+  // What the in-flight line says. `aiBusy` covers both the parse and a transcription, and
+  // "looking up your clients" is the wrong sentence for one of them.
+  let aiStatus = $state<string | null>(null);
 
   interface AISuggestion {
     company_id?: string | null;
@@ -219,6 +222,7 @@
   async function aiQuickAdd(override = false) {
     if (!aiText.trim() || aiBusy) return;
     aiBusy = true;
+    aiStatus = "ai.time.resolving";
     aiError = null;
     aiBudget = false;
     aiParsedSummary = null;
@@ -316,6 +320,7 @@
       aiError = "errors.ai_provider_error";
     } finally {
       aiBusy = false;
+      aiStatus = null;
     }
   }
 
@@ -350,6 +355,7 @@
     }
     if (!audio) return; // aborted, or nothing captured
     aiBusy = true;
+    aiStatus = "voice.transcribing";
     try {
       const res = await fetch("/ai/time/transcribe", {
         method: "POST",
@@ -374,6 +380,7 @@
       aiError = "errors.ai_provider_error";
     } finally {
       aiBusy = false;
+      aiStatus = null;
     }
   }
 
@@ -684,9 +691,13 @@
           {/if}
         </form>
         {#if aiBusy}
-          <!-- The parse resolves the tenant's own clients/projects/tasks before answering, so
-               say that rather than showing a bare spinner over an unchanged screen. -->
-          <p class="text-sm text-text-muted" aria-live="polite">{t("ai.time.resolving")}</p>
+          <!-- `aiBusy` covers two waits that feel nothing alike — a transcription of what you
+               just said, and a parse that resolves the tenant's own clients/projects/tasks —
+               so the line says which one is running rather than showing a bare spinner over an
+               unchanged screen. `t()` is a runtime lookup, so the key may be a variable. -->
+          <p class="text-sm text-text-muted" aria-live="polite">
+            {t(aiStatus ?? "ai.time.resolving")}
+          </p>
         {/if}
         {#if aiParsedSummary}
           <button

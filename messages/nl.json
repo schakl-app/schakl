@@ -2365,6 +2365,7 @@
   "errors.ai_audio_unsupported": "Dit audioformaat wordt niet ondersteund.",
   "voice.start": "Inspreken",
   "voice.stop": "Opname stoppen",
+  "voice.transcribing": "Aan het uitschrijven…",
   "voice.error_denied": "Toegang tot de microfoon is geweigerd. Sta het toe in je browser om in te spreken.",
   "voice.error_no_mic": "Geen microfoon gevonden.",
   "voice.error_no_speech": "Er is niets verstaan. Probeer het opnieuw, iets dichter bij de microfoon.",
