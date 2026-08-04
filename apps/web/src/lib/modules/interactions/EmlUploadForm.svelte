@@ -27,6 +27,7 @@
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
 
+  import { contactsForScope, forgetContacts } from "./contacts";
   import { loadLinkLookups, type LinkOption, type ProjectOption, type TaskOption } from "./lookups";
 
   let {
@@ -96,22 +97,6 @@
       tasks = lookups.tasks;
     });
   });
-  $effect(() => {
-    const scope = pinned("company_id") ? `&company_id=${prefill.company_id as string}` : "";
-    void (async () => {
-      const response = await fetch(`/api/v1/contacts?limit=200&sort=first_name${scope}`, {
-        headers: { accept: "application/json" },
-      });
-      const items: { id: string; first_name: string; last_name?: string | null }[] = response.ok
-        ? ((await response.json()).items ?? [])
-        : [];
-      contacts = items.map((c) => ({
-        value: c.id,
-        label: `${c.first_name} ${c.last_name ?? ""}`.trim(),
-      }));
-    })();
-  });
-
   // The move dialog's cascade: a client narrows projects, a project narrows tasks, and picking
   // deeper backfills the levels above.
   const effCompany = $derived(
@@ -141,6 +126,42 @@
     const task = tasks.find((option) => option.value === id);
     if (task?.project_id) onProjectPicked(task.project_id);
   }
+
+  /**
+   * The contact roster follows the upload's **effective** client, exactly as the manual form's
+   * does — the host's pinned client, the one picked below, or the one backfilled from a project
+   * or task pick. It used to read only the pinned one, so the picker on the Interacties page
+   * listed every contact in the org however the message was being filed, and a client change
+   * never narrowed it. Same shared, per-scope cache the manual form uses, so the two modals on
+   * one page share a flight instead of racing (docs/PERFORMANCE.md).
+   *
+   * A client the user changed drops a pick the new client does not know, the way the cascade
+   * above drops a task; `loadedScope` is `null` only before the first roster lands, so nothing
+   * is dropped merely because the dialog opened.
+   */
+  let loadedScope: string | null = null;
+  let contactCleared = $state(false);
+  $effect(() => {
+    const scope = effCompany;
+    void (async () => {
+      const items = await contactsForScope(scope);
+      // The client moved on while this flight was out — its answer is already the wrong roster.
+      if (scope !== effCompany) return;
+      contacts = items.map((c) => ({
+        value: c.id,
+        label: `${c.first_name} ${c.last_name ?? ""}`.trim(),
+      }));
+      if (fContact && !items.some((c) => c.id === fContact)) {
+        if (loadedScope !== null) {
+          fContact = "";
+          contactCleared = true;
+        }
+      } else if (fContact) {
+        contactCleared = false;
+      }
+      loadedScope = scope;
+    })();
+  });
 
   // --- inline-create behind the pickers (docs/UX.md) ------------------------------------- //
   const canCreateTask = $derived(can(page.data.user, "tasks.task.create"));
@@ -199,6 +220,10 @@
         contacts = [...contacts, { value: created.id, label: qcName || "—" }];
       }
       fContact = created.id;
+      contactCleared = false;
+      // The shared roster cache must not outlive the person it does not know about (#290):
+      // the next form to open would offer a picker missing the contact just created here.
+      forgetContacts();
     } else if (created.slot === "eml_task") {
       handledCreate = created.id;
       if (!tasks.some((task) => task.value === created.id)) {
@@ -352,10 +377,18 @@
         name="contact_id"
         value={fContact}
         placeholder={t("interactions.field.contact_placeholder")}
-        onselect={(v) => (fContact = v)}
+        onselect={(v) => {
+          fContact = v;
+          contactCleared = false;
+        }}
         oncreate={(query) => void quickCreateContact(query)}
         id="eml-contact"
       />
+      {#if contactCleared && !fContact}
+        <span class="mt-1 block text-xs text-text-muted"
+          >{t("interactions.field.contact_recheck")}</span
+        >
+      {/if}
     </label>
   </div>
 

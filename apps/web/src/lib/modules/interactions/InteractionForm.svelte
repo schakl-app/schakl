@@ -307,9 +307,6 @@
   let closeFailedAfterCreate = $state(false);
 
   // --- contact person (#173): pick, clear, or inline-create — never leave the form ------- //
-  const hostCompanyId = $derived(
-    interaction?.company_id ?? (typeof prefill.company_id === "string" ? prefill.company_id : null),
-  );
   // Deliberate initial capture: the host keys this form per row, so props never swap in place.
   // svelte-ignore state_referenced_locally
   let contactId = $state(
@@ -320,20 +317,52 @@
   let contactOptions = $state<{ value: string; label: string; hint?: string; company?: string }[]>(
     [],
   );
+  /**
+   * The roster follows the moment's **effective** client — `effCompany`, so the client the host
+   * pinned, the one picked in the block below, *and* the one backfilled from a project or task
+   * pick all re-scope it. It used to read only what the host pinned, which meant the picker on
+   * the Interacties page offered the agency's whole address book no matter which client the
+   * moment was being filed to; a call logged against someone at another client then reads as
+   * perfectly ordinary on every screen afterwards, because nothing downstream cross-checks it.
+   *
+   * `loadedScope` is `null` until the first roster lands, and that distinction is the whole
+   * point of it: a client the user *changed* drops a pick the new client does not know (the
+   * cascade `onProjectPicked` already runs on tasks), while opening an existing row never does.
+   * A stored moment may legitimately name someone its client is not linked to, and an edit form
+   * that silently unpicked them on open would rewrite history on the next save.
+   */
+  let loadedScope: string | null = null;
+  /** Set when a client change dropped the pick, so the form says so instead of just blanking. */
+  let contactCleared = $state(false);
   $effect(() => {
-    const scope = hostCompanyId ?? "";
+    const scope = effCompany;
     void (async () => {
       const items = await contactsForScope(scope);
+      // The client moved on while this flight was out — its answer is already the wrong roster.
+      if (scope !== effCompany) return;
       contactOptions = items.map((c) => ({
         value: c.id,
         label: `${c.first_name} ${c.last_name ?? ""}`.trim(),
         hint: c.email ?? undefined,
         company: c.companies?.[0]?.name,
       }));
-      // The row's own contact stays pickable even when outside the fetched scope.
-      if (contactId && interaction?.contact_name && !items.some((c) => c.id === contactId)) {
-        contactOptions = [{ value: contactId, label: interaction.contact_name }, ...contactOptions];
+      if (contactId && !items.some((c) => c.id === contactId)) {
+        if (loadedScope === null) {
+          // The row's own contact stays pickable even when outside the fetched scope.
+          if (interaction?.contact_name) {
+            contactOptions = [
+              { value: contactId, label: interaction.contact_name },
+              ...contactOptions,
+            ];
+          }
+        } else {
+          contactId = "";
+          contactCleared = true;
+        }
+      } else if (contactId) {
+        contactCleared = false;
       }
+      loadedScope = scope;
     })();
   });
 
@@ -418,6 +447,7 @@
         contactOptions = [...contactOptions, { value: created.id, label: qcName || "—" }];
       }
       contactId = created.id;
+      contactCleared = false;
       // The shared roster cache must not outlive the person it does not know about (#290):
       // the next form to open would offer a picker missing the contact just created here.
       forgetContacts();
@@ -552,8 +582,15 @@
       name="contact_id"
       bind:value={contactId}
       placeholder={t("interactions.field.contact_placeholder")}
+      onselect={() => (contactCleared = false)}
       oncreate={(query) => void quickCreateContact(query)}
     />
+    {#if contactCleared && !contactId}
+      <!-- Changing the client narrowed the roster past the person who was picked. Dropping it
+           silently is what the cascade does to a task; saying so is what stops it reading as
+           the form losing the answer on its own. -->
+      <p class="mt-1 text-xs text-text-muted">{t("interactions.field.contact_recheck")}</p>
+    {/if}
   </div>
 
   {#if showLinkPickers && !linksOpen}

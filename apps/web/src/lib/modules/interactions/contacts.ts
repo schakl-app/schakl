@@ -30,17 +30,21 @@ async function get(url: string): Promise<ContactRow[]> {
 }
 
 /**
- * `companyId` empty = the whole org. A scoped fetch that comes back empty falls back to the
- * unscoped roster: an org that never linked its contacts to clients would otherwise see an
- * empty picker and conclude the feature is broken.
+ * `companyId` empty = the whole org; a client id = **that client's people, and nobody else's**.
+ *
+ * There is deliberately no widen-to-the-org fallback when a client's roster comes back empty.
+ * One used to live here, on the reasoning that an empty picker reads as broken — but what it
+ * actually did was hand every client with no linked contacts the agency's entire address book,
+ * so a contactmoment filed to that client could name a person at a different one, and no screen
+ * afterwards flags that. "This client has nothing yet" is a real state, and it is answerable
+ * where it is asked: the picker's ＋ opens the full create dialog pre-linked to this same client
+ * (#247, docs/UX.md), which is what turns the empty roster into one row instead of a dead end.
  */
 export function contactsForScope(companyId: string): Promise<ContactRow[]> {
   const cached = cache.get(companyId);
   if (cached) return cached;
-  const scope = companyId ? `&company_id=${companyId}` : "";
-  const request = get(`/api/v1/contacts?limit=200&count=false&sort=first_name${scope}`).then(
-    async (items) => (items.length === 0 && scope ? await contactsForScope("") : items),
-  );
+  const scope = companyId ? `&company_id=${encodeURIComponent(companyId)}` : "";
+  const request = get(`/api/v1/contacts?limit=200&count=false&sort=first_name${scope}`);
   cache.set(companyId, request);
   return request;
 }

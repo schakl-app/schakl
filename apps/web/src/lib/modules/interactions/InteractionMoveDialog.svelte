@@ -18,6 +18,7 @@
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
 
+  import { contactsForScope } from "./contacts";
   import type { InteractionItem } from "./format";
 
   let {
@@ -86,6 +87,46 @@
     const task = tasks.find((option) => option.value === id);
     if (task?.project_id) onProjectPicked(task.project_id);
   }
+
+  /**
+   * The contact roster is part of the same cascade — a client narrows it to that client's own
+   * people. It used to be loaded once, unscoped, alongside the other three lookups, so re-filing
+   * a moment onto client B still offered client A's contacts (and everyone else's) and the
+   * dialog would happily save the mismatch.
+   *
+   * A client the user changed drops a contact the new client does not know, like the task above.
+   * `loadedScope` is `null` only before the first roster lands: the row arrives with a client
+   * and a contact already on it, and re-filing nothing must not clear what is stored — a moment
+   * may legitimately name someone its client is not linked to.
+   */
+  let loadedScope: string | null = null;
+  let contactCleared = $state(false);
+  $effect(() => {
+    const scope = companyId;
+    void (async () => {
+      const items = await contactsForScope(scope);
+      // The client moved on while this flight was out — its answer is already the wrong roster.
+      if (scope !== companyId) return;
+      contacts = items.map((c) => ({
+        value: c.id,
+        label: `${c.first_name} ${c.last_name ?? ""}`.trim(),
+      }));
+      if (contactId && !items.some((c) => c.id === contactId)) {
+        if (loadedScope === null) {
+          // The row's own contact stays pickable even when outside the fetched scope.
+          if (interaction.contact_name) {
+            contacts = [{ value: contactId, label: interaction.contact_name }, ...contacts];
+          }
+        } else {
+          contactId = "";
+          contactCleared = true;
+        }
+      } else if (contactId) {
+        contactCleared = false;
+      }
+      loadedScope = scope;
+    })();
+  });
 
   // --- close the task with this contact moment, while approving (#157 in the review) ------- //
   interface StatusDef {
@@ -182,12 +223,13 @@
         if (!response.ok) throw new Error(String(response.status));
         return response.json();
       };
-      // Lean lookups: no counts, no task aggregates (docs/PERFORMANCE.md).
-      const [companiesPage, projectsPage, tasksPage, contactsPage] = await Promise.all([
+      // Lean lookups: no counts, no task aggregates (docs/PERFORMANCE.md). Contacts come from
+      // the shared per-scope cache instead of a fourth hand-rolled fetch, so this dialog and
+      // the create form on the same page narrow to the same client and share the flight.
+      const [companiesPage, projectsPage, tasksPage] = await Promise.all([
         get("/api/v1/companies?limit=200&count=false&sort=name"),
         get("/api/v1/projects?limit=200&count=false"),
         get("/api/v1/tasks?limit=200&count=false&meta=false&sort=title"),
-        get("/api/v1/contacts?limit=200&sort=first_name"),
       ]);
       companies = (companiesPage.items ?? []).map((c: { id: string; name: string }) => ({
         value: c.id,
@@ -211,12 +253,6 @@
           label: task.title,
           project_id: task.project_id ?? null,
           company_id: task.company_id ?? null,
-        }),
-      );
-      contacts = (contactsPage.items ?? []).map(
-        (c: { id: string; first_name: string; last_name?: string | null }) => ({
-          value: c.id,
-          label: `${c.first_name} ${c.last_name ?? ""}`.trim(),
         }),
       );
     } catch {
@@ -281,9 +317,17 @@
           name="contact_id"
           value={contactId}
           placeholder={t("common.none")}
-          onselect={(v) => (contactId = v)}
+          onselect={(v) => {
+            contactId = v;
+            contactCleared = false;
+          }}
           id="move-contact"
         />
+        {#if contactCleared && !contactId}
+          <span class="mt-1 block text-xs text-text-muted"
+            >{t("interactions.field.contact_recheck")}</span
+          >
+        {/if}
       </label>
     </div>
 

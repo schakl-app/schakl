@@ -78,6 +78,20 @@
   sends that id — a pre-filled checkbox the action ignores links nothing. This is easy to
   reintroduce one field at a time, so when you add a new inline quick-create, check it forwards
   the context the parent already knows.
+  **And the context narrows the picker, not just its ＋: a picker on a form that has a client
+  lists that client's rows, and keeps narrowing as the client changes.** The contact picker on a
+  contactmoment offered the agency's whole address book. Two shapes did it: it read only the
+  client the *host page* had pinned — so on Interacties, where nothing is pinned, it never
+  narrowed at all no matter which client the moment was being filed to — and a scoped fetch that
+  came back empty quietly widened back to the org, so a client with no linked contacts got
+  everyone. Both end the same way: a call logged against someone at another client, which reads
+  as perfectly ordinary on every screen afterwards because nothing downstream cross-checks it.
+  Scope on the form's **effective** client (pinned, picked, or backfilled from a project/task
+  pick), re-fetch when it changes, and drop a selection the new client does not know — the
+  cascade already does exactly that to a task when its project changes. Say so when you drop
+  one, rather than leaving the field to look like it blanked itself. And do not fall back to the
+  unscoped list when a client's is empty: that is a real answer, and the ＋ is what turns it into
+  one row, pre-linked to the same client.
 - **Quick-add where the user is**: contacts on the client page, projects/clients from the
   time entry form, checklist items on the card. The full forms still exist on their own
   pages; quick-add is an accelerator, not a replacement.
