@@ -2,6 +2,7 @@ import { fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
+import { readAutoInvoiceMode } from "$lib/modules/invoicing/types";
 import { apiFor } from "$lib/core/session";
 import type { BlockSpec } from "$lib/modules/invoicing/templateConfig";
 
@@ -92,6 +93,18 @@ export const actions: Actions = {
     }
     return { saved: true };
   },
+  saveAutoInvoice: async (event) => {
+    const form = await event.request.formData();
+    // The org has nothing to inherit from, so an unrecognised value falls back to `draft`
+    // — today's behaviour — rather than being sent on for the API's enum to refuse.
+    const mode = readAutoInvoiceMode(form.get("auto_invoice_mode")) ?? "draft";
+    const { error } = await apiFor(event).PUT("/api/v1/invoicing/settings", {
+      body: { auto_invoice_mode: mode } as never,
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { saved: true };
+  },
+
   saveReminders: async (event) => {
     const form = await event.request.formData();
     const raw = String(form.get("reminder_days") ?? "");

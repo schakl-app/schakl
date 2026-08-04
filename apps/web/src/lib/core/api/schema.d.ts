@@ -3941,29 +3941,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/invoicing/billable-subscriptions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Billable Subscriptions
-         * @description A client's active agreements as ready-made invoice lines (the "＋ abonnement" pick).
-         *
-         *     ``already_billed`` marks a period a document already claims: shown rather than hidden,
-         *     so the answer to "did I invoice March yet?" is on the picker instead of on a duplicate.
-         */
-        get: operations["billable_subscriptions_api_v1_invoicing_billable_subscriptions_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/invoicing/invoices": {
         parameters: {
             query?: never;
@@ -4248,6 +4225,31 @@ export interface paths {
          * @description UBL 2.1 XML — importable by Exact Online, SnelStart, Moneybird, e-Boekhouden.
          */
         get: operations["download_ubl_api_v1_invoicing_invoices__invoice_id__ubl_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/outstanding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Outstanding
+         * @description Everything a client still has to be invoiced for: hours, agreement periods, renewals.
+         *
+         *     The source the editor's three sections pick from, in one round trip. Periods a document
+         *     already claims are marked ``already_billed`` rather than omitted, so "did I invoice March
+         *     yet?" is answered on the picker instead of by a duplicate a week later. On
+         *     ``invoice.write`` and not ``.read``: this is a build-an-invoice surface, not a report.
+         */
+        get: operations["outstanding_api_v1_invoicing_outstanding_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -8439,6 +8441,34 @@ export interface components {
             /** Target User Id */
             target_user_id: string | null;
         };
+        /**
+         * AutoInvoiceMode
+         * @description How far a recurring-billing cron takes an invoice on its own.
+         *
+         *     A **level, not a switch**, because "automatic invoicing" means four different amounts of
+         *     automation to four different agencies, and what separates them is how much of a mistake
+         *     reaches the client. Each step strictly contains the one before it:
+         *
+         *     - ``OFF`` — nothing is raised. The period stays outstanding and the invoice editor's
+         *       picker offers it, which is the entire manual path: nothing is lost, it waits for a human.
+         *     - ``DRAFT`` — a draft appears, numberless, and a human issues it. **The default**, and what
+         *       every instance did before this level existed, so an upgrade changes nothing.
+         *     - ``ISSUE`` — the draft is issued too: it takes its number, freezes its bill-to snapshot
+         *       and starts counting towards its due date. Nobody outside the agency has seen it yet.
+         *     - ``SEND`` — and it is e-mailed to the client, with the document attached.
+         *
+         *     ``ISSUE`` and ``SEND`` deliberately overrule ``docs/INVOICING.md``'s original *"a human
+         *     sends invoices"* rule (#31) — an owner decision, recorded there. They are opt-in per org
+         *     and overridable per agreement precisely because they are the two steps a delete cannot
+         *     undo: an issued invoice is corrected by a credit note, and a sent one has been read.
+         *
+         *     It lives in core rather than in `invoicing` because three modules need the word:
+         *     `subscriptions` and `domains` each store an agreement's override and put it on their
+         *     ``due`` event, and `invoicing` resolves it against the org default. A module importing
+         *     another module's enum is exactly what §6 forbids.
+         * @enum {string}
+         */
+        AutoInvoiceMode: "off" | "draft" | "issue" | "send";
         /** AvailableAccount */
         AvailableAccount: {
             /** Account Hint */
@@ -8463,19 +8493,12 @@ export interface components {
             backup_codes: string[];
         };
         /**
-         * BillableSubscription
-         * @description One of a client's agreements, offered to the line editor as a ready-made line.
-         *
-         *     ``already_billed`` is the honest half of the answer: the period is *shown* with the claim
-         *     that holds it, rather than hidden, so a user who wonders "did I already invoice March?"
-         *     reads it here instead of finding out from a duplicate.
+         * BillableDomain
+         * @description A domain and every renewal period of it still outstanding (#250) — the subscription
+         *     shape, one entity over. Renewals already print in a document's subscription section; a
+         *     picker that claimed to show everything outstanding and omitted them would be lying.
          */
-        BillableSubscription: {
-            /**
-             * Already Billed
-             * @default false
-             */
-            already_billed: boolean;
+        BillableDomain: {
             /** Amount */
             amount: string;
             /** Currency */
@@ -8485,14 +8508,59 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Lines */
-            lines?: components["schemas"]["SubscriptionLineOffer"][];
             /** Name */
             name: string;
-            /** Period End */
-            period_end: string | null;
-            /** Period Start */
-            period_start: string | null;
+            /**
+             * No Cycle
+             * @default false
+             */
+            no_cycle: boolean;
+            /**
+             * No Price
+             * @default false
+             */
+            no_price: boolean;
+            /** Periods */
+            periods?: components["schemas"]["PeriodOffer"][];
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+        };
+        /**
+         * BillableSubscription
+         * @description One of a client's agreements and every period of it still outstanding.
+         */
+        BillableSubscription: {
+            /** Amount */
+            amount: string;
+            /** Currency */
+            currency: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Interval
+             * @default
+             */
+            interval: string;
+            /** Name */
+            name: string;
+            /**
+             * No Cycle
+             * @default false
+             */
+            no_cycle: boolean;
+            /** Periods */
+            periods?: components["schemas"]["PeriodOffer"][];
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
         };
         /** Body_auth_cookie_login_api_v1_auth_login_post */
         Body_auth_cookie_login_api_v1_auth_login_post: {
@@ -10793,6 +10861,7 @@ export interface components {
         };
         /** DomainCreate */
         DomainCreate: {
+            auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
             /**
              * Company Id
              * Format: uuid
@@ -10847,6 +10916,7 @@ export interface components {
         };
         /** DomainRead */
         DomainRead: {
+            auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
             /**
              * Company Id
              * Format: uuid
@@ -11014,6 +11084,7 @@ export interface components {
         };
         /** DomainUpdate */
         DomainUpdate: {
+            auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
             /** Company Id */
             company_id?: string | null;
             /** Custom */
@@ -12916,6 +12987,7 @@ export interface components {
         };
         /** InvoicingSettingsRead */
         InvoicingSettingsRead: {
+            auto_invoice_mode: components["schemas"]["AutoInvoiceMode"];
             company_details: components["schemas"]["SellerDetails"];
             /** Default Due Days */
             default_due_days: number;
@@ -12948,6 +13020,7 @@ export interface components {
         };
         /** InvoicingSettingsWrite */
         InvoicingSettingsWrite: {
+            auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
             company_details?: components["schemas"]["SellerDetails"] | null;
             /** Default Due Days */
             default_due_days?: number | null;
@@ -14025,16 +14098,24 @@ export interface components {
             amount: string;
             /** Description */
             description: string;
+            /** Domain Id */
+            domain_id?: string | null;
             /**
              * Id
              * Format: uuid
              */
             id: string;
             line_kind: components["schemas"]["LineKind"];
+            /** Period End */
+            period_end?: string | null;
+            /** Period Start */
+            period_start?: string | null;
             /** Position */
             position: number;
             /** Quantity */
             quantity: string;
+            /** Subscription Id */
+            subscription_id?: string | null;
             tax_category: components["schemas"]["TaxCategory"];
             /** Tax Name */
             tax_name: string;
@@ -14042,6 +14123,8 @@ export interface components {
             tax_rate_id: string | null;
             /** Tax Rate Pct */
             tax_rate_pct: string;
+            /** Time Entry Ids */
+            time_entry_ids?: string[];
             /** Unit */
             unit: string | null;
             /** Unit Price */
@@ -14051,6 +14134,8 @@ export interface components {
         LineWrite: {
             /** Description */
             description: string;
+            /** Domain Id */
+            domain_id?: string | null;
             /** @default product */
             line_kind: components["schemas"]["LineKind"];
             /** Period End */
@@ -14068,6 +14153,8 @@ export interface components {
             tax_rate_id?: string | null;
             /** Time Entry Id */
             time_entry_id?: string | null;
+            /** Time Entry Ids */
+            time_entry_ids?: string[];
             /** Unit */
             unit?: string | null;
             /**
@@ -14732,6 +14819,21 @@ export interface components {
              */
             www_proxied: boolean;
         };
+        /**
+         * OutstandingRead
+         * @description Everything a client still has to be invoiced for, in one round trip.
+         *
+         *     Three buckets because the editor has three sections, and one call because the picker
+         *     opens on all three at once: three browser fetches for one dialog is the shape
+         *     ``docs/PERFORMANCE.md`` exists to prevent.
+         */
+        OutstandingRead: {
+            /** Domains */
+            domains?: components["schemas"]["BillableDomain"][];
+            hours: components["schemas"]["UnbilledRead"];
+            /** Subscriptions */
+            subscriptions?: components["schemas"]["BillableSubscription"][];
+        };
         /** OverviewResponse */
         OverviewResponse: {
             /** Range Days */
@@ -15277,6 +15379,38 @@ export interface components {
              * Format: date
              */
             paid_on: string;
+        };
+        /**
+         * PeriodOffer
+         * @description One outstanding billing period of one agreement — the unit the picker selects.
+         *
+         *     A period, not an agreement: an agreement that has been paused, whose automation was off,
+         *     or that was simply never billed owes *several*, and offering only the next one is the
+         *     reason a user reaches for a hand-typed line. ``already_billed`` is shown rather than
+         *     hidden, so "did I invoice March?" is answered on the picker instead of by a duplicate.
+         */
+        PeriodOffer: {
+            /**
+             * Already Billed
+             * @default false
+             */
+            already_billed: boolean;
+            /** Amount */
+            amount: string;
+            /**
+             * Future
+             * @default false
+             */
+            future: boolean;
+            /** Lines */
+            lines?: components["schemas"]["SubscriptionLineOffer"][];
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /** Period Start */
+            period_start: string | null;
         };
         /** PermissionCatalog */
         PermissionCatalog: {
@@ -17269,6 +17403,7 @@ export interface components {
         SubscriptionCreate: {
             /** Amount */
             amount: number | string;
+            auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
             /**
              * Company Id
              * Format: uuid
@@ -17422,6 +17557,7 @@ export interface components {
             activated_at?: string | null;
             /** Amount */
             amount?: string | null;
+            auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
             /**
              * Company Id
              * Format: uuid
@@ -17773,6 +17909,7 @@ export interface components {
             amount?: number | string | null;
             /** Amount Valid From */
             amount_valid_from?: string | null;
+            auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
             /** Company Id */
             company_id?: string | null;
             /** Currency */
@@ -19313,8 +19450,23 @@ export interface components {
             entries: components["schemas"]["UnbilledEntry"][];
             /** Hourly Rate */
             hourly_rate: string | null;
+            /**
+             * Total Amount
+             * @default 0
+             */
+            total_amount: string;
+            /**
+             * Total Count
+             * @default 0
+             */
+            total_count: number;
             /** Total Minutes */
             total_minutes: number;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
         };
         /**
          * UninvoicedGroup
@@ -28345,37 +28497,6 @@ export interface operations {
             };
         };
     };
-    billable_subscriptions_api_v1_invoicing_billable_subscriptions_get: {
-        parameters: {
-            query: {
-                company_id: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BillableSubscription"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_invoices_api_v1_invoicing_invoices_get: {
         parameters: {
             query?: {
@@ -28955,6 +29076,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    outstanding_api_v1_invoicing_outstanding_get: {
+        parameters: {
+            query: {
+                company_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutstandingRead"];
                 };
             };
             /** @description Validation Error */

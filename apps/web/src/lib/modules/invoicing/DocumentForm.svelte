@@ -16,12 +16,12 @@
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
 
   import LinesEditor from "./LinesEditor.svelte";
-  import type { EditableLine } from "./calc";
+  import { lineKey, type EditableLine } from "./calc";
   import type {
-    BillableSubscription,
     DocTemplate,
     Invoice,
     InvoicingSettings,
+    Outstanding,
     Quote,
     TaxRate,
   } from "./types";
@@ -100,114 +100,56 @@
   let currency = $state("");
   const effectiveCurrency = $derived(currency || doc?.currency || orgCurrency);
 
+  // Provenance rides back into the editor: the lines are replaced wholesale on save, so a
+  // mapping that dropped what a line bills would post lines that had forgotten their claims —
+  // and the API would dutifully release them, handing the period back to the cron that raised
+  // it. Reading it back is half of that fix; `LineRead` echoing it is the other half.
   let lines = $state<EditableLine[]>(
     (doc?.lines ?? []).map((line) => ({
+      key: lineKey(),
       description: line.description,
       line_kind: line.line_kind ?? "product",
       quantity: String(Number(line.quantity)),
       unit: line.unit ?? "",
       unit_price: String(Number(line.unit_price)),
       tax_rate_id: line.tax_rate_id ?? "",
+      time_entry_ids: line.time_entry_ids ?? [],
+      subscription_id: line.subscription_id ?? undefined,
+      domain_id: line.domain_id ?? undefined,
+      period_start: line.period_start ?? undefined,
+      period_end: line.period_end ?? undefined,
     })),
   );
-  // A new document starts with one line ready to type into.
-  $effect(() => {
-    if (isNew && lines.length === 0) {
-      lines = [
-        {
-          description: "",
-          line_kind: "product",
-          quantity: "1",
-          unit: "",
-          unit_price: "",
-          tax_rate_id: settings?.default_tax_rate_id ?? "",
-        },
-      ];
-    }
-  });
 
-  // Auto-fill a fresh invoice with the client's unbilled time (owner request): every
-  // approved, billable, not-yet-invoiced entry becomes a line, its own description in the
-  // description field. The user edits or removes any before saving; a removed line's entry
-  // simply stays unbilled. Invoices only — quotes never bill time.
-  type UnbilledEntry = {
-    id: string;
-    minutes: number;
-    description: string | null;
-    project_name: string;
-    rate: string | number;
-  };
-  let autoAddedCount = $state(0);
-  //: The company we last prefilled for — so re-picking the same client doesn't refetch, and
-  //: switching clients replaces *only* the previous auto lines, never hand-typed ones.
-  let prefilledFor = $state<string | null>(null); // null: first resolved client always prefills
-
-  async function fetchUnbilled(target: string): Promise<UnbilledEntry[]> {
-    try {
-      const res = await fetch(`/invoices/unbilled?company_id=${encodeURIComponent(target)}`);
-      if (!res.ok) return [];
-      const data = (await res.json()) as { entries?: UnbilledEntry[] };
-      return data.entries ?? [];
-    } catch {
-      return []; // no permission / offline: the form just doesn't prefill
-    }
-  }
-
-  function toLine(entry: UnbilledEntry): EditableLine {
-    return {
-      description:
-        entry.description?.trim() || entry.project_name || t("invoicing.new.time_line_fallback"),
-      line_kind: "hours",
-      quantity: (entry.minutes / 60).toFixed(2),
-      unit: t("invoicing.from_time.hours_unit"),
-      unit_price: String(Number(entry.rate)),
-      tax_rate_id: settings?.default_tax_rate_id ?? "",
-      time_entry_id: entry.id,
-      auto: true,
-    };
-  }
-
-  $effect(() => {
-    if (kind !== "invoice" || !isNew) return;
-    const target = createdCompanyId || companyId;
-    if (target === prefilledFor) return;
-    prefilledFor = target;
-    if (!target) {
-      // Client cleared: drop any auto lines, keep what was typed by hand.
-      lines = lines.filter((line) => !line.auto);
-      autoAddedCount = 0;
-      return;
-    }
-    void fetchUnbilled(target).then((entries) => {
-      // A slower earlier fetch must not clobber a later client pick.
-      if (prefilledFor !== target) return;
-      const manual = lines.filter((line) => !line.auto);
-      lines = [...entries.map(toLine), ...manual];
-      autoAddedCount = entries.length;
-    });
-  });
-
-  // The client's active agreements for the "＋ abonnement" pick. Unlike the hours prefill
-  // this adds nothing on its own — it only fills the picker, because which months to bill
-  // is a decision, not a default. Invoices only: a quote bills no period, so offering the
-  // pick there would produce a line whose claim goes nowhere.
+  // What this client still has to be invoiced for — the three sections' pickers. It adds
+  // nothing on its own: which hours and which months go on *this* invoice is a decision, not
+  // a default. (It used to be a default, and a fresh invoice arrived carrying every unbilled
+  // hour the client had, which is a list to delete rather than a list to choose from.)
+  //
+  // Quotes bill no hours and claim no period, so they never ask.
   const currentCompanyId = $derived(createdCompanyId || companyId || doc?.company_id || "");
-  let subscriptions = $state<BillableSubscription[]>([]);
+  const pickable = $derived(kind === "invoice" && !locked);
+  let outstanding = $state<Outstanding | null>(null);
+  let outstandingLoading = $state(false);
   $effect(() => {
     const target = currentCompanyId;
-    if (kind !== "invoice" || locked || !target) {
-      subscriptions = [];
+    if (!pickable || !target) {
+      outstanding = null;
       return;
     }
     let current = true;
-    void fetch(`/invoices/subscriptions?company_id=${encodeURIComponent(target)}`)
-      .then((res) => (res.ok ? res.json() : []))
-      .then((rows: BillableSubscription[]) => {
+    outstandingLoading = true;
+    void fetch(`/invoices/outstanding?company_id=${encodeURIComponent(target)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: Outstanding | null) => {
         // A slower earlier fetch must not clobber a later client pick.
-        if (current) subscriptions = rows;
+        if (current) outstanding = data;
       })
       .catch(() => {
-        if (current) subscriptions = []; // no permission / offline: no picker
+        if (current) outstanding = null; // no permission / offline: no picker
+      })
+      .finally(() => {
+        if (current) outstandingLoading = false;
       });
     return () => {
       current = false;
@@ -447,16 +389,15 @@
   </div>
 
   {#if !locked}
-    {#if autoAddedCount > 0}
-      <p class="text-sm text-text-muted">
-        {t("invoicing.new.time_prefill_note", { count: autoAddedCount })}
-      </p>
-    {/if}
     <LinesEditor
       bind:lines
       {taxRates}
       {products}
-      {subscriptions}
+      {pickable}
+      {outstandingLoading}
+      hours={outstanding?.hours ?? null}
+      subscriptions={outstanding?.subscriptions ?? []}
+      domains={outstanding?.domains ?? []}
       defaultTaxRateId={settings?.default_tax_rate_id ?? ""}
       defaultHourlyRate={settings?.default_hourly_rate ?? ""}
       currency={effectiveCurrency}

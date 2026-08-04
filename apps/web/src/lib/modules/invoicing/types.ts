@@ -12,12 +12,59 @@ export type InvoicingSettings = components["schemas"]["InvoicingSettingsRead"];
 export type SellerDetails = components["schemas"]["SellerDetails"];
 export type LineKind = components["schemas"]["LineKind"];
 export type BillableSubscription = components["schemas"]["BillableSubscription"];
+export type BillableDomain = components["schemas"]["BillableDomain"];
+export type PeriodOffer = components["schemas"]["PeriodOffer"];
+export type Outstanding = components["schemas"]["OutstandingRead"];
+export type UnbilledEntry = components["schemas"]["UnbilledEntry"];
+export type AutoInvoiceMode = components["schemas"]["AutoInvoiceMode"];
 
 /** The order the three kinds appear in: what was worked, what recurs, what was sold. */
 export const LINE_KINDS = ["hours", "subscription", "product"] as const satisfies LineKind[];
 
+/** The automation levels, weakest first — each contains the one before it. */
+export const AUTO_INVOICE_MODES = [
+  "off",
+  "draft",
+  "issue",
+  "send",
+] as const satisfies AutoInvoiceMode[];
+
+/**
+ * Read the automation level a form posted, as the API's own vocabulary.
+ *
+ * `""` is the *inherit* choice and becomes `null` — a third state meaning "follow the org",
+ * which is not the same as any level and must reach the API as an explicit null. An
+ * unrecognised value is also `null` rather than a guess: a tampered form should fall back to
+ * inheriting, never to a level nobody chose.
+ */
+export function readAutoInvoiceMode(value: FormDataEntryValue | null): AutoInvoiceMode | null {
+  const raw = String(value ?? "").trim();
+  return (AUTO_INVOICE_MODES as readonly string[]).includes(raw)
+    ? (raw as AutoInvoiceMode)
+    : null;
+}
+
 export function lineKindLabel(kind: LineKind): string {
   return t(`invoicing.line.kind.${kind}`);
+}
+
+/**
+ * The **document's** unit for a line of this kind, or "" when the line names its own.
+ *
+ * Hours are hours: asking the user to type "uur" into every hours line was a field that could
+ * only ever be filled in one way, or wrong. A recurring line's quantity is the agreement's
+ * own (1 × the monthly fee), so it needs no unit either. Only a service line sells things
+ * measured in something — stuks, dagen, woorden — and there the field stays.
+ */
+export function unitFor(kind: LineKind): string {
+  return kind === "hours" ? t("invoicing.unit.hour") : "";
+}
+
+/** dd-mm-jjjj for text that gets **stored on the document** — European and locale-independent
+ *  (docs/UX.md), never the viewer's format: it becomes the line the client reads. */
+export function periodText(start: string | null | undefined, end: string): string {
+  const dmy = (iso: string) => iso.split("-").reverse().join("-");
+  return start ? `${dmy(start)} – ${dmy(end)}` : dmy(end);
 }
 
 /**

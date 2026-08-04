@@ -9,6 +9,7 @@
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import PartyPicker from "$lib/core/ui/PartyPicker.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
+  import AutoInvoiceModeField from "$lib/modules/invoicing/AutoInvoiceModeField.svelte";
   import type { components } from "$lib/core/api/schema";
   import { normalizeDomainName, tldOf } from "$lib/modules/domains/normalize";
 
@@ -16,6 +17,7 @@
   type Provider = components["schemas"]["ProviderRead"];
   type Definition = components["schemas"]["CustomFieldDefinitionRead"];
   type Member = components["schemas"]["MemberLookup"];
+  type AutoInvoiceMode = components["schemas"]["AutoInvoiceMode"];
 
   let {
     domain = null,
@@ -30,6 +32,8 @@
     nameDefault = "",
     initialCompanyId = "",
     tldPrices = [],
+    orgMode = null,
+    formId = undefined,
     oncreatecompany,
     oncreatecontact,
     oncreateprovider,
@@ -47,6 +51,10 @@
     /** Current TLD list prices (#250): the resolved rate shown while typing a name.
      * Empty when the viewer lacks `domains.tld_price.read` — the hint simply stays away. */
     tldPrices?: { tld: string; amount: string; currency: string }[];
+    /** The org's automation level, named in the "follow the organisation" hint. */
+    orgMode?: AutoInvoiceMode | null;
+    /** Associate the radios with a form rendered outside this component. */
+    formId?: string;
     /** Prefills the name on create — for quick-create from another form's picker (#115). */
     nameDefault?: string;
     /** Preselects the client on a fresh form (quick-create from a client page). */
@@ -144,6 +152,16 @@
       </p>
     </div>
   </div>
+
+  <!-- How far the renewal cron takes this domain's invoice. Only about the paper: nothing
+       here renews the registration. Defaults to following the organisation setting. -->
+  <AutoInvoiceModeField
+    name="auto_invoice_mode"
+    value={domain?.auto_invoice_mode ?? ""}
+    inheritable
+    {orgMode}
+    formId={formId}
+  />
 
   <div>
     <label for="{idPrefix}-company" class="mb-1 block text-sm text-text"

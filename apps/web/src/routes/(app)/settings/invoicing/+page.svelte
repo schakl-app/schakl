@@ -8,6 +8,7 @@
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
+  import AutoInvoiceModeField from "$lib/modules/invoicing/AutoInvoiceModeField.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
@@ -571,6 +572,29 @@
       </p>
       <div class="flex justify-end sm:col-span-2">
         <Button loading={busy.is("defaults")} disabled={busy.active}>{t("common.save")}</Button>
+      </div>
+    </form>
+  </section>
+
+  <!-- Automatic invoicing: how far the recurring-billing cron goes on its own. Its own
+       section and its own action, so saving it never touches the reminder schedule. -->
+  <section class={sectionClass}>
+    <h2 class="mb-1 text-base font-semibold text-text">
+      {t("settings.invoicing.auto_heading")}
+    </h2>
+    <p class="mb-3 text-sm text-text-muted">{t("settings.invoicing.auto_hint")}</p>
+    <form
+      method="POST"
+      action="?/saveAutoInvoice"
+      use:enhance={busy.keep("autoinvoice")}
+      class="space-y-3"
+    >
+      <AutoInvoiceModeField
+        name="auto_invoice_mode"
+        value={data.settings?.auto_invoice_mode ?? "draft"}
+      />
+      <div class="flex justify-end">
+        <Button loading={busy.is("autoinvoice")} disabled={busy.active}>{t("common.save")}</Button>
       </div>
     </form>
   </section>
