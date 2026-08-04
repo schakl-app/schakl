@@ -706,15 +706,17 @@ async def test_tenant_isolation_across_invoicing_tables(client_for) -> None:
         ).json()
         assert b_settings["company_details"].get("vat_number") is None
 
-        # The subscription-period claim is scoped too: A's client resolves to no agreements
-        # for B, so B can neither read A's claims nor be told a period of A's is taken.
+        # What is still to be invoiced is scoped too, and the client is resolved *first*:
+        # asking about A's company from B is `not_found`, not an empty answer. The empty
+        # answer would also be safe, but it confirms the id exists somewhere — and the whole
+        # read (hours, agreement periods, renewals) hangs off that one company.
         assert (
             await cb.get(
-                "/api/v1/invoicing/billable-subscriptions",
+                "/api/v1/invoicing/outstanding",
                 params={"company_id": company_id},
                 headers=b_headers,
             )
-        ).json() == []
+        ).status_code == 404
 
 
 async def test_products_catalog(client_for) -> None:
@@ -928,15 +930,15 @@ async def test_manual_subscription_line_claims_the_period_the_cron_would_bill(cl
         ).json()
 
         # The picker offers it, priced and dated exactly as the cron would raise it.
-        offers = (
+        agreements = (
             await c.get(
-                "/api/v1/invoicing/billable-subscriptions",
+                "/api/v1/invoicing/outstanding",
                 params={"company_id": company_id},
                 headers=headers,
             )
-        ).json()
-        assert len(offers) == 1
-        offer = offers[0]
+        ).json()["subscriptions"]
+        assert len(agreements) == 1
+        offer = agreements[0]["periods"][-1]
         assert offer["amount"] == "249.00"
         assert offer["period_end"] == today.isoformat()
         assert offer["already_billed"] is False
@@ -963,14 +965,15 @@ async def test_manual_subscription_line_claims_the_period_the_cron_would_bill(cl
         invoice_id = invoice.json()["id"]
 
         # The picker now says so, rather than silently hiding the agreement.
-        offers = (
+        agreements = (
             await c.get(
-                "/api/v1/invoicing/billable-subscriptions",
+                "/api/v1/invoicing/outstanding",
                 params={"company_id": company_id},
                 headers=headers,
             )
-        ).json()
-        assert offers[0]["already_billed"] is True
+        ).json()["subscriptions"]
+        billed = [p for p in agreements[0]["periods"] if p["period_end"] == offer["period_end"]]
+        assert billed and billed[0]["already_billed"] is True
 
         # A second document may not bill the same period.
         clash = await c.post(
@@ -1016,14 +1019,14 @@ async def test_manual_subscription_line_claims_the_period_the_cron_would_bill(cl
         assert (
             await c.delete(f"/api/v1/invoicing/invoices/{invoice_id}", headers=headers)
         ).status_code == 204
-        offers = (
+        agreements = (
             await c.get(
-                "/api/v1/invoicing/billable-subscriptions",
+                "/api/v1/invoicing/outstanding",
                 params={"company_id": company_id},
                 headers=headers,
             )
-        ).json()
-        assert offers[0]["already_billed"] is False
+        ).json()["subscriptions"]
+        assert agreements[0]["periods"][-1]["already_billed"] is False
 
 
 async def _invoice_count(client, headers) -> int:

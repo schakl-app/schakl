@@ -101,6 +101,11 @@ class Domain(
     #: When the next ``domain.due`` fires; the cron advances it by a year. Derived from
     #: ``start_date`` (first anniversary still ahead) — the create form doesn't ask for it.
     next_invoice_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    #: How far the renewal cron takes this domain's invoice on its own, overriding the org's
+    #: default; ``NULL`` inherits. Distinct from anything about *renewing* the registration —
+    #: this is only about the paper. The vocabulary is ``invoicing``'s ``AutoInvoiceMode``, put
+    #: on the ``domain.due`` event so this module never reads invoicing's settings (§6).
+    auto_invoice_mode: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
     # --- providers (catalog, §89): SET NULL so deleting a provider never deletes a domain --- #
     registrar_provider_id: Mapped[uuid.UUID | None] = mapped_column(

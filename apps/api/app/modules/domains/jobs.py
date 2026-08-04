@@ -120,6 +120,11 @@ async def _advance_renewals_org(org: Org, session: AsyncSession) -> None:
                 "company_id": domain.company_id,
                 "name": domain.name,
                 "tld": domain.tld,
+                # This domain's override of how far the consumer takes the invoice, or None
+                # to inherit the org default. Carried, not resolved: the vocabulary and the
+                # org setting belong to `invoicing` (§6). The cycle advances either way — an
+                # undrafted renewal stays outstanding and the editor's picker offers it.
+                "auto_invoice_mode": domain.auto_invoice_mode,
                 "amount": str(amount),
                 "currency": currency,
                 "period_start": add_months(invoice_date, -12).isoformat(),

@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, mo
 from app.core.currency import is_valid_currency
 from app.core.numbering import format_valid
 from app.modules.invoicing.models import (
+    AutoInvoiceMode,
     InvoiceKind,
     InvoiceStatus,
     LineKind,
@@ -83,6 +84,7 @@ class InvoicingSettingsWrite(BaseModel):
     invoice_next_seq: int | None = Field(default=None, ge=1)
     quote_next_seq: int | None = Field(default=None, ge=1)
     number_reset_yearly: bool | None = None
+    auto_invoice_mode: AutoInvoiceMode | None = None
     reminders_enabled: bool | None = None
     reminder_days: list[int] | None = None
 
@@ -119,6 +121,7 @@ class InvoicingSettingsRead(BaseModel):
     invoice_next_seq: int
     quote_next_seq: int
     number_reset_yearly: bool
+    auto_invoice_mode: AutoInvoiceMode
     reminders_enabled: bool
     reminder_days: list[int]
 
@@ -392,28 +395,41 @@ class LineWrite(BaseModel):
     #: May be negative: a discount line is an ordinary line with a negative price.
     unit_price: Decimal = Field(default=Decimal(0))
     tax_rate_id: uuid.UUID | None = None
-    #: When a line was prefilled from an unbilled time entry (the new-invoice form), the
-    #: entry it came from — so ``InvoiceService.create`` bills exactly that entry and stamps
-    #: it invoiced. Validated server-side; a stale/foreign id is silently skipped. Ignored by
-    #: quotes and by line snapshotting (it is not a document-line column).
+    #: The unbilled time entries this line bills — so the invoice stamps exactly them and
+    #: releases exactly them when the line goes. A **list**, because a grouped line ("24 uur,
+    #: Project X") covers many entries; ``time_entry_id`` stays accepted as the one-entry
+    #: spelling and folds into it. Validated server-side; a stale, foreign or already-billed
+    #: id is silently skipped. Ignored by quotes.
+    time_entry_ids: list[uuid.UUID] = Field(default_factory=list)
+    #: The one-entry spelling of ``time_entry_ids``, kept so an existing caller keeps working.
     time_entry_id: uuid.UUID | None = None
     #: When a line bills a subscription period, the agreement and the period it covers — so
     #: the invoice **claims** that period and the cycle cron never bills it again (owner:
-    #: "the cron should know it is already paid"). Same handling as ``time_entry_id``:
-    #: validated server-side, silently skipped when stale, not a document-line column.
+    #: "the cron should know it is already paid"). Same handling as ``time_entry_ids``:
+    #: validated server-side, silently skipped when stale.
     subscription_id: uuid.UUID | None = None
+    #: The same claim for a domain renewal period (#250) — a client's year-end invoice
+    #: carries eleven of these next to some hours, and each one has to stop its own cron.
+    domain_id: uuid.UUID | None = None
     period_start: date | None = None
     period_end: date | None = None
 
     _blank_unit = field_validator("unit", mode="before")(_blank_to_none)
 
     @model_validator(mode="after")
-    def _period_needs_subscription(self) -> LineWrite:
-        # A period without an agreement claims nothing; an agreement without a period would
-        # claim *every* period. Refuse both rather than store a half-claim.
-        if self.subscription_id is not None and self.period_end is None:
+    def _claims_are_whole(self) -> LineWrite:
+        # A period without a source claims nothing; a source without a period would claim
+        # *every* period. Refuse both rather than store a half-claim.
+        if self.time_entry_id is not None and self.time_entry_id not in self.time_entry_ids:
+            self.time_entry_ids = [*self.time_entry_ids, self.time_entry_id]
+        if self.subscription_id is not None and self.domain_id is not None:
+            # One line, one agreement: a claim that is both would retire two periods on a
+            # single description and no reader could tell which.
+            raise ValueError("errors.invoicing.one_claim_per_line")
+        source = self.subscription_id or self.domain_id
+        if source is not None and self.period_end is None:
             raise ValueError("errors.invoicing.subscription_period_required")
-        if self.period_end is not None and self.subscription_id is None:
+        if self.period_end is not None and source is None:
             raise ValueError("errors.invoicing.subscription_required")
         return self
 
@@ -433,6 +449,15 @@ class LineRead(BaseModel):
     tax_name: str
     tax_category: TaxCategory
     amount: Decimal
+    #: What this line bills. Echoed so the editor can **re-post** it: the lines are replaced
+    #: wholesale on every save, so a read that dropped the claim produced a write that
+    #: released it, and the cron then billed the period a second time. Always empty on a
+    #: quote, which claims nothing.
+    time_entry_ids: list[uuid.UUID] = Field(default_factory=list)
+    subscription_id: uuid.UUID | None = None
+    domain_id: uuid.UUID | None = None
+    period_start: date | None = None
+    period_end: date | None = None
 
 
 class TaxGroupRead(BaseModel):
@@ -627,24 +652,61 @@ class SubscriptionLineOffer(BaseModel):
     unit_price: Decimal
 
 
-class BillableSubscription(BaseModel):
-    """One of a client's agreements, offered to the line editor as a ready-made line.
+class PeriodOffer(BaseModel):
+    """One outstanding billing period of one agreement — the unit the picker selects.
 
-    ``already_billed`` is the honest half of the answer: the period is *shown* with the claim
-    that holds it, rather than hidden, so a user who wonders "did I already invoice March?"
-    reads it here instead of finding out from a duplicate.
+    A period, not an agreement: an agreement that has been paused, whose automation was off,
+    or that was simply never billed owes *several*, and offering only the next one is the
+    reason a user reaches for a hand-typed line. ``already_billed`` is shown rather than
+    hidden, so "did I invoice March?" is answered on the picker instead of by a duplicate.
     """
+
+    period_start: date | None
+    period_end: date
+    amount: Decimal
+    #: The agreement's own lines, priced at *this* period's boundary; a single priced line
+    #: otherwise — exactly what the cron would have raised, so both paths bill the same money.
+    lines: list[SubscriptionLineOffer] = Field(default_factory=list)
+    already_billed: bool = False
+    #: The period has not ended yet: billing it is billing in advance, which is a choice
+    #: rather than a mistake, so it is offered and labelled instead of withheld.
+    future: bool = False
+
+
+class BillableSubscription(BaseModel):
+    """One of a client's agreements and every period of it still outstanding."""
+
+    id: uuid.UUID
+    name: str
+    currency: str
+    #: The agreement's current price — the header figure. Each period carries its own,
+    #: resolved at that period's boundary, because history never reprices itself.
+    amount: Decimal
+    interval: str = ""
+    periods: list[PeriodOffer] = Field(default_factory=list)
+    #: More outstanding periods exist than the cap returned. Reported, never silent.
+    truncated: bool = False
+    #: The agreement has no billing cycle (``next_invoice_date IS NULL``), so no period can be
+    #: named and none can be claimed. Surfaced as a warning rather than dropped: a paused or
+    #: mis-set agreement is exactly what the user is looking for when they open the picker.
+    no_cycle: bool = False
+
+
+class BillableDomain(BaseModel):
+    """A domain and every renewal period of it still outstanding (#250) — the subscription
+    shape, one entity over. Renewals already print in a document's subscription section; a
+    picker that claimed to show everything outstanding and omitted them would be lying."""
 
     id: uuid.UUID
     name: str
     currency: str
     amount: Decimal
-    period_start: date | None
-    period_end: date | None
-    #: The subscription's own lines when it has them; a single priced line otherwise —
-    #: exactly what the cycle cron would raise, so both paths bill the same document.
-    lines: list[SubscriptionLineOffer] = Field(default_factory=list)
-    already_billed: bool = False
+    periods: list[PeriodOffer] = Field(default_factory=list)
+    truncated: bool = False
+    no_cycle: bool = False
+    #: No price could be resolved for this domain at all (no override, no TLD price valid at
+    #: the boundary). It cannot be offered as a priced line, and saying so beats a silent 0.
+    no_price: bool = False
 
 
 class UnbilledEntry(BaseModel):
@@ -665,6 +727,26 @@ class UnbilledRead(BaseModel):
     entries: list[UnbilledEntry]
     total_minutes: int
     hourly_rate: Decimal | None
+    #: How many entries are outstanding in total, which is **not** ``len(entries)`` once the
+    #: cap bites. The count and the money are exact whatever the cap; only the detail is cut.
+    total_count: int = 0
+    total_amount: Decimal = Decimal(0)
+    #: The detail list was capped. Over a limit is an error or a flag, never a silent
+    #: truncation that reads as "this is everything" (§17's parsing rule, applied to a read).
+    truncated: bool = False
+
+
+class OutstandingRead(BaseModel):
+    """Everything a client still has to be invoiced for, in one round trip.
+
+    Three buckets because the editor has three sections, and one call because the picker
+    opens on all three at once: three browser fetches for one dialog is the shape
+    ``docs/PERFORMANCE.md`` exists to prevent.
+    """
+
+    hours: UnbilledRead
+    subscriptions: list[BillableSubscription] = Field(default_factory=list)
+    domains: list[BillableDomain] = Field(default_factory=list)
 
 
 #: The uninvoiced report's closed grouping vocabulary (#277) — what the data model has:

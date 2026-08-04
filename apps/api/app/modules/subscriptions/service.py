@@ -33,6 +33,11 @@ from sqlalchemy.sql.expression import table as sa_table
 
 from app.core.activity import ActivityService
 from app.core.activity.service import snapshot
+
+# Calendar arithmetic for a billing cycle lives in core (§6): `domains` bills on one too, and
+# two copies of "which periods has this reached" would drift into a double bill. `add_months`
+# is re-exported under the name this module has always published (`jobs.py` imports it here).
+from app.core.billing import add_months, period_boundaries
 from app.core.customfields import CustomFieldsService
 from app.core.events import emit
 from app.core.richtext import sanitize_markdown
@@ -72,7 +77,7 @@ ENTITY_TYPE = "subscription"
 _AUDITED_FIELDS = (
     "name", "status", "subscription_type_id", "company_id", "currency", "interval",
     "interval_count", "start_date", "end_date", "next_invoice_date", "included_hours",
-    "notice_period_days",
+    "notice_period_days", "auto_invoice_mode",
 )
 
 #: Starter categories, seeded lazily like ``DEFAULT_LEAVE_TYPES`` — an editable suggestion of
@@ -168,17 +173,6 @@ def period_months(interval: str, interval_count: int) -> int:
     return _INTERVAL_MONTHS[interval] * max(1, interval_count)
 
 
-def add_months(day: date, months: int) -> date:
-    """Calendar-safe month addition: 31 Jan + 1 month = 28/29 Feb, never a ValueError."""
-    month_index = day.month - 1 + months
-    year = day.year + month_index // 12
-    month = month_index % 12 + 1
-    # Clamp to the target month's length.
-    next_month_start = date(year + (month == 12), month % 12 + 1, 1)
-    last_day = (next_month_start - date.resolution).day
-    return date(year, month, min(day.day, last_day))
-
-
 @dataclass(frozen=True)
 class BillablePeriod:
     """One agreement's next billable period, **published** for `invoicing` to offer as a
@@ -199,6 +193,35 @@ class BillablePeriod:
     #: The agreement's own lines, or a single priced line when it has none — exactly the
     #: shape ``subscription.due`` carries.
     lines: tuple[tuple[str, Decimal, Decimal], ...]
+
+
+@dataclass(frozen=True)
+class OpenPeriod:
+    """One outstanding period of one agreement, priced at **its own** boundary."""
+
+    period_start: date
+    period_end: date
+    amount: Decimal
+    lines: tuple[tuple[str, Decimal, Decimal], ...]
+    #: The period has not ended yet — billing it bills in advance.
+    future: bool
+
+
+@dataclass(frozen=True)
+class OpenAgreement:
+    """An agreement and every period of it still outstanding (published, §6)."""
+
+    subscription_id: uuid.UUID
+    name: str
+    currency: str
+    interval: str
+    #: The price today — the header figure. Each period carries its own.
+    amount: Decimal
+    periods: tuple[OpenPeriod, ...]
+    truncated: bool
+    #: No billing cycle is set, so no period can be named — and a period that cannot be named
+    #: cannot be claimed either. Reported so the picker can say *why* it is offering nothing.
+    no_cycle: bool
 
 
 @dataclass(frozen=True)
@@ -359,6 +382,118 @@ class SubscriptionService:
             )
         return out
 
+    async def open_agreements(self, company_id: uuid.UUID) -> list[OpenAgreement]:
+        """This client's agreements and **every period of each still outstanding** (§6).
+
+        The arrears half of :meth:`billable_periods`, and the reason the manual path works at
+        all: an agreement whose automation is off, that was paused for a quarter, or that
+        nobody got round to invoicing owes several periods, and a picker that offered only
+        the next one would leave the rest permanently unbillable except by hand-typing.
+
+        Boundaries come from ``start_date`` forward rather than backwards from
+        ``next_invoice_date``, floored at the agreement's own ``created_at``: the cron keeps
+        advancing the cycle whether or not it drafted anything, so counting back from where
+        it now sits would forget precisely the months it skipped — while counting forward
+        from a start date years before this system knew the client would invent arrears
+        nobody agreed to.
+
+        Paused agreements are included and cancelled ones are not: a pause stops the cycle,
+        it does not forgive the months already served. Which periods are *already claimed* is
+        `invoicing`'s half of the answer, added by its own service — this one owns the
+        interval vocabulary and the price history, nothing about documents.
+        """
+        subs = list(
+            await self.ctx.session.scalars(
+                self.repo.scoped_select()
+                .where(
+                    Subscription.company_id == company_id,
+                    Subscription.status.in_(
+                        (SubscriptionStatus.ACTIVE.value, SubscriptionStatus.PAUSED.value)
+                    ),
+                )
+                .order_by(func.lower(Subscription.name))
+            )
+        )
+        if not subs:
+            return []
+        lines_by_sub: dict[uuid.UUID, list[SubscriptionLine]] = {}
+        for line in await self.ctx.session.scalars(
+            self.lines.scoped_select()
+            .where(SubscriptionLine.subscription_id.in_([s.id for s in subs]))
+            .order_by(SubscriptionLine.position)
+        ):
+            lines_by_sub.setdefault(line.subscription_id, []).append(line)
+        # The whole price history for these agreements in one read — a per-period price
+        # lookup would be one query per month per agreement (docs/PERFORMANCE.md).
+        prices_by_sub: dict[uuid.UUID, list[SubscriptionPrice]] = {}
+        for price in await self.ctx.session.scalars(
+            self.prices.scoped_select()
+            .where(SubscriptionPrice.subscription_id.in_([s.id for s in subs]))
+            .order_by(SubscriptionPrice.valid_from)
+        ):
+            prices_by_sub.setdefault(price.subscription_id, []).append(price)
+
+        today = await self._org_today()
+        out: list[OpenAgreement] = []
+        for sub in subs:
+            history = prices_by_sub.get(sub.id) or []
+
+            def price_at(day: date, rows: list[SubscriptionPrice] = history) -> Decimal:
+                """The newest price valid on ``day`` — history answers, current state never
+                reprices. Rows arrive sorted, so the last match wins."""
+                found = Decimal(0)
+                for row in rows:
+                    if row.valid_from <= day:
+                        found = row.amount
+                    else:
+                        break
+                return found
+
+            months = period_months(sub.interval, sub.interval_count)
+            rows = lines_by_sub.get(sub.id) or []
+            boundaries, truncated = (
+                period_boundaries(
+                    start_date=sub.start_date,
+                    anchor=sub.next_invoice_date,
+                    months=months,
+                    floor=sub.created_at.date(),
+                    end_date=sub.end_date,
+                )
+                if sub.next_invoice_date is not None
+                else ([], False)
+            )
+            periods: list[OpenPeriod] = []
+            for boundary in boundaries:
+                amount = price_at(boundary)
+                # The agreement's own lines are relative prices, not a snapshot: a line with
+                # no price of its own follows the period's price, so a raise reaches a
+                # hand-picked arrears month exactly as it reaches the cron's.
+                offers = tuple(
+                    (row.description, row.quantity, row.unit_amount) for row in rows
+                ) or ((sub.name, Decimal(1), amount),)
+                periods.append(
+                    OpenPeriod(
+                        period_start=add_months(boundary, -months),
+                        period_end=boundary,
+                        amount=amount,
+                        lines=offers,
+                        future=boundary > today,
+                    )
+                )
+            out.append(
+                OpenAgreement(
+                    subscription_id=sub.id,
+                    name=sub.name,
+                    currency=sub.currency,
+                    interval=sub.interval,
+                    amount=price_at(today),
+                    periods=tuple(periods),
+                    truncated=truncated,
+                    no_cycle=sub.next_invoice_date is None,
+                )
+            )
+        return out
+
     async def hours_for_projects(
         self, project_ids: Sequence[uuid.UUID]
     ) -> dict[uuid.UUID, list[SubscriptionHours]]:
@@ -434,6 +569,9 @@ class SubscriptionService:
             start_date=data.start_date,
             end_date=data.end_date,
             next_invoice_date=data.next_invoice_date,
+            auto_invoice_mode=(
+                data.auto_invoice_mode.value if data.auto_invoice_mode else None
+            ),
             included_hours=data.included_hours,
             rollover=data.rollover.model_dump(),
             notice_period_days=data.notice_period_days,
@@ -466,6 +604,13 @@ class SubscriptionService:
             if field in sent and sent[field] is not None:
                 value = sent[field]
                 values[field] = value.value if hasattr(value, "value") else value
+        if "auto_invoice_mode" in sent:
+            # Explicit null clears the override back to "inherit the org default"; the loop
+            # above skips Nones, so this has to be stated separately (`exclude_unset` is what
+            # keeps "absent" and "cleared" distinct).
+            values["auto_invoice_mode"] = (
+                data.auto_invoice_mode.value if data.auto_invoice_mode else None
+            )
         if "name" in values:
             values["name"] = values["name"].strip()
         if "notes" in values:

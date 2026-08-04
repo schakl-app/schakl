@@ -16,6 +16,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.core.billing import AutoInvoiceMode
 from app.core.party.schemas import PartyReadRef, PartyRef
 from app.modules.domains.models import DomainStatus
 
@@ -87,6 +88,9 @@ class DomainBase(BaseModel):
     email_contact: PartyRef | None = None
     #: A per-domain price agreed outside the TLD list (#250); NULL = the TLD price applies.
     price_override: Decimal | None = Field(default=None, ge=0, le=Decimal("9999999999.99"))
+    #: How far the renewal cron takes this domain's invoice by itself, overriding the org
+    #: default; ``None`` inherits. Only about the paper — nothing here renews a registration.
+    auto_invoice_mode: AutoInvoiceMode | None = None
     custom: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -112,6 +116,9 @@ class DomainUpdate(BaseModel):
     email_provider_id: uuid.UUID | None = None
     email_contact: PartyRef | None = None
     price_override: Decimal | None = Field(default=None, ge=0, le=Decimal("9999999999.99"))
+    #: How far the renewal cron takes this domain's invoice by itself, overriding the org
+    #: default; ``None`` inherits. Only about the paper — nothing here renews a registration.
+    auto_invoice_mode: AutoInvoiceMode | None = None
     custom: dict[str, Any] | None = None
 
 
@@ -139,6 +146,7 @@ class DomainRead(BaseModel):
     tld: str | None = None
     price_override: Decimal | None = None
     next_invoice_date: date | None = None
+    auto_invoice_mode: AutoInvoiceMode | None = None
     #: The price a renewal would draft at today: ``price_override``, else the TLD's current
     #: list price, else NULL. Display-only — an invoice snapshots at draft time, never here.
     resolved_price: Decimal | None = None

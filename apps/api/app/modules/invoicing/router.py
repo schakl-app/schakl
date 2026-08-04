@@ -7,6 +7,7 @@ before ``/{invoice_id}`` so "settings"/"summary" never match an id path param.
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 from fastapi import APIRouter, Depends, Query, Response
 
@@ -17,7 +18,6 @@ from app.modules.invoicing import accounting
 from app.modules.invoicing.models import InvoiceStatus
 from app.modules.invoicing.render import BUILTIN_DESIGNS, builtin_source, catalog_payload
 from app.modules.invoicing.schemas import (
-    BillableSubscription,
     DocumentSend,
     ExternalRefRead,
     InvoiceCreate,
@@ -28,6 +28,7 @@ from app.modules.invoicing.schemas import (
     InvoicingSettingsRead,
     InvoicingSettingsWrite,
     InvoicingSummary,
+    OutstandingRead,
     PaymentWrite,
     ProductCreate,
     ProductRead,
@@ -349,32 +350,32 @@ async def summary(ctx: RequestContext = Depends(require_context)) -> InvoicingSu
 async def unbilled(
     company_id: uuid.UUID = Query(...),
     project_id: uuid.UUID | None = Query(None),
-    until: str | None = Query(None, description="org-local date (YYYY-MM-DD), inclusive"),
+    # Typed, not parsed by hand: a malformed date was a 500 out of `date.fromisoformat`
+    # rather than the 422 every other bad query param gets.
+    until: date | None = Query(None, description="org-local date (YYYY-MM-DD), inclusive"),
     ctx: RequestContext = Depends(require_context),
 ) -> UnbilledRead:
-    from datetime import date as date_type
-
-    parsed = date_type.fromisoformat(until) if until else None
-    data = await InvoiceService(ctx).unbilled(company_id, project_id=project_id, until=parsed)
+    data = await InvoiceService(ctx).unbilled(company_id, project_id=project_id, until=until)
     return UnbilledRead.model_validate(data)
 
 
 @router.get(
-    "/billable-subscriptions",
-    response_model=list[BillableSubscription],
+    "/outstanding",
+    response_model=OutstandingRead,
     dependencies=[require_permission("invoicing.invoice.write")],
 )
-async def billable_subscriptions(
+async def outstanding(
     company_id: uuid.UUID = Query(...),
     ctx: RequestContext = Depends(require_context),
-) -> list[BillableSubscription]:
-    """A client's active agreements as ready-made invoice lines (the "＋ abonnement" pick).
+) -> OutstandingRead:
+    """Everything a client still has to be invoiced for: hours, agreement periods, renewals.
 
-    ``already_billed`` marks a period a document already claims: shown rather than hidden,
-    so the answer to "did I invoice March yet?" is on the picker instead of on a duplicate.
+    The source the editor's three sections pick from, in one round trip. Periods a document
+    already claims are marked ``already_billed`` rather than omitted, so "did I invoice March
+    yet?" is answered on the picker instead of by a duplicate a week later. On
+    ``invoice.write`` and not ``.read``: this is a build-an-invoice surface, not a report.
     """
-    rows = await InvoiceService(ctx).billable_subscriptions(company_id)
-    return [BillableSubscription.model_validate(row) for row in rows]
+    return OutstandingRead.model_validate(await InvoiceService(ctx).outstanding(company_id))
 
 
 @router.get(

@@ -21,12 +21,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.activity import ActivityService
 from app.core.email.branding import apply_branding, load_brand
-from app.core.email.senders import send_email
+from app.core.email.senders import EmailAttachment, send_email
 from app.core.events import SystemContext
 from app.core.jobs import run_per_org
 from app.core.models import Org
 from app.core.timezone import org_zoneinfo
-from app.modules.invoicing.emails import compose_reminder_email, load_transport
+from app.modules.invoicing.emails import (
+    compose_invoice_email,
+    compose_reminder_email,
+    load_transport,
+)
 from app.modules.invoicing.models import (
     Invoice,
     InvoiceStatus,
@@ -34,6 +38,7 @@ from app.modules.invoicing.models import (
     Quote,
     QuoteStatus,
 )
+from app.modules.invoicing.service import InvoiceService
 
 logger = logging.getLogger("schakl.invoicing")
 
@@ -62,6 +67,95 @@ async def _expire_quotes(ctx: SystemContext, today) -> None:  # noqa: ANN001
         logger.info("expired %s quotes in org %s", len(quotes), ctx.org.slug)
 
 
+async def _send_auto_issued(ctx: SystemContext, brand, transport) -> None:  # noqa: ANN001
+    """Mail the invoices the billing cron issued under ``AutoInvoiceMode.SEND``.
+
+    A separate pass, not part of the drafting handler, and the reason is transactional:
+    ``run_per_org`` gives a whole org one transaction, so mailing at draft time would let a
+    later agreement's failure roll back an invoice whose e-mail had already reached the
+    client. ``auto_send_pending`` is written in the drafting transaction and read here, in
+    the next job — so nothing is ever mailed for an invoice that did not commit.
+
+    The failure discipline is the reminders one. A **transient** failure (the provider said
+    no) leaves the flag up and retries tomorrow; a **structural** one (no recipient, no
+    transport configured) clears it and records why, because retrying it daily would be
+    noise and the invoice is issued and visible in the list either way.
+    """
+    pending = (
+        (
+            await ctx.session.execute(
+                select(Invoice).where(
+                    Invoice.org_id == ctx.org.id,
+                    Invoice.auto_send_pending.is_(True),
+                    Invoice.status == InvoiceStatus.OPEN.value,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not pending:
+        return
+    sent = 0
+    for invoice in pending:
+        to = (invoice.customer or {}).get("email")
+        if not to:
+            to = await ctx.session.scalar(
+                text("SELECT invoice_email FROM companies WHERE id = :cid AND org_id = :oid"),
+                {"cid": invoice.company_id, "oid": ctx.org.id},
+            )
+        if not to or transport is None:
+            reason = "no_recipient" if not to else "email_not_configured"
+            invoice.auto_send_pending = False  # structural: tomorrow would fail identically
+            await ActivityService(ctx).record(
+                "invoice", invoice.id, "auto_send_failed", {"reason": reason}
+            )
+            logger.warning(
+                "auto-send for invoice %s in org %s failed: %s",
+                invoice.number, ctx.org.slug, reason,
+            )
+            continue
+        provider, config, sender = transport
+        message = apply_branding(
+            brand, compose_invoice_email(invoice, brand.brand_name, None)
+        )
+        message.to = to
+        try:
+            # The document itself, not just a summary — the manual send attaches it and an
+            # automatic one has no excuse not to. Rendering is the same WeasyPrint pass the
+            # preview and the download use, so the client receives the page they would see.
+            service = InvoiceService(ctx)
+            await service._attach([invoice], payments=True)  # noqa: SLF001 - same module
+            content, filename = await service.document_pdf(invoice, "invoice")
+            message.attachments.append(
+                EmailAttachment(
+                    filename=filename, content=content, mimetype="application/pdf"
+                )
+            )
+        except Exception:  # noqa: BLE001 - a render fault must not cost the whole org's run
+            # Deliberately still sent: an invoice mail naming the number and the amount is
+            # worth more than silence, and the client can always be sent the PDF by hand.
+            logger.exception(
+                "auto-send could not render invoice %s in org %s; sending without attachment",
+                invoice.number, ctx.org.slug,
+            )
+        ok, error = await send_email(provider, config, sender, message)
+        if not ok:
+            logger.warning(
+                "auto-send for invoice %s in org %s failed: %s",
+                invoice.number, ctx.org.slug, error,
+            )
+            continue  # flag untouched → retried tomorrow
+        invoice.auto_send_pending = False
+        invoice.sent_at = datetime.now(UTC)
+        await ActivityService(ctx).record(
+            "invoice", invoice.id, "sent", {"to": to, "auto": True}
+        )
+        sent += 1
+    if sent:
+        logger.info("auto-sent %s invoices in org %s", sent, ctx.org.slug)
+
+
 async def _remind_org(org: Org, session: AsyncSession) -> None:
     ctx = SystemContext(org=org, session=session)
     today = datetime.now(await org_zoneinfo(session, org.id)).date()
@@ -70,6 +164,12 @@ async def _remind_org(org: Org, session: AsyncSession) -> None:
 
     settings_row = await session.scalar(
         select(InvoicingSettings).where(InvoicingSettings.org_id == org.id)
+    )
+    # The auto-send queue is independent of the reminder schedule: an org that never dunned
+    # anyone can still have automation set to `send`, so this must not sit behind the
+    # `reminders_enabled` gate below.
+    await _send_auto_issued(
+        ctx, await load_brand(session, org), await load_transport(session, org.id)
     )
     if (
         settings_row is None

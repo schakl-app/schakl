@@ -9,15 +9,23 @@ never double-bill a client (#31's hard rule).
 
 They run on the emitter's context (the cron's ``SystemContext``): no permission check — an
 event side effect rides the emitter's authority — and the actor on the trail is the system,
-which is exactly who raised the document. **Draft**, never issued: a human sends invoices
-(#31: "do not auto-finalise financial documents").
+which is exactly who raised the document.
+
+**How far the document goes is the tenant's call** (:class:`AutoInvoiceMode`), resolved per
+agreement over an org default. ``off`` raises nothing and loses nothing — the period stays
+unclaimed and the editor's picker offers it, which is the manual path. ``draft`` is the
+default and what this consumer always did. ``issue`` and ``send`` go further, and are an
+explicit owner decision overriding #31's original *"do not auto-finalise financial
+documents"* (recorded in ``docs/INVOICING.md``): they are opt-in, per-agreement overridable,
+and they degrade one step rather than propagate, because the two of them are the steps a
+delete cannot undo.
 """
 
 from __future__ import annotations
 
 import logging
 import uuid
-from datetime import date
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -26,11 +34,16 @@ from sqlalchemy import select, text
 from app.core.activity import ActivityService
 from app.core.events import EmitContext
 from app.core.models import OrgSettings
+from app.core.timezone import org_zoneinfo
+from app.errors import AppError
 from app.i18n import translate
 from app.modules.invoicing.calc import LineInput, compute_totals, line_amount
 from app.modules.invoicing.models import (
+    AutoInvoiceMode,
     Invoice,
+    InvoiceDomainPeriod,
     InvoiceLine,
+    InvoiceStatus,
     InvoiceSubscriptionPeriod,
     InvoicingSettings,
     LineKind,
@@ -67,6 +80,92 @@ def _period_label(period_start: date | None, period_end: date) -> str:
     return period_end.strftime("%d-%m-%Y")
 
 
+def _resolve_mode(override: Any, settings_row: InvoicingSettings | None) -> AutoInvoiceMode:
+    """How far this agreement's invoice goes: its own override, else the org's default.
+
+    ``NULL`` on the agreement means *inherit*, never *off* — the three-state discipline §14
+    uses for leave schedules. An unrecognised stored value falls back to the org default
+    rather than guessing, and an org with no settings row yet gets ``DRAFT``, which is what
+    every instance did before the level existed.
+    """
+    for candidate in (override, settings_row.auto_invoice_mode if settings_row else None):
+        if candidate:
+            try:
+                return AutoInvoiceMode(str(candidate))
+            except ValueError:
+                continue
+    return AutoInvoiceMode.DRAFT
+
+
+async def _auto_issue(
+    ctx: EmitContext,
+    invoice: Invoice,
+    settings_row: InvoicingSettings | None,
+    *,
+    send: bool,
+) -> None:
+    """Issue the draft the cron just raised, and flag it for the send pass if asked.
+
+    Issuing here is safe to do inline: it is a number allocation and a status flip in the
+    transaction that created the invoice, so the two commit or fail together. **Sending is
+    not**, and is deliberately deferred to ``jobs.py`` — ``run_per_org`` gives a whole org one
+    transaction, so mailing here would let a later agreement's failure roll back an invoice
+    whose e-mail had already reached the client. A flag written in this transaction is only
+    ever read for an invoice that committed.
+
+    A failure degrades one step instead of propagating: an org that cannot issue (no seller
+    name) keeps its draft and is told once on the trail, rather than losing the month's
+    billing to an exception the cron cannot answer.
+    """
+    from app.modules.invoicing.service import InvoicingSettingsService, _customer_snapshot
+
+    activity = ActivityService(ctx)
+    try:
+        if not (settings_row and (settings_row.company_details or {}).get("name")):
+            raise AppError(
+                "validation", "errors.invoicing.seller_incomplete", status_code=400
+            )
+        today = datetime.now(await org_zoneinfo(ctx.session, ctx.org.id)).date()
+        due_days = settings_row.default_due_days if settings_row else 14
+        number = await InvoicingSettingsService(ctx).allocate_number("invoice")
+        company = (
+            await ctx.session.execute(
+                text(
+                    "SELECT id, name, invoice_email, vat_number, coc_number, address_line1,"
+                    " house_number, address_line2, postal_code, city, country, client_number"
+                    " FROM companies WHERE id = :cid AND org_id = :oid"
+                ),
+                {"cid": invoice.company_id, "oid": ctx.org.id},
+            )
+        ).mappings().first()
+        await ctx.repo(Invoice).update(
+            invoice,
+            number=number,
+            status=InvoiceStatus.OPEN.value,
+            issue_date=today,
+            due_date=today + timedelta(days=due_days),
+            # Freeze the bill-to at the moment the document becomes real, exactly as the
+            # manual issue does — a company that moves later never rewrites what was sent.
+            customer=(
+                _customer_snapshot(company, email=(invoice.customer or {}).get("email"))
+                if company is not None
+                else invoice.customer
+            ),
+            auto_send_pending=send,
+        )
+        await activity.record("invoice", invoice.id, "issued", {"number": number, "auto": True})
+    except AppError as exc:
+        # Recorded, not raised: the draft is worth more than the automation, and a cron that
+        # threw here would take the rest of the org's billing down with it.
+        await activity.record(
+            "invoice", invoice.id, "auto_issue_failed", {"reason": exc.message_key}
+        )
+        logger.warning(
+            "auto-issue failed for invoice %s in org %s: %s",
+            invoice.id, ctx.org.slug, exc.message_key,
+        )
+
+
 async def _draft_period_invoice(
     ctx: EmitContext,
     *,
@@ -78,9 +177,11 @@ async def _draft_period_invoice(
     raw_lines: list[dict[str, Any]],
     reference: str | None,
     currency: str,
+    mode: AutoInvoiceMode,
 ) -> None:
     """The shared drafting core: company snapshot, org tax defaults, snapshotted lines,
-    recomputed totals, one DRAFT invoice carrying ``link_field`` for idempotency."""
+    recomputed totals, one DRAFT invoice carrying ``link_field`` for idempotency — then as
+    far towards the client as ``mode`` says (:class:`AutoInvoiceMode`)."""
     org_id = ctx.org.id
     company = (
         await ctx.session.execute(
@@ -184,16 +285,26 @@ async def _draft_period_invoice(
     )
     lines = ctx.repo(InvoiceLine)
     for row in line_rows:
-        await lines.create(invoice_id=invoice.id, **row)
-    if link_field == "subscription_id":
-        # The cron's own claim on the period, in the same table a hand-built invoice writes
-        # to — so "has this period been billed?" has exactly one answer to look up.
-        await ctx.repo(InvoiceSubscriptionPeriod).create(
+        # Every line carries the period it bills, so an edit of this draft round-trips its
+        # claim instead of silently handing the month back to the cron that raised it.
+        await lines.create(
             invoice_id=invoice.id,
-            subscription_id=uuid.UUID(str(link_id)),
+            **row,
+            **{link_field: uuid.UUID(str(link_id))},
             period_start=period_start,
             period_end=period_end,
         )
+    # The cron's own claim on the period, in the same table a hand-built invoice writes to —
+    # so "has this period been billed?" has exactly one answer to look up, whichever raised it.
+    claim_model = (
+        InvoiceSubscriptionPeriod if link_field == "subscription_id" else InvoiceDomainPeriod
+    )
+    await ctx.repo(claim_model).create(
+        invoice_id=invoice.id,
+        **{link_field: uuid.UUID(str(link_id))},
+        period_start=period_start,
+        period_end=period_end,
+    )
     await ActivityService(ctx).record_created(
         "invoice",
         invoice.id,
@@ -203,6 +314,8 @@ async def _draft_period_invoice(
         "drafted invoice for %s %s period %s in org %s",
         link_field, link_id, period_end, ctx.org.slug,
     )
+    if mode.issues:
+        await _auto_issue(ctx, invoice, settings_row, send=mode.sends)
 
 
 async def on_subscription_due(ctx: EmitContext, payload: dict[str, Any]) -> None:
@@ -214,6 +327,17 @@ async def on_subscription_due(ctx: EmitContext, payload: dict[str, Any]) -> None
         return
     period_start, period_end = period
     if not (subscription_id and company_id):
+        return
+
+    # Automation off: raise nothing and *say* nothing. The period is not lost — the cycle
+    # advanced, nothing claimed it, and the editor's picker enumerates exactly the periods
+    # no document holds. That is the manual path, and it is why turning automation off costs
+    # a click rather than a month of billing.
+    settings_row = await ctx.session.scalar(
+        select(InvoicingSettings).where(InvoicingSettings.org_id == ctx.org.id)
+    )
+    mode = _resolve_mode(payload.get("auto_invoice_mode"), settings_row)
+    if mode is AutoInvoiceMode.OFF:
         return
 
     # Idempotency, part one: the cheap lookup (the unique index is part two).
@@ -267,6 +391,7 @@ async def on_subscription_due(ctx: EmitContext, payload: dict[str, Any]) -> None
         raw_lines=raw_lines,
         reference=payload.get("name"),
         currency=payload.get("currency") or "EUR",
+        mode=mode,
     )
 
 
@@ -282,6 +407,30 @@ async def on_domain_due(ctx: EmitContext, payload: dict[str, Any]) -> None:
     if not (domain_id and company_id):
         return
 
+    settings_row = await ctx.session.scalar(
+        select(InvoicingSettings).where(InvoicingSettings.org_id == ctx.org.id)
+    )
+    mode = _resolve_mode(payload.get("auto_invoice_mode"), settings_row)
+    if mode is AutoInvoiceMode.OFF:
+        return
+
+    # Idempotency, part one: the claim table — which is what a **hand-picked** renewal writes.
+    # Until it existed, a renewal billed by hand on a mixed invoice had no
+    # ``invoices.domain_id`` to find, so the cron billed the year a second time; the lookup on
+    # ``invoices`` stays for rows drafted before the table and never backfilled.
+    claimed = await ctx.session.scalar(
+        select(InvoiceDomainPeriod.id).where(
+            InvoiceDomainPeriod.org_id == ctx.org.id,
+            InvoiceDomainPeriod.domain_id == domain_id,
+            InvoiceDomainPeriod.period_end == period_end,
+        )
+    )
+    if claimed is not None:
+        logger.info(
+            "domain %s period %s already billed; skipping draft in org %s",
+            domain_id, period_end, ctx.org.slug,
+        )
+        return
     existing = await ctx.session.scalar(
         select(Invoice.id).where(
             Invoice.org_id == ctx.org.id,
@@ -318,4 +467,5 @@ async def on_domain_due(ctx: EmitContext, payload: dict[str, Any]) -> None:
         raw_lines=raw_lines,
         reference=payload.get("name"),
         currency=payload.get("currency") or "EUR",
+        mode=mode,
     )

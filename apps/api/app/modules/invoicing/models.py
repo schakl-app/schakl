@@ -45,6 +45,11 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.activity import AuditableMixin
+
+# The automation level is core vocabulary, not this module's: `subscriptions` and `domains`
+# each store an agreement's override, and neither may import from here (§6). Re-exported so
+# this module's own readers still find it where they expect it.
+from app.core.billing import AutoInvoiceMode
 from app.core.customfields import CustomizableMixin
 from app.core.mixins import OrgScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
 from app.db import Base
@@ -167,6 +172,19 @@ class InvoicingSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Bas
     quote_seq_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     number_reset_yearly: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")
+    )
+
+    # --- recurring billing ------------------------------------------------------ #
+    #: How far the subscription/domain cron takes an invoice by itself (:class:`AutoInvoiceMode`).
+    #: The org-wide default; an agreement may override it, because an agency that automates its
+    #: hosting retainers still hand-assembles the one client whose invoices are always argued
+    #: over — and per-org config cannot express a per-agreement fact (§14's rule, one entity
+    #: over). ``draft`` is the seeded value: it is what every instance did before this column.
+    auto_invoice_mode: Mapped[str] = mapped_column(
+        String(10),
+        nullable=False,
+        default=AutoInvoiceMode.DRAFT.value,
+        server_default=text("'draft'"),
     )
 
     # --- reminders (issue #207: automatic, opt-in) ------------------------------ #
@@ -400,6 +418,17 @@ class Invoice(
     reminders_paused: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
+    #: Raised and issued by the cron under ``AutoInvoiceMode.SEND``, and not yet mailed.
+    #:
+    #: The send is a **separate pass** (``jobs.py``) rather than part of the drafting handler,
+    #: for one reason: ``run_per_org`` gives a whole org one transaction, so a later
+    #: subscription raising anything would roll back an invoice whose e-mail had already left
+    #: the building. A flag set inside that transaction and read by the next job is only ever
+    #: read for an invoice that committed. Cleared on success, and on a structural failure
+    #: that retrying cannot fix — recorded on the trail either way, never as daily noise.
+    auto_send_pending: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
 
 
 class Quote(
@@ -492,6 +521,20 @@ class _LineColumns:
 
 
 class InvoiceLine(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, _LineColumns, Base):
+    """An invoice line, plus **what it bills** — provenance the quote line deliberately lacks.
+
+    A quote claims nothing: it bills no hour and retires no period, so these columns live
+    here rather than on ``_LineColumns``. They exist because the claim tables alone could not
+    answer *which line* billed a thing, and the editor replaces lines wholesale on every
+    save: without provenance on the row, re-saving a draft posted lines that had forgotten
+    their claims, and the service dutifully released them (the cron then billed the period a
+    second time). The line is now the record and the claim tables are rebuilt from it.
+
+    ``time_entry_ids`` is a **list** because one line may bill many entries — ``from_time``
+    groups per project or per day by design, and "24 uur — Project X" is one line over
+    fourteen entries. The others are singular: a line bills one agreement's one period.
+    """
+
     __tablename__ = "invoice_lines"
 
     invoice_id: Mapped[uuid.UUID] = mapped_column(
@@ -500,6 +543,17 @@ class InvoiceLine(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, _LineColu
         nullable=False,
         index=True,
     )
+    #: The unbilled time entries this line bills — bare UUIDs (§6), validated through the
+    #: time module's table on write. Empty for every other kind of line.
+    time_entry_ids: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    #: The agreement this line bills a period of (#30) — cross-module, so no FK (§6).
+    subscription_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    #: The domain this line bills a renewal period of (#250) — cross-module, so no FK (§6).
+    domain_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
 
 
 class QuoteLine(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, _LineColumns, Base):
@@ -588,6 +642,36 @@ class InvoiceSubscriptionPeriod(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMi
         index=True,
     )
     subscription_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+
+
+class InvoiceDomainPeriod(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """Which domain renewal periods an invoice already billed — the third claim table.
+
+    ``invoices.domain_id`` + ``uq_invoices_domain_period`` answered the renewal cron only for
+    the invoice the cron itself raised: one column holds one domain, while an agency's
+    year-end invoice routinely carries eleven renewals next to some hours. So the claim moves
+    here on the same shape as :class:`InvoiceSubscriptionPeriod`, and ``on_domain_due``
+    consults it before drafting — which is what makes a hand-picked renewal stop the cron.
+    The partial index on ``invoices`` stays as the backstop for the cron's own path.
+    """
+
+    __tablename__ = "invoice_domain_periods"
+    __table_args__ = (
+        # One domain, one renewal period, one invoice.
+        UniqueConstraint(
+            "org_id", "domain_id", "period_end", name="uq_invoice_domain_periods_period"
+        ),
+    )
+
+    invoice_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("invoices.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    domain_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
     period_end: Mapped[date] = mapped_column(Date, nullable=False)
 
