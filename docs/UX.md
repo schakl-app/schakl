@@ -78,6 +78,13 @@
   sends that id — a pre-filled checkbox the action ignores links nothing. This is easy to
   reintroduce one field at a time, so when you add a new inline quick-create, check it forwards
   the context the parent already knows.
+  **And the auto-select must not fire on a form result it did not ask for.** A quick-create
+  answers through `page.form.inlineCreated`, which outlives the dialog that produced it: a picker
+  living in a per-record dialog (the contactmoment review, keyed on the row) is a *fresh instance*
+  the next time it opens, and one that trusts whatever is already on `page.form` will pre-select
+  the project created for the previous record — pre-filled, plausible, and filed onto the wrong
+  row the moment the user approves. Seed the "already handled" id from `page.form` at mount, so
+  only a create made by *this* instance is acted on.
   **And the context narrows the picker, not just its ＋: a picker on a form that has a client
   lists that client's rows, and keeps narrowing as the client changes.** The contact picker on a
   contactmoment offered the agency's whole address book. Two shapes did it: it read only the

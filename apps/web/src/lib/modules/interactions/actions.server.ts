@@ -376,6 +376,43 @@ export const interactionActions = {
   },
 
   /**
+   * Inline-create behind the review dialog's project picker (docs/UX.md — per-picker definition
+   * of done): creates the project immediately and answers with `inlineCreated` so the picker
+   * auto-selects it, which is what puts it on the row the approve is about to assign. Until now
+   * an email that turned out to be the start of new work could only be approved onto a project
+   * that already existed — filing it meant leaving the review, creating the project elsewhere,
+   * and finding the message again.
+   *
+   * The dialog's current client rides along (#247), so the new project lands on the client the
+   * email is being filed to; `company_id` comes back so the picker's cascade can backfill it.
+   */
+  createInteractionProject: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const name = String(form.get("name") ?? "").trim();
+    if (!name) return fail(400, { qcError: "errors.required" });
+    const { data, error } = await apiFor(event).POST("/api/v1/projects", {
+      body: {
+        name,
+        company_id: String(form.get("company_id") ?? "").trim() || null,
+        status: "active",
+        budget_period: "total",
+        currency: event.locals.theme.currency,
+        billable_default: form.get("billable_default") !== null,
+        custom: parseCustom(form.get("custom")),
+      },
+    });
+    if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });
+    return {
+      inlineCreated: {
+        slot: String(form.get("slot") ?? "") || "move_project",
+        id: data.id,
+        name: data.name,
+        company_id: data.company_id ?? null,
+      },
+    };
+  },
+
+  /**
    * Close the linked task with this contact moment (#157): sets the picked terminal status
    * and designates the interaction as the close's justification. The API validates linkage
    * and the per-status requires_interaction policy.

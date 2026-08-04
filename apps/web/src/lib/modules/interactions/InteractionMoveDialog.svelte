@@ -7,6 +7,11 @@
    *
    * Candidates load once, when the dialog opens — never on page load (docs/PERFORMANCE.md):
    * a rarely opened dialog must not tax every detail-page render with four lookups.
+   *
+   * The project and task pickers create what they cannot find (docs/UX.md): reviewing a mail
+   * that turns out to *be* new work is the moment the project exists, so the ＋ opens the full
+   * create dialog here and the approve carries the row it made. Self-contained like the rest of
+   * this dialog — the actions ride in `interactionActions`, so every host already has them.
    */
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
@@ -16,6 +21,7 @@
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
+  import ProjectQuickCreate from "$lib/modules/projects/ProjectQuickCreate.svelte";
   import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
 
   import { contactsForScope } from "./contacts";
@@ -162,29 +168,64 @@
     }
   }
 
-  // --- inline-create behind the task picker (docs/UX.md) ------------------------------------ //
+  // --- inline-create behind the project and task pickers (docs/UX.md) ----------------------- //
   const canCreateTask = $derived(can(page.data.user, "tasks.task.create"));
+  // Projects have no separate create permission — writing one is creating one.
+  const canCreateProject = $derived(can(page.data.user, "projects.project.write"));
   let taskCreateOpen = $state(false);
   let taskDraft = $state("");
-  let handledCreate = $state("");
+  let projectCreateOpen = $state(false);
+  let projectDraft = $state("");
+  /**
+   * A form result outlives the dialog that produced it, and this dialog is keyed per row: create
+   * a project while reviewing one email, close without approving, open the next one, and the
+   * fresh instance would read the *previous* `inlineCreated` and quietly file this message onto
+   * that project — pre-filled, plausible, and wrong. An id already on `page.form` at mount was
+   * therefore answered by somebody else, so it starts out acknowledged. Deliberate initial
+   * capture: only a create made *by this instance* arrives after mount.
+   */
+  let handledCreate = $state((page.form?.inlineCreated as { id?: string } | undefined)?.id ?? "");
   $effect(() => {
     const created = page.form?.inlineCreated as
-      | { slot: string; id: string; project_id?: string | null; company_id?: string | null }
+      | {
+          slot: string;
+          id: string;
+          name?: string;
+          project_id?: string | null;
+          company_id?: string | null;
+        }
       | undefined;
-    if (created?.slot !== "move_task" || created.id === handledCreate) return;
-    handledCreate = created.id;
-    if (!tasks.some((option) => option.value === created.id)) {
-      tasks = [
-        ...tasks,
-        {
-          value: created.id,
-          label: taskDraft || "—",
-          project_id: created.project_id ?? null,
-          company_id: created.company_id ?? null,
-        },
-      ];
+    if (!created || created.id === handledCreate) return;
+    if (created.slot === "move_task") {
+      handledCreate = created.id;
+      if (!tasks.some((option) => option.value === created.id)) {
+        tasks = [
+          ...tasks,
+          {
+            value: created.id,
+            label: taskDraft || "—",
+            project_id: created.project_id ?? null,
+            company_id: created.company_id ?? null,
+          },
+        ];
+      }
+      onTaskPicked(created.id);
+    } else if (created.slot === "move_project") {
+      handledCreate = created.id;
+      if (!projects.some((option) => option.value === created.id)) {
+        projects = [
+          ...projects,
+          {
+            value: created.id,
+            label: created.name ?? (projectDraft || "—"),
+            company_id: created.company_id ?? null,
+          },
+        ];
+      }
+      // The picker's own cascade, so a project created under a client backfills the client —
+      // and the approve that follows carries both.
+      onProjectPicked(created.id);
     }
-    onTaskPicked(created.id);
   });
 
   // Approve succeeded but the close PATCH bounced (e.g. a status policy): say exactly that —
@@ -290,6 +331,12 @@
           value={projectId}
           placeholder={t("common.none")}
           onselect={onProjectPicked}
+          oncreate={canCreateProject
+            ? (query) => {
+                projectDraft = query;
+                projectCreateOpen = true;
+              }
+            : undefined}
           id="move-project"
         />
       </label>
@@ -396,6 +443,18 @@
     {/if}
   </div>
 </form>
+
+<!-- The client roster is the one this dialog already loaded, so the ＋ costs no second fetch. -->
+<ProjectQuickCreate
+  bind:open={projectCreateOpen}
+  name={projectDraft}
+  {companies}
+  {companyId}
+  locale={(page.data.locale as string | undefined) ?? "nl"}
+  action="?/createInteractionProject"
+  error={(page.form?.qcError as string | undefined) ?? null}
+  pickerSlot="move_project"
+/>
 
 <TaskQuickCreate
   bind:open={taskCreateOpen}
