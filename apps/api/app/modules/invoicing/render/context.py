@@ -372,10 +372,23 @@ def build_context(
                  "value": money(doc.subtotal), "strong": False}
             )
         elif key == "tax_rows":
-            totals_rows.extend(
-                {"key": "tax", "label": row["name"], "value": row["tax"], "strong": False}
-                for row in tax_rows
-            )
+            # One line, or a line per rate. The reader's question at the foot of an invoice is
+            # *how much* VAT; only a document carrying several rates also has to answer
+            # *which*, and that split is required **on the invoice**, not required here. With
+            # the breakdown block switched on it is already stated, in more detail (base as
+            # well as tax) — so repeating it beside the total is the same table twice, which is
+            # what "Subtotaal / 21% / 9% / Totaal" beside a Btw-%/Grondslag/Bedrag table was.
+            # Without that block these rows *are* the statement, and stay per rate.
+            if layout.enabled("tax_summary"):
+                totals_rows.append(
+                    {"key": "tax", "label": t("invoicing.doc.tax_total"),
+                     "value": money(getattr(doc, "tax_total", 0)), "strong": False}
+                )
+            else:
+                totals_rows.extend(
+                    {"key": "tax", "label": row["name"], "value": row["tax"], "strong": False}
+                    for row in tax_rows
+                )
         elif key == "total":
             totals_rows.append(
                 {"key": key, "label": t("invoicing.doc.total"),

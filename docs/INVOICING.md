@@ -243,6 +243,13 @@ service._render_inputs ─┬─▶ context.build_context ──▶ engine.rende
   so a document showing no card still says where the money goes; with the card on it is the
   same amount, IBAN and reference a second time a few centimetres lower. A sentence the tenant
   wrote themselves always prints — they put it there on purpose.
+- **The VAT split is stated once.** `tax_rows` prints a line per rate — that split is what
+  makes a multi-rate invoice lawful, which is why the field is locked. It is required *on the
+  document*, though, not required *there*: with the `tax_summary` block switched on the same
+  split is already stated beside it in more detail (taxable amount as well as tax), so the
+  totals collapse to a single **Totaal btw**. Without that block the rows stay per rate,
+  because then they are the statement. The reader's question at the foot of an invoice is how
+  much VAT; only a document carrying several rates also has to answer which.
 
 ### What a template may rearrange (`render/blocks.py`)
 

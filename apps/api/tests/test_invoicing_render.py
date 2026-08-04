@@ -227,6 +227,32 @@ def test_a_block_ordered_around_the_total_still_lands_there() -> None:
     assert below.index("Bedankt") > below.index('class="closing')
 
 
+def test_the_vat_split_is_stated_once() -> None:
+    """The per-rate rows in the totals are what makes a multi-rate invoice lawful — so they
+    collapse to one *Totaal btw* exactly when the breakdown block already carries the split,
+    in more detail, a few centimetres to the left. Not a preference: without that block these
+    rows *are* the statement and stay per rate.
+    """
+    from app.modules.invoicing.render.context import build_context
+
+    def totals(tax_summary: bool) -> list[dict]:
+        doc, lines, groups = sample_document("nl", "EUR", TODAY)
+        return build_context(
+            kind="invoice", doc=doc, lines=lines, seller=SELLER,
+            config={"layout": [{"key": "tax_summary", "enabled": tax_summary}]},
+            brand=DocumentBrand(name="Agency"), tax_groups=groups,
+        )["totals"]
+
+    # The sample carries two rates on purpose, so "one row" cannot pass by accident.
+    per_rate = [row["label"] for row in totals(False) if row["key"] == "tax"]
+    assert per_rate == ["21%", "9%"]
+
+    combined = [row for row in totals(True) if row["key"] == "tax"]
+    assert [row["label"] for row in combined] == ["Totaal btw"]
+    # And it is the whole tax, not the first group's: 236,25 + 8,10.
+    assert combined[0]["value"] == "€ 244,35"
+
+
 def test_the_letterhead_prints_the_sample_on_one_sheet() -> None:
     """Density is part of the design, not a nicety.
 

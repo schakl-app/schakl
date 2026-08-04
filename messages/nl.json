@@ -3268,6 +3268,7 @@
   "invoicing.doc.iban": "IBAN",
   "invoicing.doc.payment_fallback": "Gelieve {total} vóór {due} over te maken naar {iban} onder vermelding van {number}.",
   "invoicing.doc.subtotal": "Subtotaal",
+  "invoicing.doc.tax_total": "Totaal btw",
   "invoicing.doc.total": "Totaal",
   "invoicing.doc.paid": "Betaald",
   "invoicing.doc.to_pay": "Te betalen",
