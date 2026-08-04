@@ -131,17 +131,22 @@ export class Recorder {
     this.#release();
     const settle = this.#settle;
     this.#settle = null;
-    this.state = "idle";
-    if (!chunks.length) {
-      settle?.(null);
-      return;
-    }
-    const blob = new Blob(chunks, { type: chunks[0].type || "audio/webm" });
+    // Stay in `working` across the encode, not just up to it. Returning to `idle` first would
+    // let a second `start()` past the `active` guard while the first clip is still encoding —
+    // two recordings racing each other's promises — and would make the button's spinner dead
+    // code, since the only state it renders would never be observable.
     try {
+      if (!chunks.length) {
+        settle?.(null);
+        return;
+      }
+      const blob = new Blob(chunks, { type: chunks[0].type || "audio/webm" });
       settle?.(await blobToBase64(blob));
     } catch {
       this.error = "voice.error_failed";
       settle?.(null);
+    } finally {
+      this.state = "idle";
     }
   }
 
