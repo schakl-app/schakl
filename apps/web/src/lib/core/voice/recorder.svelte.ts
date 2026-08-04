@@ -60,6 +60,12 @@ export class Recorder {
   #timer: ReturnType<typeof setInterval> | null = null;
   #stopTimer: ReturnType<typeof setTimeout> | null = null;
   #settle: ((clip: string | null) => void) | null = null;
+  /**
+   * Bumped by every `start()` and every `abort()`, so a capture that was awaiting the
+   * permission prompt can tell it has been superseded by the time it resolves. A boolean
+   * cannot answer that question: the stream arrives *after* the state has already moved on.
+   */
+  #generation = 0;
 
   get active(): boolean {
     return this.state !== "idle";
@@ -69,17 +75,45 @@ export class Recorder {
   async start(): Promise<string | null> {
     if (this.active) return null;
     this.error = null;
+    // Enter a non-idle state *before* awaiting the permission prompt. `active` is the only
+    // re-entry guard, and leaving it false across this await lets a second click — ordinary
+    // while a permission dialog is up — open a second stream: the first one's tracks are then
+    // overwritten by the assignments below and never stopped, so the browser's recording
+    // indicator stays lit after the user believes they stopped, and the first call's promise
+    // never settles. Same check-then-act-across-an-await shape as the encode race, one await
+    // earlier.
+    this.state = "working";
+    const generation = ++this.#generation;
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (err) {
-      this.error = micErrorKey(err);
+      if (generation === this.#generation) {
+        this.error = micErrorKey(err);
+        this.state = "idle";
+      }
+      return null;
+    }
+    if (generation !== this.#generation) {
+      // Aborted while the prompt was up — leaving the page, or Escape. This stream belongs to
+      // nobody now, and only this closure still holds a reference to release it.
+      for (const track of stream.getTracks()) track.stop();
       return null;
     }
     this.#stream = stream;
     this.#chunks = [];
     const mimeType = pickMimeType();
-    this.#recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    try {
+      this.#recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    } catch {
+      // `isTypeSupported` is advisory and may be missing entirely, so construction can still
+      // fail. Hand the microphone back and return to idle: the state entered above is only
+      // safe because every path out of here leaves it.
+      this.error = "voice.error_failed";
+      this.#release();
+      this.state = "idle";
+      return null;
+    }
     this.#recorder.ondataavailable = (event) => {
       if (event.data.size > 0) this.#chunks.push(event.data);
     };
@@ -108,6 +142,9 @@ export class Recorder {
 
   /** Stop and discard — Escape, or leaving the page. */
   abort(): void {
+    // Before the early return: a capture still waiting on the permission prompt has not
+    // reached `recording` yet, and this is the only thing that tells it to let go.
+    this.#generation++;
     if (!this.active) {
       this.#release();
       return;
