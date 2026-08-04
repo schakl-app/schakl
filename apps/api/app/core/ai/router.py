@@ -31,6 +31,7 @@ from app.core.ai.features import (
     stream_writing_assist,
     transcribe_time_entry,
 )
+from app.core.ai.providers import ProviderConfig
 from app.core.ai.schemas import (
     AIModelsRequest,
     AIModelsResult,
@@ -86,10 +87,17 @@ def _stream_response(frames: AsyncIterator[dict[str, Any]]) -> StreamingResponse
     )
 
 
-async def _preflight(service: AIService, feature: str, *, override_budget: bool) -> None:
-    """Raise the 409s (not configured / feature off / budget) before headers go out."""
-    await service.config_for(feature)
+async def _preflight(
+    service: AIService, feature: str, *, override_budget: bool
+) -> ProviderConfig:
+    """Raise the 409s (not configured / feature off / budget) before headers go out.
+
+    Returns the resolved config so a non-streaming caller can hand it to ``complete()`` rather
+    than have every round re-read the settings row and re-sum the month.
+    """
+    config = await service.config_for(feature)
     await service.ensure_budget(override=override_budget)
+    return config
 
 
 # --------------------------------------------------------------------------- #
@@ -193,8 +201,8 @@ async def time_parse(
     payload: TimeParseRequest, ctx: RequestContext = Depends(require_context)
 ) -> TimeParseResult:
     service = AIService(ctx)
-    await _preflight(service, "time_assist", override_budget=payload.override_budget)
-    return await parse_time_entry(service, payload)
+    config = await _preflight(service, "time_assist", override_budget=payload.override_budget)
+    return await parse_time_entry(service, payload, config=config)
 
 
 @router.post(

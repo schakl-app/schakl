@@ -426,7 +426,13 @@ async def test_time_parse_query_budget(client_for, monkeypatch, count_queries) -
         _fake_stream(_submit(start="09:00", end="10:00")),
     )
     async with client_for(t.host) as c:
-        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        # A budget is set on purpose: without one `ensure_budget` short-circuits before its
+        # month-wide SUM, and the per-round re-gating this pins would cost nothing to measure.
+        await c.put(
+            "/api/v1/ai/settings",
+            json={**SETTINGS_BODY, "monthly_token_budget": 1_000_000},
+            headers=headers,
+        )
         for name in ("Alpha", "Beta", "Gamma"):
             await c.post("/api/v1/companies", json={"name": name}, headers=headers)
 
@@ -458,7 +464,7 @@ async def test_time_parse_query_budget(client_for, monkeypatch, count_queries) -
     )
     # And bounded in absolute terms (15 today), so re-introducing the per-round settings read
     # and month-sum — three statements per extra round — trips this rather than going unnoticed.
-    assert len(first.statements) <= 17, (
+    assert len(first.statements) <= 16, (
         f"parse issues {len(first.statements)} statements:\n"
         + "\n".join(first.statements)
     )

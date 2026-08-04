@@ -302,6 +302,7 @@ class AIService:
         disable_tools: bool = False,
         override_budget: bool = False,
         max_tokens: int = providers.MAX_TOKENS,
+        config: ProviderConfig | None = None,
     ) -> tuple[str, list[providers.ToolCall]]:
         """One non-streaming model turn, with the DB connection handed back while it runs.
 
@@ -316,9 +317,15 @@ class AIService:
         Gating happens before the block (it needs the session), and usage is accumulated and
         recorded by the caller after it — a write inside would commit at the block's entry.
         ``AIService.stream`` is deliberately left alone: its callers meter per round.
+
+        ``config`` lets a caller that has already gated (the router's ``_preflight``, or an
+        earlier round of the same loop) pass the resolved config in and skip re-gating. The
+        budget is a monthly figure and a request cannot cross it mid-loop, so re-summing the
+        month per round bought nothing.
         """
-        config = await self.config_for(feature)
-        await self.ensure_budget(override=override_budget)
+        if config is None:
+            config = await self.config_for(feature)
+            await self.ensure_budget(override=override_budget)
         text_parts: list[str] = []
         calls: list[providers.ToolCall] = []
         tokens_in = tokens_out = 0

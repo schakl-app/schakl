@@ -24,7 +24,7 @@ from app.core.ai import prompts
 from app.core.ai.audio import decode_clip
 from app.core.ai.candidates import gather as gather_candidates
 from app.core.ai.models import AIReport
-from app.core.ai.providers import AIProviderError, ChatMessage, ToolDef
+from app.core.ai.providers import AIProviderError, ChatMessage, ProviderConfig, ToolDef
 from app.core.ai.schemas import (
     ReportCreate,
     ReportGenerateRequest,
@@ -201,7 +201,9 @@ def _parse_minutes(value: Any) -> int | None:
     return minutes if minutes > 0 else None
 
 
-async def parse_time_entry(service: AIService, payload: TimeParseRequest) -> TimeParseResult:
+async def parse_time_entry(
+    service: AIService, payload: TimeParseRequest, *, config: ProviderConfig | None = None
+) -> TimeParseResult:
     """Server-side parse of one quick-add line into a draft entry (#129, #246).
 
     The tenant's own records are resolved **before** the model runs (``candidates.gather``) and
@@ -244,6 +246,9 @@ async def parse_time_entry(service: AIService, payload: TimeParseRequest) -> Tim
                 force_tool=force,
                 override_budget=payload.override_budget,
                 max_tokens=_PARSE_MAX_TOKENS,
+                # Gated once by the route; the budget cannot change mid-request, so re-summing
+                # the month per round bought nothing.
+                config=config,
             )
             if not calls:
                 break
