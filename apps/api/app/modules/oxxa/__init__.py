@@ -20,8 +20,14 @@ Importing this package self-registers the module and its registrar provider.
 
 from __future__ import annotations
 
-from app.core.registrar import register_registrar
+import uuid
+from typing import Any
+
+from sqlalchemy import ColumnElement, or_, select
+
+from app.core.registrar import RegisterPresence, register_presence, register_registrar
 from app.modules.oxxa.client import OxxaClient
+from app.modules.oxxa.models import OxxaAccount, OxxaDomain
 from app.modules.oxxa.permissions import OXXA_PERMISSIONS
 from app.modules.oxxa.router import router
 from app.registry import ModuleDescriptor, registry
@@ -44,3 +50,41 @@ registry.register(module)
 # The registrar seam (#296 scope item 4). Registering the class rather than an instance: a
 # provider is constructed per credential, and there is one credential per account row.
 register_registrar(OxxaClient.key, OxxaClient)
+
+
+def _authority(org_id: uuid.UUID) -> ColumnElement[bool]:
+    """This org holds an OXXA credential whose register has actually been read.
+
+    ``last_synced_at``, not merely a row: a credential saved this morning knows nothing about
+    who pays for which registration, and until the register has answered once it may not be
+    allowed to narrow what gets invoiced (#298).
+    """
+    return (
+        select(OxxaAccount.id)
+        .where(OxxaAccount.org_id == org_id, OxxaAccount.last_synced_at.is_not(None))
+        .exists()
+    )
+
+
+def _holds(org_id: uuid.UUID, domain: Any) -> ColumnElement[bool]:
+    """The OXXA register holds this domain — so the agency is the party renewing it.
+
+    Matched by the link a sync writes **or** by name, because the two orders an agency actually
+    works in disagree: sync the register first and a domain record typed afterwards is unlinked
+    until the next sync, and "it stopped invoicing because I added it on a Tuesday" is not an
+    answer anyone would accept. ``gone`` rows are excluded — a domain transferred away is in the
+    table only so the trail of what we pushed survives it, not as evidence we still hold it.
+    """
+    return (
+        select(OxxaDomain.id)
+        .where(
+            OxxaDomain.org_id == org_id,
+            OxxaDomain.registry_status.is_distinct_from("gone"),
+            or_(OxxaDomain.domain_id == domain.id, OxxaDomain.name == domain.name),
+        )
+        .exists()
+    )
+
+
+# Who holds the registration (#298) — asked by ``domains``, which may not name this module.
+register_presence(RegisterPresence(key="oxxa", authority=_authority, holds=_holds))

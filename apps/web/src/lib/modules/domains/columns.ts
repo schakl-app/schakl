@@ -29,6 +29,9 @@ export const DOMAIN_COLUMNS: ColumnMeta[] = [
     align: "right",
   },
   { key: "price", labelKey: "domains.price", align: "right" },
+  // Resolved server-side from a three-state flag and the registrar registers (#298), so there
+  // is nothing to sort by — a quiet header, like the price beside it.
+  { key: "invoiceable", labelKey: "domains.invoiceable.column" },
   { key: "created_at", labelKey: "table.column.created_at", sortKey: "created_at", align: "right" },
 ];
 

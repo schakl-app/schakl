@@ -103,6 +103,19 @@ class AccountSyncResult(BaseModel):
     zones_synced: int = 0
     zones_matched: int = 0
     pages_projects_synced: int = 0
+    #: Whether the Registrar list answered at all (#298). **Not derivable from the counts**: an
+    #: account holding no registrations and a token that may not read the register both report
+    #: zero, and only the first of those may narrow what schakl invoices. False keeps every
+    #: undecided domain invoicing exactly as it did.
+    registrar_read: bool = False
+    #: Registrations Cloudflare Registrar reported (#298) — and how many of those the agency
+    #: actually holds there. Reported separately from the zone counts because they answer
+    #: different questions: a zone is DNS, a registration is who pays the registry.
+    registrar_domains_synced: int = 0
+    registrar_domains_at_cloudflare: int = 0
+    #: How many of those matched a schakl domain record. Worth its own number: those are the
+    #: rows whose invoicing this register now answers for (#298).
+    registrar_domains_matched: int = 0
     #: Non-fatal problems (Pages unreadable with this token, for instance): the zone sync still
     #: succeeded and saying so beats failing the whole action.
     warnings: list[str] = Field(default_factory=list)

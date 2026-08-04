@@ -21,4 +21,8 @@ export const CAPABILITIES = [
   "accounts_read",
   "zones_read",
   "pages_read",
+  // Its own token permission, and its own authority (#298): a token that reads zones every
+  // night still knows nothing about who pays for a registration. Listing it here is what tells
+  // an admin *why* their domains still invoice as they always did.
+  "registrar_read",
 ] as const;

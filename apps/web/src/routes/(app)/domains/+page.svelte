@@ -92,6 +92,7 @@
       email_enabled: emailCell,
       next_invoice: renewalCell,
       price: priceCell,
+      invoiceable: invoiceableCell,
       created_at: createdCell,
     }),
   });
@@ -144,6 +145,19 @@
   <!-- Override → TLD list price → an honest dash, never a reassuring zero (docs/UX.md). -->
   <span class="tabular-nums text-text-muted">
     {domain.resolved_price != null ? fmtMoney(Number(domain.resolved_price)) : "—"}
+  </span>
+{/snippet}
+
+{#snippet invoiceableCell(domain: Domain)}
+  <!-- The resolved answer (#298). "Volgt register" is the interesting one: it says the
+       decision is the register's, so the row changes when the register does. -->
+  <span class="text-text-muted">
+    {domain.invoiceable_effective ? t("common.yes") : t("common.no")}
+    {#if domain.invoiceable == null}
+      <span class="ml-1 rounded-md bg-surface px-1.5 py-0.5 text-xs">
+        {t("domains.invoiceable.from_register")}
+      </span>
+    {/if}
   </span>
 {/snippet}
 

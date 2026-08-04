@@ -87,6 +87,9 @@
   ): Offer[] {
     const out: Offer[] = [];
     for (const row of rows) {
+      // A domain the agency does not invoice (#298): labelled, **not** blocked. The renewal
+      // cron skips it; a human billing one by hand is a different act and stays allowed.
+      const notInvoiced = "invoiceable" in row && row.invoiceable === false;
       if (row.no_cycle) {
         out.push({
           id: `${prefix}:${row.id}:none`,
@@ -106,7 +109,11 @@
         out.push({
           id: `${prefix}:${row.id}:${period.period_end}`,
           label: row.name,
-          hint: [span, period.future ? t("invoicing.outstanding.future") : ""]
+          hint: [
+            span,
+            period.future ? t("invoicing.outstanding.future") : "",
+            notInvoiced ? t("invoicing.outstanding.not_invoiceable") : "",
+          ]
             .filter(Boolean)
             .join(" · "),
           quantity: "1",

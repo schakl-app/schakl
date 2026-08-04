@@ -19,8 +19,14 @@ from app.core.registrar.backend import (
     register_registrar,
     split_suffix,
 )
+from app.core.registrar.presence import (
+    RegisterPresence,
+    register_presence,
+    register_presences,
+)
 
 __all__ = [
+    "RegisterPresence",
     "RegistrarAuthError",
     "RegistrarContact",
     "RegistrarDomain",
@@ -28,6 +34,8 @@ __all__ = [
     "RegistrarProvider",
     "get_registrar",
     "known_registrars",
+    "register_presence",
+    "register_presences",
     "register_registrar",
     "split_suffix",
 ]

@@ -13,6 +13,7 @@ import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { DOMAIN_COLUMNS, DOMAINS_TABLE_ID } from "$lib/modules/domains/columns";
+import { readInvoiceable } from "$lib/modules/domains/normalize";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -76,6 +77,8 @@ export const actions: Actions = {
         redirect_url: String(form.get("redirect_url") ?? "").trim() || null,
         start_date: String(form.get("start_date") ?? "").trim() || undefined,
         price_override: String(form.get("price_override") ?? "").trim() || null,
+        // Three-state (#298): "" is *follow the register*, not "no".
+        invoiceable: readInvoiceable(form.get("invoiceable")),
         // "" is the inherit choice and must reach the API as an explicit null: NULL means
         // "follow the org", which is a third state rather than any of the levels.
         auto_invoice_mode: readAutoInvoiceMode(form.get("auto_invoice_mode")),

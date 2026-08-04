@@ -276,6 +276,21 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   integration *from memory*, not from a document — but **never exercised against a live
   credential**, so `docs/OXXA.md` §1 carries the checklist to run the day one arrives, and every
   parse there is defensive until it has.
+- **What the registers are actually *for* is deciding who pays** (#298, `docs/INVOICING.md`). An
+  agency's domain list mixes names it renews for the client with names the client registered
+  themselves and merely asked us to point somewhere, and only a register can tell them apart —
+  a zone cannot: Cloudflare answers DNS for plenty of domains it does not hold. So
+  `Domain.invoiceable` is three-state and never read alone: `TRUE`/`FALSE` are somebody's
+  decision, `NULL` is *follow the register*. Three rules hold it up. **A credential is not an
+  authority** — only a register that has actually *answered* (`registrar_synced_at`, not a stored
+  token, and not the zone sync) may narrow what gets invoiced, which is also what makes this safe
+  to ship into an instance already invoicing domains: with nothing read, every undecided domain
+  bills exactly as it did. **`domains` may not name the registers** (§6), so each contributes its
+  own two SQL clauses through `app/core/registrar/presence.py` and core only composes them — the
+  `app/core/directory.py` seam pattern, applied to a predicate instead of a row. And **the
+  resolution is one clause**, taken by the renewal cron, the list filter, the outstanding picker
+  and the per-row read alike, so a screen and the cron can never disagree about which domains
+  bill. Reported wherever it changes an answer, never silently applied.
 
 ## 11. Working agreement (for Claude Code)
 

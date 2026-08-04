@@ -20,6 +20,13 @@ Importing this package self-registers the module.
 
 from __future__ import annotations
 
+import uuid
+from typing import Any
+
+from sqlalchemy import ColumnElement, or_, select
+
+from app.core.registrar import RegisterPresence, register_presence
+from app.modules.cloudflare.models import CloudflareAccount, CloudflareRegistrarDomain
 from app.modules.cloudflare.permissions import CLOUDFLARE_PERMISSIONS
 from app.modules.cloudflare.router import router
 from app.registry import ModuleDescriptor, registry
@@ -38,3 +45,45 @@ module = ModuleDescriptor(
 )
 
 registry.register(module)
+
+
+def _authority(org_id: uuid.UUID) -> ColumnElement[bool]:
+    """This org holds a Cloudflare account whose **Registrar** list has been read (#298).
+
+    ``registrar_synced_at``, deliberately not ``last_synced_at``: syncing zones every night says
+    nothing about who pays for a registration, and a token scoped to DNS cannot read the
+    registrar at all. Only the register that answered may narrow what schakl invoices.
+    """
+    return (
+        select(CloudflareAccount.id)
+        .where(
+            CloudflareAccount.org_id == org_id,
+            CloudflareAccount.registrar_synced_at.is_not(None),
+        )
+        .exists()
+    )
+
+
+def _holds(org_id: uuid.UUID, domain: Any) -> ColumnElement[bool]:
+    """Cloudflare Registrar holds this domain's registration — **not** merely its zone.
+
+    ``at_cloudflare`` is the whole point: a client's own registration shows up in the same list,
+    and a zone shows up in neither. Matched by the link a sync writes or by name, so a domain
+    record typed after the last sync is not silently dropped from billing.
+    """
+    return (
+        select(CloudflareRegistrarDomain.id)
+        .where(
+            CloudflareRegistrarDomain.org_id == org_id,
+            CloudflareRegistrarDomain.at_cloudflare.is_(True),
+            or_(
+                CloudflareRegistrarDomain.domain_id == domain.id,
+                CloudflareRegistrarDomain.name == domain.name,
+            ),
+        )
+        .exists()
+    )
+
+
+# Who holds the registration (#298) — asked by ``domains``, which may not name this module.
+register_presence(RegisterPresence(key="cloudflare", authority=_authority, holds=_holds))

@@ -54,6 +54,7 @@ from app.modules.cloudflare.models import (
     CloudflarePagesLink,
     CloudflarePagesProject,
     CloudflareRedirect,
+    CloudflareRegistrarDomain,
     CloudflareZone,
     RedirectStatus,
 )
@@ -151,6 +152,66 @@ def _norm_host(value: str | None) -> str:
     return (value or "").strip().lower().rstrip(".")
 
 
+@dataclass
+class _RegistrarSyncCounts:
+    """What one Registrar sync did, for the result envelope. Mutable and local — a few counters
+    threaded through a loop, never a schema.
+
+    ``read`` is not derivable from the counts and is the one that matters (#298): an account
+    that holds no registrations and a token that may not read the register both report zero,
+    and only the first of those is allowed to narrow what schakl invoices.
+    """
+
+    read: bool = False
+    synced: int = 0
+    at_cloudflare: int = 0
+    matched: int = 0
+
+
+def _registrar_name(row: dict) -> str:
+    """The registrable name out of a Registrar row, whichever field carries it.
+
+    Cloudflare's own examples show the name under ``name``; the per-domain endpoint addresses a
+    domain by name while the list rows also carry an opaque ``id``. Since this has never been
+    seen against a live account, all three spellings are tried and an unrecognisable row is
+    skipped by the caller rather than guessed at (``docs/CLOUDFLARE.md``).
+    """
+    for key in ("name", "domain_name", "domain"):
+        value = row.get(key)
+        if isinstance(value, str) and "." in value:
+            return value
+    return ""
+
+
+def _is_cloudflare_registrar(value: object) -> bool:
+    """Whether ``current_registrar`` reads as Cloudflare Registrar.
+
+    Substring, case-insensitive, because the field is a display name ("Cloudflare",
+    "Cloudflare, Inc.") rather than a slug. **This is the whole billing decision** (#298): a
+    domain the client registered at their own registrar is in this list too, and reading mere
+    membership as "we hold it" would invoice a client for a name we only serve DNS for.
+    """
+    return isinstance(value, str) and "cloudflare" in value.lower()
+
+
+def _parse_cf_datetime(value: object) -> datetime | None:
+    """An RFC 3339 instant as Cloudflare writes it, or ``None`` — never an exception. A
+    malformed expiry must not fail a sync that otherwise worked."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def _opt_bool(value: object) -> bool | None:
+    """``None`` stays *not reported*, which is not the same as ``false`` — rendering an absent
+    ``locked`` as "unlocked" would tell an agency a domain is transferable when nobody looked."""
+    return bool(value) if isinstance(value, bool) else None
+
+
 class CloudflareService:
     def __init__(self, ctx: RequestContext) -> None:
         self.ctx = ctx
@@ -158,6 +219,7 @@ class CloudflareService:
         self.zones = ctx.repo(CloudflareZone)
         self.redirects = ctx.repo(CloudflareRedirect)
         self.projects = ctx.repo(CloudflarePagesProject)
+        self.registrar = ctx.repo(CloudflareRegistrarDomain)
         self.pages_links = ctx.repo(CloudflarePagesLink)
         self.activity = ActivityService(ctx)
 
@@ -575,12 +637,20 @@ class CloudflareService:
                 matched += 1
 
         projects_synced = 0
+        registrar = _RegistrarSyncCounts()
         if account.cf_account_id:
             try:
                 projects_synced = await self._sync_pages_projects(account, client, now)
             except CloudflareError as exc:
                 # Pages is optional. A token without it still syncs zones, and saying so beats
                 # failing an action that mostly worked.
+                warnings.append(str(exc)[:200])
+            try:
+                registrar = await self._sync_registrar_domains(account, client, now)
+            except CloudflareError as exc:
+                # Registrar is optional in exactly the same way, and the failure matters more:
+                # `registrar_synced_at` stays NULL, so this account never becomes an authority
+                # over what schakl invoices (#298). An unread register narrows nothing.
                 warnings.append(str(exc)[:200])
         else:
             warnings.append("no_account_id")
@@ -590,6 +660,10 @@ class CloudflareService:
             zones_synced=len(zones),
             zones_matched=matched,
             pages_projects_synced=projects_synced,
+            registrar_read=registrar.read,
+            registrar_domains_synced=registrar.synced,
+            registrar_domains_at_cloudflare=registrar.at_cloudflare,
+            registrar_domains_matched=registrar.matched,
             warnings=warnings,
         )
 
@@ -607,6 +681,83 @@ class CloudflareService:
             select(_domains.c.id, _domains.c.name).where(*conditions)
         )
         return {_norm_host(row.name): row.id for row in rows}
+
+    async def _sync_registrar_domains(
+        self, account: CloudflareAccount, client: CloudflareClient, now: datetime
+    ) -> _RegistrarSyncCounts:
+        """Pull Cloudflare Registrar's domain list and reconcile it (#298).
+
+        Every field is read defensively, because this endpoint has never been exercised against
+        a live Registrar account here (``docs/CLOUDFLARE.md`` §Registrar carries the checklist):
+        a row whose name cannot be found at all is skipped rather than guessed at, since a
+        registration attributed to the wrong name is worse than one nobody counted.
+
+        The one judgement made is ``at_cloudflare``: the list also reports domains registered
+        elsewhere, and only "Cloudflare is the registrar" is evidence the agency holds — and
+        therefore renews and bills — the registration. Matching to domain records is by apex
+        name, **additive only**, like the zone sync: a link an admin corrected by hand is never
+        undone by a later run.
+        """
+        rows = await client.list_registrar_domains(account.cf_account_id or "")
+        existing = {
+            r.name: r
+            for r in (
+                await self.ctx.session.execute(
+                    self.registrar.scoped_select().where(
+                        CloudflareRegistrarDomain.account_id == account.id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        }
+        names = {_norm_host(_registrar_name(row)) for row in rows}
+        domain_by_name = await self._domains_by_name({n for n in names if n})
+
+        counts = _RegistrarSyncCounts()
+        seen: set[str] = set()
+        for row in rows:
+            name = _norm_host(_registrar_name(row))
+            if not name:
+                continue
+            seen.add(name)
+            counts.synced += 1
+            at_cloudflare = _is_cloudflare_registrar(row.get("current_registrar"))
+            if at_cloudflare:
+                counts.at_cloudflare += 1
+            values: dict[str, Any] = {
+                "cf_registrar_id": str(row.get("id") or "") or None,
+                "current_registrar": str(row.get("current_registrar") or "") or None,
+                "at_cloudflare": at_cloudflare,
+                "expires_at": _parse_cf_datetime(row.get("expires_at")),
+                "auto_renew": _opt_bool(row.get("auto_renew")),
+                "locked": _opt_bool(row.get("locked")),
+                "registry_statuses": str(row.get("registry_statuses") or "")[:255] or None,
+                "last_synced_at": now,
+            }
+            domain_id = domain_by_name.get(name)
+            record = existing.get(name)
+            if record is None:
+                record = await self.registrar.create(
+                    account_id=account.id, name=name, domain_id=domain_id, **values
+                )
+            else:
+                if record.domain_id is None and domain_id is not None:
+                    values["domain_id"] = domain_id
+                record = await self.registrar.update(record, **values)
+            if record.domain_id is not None and record.at_cloudflare:
+                counts.matched += 1
+
+        # A registration that left the list (transferred out) keeps its row but stops claiming
+        # to be ours — the OXXA rule, and the reason the flag is stored rather than derived.
+        for name, record in existing.items():
+            if name not in seen and record.at_cloudflare:
+                await self.registrar.update(record, at_cloudflare=False, last_synced_at=now)
+
+        # Only now is this account an authority on who holds a registration.
+        await self.accounts.update(account, registrar_synced_at=now)
+        counts.read = True
+        return counts
 
     async def _sync_pages_projects(
         self, account: CloudflareAccount, client: CloudflareClient, now: datetime

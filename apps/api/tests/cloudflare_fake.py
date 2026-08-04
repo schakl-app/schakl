@@ -54,6 +54,9 @@ class FakeCloudflare:
         self.pages: dict[str, list[dict]] = {}
         #: account id -> {project name -> [hostnames]}.
         self.pages_domains: dict[str, dict[str, list[dict]]] = {}
+        #: account id -> the Registrar domain list (#298). Cloudflare reports domains held at
+        #: *other* registrars here too, which is exactly what the module has to tell apart.
+        self.registrar: dict[str, list[dict]] = {}
         #: Path fragments this token is not allowed to touch → 403.
         self.deny: set[str] = set()
         #: Answer every call the way Cloudflare answers a malformed credential: 400/6003, before
@@ -111,6 +114,30 @@ class FakeCloudflare:
         ruleset["rules"].append(row)
         return row
 
+    def add_registration(
+        self,
+        name: str,
+        *,
+        account: str = "acct-1",
+        registrar: str | None = "Cloudflare",
+        expires_at: str | None = "2027-03-01T23:59:59Z",
+        auto_renew: bool | None = True,
+        locked: bool | None = False,
+    ) -> dict:
+        """One row of the Registrar list. ``registrar=None`` is a domain Cloudflare knows about
+        but does not hold — the case that must never start an invoice (#298)."""
+        row = {
+            "id": f"reg-{uuid.uuid4().hex[:8]}",
+            "name": name,
+            "current_registrar": registrar,
+            "expires_at": expires_at,
+            "auto_renew": auto_renew,
+            "locked": locked,
+            "registry_statuses": "ok,clientTransferProhibited",
+        }
+        self.registrar.setdefault(account, []).append(row)
+        return row
+
     # --- transport --------------------------------------------------------------------- #
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self.handle)
@@ -139,6 +166,10 @@ class FakeCloudflare:
         # /accounts/{id}/pages/...
         if len(parts) >= 4 and parts[0] == "accounts" and parts[2] == "pages":
             return self._pages(method, parts, body)
+
+        # /accounts/{id}/registrar/domains
+        if len(parts) >= 3 and parts[0] == "accounts" and parts[2] == "registrar":
+            return _ok(self.registrar.get(parts[1], []))
 
         if path == "/zones":
             if method == "POST":

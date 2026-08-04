@@ -175,6 +175,22 @@ for accounting packages.
   due date* (`price_override`, else the TLD's `domain_tld_prices` row valid then); the
   same `events.py` drafts one invoice per `(domain, period)` under its own claim table and
   partial unique index, one line ("Domeinverlenging …" in the org locale). Same level applies.
+- **…but only if the domain is invoiced at all (#298).** An agency's domain list mixes names it
+  registered and renews for the client with names the client registered themselves and merely
+  asked us to point somewhere, and only the second kind must never reach an invoice.
+  `Domain.invoiceable` is three-state and is **never read on its own**: `TRUE`/`FALSE` are a
+  decision somebody made, `NULL` means *follow the registrar register* — bill it when a register
+  the agency has actually read holds it, and keep billing while no such register exists. The
+  resolution is one SQL clause (`domains/invoiceable.py`) that the cron's `WHERE`, the list
+  filter and the picker all take, so a screen and the cron cannot disagree about which domains
+  bill. Two consequences are worth stating here because they are easy to get backwards:
+  - **The cron skips but still advances the cycle**, the discipline `AutoInvoiceMode.OFF`
+    already follows. Freezing the date would leave a silent debt — switching the flag back on a
+    year later would fire one missed year per run until it caught up.
+  - **The picker lists it anyway, labelled.** Automation declining to draft a renewal and a
+    human being forbidden to bill one are different things, and "why is klant.nl not on the
+    invoice" is exactly the question the picker exists to answer. Answering by omission is how
+    the duplicate happens — the same rule `already_billed` follows below.
 - **What is still outstanding** (`GET /invoicing/outstanding`): the three buckets the editor's
   sections pick from, in one round trip. Each module answers the half it owns through its
   published interface (§6) — `SubscriptionService.open_agreements`,

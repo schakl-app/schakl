@@ -707,6 +707,11 @@ class BillableDomain(BaseModel):
     #: No price could be resolved for this domain at all (no override, no TLD price valid at
     #: the boundary). It cannot be offered as a priced line, and saying so beats a silent 0.
     no_price: bool = False
+    #: This domain is not invoiced (#298): a registrar register says the agency does not hold
+    #: its registration, or somebody set the flag. **Its periods are still listed**, because
+    #: automation skipping a renewal and a human being forbidden to bill one are different
+    #: things — the picker labels it and stays out of the way.
+    invoiceable: bool = True
 
 
 class UnbilledEntry(BaseModel):

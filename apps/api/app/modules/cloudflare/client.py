@@ -55,7 +55,13 @@ PER_PAGE = 50
 #: The capabilities :func:`probe_capabilities` can actually observe with a handful of cheap
 #: calls. Deliberately short: everything else (can this token edit *this* zone's DNS?) cannot be
 #: known without a zone in hand, and guessing would be worse than the real error at the call.
-CAPABILITIES: tuple[str, ...] = ("token_valid", "accounts_read", "zones_read", "pages_read")
+CAPABILITIES: tuple[str, ...] = (
+    "token_valid",
+    "accounts_read",
+    "zones_read",
+    "pages_read",
+    "registrar_read",
+)
 
 #: The phase whose entrypoint ruleset holds Redirect Rules ("Single Redirects").
 REDIRECT_PHASE = "http_request_dynamic_redirect"
@@ -261,6 +267,18 @@ class CloudflareClient:
                 pass
             else:
                 caps["pages_read"] = True
+
+            try:
+                await self.request(
+                    "GET", f"/accounts/{account_id}/registrar/domains", params={"per_page": 1}
+                )
+            except CloudflareError:
+                # Registrar is its own token permission (#298) and an account that has never
+                # registered anything through Cloudflare may answer 4xx outright. Either way
+                # the conclusion is the same: this token is not evidence about registrations.
+                pass
+            else:
+                caps["registrar_read"] = True
         return caps, account
 
     # --- zones ---------------------------------------------------------------------------- #
@@ -306,6 +324,21 @@ class CloudflareClient:
             )
             or {}
         )
+
+    # --- Registrar -------------------------------------------------------------------------- #
+    async def list_registrar_domains(self, account_id: str) -> list[dict]:
+        """Every domain Cloudflare Registrar knows about for this account (#298).
+
+        A **different question from** :meth:`list_zones`, and the whole reason this call exists:
+        a zone says Cloudflare answers DNS for a name, this says who holds its registration.
+        The reply carries domains registered elsewhere too (that is what ``current_registrar``
+        is for), so a caller must read that field rather than the list's membership.
+
+        Never exercised against a live Registrar account — the parsing on the other side of
+        this call is defensive for the reason ``docs/OXXA.md`` §1 states, and
+        ``docs/CLOUDFLARE.md`` carries the checklist to run the day one exists.
+        """
+        return await self.paginate(f"/accounts/{account_id}/registrar/domains")
 
     # --- DNS ------------------------------------------------------------------------------ #
     async def list_dns_records(self, zone_id: str) -> list[dict]:

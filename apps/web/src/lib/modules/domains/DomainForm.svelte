@@ -11,6 +11,7 @@
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import AutoInvoiceModeField from "$lib/modules/invoicing/AutoInvoiceModeField.svelte";
   import type { components } from "$lib/core/api/schema";
+  import InvoiceableField from "$lib/modules/domains/InvoiceableField.svelte";
   import { normalizeDomainName, tldOf } from "$lib/modules/domains/normalize";
 
   type Domain = components["schemas"]["DomainRead"];
@@ -152,6 +153,16 @@
       </p>
     </div>
   </div>
+
+  <!-- Whether the renewal is billed on at all (#298). Above the automation level on purpose:
+       "do we invoice this" comes before "how far does the cron take it". -->
+  <InvoiceableField
+    name="invoiceable"
+    value={domain?.invoiceable ?? null}
+    source={domain?.invoiceable_source ?? null}
+    registers={domain?.registers ?? []}
+    {formId}
+  />
 
   <!-- How far the renewal cron takes this domain's invoice. Only about the paper: nothing
        here renews the registration. Defaults to following the organisation setting. -->

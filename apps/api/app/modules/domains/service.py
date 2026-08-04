@@ -34,12 +34,18 @@ from app.core.party import PartyService, PartyType
 from app.core.party.schemas import PartyRef
 from app.core.providers import ProviderService
 from app.core.providers.models import Provider, ProviderKind
+from app.core.registrar import register_presences
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
 from app.core.urls import reject_dangerous_url
 from app.errors import AppError
 from app.modules.domains.dns import fetch_dns
+from app.modules.domains.invoiceable import (
+    invoiceable_condition,
+    register_authority,
+    source_of,
+)
 from app.modules.domains.models import BILLABLE_STATUSES, Domain, DomainTldPrice
 from app.modules.domains.schemas import (
     DomainCreate,
@@ -66,6 +72,7 @@ _AUDITED_FIELDS = (
     "redirect_url",
     "start_date",
     "price_override",
+    "invoiceable",
     "auto_invoice_mode",
     "registrar_provider_id",
     "dns_provider_id",
@@ -106,6 +113,11 @@ class OpenRenewal:
     #: No price resolves (no override, and no TLD price valid at the boundary). Reported
     #: rather than offered at zero: a €0,00 renewal line is a silent invoicing error.
     no_price: bool
+    #: This domain is not invoiced (#298) — the register says the agency does not hold its
+    #: registration, or somebody said so. **Reported with its periods, never omitted**: the
+    #: automation skips it, but "why is klant.nl not on the invoice" is exactly the question
+    #: the picker exists to answer, and answering by omission is how the duplicate happens.
+    invoiceable: bool = True
 
 
 def first_future_anniversary(start: date, today: date) -> date:
@@ -203,12 +215,19 @@ class DomainService:
         company_id: uuid.UUID | None = None,
         q: str | None = None,
         sort: str | None = None,
+        invoiceable: bool | None = None,
     ) -> tuple[Sequence[Domain], int]:
         conditions = []
         if company_id is not None:
             conditions.append(Domain.company_id == company_id)
         if q:
             conditions.append(Domain.name.ilike(f"%{q.strip()}%"))
+        if invoiceable is not None:
+            # Filters on the *resolved* answer, not the stored column: "show me what I am not
+            # billing" must include the domains a register decided about, which are precisely
+            # the ones nobody has typed anything into.
+            clause = invoiceable_condition(self._org_id)
+            conditions.append(clause if invoiceable else ~clause)
 
         stmt = self.repo.scoped_select().where(*conditions)
         stmt = apply_sort(stmt, sort, SORTABLE, default=func.lower(Domain.name))
@@ -262,6 +281,7 @@ class DomainService:
         )
         if not domains:
             return []
+        await self._attach_invoiceable(domains)
         tlds = {d.tld for d in domains if d.tld}
         # The whole price history for the TLDs in play, in one read: resolving per domain per
         # year would be one query per renewal (docs/PERFORMANCE.md).
@@ -337,6 +357,7 @@ class DomainService:
                     truncated=truncated,
                     no_cycle=domain.next_invoice_date is None,
                     no_price=now_priced is None or unpriced,
+                    invoiceable=bool(getattr(domain, "invoiceable_effective", True)),
                 )
             )
         return out
@@ -385,6 +406,9 @@ class DomainService:
             start_date=start_date,
             tld=tld_of(name),
             price_override=data.price_override,
+            # NULL by default, and deliberately: at create time nobody knows yet whether the
+            # agency holds this registration — the register does, and answers on every read.
+            invoiceable=data.invoiceable,
             auto_invoice_mode=(
                 data.auto_invoice_mode.value if data.auto_invoice_mode else None
             ),
@@ -436,6 +460,10 @@ class DomainService:
             values["start_date"] = data.start_date
         if "price_override" in sent:
             values["price_override"] = data.price_override
+        if "invoiceable" in sent:
+            # Explicit null clears the decision back to "follow the register" (#298) — the same
+            # three-state discipline `auto_invoice_mode` below uses.
+            values["invoiceable"] = data.invoiceable
         if "auto_invoice_mode" in sent:
             # Explicit null clears the override back to "inherit the org default" — the
             # `exclude_unset` split is what keeps "absent" and "cleared" distinct.
@@ -742,6 +770,7 @@ class DomainService:
             )
         resolved = await self.party.resolve_many(party_inputs)
 
+        await self._attach_invoiceable(domains)
         current_prices = await self._current_tld_prices({d.tld for d in domains if d.tld})
         # The org currency backs an override with no TLD row behind it; fetched lazily so a
         # list without one pays no extra query.
@@ -768,6 +797,52 @@ class DomainService:
             else:
                 d.resolved_price = None  # type: ignore[attr-defined]
                 d.resolved_currency = None  # type: ignore[attr-defined]
+
+    async def _attach_invoiceable(self, domains: Sequence[Domain]) -> None:
+        """Resolve #298's three-state flag for a whole page in **one** query.
+
+        The resolved answer, whether any register has been read, and which registers hold each
+        domain all come back on the same statement: the authority clause and each source's
+        ``holds`` are just more selected columns, and the first is uncorrelated so it costs a
+        single evaluation regardless of the page size (docs/PERFORMANCE.md). With no register
+        module enabled there is nothing to ask, so the query is skipped entirely.
+        """
+        sources = register_presences()
+        if not sources:
+            for d in domains:
+                d.invoiceable_effective = d.invoiceable is not False  # type: ignore[attr-defined]
+                d.invoiceable_source = source_of(d.invoiceable, has_authority=False)  # type: ignore[attr-defined]
+                d.registers = []  # type: ignore[attr-defined]
+            return
+        org_id = self._org_id
+        ids = [d.id for d in domains]
+        rows = (
+            await self.ctx.session.execute(
+                select(
+                    Domain.id,
+                    invoiceable_condition(org_id).label("effective"),
+                    register_authority(org_id).label("authority"),
+                    *[
+                        source.holds(org_id, Domain).label(f"held_{source.key}")
+                        for source in sources
+                    ],
+                ).where(Domain.org_id == org_id, Domain.id.in_(ids))
+            )
+        ).all()
+        resolved = {row.id: row for row in rows}
+        for d in domains:
+            row = resolved.get(d.id)
+            d.invoiceable_effective = (  # type: ignore[attr-defined]
+                bool(row.effective) if row is not None else d.invoiceable is not False
+            )
+            d.invoiceable_source = source_of(  # type: ignore[attr-defined]
+                d.invoiceable, has_authority=bool(row.authority) if row is not None else False
+            )
+            d.registers = (  # type: ignore[attr-defined]
+                [s.key for s in sources if getattr(row, f"held_{s.key}", False)]
+                if row is not None
+                else []
+            )
 
     async def _current_tld_prices(self, tlds: set[str]) -> dict[str, DomainTldPrice]:
         """The price row in effect today per TLD, in one batch — newest ``valid_from`` not

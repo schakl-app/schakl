@@ -1948,7 +1948,7 @@ class InvoiceService(_DocumentService):
                 agreements=renewals,
                 spec=_CLAIM_SOURCES[1],
                 key=lambda d: d.domain_id,
-                extra=lambda d: {"no_price": d.no_price},
+                extra=lambda d: {"no_price": d.no_price, "invoiceable": d.invoiceable},
             ),
         }
 

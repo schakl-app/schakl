@@ -124,7 +124,67 @@ Account-level **Bulk Redirects** are deliberately not inspected: enumerating lis
 one hostname is expensive and needs account scopes most tokens will not have. An agency using
 them will see our rule and their bulk redirect both apply — worth knowing.
 
-## 6. Permissions (§15)
+## 6. Registrar — who *pays* for the name (#298)
+
+A zone is not a registration, and this section exists because the difference is money. Cloudflare
+will happily answer DNS for a domain the client registered at their own registrar and renews
+themselves — which is precisely the domain an agency must never invoice. `cloudflare_zones`
+cannot tell you that. The Registrar list can, and it is a different endpoint
+(`/accounts/{id}/registrar/domains`), under a different token permission, answering a different
+question.
+
+So it gets its own table, `cloudflare_registrar_domains`, and its own authority column,
+`cloudflare_accounts.registrar_synced_at` — deliberately *not* `last_synced_at`. Syncing zones
+every night says nothing about who pays a registry, and a token scoped to DNS cannot read the
+registrar at all. **Only a register that has answered may narrow what schakl invoices.** Until it
+has, every undecided domain bills exactly as it did before the feature existed, which is what
+makes this safe to ship into an instance that already invoices domains.
+
+`at_cloudflare` is the whole billing decision, and it is derived once at sync time from
+`current_registrar` rather than from the row's mere presence: the list also reports domains held
+at other registrars. The raw registrar string is stored beside the flag, because "it moved to
+GoDaddy last month" is something an agency needs to *read* rather than infer from a boolean that
+silently flipped. A registration that leaves the list keeps its row and stops claiming to be ours.
+
+How `domains` consumes this without ever naming Cloudflare is the seam in
+`app/core/registrar/presence.py` — each register contributes its own two SQL clauses (*has this
+org's register been read?* and *does it hold this row?*) and core composes them. The module owns
+the SQL; core owns only the composition; a disabled module never speaks. The resolution rule
+itself lives in `app/modules/domains/invoiceable.py`.
+
+| Cloudflare permission | Needed for |
+|---|---|
+| Account → Domain Registration → **Read** | the Registrar list, and therefore the billing decision |
+
+Missing it is degraded, not broken, exactly like Pages: `registrar_read` reads as *not granted* on
+Instellingen → Cloudflare, `registrar_synced_at` stays NULL, and nothing about invoicing changes.
+
+### The first-registration checklist
+
+**This endpoint has never been exercised against a live Cloudflare Registrar account.** Every
+field is therefore read defensively — a row whose name cannot be found is skipped rather than
+guessed at, a malformed expiry is `None` rather than an exception, and `None` never means `False`.
+Run these the day a real Registrar account exists (`docs/OXXA.md` §1's discipline, same reasons):
+
+1. **The name field.** `_registrar_name` tries `name`, `domain_name`, `domain` and takes the first
+   that contains a dot. Confirm which one Cloudflare actually sends; a registration attributed to
+   the wrong name is worse than one nobody counted.
+2. **`current_registrar`'s exact spelling.** `_is_cloudflare_registrar` is a case-insensitive
+   substring match on `"cloudflare"`, because the field is a display name and not a slug. Capture
+   real values for both a Cloudflare-held domain and one held elsewhere. **This is the assertion
+   the invoicing decision rests on** — get it wrong in the permissive direction and a client is
+   billed for a domain they pay for themselves.
+3. **Pagination.** `list_registrar_domains` goes through `paginate`, which assumes the standard
+   `result_info` envelope. Verify against an account with more than one page.
+4. **The status and lock fields.** `registry_statuses` is stored as Cloudflare sends it, truncated
+   at 255 characters; confirm it is a string and not a list. `locked` / `auto_renew` are
+   three-state on purpose — an absent value must not render as "transferable".
+5. **What a zone-only account answers.** Confirm that an account which has never registered
+   anything through Cloudflare returns an empty list rather than a 4xx. Either is handled, but
+   only the first sets `registrar_synced_at`, and that difference decides whether the register is
+   allowed to narrow invoicing at all.
+
+## 7. Permissions (§15)
 
 | key | covers |
 |---|---|
@@ -143,7 +203,7 @@ each declares `__company_horizon_clause__` (#285 failure mode 1), and the one cr
 `domains` states the horizon predicate in exactly one place, `CloudflareService._domain_or_404`
 (failure mode 3).
 
-## 7. Errors
+## 8. Errors
 
 `message` in the error envelope is always an i18n key (§9), so Cloudflare's own text never goes
 in it — it is not translatable. Where the operation still commits (verify, sync, check) the text
@@ -155,7 +215,7 @@ Worth knowing: a **malformed** credential answers `400/6003`, not `401` — Clou
 header before it looks the token up. That code is mapped to `errors.cloudflare_token_rejected`,
 or the message would point at Cloudflare rather than at the token the admin just pasted.
 
-## 8. Testing
+## 9. Testing
 
 `tests/cloudflare_fake.py` is a stateful stand-in installed through `client.set_transport` — the
 only network seam. A test sets up "the zone already redirects" by writing the rule into the fake's
@@ -163,7 +223,7 @@ only network seam. A test sets up "the zone already redirects" by writing the ru
 Nothing in the suite touches the network, and a test that forgot to install the fake fails loudly
 on connect rather than quietly hitting `api.cloudflare.com`.
 
-## 9. What is not here
+## 10. What is not here
 
 The **registrar half of #278** — OXXA sync, and the write path that pushes a connected zone's
 nameservers back to the registrar so "Connect to Cloudflare" becomes one action instead of two.

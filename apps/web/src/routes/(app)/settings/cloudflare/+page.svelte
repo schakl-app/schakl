@@ -80,6 +80,17 @@
       zones: form.sync.zones_synced,
       matched: form.sync.zones_matched,
     })}
+    <!-- The register decides which domains are invoiced (#298), so a sync says whether it
+         answered — and an unread register is stated rather than left as a silent zero. -->
+    <span class="mt-1 block text-text-muted">
+      {form.sync.registrar_read
+        ? t("cloudflare.accounts.synced_registrar", {
+            total: form.sync.registrar_domains_synced,
+            held: form.sync.registrar_domains_at_cloudflare,
+            matched: form.sync.registrar_domains_matched,
+          })
+        : t("cloudflare.accounts.synced_registrar_none")}
+    </span>
   </p>
 {/if}
 

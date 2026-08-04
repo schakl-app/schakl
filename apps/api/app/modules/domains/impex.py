@@ -51,6 +51,9 @@ _FIELDS = (
     "email_provider_id",
     "registry_contact",
     "email_contact",
+    # Three-state (#298): an empty cell is a real value here — it clears the decision back to
+    # "follow the register", which is why the column is ``clearable``.
+    "invoiceable",
 )
 
 
@@ -242,7 +245,20 @@ DOMAIN_IMPEX = ImpexDescriptor(
             data_type="number",
             aliases=("prijs", "afwijkende prijs", "price", "price override"),
         ),
+        # The **stored decision**, not the resolved answer, so an export re-imports unchanged
+        # (§17): an empty cell means "follow the register" and importing the effective answer
+        # back would pin every domain to whatever the register happened to say that day.
+        ImpexColumn(
+            "invoiceable",
+            data_type="bool",
+            aliases=("factureren", "factureerbaar", "invoiceable", "billable", "invoice"),
+        ),
         # --- derived / fetched: exported so the file is worth reading, never written back --- #
+        ImpexColumn(
+            "invoiceable_effective",
+            readonly=True,
+            getter=lambda d: getattr(d, "invoiceable_effective", None),
+        ),
         ImpexColumn("tld", readonly=True),
         ImpexColumn("next_invoice_date", readonly=True),
         ImpexColumn(

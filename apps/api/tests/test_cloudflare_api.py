@@ -125,6 +125,8 @@ async def test_a_zone_scoped_token_is_degraded_not_broken(client_for, cloudflare
             "accounts_read": False,
             "zones_read": True,
             "pages_read": False,
+            # Unknowable without an account to ask about, like Pages — not a failure.
+            "registrar_read": False,
         }
         assert body["cf_account_id"] is None
 

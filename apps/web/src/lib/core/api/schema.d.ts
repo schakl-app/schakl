@@ -8158,6 +8158,26 @@ export interface components {
              * @default 0
              */
             pages_projects_synced: number;
+            /**
+             * Registrar Domains At Cloudflare
+             * @default 0
+             */
+            registrar_domains_at_cloudflare: number;
+            /**
+             * Registrar Domains Matched
+             * @default 0
+             */
+            registrar_domains_matched: number;
+            /**
+             * Registrar Domains Synced
+             * @default 0
+             */
+            registrar_domains_synced: number;
+            /**
+             * Registrar Read
+             * @default false
+             */
+            registrar_read: boolean;
             /** Warnings */
             warnings?: string[];
             /**
@@ -8574,6 +8594,11 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Invoiceable
+             * @default true
+             */
+            invoiceable: boolean;
             /** Name */
             name: string;
             /**
@@ -10947,6 +10972,8 @@ export interface components {
             email_enabled: boolean;
             /** Email Provider Id */
             email_provider_id?: string | null;
+            /** Invoiceable */
+            invoiceable?: boolean | null;
             /** Name */
             name: string;
             /** Price Override */
@@ -11025,6 +11052,19 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Invoiceable */
+            invoiceable?: boolean | null;
+            /**
+             * Invoiceable Effective
+             * @default true
+             */
+            invoiceable_effective: boolean;
+            /**
+             * Invoiceable Source
+             * @default default
+             * @enum {string}
+             */
+            invoiceable_source: "explicit" | "register" | "default";
             /** Mx Records */
             mx_records?: components["schemas"]["MxRecord"][] | null;
             /** Name */
@@ -11042,6 +11082,8 @@ export interface components {
             price_override?: string | null;
             /** Redirect Url */
             redirect_url?: string | null;
+            /** Registers */
+            registers?: string[];
             /** Registrar Provider Id */
             registrar_provider_id?: string | null;
             /** Registrar Provider Name */
@@ -11164,6 +11206,8 @@ export interface components {
             email_enabled?: boolean | null;
             /** Email Provider Id */
             email_provider_id?: string | null;
+            /** Invoiceable */
+            invoiceable?: boolean | null;
             /** Name */
             name?: string | null;
             /** Price Override */
@@ -24064,6 +24108,8 @@ export interface operations {
                 q?: string | null;
                 /** @description name | company | status | registrar | dns | dnssec | email_enabled | start_date | next_invoice_date | created_at | updated_at, '-' desc */
                 sort?: string | null;
+                /** @description Filter on the *resolved* billing answer (#298), not the stored flag: false lists what is registered elsewhere and therefore never invoiced. */
+                invoiceable?: boolean | null;
             };
             header?: never;
             path?: never;

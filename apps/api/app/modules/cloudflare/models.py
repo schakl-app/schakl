@@ -148,6 +148,13 @@ class CloudflareAccount(
     last_synced_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    #: When the **Registrar** list was last read — separate from ``last_synced_at`` because the
+    #: two are separate authorities (#298). A token that syncs zones every day and has never
+    #: been allowed to read the registrar knows nothing about who pays for a registration, and
+    #: only a register that has answered may narrow what schakl invoices.
+    registrar_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
 
@@ -204,6 +211,77 @@ class CloudflareZone(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         Without this the repository's column match finds no ``company_id`` and filters nothing
         at all, so a membership scoped to one company group would read every client's zones.
         """
+        return cls.domain_id.is_(None) | cls.domain_id.in_(
+            _domain_scope_subquery(cls.org_id, scope)
+        )
+
+
+class CloudflareRegistrarDomain(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """A domain as **Cloudflare Registrar** last described it (#298).
+
+    A zone is not a registration. Cloudflare will happily run DNS for a domain the client
+    registered at their own registrar and pays for themselves, which is exactly the domain an
+    agency must not invoice — so this table is deliberately *not* a couple of columns on
+    :class:`CloudflareZone`. The registrar list answers a different question, from a different
+    endpoint, under a different token permission, and is the only Cloudflare evidence that the
+    agency holds a registration at all.
+
+    ``at_cloudflare`` is that evidence, decided once at sync time from ``current_registrar``:
+    the endpoint also reports domains registered *elsewhere*, and treating the list's mere
+    membership as "we pay for this" would bill a client for a domain we only serve DNS for.
+    The raw registrar string is kept beside it, because "it moved to GoDaddy last month" is
+    something an agency needs to read rather than infer from a flag that silently flipped.
+
+    ``domain_id`` is nullable for :class:`CloudflareZone`'s reason: a registration nothing
+    matches is the most valuable row a sync produces — something the agency is paying to renew
+    and quite possibly not billing anyone for.
+    """
+
+    __tablename__ = "cloudflare_registrar_domains"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id", "account_id", "name", name="uq_cloudflare_registrar_domains_org_name"
+        ),
+        Index("ix_cloudflare_registrar_domains_org_name", "org_id", "name"),
+        Index("ix_cloudflare_registrar_domains_org_domain", "org_id", "domain_id"),
+    )
+
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("cloudflare_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    #: The registrable name, normalised lowercase.
+    name: Mapped[str] = mapped_column(String(253), nullable=False)
+    #: Cloudflare's own id for the registration, where the payload carried one.
+    cf_registrar_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: The schakl domain this is. NULL = a registration no domain record matches.
+    domain_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("domains.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # --- observed at Cloudflare ------------------------------------------------------------ #
+    #: Whoever holds the registration today, as Cloudflare names them ("Cloudflare", "GoDaddy").
+    #: Stored raw and never parsed into an enum: an unknown registrar must still round-trip.
+    current_registrar: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    #: Whether that reads as Cloudflare Registrar. Derived at sync time and **stored**, so the
+    #: billing clause is one indexed column test rather than a string match per row.
+    at_cloudflare: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    auto_renew: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    locked: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    #: The registry's own status words, comma-joined as Cloudflare reports them.
+    registry_statuses: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    @classmethod
+    def __company_horizon_clause__(cls, scope: frozenset[uuid.UUID]):  # noqa: ANN206
+        """A registration's client is its **domain's** (#285); an unmatched row has none."""
         return cls.domain_id.is_(None) | cls.domain_id.in_(
             _domain_scope_subquery(cls.org_id, scope)
         )

@@ -44,10 +44,22 @@ async def list_domains(
             " | start_date | next_invoice_date | created_at | updated_at, '-' desc"
         ),
     ),
+    invoiceable: bool | None = Query(
+        None,
+        description=(
+            "Filter on the *resolved* billing answer (#298), not the stored flag:"
+            " false lists what is registered elsewhere and therefore never invoiced."
+        ),
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[DomainRead]:
     items, total = await DomainService(ctx).list(
-        limit=limit, offset=offset, company_id=company_id, q=q, sort=sort
+        limit=limit,
+        offset=offset,
+        company_id=company_id,
+        q=q,
+        sort=sort,
+        invoiceable=invoiceable,
     )
     return Page(
         items=[DomainRead.model_validate(d) for d in items],
