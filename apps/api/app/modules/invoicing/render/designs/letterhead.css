@@ -5,6 +5,12 @@
      is also what lets the type stay black: the colour is in the ruling, so the heading and the
      amount owed do not have to shout it. */
 
+  /* A `th` centres itself by default, and nothing else on this sheet is centred: a column
+     heading starts where its column starts, or *Omschrijving* floats in the middle of the
+     descriptions it heads and *Btw %* in the middle of the rates. `.right` is a class and
+     this is an element, so it still outranks this and turns the amounts back around. */
+  th { text-align: left; }
+
   /* --- the letterhead ---------------------------------------------------------------- */
   .head { display: flex; justify-content: space-between; gap: 12mm; }
   .head-left { flex: 1; min-width: 0; }
@@ -89,8 +95,10 @@
   /* A kind is its own small table, headings and all (`blocks.sectioned`). One grid banded
      three times made *Aantal* mean hours at the top and licences in the middle, with the
      heading that said so eighteen rows up; a table of its own answers where the reader is
-     looking. The name sits above it in the tenant's colour — the one place this design
-     spends it on type. */
+     looking. The name is set like the rest of the letter: black, sentence case, one weight
+     up from the text under it. It is a heading in a letter, not a label on a dashboard, and
+     it does not need colour or capitals to be found — the ruling under it already says where
+     the table begins, and it is the only thing at that size for centimetres. */
   .line-group + .line-group { margin-top: 7mm; }
   /* Repeated column names have to be quieter than a single set, or three of them read as
      three invoices: the kind is the loud thing, its column names a legend beside it. */
@@ -105,8 +113,8 @@
   .line-group .lines th:first-child { padding-left: 0; }
   .line-group .lines th:last-child { padding-right: 0; }
   .line-group .lines th.group-name {
-    font-size: 10pt; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
-    color: var(--accent);
+    font-size: 10pt; font-weight: 600; letter-spacing: 0; text-transform: none;
+    color: var(--ink);
   }
   .line-group .lines .section-total td {
     padding: 1.6mm 3mm 0; border-top: 1px solid var(--accent-hairline); font-size: 8.5pt;
@@ -149,8 +157,9 @@
   .totals .strong-row td {
     padding-top: 2mm; border-top: 1px solid var(--accent-line); font-weight: 700;
   }
-  /* The amount owed carries its weight in bold, not in colour — the tenant's colour is
-     spent on the section kinds, and a coloured total on a washed band reads as a warning. */
+  /* The amount owed carries its weight in bold, not in colour — this design spends the
+     tenant's colour on the ruling and the wash, never on type, and a coloured total on a
+     washed band reads as a warning. */
   .totals .strong-row td.accent { color: var(--ink); }
 
   /* --- after the sum ------------------------------------------------------------------- */
