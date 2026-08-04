@@ -117,9 +117,6 @@ class ParseCandidates:
                     found.add(value.lower())
         return found
 
-    def is_empty(self) -> bool:
-        return not (self.companies or self.projects or self.tasks)
-
     def as_prompt_block(self) -> str:
         """Compact `id<TAB>name` lines. Ids are copied verbatim by the model, so they are
         never abbreviated; names are what it matches against."""
