@@ -35,6 +35,7 @@ from app.core.ai.schemas import (
     AIUsageFeature,
     AIUsageSummary,
 )
+from app.core.ai.transcribe import DEFAULT_SPEECH_MODEL, can_transcribe
 from app.core.crypto import decrypt, encrypt
 from app.core.tenancy import RequestContext
 from app.errors import AppError
@@ -127,6 +128,76 @@ class AIService:
             base_url=row.base_url,
         )
 
+    async def speech_config(self) -> ProviderConfig:
+        """The provider config for transcription (#246).
+
+        Its own credential when the tenant set one, otherwise the chat provider — which only
+        resolves for a provider that can actually transcribe. Anthropic cannot, and is the
+        default, so this raises the ordinary "not configured" 409 there rather than pretending;
+        the web surface asks ``enabled_features`` first and simply does not draw a microphone.
+        """
+        row = await self._settings()
+        if row is None:
+            raise AppError("ai_not_configured", "errors.ai_not_configured", status_code=409)
+        if not _feature_config(row, "time_assist").enabled:
+            raise AppError(
+                "ai_feature_disabled", "errors.ai_feature_disabled", status_code=409
+            )
+        provider = row.speech_provider or row.provider
+        if not can_transcribe(provider):
+            raise AppError(
+                "ai_speech_not_configured",
+                "errors.ai_speech_not_configured",
+                status_code=409,
+            )
+        encrypted = row.speech_api_key_enc if row.speech_provider else row.api_key_enc
+        try:
+            api_key = decrypt(encrypted) if encrypted else ""
+        except ValueError as exc:
+            raise AppError(
+                "ai_speech_not_configured",
+                "errors.ai_speech_not_configured",
+                status_code=409,
+            ) from exc
+        if not api_key:
+            raise AppError(
+                "ai_speech_not_configured",
+                "errors.ai_speech_not_configured",
+                status_code=409,
+            )
+        base_url = row.speech_base_url if row.speech_provider else row.base_url
+        return ProviderConfig(
+            provider=provider,
+            api_key=api_key,
+            model=row.speech_model or DEFAULT_SPEECH_MODEL,
+            base_url=base_url,
+        )
+
+    async def speech_available(self) -> bool:
+        """Whether a microphone should be offered at all — asked by ``/meta/me``, so it must
+        never raise."""
+        row = await self._settings()
+        if row is None or not _feature_config(row, "time_assist").enabled:
+            return False
+        provider = row.speech_provider or row.provider
+        if not can_transcribe(provider):
+            return False
+        return bool(row.speech_api_key_enc if row.speech_provider else row.api_key_enc)
+
+    async def ensure_audio_budget(self, *, override: bool = False) -> None:
+        """The monthly transcription cap, in seconds — its own unit, its own budget."""
+        row = await self._settings()
+        if row is None or row.monthly_audio_seconds_budget is None:
+            return
+        start = datetime.now(UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        spent = await self.ctx.session.scalar(
+            select(func.coalesce(func.sum(AIUsage.audio_seconds), 0)).where(
+                AIUsage.org_id == self.ctx.org.id, AIUsage.created_at >= start
+            )
+        )
+        if int(spent or 0) >= row.monthly_audio_seconds_budget and not override:
+            raise AppError("ai_budget_reached", "errors.ai_budget_reached", status_code=409)
+
     async def ensure_budget(self, *, override: bool = False) -> None:
         """The monthly soft cap (#126): interactive use over 100 % sits behind an explicit
         acknowledgement (the "budget bereikt" notice); non-interactive callers never pass
@@ -158,7 +229,12 @@ class AIService:
     # Model calls
     # ------------------------------------------------------------------ #
     async def record_usage(
-        self, feature: str, model: str, tokens_in: int, tokens_out: int
+        self,
+        feature: str,
+        model: str,
+        tokens_in: int,
+        tokens_out: int,
+        audio_seconds: int = 0,
     ) -> None:
         """Counts and labels only — never content (#126)."""
         self.ctx.session.add(
@@ -169,6 +245,7 @@ class AIService:
                 model=model,
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
+                audio_seconds=audio_seconds,
             )
         )
         await self.ctx.session.flush()
@@ -295,6 +372,7 @@ class AISettingsService:
         self.ctx = ctx
 
     def _read(self, row: AISettings) -> AISettingsRead:
+        speech_provider = row.speech_provider or row.provider
         return AISettingsRead(
             provider=row.provider,  # type: ignore[arg-type]
             base_url=row.base_url,
@@ -303,6 +381,14 @@ class AISettingsService:
             features={f: _feature_config(row, f) for f in AI_FEATURES},
             house_style=row.house_style,
             monthly_token_budget=row.monthly_token_budget,
+            speech_provider=row.speech_provider,  # type: ignore[arg-type]
+            speech_base_url=row.speech_base_url,
+            speech_model=row.speech_model,
+            has_speech_key=bool(row.speech_api_key_enc),
+            monthly_audio_seconds_budget=row.monthly_audio_seconds_budget,
+            # Resolved here so no client has to know which providers can transcribe.
+            speech_available=can_transcribe(speech_provider)
+            and bool(row.speech_api_key_enc if row.speech_provider else row.api_key_enc),
         )
 
     async def get(self) -> AISettingsRead | None:
@@ -352,6 +438,31 @@ class AISettingsService:
         features = {
             f: data.features[f].model_dump() for f in AI_FEATURES if f in data.features
         }
+        # Speech is optional and independent: no speech provider means "reuse the chat one",
+        # which resolves only for a provider that can transcribe.
+        speech_key = (data.speech_api_key or "").strip()
+        speech_base_url = (data.speech_base_url or "").strip() or None
+        if data.speech_provider is None:
+            speech_key_enc = None  # clearing the provider clears its credential with it
+        elif speech_key:
+            speech_key_enc = encrypt(speech_key)
+        else:
+            speech_key_enc = row.speech_api_key_enc if row is not None else None
+        if data.speech_provider == "openai_compatible" and not speech_base_url:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"speech_base_url": "errors.required"},
+            )
+        if data.speech_provider is not None and not speech_key_enc:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"speech_api_key": "errors.required"},
+            )
+
         values = {
             "provider": data.provider,
             "api_key_enc": api_key_enc,
@@ -360,6 +471,13 @@ class AISettingsService:
             "features": features,
             "house_style": (data.house_style or "").strip() or None,
             "monthly_token_budget": data.monthly_token_budget,
+            "speech_provider": data.speech_provider,
+            "speech_api_key_enc": speech_key_enc,
+            "speech_base_url": speech_base_url if data.speech_provider else None,
+            "speech_model": ((data.speech_model or "").strip() or None)
+            if data.speech_provider
+            else None,
+            "monthly_audio_seconds_budget": data.monthly_audio_seconds_budget,
         }
         if row is None:
             row = AISettings(org_id=self.ctx.org.id, **values)

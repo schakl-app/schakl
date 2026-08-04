@@ -12,6 +12,10 @@ from pydantic import BaseModel, Field
 from app.core.ai.models import AI_FEATURES, AI_PROVIDERS
 
 Provider = Literal["anthropic", "openai", "openai_compatible"]
+#: Transcription speaks one API shape (`POST {base}/audio/transcriptions`), and Anthropic has
+#: no speech endpoint at all — so the speech provider is a strictly narrower set than the chat
+#: one, rather than the same Literal reused.
+SpeechProvider = Literal["openai", "openai_compatible"]
 
 _PERIOD = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
@@ -31,6 +35,15 @@ class AISettingsWrite(BaseModel):
     features: dict[str, AIFeatureConfig] = Field(default_factory=dict)
     house_style: str | None = Field(default=None, max_length=4000)
     monthly_token_budget: int | None = Field(default=None, ge=1)
+    # --- speech-to-text (#246) --------------------------------------------------- #
+    #: NULL/empty means "reuse the chat provider", which only resolves for one that can
+    #: transcribe — Anthropic cannot, so an Anthropic org sets these to dictate.
+    speech_provider: SpeechProvider | None = None
+    #: Write-only, same rule as ``api_key``.
+    speech_api_key: str | None = Field(default=None, max_length=2000)
+    speech_base_url: str | None = Field(default=None, max_length=1024)
+    speech_model: str | None = Field(default=None, max_length=255)
+    monthly_audio_seconds_budget: int | None = Field(default=None, ge=1)
 
 
 class AISettingsRead(BaseModel):
@@ -41,6 +54,14 @@ class AISettingsRead(BaseModel):
     features: dict[str, AIFeatureConfig]
     house_style: str | None
     monthly_token_budget: int | None
+    speech_provider: SpeechProvider | None = None
+    speech_base_url: str | None = None
+    speech_model: str | None = None
+    has_speech_key: bool = False
+    monthly_audio_seconds_budget: int | None = None
+    #: Whether a microphone should be offered at all — a resolved answer, so the UI never has
+    #: to re-derive "can this provider transcribe" from the provider name.
+    speech_available: bool = False
 
 
 class AITestResult(BaseModel):
@@ -121,6 +142,28 @@ class AssistantRequest(BaseModel):
     messages: list[AssistantMessage] = Field(min_length=1, max_length=40)
     context: AssistantContext | None = None
     override_budget: bool = False
+
+
+class TimeTranscribeRequest(BaseModel):
+    """A recorded quick-add line (#246).
+
+    The clip rides base64-in-JSON rather than multipart: the web app reaches the API through
+    one same-origin proxy that forwards JSON, and a second transport for one endpoint would be
+    a worse trade than 33% on a clip measured in tens of kilobytes.
+    """
+
+    audio: str = Field(min_length=1, max_length=12_000_000)
+    #: BCP-47-ish hint for the recogniser; the caller's own locale, never a hardcoded nl.
+    language: str | None = Field(default=None, max_length=8)
+    override_budget: bool = False
+
+
+class TimeTranscribeResult(BaseModel):
+    """Just the words. The transcript goes back into the quick-add field for the user to read
+    and fix before it is parsed — a misheard client name is the failure mode worth catching,
+    and it is only catchable while the text is still visible."""
+
+    text: str
 
 
 class TimeParseRequest(BaseModel):
@@ -238,5 +281,7 @@ __all__ = [
     "TimeReconstructRequest",
     "TimeReconstructResult",
     "TimeSuggestion",
+    "TimeTranscribeRequest",
+    "TimeTranscribeResult",
     "WritingAssistRequest",
 ]

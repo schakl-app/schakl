@@ -29,6 +29,7 @@ from app.core.ai.features import (
     stream_digest,
     stream_report,
     stream_writing_assist,
+    transcribe_time_entry,
 )
 from app.core.ai.schemas import (
     AIModelsRequest,
@@ -47,6 +48,8 @@ from app.core.ai.schemas import (
     TimeParseResult,
     TimeReconstructRequest,
     TimeReconstructResult,
+    TimeTranscribeRequest,
+    TimeTranscribeResult,
     WritingAssistRequest,
 )
 from app.core.ai.service import AIService, AISettingsService
@@ -192,6 +195,22 @@ async def time_parse(
     service = AIService(ctx)
     await _preflight(service, "time_assist", override_budget=payload.override_budget)
     return await parse_time_entry(service, payload)
+
+
+@router.post(
+    "/time/transcribe",
+    response_model=TimeTranscribeResult,
+    dependencies=[require_permission("ai.use")],
+)
+async def time_transcribe(
+    payload: TimeTranscribeRequest, ctx: RequestContext = Depends(require_context)
+) -> TimeTranscribeResult:
+    """Speech to text for the quick-add field (#246).
+
+    ``ai.use`` is the enumerable route permission; the service additionally requires
+    ``time.entry.write``, because the transcript exists to become a time entry.
+    """
+    return await transcribe_time_entry(AIService(ctx), payload)
 
 
 @router.post(

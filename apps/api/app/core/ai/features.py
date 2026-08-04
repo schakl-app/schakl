@@ -9,6 +9,7 @@ providers, module tools); the model writes prose, never arithmetic.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import uuid
 from collections.abc import AsyncIterator
@@ -20,9 +21,10 @@ from sqlalchemy import select
 from app.config import settings
 from app.core.activity.service import ActivityService, snapshot
 from app.core.ai import prompts
+from app.core.ai.audio import decode_clip
 from app.core.ai.candidates import gather as gather_candidates
 from app.core.ai.models import AIReport
-from app.core.ai.providers import ChatMessage, ToolDef
+from app.core.ai.providers import AIProviderError, ChatMessage, ToolDef
 from app.core.ai.schemas import (
     ReportCreate,
     ReportGenerateRequest,
@@ -33,13 +35,18 @@ from app.core.ai.schemas import (
     TimeReconstructRequest,
     TimeReconstructResult,
     TimeSuggestion,
+    TimeTranscribeRequest,
+    TimeTranscribeResult,
     WritingAssistRequest,
 )
 from app.core.ai.service import AIService
 from app.core.ai.tools import get_tool, get_tools, result_text, run_tool
+from app.core.ai.transcribe import transcribe as provider_transcribe
 from app.core.timezone import org_today
 from app.errors import AppError
 from app.registry import registry
+
+logger = logging.getLogger(__name__)
 
 _UUID_RE = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE
@@ -294,6 +301,40 @@ async def parse_time_entry(service: AIService, payload: TimeParseRequest) -> Tim
         if break_minutes is not None and break_minutes <= _MAX_BREAK_MINUTES
         else None,
     )
+
+
+async def transcribe_time_entry(
+    service: AIService, payload: TimeTranscribeRequest
+) -> TimeTranscribeResult:
+    """Turn a recorded clip into text for the quick-add field (#246).
+
+    Writing a time entry is what this transcript is *for*, so the caller must be able to write
+    one — holding ``ai.use`` alone is not enough. The check is here rather than on the route
+    because the route's declared permission is what makes the surface enumerable (§15), and
+    this is the second, row-shaped half of the same rule.
+
+    Nothing is stored: the text goes straight back for the user to read, correct and parse.
+    """
+    ctx = service.ctx
+    ctx.require("time.entry.write")
+    clip = decode_clip(payload.audio)
+    config = await service.speech_config()
+    await service.ensure_audio_budget(override=payload.override_budget)
+    language = (payload.language or service.locale() or "").split("-")[0] or None
+    try:
+        async with ctx.release_db():
+            result = await provider_transcribe(config, clip, language=language)
+    except AIProviderError as exc:
+        logger.warning("AI transcription failed (%s): %s", config.provider, exc)
+        raise AppError(
+            "ai_provider_error", "errors.ai_provider_error", status_code=502
+        ) from exc
+    # Metered in seconds, never folded into the token counters (#246). A provider that reports
+    # no duration still records a request; the row is what the meter counts.
+    await service.record_usage(
+        "time_assist", config.model, 0, 0, audio_seconds=result.seconds
+    )
+    return TimeTranscribeResult(text=result.text)
 
 
 # --------------------------------------------------------------------------- #

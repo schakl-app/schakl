@@ -10,6 +10,7 @@
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { can } from "$lib/core/permissions";
+  import { Recorder, recordingSupported, VoiceButton } from "$lib/core/voice";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
@@ -22,6 +23,8 @@
   import ProjectBudgetsPanel from "$lib/modules/time/ProjectBudgetsPanel.svelte";
   import { nextStartFrom, shouldKeepPrefill } from "$lib/modules/time/quickadd";
   import TimesheetGrid from "$lib/modules/time/TimesheetGrid.svelte";
+  import { onMount } from "svelte";
+
   import { page } from "$app/state";
 
   let { data, form } = $props();
@@ -316,6 +319,58 @@
     }
   }
 
+  // --- dictation (#246) ---------------------------------------------------------
+  // The mic is drawn only where it can work *and* where the caller may write hours: /time is
+  // client-reachable, so a write control self-gates on the API's own key rather than on
+  // `!isPortal` (docs/UX.md, client-portal rule). Support is resolved after mount — never
+  // guessed from a user agent — and where it is missing the typed field beside it is the
+  // fallback, so nothing is hidden that could not be reached another way.
+  const recorder = new Recorder();
+  let micSupported = $state(false);
+  onMount(() => {
+    micSupported = recordingSupported();
+    return () => recorder.abort();
+  });
+  const showMic = $derived(
+    hasTimeAssist && micSupported && can(page.data.user, "time.entry.write"),
+  );
+
+  async function dictate() {
+    aiError = null;
+    const audio = await recorder.start();
+    if (recorder.error) {
+      aiError = recorder.error;
+      return;
+    }
+    if (!audio) return; // aborted, or nothing captured
+    aiBusy = true;
+    try {
+      const res = await fetch("/ai/time/transcribe", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ audio, language: page.data.locale ?? "nl" }),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        if (payload?.error?.code === "ai_budget_reached") aiBudget = true;
+        else aiError = payload?.error?.message ?? "errors.ai_provider_error";
+        return;
+      }
+      const { text: transcript } = await res.json();
+      if (!transcript?.trim()) {
+        aiError = "voice.error_no_speech";
+        return;
+      }
+      // Into the field, not straight into a parse: Dutch proper nouns are the weak link and
+      // a misheard client name is only fixable while the words are still visible.
+      aiText = aiText.trim() ? `${aiText.trim()} ${transcript.trim()}` : transcript.trim();
+    } catch {
+      aiError = "errors.ai_provider_error";
+    } finally {
+      aiBusy = false;
+    }
+  }
+
   async function reconstruct(override = false) {
     recon = { loading: true };
     aiBudget = false;
@@ -592,6 +647,18 @@
             class="min-w-0 flex-1 rounded-lg border border-border bg-transparent px-3 py-2 text-sm text-text outline-none focus:border-brand"
             aria-label={t("ai.time.quick_add")}
           />
+          {#if showMic}
+            <!-- Dictation (#246): the browser records, the tenant's own speech provider
+                 transcribes, and the transcript lands in the field above so a misheard client
+                 name can be fixed before it is parsed. Gated on the API's own write key, not
+                 on `!isPortal` — /time is client-reachable (docs/UX.md). -->
+            <VoiceButton
+              {recorder}
+              disabled={aiBusy}
+              onstart={() => void dictate()}
+              onstop={() => recorder.stop()}
+            />
+          {/if}
           <!-- In-flight state is the shared Button's `loading`, not a pulsing icon and not a
                reworded label (docs/UX.md → "Loading / in-flight state"). -->
           <Button type="submit" variant="secondary" loading={aiBusy} disabled={!aiText.trim()}>

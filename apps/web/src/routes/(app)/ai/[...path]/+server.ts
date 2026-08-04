@@ -16,6 +16,10 @@ const ALLOWED: Record<string, RegExp[]> = {
     /^assist\/write$/,
     /^assistant$/,
     /^time\/parse$/,
+    // Dictated quick add (#246). The clip rides base64-in-JSON precisely so it can use this
+    // proxy unchanged — `forward()` is JSON-only, and a second transport for one endpoint
+    // would cost more than the encoding does.
+    /^time\/transcribe$/,
     /^time\/reconstruct$/,
     new RegExp(`^companies/${UUID}/digest$`),
     /^reports\/generate$/,

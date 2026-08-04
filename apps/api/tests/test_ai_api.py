@@ -7,19 +7,27 @@ seam every feature goes through — so these tests exercise the platform's own b
 
 from __future__ import annotations
 
+import base64
+import uuid
 from collections.abc import AsyncIterator
 
 import pytest
+from pwdlib import PasswordHash
+from sqlalchemy import select, text
 
+from app.core.ai.audio import MAX_ENCODED_CHARS
 from app.core.ai.models import AIUsage
 from app.core.ai.providers import AIEvent, ToolCall
 from app.core.ai.service import invalidate_features_cache
 from app.core.ai.tools import available_tools, get_tool, run_tool
+from app.core.auth.models import User
 from app.core.permissions.permset import PermissionSet
 from app.core.tenancy import RequestContext
 from app.db import async_session_maker, set_current_org
 from app.modules.companies.models import Company
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import add_membership, auth_cookie, make_tenant
+
+_password_hash = PasswordHash.recommended()
 
 SETTINGS_BODY = {
     "provider": "anthropic",
@@ -454,6 +462,163 @@ async def test_time_parse_query_budget(client_for, monkeypatch, count_queries) -
         f"parse issues {len(first.statements)} statements:\n"
         + "\n".join(first.statements)
     )
+
+
+# --------------------------------------------------------------------------- #
+# Speech to text (#246)
+# --------------------------------------------------------------------------- #
+#: A minimal clip whose first bytes are a real WebM/EBML header — the format is sniffed from
+#: content, so a plausible header is all the validator needs.
+WEBM = base64.b64encode(b"\x1a\x45\xdf\xa3" + b"\x00" * 64).decode()
+
+SPEECH_BODY = {
+    **SETTINGS_BODY,
+    "speech_provider": "openai",
+    "speech_api_key": "sk-speech-secret-456",
+    "speech_model": "whisper-1",
+}
+
+
+def _fake_transcript(text: str, seconds: int = 12):
+    async def fake(config, clip, *, language):  # noqa: ANN001, ANN003
+        from app.core.ai.transcribe import Transcript
+
+        return Transcript(text=text, seconds=seconds)
+
+    return fake
+
+
+async def test_transcribe_needs_its_own_speech_provider(client_for) -> None:
+    """Anthropic has no speech endpoint and is the default provider, so "reuse the chat
+    credential" resolves to nothing for the typical tenant (#246).
+
+    The answer is the ordinary 409, not a 500 — and `speech_available` is false, which is what
+    keeps the web app from drawing a microphone it would then have to apologise for.
+    """
+    t = await make_tenant("ai-speech-off")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        saved = await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["speech_available"] is False
+
+        refused = await c.post(
+            "/api/v1/ai/time/transcribe", json={"audio": WEBM}, headers=headers
+        )
+        assert refused.status_code == 409
+        assert refused.json()["error"]["code"] == "ai_speech_not_configured"
+
+
+async def test_transcribe_roundtrip_and_meters_seconds(client_for, monkeypatch) -> None:
+    """The transcript comes back as text and the cost is metered in seconds (#246).
+
+    Seconds are their own column: folding them into `tokens_out` would inflate the number the
+    monthly *token* budget is enforced against.
+    """
+    t = await make_tenant("ai-speech-on")
+    headers = await auth_cookie(t.user)
+    monkeypatch.setattr(
+        "app.core.ai.features.provider_transcribe", _fake_transcript("twee uur Jansen", 14)
+    )
+    async with client_for(t.host) as c:
+        saved = await c.put("/api/v1/ai/settings", json=SPEECH_BODY, headers=headers)
+        assert saved.status_code == 200, saved.text
+        body = saved.json()
+        assert body["speech_available"] is True
+        assert body["has_speech_key"] is True
+        # Write-only, exactly like the chat key (#126).
+        assert "sk-speech-secret-456" not in saved.text
+
+        res = await c.post(
+            "/api/v1/ai/time/transcribe",
+            json={"audio": WEBM, "language": "nl-NL"},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        assert res.json()["text"] == "twee uur Jansen"
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        rows = (await session.execute(select(AIUsage).where(AIUsage.org_id == t.org.id))).scalars()
+        audio_rows = [r for r in rows if r.audio_seconds]
+        assert len(audio_rows) == 1
+        assert audio_rows[0].audio_seconds == 14
+        assert audio_rows[0].tokens_in == 0 and audio_rows[0].tokens_out == 0
+
+
+async def test_transcribe_requires_writing_time_entries(client_for, monkeypatch) -> None:
+    """A transcript exists to become a time entry, so holding `ai.use` alone is not enough.
+
+    The route's declared permission is what makes the surface enumerable (§15); this is the
+    second half of the same rule, and it is the half a read-only member hits.
+    """
+    t = await make_tenant("ai-speech-perm")
+    owner_headers = await auth_cookie(t.user)
+    monkeypatch.setattr(
+        "app.core.ai.features.provider_transcribe", _fake_transcript("iets")
+    )
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SPEECH_BODY, headers=owner_headers)
+
+    # A member holds `ai.use` *and* `time.entry.write:own` by default, so take the write away
+    # to isolate the rule under test: AI access alone must not reach this. (The owner holds
+    # `*` and is deliberately not the subject here — a wildcard would mask the check.)
+    async with async_session_maker() as session:
+        user = User(
+            id=uuid.uuid4(),
+            email="ai-speech-reader@example.com",
+            hashed_password=_password_hash.hash("secret1234"),
+            is_active=True,
+            is_verified=True,
+        )
+        session.add(user)
+        await session.flush()
+        await set_current_org(session, t.org.id)
+        await add_membership(session, t.org.id, user.id, "member")
+        await session.execute(
+            text(
+                "DELETE FROM role_permissions WHERE org_id = :org "
+                "AND permission LIKE 'time.entry.write%'"
+            ),
+            {"org": t.org.id},
+        )
+        await session.commit()
+        member = User(id=user.id, email=user.email, hashed_password="", is_active=True)
+
+    member_headers = await auth_cookie(member)
+    async with client_for(t.host) as c:
+        refused = await c.post(
+            "/api/v1/ai/time/transcribe", json={"audio": WEBM}, headers=member_headers
+        )
+        assert refused.status_code == 403, refused.text
+
+
+async def test_transcribe_rejects_oversized_and_unknown_audio(client_for) -> None:
+    """Every cap is checked before the work it bounds, and over a limit is an error rather
+    than a truncation — silently transcribing the first seconds of a clip looks like it
+    worked (the `impex/parsing.py` stance, applied to audio)."""
+    t = await make_tenant("ai-speech-bytes")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SPEECH_BODY, headers=headers)
+
+        # Not a container we recognise — the format comes from the content, never a
+        # client-supplied name.
+        bad = await c.post(
+            "/api/v1/ai/time/transcribe",
+            json={"audio": base64.b64encode(b"not audio at all").decode()},
+            headers=headers,
+        )
+        assert bad.status_code == 422
+        assert bad.json()["error"]["fields"]["audio"] == "errors.ai_audio_unsupported"
+
+        huge = await c.post(
+            "/api/v1/ai/time/transcribe",
+            json={"audio": "A" * (MAX_ENCODED_CHARS + 4)},
+            headers=headers,
+        )
+        assert huge.status_code == 413
+        assert huge.json()["error"]["message"] == "errors.ai_audio_too_large"
 
 
 async def test_tool_layer_tenant_isolation() -> None:

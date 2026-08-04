@@ -234,6 +234,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ai/time/transcribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Time Transcribe
+         * @description Speech to text for the quick-add field (#246).
+         *
+         *     ``ai.use`` is the enumerable route permission; the service additionally requires
+         *     ``time.entry.write``, because the transcript exists to become a time entry.
+         */
+        post: operations["time_transcribe_api_v1_ai_time_transcribe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ai/usage": {
         parameters: {
             query?: never;
@@ -7995,8 +8018,15 @@ export interface components {
             };
             /** Has Key */
             has_key: boolean;
+            /**
+             * Has Speech Key
+             * @default false
+             */
+            has_speech_key: boolean;
             /** House Style */
             house_style: string | null;
+            /** Monthly Audio Seconds Budget */
+            monthly_audio_seconds_budget?: number | null;
             /** Monthly Token Budget */
             monthly_token_budget: number | null;
             /**
@@ -8004,6 +8034,17 @@ export interface components {
              * @enum {string}
              */
             provider: "anthropic" | "openai" | "openai_compatible";
+            /**
+             * Speech Available
+             * @default false
+             */
+            speech_available: boolean;
+            /** Speech Base Url */
+            speech_base_url?: string | null;
+            /** Speech Model */
+            speech_model?: string | null;
+            /** Speech Provider */
+            speech_provider?: ("openai" | "openai_compatible") | null;
         };
         /** AISettingsWrite */
         AISettingsWrite: {
@@ -8019,6 +8060,8 @@ export interface components {
             };
             /** House Style */
             house_style?: string | null;
+            /** Monthly Audio Seconds Budget */
+            monthly_audio_seconds_budget?: number | null;
             /** Monthly Token Budget */
             monthly_token_budget?: number | null;
             /**
@@ -8026,6 +8069,14 @@ export interface components {
              * @enum {string}
              */
             provider: "anthropic" | "openai" | "openai_compatible";
+            /** Speech Api Key */
+            speech_api_key?: string | null;
+            /** Speech Base Url */
+            speech_base_url?: string | null;
+            /** Speech Model */
+            speech_model?: string | null;
+            /** Speech Provider */
+            speech_provider?: ("openai" | "openai_compatible") | null;
         };
         /**
          * AITestResult
@@ -19303,12 +19354,22 @@ export interface components {
             override_budget: boolean;
             /** Text */
             text: string;
+            /** Today */
+            today?: string | null;
         };
         /**
          * TimeParseResult
          * @description A *draft* entry: prefills the form, never creates anything (#129).
+         *
+         *     Every field is optional and an unstated one stays ``None`` — notably ``billable``, whose
+         *     third state is what lets the form keep the project's own default (#284, #246). A ``False``
+         *     here would be indistinguishable from the user having said "niet declarabel".
          */
         TimeParseResult: {
+            /** Billable */
+            billable?: boolean | null;
+            /** Break Minutes */
+            break_minutes?: number | null;
             /** Company Id */
             company_id?: string | null;
             /** Date */
@@ -19319,6 +19380,8 @@ export interface components {
             duration_minutes?: number | null;
             /** End */
             end?: string | null;
+            /** Entry Type Key */
+            entry_type_key?: string | null;
             /** Project Id */
             project_id?: string | null;
             /** Start */
@@ -19398,6 +19461,35 @@ export interface components {
             /** Minutes */
             minutes: number;
             running: components["schemas"]["TimeEntryRead"] | null;
+        };
+        /**
+         * TimeTranscribeRequest
+         * @description A recorded quick-add line (#246).
+         *
+         *     The clip rides base64-in-JSON rather than multipart: the web app reaches the API through
+         *     one same-origin proxy that forwards JSON, and a second transport for one endpoint would be
+         *     a worse trade than 33% on a clip measured in tens of kilobytes.
+         */
+        TimeTranscribeRequest: {
+            /** Audio */
+            audio: string;
+            /** Language */
+            language?: string | null;
+            /**
+             * Override Budget
+             * @default false
+             */
+            override_budget: boolean;
+        };
+        /**
+         * TimeTranscribeResult
+         * @description Just the words. The transcript goes back into the quick-add field for the user to read
+         *     and fix before it is parsed — a misheard client name is the failure mode worth catching,
+         *     and it is only catchable while the text is still visible.
+         */
+        TimeTranscribeResult: {
+            /** Text */
+            text: string;
         };
         /**
          * TimeWorkspace
@@ -21044,6 +21136,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TimeReconstructResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    time_transcribe_api_v1_ai_time_transcribe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TimeTranscribeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeTranscribeResult"];
                 };
             };
             /** @description Validation Error */
