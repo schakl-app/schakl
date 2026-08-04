@@ -1,7 +1,7 @@
 """ai_add_speech_transcription
 
 Revision ID: e2c5a90d47bf
-Revises: d1a7f3b60c92
+Revises: b8e3f21a90c7
 Create Date: 2026-08-04 12:00:00.000000
 
 Speech-to-text for the time quick-add (#246): a tenant can speak an entry instead of typing it.
@@ -37,7 +37,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "e2c5a90d47bf"
-down_revision: str | None = "d1a7f3b60c92"
+down_revision: str | None = "b8e3f21a90c7"
 branch_labels: str | None = None
 depends_on: str | None = None
 
