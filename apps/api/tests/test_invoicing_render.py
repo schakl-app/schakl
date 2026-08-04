@@ -192,6 +192,91 @@ def test_a_block_a_design_places_by_hand_still_honours_its_switch() -> None:
     assert "Betaalgegevens" not in off
 
 
+def test_the_letterhead_draws_the_closing_band_once() -> None:
+    """The band is drawn by hand *and* skipped in the body loop; getting one of the two wrong
+    prints the VAT breakdown twice, or drops it from a template that asked for it."""
+    on = _render({"design": "letterhead",
+                  "layout": [{"key": "tax_summary", "enabled": True}]})
+    off = _render({"design": "letterhead",
+                   "layout": [{"key": "tax_summary", "enabled": False}]})
+    assert on.count('class="tax-summary') == 1
+    assert on.count('class="totals') == 1
+    assert off.count('class="tax-summary') == 0
+    # The band itself stays, so the totals keep their column rather than stretching across it.
+    assert off.count('class="closing avoid-break"') == 1
+    assert off.count('class="totals') == 1
+
+
+def test_a_block_ordered_around_the_total_still_lands_there() -> None:
+    """The letterhead splits the body loop around the closing band, so the band lands where
+    ``totals`` was ordered. A split that ignored the order would print every remaining block
+    below the band whatever the template said."""
+    doc, lines, groups = sample_document("nl", "EUR", TODAY)
+    doc.notes = "Bedankt voor de opdracht."
+
+    def render(order: list[str]) -> str:
+        return render_document_html(
+            kind="invoice", doc=doc, lines=lines, seller=SELLER,
+            config={"design": "letterhead", "layout": [{"key": key} for key in order]},
+            brand=DocumentBrand(name="Agency"), tax_groups=groups,
+        )
+
+    above = render(["lines", "notes", "totals", "footer"])
+    below = render(["lines", "totals", "notes", "footer"])
+    assert above.index("Bedankt") < above.index('class="closing')
+    assert below.index("Bedankt") > below.index('class="closing')
+
+
+def test_the_letterhead_prints_the_sample_on_one_sheet() -> None:
+    """Density is part of the design, not a nicety.
+
+    The sample is deliberately the busiest document a tenant will meet — three line kinds with
+    their subtotals, two VAT rates, a partial payment, a footer — and it is exactly what the
+    template editor previews. It used to run to two sheets with the totals stranded alone on
+    the second, which is the first thing anyone choosing this design would have seen.
+
+    Bound to the *default* layout on purpose: switching every optional block on at once (the
+    payment card and the VAT breakdown and every meta field) can still cost a second sheet,
+    and pinning that would buy a few millimetres of margin by making every ordinary invoice
+    tighter than the paper it is modelled on.
+    """
+    from weasyprint import HTML
+
+    html = _render({"design": "letterhead", "footer_i18n": {"nl": "Bedankt voor uw vertrouwen."}})
+    assert len(HTML(string=html).render().pages) == 1
+
+
+def test_the_payment_sentence_stands_down_behind_the_payment_card() -> None:
+    """Both say the same amount, the same IBAN and the same reference. The fallback sentence
+    is there for a document that shows no card — with one, it is the instruction twice."""
+    card = _render({"design": "letterhead",
+                    "layout": [{"key": "payment_box", "enabled": True}]})
+    no_card = _render({"design": "letterhead",
+                       "layout": [{"key": "payment_box", "enabled": False}]})
+    assert "Gelieve" not in card
+    assert "Gelieve" in no_card
+    # A sentence the tenant wrote themselves is not a fallback and always prints.
+    theirs = _render({"design": "letterhead", "payment_i18n": {"nl": "Betaal binnen 14 dagen."},
+                      "layout": [{"key": "payment_box", "enabled": True}]})
+    assert "Betaal binnen 14 dagen." in theirs
+
+
+@pytest.mark.parametrize("design", ["classic", "letterhead"])
+def test_a_shipped_design_still_renders_as_a_tenants_own_template(design: str) -> None:
+    """"Start from this design" hands over the very files the shipped design renders from —
+    so those files must run in the **sandbox** too, which allows less than our own environment
+    does. The letterhead reaches for ``body_order.index``, a slice and ``dict.get`` to split
+    its body around the closing band; any of them refused would turn "branch from letterhead"
+    into a 422 on the first save.
+    """
+    from app.modules.invoicing.render.engine import builtin_source
+
+    body, css = builtin_source(design)
+    html = _render({"design": "custom", "html": body, "css": css})
+    assert "Voorbeeldklant B.V." in html
+    assert 'class="lines"' in html
+
+
 def test_the_background_is_opt_in() -> None:
     """A template saved before backgrounds existed has no key; that must not mean "yes"."""
     logo = DocumentBrand(name="Agency", logo=b"\x89PNG\r\n\x1a\n" + b"\x00" * 32,

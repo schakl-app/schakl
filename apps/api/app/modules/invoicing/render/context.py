@@ -124,7 +124,7 @@ class _Entry:
 
 
 def _entries(
-    layout: ResolvedLayout, block: str, values: dict[str, tuple[str, str] | None]
+    layout: ResolvedLayout, block: str, values: dict[str, tuple[str, ...] | None]
 ) -> list[dict]:
     """A block's fields, in layout order, filtered down to what it can actually say.
 
@@ -133,18 +133,25 @@ def _entries(
     stack) would otherwise draw it however the layout was set, which is a switch that does
     nothing. And a field switched *on* with nothing behind it prints nothing either: an empty
     "KvK-nr." label on a sole trader who has none is worse than the field being absent.
+
+    A field may carry a third piece, its ``note``: an aside on the value rather than a value
+    of its own — "(voor 14-07-2026)" beside the amount owed. It travels separately so a design
+    can set it apart; glued onto the value it was one bold string, and the deadline read as
+    part of the sum.
     """
     if not layout.enabled(block):
         return []
     out: list[dict] = []
     for key in layout.fields(block):
-        pair = values.get(key)
-        if not pair:
+        parts = values.get(key)
+        if not parts:
             continue
-        label, value = pair
+        label, value, *rest = parts
         if value is None or str(value).strip() == "":
             continue
-        out.append({"key": key, "label": label, "value": str(value)})
+        out.append(
+            {"key": key, "label": label, "value": str(value), "note": rest[0] if rest else ""}
+        )
     return out
 
 
@@ -263,7 +270,7 @@ def build_context(
 
     # --- parties ------------------------------------------------------------------- #
     seller_addr = _address_lines(seller)
-    seller_values: dict[str, tuple[str, str] | None] = {
+    seller_values: dict[str, tuple[str, ...] | None] = {
         "name": ("", seller.get("name") or brand.name),
         "address": ("", seller_addr["address"]),
         "postal_city": ("", seller_addr["postal_city"]),
@@ -282,7 +289,7 @@ def build_context(
 
     customer = dict(getattr(doc, "customer", None) or {})
     customer_addr = _address_lines(customer, skip_country=seller.get("country"))
-    customer_values: dict[str, tuple[str, str] | None] = {
+    customer_values: dict[str, tuple[str, ...] | None] = {
         "label": ("", t("invoicing.doc.bill_to")),
         "name": ("", customer.get("name") or ""),
         "attn": ("", customer.get("attn") or ""),
@@ -315,7 +322,7 @@ def build_context(
                 "invoicing.doc.terms_days_one" if days == 1 else "invoicing.doc.terms_days_other",
                 days=days,
             )
-    meta_values: dict[str, tuple[str, str] | None] = {
+    meta_values: dict[str, tuple[str, ...] | None] = {
         "number": (
             t("invoicing.doc.quote_number") if kind == "quote" else t("invoicing.doc.number"),
             getattr(doc, "number", None) or "",
@@ -428,11 +435,12 @@ def build_context(
     ]
 
     # --- the payment card (the letterhead's "Betaalgegevens") --------------------------- #
-    deadline = f"  ({t('invoicing.doc.before_date', date=fmt_date(due_date))})" if due_date else ""
-    payment_box_values: dict[str, tuple[str, str] | None] = {
+    deadline = f"({t('invoicing.doc.before_date', date=fmt_date(due_date))})" if due_date else ""
+    payment_box_values: dict[str, tuple[str, ...] | None] = {
         "amount": (
             t("invoicing.doc.to_pay"),
-            money(outstanding if paid else doc.total) + deadline,
+            money(outstanding if paid else doc.total),
+            deadline,
         ),
         "iban": (t("invoicing.doc.to_iban"), seller.get("iban") or ""),
         "account_name": (t("invoicing.doc.account_name"), seller.get("name") or brand.name),
@@ -455,11 +463,16 @@ def build_context(
         return texts.get(locale) or texts.get("en") or texts.get("nl") or ""
 
     payment_text = template_text("payment_i18n")
+    # The fallback sentence exists so a document that shows no payment card still says where
+    # the money goes. With the card switched on it is the same amount, the same IBAN and the
+    # same reference a second time, a few centimetres lower — so it stands down. A sentence
+    # the tenant wrote themselves always prints: they put it there on purpose.
     if (
         not payment_text
         and kind == "invoice"
         and seller.get("iban")
         and not is_credit_note
+        and not show_payment_box
     ):
         payment_text = t(
             "invoicing.doc.payment_fallback",

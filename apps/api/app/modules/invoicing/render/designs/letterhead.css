@@ -1,77 +1,146 @@
-.head { display: flex; justify-content: space-between; gap: 20mm; margin-bottom: 14mm; }
-  .logo { max-height: 22mm; max-width: 70mm; }
+/* Two weights of rule, and the choice matters. `--rule` is the app's hairline and reads as a
+     hint — it separates a section label from its rows. The lines a printed invoice is actually
+     read by, under the column headings and over the amount owed, want the weight of a ruled
+     ledger, which on white paper is the muted grey rather than the near-black ink. */
+
+  /* --- the letterhead ---------------------------------------------------------------- */
+  .head { display: flex; justify-content: space-between; gap: 12mm; }
+  .head-left { flex: 1; min-width: 0; }
+  .head-right { width: 70mm; flex: none; }
+
+  .logo { max-height: 18mm; max-width: 66mm; }
   .brand-word { font-size: 20pt; font-weight: 800; letter-spacing: -0.02em; }
 
-  .sender { font-size: 8.5pt; line-height: 1.6; min-width: 62mm; }
-  .sender .name { font-weight: 700; font-size: 9.5pt; }
-  .sender-grid { border-collapse: collapse; }
-  .sender-grid td { padding: 0; font-size: 8.5pt; }
-  .sender-grid .k { color: var(--ink); font-weight: 700; padding-right: 5mm;
-                    white-space: nowrap; }
+  .sender { font-size: 9pt; line-height: 1.55; }
+  .sender .name { font-weight: 700; }
+  .sender-grid { border-collapse: collapse; margin-top: 3mm; }
+  .sender-grid td { padding: 0; font-size: 9pt; }
+  .sender-grid .k { font-weight: 700; padding-right: 4mm; white-space: nowrap; }
   /* The identity rows (IBAN, Btw-nr, KvK) read as a second group, not a continuation. */
   .sender-grid tr.group-start td { padding-top: 4mm; }
 
-  h1 { margin: 0 0 4mm; font-size: 17pt; font-weight: 700; color: var(--accent); }
+  /* Black, and in the case a letter is written in — never the shout `classic` opens with.
+     The message itself is set in capitals for that design, so the case is corrected here
+     rather than in the catalog: one design's typography is not the other's content. */
+  h1 {
+    margin: 11mm 0 4mm;
+    font-size: 18pt;
+    font-weight: 700;
+    color: var(--ink);
+    text-transform: lowercase;
+  }
+  h1::first-letter { text-transform: uppercase; }
 
-  .middle { display: flex; justify-content: space-between; gap: 16mm; margin-bottom: 10mm; }
-  .middle-left { min-width: 0; flex: 1; }
-  .middle-right { min-width: 66mm; }
-
-  .bill-to { font-size: 9.5pt; line-height: 1.55; margin-bottom: 8mm; }
+  .bill-to { font-size: 9.5pt; line-height: 1.55; }
   .bill-to .name { font-weight: 700; }
 
+  /* --- what is owed, and what identifies the document -------------------------------- */
+  .details { display: flex; justify-content: space-between; gap: 12mm; margin-top: 8mm; }
+  .details-left { flex: 1; min-width: 0; }
+  .details-right { width: 70mm; flex: none; }
+
+  .payment-card {
+    max-width: 92mm; position: relative; padding: 4.5mm 6mm 4mm;
+    background: var(--wash); border: 1px solid var(--rule); border-radius: 2px;
+  }
+  /* The title sits *on* the border, the way a fieldset legend does — which is what tells the
+     reader the box is one thing and not four more rows of the invoice. */
+  .payment-card-title {
+    position: absolute; top: -3.2mm; left: 5mm; padding: 0.5mm 2.5mm;
+    background: #fff; border: 1px solid var(--rule); border-radius: 2px;
+    font-size: 9pt; font-weight: 700; color: var(--ink);
+    letter-spacing: 0; text-transform: none;
+  }
+  .payment-card td { padding: 0.7mm 0; font-size: 9.5pt; }
+  .payment-card td:first-child { padding-right: 8mm; white-space: nowrap; color: var(--ink); }
+  /* The deadline is an aside on the amount, not a second value. */
+  .payment-card .note { font-weight: 400; font-style: italic; padding-left: 3mm; }
+
   .meta { width: 100%; }
-  .meta td { padding: 0.7mm 0; font-size: 9pt; }
-  .meta .meta-label { color: var(--ink); padding-right: 8mm; white-space: nowrap; }
+  .meta td { padding: 0.5mm 0; font-size: 9.5pt; }
+  .meta .meta-label { color: var(--ink); padding-right: 6mm; white-space: nowrap; }
   .meta .meta-value { font-weight: 700; text-align: left; }
   /* Klantnummer / Leverdatum sit apart from the invoice's own numbers, as on paper. */
-  .meta tr.group-start td { padding-top: 4mm; }
-
-  .payment-card { border: 1px solid var(--rule); border-radius: 3px; padding: 4mm 5mm 4mm;
-                  position: relative; margin-top: 3mm; }
-  .payment-card-title {
-    position: absolute; top: -2.6mm; left: 4mm; background: #fff; padding: 0 2mm;
-    border: 1px solid var(--rule); border-radius: 2px; color: var(--ink);
-  }
-  .payment-card td { padding: 0.6mm 0; font-size: 9pt; }
-  .payment-card td:first-child { padding-right: 10mm; white-space: nowrap; }
+  .meta tr.group-start td { padding-top: 4.5mm; }
 
   .intro { margin-bottom: 6mm; font-size: 9.5pt; }
 
-  .lines { margin-bottom: 3mm; }
+  /* --- the lines ---------------------------------------------------------------------- */
+  /* A floor, not a fixed height: the open middle this design is built around on a short
+     invoice, and no forced break on a long one. */
+  .flow { min-height: 84mm; margin-top: 3mm; }
+
+  .lines { margin-bottom: 0; }
+  /* Headings a reader can find without being shouted at: the words themselves, ruled above
+     and below. No fill — the band is what made the old table look like a spreadsheet. */
   .lines th {
-    padding: 2mm 3mm; background: var(--accent-soft); border-bottom: 1px solid var(--rule);
-    font-size: 8pt; color: var(--ink); letter-spacing: 0.04em;
+    padding: 2.4mm 3mm; background: none;
+    border-top: 1px solid var(--muted); border-bottom: 1px solid var(--muted);
+    font-size: 9.5pt; font-weight: 700; color: var(--ink);
+    letter-spacing: 0; text-transform: none;
   }
   .lines th:first-child, .lines td:first-child { padding-left: 0; }
   .lines th:last-child, .lines td:last-child { padding-right: 0; }
-  .lines td { padding: 2.2mm 3mm; border-bottom: 1px solid var(--rule); font-size: 9.5pt; }
-  .lines .section td { background: var(--accent-wash); border-bottom: 0; padding: 1.5mm 3mm; }
-  .lines .section-total td { border-bottom: 0; padding-top: 1.5mm; font-size: 8.5pt; }
-  .col-quantity { width: 20mm; }
-  .col-unit { width: 16mm; }
-  .col-unit_price { width: 24mm; }
-  .col-tax { width: 26mm; }
-  .col-amount { width: 26mm; }
+  .lines td { padding: 2mm 3mm; border-bottom: 0; font-size: 9.5pt; }
 
-  /* The end of the document: VAT breakdown left, what is owed right, on one line. */
-  .tax-summary { float: left; width: 72mm; margin-top: 8mm; }
-  .tax-summary th { padding: 0 4mm 1mm 0; border-bottom: 1px solid var(--ink);
-                    color: var(--ink); }
-  .tax-summary th:last-child, .tax-summary td:last-child { padding-right: 0; }
-  .tax-summary td { padding: 1.2mm 4mm 0 0; font-size: 8.5pt; }
-
-  .totals { float: right; width: 76mm; margin-top: 8mm; }
-  .totals td { padding: 1.2mm 0; font-size: 9.5pt; }
-  .totals td:first-child { color: var(--ink); }
-  .totals .strong-row td {
-    padding-top: 2mm; margin-top: 2mm; border-top: 1px solid var(--ink); font-weight: 700;
+  /* A section is set off by air and one hairline, not by a filled band: on an invoice that
+     mixes worked hours, agreements and sales the reader needs to *find* the three groups,
+     not be walled off from them. The kind is the one place this design spends the tenant's
+     colour, which is why the heading above it can stay black. */
+  .lines .section td {
+    padding: 5mm 3mm 1.5mm; background: none; border-bottom: 1px solid var(--rule);
+  }
+  .lines tbody:first-of-type .section td { padding-top: 4mm; }
+  .lines .section td.micro { font-size: 7.5pt; letter-spacing: 0.12em; color: var(--accent); }
+  .lines .section-total td {
+    padding: 1.4mm 3mm 0; border-bottom: 0; font-size: 8.5pt;
   }
 
-  .reverse-charge { clear: both; padding-top: 8mm; font-size: 8.5pt; }
-  .notes { clear: both; padding-top: 8mm; font-size: 9.5pt; }
+  .col-quantity { width: 22mm; }
+  .col-unit { width: 16mm; }
+  .col-unit_price { width: 26mm; }
+  .col-tax { width: 24mm; }
+  .col-amount { width: 28mm; }
+
+  /* --- the closing band ---------------------------------------------------------------- */
+  /* One washed band closes the document: the VAT breakdown left, what is owed right, and the
+     two settled onto the same baseline rather than the same top — the last row of the
+     breakdown reads across to the amount due, which is the comparison the band is for.
+     The wash bleeds a couple of millimetres past the text on both sides, so the band reads
+     as a band while its columns still line up with the amounts in the table above it.
+     A table and not flex, and not by preference: WeasyPrint fragments a flex container by
+     leaving its children behind, so an invoice that ended near the foot of a page printed
+     the band as an empty grey rectangle with its numbers alone overleaf. */
+  .closing { margin: 8mm -2mm 0; padding: 4mm 2mm; background: var(--wash); }
+  .closing-row { display: table; width: 100%; table-layout: fixed; }
+  .closing-left { display: table-cell; vertical-align: bottom; }
+  .closing .totals { display: table-cell; vertical-align: bottom; float: none; margin: 0; }
+
+  .tax-summary { width: 66mm; }
+  .tax-summary th {
+    padding: 0 4mm 1.2mm 0; border-bottom: 1px solid var(--muted);
+    font-size: 8.5pt; font-weight: 400; color: var(--ink);
+    letter-spacing: 0; text-transform: none;
+  }
+  .tax-summary th:last-child, .tax-summary td:last-child { padding-right: 0; }
+  .tax-summary td { padding: 1.4mm 4mm 0 0; font-size: 8.5pt; }
+
+  .totals { width: 78mm; }
+  .totals td { padding: 0.8mm 0; font-size: 9.5pt; }
+  /* Every line of the closing sum is black: the labels are the reader's, not asides. */
+  .totals td:first-child, .totals td.muted { color: var(--ink); }
+  .totals .strong-row td {
+    padding-top: 2mm; border-top: 1px solid var(--muted); font-weight: 700;
+  }
+  /* The amount owed carries its weight in bold, not in colour — the tenant's colour is
+     spent on the section kinds, and a coloured total on a washed band reads as a warning. */
+  .totals .strong-row td.accent { color: var(--ink); }
+
+  /* --- after the sum ------------------------------------------------------------------- */
+  .reverse-charge { padding-top: 7mm; font-size: 8.5pt; }
+  .notes { padding-top: 7mm; font-size: 9.5pt; }
   .notes :first-child { margin-top: 0; }
   .notes p, .notes ul, .notes ol { margin: 0 0 3mm; }
   .notes ul, .notes ol { padding-left: 6mm; }
-  .payment-note { clear: both; padding-top: 8mm; font-size: 9.5pt; }
-  .doc-footer { clear: both; padding-top: 10mm; font-size: 8.5pt; }
+  .payment-note { padding-top: 6mm; font-size: 9.5pt; }
+  .doc-footer { padding-top: 6mm; font-size: 9pt; color: var(--ink); }

@@ -236,6 +236,13 @@ service._render_inputs ─┬─▶ context.build_context ──▶ engine.rende
   `app.css`'s tokens; the face is **Inter**, installed by `apps/api/Dockerfile`.
 - **Page numbers arrive as a second stylesheet**, so a one-page invoice stays unnumbered.
   That costs a second layout pass, and only on documents that really run to two pages.
+- **A field may carry a *note* beside its value** — "(voor 14-07-2026)" against the amount owed
+  — which travels as its own piece rather than glued onto the value, so a design can set it
+  apart. Glued on it was one bold string, and the deadline read as part of the sum.
+- **The fallback "please transfer…" sentence stands down behind the payment card.** It exists
+  so a document showing no card still says where the money goes; with the card on it is the
+  same amount, IBAN and reference a second time a few centimetres lower. A sentence the tenant
+  wrote themselves always prints — they put it there on purpose.
 
 ### What a template may rearrange (`render/blocks.py`)
 
@@ -263,6 +270,43 @@ ordered list of toggleable fields. `BLOCK_CATALOG` is the registry those keys ar
 `classic` is what the product has always printed. `letterhead` is the shape a Dutch agency
 invoice usually takes: sender across half the header, a boxed *Betaalgegevens* card by the
 addressee, the VAT breakdown beside the totals, and the tenant's mark behind the page.
+
+What makes the letterhead read as paper rather than as a screen, and why each piece is where
+it is:
+
+- **Two columns that flow independently, twice.** The wordmark, heading and addressee run down
+  the left while the sender's identity runs down the right, so the heading sits *beside* the
+  sender block instead of below it. Then the payment card and the document's numbers form a
+  second pair, deliberately aligned at the top — letting those two simply follow their columns
+  would align them by accident, and a sole trader with four sender fields would get a card
+  floating a long way below its numbers.
+- **The heading is black, in the case a letter is written in.** The catalog message is set in
+  capitals for `classic`, which opens on a shouted `FACTUUR`; the letterhead corrects the case
+  in CSS rather than in the catalog, because one design's typography is not the other's
+  content.
+- **The tenant's colour is spent once**, on the line-kind headings. Everything else — the
+  heading, the amount owed — is ink, so a loud brand still prints as paperwork.
+- **The lines table is ruled, not filled.** Column headings in the words themselves with a rule
+  above and below; no fill, no per-row borders. A section is set off by air and one hairline:
+  on an invoice that mixes worked hours, agreements and sales the reader has to *find* the
+  three groups, not be walled off from them.
+- **One washed band closes the document**, VAT breakdown left and totals right, settled onto
+  the same baseline rather than the same top — the last row of the breakdown reads across to
+  the amount due, which is the comparison the band is for. It is a **table and not flex**:
+  WeasyPrint fragments a flex container by leaving its children behind, so an invoice that
+  ended near the foot of a page printed the band as an empty grey rectangle with its numbers
+  alone overleaf.
+- **The band is drawn by hand, and the body loop splits around it.** `tax_summary` and `totals`
+  leave the stack the way `payment_box` already does, and the band lands where `totals` was
+  ordered — so "notes below the total" still means what it says. `.flow` carries a *floor*
+  rather than the band carrying a ceiling: a short invoice keeps the open middle the design is
+  built around, and a long one grows past it. Pinning the band to the foot of the sheet would
+  need the page's height, which no block in normal flow can ask for without risking a break of
+  its own.
+- **Density is part of the design.** The sample — three line kinds with subtotals, two VAT
+  rates, a partial payment, a footer — prints on one sheet, and a test says so, because that
+  sample *is* the editor's preview. It ran to two once, with the totals stranded alone on the
+  second.
 
 The background is **opt-in**: a template stored before it existed has no `background` key, and
 reading that as "yes please" would have put a mark behind every invoice every tenant had

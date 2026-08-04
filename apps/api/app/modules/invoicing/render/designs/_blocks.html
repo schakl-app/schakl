@@ -90,7 +90,11 @@
       {% for entry in entries %}
         <tr>
           <td class="muted">{{ entry.label }}</td>
-          <td class="strong">{{ entry.value }}</td>
+          {# The note is an aside on the value — the deadline beside the amount owed — so it
+             sits outside the emphasis rather than inside it. #}
+          <td class="strong">
+            {{ entry.value }}{% if entry.note %}<span class="note muted">{{ entry.note }}</span>{% endif %}
+          </td>
         </tr>
       {% endfor %}
     </table>
