@@ -13,6 +13,7 @@ and their web counterparts — currently:
 
 - `apps/api/app/core/cloud/`
 - `apps/api/app/core/mcp/`
+- `apps/api/app/modules/oxxa/`
 - `apps/api/app/modules/cloudflare/`
 - `apps/api/app/modules/automation/`
 - `apps/api/app/modules/domains/`
@@ -28,6 +29,7 @@ and their web counterparts — currently:
 - `apps/api/app/modules/time/`
 - `apps/api/app/modules/websites/`
 - `apps/web/src/lib/cloud/`
+- `apps/web/src/lib/modules/oxxa/`
 - `apps/web/src/lib/modules/cloudflare/`
 - `apps/web/src/lib/modules/automation/`
 - `apps/web/src/lib/modules/domains/`
@@ -52,6 +54,7 @@ and their web counterparts — currently:
 - `apps/web/src/routes/(app)/subscriptions/`
 - `apps/web/src/routes/(app)/time/`
 - `apps/web/src/routes/(app)/websites/`
+- `apps/web/src/routes/(app)/settings/oxxa/`
 - `apps/web/src/routes/(app)/settings/cloudflare/`
 - `apps/web/src/routes/(app)/settings/automation/`
 - `apps/web/src/routes/(app)/settings/google/`

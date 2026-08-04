@@ -270,8 +270,12 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   And an integration that mirrors outside state stores **what it decided** and **what it last
   observed** in separate columns, so "somebody changed this in the provider's dashboard" is
   expressible at all: a reconcile reports drift instead of silently overwriting it. The
-  registrar half (OXXA nameserver sync + write-back) is split out — no credentials or real API
-  docs exist yet, and §11 forbids writing an integration from memory.
+  registrar half is now **`oxxa`** (#296, `docs/OXXA.md`): the register sync, the nameserver
+  write-back that finishes "Connect to Cloudflare", and the `app/core/registrar/` seam a second
+  registrar plugs into. Written from OXXA's official API documentation — §11 bans writing an
+  integration *from memory*, not from a document — but **never exercised against a live
+  credential**, so `docs/OXXA.md` §1 carries the checklist to run the day one arrives, and every
+  parse there is defensive until it has.
 
 ## 11. Working agreement (for Claude Code)
 

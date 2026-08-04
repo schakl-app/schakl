@@ -123,7 +123,7 @@ class Settings(BaseSettings):
         default_factory=lambda: [
             "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
             "domains", "hosting", "websites", "subscriptions", "invoicing", "automation",
-            "interactions", "google", "marketing", "hr", "cloudflare",
+            "interactions", "google", "marketing", "hr", "cloudflare", "oxxa",
         ]
     )
     default_locale: str = "nl"

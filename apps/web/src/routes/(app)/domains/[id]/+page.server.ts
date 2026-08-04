@@ -12,6 +12,8 @@ import { apiFor } from "$lib/core/session";
 // The Cloudflare panel edits through this page's actions, the way the Drive panels do — a panel
 // cannot own form actions, so the host spreads them in (CLAUDE.md §6: one import, no internals).
 import { cloudflareActions } from "$lib/modules/cloudflare/cloudflare-actions.server";
+// The registrar panel edits through this page too (#296) — same contract, one import.
+import { oxxaActions } from "$lib/modules/oxxa/oxxa-actions.server";
 import "$lib/modules";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -75,6 +77,7 @@ export const load: PageServerLoad = async (event) => {
 
 export const actions: Actions = {
   ...cloudflareActions,
+  ...oxxaActions,
 
   update: async (event) => {
     const form = await event.request.formData();

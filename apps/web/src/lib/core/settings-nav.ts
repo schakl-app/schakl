@@ -430,6 +430,23 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     permissions: ["cloudflare.settings.manage"],
     module: "cloudflare",
   },
+  {
+    // The registrar half of the same story (#296): the reseller logins, and the register they
+    // pull. `oxxa.registrar.sync` deliberately does *not* open it — that permission acts
+    // *through* a credential, this screen holds one.
+    key: "oxxa",
+    href: "/settings/oxxa",
+    // The card's own copy, like every other entry here — the screen's `<h1>` and lead sentence
+    // are a different, longer register (`oxxa.settings.title` / `.description`). Without the
+    // keywords the screen could not be found by searching "registrar" or "nameservers", which is
+    // exactly what this list exists to prevent.
+    titleKey: "settings.oxxa.title",
+    subtitleKey: "settings.oxxa.subtitle",
+    keywordsKey: "settings.search.oxxa",
+    group: "integrations",
+    permissions: ["oxxa.settings.manage"],
+    module: "oxxa",
+  },
 
   // --- Systeem ----------------------------------------------------------- //
   {

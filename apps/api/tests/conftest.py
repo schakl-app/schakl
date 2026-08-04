@@ -69,6 +69,7 @@ _DOMAIN_TABLES = (
     "drive_links, drive_folder_jobs, gmail_suppressions, google_connections, google_settings, "
     "cloudflare_pages_links, cloudflare_pages_projects, cloudflare_redirects, "
     "cloudflare_zones, cloudflare_accounts, "
+    "oxxa_domains, oxxa_accounts, "
     "websites, hosting, domain_tld_prices, domains, providers, "
     "time_entry_drafts, time_entries, time_entry_types, tasks, projects, contacts, contact_types, "
     "custom_field_definitions, "
@@ -84,7 +85,7 @@ _ENABLED_MODULES = [
     "hr",
     "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
     "domains", "hosting", "websites", "subscriptions", "invoicing", "automation",
-    "interactions", "google", "marketing", "cloudflare",
+    "interactions", "google", "marketing", "cloudflare", "oxxa",
 ]
 
 

@@ -6058,6 +6058,204 @@ export interface paths {
         patch: operations["set_read_api_v1_notifications__notification_id__patch"];
         trace?: never;
     };
+    "/api/v1/oxxa/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Accounts
+         * @description Configured OXXA logins. The API password is never part of the response.
+         */
+        get: operations["list_accounts_api_v1_oxxa_accounts_get"];
+        put?: never;
+        /**
+         * Create Account
+         * @description Store a credential. Creating does not verify it — ``/verify`` is the explicit probe, so
+         *     a typo is reported on the settings screen rather than as a failed save.
+         */
+        post: operations["create_account_api_v1_oxxa_accounts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oxxa/accounts/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Account Options
+         * @description Names only, for the "which register" picker — choosing one is the sync/push caller's
+         *     job, and should not require holding the credential screen's permission.
+         */
+        get: operations["list_account_options_api_v1_oxxa_accounts_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oxxa/accounts/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Account
+         * @description Forget the credential and the register synced from it. Nothing at OXXA is deleted.
+         */
+        delete: operations["delete_account_api_v1_oxxa_accounts__account_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Account
+         * @description Rename, repoint or rotate. An omitted ``api_password`` keeps the stored one.
+         */
+        patch: operations["update_account_api_v1_oxxa_accounts__account_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/oxxa/accounts/{account_id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Account
+         * @description Pull the whole register and reconcile it. One request to OXXA, not one per domain.
+         */
+        post: operations["sync_account_api_v1_oxxa_accounts__account_id__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oxxa/accounts/{account_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Account
+         * @description Probe the credential and cache the TLDs it may operate on.
+         *
+         *     Also brings back the reseller balance: a register that has run out of credit stops renewing
+         *     domains, and nothing else in schakl would ever mention it.
+         */
+        post: operations["verify_account_api_v1_oxxa_accounts__account_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oxxa/domains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Register
+         * @description The stored register. ``linked=false`` is the one worth looking at: domains the agency is
+         *     paying to renew that no schakl record — and therefore no invoice — knows about.
+         */
+        get: operations["list_register_api_v1_oxxa_domains_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oxxa/domains/{domain_id}/nameservers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Push Nameservers
+         * @description Repoint the domain's delegation at the registrar.
+         *
+         *     Its own permission, not ``domains.domain.write``: this changes where the world resolves a
+         *     client's domain, which is a different blast radius from editing our record of it.
+         *     Idempotent — pushing the delegation a domain already has writes nothing at OXXA.
+         */
+        post: operations["push_nameservers_api_v1_oxxa_domains__domain_id__nameservers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oxxa/domains/{domain_id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Domain
+         * @description Re-read one domain from the registrar, including DNSSEC and the registrant's name.
+         */
+        post: operations["refresh_domain_api_v1_oxxa_domains__domain_id__refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oxxa/domains/{domain_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Domain Status
+         * @description Stored rows only — never calls OXXA, so the domain page renders when OXXA is down.
+         */
+        get: operations["domain_status_api_v1_oxxa_domains__domain_id__status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/permissions/catalog": {
         parameters: {
             query?: never;
@@ -10732,6 +10930,33 @@ export interface components {
             updated_at: string;
         };
         /**
+         * DomainRegistrarStatus
+         * @description What this module knows about one domain, **from stored rows only**.
+         *
+         *     Never calls OXXA. A domain page must not wait on an outside API to render and must still
+         *     render when that API is down (docs/PERFORMANCE.md); ``POST /domains/{id}/refresh`` is the
+         *     explicit "go look" action, mirroring the domains module's own refresh.
+         */
+        DomainRegistrarStatus: {
+            /** Account Id */
+            account_id?: string | null;
+            /** Account Name */
+            account_name?: string | null;
+            /**
+             * Configured
+             * @default false
+             */
+            configured: boolean;
+            /**
+             * Domain Id
+             * Format: uuid
+             */
+            domain_id: string;
+            /** Issues */
+            issues?: string[];
+            registrar?: components["schemas"]["RegistrarDomainRead"] | null;
+        };
+        /**
          * DomainStatus
          * @description Operational state of a domain. ``redirect``'s uptime/redirect webhook is a later slice.
          * @enum {string}
@@ -14159,6 +14384,33 @@ export interface components {
             gmail_sync_enabled?: boolean | null;
         };
         /**
+         * NameserverPush
+         * @description Ask the registrar to delegate a domain to exactly these nameservers.
+         */
+        NameserverPush: {
+            /** Account Id */
+            account_id?: string | null;
+            /** Nameservers */
+            nameservers: string[];
+        };
+        /**
+         * NameserverPushResult
+         * @description What the push did. ``changed=False`` is a success: the delegation was already right, so
+         *     nothing was written at the registrar — which is what makes a retry free.
+         */
+        NameserverPushResult: {
+            /** Changed */
+            changed: boolean;
+            /** Error */
+            error?: string | null;
+            /** Nameservers */
+            nameservers?: string[];
+            /** Nsgroup Ref */
+            nsgroup_ref?: string | null;
+            /** Ok */
+            ok: boolean;
+        };
+        /**
          * NavGroupPref
          * @description A tenant label for a sidebar *group* heading (e.g. ``assets`` → "Hosting & domeinen").
          */
@@ -14513,6 +14765,145 @@ export interface components {
             /** Sources Present */
             sources_present?: components["schemas"]["MarketingSource"][];
         };
+        /** OxxaAccountCreate */
+        OxxaAccountCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Api Password */
+            api_password: string;
+            /** Api User */
+            api_user: string;
+            /** Name */
+            name: string;
+            /** Provider Id */
+            provider_id?: string | null;
+        };
+        /**
+         * OxxaAccountOption
+         * @description An account as a *picker* needs it. Separate from :class:`OxxaAccountRead` for the reason
+         *     ``cloudflare``'s is: choosing which register to act through is ``registrar.sync``'s business,
+         *     while seeing how a credential is configured and why it last failed is ``settings.manage``.
+         */
+        OxxaAccountOption: {
+            /** Active */
+            active: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * OxxaAccountRead
+         * @description A configured OXXA reseller login. Never carries the password.
+         */
+        OxxaAccountRead: {
+            /** Active */
+            active: boolean;
+            /** Api User */
+            api_user: string;
+            /**
+             * Domain Count
+             * @default 0
+             */
+            domain_count: number;
+            /** Funds Available */
+            funds_available?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Synced At */
+            last_synced_at?: string | null;
+            /** Last Verified At */
+            last_verified_at?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Password Configured
+             * @default true
+             */
+            password_configured: boolean;
+            /** Provider Id */
+            provider_id?: string | null;
+            /** Provider Name */
+            provider_name?: string | null;
+            /** Status */
+            status: string;
+            /**
+             * Tld Count
+             * @default 0
+             */
+            tld_count: number;
+        };
+        /**
+         * OxxaAccountSyncResult
+         * @description The outcome of one register sync.
+         */
+        OxxaAccountSyncResult: {
+            /**
+             * Drifted
+             * @default 0
+             */
+            drifted: number;
+            /** Error */
+            error?: string | null;
+            /**
+             * Found
+             * @default 0
+             */
+            found: number;
+            /**
+             * Matched
+             * @default 0
+             */
+            matched: number;
+            /** Ok */
+            ok: boolean;
+            /**
+             * Unmatched
+             * @default 0
+             */
+            unmatched: number;
+        };
+        /** OxxaAccountUpdate */
+        OxxaAccountUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Api Password */
+            api_password?: string | null;
+            /** Api User */
+            api_user?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Provider Id */
+            provider_id?: string | null;
+        };
+        /**
+         * OxxaAccountVerifyResult
+         * @description What a verify learned. Never raises for a working-but-limited credential.
+         */
+        OxxaAccountVerifyResult: {
+            /** Error */
+            error?: string | null;
+            /** Funds Available */
+            funds_available?: string | null;
+            /** Ok */
+            ok: boolean;
+            /**
+             * Tld Count
+             * @default 0
+             */
+            tld_count: number;
+        };
         /** Page[CompanyRead] */
         Page_CompanyRead_: {
             /** Items */
@@ -14616,6 +15007,17 @@ export interface components {
         Page_QuoteRead_: {
             /** Items */
             items: components["schemas"]["QuoteRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[RegistrarDomainRead] */
+        Page_RegistrarDomainRead_: {
+            /** Items */
+            items: components["schemas"]["RegistrarDomainRead"][];
             /** Limit */
             limit: number;
             /** Offset */
@@ -15922,6 +16324,64 @@ export interface components {
             status_code: number;
             /** Target Url */
             target_url: string;
+        };
+        /**
+         * RegistrarDomainRead
+         * @description One row of the register as schakl stores it.
+         */
+        RegistrarDomainRead: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Autorenew */
+            autorenew?: boolean | null;
+            /** Contact Refs */
+            contact_refs?: {
+                [key: string]: string;
+            };
+            /** Dnssec */
+            dnssec?: boolean | null;
+            /** Domain Id */
+            domain_id?: string | null;
+            /** Domain Name */
+            domain_name?: string | null;
+            /** Expires On */
+            expires_on?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Synced At */
+            last_synced_at?: string | null;
+            /** Name */
+            name: string;
+            /** Ns Desired */
+            ns_desired?: string[] | null;
+            /** Ns Observed */
+            ns_observed?: string[] | null;
+            /** Ns Push Status */
+            ns_push_status: string;
+            /** Ns Pushed At */
+            ns_pushed_at?: string | null;
+            /** Nsgroup Ref */
+            nsgroup_ref?: string | null;
+            /** Registrant */
+            registrant?: {
+                [key: string]: unknown;
+            } | null;
+            /** Registrant Name */
+            registrant_name?: string | null;
+            /** Sld */
+            sld: string;
+            /** Tld */
+            tld: string;
+            /** Transfer Lock */
+            transfer_lock?: boolean | null;
         };
         /** ReportCreate */
         ReportCreate: {
@@ -32297,6 +32757,342 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotificationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_accounts_api_v1_oxxa_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OxxaAccountRead"][];
+                };
+            };
+        };
+    };
+    create_account_api_v1_oxxa_accounts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OxxaAccountCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OxxaAccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_account_options_api_v1_oxxa_accounts_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OxxaAccountOption"][];
+                };
+            };
+        };
+    };
+    delete_account_api_v1_oxxa_accounts__account_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_account_api_v1_oxxa_accounts__account_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OxxaAccountUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OxxaAccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_account_api_v1_oxxa_accounts__account_id__sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OxxaAccountSyncResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_account_api_v1_oxxa_accounts__account_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OxxaAccountVerifyResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_register_api_v1_oxxa_domains_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                account_id?: string | null;
+                /** @description true = matched to a schakl domain, false = only the unmatched */
+                linked?: boolean | null;
+                q?: string | null;
+                /** @description false skips the count query (docs/PERFORMANCE.md) */
+                count?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_RegistrarDomainRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    push_nameservers_api_v1_oxxa_domains__domain_id__nameservers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NameserverPush"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NameserverPushResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_domain_api_v1_oxxa_domains__domain_id__refresh_post: {
+        parameters: {
+            query?: {
+                account_id?: string | null;
+            };
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainRegistrarStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    domain_status_api_v1_oxxa_domains__domain_id__status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainRegistrarStatus"];
                 };
             };
             /** @description Validation Error */
