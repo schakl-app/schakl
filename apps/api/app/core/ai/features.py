@@ -20,6 +20,7 @@ from sqlalchemy import select
 from app.config import settings
 from app.core.activity.service import ActivityService, snapshot
 from app.core.ai import prompts
+from app.core.ai.candidates import gather as gather_candidates
 from app.core.ai.models import AIReport
 from app.core.ai.providers import ChatMessage, ToolDef
 from app.core.ai.schemas import (
@@ -35,7 +36,8 @@ from app.core.ai.schemas import (
     WritingAssistRequest,
 )
 from app.core.ai.service import AIService
-from app.core.ai.tools import get_tool, result_text, run_tool
+from app.core.ai.tools import get_tool, get_tools, result_text, run_tool
+from app.core.timezone import org_today
 from app.errors import AppError
 from app.registry import registry
 
@@ -90,6 +92,24 @@ _SUBMIT_ENTRY = ToolDef(
             "project_id": {"type": ["string", "null"]},
             "task_id": {"type": ["string", "null"]},
             "description": {"type": ["string", "null"]},
+            "entry_type_key": {
+                "type": ["string", "null"],
+                "description": (
+                    "One of the org's active entry-type keys, copied verbatim from the list "
+                    "you were given. Null when the text names no type."
+                ),
+            },
+            "billable": {
+                "type": ["boolean", "null"],
+                "description": (
+                    "Only when the text says so ('niet declarabel', 'non-billable', "
+                    "'declarabel'). Null otherwise — the project decides the default."
+                ),
+            },
+            "break_minutes": {
+                "type": ["integer", "null"],
+                "description": "Unpaid break inside the span, in minutes ('half uur pauze').",
+            },
         },
         "required": [],
         "additionalProperties": False,
@@ -97,7 +117,15 @@ _SUBMIT_ENTRY = ToolDef(
 )
 
 _PARSE_TOOL_NAMES = ("companies.find", "projects.find", "tasks.find")
-_PARSE_MAX_ROUNDS = 4
+#: One free round then a forced submit (#246). The candidate shortlist (``candidates.gather``)
+#: makes the find tools a fallback rather than the main path, so the typical parse is a single
+#: provider call instead of the three-to-four serial ones the discovery loop needed.
+_PARSE_MAX_ROUNDS = 2
+#: A break longer than a day is a misread, not a break.
+_MAX_BREAK_MINUTES = 24 * 60
+#: A draft entry is a dozen short fields. The 8192 default is sized for a written report and
+#: only costs latency here.
+_PARSE_MAX_TOKENS = 1024
 
 
 def _seen_ids(texts: list[str]) -> set[str]:
@@ -117,77 +145,153 @@ def _checked_uuid(value: Any, seen: set[str]) -> uuid.UUID | None:
         return None
 
 
-def _parse_hhmm(value: Any) -> str | None:
+def _checked_key(value: Any, allowed: set[str]) -> str | None:
+    """An entry type is a tenant-defined slug, not a UUID, so ``_seen_ids`` cannot vouch for
+    it — membership in the org's own active keys is its grounding. An unknown key is dropped
+    rather than passed on: the write path would 422 it, and a 422 on a *draft* helps nobody."""
     if not isinstance(value, str):
         return None
-    match = re.fullmatch(r"(\d{1,2}):(\d{2})", value.strip())
-    if not match or int(match.group(1)) > 23 or int(match.group(2)) > 59:
+    key = value.strip().lower()
+    return key if key in allowed else None
+
+
+def _parse_hhmm(value: Any) -> str | None:
+    """A clock time, however the model chose to write it.
+
+    Models emit ``14:00`` most of the time and ``14.00``/``1430``/``9:00`` the rest of it. All
+    three mean the same thing to a human, so all three are accepted — the previous ``H:MM``-only
+    regex dropped the others to ``None``, which reaches the user as "the AI ignored my times".
+    """
+    if isinstance(value, int) and 0 <= value <= 2359:
+        value = f"{value // 100}:{value % 100:02d}"
+    if not isinstance(value, str):
         return None
-    return f"{int(match.group(1)):02d}:{match.group(2)}"
+    text = value.strip()
+    match = re.fullmatch(r"(\d{1,2})[:.h](\d{2})", text, re.IGNORECASE) or re.fullmatch(
+        r"(\d{1,2})(\d{2})", text
+    )
+    if not match:
+        return None
+    hours, minutes = int(match.group(1)), int(match.group(2))
+    if hours > 23 or minutes > 59:
+        return None
+    return f"{hours:02d}:{minutes:02d}"
+
+
+def _parse_minutes(value: Any) -> int | None:
+    """Minutes as any number the model might send. ``2.5`` and ``"150"`` are as meaningful as
+    ``150``; the old ``isinstance(value, int)`` check silently discarded both."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, str):
+        try:
+            value = float(value.strip().replace(",", "."))
+        except ValueError:
+            return None
+    if not isinstance(value, int | float):
+        return None
+    minutes = int(round(value))
+    return minutes if minutes > 0 else None
 
 
 async def parse_time_entry(service: AIService, payload: TimeParseRequest) -> TimeParseResult:
-    """Server-side parse of one quick-add line: the model resolves names through the same
-    find tools the assistant uses, then submits a structured draft. Ambiguity stays open —
-    an ID the tools never returned is dropped, never guessed (#129)."""
+    """Server-side parse of one quick-add line into a draft entry (#129, #246).
+
+    The tenant's own records are resolved **before** the model runs (``candidates.gather``) and
+    handed over as a shortlist, so the usual parse is one provider call rather than the three
+    serial ``companies.find`` → ``projects.find`` → ``tasks.find`` round trips discovery needed.
+    The find tools stay on the request for whatever the shortlist missed.
+
+    Grounding is unchanged in kind and only wider in evidence: an id the model was never shown
+    is dropped, never guessed. The shortlist adds to what counts as "shown"; it does not relax
+    the check.
+    """
     ctx = service.ctx
-    specs = [s for name in _PARSE_TOOL_NAMES if (s := get_tool(ctx, name)) is not None]
+    # Read the calendar and the tenant's records while we still hold the connection — both are
+    # needed to build the prompt, and `complete()` hands the connection back for the call.
+    today = payload.today or await org_today(ctx.session, ctx.org.id)
+    candidates = await gather_candidates(ctx, payload.text)
+
+    specs = get_tools(ctx, _PARSE_TOOL_NAMES)
     defs = [ToolDef(s.name, s.description, s.input_schema) for s in specs] + [_SUBMIT_ENTRY]
     by_name = {s.name: s for s in specs}
 
-    system = prompts.time_parse_system(today=datetime.now(UTC).date(), locale=service.locale())
+    system = prompts.time_parse_system(
+        today=today,
+        locale=service.locale(),
+        candidates=candidates.as_prompt_block(),
+        has_tools=bool(specs),
+    )
     history: list[ChatMessage] = [ChatMessage(role="user", content=payload.text)]
     tool_texts: list[str] = []
     submitted: dict[str, Any] = {}
 
-    for round_no in range(_PARSE_MAX_ROUNDS):
-        force = "submit_time_entry" if round_no == _PARSE_MAX_ROUNDS - 1 else None
-        text, calls = await service.complete(
-            "time_assist",
-            system=system,
-            messages=history,
-            tools=defs,
-            force_tool=force,
-            override_budget=payload.override_budget,
-        )
-        if not calls:
-            break
-        history.append(ChatMessage(role="assistant", content=text, tool_calls=tuple(calls)))
-        done = False
-        for call in calls:
-            if call.name == "submit_time_entry":
-                submitted = call.input
-                done = True
-                break
-            spec = by_name.get(call.name)
-            result = (
-                result_text(await run_tool(ctx, spec, call.input))
-                if spec is not None
-                else '{"error": "unknown tool"}'
+    try:
+        for round_no in range(_PARSE_MAX_ROUNDS):
+            force = "submit_time_entry" if round_no == _PARSE_MAX_ROUNDS - 1 else None
+            text, calls = await service.complete(
+                "time_assist",
+                system=system,
+                messages=history,
+                tools=defs,
+                force_tool=force,
+                override_budget=payload.override_budget,
+                max_tokens=_PARSE_MAX_TOKENS,
             )
-            tool_texts.append(result)
-            history.append(ChatMessage(role="tool", content=result, tool_call_id=call.id))
-        if done:
-            break
+            if not calls:
+                break
+            history.append(ChatMessage(role="assistant", content=text, tool_calls=tuple(calls)))
+            done = False
+            for call in calls:
+                if call.name == "submit_time_entry":
+                    submitted = call.input
+                    done = True
+                    break
+                spec = by_name.get(call.name)
+                result = (
+                    result_text(await run_tool(ctx, spec, call.input))
+                    if spec is not None
+                    else '{"error": "unknown tool"}'
+                )
+                tool_texts.append(result)
+                history.append(ChatMessage(role="tool", content=result, tool_call_id=call.id))
+            if done:
+                break
+    finally:
+        # Tokens spent by a loop that failed halfway are still spent.
+        await service.flush_usage("time_assist")
 
-    seen = _seen_ids(tool_texts)
+    # The shortlist is evidence exactly as a tool result is. Forgetting this union is the one
+    # change that would silently return an all-null draft for a perfectly parsed line.
+    seen = _seen_ids(tool_texts) | candidates.ids()
     parsed_date: date | None = None
     if isinstance(submitted.get("date"), str):
         try:
             parsed_date = date.fromisoformat(submitted["date"])
         except ValueError:
             parsed_date = None
-    duration = submitted.get("duration_minutes")
+    billable = submitted.get("billable")
+    break_minutes = _parse_minutes(submitted.get("break_minutes"))
     return TimeParseResult(
         date=parsed_date,
         start=_parse_hhmm(submitted.get("start")),
         end=_parse_hhmm(submitted.get("end")),
-        duration_minutes=int(duration) if isinstance(duration, int) and duration > 0 else None,
+        duration_minutes=_parse_minutes(submitted.get("duration_minutes")),
         company_id=_checked_uuid(submitted.get("company_id"), seen),
         project_id=_checked_uuid(submitted.get("project_id"), seen),
         task_id=_checked_uuid(submitted.get("task_id"), seen),
         description=(submitted.get("description") or None)
         if isinstance(submitted.get("description"), str | type(None))
+        else None,
+        entry_type_key=_checked_key(
+            submitted.get("entry_type_key"), candidates.entry_type_keys
+        ),
+        # Tri-state on purpose: `None` means "the text said nothing", which is what lets the
+        # form keep the project's own billable default (#284). A `False` here would look like
+        # a decision the user never made.
+        billable=billable if isinstance(billable, bool) else None,
+        break_minutes=break_minutes
+        if break_minutes is not None and break_minutes <= _MAX_BREAK_MINUTES
         else None,
     )
 
@@ -278,7 +382,7 @@ async def reconstruct_day(
     _, calls = await service.complete(
         "time_assist",
         system=prompts.time_reconstruct_system(
-            today=datetime.now(UTC).date(), target=payload.date
+            today=await org_today(service.ctx.session, service.ctx.org.id), target=payload.date
         ),
         messages=[
             ChatMessage(
@@ -289,6 +393,7 @@ async def reconstruct_day(
         force_tool="submit_suggestions",
         override_budget=payload.override_budget,
     )
+    await service.flush_usage("time_assist")
     raw = calls[0].input.get("suggestions") if calls else None
     if not isinstance(raw, list):
         return result

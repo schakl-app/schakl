@@ -71,11 +71,18 @@ async def lifespan(app_: FastAPI) -> AsyncIterator[None]:
         async with async_session_maker() as session:
             await sync_ingress(session)
     mcp_asgi = getattr(app_.state, "mcp_app", None)
-    if mcp_asgi is not None:
-        async with mcp_asgi.lifespan(mcp_asgi):
+    try:
+        if mcp_asgi is not None:
+            async with mcp_asgi.lifespan(mcp_asgi):
+                yield
+        else:
             yield
-    else:
-        yield
+    finally:
+        # The AI core keeps one keep-alive HTTP client per process (#246); close it here so a
+        # reload does not leak sockets.
+        from app.core.ai import providers as ai_providers
+
+        await ai_providers.aclose()
 
 
 def create_app() -> FastAPI:

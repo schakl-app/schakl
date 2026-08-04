@@ -125,11 +125,20 @@ class AssistantRequest(BaseModel):
 
 class TimeParseRequest(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
+    #: The day the user is looking at. "vanmiddag 2 uur" typed while viewing last Tuesday means
+    #: *that* Tuesday; without this the server answers with its own today and the client then
+    #: navigates the user off the day they were working on. Absent = the org's today.
+    today: dt.date | None = None
     override_budget: bool = False
 
 
 class TimeParseResult(BaseModel):
-    """A *draft* entry: prefills the form, never creates anything (#129)."""
+    """A *draft* entry: prefills the form, never creates anything (#129).
+
+    Every field is optional and an unstated one stays ``None`` — notably ``billable``, whose
+    third state is what lets the form keep the project's own default (#284, #246). A ``False``
+    here would be indistinguishable from the user having said "niet declarabel".
+    """
 
     date: dt.date | None = None
     start: str | None = None
@@ -139,6 +148,10 @@ class TimeParseResult(BaseModel):
     project_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
     description: str | None = None
+    #: A key from the org's own ``time_entry_types`` (#176), or None.
+    entry_type_key: str | None = None
+    billable: bool | None = None
+    break_minutes: int | None = None
 
 
 class TimeReconstructRequest(BaseModel):

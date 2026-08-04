@@ -84,6 +84,21 @@ class AIService:
 
     def __init__(self, ctx: RequestContext) -> None:
         self.ctx = ctx
+        #: The org's settings row, read at most once per request. A multi-round tool loop used
+        #: to re-read it (and re-sum the month's usage) on every round, so a single parse spent
+        #: a dozen DB round trips re-answering a question whose answer cannot change mid-request.
+        self._row: AISettings | None = None
+        self._row_loaded = False
+        #: Metering accumulated across a multi-round loop, written once by ``flush_usage``.
+        self.pending_tokens_in = 0
+        self.pending_tokens_out = 0
+        self.pending_model: str | None = None
+
+    async def _settings(self) -> AISettings | None:
+        if not self._row_loaded:
+            self._row = await get_row(self.ctx.session, self.ctx.org.id)
+            self._row_loaded = True
+        return self._row
 
     # ------------------------------------------------------------------ #
     # Gating
@@ -91,7 +106,7 @@ class AIService:
     async def config_for(self, feature: str) -> ProviderConfig:
         """The provider config for one feature, or the standard errors when the tenant has
         not configured a provider / has the feature off."""
-        row = await get_row(self.ctx.session, self.ctx.org.id)
+        row = await self._settings()
         if row is None:
             raise AppError("ai_not_configured", "errors.ai_not_configured", status_code=409)
         config = _feature_config(row, feature)
@@ -116,7 +131,7 @@ class AIService:
         """The monthly soft cap (#126): interactive use over 100 % sits behind an explicit
         acknowledgement (the "budget bereikt" notice); non-interactive callers never pass
         ``override`` and hard-stop."""
-        row = await get_row(self.ctx.session, self.ctx.org.id)
+        row = await self._settings()
         if row is None or row.monthly_token_budget is None:
             return
         spent = await self._month_tokens()
@@ -136,7 +151,7 @@ class AIService:
         return self.ctx.user.locale or "nl"
 
     async def house_style(self) -> str | None:
-        row = await get_row(self.ctx.session, self.ctx.org.id)
+        row = await self._settings()
         return row.house_style if row is not None else None
 
     # ------------------------------------------------------------------ #
@@ -211,23 +226,66 @@ class AIService:
         override_budget: bool = False,
         max_tokens: int = providers.MAX_TOKENS,
     ) -> tuple[str, list[providers.ToolCall]]:
+        """One non-streaming model turn, with the DB connection handed back while it runs.
+
+        A request is one transaction pinning one pooled connection (``app/db.py``). A model
+        call takes seconds — a multi-round tool loop, tens of seconds — and holding the
+        connection across it is the pool-drain that reads as *the whole site* freezing, not
+        just this feature (``docs/PERFORMANCE.md``). ``release_db()`` is the sanctioned seam
+        and this is the right place for it: ``complete`` drains the stream itself and runs no
+        caller code inside the block, so nothing touches the session while it is unbound. Tool
+        handlers run *between* rounds, back on a real connection.
+
+        Gating happens before the block (it needs the session), and usage is accumulated and
+        recorded by the caller after it — a write inside would commit at the block's entry.
+        ``AIService.stream`` is deliberately left alone: its callers meter per round.
+        """
+        config = await self.config_for(feature)
+        await self.ensure_budget(override=override_budget)
         text_parts: list[str] = []
         calls: list[providers.ToolCall] = []
-        async for event in self.stream(
-            feature,
-            system=system,
-            messages=messages,
-            tools=tools,
-            force_tool=force_tool,
-            disable_tools=disable_tools,
-            override_budget=override_budget,
-            max_tokens=max_tokens,
-        ):
-            if event.kind == "text":
-                text_parts.append(event.text)
-            elif event.kind == "tool_call" and event.tool_call is not None:
-                calls.append(event.tool_call)
+        tokens_in = tokens_out = 0
+        try:
+            async with self.ctx.release_db():
+                async for event in providers.stream_chat(
+                    config,
+                    system=system,
+                    messages=messages,
+                    tools=tools,
+                    force_tool=force_tool,
+                    disable_tools=disable_tools,
+                    max_tokens=max_tokens,
+                ):
+                    if event.kind == "text":
+                        text_parts.append(event.text)
+                    elif event.kind == "tool_call" and event.tool_call is not None:
+                        calls.append(event.tool_call)
+                    elif event.kind == "done":
+                        tokens_in, tokens_out = event.tokens_in, event.tokens_out
+        except AIProviderError as exc:
+            logger.warning("AI provider error (%s/%s): %s", config.provider, feature, exc)
+            raise AppError(
+                "ai_provider_error", "errors.ai_provider_error", status_code=502
+            ) from exc
+        self.pending_tokens_in += tokens_in
+        self.pending_tokens_out += tokens_out
+        self.pending_model = config.model
         return "".join(text_parts), calls
+
+    async def flush_usage(self, feature: str) -> None:
+        """Write the accumulated metering for a multi-round feature as **one** row.
+
+        Counts are what the meter sums, so one row per request and one per round total the
+        same; the row count is not itself reported. Call from a ``finally`` — a loop that
+        failed halfway still spent the tokens it spent.
+        """
+        if self.pending_model is None:
+            return
+        await self.record_usage(
+            feature, self.pending_model, self.pending_tokens_in, self.pending_tokens_out
+        )
+        self.pending_tokens_in = self.pending_tokens_out = 0
+        self.pending_model = None
 
 
 class AISettingsService:

@@ -98,25 +98,61 @@ def writing_system(
     return "\n\n".join(parts)
 
 
-def time_parse_system(*, today: date, locale: str) -> str:
+def time_parse_system(
+    *, today: date, locale: str, candidates: str = "", has_tools: bool = True
+) -> str:
+    """The quick-add parse prompt (#129, #246).
+
+    ``candidates`` is the tenant's own shortlist, resolved before the model runs
+    (``ai/candidates.py``) — with it the model *chooses* rather than *discovers*, which is what
+    turns three serial tool round trips into one call. The find tools stay available for
+    whatever the shortlist missed, so the instructions cover both paths.
+    """
     weekday = today.strftime("%A")
-    return "\n\n".join(
-        [
-            "You turn one line of natural language (Dutch or English) into a draft time "
-            "entry. You never create anything — you fill a form the user will review.",
-            f"Today is {weekday} {today.isoformat()}.",
-            "Resolve relative dates ('gisteren', 'afgelopen vrijdag', 'yesterday') "
-            "against today. Times are 24-hour HH:MM. Durations like '1,5 uur', '90m' or "
-            "'2 uur' become minutes.",
-            "Use the find tools to match client, project and task names the user mentions "
-            "against the tenant's real records. Only ever use IDs that a tool returned in "
-            "this conversation. If a name matches nothing or is ambiguous, leave that field "
-            "null — never guess an ID.",
-            "When you have what you need (at most a few tool calls), call submit_time_entry "
-            "exactly once with your best draft. Whatever you could not determine stays null.",
-            _INJECTION_STANCE,
-        ]
+    parts = [
+        "You turn one line of natural language (Dutch or English) into a draft time "
+        "entry. You never create anything — you fill a form the user will review.",
+        f"Today is {weekday} {today.isoformat()}.",
+        "Resolve relative dates ('gisteren', 'afgelopen vrijdag', 'yesterday') "
+        "against today. Times are 24-hour HH:MM. Durations like '1,5 uur', '90m' or "
+        "'2 uur' become minutes.",
+    ]
+    if candidates:
+        parts.append(
+            "These are the tenant's own records that could match this line. Prefer them, and "
+            "copy an id character for character — never edit, shorten or invent one. A name "
+            "in the text that matches nothing here leaves its field null.\n\n" + candidates
+        )
+    if has_tools:
+        parts.append(
+            "If the line clearly names something that is not in the list above, you may call "
+            "the find tools once to look it up — issue every lookup you need in the same "
+            "turn, never one after another. Only ever use IDs the list or a tool result "
+            "actually contained. If a name matches nothing or is ambiguous, leave that field "
+            "null — never guess an ID."
+            if candidates
+            else "Use the find tools to match client, project and task names the user "
+            "mentions against the tenant's real records. Issue every lookup you need in the "
+            "same turn. Only ever use IDs that a tool returned in this conversation. If a "
+            "name matches nothing or is ambiguous, leave that field null — never guess an ID."
+        )
+    parts.append(
+        "Three fields are only ever set when the text actually says so, and stay null "
+        "otherwise:\n"
+        "- billable: 'niet declarabel', 'non-billable', 'intern' → false; 'declarabel', "
+        "'billable' → true. Say nothing about it and it stays null, because the project "
+        "already decides the default.\n"
+        "- break_minutes: an unpaid break inside the span — 'half uur pauze' → 30, "
+        "'30 min lunch' → 30. A span with no break mentioned has none.\n"
+        "- entry_type_key: exactly one of the entry-type keys listed above, copied verbatim. "
+        "Never invent a key and never translate one."
     )
+    parts.append(
+        "Call submit_time_entry exactly once with your best draft. Whatever you could not "
+        "determine stays null."
+    )
+    parts.append(_INJECTION_STANCE)
+    return "\n\n".join(parts)
 
 
 def time_reconstruct_system(*, today: date, target: date) -> str:

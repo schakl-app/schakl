@@ -26,7 +26,7 @@ OPENAI_BASE_URL = "https://api.openai.com/v1"
 #: Sensible starting points; the settings form pre-fills them and the tenant can type
 #: anything newer. ``openai_compatible`` has no default — the server defines the models.
 DEFAULT_MODELS: dict[str, str] = {
-    "anthropic": "claude-opus-4-8",
+    "anthropic": "claude-opus-5",
     "openai": "gpt-5",
 }
 
@@ -35,6 +35,28 @@ DEFAULT_MODELS: dict[str, str] = {
 MAX_TOKENS = 8192
 
 _TIMEOUT = httpx.Timeout(connect=10.0, read=180.0, write=30.0, pool=10.0)
+
+#: One client for the process, so a multi-round tool loop reuses its TLS session instead of
+#: paying a fresh handshake per round — a parse used to open four. Created lazily and closed on
+#: application shutdown (``app/main.py``); the tests close it between event loops, because an
+#: httpx client outlives the loop that made its connections and reusing one across loops fails
+#: in ways that look nothing like their cause. No ``http2=True``: ``h2`` is not a dependency.
+_client: httpx.AsyncClient | None = None
+
+
+def client() -> httpx.AsyncClient:
+    global _client
+    if _client is None or _client.is_closed:
+        _client = httpx.AsyncClient(timeout=_TIMEOUT)
+    return _client
+
+
+async def aclose() -> None:
+    """Release the shared client. Idempotent."""
+    global _client
+    if _client is not None and not _client.is_closed:
+        await _client.aclose()
+    _client = None
 
 
 class AIProviderError(Exception):
@@ -255,10 +277,9 @@ async def list_models(config: ProviderConfig) -> list[str]:
         base = (config.base_url or OPENAI_BASE_URL).rstrip("/")
         url = f"{base}/models"
         headers = {"authorization": f"Bearer {config.api_key}"}
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        response = await client.get(url, headers=headers)
-        await _raise_for_status(response)
-        payload = response.json()
+    response = await client().get(url, headers=headers)
+    await _raise_for_status(response)
+    payload = response.json()
     models = [
         str(row["id"])
         for row in payload.get("data") or []
@@ -338,56 +359,55 @@ async def _anthropic_stream(
     stop_reason: str | None = None
     # One partial tool-use block at a time, keyed by stream index.
     open_tools: dict[int, dict[str, Any]] = {}
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        async with client.stream(
-            "POST", f"{base}/v1/messages", headers=headers, json=body
-        ) as response:
-            await _raise_for_status(response)
-            async for data in _sse_data_lines(response):
-                try:
-                    event = json.loads(data)
-                except ValueError:
-                    continue
-                etype = event.get("type")
-                if etype == "message_start":
-                    usage.tokens_in = (
-                        event.get("message", {}).get("usage", {}).get("input_tokens", 0)
-                    )
-                elif etype == "content_block_start":
-                    block = event.get("content_block", {})
-                    if block.get("type") == "tool_use":
-                        open_tools[event["index"]] = {
-                            "id": block.get("id", ""),
-                            "name": block.get("name", ""),
-                            "json": "",
-                        }
-                elif etype == "content_block_delta":
-                    delta = event.get("delta", {})
-                    if delta.get("type") == "text_delta":
-                        yield AIEvent(kind="text", text=delta.get("text", ""))
-                    elif delta.get("type") == "input_json_delta":
-                        partial = open_tools.get(event.get("index"))
-                        if partial is not None:
-                            partial["json"] += delta.get("partial_json", "")
-                elif etype == "content_block_stop":
-                    partial = open_tools.pop(event.get("index"), None)
+    async with client().stream(
+        "POST", f"{base}/v1/messages", headers=headers, json=body
+    ) as response:
+        await _raise_for_status(response)
+        async for data in _sse_data_lines(response):
+            try:
+                event = json.loads(data)
+            except ValueError:
+                continue
+            etype = event.get("type")
+            if etype == "message_start":
+                usage.tokens_in = (
+                    event.get("message", {}).get("usage", {}).get("input_tokens", 0)
+                )
+            elif etype == "content_block_start":
+                block = event.get("content_block", {})
+                if block.get("type") == "tool_use":
+                    open_tools[event["index"]] = {
+                        "id": block.get("id", ""),
+                        "name": block.get("name", ""),
+                        "json": "",
+                    }
+            elif etype == "content_block_delta":
+                delta = event.get("delta", {})
+                if delta.get("type") == "text_delta":
+                    yield AIEvent(kind="text", text=delta.get("text", ""))
+                elif delta.get("type") == "input_json_delta":
+                    partial = open_tools.get(event.get("index"))
                     if partial is not None:
-                        try:
-                            args = json.loads(partial["json"]) if partial["json"] else {}
-                        except ValueError:
-                            args = {}
-                        yield AIEvent(
-                            kind="tool_call",
-                            tool_call=ToolCall(partial["id"], partial["name"], args),
-                        )
-                elif etype == "message_delta":
-                    stop_reason = event.get("delta", {}).get("stop_reason") or stop_reason
-                    usage.tokens_out = event.get("usage", {}).get(
-                        "output_tokens", usage.tokens_out
+                        partial["json"] += delta.get("partial_json", "")
+            elif etype == "content_block_stop":
+                partial = open_tools.pop(event.get("index"), None)
+                if partial is not None:
+                    try:
+                        args = json.loads(partial["json"]) if partial["json"] else {}
+                    except ValueError:
+                        args = {}
+                    yield AIEvent(
+                        kind="tool_call",
+                        tool_call=ToolCall(partial["id"], partial["name"], args),
                     )
-                elif etype == "error":
-                    error = event.get("error", {})
-                    raise AIProviderError(error.get("message", "provider error"))
+            elif etype == "message_delta":
+                stop_reason = event.get("delta", {}).get("stop_reason") or stop_reason
+                usage.tokens_out = event.get("usage", {}).get(
+                    "output_tokens", usage.tokens_out
+                )
+            elif etype == "error":
+                error = event.get("error", {})
+                raise AIProviderError(error.get("message", "provider error"))
     yield AIEvent(
         kind="done",
         stop_reason=stop_reason,
@@ -478,41 +498,40 @@ async def _openai_stream(
     usage = _Usage()
     stop_reason: str | None = None
     partials: dict[int, _OpenAIToolPartial] = {}
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        async with client.stream(
-            "POST", f"{base}/chat/completions", headers=headers, json=body
-        ) as response:
-            await _raise_for_status(response)
-            async for data in _sse_data_lines(response):
-                if data == "[DONE]":
-                    break
-                try:
-                    chunk = json.loads(data)
-                except ValueError:
-                    continue
-                if chunk.get("usage"):
-                    usage.tokens_in = chunk["usage"].get("prompt_tokens", usage.tokens_in)
-                    usage.tokens_out = chunk["usage"].get(
-                        "completion_tokens", usage.tokens_out
-                    )
-                choices = chunk.get("choices") or []
-                if not choices:
-                    continue
-                choice = choices[0]
-                delta = choice.get("delta") or {}
-                if delta.get("content"):
-                    yield AIEvent(kind="text", text=delta["content"])
-                for call in delta.get("tool_calls") or []:
-                    partial = partials.setdefault(call.get("index", 0), _OpenAIToolPartial())
-                    if call.get("id"):
-                        partial.id = call["id"]
-                    fn = call.get("function") or {}
-                    if fn.get("name"):
-                        partial.name += fn["name"]
-                    if fn.get("arguments"):
-                        partial.arguments += fn["arguments"]
-                if choice.get("finish_reason"):
-                    stop_reason = choice["finish_reason"]
+    async with client().stream(
+        "POST", f"{base}/chat/completions", headers=headers, json=body
+    ) as response:
+        await _raise_for_status(response)
+        async for data in _sse_data_lines(response):
+            if data == "[DONE]":
+                break
+            try:
+                chunk = json.loads(data)
+            except ValueError:
+                continue
+            if chunk.get("usage"):
+                usage.tokens_in = chunk["usage"].get("prompt_tokens", usage.tokens_in)
+                usage.tokens_out = chunk["usage"].get(
+                    "completion_tokens", usage.tokens_out
+                )
+            choices = chunk.get("choices") or []
+            if not choices:
+                continue
+            choice = choices[0]
+            delta = choice.get("delta") or {}
+            if delta.get("content"):
+                yield AIEvent(kind="text", text=delta["content"])
+            for call in delta.get("tool_calls") or []:
+                partial = partials.setdefault(call.get("index", 0), _OpenAIToolPartial())
+                if call.get("id"):
+                    partial.id = call["id"]
+                fn = call.get("function") or {}
+                if fn.get("name"):
+                    partial.name += fn["name"]
+                if fn.get("arguments"):
+                    partial.arguments += fn["arguments"]
+            if choice.get("finish_reason"):
+                stop_reason = choice["finish_reason"]
     for partial in partials.values():
         try:
             args = json.loads(partial.arguments) if partial.arguments else {}

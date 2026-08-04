@@ -256,6 +256,206 @@ async def test_time_parse_drops_ungrounded_ids(client_for, monkeypatch) -> None:
         assert body["description"] == "homepage overleg"
 
 
+def _submit(**fields) -> list[AIEvent]:
+    """One forced `submit_time_entry` call — the shape the parse loop now expects in a single
+    round (#246)."""
+    return [
+        AIEvent(
+            kind="tool_call",
+            tool_call=ToolCall(id="c1", name="submit_time_entry", input=dict(fields)),
+        ),
+        AIEvent(kind="done", stop_reason="tool_use", tokens_in=3, tokens_out=3),
+    ]
+
+
+async def test_time_parse_grounds_on_the_prefetched_shortlist(client_for, monkeypatch) -> None:
+    """#246: a client resolved from the candidate shortlist survives, because the shortlist is
+    evidence exactly as a tool result is.
+
+    This is the counterpart of ``test_time_parse_drops_ungrounded_ids`` above and the reason it
+    still passes: grounding was *widened*, never relaxed. Miss this union and every correctly
+    chosen id comes back null — a 200 that looks like the model has no tools at all.
+    """
+    t = await make_tenant("ai-parse-shortlist")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        created = await c.post("/api/v1/companies", json={"name": "Jansen"}, headers=headers)
+        assert created.status_code == 201, created.text
+        company_id = created.json()["id"]
+
+        # The model is never given a tool result — only the shortlist the server prefetched.
+        monkeypatch.setattr(
+            "app.core.ai.providers.stream_chat",
+            _fake_stream(_submit(company_id=company_id, description="homepage review")),
+        )
+        parsed = await c.post(
+            "/api/v1/ai/time/parse",
+            json={"text": "2 uur Jansen, homepage review"},
+            headers=headers,
+        )
+        assert parsed.status_code == 200, parsed.text
+        assert parsed.json()["company_id"] == company_id
+
+
+async def test_time_parse_fills_type_billable_and_break(client_for, monkeypatch) -> None:
+    """#246: the three fields the output tool could not express before."""
+    t = await make_tenant("ai-parse-fields")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        # Seeds the org's default entry types (`work`, `email`) — the vocabulary the parse
+        # validates against.
+        types = await c.get("/api/v1/time/entry-types", headers=headers)
+        assert types.status_code == 200, types.text
+        assert "work" in {row["key"] for row in types.json()}
+
+        monkeypatch.setattr(
+            "app.core.ai.providers.stream_chat",
+            _fake_stream(
+                _submit(
+                    start="09:00",
+                    end="17:00",
+                    entry_type_key="work",
+                    billable=False,
+                    break_minutes=30,
+                )
+            ),
+        )
+        parsed = await c.post(
+            "/api/v1/ai/time/parse",
+            json={"text": "9-17 niet declarabel, half uur pauze"},
+            headers=headers,
+        )
+        assert parsed.status_code == 200, parsed.text
+        body = parsed.json()
+        assert body["entry_type_key"] == "work"
+        assert body["billable"] is False
+        assert body["break_minutes"] == 30
+
+
+async def test_time_parse_leaves_unstated_fields_null(client_for, monkeypatch) -> None:
+    """#246 + #284: silence is not `false`.
+
+    ``billable`` is tri-state on purpose — the form reads a non-null value as "the user decided"
+    and stops applying the project's own default. A parse that always answered would quietly
+    make every AI-drafted entry billable.
+    """
+    t = await make_tenant("ai-parse-tristate")
+    headers = await auth_cookie(t.user)
+    monkeypatch.setattr(
+        "app.core.ai.providers.stream_chat",
+        _fake_stream(_submit(start="09:00", end="10:00", description="werk")),
+    )
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        parsed = await c.post(
+            "/api/v1/ai/time/parse", json={"text": "9-10 werk"}, headers=headers
+        )
+        assert parsed.status_code == 200, parsed.text
+        body = parsed.json()
+        assert body["billable"] is None
+        assert body["break_minutes"] is None
+        assert body["entry_type_key"] is None
+
+
+async def test_time_parse_drops_unknown_entry_type(client_for, monkeypatch) -> None:
+    """An entry type is a tenant-defined slug, so membership in the org's own keys is its
+    grounding. An invented key is dropped here rather than 422'd at the write."""
+    t = await make_tenant("ai-parse-type")
+    headers = await auth_cookie(t.user)
+    monkeypatch.setattr(
+        "app.core.ai.providers.stream_chat",
+        _fake_stream(_submit(start="09:00", end="10:00", entry_type_key="niet_bestaand")),
+    )
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        parsed = await c.post(
+            "/api/v1/ai/time/parse", json={"text": "9-10 iets"}, headers=headers
+        )
+        assert parsed.status_code == 200, parsed.text
+        assert parsed.json()["entry_type_key"] is None
+
+
+async def test_time_parse_honours_the_caller_s_today(client_for, monkeypatch) -> None:
+    """The day the user is looking at is the day relative dates resolve against (#246).
+
+    Without it the server answers with its own today, and the client then navigates the user
+    off the day they were working on.
+    """
+    t = await make_tenant("ai-parse-today")
+    headers = await auth_cookie(t.user)
+    seen: dict[str, str] = {}
+
+    async def capture(config, **kwargs):  # noqa: ANN001, ANN003
+        seen["system"] = kwargs["system"]
+        for event in _submit(start="14:00", end="16:00"):
+            yield event
+
+    monkeypatch.setattr("app.core.ai.providers.stream_chat", capture)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        parsed = await c.post(
+            "/api/v1/ai/time/parse",
+            json={"text": "vanmiddag 14:00-16:00", "today": "2026-03-17"},
+            headers=headers,
+        )
+        assert parsed.status_code == 200, parsed.text
+    assert "2026-03-17" in seen["system"]
+
+
+async def test_time_parse_query_budget(client_for, monkeypatch, count_queries) -> None:
+    """The parse is a fixed number of statements, and adding clients does not move it (#246).
+
+    The shape this pins is invisible in the JSON: the old loop re-read the settings row and
+    re-summed the month's usage on *every* model round, so the cost scaled with how many tool
+    round trips the model happened to take. Both versions return the same body.
+    """
+    t = await make_tenant("ai-parse-budget")
+    headers = await auth_cookie(t.user)
+    monkeypatch.setattr(
+        "app.core.ai.providers.stream_chat",
+        _fake_stream(_submit(start="09:00", end="10:00")),
+    )
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        for name in ("Alpha", "Beta", "Gamma"):
+            await c.post("/api/v1/companies", json={"name": name}, headers=headers)
+
+        # One warm-up: the first typed read of the org seeds its default entry types (#176),
+        # a one-time write that is not part of the steady-state shape being pinned here.
+        warm = await c.post(
+            "/api/v1/ai/time/parse", json={"text": "9-10 Alpha"}, headers=headers
+        )
+        assert warm.status_code == 200, warm.text
+
+        with count_queries() as first:
+            res = await c.post(
+                "/api/v1/ai/time/parse", json={"text": "9-10 Alpha"}, headers=headers
+            )
+            assert res.status_code == 200, res.text
+
+        for name in ("Delta", "Epsilon", "Zeta", "Eta"):
+            await c.post("/api/v1/companies", json={"name": name}, headers=headers)
+
+        with count_queries() as second:
+            res = await c.post(
+                "/api/v1/ai/time/parse", json={"text": "9-10 Alpha"}, headers=headers
+            )
+            assert res.status_code == 200, res.text
+
+    # Flat in the number of clients — the shortlist is one capped query, not one per row.
+    assert len(second.statements) == len(first.statements), (
+        f"parse scales with row count: {len(first.statements)} → {len(second.statements)}"
+    )
+    # And bounded in absolute terms (15 today), so re-introducing the per-round settings read
+    # and month-sum — three statements per extra round — trips this rather than going unnoticed.
+    assert len(first.statements) <= 17, (
+        f"parse issues {len(first.statements)} statements:\n"
+        + "\n".join(first.statements)
+    )
+
+
 async def test_tool_layer_tenant_isolation() -> None:
     """#127 acceptance: org A's tools can never see org B's rows — the handlers run the
     same tenant-scoped services, and the RLS GUC backs them."""

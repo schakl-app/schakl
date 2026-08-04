@@ -104,6 +104,12 @@ async def _clean_db() -> AsyncIterator[None]:
     yield
     # Dispose the pool so each test's event loop gets fresh asyncpg connections.
     await engine.dispose()
+    # Same reason, same shape: the AI core keeps one keep-alive httpx client per process
+    # (#246). Its connections belong to the loop that opened them, so carrying it into the
+    # next test fails in ways that look nothing like their cause.
+    from app.core.ai import providers as ai_providers
+
+    await ai_providers.aclose()
 
 
 @dataclass
