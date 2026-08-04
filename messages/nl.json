@@ -2395,7 +2395,7 @@
   "settings.ai.base_url": "Basis-URL",
   "settings.ai.base_url_hint": "Verplicht voor een OpenAI-compatibele server; laat anders leeg.",
   "settings.ai.features": "Functies",
-  "settings.ai.features_hint": "Zet elke functie aan of uit; geef er eventueel een eigen model aan.",
+  "settings.ai.features_hint": "Zet elke functie aan of uit en geef er eventueel een eigen model aan. Snel toevoegen en inspreken werken het prettigst met een snel model; het standaardmodel is bedoeld voor schrijven, niet voor het lezen van één regel.",
   "settings.ai.feature_assistant": "Assistent",
   "settings.ai.feature_writing_assist": "Schrijfhulp",
   "settings.ai.feature_time_assist": "Urenhulp",

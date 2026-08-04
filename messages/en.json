@@ -2395,7 +2395,7 @@
   "settings.ai.base_url": "Base URL",
   "settings.ai.base_url_hint": "Required for an OpenAI-compatible server; leave empty otherwise.",
   "settings.ai.features": "Features",
-  "settings.ai.features_hint": "Switch each feature on or off; optionally give one its own model.",
+  "settings.ai.features_hint": "Switch each feature on or off; optionally give one its own model. Quick add and dictation feel best on a fast model: the default is sized for writing, not for reading one line.",
   "settings.ai.feature_assistant": "Assistant",
   "settings.ai.feature_writing_assist": "Writing assist",
   "settings.ai.feature_time_assist": "Time assist",
