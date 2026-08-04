@@ -116,6 +116,9 @@ they were working on.
 
 - Its own provider config on `ai_settings` (`speech_*`), because of the table at the top.
   `NULL` means "reuse the chat provider", which only resolves for one that can transcribe.
+- `enabled_features()` appends a `speech` **capability** (not an `AI_FEATURES` toggle) when
+  `_speech_ready()` holds, so the web gate never draws a microphone that would 409. Same helper
+  backs `AISettingsRead.speech_available`, so the settings screen and the control agree.
 - `transcribe.py` is a **third top-level provider function**, not a branch in `stream_chat`: the
   request is multipart and the reply is one JSON object, so it shares neither the SSE reader nor
   the event normalisation the rest of `providers.py` is built around.

@@ -30,8 +30,18 @@ the typical tenant. `ai_settings.speech_provider` / `speech_base_url` / `speech_
 `speech_model` let an org keep Claude for writing and point audio somewhere that can transcribe.
 
 `NULL` means "reuse the chat provider" — correct for an OpenAI-configured org, and resolving to
-"speech is off" for an Anthropic one. **Off means invisible**: `speech_available` is computed
-server-side and the microphone is simply not drawn, rather than offered and then 409'd.
+"speech is off" for an Anthropic one.
+
+**Off means invisible** (#126). `/meta/me`'s `ai_features` list carries `speech` alongside the
+real feature keys, but only when `_speech_ready()` says the org has a provider that can
+transcribe — so `aiEnabled(user, "speech")` gates the button and an Anthropic-configured org
+is never shown a microphone that would 409 on the first click. It is a **capability, not a
+toggle**: there is nothing to switch, and putting it in `AI_FEATURES` would have grown the
+settings form, the per-feature model override and the web's `AIFeature` union for a non-choice.
+It rides on `time_assist`, so switching that off takes dictation with it.
+
+The settings page reads the same answer as `AISettingsRead.speech_available`, resolved from the
+same helper, so the admin screen and the mic can never disagree.
 
 Anthropic is deliberately absent from the speech picker. Offering it would only let an admin
 save a setting that can never work.
