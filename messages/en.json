@@ -2450,7 +2450,7 @@
   "ai.time.quick_add_placeholder": "e.g. yesterday 14:00-16:30 website Jansen, homepage review",
   "ai.time.reconstruct": "Fill in my day",
   "ai.time.reconstruct_hint": "Suggest draft entries from what you demonstrably worked on.",
-  "ai.time.reconstructing": "Reconstructing…",
+  "ai.time.resolving": "Looking up your clients, projects and tasks…",
   "ai.time.day_complete": "This day matches your schedule; nothing is missing.",
   "ai.time.missing": "About {missing} missing compared to your schedule. Tap a suggestion to prefill the form; nothing is saved without you.",
   "ai.time.no_suggestions": "No grounded suggestions for this day.",

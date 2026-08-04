@@ -2450,7 +2450,7 @@
   "ai.time.quick_add_placeholder": "bijv. gisteren 14:00-16:30 website Jansen, homepage overleg",
   "ai.time.reconstruct": "Vul mijn dag aan",
   "ai.time.reconstruct_hint": "Stel conceptregels voor op basis van wat je aantoonbaar deed.",
-  "ai.time.reconstructing": "Aan het reconstrueren…",
+  "ai.time.resolving": "Klanten, projecten en taken opzoeken…",
   "ai.time.day_complete": "Deze dag klopt met je rooster; er ontbreekt niets.",
   "ai.time.missing": "Ongeveer {missing} ontbreekt ten opzichte van je rooster. Tik op een suggestie om het formulier vooraf in te vullen; zonder jou wordt niets opgeslagen.",
   "ai.time.no_suggestions": "Geen onderbouwde suggesties voor deze dag.",

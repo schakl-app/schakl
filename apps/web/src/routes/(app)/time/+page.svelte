@@ -17,8 +17,10 @@
   import Modal from "$lib/core/ui/Modal.svelte";
   import { COMPANY_STATUSES } from "$lib/modules/companies/status";
   import EntryForm from "$lib/modules/time/EntryForm.svelte";
-  import { formatMinutes, formatTime } from "$lib/modules/time/format";
+  import type { TimeEntryTypeDef } from "$lib/modules/time/format";
+  import { entryTypeLabel, entryTypes, formatMinutes, formatTime } from "$lib/modules/time/format";
   import ProjectBudgetsPanel from "$lib/modules/time/ProjectBudgetsPanel.svelte";
+  import { nextStartFrom, shouldKeepPrefill } from "$lib/modules/time/quickadd";
   import TimesheetGrid from "$lib/modules/time/TimesheetGrid.svelte";
   import { page } from "$app/state";
 
@@ -160,6 +162,25 @@
   }
   let recon = $state<{ loading: boolean; data?: AIRecon; error?: string } | null>(null);
 
+  // The day a prefill was built for. A quick add now fills the form *before* navigating to
+  // the parsed day (the navigation is a view change the form does not wait for), so the
+  // day-change reset below has to be able to tell "the user moved on" from "the prefill just
+  // brought us here" — otherwise it wipes the thing that caused the navigation.
+  let aiPrefillDate: string | null = $state(null);
+
+  // Only for naming a parsed type in the summary line. `entryTypes()` is the shared
+  // session-cached fetch the entry form already warms, so this costs nothing extra; an
+  // unlabelled key still reads better than nothing.
+  let aiTypes = $state<TimeEntryTypeDef[]>([]);
+  $effect(() => {
+    if (hasTimeAssist && aiTypes.length === 0)
+      void entryTypes().then((fetched) => (aiTypes = fetched));
+  });
+  function typeLabel(key: string): string {
+    const found = aiTypes.find((type) => type.key === key);
+    return found ? entryTypeLabel(found, (page.data.locale as string | undefined) ?? "nl") : key;
+  }
+
   // A new day gets a clean slate — suggestions and prefills belong to the day they were
   // made for. Guarded by value: an unrelated invalidation (a save, a draft write) replaces
   // `data` without changing the day and must not wipe a prefill mid-flight.
@@ -168,8 +189,11 @@
     const day = data.selectedDate;
     if (lastResetDay !== null && day !== lastResetDay) {
       recon = null;
-      aiPrefill = null;
       aiParsedSummary = null;
+      if (!shouldKeepPrefill(aiPrefillDate, day)) {
+        aiPrefill = null;
+        aiPrefillDate = null;
+      }
     }
     lastResetDay = day;
   });
@@ -182,6 +206,7 @@
 
   function openPrefilled(prefill: Record<string, unknown>) {
     aiPrefill = prefill;
+    aiPrefillDate = typeof prefill.date === "string" ? prefill.date : null;
     aiPrefillVersion++;
     aiFlash = true;
     setTimeout(() => (aiFlash = false), 2500);
@@ -198,7 +223,13 @@
       const res = await fetch("/ai/time/parse", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text: aiText, override_budget: override }),
+        body: JSON.stringify({
+          text: aiText,
+          // The day on screen is what "vanmiddag" means. Without it the server answers with
+          // its own today and we then navigate the user off the day they were working on.
+          today: data.selectedDate,
+          override_budget: override,
+        }),
       });
       if (!res.ok) {
         const payload = await res.json().catch(() => null);
@@ -214,7 +245,10 @@
         parsed.company_id ||
         parsed.project_id ||
         parsed.task_id ||
-        parsed.description;
+        parsed.description ||
+        parsed.entry_type_key ||
+        parsed.billable !== null ||
+        parsed.break_minutes;
       if (!useful) {
         // Ambiguity stays visible (#129): keep the text so the user can refine it.
         aiError = "ai.time.parse_empty";
@@ -224,16 +258,15 @@
       let end: string = parsed.end ?? "";
       if (start && !end && parsed.duration_minutes) end = endFrom(start, parsed.duration_minutes);
       if (!start && parsed.duration_minutes) {
-        start = "09:00";
+        // "2 uur Jansen" means after the last thing logged that day, not 09:00.
+        start = nextStartFrom(data.day?.entries ?? []);
         end = endFrom(start, parsed.duration_minutes);
       }
-      // "gisteren 2 uur …" belongs on yesterday: switch the view to the parsed day first,
-      // so the prefilled form — and after Opslaan the entry itself — appear on the day the
-      // user is looking at, never invisibly on another one.
       const targetDate: string = parsed.date ?? data.selectedDate;
-      if (targetDate !== data.selectedDate) {
-        await goto(`?date=${targetDate}&week=${weekStartOf(targetDate)}`, { keepFocus: true });
-      }
+      // Fill the form *first*. The navigation below is a view change — the entry form carries
+      // its own date field and does not wait for it — but awaiting it first meant a full SSR
+      // round trip (three page-load API calls) stood between the user hitting enter and the
+      // form filling, at the one moment they are watching for it.
       openPrefilled({
         date: targetDate,
         start,
@@ -242,7 +275,22 @@
         project_id: parsed.project_id ?? "",
         task_id: parsed.task_id ?? "",
         description: parsed.description ?? "",
+        break_minutes: parsed.break_minutes ?? 0,
+        entry_type_key: parsed.entry_type_key ?? null,
+        // Only when the parse actually decided. A `false` here reads as "the user said not
+        // billable" and stops the project's own default from applying (#284).
+        ...(parsed.billable !== null && parsed.billable !== undefined
+          ? { billable: parsed.billable }
+          : {}),
       });
+      // "gisteren 2 uur …" belongs on yesterday: move the view there too, so after Opslaan
+      // the entry is not sitting invisibly on another day. Un-awaited on purpose.
+      if (targetDate !== data.selectedDate) {
+        void goto(`?date=${targetDate}&week=${weekStartOf(targetDate)}`, {
+          keepFocus: true,
+          noScroll: true,
+        });
+      }
       const pieces: string[] = [];
       if (parsed.date) pieces.push(fmtDayMonth(parsed.date));
       if (start && end) pieces.push(`${start}–${end}`);
@@ -254,6 +302,10 @@
       ]) {
         if (name) pieces.push(name);
       }
+      if (parsed.entry_type_key) pieces.push(typeLabel(parsed.entry_type_key));
+      if (parsed.billable === false) pieces.push(t("time.not_billable"));
+      if (parsed.break_minutes)
+        pieces.push(t("time.break_short", { minutes: parsed.break_minutes }));
       if (parsed.description) pieces.push(`"${parsed.description}"`);
       aiParsedSummary = pieces.join(" · ");
       aiText = "";
@@ -293,7 +345,7 @@
     let start = "";
     let end = "";
     if (suggestion.minutes) {
-      start = "09:00";
+      start = nextStartFrom(data.day?.entries ?? []);
       end = endFrom(start, suggestion.minutes);
     }
     openPrefilled({
@@ -540,26 +592,29 @@
             class="min-w-0 flex-1 rounded-lg border border-border bg-transparent px-3 py-2 text-sm text-text outline-none focus:border-brand"
             aria-label={t("ai.time.quick_add")}
           />
-          <button
-            type="submit"
-            disabled={aiBusy || !aiText.trim()}
-            class="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm text-text hover:border-brand disabled:opacity-40"
-          >
-            <Sparkles size={14} class={aiBusy ? "animate-pulse" : ""} />
+          <!-- In-flight state is the shared Button's `loading`, not a pulsing icon and not a
+               reworded label (docs/UX.md → "Loading / in-flight state"). -->
+          <Button type="submit" variant="secondary" loading={aiBusy} disabled={!aiText.trim()}>
+            {#if !aiBusy}<Sparkles size={14} />{/if}
             {t("ai.time.quick_add")}
-          </button>
+          </Button>
           {#if data.selectedDate <= data.today}
-            <button
+            <Button
               type="button"
-              disabled={recon?.loading}
+              variant="secondary"
+              loading={recon?.loading ?? false}
               onclick={() => void reconstruct()}
-              class="rounded-lg border border-border px-3 py-2 text-sm text-text-muted hover:border-brand hover:text-text disabled:opacity-40"
               title={t("ai.time.reconstruct_hint")}
             >
-              {recon?.loading ? t("ai.time.reconstructing") : t("ai.time.reconstruct")}
-            </button>
+              {t("ai.time.reconstruct")}
+            </Button>
           {/if}
         </form>
+        {#if aiBusy}
+          <!-- The parse resolves the tenant's own clients/projects/tasks before answering, so
+               say that rather than showing a bare spinner over an unchanged screen. -->
+          <p class="text-sm text-text-muted" aria-live="polite">{t("ai.time.resolving")}</p>
+        {/if}
         {#if aiParsedSummary}
           <button
             type="button"
