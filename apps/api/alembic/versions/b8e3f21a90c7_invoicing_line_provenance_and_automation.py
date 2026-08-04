@@ -20,7 +20,7 @@ defaults reproduce today's behaviour exactly.
   override, ``NULL`` = inherit. Nullable on purpose: NULL is a third state, not "off".
 
 Revision ID: b8e3f21a90c7
-Revises: c4e8a1b2d7f3
+Revises: d1a7f3b60c92
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from app.core.rls import disable_rls, enable_rls
 
 revision = "b8e3f21a90c7"
-down_revision = "c4e8a1b2d7f3"
+down_revision = "d1a7f3b60c92"
 branch_labels = None
 depends_on = None
 
