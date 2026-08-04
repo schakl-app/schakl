@@ -103,11 +103,17 @@ class ParseCandidates:
     entry_type_keys: set[str] = field(default_factory=set)
 
     def ids(self) -> set[str]:
-        """Every id the model was shown — the evidence set a returned id is checked against."""
+        """Every id the model was shown — the evidence set a returned id is checked against.
+
+        Only the id-valued columns, never `name`/`title`. The set is unioned with
+        ``features._seen_ids``, which reads ids out of tool results with a UUID regex, and
+        this is what admits an id into the same trusted set — so it holds itself to the same
+        standard rather than sweeping up whatever a row happens to contain.
+        """
         found: set[str] = set()
         for row in (*self.companies, *self.projects, *self.tasks):
-            for value in row.values():
-                if value:
+            for key, value in row.items():
+                if value and (key == "id" or key.endswith("_id")):
                     found.add(value.lower())
         return found
 
