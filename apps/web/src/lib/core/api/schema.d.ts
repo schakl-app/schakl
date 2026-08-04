@@ -3767,6 +3767,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/interactions/bulk/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Approve Interactions
+         * @description Approve a selection, optionally filing all of it in one step.
+         *
+         *     Sending no link fields is "approve as matched": each row keeps the client/project the
+         *     gmail feed derived for it. Rows are independent — an ineligible one comes back in
+         *     ``failed`` rather than rolling the batch back.
+         */
+        post: operations["bulk_approve_interactions_api_v1_interactions_bulk_approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/interactions/bulk/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Assign Interactions
+         * @description File a selection without approving it — the batch form of remap, so it re-files logged
+         *     rows too. An absent link field leaves every row's own alone.
+         */
+        post: operations["bulk_assign_interactions_api_v1_interactions_bulk_assign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/interactions/bulk/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Reject Interactions
+         * @description Reject a selection. Permanent per row: the metadata goes and the message is suppressed,
+         *     so a re-poll never resurrects it.
+         */
+        post: operations["bulk_reject_interactions_api_v1_interactions_bulk_reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/interactions/kinds": {
         parameters: {
             query?: never;
@@ -12486,6 +12552,81 @@ export interface components {
             task_id?: string | null;
         };
         /**
+         * InteractionBulkApprove
+         * @description Approve a selection, optionally filing all of it in the same step (the batch form of
+         *     #183). Sending no link fields at all is the plain "approve as matched": every row keeps
+         *     whatever the gmail matcher derived for it, and the batch is a pure status change.
+         */
+        InteractionBulkApprove: {
+            /** Company Id */
+            company_id?: string | null;
+            /** Contact Id */
+            contact_id?: string | null;
+            /** Ids */
+            ids: string[];
+            /** Project Id */
+            project_id?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+        };
+        /**
+         * InteractionBulkAssign
+         * @description File a selection without approving it — triage now, read and approve later. The batch
+         *     form of ``remap``, so it works on logged rows too (re-filing a mis-matched run of emails).
+         */
+        InteractionBulkAssign: {
+            /** Company Id */
+            company_id?: string | null;
+            /** Contact Id */
+            contact_id?: string | null;
+            /** Ids */
+            ids: string[];
+            /** Project Id */
+            project_id?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+        };
+        /**
+         * InteractionBulkFailure
+         * @description One row the batch could not do, and why — an i18n key from the same vocabulary the
+         *     single-row endpoints raise.
+         */
+        InteractionBulkFailure: {
+            /** Error */
+            error: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /** InteractionBulkReject */
+        InteractionBulkReject: {
+            /** Ids */
+            ids: string[];
+            /**
+             * Suppress Thread
+             * @default false
+             */
+            suppress_thread: boolean;
+        };
+        /**
+         * InteractionBulkResult
+         * @description What a bulk call actually did.
+         *
+         *     Rows are independent: a stale or ineligible one is **reported, never raised**. Raising
+         *     mid-batch would roll the whole request back (``require_context`` rolls back on any
+         *     exception), so one row someone else already reviewed in another tab would silently undo
+         *     the forty-nine that worked. A payload-level problem — a ``company_id`` that does not
+         *     exist — is still a 422 for the whole call, because it is the caller's, not a row's.
+         */
+        InteractionBulkResult: {
+            /** Failed */
+            failed?: components["schemas"]["InteractionBulkFailure"][];
+            /** Succeeded */
+            succeeded: number;
+        };
+        /**
          * InteractionCreate
          * @description A manually logged touchpoint — meetings, calls, notes. Emails only arrive via gmail.
          */
@@ -14801,6 +14942,10 @@ export interface components {
          *
          *     A redirect rule on a zone with no proxied record for the apex is inert. This is the check
          *     that turns "I set the redirect and nothing happens" into a sentence.
+         *
+         *     ``www`` is tracked separately because it fails separately: a proxied apex beside an
+         *     unproxied ``www`` leaves the one hostname a domain redirect exists to catch serving
+         *     nothing, while the apex answers and the report otherwise reads healthy.
          */
         OriginState: {
             /**
@@ -28059,6 +28204,105 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InteractionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_approve_interactions_api_v1_interactions_bulk_approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InteractionBulkApprove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InteractionBulkResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_assign_interactions_api_v1_interactions_bulk_assign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InteractionBulkAssign"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InteractionBulkResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_reject_interactions_api_v1_interactions_bulk_reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InteractionBulkReject"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InteractionBulkResult"];
                 };
             };
             /** @description Validation Error */

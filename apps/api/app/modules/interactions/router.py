@@ -12,6 +12,10 @@ from app.core.tenancy import RequestContext, require_context
 from app.modules.interactions.schemas import (
     InteractionAddToConversation,
     InteractionApprove,
+    InteractionBulkApprove,
+    InteractionBulkAssign,
+    InteractionBulkReject,
+    InteractionBulkResult,
     InteractionCreate,
     InteractionEmlUploadRead,
     InteractionKindDefCreate,
@@ -205,6 +209,62 @@ async def upload_interaction_eml(
         attachments_stored=stored,
         attachments_skipped=skipped,
     )
+
+
+# --- bulk review (#299) ------------------------------------------------------------ #
+# Declared before ``/{interaction_id}/…`` — otherwise ``/bulk/approve`` matches *that* route
+# with ``interaction_id="bulk"`` and answers 422 instead of doing the thing.
+#
+# All three carry ``interactions.interaction.review``, the same permission the single-row
+# endpoints do, and no new one. Bulk export earns its own capability (§17) because taking the
+# client list out of the building in one file is a *different act* from opening one record;
+# approving forty emails you may each approve is the same act, repeated. Inventing
+# ``interaction.bulk_review`` would only add a switch that can be off while the thing it
+# guards is still reachable one click at a time.
+@router.post(
+    "/bulk/approve",
+    response_model=InteractionBulkResult,
+    dependencies=[require_permission("interactions.interaction.review")],
+)
+async def bulk_approve_interactions(
+    payload: InteractionBulkApprove,
+    ctx: RequestContext = Depends(require_context),
+) -> InteractionBulkResult:
+    """Approve a selection, optionally filing all of it in one step.
+
+    Sending no link fields is "approve as matched": each row keeps the client/project the
+    gmail feed derived for it. Rows are independent — an ineligible one comes back in
+    ``failed`` rather than rolling the batch back.
+    """
+    return InteractionBulkResult.model_validate(await InteractionService(ctx).bulk_approve(payload))
+
+
+@router.post(
+    "/bulk/assign",
+    response_model=InteractionBulkResult,
+    dependencies=[require_permission("interactions.interaction.review")],
+)
+async def bulk_assign_interactions(
+    payload: InteractionBulkAssign,
+    ctx: RequestContext = Depends(require_context),
+) -> InteractionBulkResult:
+    """File a selection without approving it — the batch form of remap, so it re-files logged
+    rows too. An absent link field leaves every row's own alone."""
+    return InteractionBulkResult.model_validate(await InteractionService(ctx).bulk_assign(payload))
+
+
+@router.post(
+    "/bulk/reject",
+    response_model=InteractionBulkResult,
+    dependencies=[require_permission("interactions.interaction.review")],
+)
+async def bulk_reject_interactions(
+    payload: InteractionBulkReject,
+    ctx: RequestContext = Depends(require_context),
+) -> InteractionBulkResult:
+    """Reject a selection. Permanent per row: the metadata goes and the message is suppressed,
+    so a re-poll never resurrects it."""
+    return InteractionBulkResult.model_validate(await InteractionService(ctx).bulk_reject(payload))
 
 
 @router.get(

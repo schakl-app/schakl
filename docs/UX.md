@@ -222,6 +222,16 @@
     opens the shared wizard, and both controls check the bulk permission *and* the entity's own
     before they render, mirroring the two gates the API declares. Instellingen → Import & export
     stays as the overview of what can travel at all; it is never the only way in.
+  - **A bulk action says what it will actually do, and reports what it did** (#299). A selection
+    is rarely uniform — the interacties list mixes still-pending emails with reviewed ones, and
+    someone else's mailbox with your own — so each button in the `selection` bar acts on **its
+    own eligible subset** and carries that count whenever it is smaller than the selection
+    ("Goedkeuren (2)" over eight rows). A button that silently did less than it said is the
+    failure this prevents. Afterwards the page states the honest outcome — "6 goedgekeurd · 2
+    overgeslagen", with the distinct reasons — because the API reports ineligible rows instead
+    of rolling the good ones back (raising mid-batch would undo the forty-nine that worked), and
+    a UI that swallowed that would be claiming work it did not do. The eligible-subset filter is
+    still only UX: the API re-checks every row, so the bar may narrow the batch but never widens it.
   - **A hidden column costs nothing.** An expensive column (the budget roll-up) is an opt-in
     aggregate: the page's `load` asks the API for it only when the column is visible. This is why
     column metadata is a plain module and the cell renderers are snippets — a server load can read

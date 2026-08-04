@@ -46,6 +46,10 @@ from app.modules.interactions.models import (
 )
 from app.modules.interactions.schemas import (
     InteractionApprove,
+    InteractionBulkApprove,
+    InteractionBulkAssign,
+    InteractionBulkLinks,
+    InteractionBulkReject,
     InteractionCreate,
     InteractionKindDefCreate,
     InteractionKindDefUpdate,
@@ -701,18 +705,28 @@ class InteractionService:
         self, interaction_id: uuid.UUID, data: InteractionApprove | None = None
     ) -> dict[str, Any]:
         row = await self._owned_gmail_or_404(interaction_id)
-        if row.status != InteractionStatus.PENDING.value:
-            raise AppError("invalid_state", "errors.interactions_not_pending", status_code=409)
-        # Optionally assign links in the same step as approval (#183) — no need to approve
-        # then reopen and move. Applied before the row goes team-visible, so the "moved"
-        # bookkeeping (unlink from an old host nobody saw) doesn't apply; the host announce
-        # below fires on the *final* links.
-        before = snapshot(row, _AUDITED_FIELDS)
+        self._pending_only(row)
         link_values: dict[str, Any] = {}
         if data is not None:
             sent = data.model_dump(exclude_unset=True)
             if sent:
                 link_values = await self._resolve_links(sent, partial=True)
+        row = await self._approve_row(row, link_values)
+        return await self._present_one(row)
+
+    async def _approve_row(self, row: Interaction, link_values: dict[str, Any]) -> Interaction:
+        """Approve one already-loaded, already-eligible row.
+
+        The single endpoint and the bulk one both land here, so a batch of fifty does exactly
+        what fifty clicks do — same trail, same host mirrors, same conversation folding, same
+        bus emit. A second implementation of this is the one way bulk review could quietly
+        stop meaning what review means.
+        """
+        # Optionally assign links in the same step as approval (#183) — no need to approve
+        # then reopen and move. Applied before the row goes team-visible, so the "moved"
+        # bookkeeping (unlink from an old host nobody saw) doesn't apply; the host announce
+        # below fires on the *final* links.
+        before = snapshot(row, _AUDITED_FIELDS)
         # A pending row becoming logged is the other moment it can join a conversation (#272):
         # inherit the newest logged sibling's id in this gmail thread, minting one if that
         # sibling has none yet, so the two fold together the instant this one lands.
@@ -743,11 +757,17 @@ class InteractionService:
                 "gmail_message_id": row.gmail_message_id,
             },
         )
-        return await self._present_one(row)
+        return row
 
     async def reject(self, interaction_id: uuid.UUID, *, suppress_thread: bool = False) -> None:
         """The owner keeps this email out of the CRM: metadata removed, message suppressed."""
         row = await self._owned_gmail_or_404(interaction_id)
+        await self._reject_row(row, suppress_thread=suppress_thread)
+
+    async def _reject_row(self, row: Interaction, *, suppress_thread: bool) -> None:
+        """Reject one already-loaded, already-eligible row — the shared path (see
+        ``_approve_row``). The bus emit is what writes the Gmail suppression, in this same
+        transaction, so the rejection and its "never again" still commit together in a batch."""
         await emit(
             "interaction.rejected",
             self.ctx,
@@ -763,11 +783,16 @@ class InteractionService:
 
     async def remap(self, interaction_id: uuid.UUID, data: InteractionRemap) -> dict[str, Any]:
         row = await self._owned_gmail_or_404(interaction_id)
-        before = snapshot(row, _AUDITED_FIELDS)
         sent = data.model_dump(exclude_unset=True)
         if not sent:
             return await self._present_one(row)
         values = await self._resolve_links(sent, partial=True)
+        return await self._present_one(await self._remap_row(row, values))
+
+    async def _remap_row(self, row: Interaction, values: dict[str, Any]) -> Interaction:
+        """Re-file one already-loaded, already-eligible row — the shared path (see
+        ``_approve_row``)."""
+        before = snapshot(row, _AUDITED_FIELDS)
         old_links = {field: getattr(row, field) for field in HOST_ENTITY}
         row = await self.repo.update(row, **values)
         await ActivityService(self.ctx).record_update(
@@ -781,7 +806,101 @@ class InteractionService:
             self.ctx,
             {"interaction_id": row.id, "owner_user_id": row.owner_user_id},
         )
-        return await self._present_one(row)
+        return row
+
+    # --- bulk review (#299) ----------------------------------------------------- #
+    # A queue of forty auto-matched emails is reviewed a screenful at a time or not at all, so
+    # the review flow gets a batch form. Three things make that safe rather than reckless, and
+    # they are worth stating because the obvious worry — "bulk approve skips the step where I
+    # connect the email to a client/project/task" — turns out to be the wrong one:
+    #
+    # 1. **Approving does not decide the links.** ``InteractionApprove`` already treats an
+    #    absent field as "leave this row's own link alone", so a bulk approve that sends none
+    #    is a pure status change: every row keeps exactly what the gmail matcher derived for
+    #    it. It never blanket-overwrites forty rows with one client.
+    # 2. **Approving does not close the connect step either.** ``remap`` has no status check —
+    #    a *logged* gmail row is still re-filable by its owner, forever. "Approve now, file
+    #    later" is a real workflow, which is what makes approving in bulk a cheap decision.
+    #    ``bulk_assign`` is the other order: file the batch first, read and approve after.
+    # 3. **The irreversible one is reject**, not approve: it deletes the row *and* suppresses
+    #    the message so a re-poll never brings it back. So the batch that needs the loud
+    #    confirmation is bulk deny — the inverse of where the caution instinctively goes.
+    async def bulk_approve(self, data: InteractionBulkApprove) -> dict[str, Any]:
+        link_values = await self._bulk_links(data)
+        rows, failed = await self._bulk_eligible(data.ids, pending_only=True)
+        for row in rows:
+            await self._approve_row(row, dict(link_values))
+        return {"succeeded": len(rows), "failed": failed}
+
+    async def bulk_assign(self, data: InteractionBulkAssign) -> dict[str, Any]:
+        """File a selection without approving it. Unlike approve, a *logged* row is fair game —
+        this is the batch form of ``remap``, so it also re-files a mis-matched run of emails."""
+        link_values = await self._bulk_links(data)
+        rows, failed = await self._bulk_eligible(data.ids, pending_only=False)
+        if not link_values:
+            return {"succeeded": 0, "failed": failed}
+        for row in rows:
+            await self._remap_row(row, dict(link_values))
+        return {"succeeded": len(rows), "failed": failed}
+
+    async def bulk_reject(self, data: InteractionBulkReject) -> dict[str, Any]:
+        """Permanent, per row: the metadata goes and the message is suppressed, so a re-poll
+        never resurrects it. The ``interaction.rejected`` subscriber writes each suppression in
+        this transaction — one small indexed lookup per row, which is why ``MAX_BULK_IDS``
+        bounds the batch rather than leaving it open-ended."""
+        rows, failed = await self._bulk_eligible(data.ids, pending_only=True)
+        for row in rows:
+            await self._reject_row(row, suppress_thread=data.suppress_thread)
+        return {"succeeded": len(rows), "failed": failed}
+
+    async def _bulk_links(self, data: InteractionBulkLinks) -> dict[str, Any]:
+        """Resolve the batch's shared links **once**, before any row is touched.
+
+        A ``company_id`` that does not exist is the caller's payload being wrong, not any one
+        row's problem — every row would fail on it identically. So this raises 422 for the
+        whole call, while row-level trouble is reported instead (``InteractionBulkResult``).
+        """
+        sent = data.model_dump(exclude_unset=True, exclude={"ids"})
+        return await self._resolve_links(sent, partial=True) if sent else {}
+
+    async def _bulk_eligible(
+        self, ids: list[uuid.UUID], *, pending_only: bool
+    ) -> tuple[list[Interaction], list[dict[str, Any]]]:
+        """Load the selection in one query and split it into "can" and "cannot, because".
+
+        One ``IN`` rather than a ``get_or_404`` per id (docs/PERFORMANCE.md): the batch is the
+        whole point, and a per-row load would make the cheap half of the work the expensive
+        half. The read rides ``scoped_select()``, so tenant isolation and the company horizon
+        both come along — a bulk call can no more name a row across the horizon than a list can.
+        """
+        unique = list(dict.fromkeys(ids))  # a double-checked row is approved once, not twice
+        found = {
+            row.id: row
+            for row in (
+                await self.ctx.session.execute(
+                    self.repo.scoped_select().where(Interaction.id.in_(unique))
+                )
+            )
+            .scalars()
+            .all()
+        }
+        rows: list[Interaction] = []
+        failed: list[dict[str, Any]] = []
+        for interaction_id in unique:
+            row = found.get(interaction_id)
+            if row is None:
+                # Outside the tenant, outside the horizon, or already gone — one answer for
+                # all three (§15): an id you cannot act on must not read as an id that exists.
+                failed.append({"id": interaction_id, "error": "errors.not_found"})
+                continue
+            reason = self._review_ineligible(row)
+            if reason is None and pending_only and row.status != InteractionStatus.PENDING.value:
+                reason = ("invalid_state", "errors.interactions_not_pending", 409)
+            if reason is not None:
+                failed.append({"id": interaction_id, "error": reason[1]})
+                continue
+            rows.append(row)
+        return rows, failed
 
     async def add_to_conversation(
         self, interaction_id: uuid.UUID, target_interaction_id: uuid.UUID
@@ -949,11 +1068,27 @@ class InteractionService:
     async def _owned_gmail_or_404(self, interaction_id: uuid.UUID) -> Interaction:
         """Review actions: gmail-sourced and strictly the caller's own mailbox — no override."""
         row = await self.repo.get_or_404(interaction_id)
-        if row.source != InteractionSource.GMAIL.value:
-            raise AppError("invalid_state", "errors.interactions_manual_no_review", status_code=409)
-        if row.owner_user_id != self.ctx.user.id:
-            raise AppError("forbidden", "errors.interactions_owner_only", status_code=403)
+        reason = self._review_ineligible(row)
+        if reason is not None:
+            raise AppError(*reason[:2], status_code=reason[2])
         return row
+
+    def _review_ineligible(self, row: Interaction) -> tuple[str, str, int] | None:
+        """Why this row is out of the review flow, or ``None`` when it is in it.
+
+        One statement of the rule, asked two ways: ``_owned_gmail_or_404`` raises it for a
+        single row, the bulk loader reports it per row. Splitting them is how a batch would
+        end up quietly reviewing a colleague's mailbox.
+        """
+        if row.source != InteractionSource.GMAIL.value:
+            return ("invalid_state", "errors.interactions_manual_no_review", 409)
+        if row.owner_user_id != self.ctx.user.id:
+            return ("forbidden", "errors.interactions_owner_only", 403)
+        return None
+
+    def _pending_only(self, row: Interaction) -> None:
+        if row.status != InteractionStatus.PENDING.value:
+            raise AppError("invalid_state", "errors.interactions_not_pending", status_code=409)
 
     async def _resolve_links(
         self, links: dict[str, uuid.UUID | None], *, partial: bool = False

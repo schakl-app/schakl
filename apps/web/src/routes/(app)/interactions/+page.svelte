@@ -42,6 +42,7 @@
     withBody,
   } from "$lib/modules/interactions/format";
   import { snippetPreview } from "$lib/modules/interactions/snippet";
+  import InteractionBulkAssignDialog from "$lib/modules/interactions/InteractionBulkAssignDialog.svelte";
   import InteractionConversationDialog from "$lib/modules/interactions/InteractionConversationDialog.svelte";
   import InteractionDetailModal from "$lib/modules/interactions/InteractionDetailModal.svelte";
   import InteractionForm from "$lib/modules/interactions/InteractionForm.svelte";
@@ -150,6 +151,33 @@
       ? can(page.data.user, "interactions.interaction.write", "own")
       : can(page.data.user, "interactions.interaction.write", "any"));
   const mayMove = (item: InteractionItem) => (isGmailRow(item) ? isOwner(item) : mayEdit(item));
+
+  /**
+   * Bulk review (#299): a queue of forty auto-matched emails is reviewed a screenful at a time
+   * or not at all, so the review flow gets a batch form.
+   *
+   * Two subsets, because the actions genuinely differ. **Re-filing** works on any of the
+   * caller's own Gmail rows — `remap` has no status check, so "approve now, file later" is a
+   * real workflow. **Approving and rejecting** need a still-pending row. Each button therefore
+   * acts on its own subset and says how many rows that is whenever it is not the whole
+   * selection; the API reports the rest rather than refusing the batch, but a button that
+   * silently did less than it said would still be lying.
+   */
+  const canReview = $derived(can(page.data.user, "interactions.interaction.review"));
+  let bulkSelected = $state<string[]>([]);
+  const selectedItems = $derived(items.filter((item) => bulkSelected.includes(item.id)));
+  const bulkFilableIds = $derived(
+    selectedItems.filter((item) => isGmailRow(item) && isOwner(item)).map((item) => item.id),
+  );
+  const bulkPendingIds = $derived(
+    selectedItems
+      .filter((item) => isGmailRow(item) && isOwner(item) && item.status === "pending")
+      .map((item) => item.id),
+  );
+  let showBulkAssign = $state(false);
+  let showBulkReject = $state(false);
+  /** Count on a button only when it is doing less than the selection suggests. */
+  const partial = (eligible: number) => (eligible < bulkSelected.length ? ` (${eligible})` : "");
 
   let showCreate = $state(false);
   let showUpload = $state(false);
@@ -600,6 +628,73 @@
   </p>
 {/snippet}
 
+{#if form?.bulkResult}
+  <!-- A batch's honest answer is "37 done, 3 skipped, and here is why" — the API reports the
+       rows it could not do instead of rolling the good ones back, so the banner says both. -->
+  <div
+    class="mb-4 rounded-lg border border-border bg-surface-raised px-4 py-3 text-sm"
+    role="status"
+  >
+    <p class="font-medium text-text">
+      {t(`interactions.bulk.done_${form.bulkResult.kind}`, { count: form.bulkResult.succeeded })}
+      {#if form.bulkResult.failed > 0}
+        <span class="font-normal text-text-muted"
+          >· {t("interactions.bulk.skipped", { count: form.bulkResult.failed })}</span
+        >
+      {/if}
+    </p>
+    {#if form.bulkResult.reasons.length > 0}
+      <ul class="mt-1 space-y-0.5 text-xs text-text-muted">
+        {#each form.bulkResult.reasons as reason (reason)}
+          <li>{t(reason)}</li>
+        {/each}
+      </ul>
+    {/if}
+  </div>
+{/if}
+
+{#snippet bulkBar(ids: string[])}
+  <span class="text-xs font-medium text-text">{t("table.selected", { count: ids.length })}</span>
+  <!-- Approve as matched: the headline case, and a pure status change — every row keeps the
+       client/project the Gmail matcher derived for it, so no dialog stands in the way. -->
+  <form
+    method="POST"
+    action="?/bulkApproveInteractions"
+    class="contents"
+    use:enhance={busy.keep("bulk-approve")}
+  >
+    <input type="hidden" name="ids" value={bulkPendingIds.join(",")} />
+    <Button
+      type="submit"
+      size="sm"
+      variant="secondary"
+      class="py-1.5 text-xs"
+      loading={busy.is("bulk-approve")}
+      disabled={bulkPendingIds.length === 0 || busy.active}
+    >
+      {t("interactions.approve")}{partial(bulkPendingIds.length)}
+    </Button>
+  </form>
+  <button
+    type="button"
+    disabled={bulkFilableIds.length === 0}
+    class="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text hover:border-brand hover:text-brand disabled:cursor-not-allowed disabled:opacity-40"
+    onclick={() => (showBulkAssign = true)}
+  >
+    <ArrowRightLeft size={13} />
+    {t("interactions.assign")}{partial(bulkFilableIds.length)}
+  </button>
+  <button
+    type="button"
+    disabled={bulkPendingIds.length === 0}
+    class="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text hover:border-red-400 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:border-red-500 dark:hover:text-red-400"
+    onclick={() => (showBulkReject = true)}
+  >
+    <X size={13} />
+    {t("interactions.reject")}{partial(bulkPendingIds.length)}
+  </button>
+{/snippet}
+
 <DataTable
   rows={items}
   columns={table.columns}
@@ -612,6 +707,9 @@
   {empty}
   {groups}
   groupBy={timelineOrder ? (item) => localDay(item.occurred_at) : undefined}
+  selectable={canReview}
+  bind:selected={bulkSelected}
+  selection={bulkBar}
   onsort={table.onSort}
   onresize={table.onResize}
 />
@@ -752,6 +850,57 @@
       </div>
     </form>
   {/if}
+</Modal>
+
+<!-- File a whole selection (#299), optionally approving it in the same step. -->
+<Modal bind:open={showBulkAssign} title={t("interactions.bulk.assign_title")}>
+  {#key bulkFilableIds.join(",")}
+    <InteractionBulkAssignDialog
+      ids={bulkFilableIds}
+      approvableIds={bulkPendingIds}
+      onsaved={() => (showBulkAssign = false)}
+    />
+  {/key}
+</Modal>
+
+<!-- Bulk reject is the one irreversible batch: each row's metadata goes and its message is
+     suppressed, so a re-poll never resurrects it. Hence a modal rather than a bar button. -->
+<Modal bind:open={showBulkReject} title={t("interactions.bulk.reject_title")}>
+  <form
+    method="POST"
+    action="?/bulkRejectInteractions"
+    class="space-y-4"
+    use:enhance={busy.wrap("bulk-reject", () => async ({ update }) => {
+      showBulkReject = false;
+      await update();
+    })}
+  >
+    <input type="hidden" name="ids" value={bulkPendingIds.join(",")} />
+    <p class="text-sm text-text-muted">
+      {t("interactions.bulk.reject_message", { count: bulkPendingIds.length })}
+    </p>
+    <label class="flex items-center gap-2 text-sm text-text">
+      <input type="checkbox" name="suppress_thread" value="1" />
+      {t("interactions.reject_thread")}
+    </label>
+    <div class="flex justify-end gap-2">
+      <button
+        type="button"
+        class="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:bg-surface"
+        onclick={() => (showBulkReject = false)}
+      >
+        {t("common.cancel")}
+      </button>
+      <Button
+        type="submit"
+        variant="danger"
+        loading={busy.is("bulk-reject")}
+        disabled={busy.active}
+      >
+        {t("interactions.reject")}
+      </Button>
+    </div>
+  </form>
 </Modal>
 
 <!-- The full contact moment (#184): the same detail modal the per-record panels use — the email

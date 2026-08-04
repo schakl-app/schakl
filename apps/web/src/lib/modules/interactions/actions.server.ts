@@ -36,6 +36,56 @@ function links(form: FormData): Record<string, string> {
   return out;
 }
 
+/**
+ * The three bulk review actions, which differ only in endpoint and payload (#299).
+ *
+ * `ids` arrives as the comma-joined selection the bulk bar posted. Only link fields the user
+ * actually filled are forwarded — see `bulkApproveInteractions` for why an unfilled one must
+ * be *absent* rather than `null` here.
+ *
+ * An approve may carry `approve_ids` instead: the file-and-approve button in the bulk assign
+ * dialog shares that form with plain "file", and the two act on genuinely different sets —
+ * every reviewable row can be re-filed, only a pending one can be approved. One form cannot
+ * hold two `ids` fields, so the narrower set travels under its own name.
+ */
+async function bulkReview(event: RequestEvent, kind: "approve" | "assign" | "reject") {
+  const form = await event.request.formData();
+  const raw = (kind === "approve" && form.get("approve_ids")) || form.get("ids");
+  const ids = String(raw ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (ids.length === 0) return fail(400, { error: "errors.required" });
+
+  const body: Record<string, unknown> = { ids };
+  if (kind === "reject") {
+    body.suppress_thread = form.get("suppress_thread") === "1";
+  } else {
+    for (const field of LINK_FIELDS) {
+      const value = String(form.get(field) ?? "").trim();
+      if (value) body[field] = value;
+    }
+  }
+  const { data, error } = await apiFor(event).POST(`/api/v1/interactions/bulk/${kind}` as const, {
+    body: body as never,
+  });
+  if (error || !data) return fail(400, { error: apiErrorKey(error).key });
+  // `failed` carries a server-side default, so the generated client types it optional even
+  // though the response always has it.
+  const failed = data.failed ?? [];
+  return {
+    ok: true,
+    bulkResult: {
+      kind,
+      succeeded: data.succeeded,
+      // The distinct reasons, so the bar can say *why* rows were skipped rather than only
+      // how many — "already reviewed" and "someone else's mailbox" need different answers.
+      failed: failed.length,
+      reasons: [...new Set(failed.map((f) => f.error))],
+    },
+  };
+}
+
 export const interactionActions = {
   createInteraction: async (event: RequestEvent) => {
     const form = await event.request.formData();
@@ -355,6 +405,23 @@ export const interactionActions = {
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { ok: true };
   },
+
+  /**
+   * Bulk review (#299): approve / file / reject a whole selection.
+   *
+   * All three answer `bulkResult` rather than a bare `ok`, because a batch's honest answer is
+   * "37 done, 3 skipped" — the API reports ineligible rows instead of rolling the good ones
+   * back, and a UI that swallowed that would be claiming work it did not do.
+   *
+   * The link fields are only forwarded when the user actually picked one. That is the whole
+   * contract difference from the single move dialog (which is prefilled, so an empty picker
+   * there means "clear"): here a blank picker over a heterogeneous selection means "leave
+   * every row's own link alone", and posting a bare `null` would wipe what the gmail matcher
+   * already worked out on every row.
+   */
+  bulkApproveInteractions: (event: RequestEvent) => bulkReview(event, "approve"),
+  bulkAssignInteractions: (event: RequestEvent) => bulkReview(event, "assign"),
+  bulkRejectInteractions: (event: RequestEvent) => bulkReview(event, "reject"),
 
   /**
    * Manually glue this email onto another's conversation (#272): a reply Gmail didn't thread

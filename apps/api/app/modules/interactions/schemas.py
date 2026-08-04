@@ -166,6 +166,76 @@ class InteractionReject(BaseModel):
     suppress_thread: bool = False
 
 
+#: The most rows one bulk call may touch. The list pages at 50 and selection is per page
+#: (the bulk bar says so), so this is already twice what the screen can offer — it exists to
+#: bound the per-row work the batch fans out into, not to ration the feature.
+MAX_BULK_IDS = 100
+
+
+class InteractionBulkIds(BaseModel):
+    """The selection every bulk action carries. Duplicates are collapsed by the service, so a
+    double-checked row is approved once, not twice."""
+
+    ids: list[uuid.UUID] = Field(..., min_length=1, max_length=MAX_BULK_IDS)
+
+
+class InteractionBulkLinks(InteractionBulkIds):
+    """A selection plus optional shared links, with **``InteractionApprove``'s semantics, not
+    the move dialog's**: an absent field leaves every row's own link untouched, a sent value
+    sets it on all of them.
+
+    The difference matters here in a way it does not for one row. A single move dialog is
+    prefilled with the row's current links, so an emptied picker means "clear this". A bulk
+    dialog starts blank over rows that disagree with each other, so the same gesture would
+    wipe the very auto-matched client/project the gmail feed had already worked out on every
+    row the user did not look at. Absent therefore means *leave alone*, and only an explicit
+    ``null`` clears.
+    """
+
+    company_id: uuid.UUID | None = None
+    project_id: uuid.UUID | None = None
+    task_id: uuid.UUID | None = None
+    contact_id: uuid.UUID | None = None
+
+
+class InteractionBulkApprove(InteractionBulkLinks):
+    """Approve a selection, optionally filing all of it in the same step (the batch form of
+    #183). Sending no link fields at all is the plain "approve as matched": every row keeps
+    whatever the gmail matcher derived for it, and the batch is a pure status change."""
+
+
+class InteractionBulkAssign(InteractionBulkLinks):
+    """File a selection without approving it — triage now, read and approve later. The batch
+    form of ``remap``, so it works on logged rows too (re-filing a mis-matched run of emails)."""
+
+
+class InteractionBulkReject(InteractionBulkIds):
+    #: Also suppress each row's whole Gmail thread, so follow-ups never get logged either.
+    suppress_thread: bool = False
+
+
+class InteractionBulkFailure(BaseModel):
+    """One row the batch could not do, and why — an i18n key from the same vocabulary the
+    single-row endpoints raise."""
+
+    id: uuid.UUID
+    error: str
+
+
+class InteractionBulkResult(BaseModel):
+    """What a bulk call actually did.
+
+    Rows are independent: a stale or ineligible one is **reported, never raised**. Raising
+    mid-batch would roll the whole request back (``require_context`` rolls back on any
+    exception), so one row someone else already reviewed in another tab would silently undo
+    the forty-nine that worked. A payload-level problem — a ``company_id`` that does not
+    exist — is still a 422 for the whole call, because it is the caller's, not a row's.
+    """
+
+    succeeded: int
+    failed: list[InteractionBulkFailure] = Field(default_factory=list)
+
+
 class InteractionAddToConversation(BaseModel):
     """Glue a gmail email onto another's conversation by hand (#272) — for a reply Gmail didn't
     thread automatically. The target must be one of the caller's own logged gmail rows."""
