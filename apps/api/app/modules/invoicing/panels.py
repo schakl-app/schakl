@@ -15,7 +15,9 @@ from app.registry import PanelSpec
 
 async def _invoicing_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
     # Money: the panel stays empty for someone without the read grant rather than erroring
-    # the whole company page (the subscriptions-panel stance).
+    # the whole company page (the subscriptions-panel stance). The base key, so an ``:own``
+    # holder — a client on their own company page (#266) — gets the panel; ``for_company``
+    # then leaves the agency's drafts out of it.
     if not ctx.can("invoicing.invoice.read"):
         return {"invoices": [], "quotes": [], "forbidden": True}
     invoices = await InvoiceService(ctx).for_company(company_id)

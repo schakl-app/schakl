@@ -605,6 +605,14 @@ It is a **core, cross-cutting capability**, like custom fields (§13) — not pe
   and the seam prefers for an `is_portal` caller (restricted staff still see an unattached
   contact; a client never does). Reach for the seam whenever a module must *name* rows it does
   not own; teaching the borrower the join is the mistake this exists to prevent.
+  **`entity_visible` prefers the same clause** (#266). It is the *other* seam onto the same
+  question, and it was answering with the staff rule — so `GET /files`, which takes
+  `(entity_type, entity_id)` from the caller and declares `no_permission_required` ("any
+  signed-in member", a portal login included), let a client enumerate the documents attached
+  to a **draft invoice** the service otherwise 404s them off. The activity trail never was
+  exposed the same way — its router returns `[]` for any portal caller first — and that is the
+  point: one of the two callers remembered and one did not, which is what a shared predicate is
+  for. `PORTAL_CLAUSE_ATTR` lives in `core/scope.py` because `directory.py` imports it.
 - **Deny-by-default.** An `/api/v1` route with neither `require_permission(...)` nor an explicit
   `no_permission_required("reason")` is a build break. Two tests enforce it: an introspection
   lint and a behavioural sweep that calls every operation as a member holding nothing.
@@ -653,9 +661,36 @@ It is a **core, cross-cutting capability**, like custom fields (§13) — not pe
   (`PermissionSet.covers` — roles are tenant-editable, so "it's only a client" bounds nothing).
   **Stopping declares no permission on purpose**: it runs as the impersonated account, and gating
   the way out behind a permission that account cannot hold would trap someone inside the session.
+  A corollary worth knowing before you grant the `client` role anything: **widening `client`
+  narrows who may impersonate it.** #266 gave it `invoicing.invoice.read:own`, and money defaults
+  to admins, so a `member` holding `contacts.portal.impersonate` is now refused — entering the
+  session would hand them invoices they cannot read, which is the guard working. The remedy is a
+  permission grant, and the refusal names itself (`errors.impersonation_escalation`), but check
+  the roles you expect to impersonate before adding to `client` (`docs/IMPERSONATION.md`).
+- **Scope is what lets one key serve a client and the agency at once** (#266, `docs/INVOICING.md`).
+  Before you grant an existing permission to `client`, list every route that declares it: reads
+  cluster, and `invoicing.invoice.read` gated seven endpoints of which only three were documents —
+  the rest were the seller's bank details, the price list, the template library and the org-wide
+  unbilled backlog with every employee's hourly rate on it. None of those is a row a company
+  horizon could narrow (there is no client whose price list this is), so the **scope** is the only
+  thing that can fence them: `:any` on the module's own surfaces, `:own` for the documents, and the
+  horizon still decides *whose*. **Externality is a separate axis from breadth** — "a client never
+  sees a draft" follows `ctx.is_portal` (#274), not the scope, because restricted staff must keep
+  seeing the drafts they write; it belongs on the model as `__portal_horizon_clause__` and reaches
+  every path through the service's portal repository, never per read method (#285). And the web
+  mirrors the **key and the scope**, never `!isPortal`, on every control *and* on the nav item
+  (`NavItem.requiresScope`).
 - **A module that ships later** brings its own permissions; a startup reconciler grants them to
   each org's system roles exactly once, tracked in `org_settings.applied_permission_defaults`.
-  A migration must never import the catalog (`docs/WORKFLOW.md`).
+  A migration must never import the catalog (`docs/WORKFLOW.md`). **Widening an existing key's
+  defaults is invisible to that diff** — it is keyed on `spec.key`, which is already applied, and
+  no per-role diff can tell *never offered* from *offered and unticked*. So a widening is a
+  `DefaultsRevision` in `reconcile.py`: an append-only entry with its own `@rev:` marker in the
+  same array, granting the new default and — where a key became scoped — rewriting the bare stored
+  string to `:any` everywhere it lives, roles and API-key scopes alike. That rewrite grants nothing
+  (`PermissionSet.has` already read a bare key as the broadest); it is what stops
+  `validate_permissions`, which refuses to *store* a scoped permission bare, from 422-ing the
+  tenant's next save of a role that was working fine.
 
 ## 16. Activity trail / audit log (core capability)
 

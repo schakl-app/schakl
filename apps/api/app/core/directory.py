@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select
 
-from app.core.scope import horizon_entity_model
+from app.core.scope import PORTAL_CLAUSE_ATTR, horizon_entity_model
 
 if TYPE_CHECKING:  # only for the annotation — importing tenancy here would cycle.
     from app.core.tenancy import RequestContext
@@ -48,16 +48,21 @@ if TYPE_CHECKING:  # only for the annotation — importing tenancy here would cy
 #: Declared on the model beside ``__entity_type__``, for the same reason: the rule about a
 #: model belongs to the model, and core never carries a per-module table.
 EMAIL_ATTR = "__directory_email__"
-#: A model whose **external (client) login** rule is stricter than its staff horizon declares it
-#: here, and the seam prefers it for a portal caller (``ctx.is_portal``). Contacts are the case
-#: that matters today: restricted staff still see unattached people, a client never does (#193).
-#: Without this the seam would hand a client login the *staff* rule, which is precisely the
-#: "second copy of the predicate" §15 warns about — just in the other direction.
-PORTAL_CLAUSE_ATTR = "__portal_horizon_clause__"
+
+# ``PORTAL_CLAUSE_ATTR`` — a model whose **external (client) login** rule is stricter than its
+# staff horizon — moved to ``app/core/scope.py`` in #266, because ``entity_visible`` there needs
+# the same fact and this module imports that one. Both seams read the one definition; that is
+# the whole point of moving it rather than declaring it twice.
 
 
 def _visible_select(ctx: RequestContext, model: type):
-    """A column-select over ``model``, filtered to this tenant **and** this caller's horizon."""
+    """A column-select over ``model``, filtered to this tenant **and** this caller's horizon.
+
+    A portal caller gets ``PORTAL_CLAUSE_ATTR`` where the model declares one: restricted staff
+    still see an unattached contact, a client never does (#193). Handing a client login the
+    *staff* rule is precisely the "second copy of the predicate" §15 warns about — in the other
+    direction.
+    """
     stmt = select(model.id).where(model.org_id == ctx.org.id)
     portal_clause = getattr(model, PORTAL_CLAUSE_ATTR, None) if ctx.is_portal else None
     if portal_clause is not None:

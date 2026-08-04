@@ -3123,6 +3123,8 @@
   "permissions.invoicing.settings.manage": "Manage invoicing settings",
   "permissions.invoicing.template.author": "Write custom invoice templates",
   "invoicing.title": "Invoicing",
+  "invoicing.title_own": "My invoices",
+  "invoicing.empty_own": "You have no invoices yet.",
   "invoicing.invoices": "Invoices",
   "invoicing.quotes": "Quotes",
   "invoicing.uninvoiced.title": "Uninvoiced hours",

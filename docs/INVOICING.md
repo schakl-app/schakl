@@ -128,6 +128,61 @@ invoice is corrected by a credit note, and a sent one has been read. So:
 - **The cycle advances either way.** A period nobody drafted is not lost: it stays unclaimed,
   and that is precisely what the picker enumerates.
 
+## The client reads their own invoices, and `invoice.read` is two permissions (#266)
+
+A contact with a portal login (#193) can now open **My invoices**: their companies' issued
+documents, the derived *overdue* status, and the same PDF the agency sends. Three separate
+refusals hold it, and each answers a different question.
+
+- **Which rows exist for them** is the company horizon, unchanged (#191/#252). `Invoice`
+  carries `company_id`, so the tenant repository already filtered it; nothing was added.
+- **Whether a draft exists at all** is `Invoice.__portal_horizon_clause__`, the contacts
+  pattern (`Contact.__portal_horizon_clause__`, #193). `_DocumentService` hands an
+  `is_portal` caller a repository that overrides `horizon_condition`, so the clause is the
+  one answer *every* path takes — `get_or_404`, the list, its `total`, `for_company` behind
+  the company panel, and therefore `/pdf`, `/preview` and `/ubl`, which all load through
+  `get()`. Overriding `_scoped` instead would leave the others on the looser rule; that was
+  #285. A draft answers **404, not 403**: a 403 confirms the agency is drafting something
+  for them, which is the fact being withheld.
+  It follows `ctx.is_portal` — *who is asking* — and deliberately not the scope below. A
+  staff member restricted to one company group still sees that client's drafts, because
+  drafting the invoice is their job.
+- **Whether they reach the invoicing module at all** is the scope. `invoicing.invoice.read`
+  is `("own", "any")` since #266, because one key gated seven endpoints and only three of
+  them are documents. `:any` — declared as `require_permission(_READ, _MODULE)` in
+  `router.py` — fences `/settings` (seller identity, IBAN, numbering, reminder policy),
+  `/tax-rates`, `/products` (the agency's price list), `/templates`,
+  `/invoices/{id}/refs` (accounting-sync bookkeeping) and `/uninvoiced` (the org-wide
+  unbilled backlog, with every employee's name and hourly rate on it). None of those is a
+  row a company horizon could narrow — there is no client whose price list this is — so the
+  scope is the only thing that can fence them. `/summary` stays on the floor and zeroes what
+  the caller may not know: the draft count, and the quote figures, whose query is skipped
+  rather than merely blanked.
+
+Quotes stay out: whether a client should watch an offer's status before accepting it is a
+product decision nobody has made, and `invoicing.quote.read` stays staff-only. `Quote`
+carries the mirror clause anyway — the role is freely editable in Instellingen → Rollen, and
+the day a tenant ticks it the answer should already be "your own, never our drafts".
+
+The clause also had to reach **`core/scope.py`'s `entity_visible`**, which answered with the
+staff horizon. That gate is the only one `GET /files` has — it takes `(entity_type,
+entity_id)` from the caller and declares `no_permission_required` — so a client held off a
+draft everywhere else could still list the documents attached to it. Fixed in core, because
+`directory.py` already had the rule and having it in one of two places is how they drift.
+
+**Existing orgs need a one-time nudge, and it is not a migration.** The startup reconciler
+diffs `org_settings.applied_permission_defaults` by *key*, so widening an already-applied
+key's `default_roles` changes nothing — and no per-role diff could tell *never offered* from
+*offered and removed*, which is what makes "a tenant who unticked something keeps it
+unticked" true. So a widening is recorded as what it is: a `DefaultsRevision` in
+`app/core/permissions/reconcile.py` with its own `@rev:` marker in the same array. This one
+rewrites the bare `invoicing.invoice.read` to `:any` wherever it is stored — every role
+including tenant-authored ones, plus API-key scopes — and grants `client` the `:own` half.
+The rewrite changes nobody's access (`PermissionSet.has` already answered `True` for a bare
+key at every scope); it changes the *spelling*, because `validate_permissions` refuses to
+store a scoped permission bare and would otherwise 422 the tenant's next save of a role that
+was working fine.
+
 ## Tax is tenant data, locale-seeded (`taxseeds.py`)
 
 `invoicing_tax_rates` is seeded once, for an **empty** catalog only, from the org's

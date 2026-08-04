@@ -13,7 +13,9 @@ type Group = (typeof GROUPS)[number];
 
 export const load: PageServerLoad = async (event) => {
   // View-only, so the invoice *read* permission is the gate (#277) — mirrored by the API.
-  if (!can(event.locals.user, "invoicing.invoice.read")) throw redirect(303, "/");
+  // At `:any` since #266: this is the org's whole unbilled backlog, employee names and
+  // hourly rates included, and the key it rides now also opens a client's own invoices.
+  if (!can(event.locals.user, "invoicing.invoice.read", "any")) throw redirect(303, "/");
   const { prefs } = await event.parent();
   const pref = readTablePref(prefs, UNINVOICED_TABLE_ID);
   const resolved = resolveColumns(UNINVOICED_COLUMNS, pref);

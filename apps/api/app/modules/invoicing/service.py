@@ -38,7 +38,7 @@ from app.core.numbering import format_number
 from app.core.phone import normalize_phone
 from app.core.richtext import sanitize_markdown
 from app.core.sorting import apply_sort
-from app.core.tenancy import RequestContext
+from app.core.tenancy import RequestContext, TenantScopedRepository
 from app.core.timezone import org_zoneinfo
 from app.errors import AppError
 from app.i18n import translate
@@ -794,12 +794,60 @@ class _DocumentService:
     audited_fields: tuple[str, ...]
     post_issue_fields: frozenset[str]
 
+    class _PortalDocumentRepository(TenantScopedRepository):
+        """The document repo an external (client) login gets (#266) — the contacts pattern.
+
+        It follows ``ctx.is_portal``, which since #274 means *any* client-role login and not
+        only a contact-linked one, and it defers to the model's own
+        ``__portal_horizon_clause__``: the company match, **and** the agency's drafts left
+        out.
+
+        It overrides ``horizon_condition``, not ``_scoped``: the predicate is then the *one*
+        answer every path takes — ``get_or_404`` (so the detail and the ``/pdf``,
+        ``/preview`` and ``/ubl`` downloads that load through it), ``scoped_select`` (the
+        list and ``for_company``, which is what the company-detail panel a client can already
+        open renders), and ``scoped_count_select`` (the list's total, so it counts exactly
+        the rows the list could return). Overriding ``_scoped`` left the others reading the
+        looser staff rule — that was the #285 bug, and the reason it is stated once.
+        """
+
+        def horizon_condition(self):  # noqa: ANN202 — mirrors the base signature
+            clause = getattr(self.model, "__portal_horizon_clause__", None)
+            if clause is None:  # a document type that has not declared one — stay strict
+                return super().horizon_condition()
+            return clause(self.company_scope)
+
     def __init__(self, ctx: RequestContext) -> None:
         self.ctx = ctx
-        self.repo = ctx.repo(self.model)
+        self.repo = (
+            self._PortalDocumentRepository(
+                ctx.session, ctx.org.id, self.model, company_scope=ctx.company_scope
+            )
+            if ctx.is_portal
+            else ctx.repo(self.model)
+        )
+        # Deliberately the plain repo: a line carries no ``company_id``, and is only ever
+        # reached through a parent id this repository has already filtered.
         self.lines = ctx.repo(self.line_model)
         self.settings = InvoicingSettingsService(ctx)
         self.custom_fields = CustomFieldsService(ctx)
+
+    @property
+    def issued_only(self) -> bool:
+        """Does this caller read *issued* documents only — never the agency's drafts (#266)?
+
+        True for an **external login**, and that is deliberately the axis rather than the
+        permission's scope: a draft has no number, no legal standing and may still change, so
+        whether it is yours to see is a question about *who is asking*, not about how broad
+        their grant is. Restricted staff — a membership scoped to one company group (#191) —
+        still see that client's drafts, because drafting the invoice is their job.
+
+        The reads do not consult this; they inherit it from ``_PortalDocumentRepository``
+        above, which is the point. It is here for the two answers that cannot ride a
+        repository at all: the summary's hand-written aggregate, and the ``status`` filter,
+        which must not offer a value the caller can never match.
+        """
+        return self.ctx.is_portal
 
     async def _render_inputs(self, doc: Any, kind: str) -> dict[str, Any]:
         """Everything the renderer needs, resolved here rather than there.
@@ -940,6 +988,9 @@ class InvoiceService(_DocumentService):
     ) -> tuple[Sequence[Invoice], int]:
         conditions = []
         if status:
+            # No draft special-case: for an external login the repository's clause already
+            # says ``status != 'draft'``, so ``?status=draft`` ANDs to an empty page — which
+            # is the honest answer to "show me the drafts", not a filter to second-guess.
             conditions.append(Invoice.status == status)
         if company_id is not None:
             conditions.append(Invoice.company_id == company_id)
@@ -973,6 +1024,10 @@ class InvoiceService(_DocumentService):
         return items, total
 
     async def get(self, invoice_id: uuid.UUID) -> Invoice:
+        # A draft is not merely forbidden to an external login, it does not exist: the portal
+        # repository's clause excludes it, so this answers 404 like any out-of-horizon row
+        # (#266, §15's 404-not-403 rule — a 403 would confirm the agency is drafting
+        # something for them, which is the fact being withheld).
         invoice = await self.repo.get_or_404(invoice_id)
         await self._attach([invoice], payments=True)
         return invoice
@@ -1592,7 +1647,9 @@ class InvoiceService(_DocumentService):
         buckets live in the org's local calendar (§8) — an entry logged late on the 31st
         UTC belongs to the 1st where the org works.
         """
-        self.ctx.require("invoicing.invoice.read")
+        # ``:any``, matching the route (#266): this is the org's whole unbilled backlog with
+        # every employee's name and hourly rate on it — the invoicing module, not a document.
+        self.ctx.require("invoicing.invoice.read", "any")
         group_expr = _UNINVOICED_GROUP_EXPR[group]
         # The detail always needs the org zone: each row carries its org-local calendar day.
         params: dict[str, Any] = {
@@ -2166,6 +2223,12 @@ class InvoiceService(_DocumentService):
         today = await org_today(self.ctx)
         base = "COALESCE(exchange_rate, 1)"
         scope = self.ctx.company_scope
+        # An external login reads its own open/overdue/paid figures — "what do I still owe"
+        # is the one number a client page is for — but never a draft count, and never the
+        # quote figures: quotes are out of #266's scope entirely and `invoicing.quote.read`
+        # stays staff-only, so counting them here would answer a question the API refuses.
+        drafts_visible = not self.issued_only
+        quotes_visible = self.ctx.can("invoicing.quote.read")
         if scope is not None and not scope:
             return {
                 "open_count": 0, "open_total": 0.0,
@@ -2209,24 +2272,28 @@ class InvoiceService(_DocumentService):
                 {**params, "today": today, "year": today.year},
             )
         ).mappings().one()
-        quotes = (
-            await self.ctx.session.execute(
-                _scoped_text(
-                    f"""
+        # Skipped, not merely blanked: a caller who cannot read quotes does not pay for the
+        # query either. Same reason the list skips lines it will not draw (#290).
+        quotes: Any = {"open_count": 0, "open_total": 0}
+        if quotes_visible:
+            quotes = (
+                await self.ctx.session.execute(
+                    _scoped_text(
+                        f"""
                     SELECT COUNT(*) AS open_count,
                            COALESCE(SUM(total * {base}), 0) AS open_total
                     FROM quotes WHERE org_id = :oid AND status = 'open'{horizon_sql}
                     """  # noqa: S608
-                ),
-                params,
-            )
-        ).mappings().one()
+                    ),
+                    params,
+                )
+            ).mappings().one()
         return {
             "open_count": row["open_count"],
             "open_total": round(float(row["open_total"]), 2),
             "overdue_count": row["overdue_count"],
             "overdue_total": round(float(row["overdue_total"]), 2),
-            "draft_count": row["draft_count"],
+            "draft_count": row["draft_count"] if drafts_visible else 0,
             "paid_this_year": round(float(row["paid_this_year"]), 2),
             "quotes_open_count": quotes["open_count"],
             "quotes_open_total": round(float(quotes["open_total"]), 2),

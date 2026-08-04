@@ -731,6 +731,24 @@
   while its `GET` sits on a key the client holds. Those two lists now read as "you may edit a task"
   (`tasks.task.write`) and "you may apply a template" (`tasks.template.apply`), so a portal login
   cannot enumerate them at all, and the load skips the fetch it would 403 on.
+- **One screen for two audiences, gated on `!isPortal` instead of on the key.** Facturen (#266)
+  is the case the rule above does not cover: it is *not* a write surface, so it should not be
+  gated whole — a client belongs on it, reading their own invoices. What differs is the **chrome**
+  around the list: the Concepten tile and its filter chip, the client picker, "Nieuwe factuur",
+  the ⋯ Bewerken, the *Van abonnement* provenance chip, the activity trail, and the sibling
+  *Nog te factureren* in the sidebar. Each of those is a control whose API answer is
+  `invoicing.invoice.read:any`, so each renders behind `can(user, "invoicing.invoice.read", "any")`
+  — the same key **and scope** the route declares. `!isPortal` would have been shorter and wrong
+  twice over: it still shows the agency's draft count to a restricted staff member, and it stops
+  reading like a permission the admin can see in Instellingen → Rollen. A scoped key is the tool
+  for "the same screen, two depths"; `NavItem.requiresScope` exists so the sidebar can express it
+  too, because a nav link that always 403s is a broken control (#253).
+  Two things travel with it. The heading and the empty state say *Mijn facturen* / "U heeft nog
+  geen facturen" rather than the agency's own *Facturatie* — a screen names itself for whoever
+  opened it. And the load **skips what only the editor consumes**: the contacts, tax rates,
+  products, templates, settings and custom-field lookups exist for `DocumentForm` alone, so they
+  now hang off `canWrite`. That was five wasted round-trips for every read-only viewer before it
+  was a leak, and the client's invoice page went from eight API calls to two.
 - **A refusal that hides which of the two gates fired.** Permissions say *may they*, the company
   horizon says *which rows exist for them* (CLAUDE.md §15), and out-of-horizon deliberately answers
   `404 errors.not_found` so a get-by-id can't leak existence. Correct — but a `client`-role login

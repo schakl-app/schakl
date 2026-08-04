@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Pencil, Trash2 } from "@lucide/svelte";
+  import { Download, Pencil, Trash2 } from "@lucide/svelte";
 
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
@@ -22,7 +22,13 @@
 
   type Invoice = (typeof data.invoices)[number];
 
-  const STATUSES = ["draft", "open", "paid", "cancelled"] as const;
+  // `draft` is the agency's own working state: an `:own` viewer never receives one, so
+  // offering the chip would be a filter that can only ever empty the page (#266).
+  const STATUSES = $derived(
+    data.canReadRegister
+      ? (["draft", "open", "paid", "cancelled"] as const)
+      : (["open", "paid", "cancelled"] as const),
+  );
   let deleteId = $state("");
   let confirmDelete = $state(false);
 
@@ -32,6 +38,13 @@
     else url.searchParams.delete(key);
     void goto(url, { keepFocus: true, noScroll: true });
   }
+
+  // "Facturatie" is the agency's word for its own section; a client is looking at their own
+  // copies, so the same screen names itself for whoever opened it (#266). The tenant's nav
+  // rename still wins for staff — `navLabel` is what carries it.
+  const heading = $derived(
+    data.canReadRegister ? navLabel("invoicing", t("invoicing.title")) : t("invoicing.title_own"),
+  );
 
   const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
   const money = (value: string | number | null | undefined) =>
@@ -56,11 +69,15 @@
 </script>
 
 <svelte:head>
-  <title>{pageTitle(navLabel("invoicing", t("invoicing.invoices")))}</title>
+  <title
+    >{pageTitle(
+      data.canReadRegister ? navLabel("invoicing", t("invoicing.invoices")) : heading,
+    )}</title
+  >
 </svelte:head>
 
 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-  <h1 class="text-xl font-semibold text-text">{navLabel("invoicing", t("invoicing.title"))}</h1>
+  <h1 class="text-xl font-semibold text-text">{heading}</h1>
   {#if data.canWrite}
     <a
       href="/invoices/new"
@@ -102,15 +119,17 @@
       </p>
       <p class="text-xs text-text-muted">{data.summary.overdue_count}</p>
     </button>
-    <button
-      class="rounded-xl border border-border bg-surface-raised p-4 text-left hover:border-brand"
-      onclick={() => setFilter("status", "draft")}
-    >
-      <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
-        {t("invoicing.summary.draft")}
-      </p>
-      <p class="mt-1 text-2xl font-semibold text-text">{data.summary.draft_count}</p>
-    </button>
+    {#if data.canReadRegister}
+      <button
+        class="rounded-xl border border-border bg-surface-raised p-4 text-left hover:border-brand"
+        onclick={() => setFilter("status", "draft")}
+      >
+        <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
+          {t("invoicing.summary.draft")}
+        </p>
+        <p class="mt-1 text-2xl font-semibold text-text">{data.summary.draft_count}</p>
+      </button>
+    {/if}
     <div class="rounded-xl border border-border bg-surface-raised p-4">
       <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">
         {t("invoicing.summary.paid_year")}
@@ -122,16 +141,18 @@
 
 <div class="mb-4 flex flex-wrap items-center gap-2">
   <SearchInput placeholder={t("invoicing.search")} />
-  <div class="w-44">
-    <Combobox
-      items={companyItems}
-      name="_filter_company"
-      value={data.companyFilter}
-      placeholder={t("invoicing.filter.company")}
-      onselect={(v) => setFilter("company", v)}
-      id="filter-company"
-    />
-  </div>
+  {#if data.canReadRegister}
+    <div class="w-44">
+      <Combobox
+        items={companyItems}
+        name="_filter_company"
+        value={data.companyFilter}
+        placeholder={t("invoicing.filter.company")}
+        onselect={(v) => setFilter("company", v)}
+        id="filter-company"
+      />
+    </div>
+  {/if}
   {#each STATUSES as status (status)}
     <button
       class="rounded-full px-3 py-1 text-xs font-medium
@@ -226,7 +247,22 @@
   <ActionsMenu
     compact
     items={[
-      { label: t("common.edit"), icon: Pencil, href: editHref(`/invoices/${invoice.id}`) },
+      // Was drawn for everyone (#253's rule, missed here): a viewer who cannot write got a
+      // "Bewerken" that the API refuses. A client portal login made that visible (#266).
+      ...(data.canWrite
+        ? [{ label: t("common.edit"), icon: Pencil, href: editHref(`/invoices/${invoice.id}`) }]
+        : []),
+      // The download the client came for. A draft has nothing to render, so it is offered
+      // exactly when there is a document — the detail page's own rule.
+      ...(invoice.status !== "draft"
+        ? [
+            {
+              label: t("invoicing.action.download_pdf"),
+              icon: Download,
+              href: `/invoices/${invoice.id}/pdf`,
+            },
+          ]
+        : []),
       ...(invoice.status === "draft" && data.canWrite
         ? [
             {
@@ -261,7 +297,9 @@
 {/snippet}
 
 {#snippet emptyState()}
-  <p class="p-6 text-sm text-text-muted">{t("invoicing.empty")}</p>
+  <p class="p-6 text-sm text-text-muted">
+    {data.canReadRegister ? t("invoicing.empty") : t("invoicing.empty_own")}
+  </p>
 {/snippet}
 
 {#if form?.error}

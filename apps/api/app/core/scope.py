@@ -26,10 +26,17 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:  # ``tenancy`` imports this module, so the type is a forward reference only.
     from app.core.tenancy import RequestContext
+
+#: A model whose **external (client) login** rule is stricter than its staff horizon declares it
+#: under this name; both reference seams prefer it for an ``is_portal`` caller. Defined here
+#: rather than in ``directory.py`` because ``entity_visible`` below needs the same fact and
+#: importing that module would cycle — it imports this one.
+PORTAL_CLAUSE_ATTR = "__portal_horizon_clause__"
 
 CompanyScopeResolver = Callable[
     [AsyncSession, uuid.UUID, uuid.UUID], Awaitable[frozenset[uuid.UUID] | None]
@@ -81,6 +88,22 @@ async def entity_visible(
     record's *own* repository that answers, so the horizon rule lives in one place and an
     indirect link (a website's domain, a contact's ``company_contacts``) is honoured too.
 
+    An **external (client) login** gets the model's stricter ``__portal_horizon_clause__``
+    where it declares one — the rule ``app/core/directory.py`` already applies at the other
+    reference seam, and the reason this one had to learn it too (#266). The two seams
+    disagreeing was reachable through the **file list**: ``GET /files`` takes the pair from
+    the caller and declares ``no_permission_required`` ("any signed-in member", which
+    includes a portal login), so this is its only gate — and the staff answer, a plain
+    ``company_id`` match, admits the agency's *draft* invoice. A client held off that draft
+    everywhere else could still enumerate the documents attached to it. The activity trail
+    was never exposed the same way (its router returns ``[]`` for any portal caller before
+    reaching here), which is exactly why the rule belongs in one place rather than in each
+    caller: one of the two remembered and one did not.
+
+    §15's failure mode (4), one layer in: holding the type's read permission is not the same
+    as being able to see *that row* — and neither is passing the horizon a **staff** member
+    would pass.
+
     ``True`` for a type with no model behind it: ``avatar`` and ``hr_document`` are keyed by
     user id and have their own rules at the call site. Guessing here would silently gate them.
     """
@@ -89,6 +112,17 @@ async def entity_visible(
     model = _horizon_entities.get(entity_type)
     if model is None:
         return True
+    portal_clause = getattr(model, PORTAL_CLAUSE_ATTR, None) if ctx.is_portal else None
+    if portal_clause is not None:
+        return (
+            await ctx.session.scalar(
+                select(model.id).where(
+                    model.org_id == ctx.org.id,
+                    model.id == entity_id,
+                    portal_clause(ctx.company_scope),
+                )
+            )
+        ) is not None
     return await ctx.repo(model).get(entity_id) is not None
 
 

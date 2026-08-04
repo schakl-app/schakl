@@ -4,14 +4,34 @@ Money is commercially sensitive, so reads default to admins (the subscriptions/r
 stance); a tenant widens per role. ``send`` is split from ``write`` because drafting an
 invoice and *mailing a client* are different trusts; ``payment.write`` is split so a
 bookkeeper role can register payments without being able to touch documents.
+
+``invoice.read`` is **scoped** (#266), and the distinction it draws is *breadth*, not
+ownership of a row: ``:any`` is the invoicing module — the seller identity and bank details,
+the price list, the template library, the org-wide unbilled-hours backlog, what the
+accounting package knows — while ``:own`` reaches documents and nothing else, through the
+company horizon that already decides which client's they are (#191/#252). That split is what
+lets the ``client`` role hold an invoice read at all: without it, one key opened six org-wide
+staff surfaces, and *"the client can see their invoices"* would have meant the agency's
+margin, rates and price list too.
+
+A pre-#266 org stored the key bare. That reads as the broadest grant everywhere
+(``PermissionSet.has`` answers ``True`` for a bare key at any scope), so nothing breaks
+mid-flight; the startup reconciler rewrites it to ``:any`` once, because the roles API may
+only *store* a scoped permission suffixed.
 """
 
 from __future__ import annotations
 
-from app.core.permissions import PermissionSpec
+from app.core.permissions import ROLE_ADMIN, ROLE_CLIENT, SCOPES, PermissionSpec
 
 INVOICING_PERMISSIONS: list[PermissionSpec] = [
-    PermissionSpec("invoicing.invoice.read", position=10),
+    PermissionSpec(
+        "invoicing.invoice.read",
+        scopes=SCOPES,
+        position=10,
+        default_roles=(ROLE_ADMIN,),
+        default_own_roles=(ROLE_CLIENT,),
+    ),
     PermissionSpec("invoicing.invoice.write", position=20),
     PermissionSpec("invoicing.invoice.send", position=30),
     PermissionSpec("invoicing.invoice.delete", position=40),

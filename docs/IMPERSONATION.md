@@ -56,6 +56,15 @@ kind carries three extra guarantees (`app/modules/contacts/portal.py`):
    tenant-editable, so "it's only a client" is not by itself a bound on what the client role
    holds; the target's effective set must already be covered by the caller's, or the answer is
    `403 errors.impersonation_escalation`. A superuser target is refused outright.
+   **Widening the `client` role therefore narrows who may impersonate it**, and #266 is the
+   first time that bit: the seeded `client` role now holds `invoicing.invoice.read:own`, money
+   defaults to admins, so a `member` granted `contacts.portal.impersonate` and nothing
+   financial is refused — entering the session would let them read that client's invoices,
+   which is the exact thing the guard exists to stop. Not a bug and not worth weakening; but
+   it arrives as *"impersonation stopped working and we changed nothing"*, so: the remedy is
+   to give the impersonator the same read in Instellingen → Rollen, and the refusal already
+   names itself rather than being a bare 403. Expect the same shape from every future grant to
+   `client` — check it against the roles you expect to impersonate before shipping one.
 3. **It obeys the company horizon.** The contact is loaded through the tenant repository, so a
    membership scoped to a company group (#191/#285) can only enter the contacts of its own
    clients; anything else answers 404, like every other read.

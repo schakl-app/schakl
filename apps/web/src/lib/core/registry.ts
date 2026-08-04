@@ -11,7 +11,7 @@ import { getLocale } from "$lib/paraglide/runtime";
 
 import type { ApiClient } from "./api/client";
 import { t } from "./i18n";
-import { can } from "./permissions";
+import { can, type PermissionScope } from "./permissions";
 import type { SessionUser } from "./session";
 
 /**
@@ -52,6 +52,18 @@ export interface NavItem {
    * route it links to is gated server-side, in its `+page.server.ts` and again in the API.
    */
   requiresPermission?: string;
+  /**
+   * The scope that permission is required at — omitted means the route's floor ("holds it at
+   * some scope"), which is right for almost every item.
+   *
+   * It exists because a scoped key can gate two very different screens (#266): the invoice
+   * list is a document read an `:own` holder should see, and *Nog te factureren* — the org's
+   * whole unbilled backlog, employee rates included — sits on the same key at `:any`. Without
+   * a scope here the sidebar offers a client a link that always 403s, which is #253's rule
+   * ("a link that always refuses is a broken control") in the one place it could not be
+   * expressed. Mirrors `require_permission(key, scope)` on the route it points at.
+   */
+  requiresScope?: PermissionScope;
 }
 
 export interface CompanyPanelSpec {
@@ -372,7 +384,9 @@ export function navItemsFor(
       : item;
   const base = enabledWebModules(enabled)
     .flatMap((m) => m.nav ?? [])
-    .filter((item) => !item.requiresPermission || can(user, item.requiresPermission));
+    .filter(
+      (item) => !item.requiresPermission || can(user, item.requiresPermission, item.requiresScope),
+    );
   if (!pref || pref.length === 0) {
     return base.sort((a, b) => (a.position ?? 100) - (b.position ?? 100)).map(withLabel);
   }

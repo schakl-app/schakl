@@ -3123,6 +3123,8 @@
   "permissions.invoicing.settings.manage": "Facturatie-instellingen beheren",
   "permissions.invoicing.template.author": "Eigen factuursjablonen schrijven",
   "invoicing.title": "Facturatie",
+  "invoicing.title_own": "Mijn facturen",
+  "invoicing.empty_own": "U heeft nog geen facturen.",
   "invoicing.invoices": "Facturen",
   "invoicing.quotes": "Offertes",
   "invoicing.uninvoiced.title": "Nog te factureren uren",

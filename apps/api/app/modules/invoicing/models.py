@@ -430,6 +430,28 @@ class Invoice(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
 
+    @classmethod
+    def __portal_horizon_clause__(cls, scope: frozenset[uuid.UUID] | None):  # noqa: ANN206
+        """The stricter rule an **external (client) login** reads invoices by (#266).
+
+        Two narrowings, and only the first is a horizon. ``company_id`` is ``NOT NULL``, so
+        the company match is the plain one the repository would build itself — there is no
+        unattached invoice to exempt the way a company-less task is exempted. The second is
+        the reason this clause exists at all: **a draft is invisible.** It carries no number,
+        it was never sent, its money is still being edited (the post-issue lock only starts at
+        issue) and the client has no relationship with it — showing one would tell them what
+        the agency is about to charge before the agency has decided.
+
+        It lives on the model, like ``Contact.__portal_horizon_clause__``, so that every path
+        gives the client the same answer *by construction* rather than by several predicates
+        happening to agree — the list and its total, the detail, and ``/pdf`` ``/preview``
+        ``/ubl``, which all load through ``get()``. A draft that 404s on the detail and
+        renders on the download is the same leak one route later (§15, #285).
+        """
+        return cls.company_id.in_(scope or frozenset()) & (
+            cls.status != InvoiceStatus.DRAFT.value
+        )
+
 
 class Quote(
     UUIDPrimaryKeyMixin,
@@ -485,6 +507,21 @@ class Quote(
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     #: The customer's words when accepting/rejecting — worth keeping verbatim.
     decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    @classmethod
+    def __portal_horizon_clause__(cls, scope: frozenset[uuid.UUID] | None):  # noqa: ANN206
+        """``Invoice.__portal_horizon_clause__`` for quotes — defensive, and unused today.
+
+        #266 deliberately left quotes out: whether a client should watch an offer's status
+        before they have accepted it is a product decision nobody has made, and
+        ``invoicing.quote.read`` stays staff-only, so no client reaches a quote at all. This
+        exists because that is a *grant* rather than a *mechanism* — the role is freely
+        editable in Instellingen → Rollen — and the day a tenant ticks it, the answer should
+        already be "your own, and never our drafts" rather than the whole quote register.
+        """
+        return cls.company_id.in_(scope or frozenset()) & (
+            cls.status != QuoteStatus.DRAFT.value
+        )
 
 
 class _LineColumns:

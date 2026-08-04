@@ -65,12 +65,25 @@ from app.schemas import Page
 
 router = APIRouter(prefix="/invoicing", tags=["invoicing"])
 
+#: A document read. Scoped since #266, so this is the *floor*: an ``:own`` holder — the
+#: ``client`` role — passes here, and the company horizon plus ``InvoiceService`` decide
+#: which documents that actually means.
+_READ = "invoicing.invoice.read"
+#: The invoicing **module**, as opposed to a document (#266). Every org-wide surface under
+#: ``_READ`` — the seller identity and bank details, the price list, the template library,
+#: the unbilled-hours backlog, the accounting sync's bookkeeping — declares ``:any``, so an
+#: ``:own`` holder cannot reach it. These are not rows a company horizon could narrow: there
+#: is no client whose price list this is, so the scope is the only thing that can fence them.
+#: Staff are unaffected — a legacy bare grant and ``:any`` both satisfy it; only ``:own``
+#: alone does not.
+_MODULE = "any"
+
 
 # --- settings ----------------------------------------------------------------- #
 @router.get(
     "/settings",
     response_model=InvoicingSettingsRead,
-    dependencies=[require_permission("invoicing.invoice.read")],
+    dependencies=[require_permission(_READ, _MODULE)],
 )
 async def get_settings(ctx: RequestContext = Depends(require_context)) -> InvoicingSettingsRead:
     """Read by the editor too (defaults, numbering preview) — not only by admins."""
@@ -95,7 +108,7 @@ async def save_settings(
 @router.get(
     "/tax-rates",
     response_model=list[TaxRateRead],
-    dependencies=[require_permission("invoicing.invoice.read")],
+    dependencies=[require_permission(_READ, _MODULE)],
 )
 async def list_tax_rates(
     include_inactive: bool = Query(False),
@@ -147,7 +160,7 @@ async def delete_tax_rate(
 @router.get(
     "/products",
     response_model=list[ProductRead],
-    dependencies=[require_permission("invoicing.invoice.read")],
+    dependencies=[require_permission(_READ, _MODULE)],
 )
 async def list_products(
     include_inactive: bool = Query(False),
@@ -212,7 +225,7 @@ _PREVIEW_HEADERS = {
 @router.get(
     "/templates",
     response_model=list[TemplateRead],
-    dependencies=[require_permission("invoicing.invoice.read")],
+    dependencies=[require_permission(_READ, _MODULE)],
 )
 async def list_templates(
     include_inactive: bool = Query(False),
@@ -335,7 +348,7 @@ async def list_providers(ctx: RequestContext = Depends(require_context)) -> list
 @router.get(
     "/summary",
     response_model=InvoicingSummary,
-    dependencies=[require_permission("invoicing.invoice.read")],
+    dependencies=[require_permission(_READ)],
 )
 async def summary(ctx: RequestContext = Depends(require_context)) -> InvoicingSummary:
     return InvoicingSummary.model_validate(await InvoiceService(ctx).summary())
@@ -381,7 +394,7 @@ async def outstanding(
 @router.get(
     "/uninvoiced",
     response_model=UninvoicedReport,
-    dependencies=[require_permission("invoicing.invoice.read")],
+    dependencies=[require_permission(_READ, _MODULE)],
 )
 async def uninvoiced(
     group: UninvoicedGroupBy = Query(
@@ -402,7 +415,7 @@ async def uninvoiced(
 @router.get(
     "/invoices",
     response_model=Page[InvoiceRead],
-    dependencies=[require_permission("invoicing.invoice.read")],
+    dependencies=[require_permission(_READ)],
 )
 async def list_invoices(
     limit: int = Query(100, ge=1, le=200),
@@ -461,7 +474,7 @@ async def invoice_from_time(
 @router.get(
     "/invoices/{invoice_id}",
     response_model=InvoiceRead,
-    dependencies=[require_permission("invoicing.invoice.read")],
+    dependencies=[require_permission(_READ)],
 )
 async def get_invoice(
     invoice_id: uuid.UUID,
@@ -591,7 +604,7 @@ async def delete_payment(
 
 @router.get(
     "/invoices/{invoice_id}/pdf",
-    dependencies=[require_permission("invoicing.invoice.read")],
+    dependencies=[require_permission(_READ)],
 )
 async def download_invoice_pdf(
     invoice_id: uuid.UUID,
@@ -629,7 +642,7 @@ async def download_quote_pdf(
 @router.get(
     "/invoices/{invoice_id}/preview",
     response_class=Response,
-    dependencies=[require_permission("invoicing.invoice.read")],
+    dependencies=[require_permission(_READ)],
 )
 async def preview_invoice(
     invoice_id: uuid.UUID,
@@ -671,7 +684,7 @@ async def preview_quote(
 
 @router.get(
     "/invoices/{invoice_id}/ubl",
-    dependencies=[require_permission("invoicing.invoice.read")],
+    dependencies=[require_permission(_READ)],
 )
 async def download_ubl(
     invoice_id: uuid.UUID,
@@ -697,7 +710,7 @@ async def download_ubl(
 @router.get(
     "/invoices/{invoice_id}/refs",
     response_model=list[ExternalRefRead],
-    dependencies=[require_permission("invoicing.invoice.read")],
+    dependencies=[require_permission(_READ, _MODULE)],
 )
 async def invoice_refs(
     invoice_id: uuid.UUID,

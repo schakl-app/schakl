@@ -184,6 +184,9 @@ async def test_impersonation_needs_its_own_permission(client_for) -> None:
 
     async with client_for(tenant.host) as c:
         # A member holds neither; give them everything member management needs and nothing more.
+        # ``invoicing.invoice.read:own`` rides along because the *target* holds it since #266
+        # (a client reads their own invoices) and ``covers`` refuses a caller who does not —
+        # that guard is what the next test is about, so it must not fire in this one.
         roles = (await c.get("/api/v1/roles", headers=headers)).json()
         member_role = next(r for r in roles if r["key"] == "member")
         await c.patch(
@@ -191,7 +194,11 @@ async def test_impersonation_needs_its_own_permission(client_for) -> None:
             json={
                 "permissions": sorted(
                     set(member_role["permissions"])
-                    | {"members.member.write", "contacts.contact.read"}
+                    | {
+                        "members.member.write",
+                        "contacts.contact.read",
+                        "invoicing.invoice.read:own",
+                    }
                 )
             },
             headers=headers,
@@ -245,8 +252,16 @@ async def test_impersonation_may_never_gain_the_caller_a_permission(client_for) 
     )
 
     async with client_for(tenant.host) as c:
-        # A member who may impersonate, but may not read the team.
-        await _grant_role(c, headers, "member", {IMPERSONATE, "contacts.contact.read"})
+        # A member who may impersonate, but may not read the team. They also need the client's
+        # own invoice read (#266): the seeded `client` role holds `invoicing.invoice.read:own`,
+        # and `covers` is exactly what this test is about — the baseline below has to start from
+        # a caller who covers the target, or it would pass for the wrong reason.
+        await _grant_role(
+            c,
+            headers,
+            "member",
+            {IMPERSONATE, "contacts.contact.read", "invoicing.invoice.read:own"},
+        )
         await c.post(
             "/api/v1/members/invite",
             json={"email": "beperkt-imp@example.com", "role": "member"},

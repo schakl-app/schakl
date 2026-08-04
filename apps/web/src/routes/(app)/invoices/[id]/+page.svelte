@@ -88,8 +88,11 @@
       href="/companies/{invoice.company_id}"
       class="truncate text-sm text-text-muted hover:text-brand">{invoice.company_name}</a
     >
-    {#if invoice.subscription_id}
-      <!-- Provenance (owner feedback): a subscription-cycle draft says so, with its period. -->
+    {#if invoice.subscription_id && data.canReadRegister}
+      <!-- Provenance (owner feedback): a subscription-cycle draft says so, with its period.
+           A link into the agency's subscription register, so it follows the same gate as the
+           rest of the section's own chrome (#266) — a client's invoice may well come from a
+           recurring agreement, and the chip would have been a guaranteed 403 for them. -->
       <a
         href="/subscriptions"
         class="rounded-md bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand hover:underline"
