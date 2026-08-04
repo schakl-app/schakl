@@ -7,7 +7,16 @@
  */
 import { can, type PermissionHolder } from "$lib/core/permissions";
 
-export type AIFeature = "assistant" | "writing_assist" | "time_assist" | "reporting";
+/** The tenant-togglable features, plus `speech` — a *capability*, not a toggle: it is
+ *  reported only when the org has a provider that can actually transcribe (#246). Anthropic
+ *  has no speech endpoint and is the default, so without this an Anthropic org would be shown
+ *  a microphone that 409s on first click. */
+export type AIFeature =
+  | "assistant"
+  | "writing_assist"
+  | "time_assist"
+  | "reporting"
+  | "speech";
 
 /** Svelte context key the (app) layout provides; shared components (the editor's writing
  *  assist) read it so no consumer needs per-module wiring (#128). */

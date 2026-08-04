@@ -64,9 +64,21 @@ async def get_row(session: AsyncSession, org_id: uuid.UUID) -> AISettings | None
     return await session.scalar(select(AISettings).where(AISettings.org_id == org_id))
 
 
+#: Reported alongside the real feature keys when the org can actually transcribe (#246). It is
+#: deliberately *not* in ``AI_FEATURES``: there is nothing to toggle — either a speech provider
+#: is configured or there is no such capability — and adding it there would grow the settings
+#: form, the web's ``AIFeature`` union and the per-feature model override for a non-choice.
+SPEECH_CAPABILITY = "speech"
+
+
 async def enabled_features(session: AsyncSession, org_id: uuid.UUID) -> list[str]:
     """The feature keys usable for this org — no provider configured means none at all
-    ("off means invisible", #126). Cached per org; see ``_FEATURES_TTL_SECONDS``."""
+    ("off means invisible", #126). Cached per org; see ``_FEATURES_TTL_SECONDS``.
+
+    ``speech`` rides along as a capability rather than a toggle: without it the web app would
+    draw a microphone on every Anthropic-configured org and 409 on the first click, which is
+    the opposite of "off means invisible".
+    """
     now = time.monotonic()
     cached = _features_cache.get(org_id)
     if cached is not None and now - cached[0] < _FEATURES_TTL_SECONDS:
@@ -75,8 +87,19 @@ async def enabled_features(session: AsyncSession, org_id: uuid.UUID) -> list[str
     features = (
         [f for f in AI_FEATURES if _feature_config(row, f).enabled] if row is not None else []
     )
+    if row is not None and "time_assist" in features and _speech_ready(row):
+        features.append(SPEECH_CAPABILITY)
     _features_cache[org_id] = (now, features)
     return features
+
+
+def _speech_ready(row: AISettings) -> bool:
+    """Can this org transcribe at all? Its own speech credential, or a chat provider that
+    happens to have a speech endpoint — which Anthropic, the default, does not."""
+    provider = row.speech_provider or row.provider
+    if not can_transcribe(provider):
+        return False
+    return bool(row.speech_api_key_enc if row.speech_provider else row.api_key_enc)
 
 
 class AIService:
@@ -172,17 +195,6 @@ class AIService:
             model=row.speech_model or DEFAULT_SPEECH_MODEL,
             base_url=base_url,
         )
-
-    async def speech_available(self) -> bool:
-        """Whether a microphone should be offered at all — asked by ``/meta/me``, so it must
-        never raise."""
-        row = await self._settings()
-        if row is None or not _feature_config(row, "time_assist").enabled:
-            return False
-        provider = row.speech_provider or row.provider
-        if not can_transcribe(provider):
-            return False
-        return bool(row.speech_api_key_enc if row.speech_provider else row.api_key_enc)
 
     async def ensure_audio_budget(self, *, override: bool = False) -> None:
         """The monthly transcription cap, in seconds — its own unit, its own budget."""
@@ -379,7 +391,6 @@ class AISettingsService:
         self.ctx = ctx
 
     def _read(self, row: AISettings) -> AISettingsRead:
-        speech_provider = row.speech_provider or row.provider
         return AISettingsRead(
             provider=row.provider,  # type: ignore[arg-type]
             base_url=row.base_url,
@@ -394,8 +405,7 @@ class AISettingsService:
             has_speech_key=bool(row.speech_api_key_enc),
             monthly_audio_seconds_budget=row.monthly_audio_seconds_budget,
             # Resolved here so no client has to know which providers can transcribe.
-            speech_available=can_transcribe(speech_provider)
-            and bool(row.speech_api_key_enc if row.speech_provider else row.api_key_enc),
+            speech_available=_speech_ready(row),
         )
 
     async def get(self) -> AISettingsRead | None:

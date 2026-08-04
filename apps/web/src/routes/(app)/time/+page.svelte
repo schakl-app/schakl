@@ -331,8 +331,14 @@
     micSupported = recordingSupported();
     return () => recorder.abort();
   });
+  // Three conditions, and all three are load-bearing: the org has a speech provider that can
+  // transcribe at all (`speech`, resolved server-side), this browser can record, and the caller
+  // may write hours.
   const showMic = $derived(
-    hasTimeAssist && micSupported && can(page.data.user, "time.entry.write"),
+    hasTimeAssist &&
+      aiEnabled(page.data.user, "speech") &&
+      micSupported &&
+      can(page.data.user, "time.entry.write"),
   );
 
   async function dictate() {

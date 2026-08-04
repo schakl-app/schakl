@@ -515,6 +515,40 @@ async def test_transcribe_needs_its_own_speech_provider(client_for) -> None:
         assert refused.json()["error"]["code"] == "ai_speech_not_configured"
 
 
+async def test_speech_capability_is_reported_only_when_it_can_work(client_for) -> None:
+    """"Off means invisible" (#126) applied to dictation.
+
+    `/meta/me` carries the AI capability list the web app gates on. Without `speech` in it, an
+    Anthropic-configured org — the default — would be drawn a microphone that 409s on the first
+    click, which is exactly the shape this rule exists to prevent.
+    """
+    t = await make_tenant("ai-speech-flag")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        invalidate_features_cache(t.org.id)
+        me = await c.get("/api/v1/meta/me", headers=headers)
+        assert me.status_code == 200, me.text
+        assert "time_assist" in me.json()["ai_features"]
+        assert "speech" not in me.json()["ai_features"]
+
+        await c.put("/api/v1/ai/settings", json=SPEECH_BODY, headers=headers)
+        invalidate_features_cache(t.org.id)
+        me = await c.get("/api/v1/meta/me", headers=headers)
+        assert "speech" in me.json()["ai_features"]
+
+        # Turning time assist off takes dictation with it — it has no separate toggle.
+        await c.put(
+            "/api/v1/ai/settings",
+            json={**SPEECH_BODY, "features": {"time_assist": {"enabled": False}}},
+            headers=headers,
+        )
+        invalidate_features_cache(t.org.id)
+        assert "speech" not in (await c.get("/api/v1/meta/me", headers=headers)).json()[
+            "ai_features"
+        ]
+
+
 async def test_transcribe_roundtrip_and_meters_seconds(client_for, monkeypatch) -> None:
     """The transcript comes back as text and the cost is metered in seconds (#246).
 
