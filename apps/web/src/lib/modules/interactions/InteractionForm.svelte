@@ -6,6 +6,14 @@
    *
    * The date+time post as the tenant's wall clock (naive); the API attaches the org zone, so
    * a hand-typed 14:00 lands on the same timeline instant the reader sees.
+   *
+   * Every picker here creates what it cannot find (docs/UX.md — per-picker definition of done),
+   * and does it **from inside this component**: the client and project ＋ used to be handlers the
+   * host page passed in, which meant they existed on `/interactions` and nowhere else — not even
+   * on the edit modal three lines below the create one, and on none of the company / project /
+   * contact / task pages, where this same form renders through the panel. The dialogs post to
+   * `interactionActions`, which every one of those hosts already spreads, so the ＋ arrives with
+   * the panel instead of having to be re-wired per screen.
    */
   import { Plus } from "@lucide/svelte";
 
@@ -20,7 +28,10 @@
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
+  import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
+  import ProjectQuickCreate from "$lib/modules/projects/ProjectQuickCreate.svelte";
+  import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
 
   import { minutesBetween } from "$lib/modules/time/duration";
   import { formatMinutes } from "$lib/modules/time/format";
@@ -42,8 +53,6 @@
     prefill = {},
     mentions = [],
     onsaved,
-    oncreatecompany,
-    oncreateproject,
   }: {
     /** Existing row when editing; null for create. */
     interaction?: InteractionItem | null;
@@ -52,15 +61,6 @@
     /** Org members offered by the note editor's @ autocomplete (#151). */
     mentions?: { id: string; name: string }[];
     onsaved?: () => void;
-    /**
-     * Inline-create for the unpinned company / project pickers (docs/UX.md): the host page
-     * owns the dialogs (slots `interaction_company` / `interaction_project`), so it passes a
-     * handler that receives what was typed. Absent → the picker offers no ＋.
-     */
-    oncreatecompany?: (query: string) => void;
-    /** The moment's effective client rides along (#247) so the project quick-create dialog
-     *  opens with the same client instead of blank. */
-    oncreateproject?: (query: string, companyId?: string) => void;
   } = $props();
 
   // Deliberate initial capture: the host keys this form per row, so props never swap in place.
@@ -422,29 +422,52 @@
     }
     qcOpen = true;
   }
-  // Company/project quick-create (docs/UX.md): the dialogs live on the host page; remember
-  // what was typed so the auto-selected option can be labelled before the lookups refresh.
+  // The client / project / task ＋ (docs/UX.md). Each dialog lives at the bottom of this file
+  // and posts to `interactionActions`, so it works on every host that renders the panel.
+  // What was typed is remembered so the auto-selected option can be labelled before the
+  // lookups refresh. The gates are the API's own keys, not `!isPortal` (§15): the timeline is
+  // client-reachable, and a control that would 403 must never be drawn.
+  const canCreateCompany = $derived(can(page.data.user, "companies.company.write"));
+  // Projects have no separate create permission — writing one is creating one.
+  const canCreateProject = $derived(can(page.data.user, "projects.project.write"));
+  const canCreateTask = $derived(can(page.data.user, "tasks.task.create"));
+  const canCreateContact = $derived(can(page.data.user, "contacts.contact.write"));
   let companyQuery = $state("");
+  let companyCreateOpen = $state(false);
   let projectQuery = $state("");
-  function quickCreateCompany(query: string) {
-    companyQuery = query;
-    oncreatecompany?.(query);
-  }
-  function quickCreateProject(query: string) {
-    projectQuery = query;
-    oncreateproject?.(query, effCompany);
-  }
-  // A quick-create action answers with the new row's id; auto-select it in the picker that
-  // asked — the slot names are the contract with the host page's dialogs (docs/UX.md).
-  let handledCreate = $state("");
+  let projectCreateOpen = $state(false);
+  let taskDraft = $state("");
+  let taskCreateOpen = $state(false);
+  /**
+   * A quick-create action answers with the new row's id; auto-select it in the picker that
+   * asked — the slot names are this file's own contract with the dialogs below.
+   *
+   * `page.form.inlineCreated` outlives the dialog that produced it, and the hosts key this form
+   * per row: create a project while logging one moment, close without saving, open the next, and
+   * a fresh instance would read the *previous* answer and pre-select that project — plausible,
+   * and filed onto the wrong row the moment the user saves. An id already on `page.form` at
+   * mount was therefore answered by somebody else, so it starts out acknowledged. Deliberate
+   * initial capture: only a create made *by this instance* arrives after mount.
+   */
+  let handledCreate = $state((page.form?.inlineCreated as { id?: string } | undefined)?.id ?? "");
   $effect(() => {
     const created = page.form?.inlineCreated as
-      { slot: string; id: string; name?: string; company_id?: string | null } | undefined;
+      | {
+          slot: string;
+          id: string;
+          name?: string;
+          project_id?: string | null;
+          company_id?: string | null;
+        }
+      | undefined;
     if (!created || created.id === handledCreate) return;
     if (created.slot === "interaction_contact") {
       handledCreate = created.id;
       if (!contactOptions.some((c) => c.value === created.id)) {
-        contactOptions = [...contactOptions, { value: created.id, label: qcName || "—" }];
+        contactOptions = [
+          ...contactOptions,
+          { value: created.id, label: created.name || qcName || "—" },
+        ];
       }
       contactId = created.id;
       contactCleared = false;
@@ -454,7 +477,10 @@
     } else if (created.slot === "interaction_company") {
       handledCreate = created.id;
       if (!linkCompanies.some((c) => c.value === created.id)) {
-        linkCompanies = [...linkCompanies, { value: created.id, label: companyQuery || "—" }];
+        linkCompanies = [
+          ...linkCompanies,
+          { value: created.id, label: created.name ?? (companyQuery || "—") },
+        ];
       }
       fCompany = created.id;
     } else if (created.slot === "interaction_project") {
@@ -471,6 +497,20 @@
       }
       // Reuse the picker's own cascade so a project created under a client backfills it.
       onProjectPicked(created.id);
+    } else if (created.slot === "interaction_task") {
+      handledCreate = created.id;
+      if (!linkTasks.some((task) => task.value === created.id)) {
+        linkTasks = [
+          ...linkTasks,
+          {
+            value: created.id,
+            label: taskDraft || "—",
+            project_id: created.project_id ?? null,
+            company_id: created.company_id ?? null,
+          },
+        ];
+      }
+      onTaskPicked(created.id);
     }
   });
 </script>
@@ -583,7 +623,7 @@
       bind:value={contactId}
       placeholder={t("interactions.field.contact_placeholder")}
       onselect={() => (contactCleared = false)}
-      oncreate={(query) => void quickCreateContact(query)}
+      oncreate={canCreateContact ? (query) => void quickCreateContact(query) : undefined}
     />
     {#if contactCleared && !contactId}
       <!-- Changing the client narrowed the roster past the person who was picked. Dropping it
@@ -636,7 +676,12 @@
               value={fCompany}
               placeholder={t("common.none")}
               onselect={(v) => (fCompany = v)}
-              oncreate={oncreatecompany ? quickCreateCompany : undefined}
+              oncreate={canCreateCompany
+                ? (query) => {
+                    companyQuery = query;
+                    companyCreateOpen = true;
+                  }
+                : undefined}
             />
           </label>
         {/if}
@@ -650,7 +695,12 @@
             value={fProject}
             placeholder={t("common.none")}
             onselect={onProjectPicked}
-            oncreate={oncreateproject ? quickCreateProject : undefined}
+            oncreate={canCreateProject
+              ? (query) => {
+                  projectQuery = query;
+                  projectCreateOpen = true;
+                }
+              : undefined}
           />
         </label>
       {/if}
@@ -663,6 +713,12 @@
             value={fTask}
             placeholder={t("common.none")}
             onselect={onTaskPicked}
+            oncreate={canCreateTask
+              ? (query) => {
+                  taskDraft = query;
+                  taskCreateOpen = true;
+                }
+              : undefined}
           />
         </label>
       {/if}
@@ -770,5 +826,39 @@
   locale={(page.data.locale as string | undefined) ?? "nl"}
   action="?/createInteractionContact"
   pickerSlot="interaction_contact"
+  error={(page.form?.qcError as string | undefined) ?? null}
+/>
+
+<CompanyQuickCreate
+  bind:open={companyCreateOpen}
+  name={companyQuery}
+  locale={(page.data.locale as string | undefined) ?? "nl"}
+  action="?/createInteractionCompany"
+  pickerSlot="interaction_company"
+  error={(page.form?.qcError as string | undefined) ?? null}
+/>
+
+<!-- The client roster is the one the link block already loaded, so the ＋ costs no second
+     fetch, and the moment's own client rides along as the new project's (#247). -->
+<ProjectQuickCreate
+  bind:open={projectCreateOpen}
+  name={projectQuery}
+  companies={linkCompanies}
+  companyId={effCompany}
+  locale={(page.data.locale as string | undefined) ?? "nl"}
+  action="?/createInteractionProject"
+  pickerSlot="interaction_project"
+  error={(page.form?.qcError as string | undefined) ?? null}
+/>
+
+<TaskQuickCreate
+  bind:open={taskCreateOpen}
+  title={taskDraft}
+  companyId={effCompany || null}
+  projectId={effProject || null}
+  members={(page.data.members as
+    { user_id: string; full_name: string | null; email: string }[] | undefined) ?? []}
+  action="?/createInteractionTask"
+  pickerSlot="interaction_task"
   error={(page.form?.qcError as string | undefined) ?? null}
 />

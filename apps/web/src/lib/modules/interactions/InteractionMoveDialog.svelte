@@ -8,23 +8,27 @@
    * Candidates load once, when the dialog opens — never on page load (docs/PERFORMANCE.md):
    * a rarely opened dialog must not tax every detail-page render with four lookups.
    *
-   * The project and task pickers create what they cannot find (docs/UX.md): reviewing a mail
-   * that turns out to *be* new work is the moment the project exists, so the ＋ opens the full
-   * create dialog here and the approve carries the row it made. Self-contained like the rest of
-   * this dialog — the actions ride in `interactionActions`, so every host already has them.
+   * All four pickers create what they cannot find (docs/UX.md — per-picker definition of done):
+   * reviewing a mail that turns out to *be* new work, or to come from a client nobody has
+   * entered yet, is the moment that record exists, so the ＋ opens the full create dialog here
+   * and the approve carries the row it made. Self-contained — the actions ride in
+   * `interactionActions`, so every host already has them.
    */
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import type { SubmitFunction } from "@sveltejs/kit";
+  import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
+  import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
+  import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import ProjectQuickCreate from "$lib/modules/projects/ProjectQuickCreate.svelte";
   import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
 
-  import { contactsForScope } from "./contacts";
+  import { contactsForScope, forgetContacts } from "./contacts";
   import type { InteractionItem } from "./format";
 
   let {
@@ -168,14 +172,44 @@
     }
   }
 
-  // --- inline-create behind the project and task pickers (docs/UX.md) ----------------------- //
+  // --- inline-create behind all four pickers (docs/UX.md) ----------------------------------- //
+  // The gates are the API's own keys, not `!isPortal` (§15): a control that would 403 is never
+  // drawn.
   const canCreateTask = $derived(can(page.data.user, "tasks.task.create"));
   // Projects have no separate create permission — writing one is creating one.
   const canCreateProject = $derived(can(page.data.user, "projects.project.write"));
+  const canCreateCompany = $derived(can(page.data.user, "companies.company.write"));
+  const canCreateContact = $derived(can(page.data.user, "contacts.contact.write"));
   let taskCreateOpen = $state(false);
   let taskDraft = $state("");
   let projectCreateOpen = $state(false);
   let projectDraft = $state("");
+  let companyCreateOpen = $state(false);
+  let companyDraft = $state("");
+  let contactCreateOpen = $state(false);
+  let contactDraft = $state("");
+  let contactDefinitions = $state<CustomFieldDefinition[] | null>(null);
+  /**
+   * The new contact is offered a link to the moment's client (#247), and the box needs the
+   * client's *name*: the roster this dialog loaded knows it whenever one is picked, so the ＋
+   * costs no lookup. A moment with no client yet simply gets an unlinked contact.
+   */
+  const contactLinkCompany = $derived.by(() => {
+    const label = companies.find((c) => c.value === companyId)?.label;
+    return companyId && label ? { id: companyId, name: label } : null;
+  });
+  async function startContactCreate(query: string) {
+    contactDraft = query;
+    // Fetched on first open, never on page load (docs/PERFORMANCE.md); creating is held until
+    // they land, so a required field the form never drew can't come back as a validation error.
+    if (contactDefinitions === null) {
+      const response = await fetch("/api/v1/custom-fields/definitions?entity_type=contact", {
+        headers: { accept: "application/json" },
+      });
+      contactDefinitions = response.ok ? await response.json() : [];
+    }
+    contactCreateOpen = true;
+  }
   /**
    * A form result outlives the dialog that produced it, and this dialog is keyed per row: create
    * a project while reviewing one email, close without approving, open the next one, and the
@@ -225,6 +259,28 @@
       // The picker's own cascade, so a project created under a client backfills the client —
       // and the approve that follows carries both.
       onProjectPicked(created.id);
+    } else if (created.slot === "move_company") {
+      handledCreate = created.id;
+      if (!companies.some((option) => option.value === created.id)) {
+        companies = [
+          ...companies,
+          { value: created.id, label: created.name ?? (companyDraft || "—") },
+        ];
+      }
+      companyId = created.id;
+    } else if (created.slot === "move_contact") {
+      handledCreate = created.id;
+      if (!contacts.some((option) => option.value === created.id)) {
+        contacts = [
+          ...contacts,
+          { value: created.id, label: created.name ?? (contactDraft || "—") },
+        ];
+      }
+      contactId = created.id;
+      contactCleared = false;
+      // The shared roster cache must not outlive the person it does not know about (#290):
+      // the next form to open would offer a picker missing the contact just created here.
+      forgetContacts();
     }
   });
 
@@ -320,6 +376,12 @@
           value={companyId}
           placeholder={t("common.none")}
           onselect={(v) => (companyId = v)}
+          oncreate={canCreateCompany
+            ? (query) => {
+                companyDraft = query;
+                companyCreateOpen = true;
+              }
+            : undefined}
           id="move-company"
         />
       </label>
@@ -368,6 +430,7 @@
             contactId = v;
             contactCleared = false;
           }}
+          oncreate={canCreateContact ? (query) => void startContactCreate(query) : undefined}
           id="move-contact"
         />
         {#if contactCleared && !contactId}
@@ -466,4 +529,25 @@
   action="?/createInteractionTask"
   error={(page.form?.qcError as string | undefined) ?? null}
   pickerSlot="move_task"
+/>
+
+<CompanyQuickCreate
+  bind:open={companyCreateOpen}
+  name={companyDraft}
+  locale={(page.data.locale as string | undefined) ?? "nl"}
+  action="?/createInteractionCompany"
+  pickerSlot="move_company"
+  error={(page.form?.qcError as string | undefined) ?? null}
+/>
+
+<!-- The new person is offered a link to the client this moment is being filed to (#247). -->
+<ContactQuickCreate
+  bind:open={contactCreateOpen}
+  name={contactDraft}
+  linkCompany={contactLinkCompany}
+  definitions={contactDefinitions ?? []}
+  locale={(page.data.locale as string | undefined) ?? "nl"}
+  action="?/createInteractionContact"
+  pickerSlot="move_contact"
+  error={(page.form?.qcError as string | undefined) ?? null}
 />

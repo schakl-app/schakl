@@ -335,7 +335,44 @@ export const interactionActions = {
     });
     if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });
     return {
-      inlineCreated: { slot: String(form.get("slot") ?? "") || "interaction_contact", id: data.id },
+      inlineCreated: {
+        slot: String(form.get("slot") ?? "") || "interaction_contact",
+        id: data.id,
+        // The picker labels the new option from this, not from what was typed into it: the
+        // draft is a first name at best, and the dialog is where the surname was filled in.
+        name: `${data.first_name} ${data.last_name ?? ""}`.trim(),
+      },
+    };
+  },
+
+  /**
+   * Inline-create behind the client picker on every contactmoment surface (docs/UX.md — per-
+   * picker definition of done). It used to live on the host *page*: the form passed what was
+   * typed outwards and `/interactions` owned the dialog, so the ＋ existed on exactly one screen
+   * and nowhere else — not on the edit form beside it, and on no company/project/contact/task
+   * page, where a timeline renders through the very same component. Filing a moment for a client
+   * nobody had entered yet meant leaving the form. Riding in `interactionActions` puts it
+   * wherever the panel already posts.
+   */
+  createInteractionCompany: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const name = String(form.get("name") ?? "").trim();
+    if (!name) return fail(400, { qcError: "errors.required" });
+    const { data, error } = await apiFor(event).POST("/api/v1/companies", {
+      body: {
+        name,
+        website: String(form.get("website") ?? "").trim() || null,
+        status: String(form.get("status") ?? "active") as "active",
+        custom: parseCustom(form.get("custom")),
+      },
+    });
+    if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });
+    return {
+      inlineCreated: {
+        slot: String(form.get("slot") ?? "") || "interaction_company",
+        id: data.id,
+        name: data.name,
+      },
     };
   },
 

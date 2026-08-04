@@ -99,6 +99,25 @@
   one, rather than leaving the field to look like it blanked itself. And do not fall back to the
   unscoped list when a client's is empty: that is a real answer, and the ＋ is what turns it into
   one row, pre-linked to the same client.
+  **The ＋ belongs to the component that draws the picker, not to the page that happens to host
+  it.** The obvious wiring is a callback — the form raises "the user typed a name that isn't
+  there", the page owns the dialog and the action. It reads cleanly, and it silently makes the
+  affordance *per host*: the contactmoment form's client and project ＋ were passed in by
+  `/interactions` alone, so the same component rendered on a company, project, contact or task
+  page had none, and even that page's own **edit** modal — three lines below the create one —
+  was never wired. Nobody notices, because each screen looks deliberate on its own. So put the
+  quick-create dialog **inside** the component and post to an action the module exports
+  (`interactionActions`), which every host already spreads: the ＋ then arrives with the panel
+  instead of having to be remembered per screen. The host-owned shape is also what let a page
+  quietly ship a *stub* form — the one this replaced wrote a name and a client, skipping the
+  billable flag and the tenant's own project custom fields — because the real dialog and the
+  picker it serves had drifted onto different screens.
+  A self-contained dialog needs its custom-field definitions without the host's load, so it
+  fetches them on **first open** and holds "Aanmaken" until they land (`ProjectQuickCreate`,
+  `CompanyQuickCreate`). That is also the cheaper shape: the definitions used to ride every
+  single page load for a modal most visits never open.
+  **And the ＋ is a write control, so it self-gates on the API's own permission** (CLAUDE.md §15) —
+  the timeline is client-reachable, and `!isPortal` is not the gate.
 - **Quick-add where the user is**: contacts on the client page, projects/clients from the
   time entry form, checklist items on the card. The full forms still exist on their own
   pages; quick-add is an accelerator, not a replacement.

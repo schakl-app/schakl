@@ -24,7 +24,9 @@
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
+  import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
+  import ProjectQuickCreate from "$lib/modules/projects/ProjectQuickCreate.svelte";
   import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
 
   import { contactsForScope, forgetContacts } from "./contacts";
@@ -33,19 +35,10 @@
   let {
     prefill = {},
     onsaved,
-    oncreatecompany,
-    oncreateproject,
   }: {
     /** The host entity's link, stamped on the uploaded row (e.g. `{ company_id }`). */
     prefill?: Record<string, string | null | undefined>;
     onsaved?: () => void;
-    /** Inline-create for the unpinned company / project pickers — the host page owns those
-     *  dialogs (slots `interaction_company` / `interaction_project`), exactly as for the manual
-     *  form. Absent → the picker offers no ＋. */
-    oncreatecompany?: (query: string) => void;
-    /** The upload's effective client rides along (#247) so the project quick-create dialog
-     *  opens with the same client instead of blank. */
-    oncreateproject?: (query: string, companyId?: string) => void;
   } = $props();
 
   const busy = new InFlight();
@@ -164,9 +157,20 @@
   });
 
   // --- inline-create behind the pickers (docs/UX.md) ------------------------------------- //
+  // Every dialog lives at the bottom of this file and posts to `interactionActions`, which the
+  // host already spreads — the client and project ＋ used to be handlers a host page passed in,
+  // so they existed on `/interactions` and on none of the panels this same form renders in.
+  // The gates are the API's own keys, not `!isPortal` (§15): a control that would 403 is never
+  // drawn.
+  const canCreateCompany = $derived(can(page.data.user, "companies.company.write"));
+  // Projects have no separate create permission — writing one is creating one.
+  const canCreateProject = $derived(can(page.data.user, "projects.project.write"));
   const canCreateTask = $derived(can(page.data.user, "tasks.task.create"));
+  const canCreateContact = $derived(can(page.data.user, "contacts.contact.write"));
   let taskCreateOpen = $state(false);
   let taskDraft = $state("");
+  let companyCreateOpen = $state(false);
+  let projectCreateOpen = $state(false);
   let qcOpen = $state(false);
   let qcName = $state("");
   let contactDefinitions = $state<CustomFieldDefinition[] | null>(null);
@@ -202,7 +206,12 @@
   }
   let companyQuery = $state("");
   let projectQuery = $state("");
-  let handledCreate = $state("");
+  /**
+   * `page.form.inlineCreated` outlives the dialog that produced it: an id already on `page.form`
+   * at mount was answered by somebody else, so it starts out acknowledged and only a create made
+   * *by this instance* is acted on (docs/UX.md). Deliberate initial capture.
+   */
+  let handledCreate = $state((page.form?.inlineCreated as { id?: string } | undefined)?.id ?? "");
   $effect(() => {
     const created = page.form?.inlineCreated as
       | {
@@ -217,7 +226,7 @@
     if (created.slot === "eml_contact") {
       handledCreate = created.id;
       if (!contacts.some((c) => c.value === created.id)) {
-        contacts = [...contacts, { value: created.id, label: qcName || "—" }];
+        contacts = [...contacts, { value: created.id, label: created.name || qcName || "—" }];
       }
       fContact = created.id;
       contactCleared = false;
@@ -238,13 +247,16 @@
         ];
       }
       onTaskPicked(created.id);
-    } else if (created.slot === "interaction_company") {
+    } else if (created.slot === "eml_company") {
       handledCreate = created.id;
       if (!companies.some((c) => c.value === created.id)) {
-        companies = [...companies, { value: created.id, label: companyQuery || "—" }];
+        companies = [
+          ...companies,
+          { value: created.id, label: created.name ?? (companyQuery || "—") },
+        ];
       }
       fCompany = created.id;
-    } else if (created.slot === "interaction_project") {
+    } else if (created.slot === "eml_project") {
       handledCreate = created.id;
       if (!projects.some((p) => p.value === created.id)) {
         projects = [
@@ -322,10 +334,10 @@
           value={fCompany}
           placeholder={t("common.none")}
           onselect={(v) => (fCompany = v)}
-          oncreate={oncreatecompany
+          oncreate={canCreateCompany
             ? (query) => {
                 companyQuery = query;
-                oncreatecompany?.(query);
+                companyCreateOpen = true;
               }
             : undefined}
           id="eml-company"
@@ -341,10 +353,10 @@
           value={fProject}
           placeholder={t("common.none")}
           onselect={onProjectPicked}
-          oncreate={oncreateproject
+          oncreate={canCreateProject
             ? (query) => {
                 projectQuery = query;
-                oncreateproject?.(query, effCompany);
+                projectCreateOpen = true;
               }
             : undefined}
           id="eml-project"
@@ -381,7 +393,7 @@
           fContact = v;
           contactCleared = false;
         }}
-        oncreate={(query) => void quickCreateContact(query)}
+        oncreate={canCreateContact ? (query) => void quickCreateContact(query) : undefined}
         id="eml-contact"
       />
       {#if contactCleared && !fContact}
@@ -437,4 +449,26 @@
   action="?/createInteractionTask"
   error={(page.form?.qcError as string | undefined) ?? null}
   pickerSlot="eml_task"
+/>
+
+<CompanyQuickCreate
+  bind:open={companyCreateOpen}
+  name={companyQuery}
+  locale={(page.data.locale as string | undefined) ?? "nl"}
+  action="?/createInteractionCompany"
+  pickerSlot="eml_company"
+  error={(page.form?.qcError as string | undefined) ?? null}
+/>
+
+<!-- The client roster is the one this form already loaded, so the ＋ costs no second fetch,
+     and the upload's own client rides along as the new project's (#247). -->
+<ProjectQuickCreate
+  bind:open={projectCreateOpen}
+  name={projectQuery}
+  {companies}
+  companyId={effCompany}
+  locale={(page.data.locale as string | undefined) ?? "nl"}
+  action="?/createInteractionProject"
+  pickerSlot="eml_project"
+  error={(page.form?.qcError as string | undefined) ?? null}
 />
