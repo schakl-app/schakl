@@ -24,6 +24,7 @@
 <DocumentFrame
   bind:this={frame}
   src="/quotes/{quote.id}/preview"
+  version={quote.updated_at}
   title={`${t("invoicing.quotes")} ${quote.number ?? ""}`}
   class="mx-auto max-w-4xl"
 />

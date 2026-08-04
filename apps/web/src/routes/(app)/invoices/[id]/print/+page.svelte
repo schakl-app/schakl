@@ -35,6 +35,7 @@
 <DocumentFrame
   bind:this={frame}
   src="/invoices/{invoice.id}/preview"
+  version={invoice.updated_at}
   title={`${t("invoicing.kind.invoice")} ${invoice.number ?? ""}`}
   class="mx-auto max-w-4xl"
 />

@@ -24,6 +24,7 @@
 
   let {
     src = null,
+    version = null,
     srcdoc = null,
     title,
     loading = false,
@@ -31,12 +32,28 @@
   }: {
     /** A URL serving the document HTML — the detail and print surfaces. */
     src?: string | null;
+    /**
+     * Whatever changes when the document changes — `updated_at` on the record it draws.
+     *
+     * A frame does not refetch a URL it already has. `/invoices/{id}/preview` is the same
+     * string before and after the invoice is issued, so the page reloaded its data, the
+     * status pill flipped to *Open*, and the document beside it went on saying CONCEPT. The
+     * proxy already sends `no-store`; the request was never made. So the version travels in
+     * the URL, and every write moves it.
+     */
+    version?: string | number | null;
     /** The HTML itself — the settings editor, whose config is not saved yet. */
     srcdoc?: string | null;
     title: string;
     loading?: boolean;
     class?: string;
   } = $props();
+
+  const frameSrc = $derived.by(() => {
+    if (!src) return null;
+    if (version == null) return src;
+    return `${src}${src.includes("?") ? "&" : "?"}v=${encodeURIComponent(String(version))}`;
+  });
 
   let frame = $state<HTMLIFrameElement | null>(null);
   let host = $state<HTMLDivElement | null>(null);
@@ -64,7 +81,7 @@
   $effect(() => {
     // Re-measure when the source changes: the editor swaps `srcdoc` on every edit, and a
     // taller document behind a frame frozen at the old height is a silently cropped preview.
-    void src;
+    void frameSrc;
     void srcdoc;
     const timer = setTimeout(measure, 50);
     return () => clearTimeout(timer);
@@ -105,7 +122,7 @@
   {/if}
   <iframe
     bind:this={frame}
-    {src}
+    src={frameSrc}
     {srcdoc}
     {title}
     onload={measure}
