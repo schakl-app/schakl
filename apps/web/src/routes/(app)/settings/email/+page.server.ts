@@ -13,7 +13,7 @@ export const load: PageServerLoad = async (event) => {
   // calls 403'd, and the visitor got an empty transport form that could never save.
   if (!can(event.locals.user, "settings.email.manage")) throw redirect(303, "/settings");
   const api = apiFor(event);
-  // Transport config + the tenant's auth-mail templates (#161 tier 2), both admin-gated.
+  // Transport config + the tenant's mail templates (#161 tier 2), both admin-gated.
   // The transport read also carries what is *actually* sending and whether the operator's
   // own transport is available to this org (epic #199) — which is why the meta call this
   // load used to make for that one flag is gone rather than moved.
@@ -76,10 +76,12 @@ export const actions: Actions = {
     return { test: data };
   },
 
-  // --- tenant auth-mail templates (#161 tier 2) ---------------------------------- //
+  // --- tenant mail templates (#161 tier 2) --------------------------------------- //
   saveTemplate: async (event) => {
     const form = await event.request.formData();
-    const kind = String(form.get("kind") ?? "") as "reset" | "invite";
+    // A registry key, not a closed set: the customisable mails depend on the enabled modules
+    // (invoicing contributes three), and the API validates against this org's own kinds.
+    const kind = String(form.get("kind") ?? "");
     const locale = String(form.get("locale") ?? "");
     const subject = String(form.get("subject") ?? "").trim();
     const body_html = String(form.get("body_html") ?? "").trim();
@@ -92,7 +94,9 @@ export const actions: Actions = {
 
   testTemplate: async (event) => {
     const form = await event.request.formData();
-    const kind = String(form.get("kind") ?? "") as "reset" | "invite";
+    // A registry key, not a closed set: the customisable mails depend on the enabled modules
+    // (invoicing contributes three), and the API validates against this org's own kinds.
+    const kind = String(form.get("kind") ?? "");
     const locale = String(form.get("locale") ?? "");
     const subject = String(form.get("subject") ?? "").trim();
     const body_html = String(form.get("body_html") ?? "").trim();

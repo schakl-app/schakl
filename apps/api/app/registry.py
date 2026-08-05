@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
     from fastapi import APIRouter
 
+    from app.core.email.kinds import EmailTemplateKind
     from app.core.impex.spec import ImpexDescriptor, ImpexExtension
     from app.core.permissions.spec import PermissionSpec
     from app.core.tenancy import RequestContext
@@ -87,6 +88,10 @@ class ModuleDescriptor:
     impex_extensions: list[ImpexExtension] = field(default_factory=list)
     # Actions this module contributes to the automation rule engine (issue #27).
     automation_actions: list[AutomationActionSpec] = field(default_factory=list)
+    # Outgoing mails this module lets the tenant rewrite (Instellingen -> E-mail), the same
+    # contribution model as `panels`: core declares the auth mails and holds no module list
+    # (`app.core.email.kinds`). Keys are namespaced by the module and asserted at mount time.
+    email_templates: list[EmailTemplateKind] = field(default_factory=list)
 
 
 class ModuleRegistry:

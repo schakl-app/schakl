@@ -27,6 +27,7 @@ from app.core.customfields.router import router as customfields_router
 from app.core.dashboard import router as dashboard_router
 from app.core.demo import demo_guard_middleware
 from app.core.domains import router as domains_router
+from app.core.email.kinds import validate_email_kinds
 from app.core.email.router import router as email_settings_router
 from app.core.entitlements.router import router as license_router
 from app.core.entitlements.service import AI_SKU, MCP_SKU, LicenseGateASGI, license_write_gate
@@ -144,6 +145,10 @@ def create_app() -> FastAPI:
     # After module loading on purpose: the impex routes are built per opted-in entity so each
     # one declares that entity's own read/write permission (issue #77, §15 deny-by-default).
     api.include_router(build_impex_router())
+    # Same reason, for the mails modules let a tenant rewrite: keys are stored data, so a
+    # collision or a badly namespaced one is a build break rather than a tenant discovering
+    # their invoice template rewriting somebody else's mail (app/core/email/kinds.py).
+    validate_email_kinds()
 
     # Cloud posture (epic #199, business-licensed): the tenant's service-access settings, the
     # console's instance additions (PIN claim, plans, instance API keys, /instance/me) and the

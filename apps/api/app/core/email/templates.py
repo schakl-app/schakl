@@ -1,15 +1,17 @@
-"""Tenant-customisable auth email templates (#161 tier 2).
+"""Tenant-customisable email templates (#161 tier 2).
 
-A tenant may override the subject and HTML body of the **reset** and **invite** mails, per
-locale, in Instellingen -> E-mail. A missing override falls back to the built-in catalog text
-(tier 1), so *blank means default* everywhere. Three variables are available — ``{brand}``,
-``{name}``, ``{link}`` — the same ones tier 1's catalog strings already use, substituted with the
-single-brace convention the rest of the API uses (:mod:`app.i18n`).
+A tenant may override the subject and HTML body of any **customisable kind** — core's reset
+and invite mails, plus whatever the enabled modules contribute (the invoice, quote and
+reminder mails; :mod:`app.core.email.kinds`) — per locale, in Instellingen -> E-mail. A
+missing override falls back to the built-in catalog text (tier 1), so *blank means default*
+everywhere. Which ``{markers}`` a body may use is the **kind's** property, not this module's:
+an invoice mail interpolates a number and an amount, a reset mail a link. They substitute with
+the single-brace convention the rest of the API uses (:mod:`app.i18n`).
 
 Safety: the HTML is sanitised with an email-safe allow-list on **write** and again on **send**
-(after variable substitution, so a value smuggling markup — a user's display name — is caught
-too). The plaintext part is always the catalog-rendered body, so every mail keeps a working
-reset link even when a tenant's HTML omits one.
+(after variable substitution, so a value smuggling markup — a user's display name, a client's
+company name — is caught too). The plaintext part is always the catalog-rendered body, so every
+mail keeps its working link or its full summary even when a tenant's HTML omits one.
 """
 
 from __future__ import annotations
@@ -21,12 +23,10 @@ import nh3
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.email.models import EMAIL_TEMPLATE_KINDS, OrgEmailTemplate
+from app.core.email.kinds import email_kind, require_email_kind
+from app.core.email.models import OrgEmailTemplate
 from app.core.email.senders import OutgoingEmail
 from app.i18n import available_locales, translate
-
-#: The variables a tenant may use in a template; shown in the editor.
-TEMPLATE_VARIABLES: tuple[str, ...] = ("brand", "name", "link")
 
 _VAR_RE = re.compile(r"\{(\w+)\}")
 
@@ -83,7 +83,7 @@ def _strip_tags(text: str) -> str:
 
 def default_subject(kind: str, locale: str) -> str:
     """The built-in subject template (raw, with ``{brand}`` visible) for the editor placeholder."""
-    return translate(f"auth.email.{kind}_subject", locale)
+    return translate(require_email_kind(kind).subject_key, locale)
 
 
 def default_body_html(kind: str, locale: str) -> str:
@@ -92,7 +92,7 @@ def default_body_html(kind: str, locale: str) -> str:
     Paragraphs on blank lines, ``<br>`` on single newlines, and the bare ``{link}`` made
     clickable. Variables stay as ``{...}`` markers — they resolve when the mail is sent.
     """
-    body = translate(f"auth.email.{kind}_body", locale)
+    body = translate(require_email_kind(kind).body_key, locale)
     paragraphs: list[str] = []
     for block in body.split("\n\n"):
         block = block.strip("\n")
@@ -112,11 +112,15 @@ def branded_default_html(kind: str, locale: str, values: dict[str, str], primary
     :func:`sanitize_email_html` afterwards, so a value smuggling markup (a display name) is
     caught exactly like in the tier-2 path. The chrome (logo, card, footer) is not built
     here — it rides the send seam (:mod:`app.core.email.branding`).
+
+    A kind with no ``button_key`` (an invoice mail carries its PDF, not a link) simply renders
+    its paragraphs: the button is an affordance of the body, not of the layer.
     """
     from app.core.email.branding import button_html
 
-    body = translate(f"auth.email.{kind}_body", locale)
-    label = translate(f"auth.email.{kind}_button", locale)
+    spec = require_email_kind(kind)
+    body = translate(spec.body_key, locale)
+    label = translate(spec.button_key, locale) if spec.button_key else ""
     link = values.get("link", "")
     escaped = {key: html_lib.escape(str(value)) for key, value in values.items()}
     blocks: list[str] = []
@@ -127,7 +131,7 @@ def branded_default_html(kind: str, locale: str, values: dict[str, str], primary
         lines: list[str] = []
         button = False
         for line in block.split("\n"):
-            if line.strip() == "{link}":
+            if spec.button_key and line.strip() == "{link}":
                 # The URL-on-its-own-line becomes the button, not a wall of href text.
                 button = True
                 continue
@@ -161,16 +165,18 @@ def build_email_content(
     *,
     primary_color: str | None = None,
 ) -> tuple[str, str, str | None]:
-    """Return ``(subject, text, html)`` for an auth mail.
+    """Return ``(subject, text, html)`` for one customisable mail.
 
-    ``text`` is always the catalog-rendered plaintext body (so a working link survives even a
-    linkless custom HTML). ``subject`` / ``html`` use the tenant override when it is non-blank,
-    substituting variables and sanitising the HTML afterwards. Without an override, ``html``
-    is the branded built-in default (#236) when a ``primary_color`` is given — never ``None``
-    on the normal send path, so the mail leaves as styled multipart out of the box.
+    ``text`` is always the catalog-rendered plaintext body (so a working link — or the amount
+    and due date an invoice mail promises — survives even a custom HTML that omits it).
+    ``subject`` / ``html`` use the tenant override when it is non-blank, substituting variables
+    and sanitising the HTML afterwards. Without an override, ``html`` is the branded built-in
+    default (#236) when a ``primary_color`` is given — never ``None`` on the normal send path,
+    so the mail leaves as styled multipart out of the box.
     """
-    subject = translate(f"auth.email.{kind}_subject", locale, **values)
-    text = translate(f"auth.email.{kind}_body", locale, **values)
+    spec = require_email_kind(kind)
+    subject = translate(spec.subject_key, locale, **values)
+    text = translate(spec.body_key, locale, **values)
     html: str | None = None
     if subject_override and subject_override.strip():
         subject = _strip_tags(render_variables(subject_override, values))
@@ -182,7 +188,7 @@ def build_email_content(
 
 
 def is_supported_kind(kind: str) -> bool:
-    return kind in EMAIL_TEMPLATE_KINDS
+    return email_kind(kind) is not None
 
 
 def is_supported_locale(locale: str) -> bool:

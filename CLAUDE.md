@@ -153,6 +153,11 @@ An **API module** is a package under `apps/api/app/modules/<name>/` exposing:
   data provider) so the company detail view can compose it. This is the modular hub.
 - `impex.py` — optional: the entity's spreadsheet import/export shape, and any columns this
   module contributes to *another* module's entity (see §17).
+- `email_templates` — optional: the outgoing mails this module lets the tenant reword
+  (`EmailTemplateKind`, `docs/EMAIL.md`). A mail the agency's **client** reads is theirs to
+  write: core declares only the auth pair and holds no module list, keys are namespaced
+  (`invoicing.invoice`) and asserted at mount, and a missing override means the built-in text —
+  so contributing one adds no schema and changes nothing until a tenant types in the box.
 - `mcp.py` — optional: the MCP tools/resources this module contributes (e.g.
   `companies.find`, `companies.recent_projects`), registered onto the MCP surface alongside
   the router. Read-only by default; each tool goes through the tenant-scoped service layer.

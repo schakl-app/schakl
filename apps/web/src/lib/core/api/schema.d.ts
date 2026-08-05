@@ -11713,15 +11713,32 @@ export interface components {
             default_body_html: string;
             /** Default Subject */
             default_subject: string;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "reset" | "invite";
+            /** Kind */
+            kind: string;
             /** Locale */
             locale: string;
             /** Subject */
             subject?: string | null;
+        };
+        /**
+         * EmailTemplateKindRead
+         * @description One customisable mail, as the editor needs to draw it.
+         *
+         *     ``variables`` is per kind on purpose: an invoice mail interpolates a number and an amount,
+         *     a reset mail a link, and a single global list would advertise markers that render as
+         *     literal ``{link}`` text in the client's inbox.
+         */
+        EmailTemplateKindRead: {
+            /** Hint Key */
+            hint_key: string;
+            /** Key */
+            key: string;
+            /** Label Key */
+            label_key: string;
+            /** Module */
+            module?: string | null;
+            /** Variables */
+            variables: string[];
         };
         /**
          * EmailTemplateTest
@@ -11730,11 +11747,8 @@ export interface components {
         EmailTemplateTest: {
             /** Body Html */
             body_html?: string | null;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "reset" | "invite";
+            /** Kind */
+            kind: string;
             /** Locale */
             locale: string;
             /** Subject */
@@ -11744,11 +11758,8 @@ export interface components {
         EmailTemplateWrite: {
             /** Body Html */
             body_html?: string | null;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "reset" | "invite";
+            /** Kind */
+            kind: string;
             /** Locale */
             locale: string;
             /** Subject */
@@ -11756,12 +11767,12 @@ export interface components {
         };
         /** EmailTemplatesRead */
         EmailTemplatesRead: {
+            /** Kinds */
+            kinds: components["schemas"]["EmailTemplateKindRead"][];
             /** Locales */
             locales: string[];
             /** Templates */
             templates: components["schemas"]["EmailTemplateItem"][];
-            /** Variables */
-            variables: string[];
         };
         /** EmailTestResult */
         EmailTestResult: {

@@ -1,14 +1,20 @@
-"""Tenant-customisable auth email templates (#161 tier 2).
+"""Tenant-customisable email templates (#161 tier 2).
 
 Covers the editor surface (customise / reset-to-default / defaults present), HTML sanitisation on
 write, tenant isolation, and — end to end — that a saved template's subject and HTML actually
 reach the sent message with its variables substituted and its script stripped, while the
 plaintext part keeps the working reset link.
+
+Plus the registry the kinds now come from (:mod:`app.core.email.kinds`): a module contributes
+its own mails, the editor offers only those of the modules this org runs, and the keys are
+unique and namespaced — the two things that are invisible until a stored override starts
+resolving to the wrong mail.
 """
 
 from __future__ import annotations
 
 from app.core.auth.emails import send_password_email
+from app.core.email.kinds import all_email_kinds, email_kinds_for, validate_email_kinds
 from app.db import async_session_maker
 from tests.conftest import auth_cookie, make_tenant
 
@@ -35,13 +41,58 @@ async def test_list_returns_every_slot_with_defaults(client_for) -> None:
     async with client_for(t.host) as c:
         body = (await c.get("/api/v1/settings/email/templates", headers=headers)).json()
         assert set(body["locales"]) == {"en", "nl"}
-        assert body["variables"] == ["brand", "name", "link"]
-        # 2 kinds x 2 locales, each with a non-empty built-in default and no override yet.
-        assert len(body["templates"]) == 4
+        keys = [k["key"] for k in body["kinds"]]
+        # Core's auth pair, plus the three client-facing mails invoicing contributes.
+        assert keys[:2] == ["invite", "reset"]
+        assert set(keys) >= {"invoicing.invoice", "invoicing.quote", "invoicing.reminder"}
+        # Variables are per kind: an invoice mail's markers are not a reset mail's.
+        by_key = {k["key"]: k for k in body["kinds"]}
+        assert by_key["reset"]["variables"] == ["brand", "name", "link"]
+        assert "outstanding" in by_key["invoicing.reminder"]["variables"]
+        assert "link" not in by_key["invoicing.invoice"]["variables"]
+        assert by_key["invoicing.invoice"]["module"] == "invoicing"
+        # Every kind x every locale, each with a built-in default and no override yet.
+        assert len(body["templates"]) == len(keys) * 2
         for item in body["templates"]:
-            assert item["kind"] in {"reset", "invite"}
+            assert item["kind"] in set(keys)
             assert item["subject"] is None and item["body_html"] is None
             assert item["default_subject"] and item["default_body_html"]
+
+
+async def test_kinds_follow_the_org_modules(client_for) -> None:
+    """A mail belongs to the module that sends it: switching invoicing off takes its three
+    templates off the editor, and off the write path — a stale form must not be able to store
+    an override for a mail this org no longer sends."""
+    t = await make_tenant("emailtpl-modules")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        switched = await c.patch(
+            "/api/v1/meta/tenant",
+            json={"enabled_modules": ["companies", "contacts", "tasks"]},
+            headers=headers,
+        )
+        assert switched.status_code == 200, switched.text
+        body = (await c.get("/api/v1/settings/email/templates", headers=headers)).json()
+        assert [k["key"] for k in body["kinds"]] == ["invite", "reset"]
+        refused = await c.put(
+            "/api/v1/settings/email/templates",
+            json={"kind": "invoicing.invoice", "locale": "nl", "subject": "x"},
+            headers=headers,
+        )
+        assert refused.status_code == 422, refused.text
+
+
+def test_kind_keys_are_unique_and_namespaced() -> None:
+    """The mount-time guard: a key is stored data, so a collision or a bare module key is a
+    build break rather than one module silently reading another's overrides."""
+    validate_email_kinds()
+    keys = [kind.key for kind in all_email_kinds()]
+    assert len(keys) == len(set(keys))
+    for kind in all_email_kinds():
+        if kind.module is not None:
+            assert kind.key.startswith(f"{kind.module}.")
+    # Core's kinds are the ones that stay bare — they shipped rows under those names.
+    assert [k.key for k in email_kinds_for([])] == ["invite", "reset"]
 
 
 async def test_save_customise_then_reset_to_default(client_for) -> None:

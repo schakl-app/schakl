@@ -1,5 +1,12 @@
-"""Document e-mails (issue #207): composing in the *document's* locale, sending through the
-org's configured transport (#17).
+"""Document e-mails (issue #207): composing in the *document's* locale, in the tenant's own
+words, sending through the org's configured transport (#17).
+
+Three mails, and they are the ones an agency's **clients** actually read: the invoice, the
+quote and the payment reminder. They were also the last outgoing text on the platform nobody
+could reword — #161 gave the tenant an editor for the two auth mails and stopped there — so
+each one is now a customisable kind (:mod:`app.core.email.kinds`), contributed by this module
+onto its descriptor exactly like a panel or a permission (§6). A missing override falls back
+to the built-in catalog text, so an instance that upgrades sends precisely what it sent before.
 
 Two delivery paths share the composition:
 
@@ -9,25 +16,38 @@ Two delivery paths share the composition:
 - **Cron path** (`jobs.py`): the worker has its own pool, reads the transport once per org
   and calls the sender directly — no request, no release dance.
 
+Composition happens *before* that split on both, because resolving an override is an ordinary
+org-scoped read: it must run while the session is still ours, never inside ``release_db``.
+
 Subjects and bodies come from the shared i18n catalogs (``app.i18n.translate``) keyed by the
 document's own ``locale`` — a Dutch agency invoicing a German client mails in the document's
-language, not the org's.
+language, not the org's — and the tenant's override is looked up in that **same resolved
+locale**, so the words and the language can never disagree.
 """
 
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.crypto import decrypt
-from app.core.email.branding import EmailBrand, apply_branding, load_brand
+from app.core.email.branding import EmailBrand, apply_branding, load_brand, paragraphs_html
+from app.core.email.kinds import EmailTemplateKind
 from app.core.email.senders import OutgoingEmail, Sender, send_email
 from app.core.email.service import get_row
+from app.core.email.templates import build_email_content, resolve_template
 from app.errors import AppError
-from app.i18n import translate
+from app.i18n import resolve_locale
 from app.modules.invoicing.calc import outstanding_of
+
+#: The customisable kinds' keys. Namespaced by the module, which is what lets a later module
+#: ship its own reminder mail without colliding with this one (asserted at mount time).
+INVOICE_KIND = "invoicing.invoice"
+QUOTE_KIND = "invoicing.quote"
+REMINDER_KIND = "invoicing.reminder"
 
 
 def _fmt_date(value: Any) -> str:
@@ -39,51 +59,186 @@ def _fmt_money(amount: Any, currency: str) -> str:
     return f"{currency} {amount}"
 
 
-def compose_invoice_email(invoice: Any, brand: str, message: str | None) -> OutgoingEmail:
-    params = {
+def _customer(doc: Any, field: str) -> str:
+    return (doc.customer or {}).get(field) or ""
+
+
+def _invoice_values(invoice: Any, brand: str) -> dict[str, str]:
+    return {
         "number": invoice.number or "",
-        "company": (invoice.customer or {}).get("name") or "",
+        "company": _customer(invoice, "name"),
+        "contact": _customer(invoice, "attn"),
         "total": _fmt_money(invoice.total, invoice.currency),
+        "date": _fmt_date(invoice.issue_date),
         "due_date": _fmt_date(invoice.due_date),
+        "reference": invoice.reference or "",
         "brand": brand,
     }
-    subject = translate("invoicing.email.invoice_subject", invoice.locale, **params)
-    body = translate("invoicing.email.invoice_body", invoice.locale, **params)
-    if message:
-        body = f"{message.strip()}\n\n{body}"
-    return OutgoingEmail(to="", subject=subject, text=body)
 
 
-def compose_quote_email(quote: Any, brand: str, message: str | None) -> OutgoingEmail:
-    params = {
+def _quote_values(quote: Any, brand: str) -> dict[str, str]:
+    return {
         "number": quote.number or "",
-        "company": (quote.customer or {}).get("name") or "",
+        "company": _customer(quote, "name"),
+        "contact": _customer(quote, "attn"),
         "total": _fmt_money(quote.total, quote.currency),
+        "date": _fmt_date(quote.issue_date),
         "valid_until": _fmt_date(quote.valid_until),
+        "reference": quote.reference or "",
         "brand": brand,
     }
-    subject = translate("invoicing.email.quote_subject", quote.locale, **params)
-    body = translate("invoicing.email.quote_body", quote.locale, **params)
-    if message:
-        body = f"{message.strip()}\n\n{body}"
-    return OutgoingEmail(to="", subject=subject, text=body)
 
 
-def compose_reminder_email(invoice: Any, brand: str, days_overdue: int) -> OutgoingEmail:
-    params = {
-        "number": invoice.number or "",
-        "company": (invoice.customer or {}).get("name") or "",
-        "total": _fmt_money(invoice.total, invoice.currency),
+def _reminder_values(invoice: Any, brand: str, days_overdue: int) -> dict[str, str]:
+    return _invoice_values(invoice, brand) | {
         # What is still owed after payments *and* credit notes — the figure the cron now
         # selects on, so a reminder can never name an amount the invoice no longer carries.
         "outstanding": _fmt_money(outstanding_of(invoice), invoice.currency),
-        "due_date": _fmt_date(invoice.due_date),
-        "days": days_overdue,
-        "brand": brand,
+        "days": str(days_overdue),
     }
-    subject = translate("invoicing.email.reminder_subject", invoice.locale, **params)
-    body = translate("invoicing.email.reminder_body", invoice.locale, **params)
-    return OutgoingEmail(to="", subject=subject, text=body)
+
+
+async def _compose(
+    session: AsyncSession,
+    org_id: Any,
+    kind: str,
+    doc: Any,
+    brand: EmailBrand,
+    values: dict[str, str],
+    message: str | None = None,
+) -> OutgoingEmail:
+    """One document mail: the tenant's template if they wrote one, the catalog text if not.
+
+    ``message`` is the free text the sender typed in the send dialog. It leads — a covering
+    note, not a footnote — and it goes into **both** parts: escaped paragraphs before the HTML
+    fragment, plain text before the plaintext body. Prepending to the text alone would make the
+    branded half of the mail quietly drop a sentence the client was meant to read.
+    """
+    locale = resolve_locale(doc.locale)
+    template = await resolve_template(session, org_id, kind, locale)
+    subject, text, html = build_email_content(
+        kind,
+        locale,
+        template.subject if template else None,
+        template.body_html if template else None,
+        values,
+        primary_color=brand.primary_color,
+    )
+    note = (message or "").strip()
+    if note:
+        text = f"{note}\n\n{text}"
+        if html is not None:
+            # ``paragraphs_html`` escapes what it wraps, so the sender's own words can carry
+            # no markup into the fragment — the same guarantee the sanitiser gives elsewhere.
+            html = paragraphs_html(note) + html
+    return OutgoingEmail(to="", subject=subject, text=text, html=html)
+
+
+async def compose_invoice_email(
+    session: AsyncSession, org_id: Any, invoice: Any, brand: EmailBrand, message: str | None
+) -> OutgoingEmail:
+    return await _compose(
+        session, org_id, INVOICE_KIND, invoice, brand,
+        _invoice_values(invoice, brand.brand_name), message,
+    )
+
+
+async def compose_quote_email(
+    session: AsyncSession, org_id: Any, quote: Any, brand: EmailBrand, message: str | None
+) -> OutgoingEmail:
+    return await _compose(
+        session, org_id, QUOTE_KIND, quote, brand,
+        _quote_values(quote, brand.brand_name), message,
+    )
+
+
+async def compose_reminder_email(
+    session: AsyncSession, org_id: Any, invoice: Any, brand: EmailBrand, days_overdue: int
+) -> OutgoingEmail:
+    return await _compose(
+        session, org_id, REMINDER_KIND, invoice, brand,
+        _reminder_values(invoice, brand.brand_name, days_overdue),
+    )
+
+
+# --------------------------------------------------------------------------- #
+# What the editor previews (Instellingen -> E-mail)
+# --------------------------------------------------------------------------- #
+async def _sample_values(ctx: Any, locale: str, kind: str) -> dict[str, str]:
+    """Preview values from the **same fabricated document** the PDF template editor draws.
+
+    Reusing ``sample.sample_document`` is not laziness: an admin judging the wording of an
+    invoice mail and an admin judging the design of the invoice itself should be looking at one
+    document, in the org's own currency, with numbers that add up.
+    """
+    from app.modules.invoicing.sample import sample_document
+    from app.modules.invoicing.service import _org_defaults, org_today
+
+    brand = await load_brand(ctx.session, ctx.org)
+    currency, _ = await _org_defaults(ctx)
+    doc, _lines, _groups = sample_document(locale, currency, await org_today(ctx))
+    if kind == QUOTE_KIND:
+        doc.valid_until = doc.issue_date + timedelta(days=30)
+        return _quote_values(doc, brand.brand_name)
+    if kind == REMINDER_KIND:
+        # An overdue invoice: a due date a fortnight back, and what the part payment left owing.
+        doc.due_date = doc.issue_date - timedelta(days=14)
+        return _reminder_values(doc, brand.brand_name, 14)
+    return _invoice_values(doc, brand.brand_name)
+
+
+def _sample_for(kind: str) -> Any:
+    """Bind one kind into the registry's ``async (ctx, locale) -> values`` shape."""
+
+    async def provider(ctx: Any, locale: str) -> dict[str, str]:
+        return await _sample_values(ctx, locale, kind)
+
+    return provider
+
+
+#: Contributed on the module descriptor (§6); core holds no list of these.
+INVOICING_EMAIL_KINDS: list[EmailTemplateKind] = [
+    EmailTemplateKind(
+        key=INVOICE_KIND,
+        module="invoicing",
+        label_key="invoicing.email.kind.invoice",
+        hint_key="invoicing.email.kind.invoice_hint",
+        subject_key="invoicing.email.invoice_subject",
+        body_key="invoicing.email.invoice_body",
+        variables=(
+            "brand", "number", "company", "contact", "total", "date", "due_date", "reference",
+        ),
+        sample=_sample_for(INVOICE_KIND),
+        position=110,
+    ),
+    EmailTemplateKind(
+        key=QUOTE_KIND,
+        module="invoicing",
+        label_key="invoicing.email.kind.quote",
+        hint_key="invoicing.email.kind.quote_hint",
+        subject_key="invoicing.email.quote_subject",
+        body_key="invoicing.email.quote_body",
+        variables=(
+            "brand", "number", "company", "contact", "total", "date", "valid_until", "reference",
+        ),
+        sample=_sample_for(QUOTE_KIND),
+        position=120,
+    ),
+    EmailTemplateKind(
+        key=REMINDER_KIND,
+        module="invoicing",
+        label_key="invoicing.email.kind.reminder",
+        hint_key="invoicing.email.kind.reminder_hint",
+        subject_key="invoicing.email.reminder_subject",
+        body_key="invoicing.email.reminder_body",
+        variables=(
+            "brand", "number", "company", "contact", "total", "outstanding", "date", "due_date",
+            "days", "reference",
+        ),
+        sample=_sample_for(REMINDER_KIND),
+        position=130,
+    ),
+]
 
 
 async def load_transport(

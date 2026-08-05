@@ -1488,8 +1488,8 @@ class InvoiceService(_DocumentService):
             from app.modules.invoicing import emails
 
             brand = await load_brand(self.ctx.session, self.ctx.org)
-            message = emails.compose_invoice_email(
-                invoice, brand.brand_name, data.message
+            message = await emails.compose_invoice_email(
+                self.ctx.session, self.ctx.org.id, invoice, brand, data.message
             )
             message.to = to
             # The mail carries the document (owner feedback): a text summary is not an
@@ -1523,7 +1523,9 @@ class InvoiceService(_DocumentService):
         from app.modules.invoicing import emails
 
         brand = await load_brand(self.ctx.session, self.ctx.org)
-        message = emails.compose_reminder_email(invoice, brand.brand_name, max(days, 0))
+        message = await emails.compose_reminder_email(
+            self.ctx.session, self.ctx.org.id, invoice, brand, max(days, 0)
+        )
         message.to = to
         await emails.deliver(self.ctx, message, brand=brand)
         invoice = await self.repo.update(
@@ -2991,7 +2993,9 @@ class QuoteService(_DocumentService):
             from app.modules.invoicing import emails
 
             brand = await load_brand(self.ctx.session, self.ctx.org)
-            message = emails.compose_quote_email(quote, brand.brand_name, data.message)
+            message = await emails.compose_quote_email(
+                self.ctx.session, self.ctx.org.id, quote, brand, data.message
+            )
             message.to = to
             await self._attach([quote])
             content, filename = await self.document_pdf(quote, "quote")

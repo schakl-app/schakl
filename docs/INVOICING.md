@@ -376,6 +376,29 @@ expires open quotes past `valid_until`.
 Every send, reminder, payment, issue, cancel and credit lands in the activity trail (§16),
 so a disputed invoice's history reads back in one place.
 
+## The client-facing mails are the tenant's to write (`emails.py`)
+
+The invoice, quote and reminder mails are **customisable kinds** (`invoicing.invoice`,
+`invoicing.quote`, `invoicing.reminder`), contributed on the module descriptor and edited per
+locale in Instellingen → E-mail like the auth mails already were (#161 tier 2, `docs/EMAIL.md`).
+They are the mails an agency's *clients* read, and until now the one piece of outgoing text
+nobody could reword — an agency that had spent a week on its invoice design was still dunning
+in ours.
+
+- **A missing override changes nothing.** No schema, no migration, no behaviour: the built-in
+  catalog text is the fallback, so an instance that upgrades sends exactly what it sent before.
+- **Both paths honour it**, request (`/send`, `/remind`) and cron (`jobs.py`) alike. Customising
+  only the manual send would customise the exception: every dunning mail an agency actually
+  sends comes off the schedule, and the auto-send pass mails the invoices too.
+- **The document's locale decides**, for the words *and* the template lookup, so a German
+  invoice reads a German override or a German default and never a mix.
+- **The plaintext part is always the catalog summary.** A tenant's HTML may say whatever it
+  likes; the client still receives the number, the amount and the due date.
+- The variables are per kind (`{number}`, `{company}`, `{contact}`, `{total}`, `{date}`,
+  `{due_date}`, `{reference}`, plus `{valid_until}` on a quote and `{outstanding}` / `{days}`
+  on a reminder) and the editor's test send previews them against the **same fabricated
+  document** the PDF template editor draws — same currency, numbers that add up.
+
 ## Accounting (#31's seam, shipped ahead of the first live provider)
 
 - **UBL 2.1 export** (`ubl.py`, `GET /invoices/{id}/ubl`): standards-shaped XML (EN 16931

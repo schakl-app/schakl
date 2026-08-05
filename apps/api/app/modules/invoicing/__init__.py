@@ -1,8 +1,8 @@
 """invoicing module (CLAUDE.md §6, issue #207) — native invoices & quotes.
 
 Importing this package self-registers the module (router, company panel, permissions, i18n
-namespace, the daily reminders/expiry cron) and subscribes the ``subscription.due`` consumer
-that turns #30's cycle events into draft invoices.
+namespace, the customisable client mails, the daily reminders/expiry cron) and subscribes the
+``subscription.due`` consumer that turns #30's cycle events into draft invoices.
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ from __future__ import annotations
 from arq import cron
 
 from app.core.events import subscribe
+from app.modules.invoicing.emails import INVOICING_EMAIL_KINDS
 from app.modules.invoicing.events import on_domain_due, on_subscription_due
 from app.modules.invoicing.jobs import invoicing_daily
 from app.modules.invoicing.panels import invoicing_company_panel
@@ -26,6 +27,9 @@ module = ModuleDescriptor(
     sku="invoicing",
     panels=[invoicing_company_panel],
     permissions=INVOICING_PERMISSIONS,
+    # The three mails a client reads (invoice, quote, reminder), rewritable per locale in
+    # Instellingen -> E-mail like the auth mails already were (#161 tier 2, §6).
+    email_templates=INVOICING_EMAIL_KINDS,
     # Daily, after the subscriptions cycle (05:30) has drafted its invoices: payment
     # reminders + quote expiry (#207).
     cron_jobs=[cron(invoicing_daily, hour=6, minute=15)],

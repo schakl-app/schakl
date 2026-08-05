@@ -38,18 +38,18 @@ class EmailSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     signature_html: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
-#: The auth mails a tenant may customise (#161 tier 2). Both ride the reset-token mechanism.
-EMAIL_TEMPLATE_KINDS: tuple[str, ...] = ("reset", "invite")
-
-
 class OrgEmailTemplate(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
-    """A tenant's override of an auth email's subject + HTML body, per ``(kind, locale)``.
+    """A tenant's override of one outgoing mail's subject + HTML body, per ``(kind, locale)``.
 
     One row per ``(org_id, kind, locale)``; a **missing row means "use the built-in default"**
     (the catalog-rendered plaintext, #161 tier 1). ``subject``/``body_html`` are tenant-authored
     text, not secrets, so plain ``Text`` (unlike the encrypted transport config). The HTML is
-    sanitised on write *and* on send (:mod:`app.core.email.templates`); variables ``{brand}``,
-    ``{name}`` and ``{link}`` are substituted at send time.
+    sanitised on write *and* on send (:mod:`app.core.email.templates`).
+
+    ``kind`` is a key from the customisable-mail registry (:mod:`app.core.email.kinds`) — core's
+    ``reset``/``invite`` or a module's namespaced own (``invoicing.invoice``) — and it decides
+    which variables the body may interpolate. The list deliberately does not live here: a module
+    contributes its mails the way it contributes panels and permissions (§6).
     """
 
     __tablename__ = "org_email_templates"

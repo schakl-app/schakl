@@ -118,7 +118,8 @@ async def _send_auto_issued(ctx: SystemContext, brand, transport) -> None:  # no
             continue
         provider, config, sender = transport
         message = apply_branding(
-            brand, compose_invoice_email(invoice, brand.brand_name, None)
+            brand,
+            await compose_invoice_email(ctx.session, ctx.org.id, invoice, brand, None),
         )
         message.to = to
         try:
@@ -247,7 +248,8 @@ async def _remind_org(org: Org, session: AsyncSession) -> None:
             continue
         provider, config, sender = transport
         message = apply_branding(
-            brand, compose_reminder_email(invoice, brand.brand_name, days_past)
+            brand,
+            await compose_reminder_email(session, org.id, invoice, brand, days_past),
         )
         message.to = to
         ok, error = await send_email(provider, config, sender, message)
