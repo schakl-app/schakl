@@ -24,6 +24,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import SystemContext
+from app.core.htmlmd import referenced_cids, rewrite_cid_images
 from app.core.models import Org
 from app.core.portal import portal_user_ids
 from app.modules.google.client import acting_as, mark_connection_error
@@ -473,27 +474,60 @@ async def _fetch_body_with(
     body_text = matching.extract_text(payload)
     if body_text is None:
         return False
-    await interactions_system.set_body(ctx, interaction_id, body_text)
+    # Two bodies, one message: the plain text search reads, and — only when the message
+    # actually had an HTML part — the same words with their formatting kept.
+    body_markdown = matching.extract_markdown(payload)
+    await interactions_system.set_body(ctx, interaction_id, body_text, body_markdown)
     # Attachments ride the same approval-time fetch (#180): the full payload already names
     # them, so this is one extra call per attachment, never per message. A pending row never
     # reaches this code — reject must leave no stored bytes anywhere.
-    await _store_attachments(client, ctx, interaction_id, message_id, payload, owner_user_id)
+    inline = await _store_attachments(
+        client, ctx, interaction_id, message_id, payload, owner_user_id, body_markdown
+    )
+    if inline and body_markdown:
+        # The body's `cid:` markers now name stored files. Rewriting keeps the stored body
+        # self-contained; a part we could not store degrades to its alt text.
+        await interactions_system.set_body_markdown(
+            ctx, interaction_id, rewrite_cid_images(body_markdown, inline)
+        )
     return True
 
 
 async def _store_attachments(
-    client, ctx: SystemContext, interaction_id, message_id: str, payload: dict, owner_user_id
-) -> None:
+    client,
+    ctx: SystemContext,
+    interaction_id,
+    message_id: str,
+    payload: dict,
+    owner_user_id,
+    body_markdown: str | None = None,
+) -> dict[str, str]:
+    """Fetch and store the message's parts; returns ``{content id: file id}`` for the inline
+    ones — the signature logos and pasted images the body points at.
+
+    An inline part is stored like any other (and de-duplicated like any other, which is what
+    makes the same logo on every message from a sender cost one object — docs/STORAGE.md), but
+    it is marked ``content_id`` so it renders *in* the body instead of as an attachment chip on
+    every mail the sender ever sent.
+    """
     from app.core.storage import system as storage_system
 
     parts = matching.attachment_parts(payload)
     if not parts:
-        return
+        return {}
     # The bodyless sweep may re-offer a fetch; the same attachments must not store twice.
     if await storage_system.entity_has_files(ctx, "interaction", interaction_id):
-        return
+        return {}
+    # What the converted body actually references is the only honest test of "inline": a part
+    # with a Content-ID nothing points at is an ordinary attachment, whatever it was labelled.
+    inline_cids = referenced_cids(body_markdown)
+    resolved: dict[str, str] = {}
     for part in parts:
         attachment_id = (part.get("body") or {}).get("attachmentId")
+        content_id = matching.part_content_id(part)
+        inline = content_id in inline_cids if content_id else False
+        if not inline and not part.get("filename"):
+            continue
         response = await client.get(
             f"{GMAIL_API}/messages/{message_id}/attachments/{attachment_id}"
         )
@@ -503,11 +537,12 @@ async def _store_attachments(
         data = base64.urlsafe_b64decode(response.json().get("data") or "")
         stored = await storage_system.store_system_file(
             ctx,
-            filename=str(part.get("filename") or "bijlage"),
+            filename=str(part.get("filename") or content_id or "bijlage"),
             content_type=str(part.get("mimeType") or "application/octet-stream"),
             data=data,
             entity_type="interaction",
             entity_id=interaction_id,
+            content_id=content_id if inline else None,
             created_by_user_id=owner_user_id,
         )
         if stored is None:
@@ -517,6 +552,9 @@ async def _store_attachments(
                 interaction_id,
                 part.get("filename"),
             )
+        elif inline and content_id:
+            resolved[content_id] = str(stored.id)
+    return resolved
 
 
 # --------------------------------------------------------------------------- #

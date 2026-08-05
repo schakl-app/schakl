@@ -59,6 +59,7 @@ async def write_file(
     stream: BinaryIO,
     entity_type: str | None = None,
     entity_id: uuid.UUID | None = None,
+    content_id: str | None = None,
 ) -> StoredFile:
     """Store a person's upload, de-duplicated, and return its row.
 
@@ -97,6 +98,7 @@ async def write_file(
         size_bytes=measured,
         entity_type=entity_type,
         entity_id=entity_id,
+        content_id=content_id,
         created_by_user_id=ctx.user.id,
     )
 
@@ -151,6 +153,7 @@ class FileService:
         size_bytes: int,
         entity_type: str | None = None,
         entity_id: uuid.UUID | None = None,
+        content_id: str | None = None,
     ) -> StoredFile:
         self.ctx.require("files.file.write")
         if entity_type in PUBLIC_ENTITY_TYPES:
@@ -172,6 +175,7 @@ class FileService:
             stream=stream,
             entity_type=entity_type,
             entity_id=entity_id,
+            content_id=content_id,
         )
         # Modules react through the bus (§6): the owning module validates the target exists
         # and writes its own activity line — core storage knows nothing about tasks/projects.
@@ -194,14 +198,21 @@ class FileService:
         if entity_type and entity_id:
             await emit("file.removed", self.ctx, payload)
 
-    async def list_for(self, entity_type: str, entity_id: uuid.UUID) -> list[StoredFile]:
+    async def list_for(
+        self, entity_type: str, entity_id: uuid.UUID, *, include_inline: bool = False
+    ) -> list[StoredFile]:
+        """The entity's **attachments**. A file with a ``content_id`` is part of the entity's
+        body, not attached to it — an e-mail's signature logo renders inside the text, and
+        listing it here put the same chip on every message that sender ever sent."""
         rows = await self.repo.list(
             entity_type=entity_type,
             entity_id=entity_id,
             order_by=StoredFile.created_at.asc(),
             limit=200,
         )
-        return list(rows)
+        if include_inline:
+            return list(rows)
+        return [row for row in rows if row.content_id is None]
 
     async def get_or_404(self, file_id: uuid.UUID) -> StoredFile:
         # Tenant-scoped repo: a cross-tenant id reads as absent, never as forbidden.

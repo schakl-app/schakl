@@ -165,8 +165,21 @@
     if (quotedExpanded.has(id)) quotedExpanded.delete(id);
     else quotedExpanded.add(id);
   }
+  /**
+   * The body to read, and how to draw it. `body_markdown` is set only for a message whose HTML
+   * part the API converted itself, which is exactly what makes rendering it as markdown honest
+   * — a plain-text mail falls back to `body_text` and stays plain text, so a sender's
+   * `*sterretjes*` never become italics. The quoted trail splits either way: an HTML quote
+   * converts to `> `, which the splitter already folds on.
+   */
+  function bodyFor(msg: InteractionItem): { text: string; markdown: boolean } | null {
+    if (msg.body_markdown) return { text: msg.body_markdown, markdown: true };
+    if (msg.body_text) return { text: msg.body_text, markdown: false };
+    return null;
+  }
   function bodyPartsFor(msg: InteractionItem) {
-    return isMailRow(msg) && msg.body_text ? splitQuotedTrail(msg.body_text) : null;
+    const body = isMailRow(msg) ? bodyFor(msg) : null;
+    return body ? splitQuotedTrail(body.text) : null;
   }
 
   // --- unknown participant → contact quick-create (#160) ------------------------------------ //
@@ -201,6 +214,7 @@
 </script>
 
 {#snippet messageBody(di: InteractionItem)}
+  {@const body = bodyFor(di)}
   {@const bodyParts = bodyPartsFor(di)}
   <div class="space-y-3 text-sm">
     <div class="flex items-start justify-between gap-2">
@@ -304,12 +318,18 @@
       </div>
     {/if}
 
-    {#if di.body_text}
+    {#if body}
       {#if isMailRow(di)}
-        <!-- break-words so a lone long URL can't scroll the modal sideways (#184). -->
-        <p class="whitespace-pre-wrap break-words text-sm text-text">
-          {bodyParts?.head ?? di.body_text}
-        </p>
+        {#if body.markdown}
+          <!-- The API converted this message's own HTML part, so it renders as what the
+               sender sent: lists, emphasis, links, and the `cid:` images it carried. -->
+          <Markdown value={bodyParts?.head ?? body.text} images class="break-words" />
+        {:else}
+          <!-- break-words so a lone long URL can't scroll the modal sideways (#184). -->
+          <p class="whitespace-pre-wrap break-words text-sm text-text">
+            {bodyParts?.head ?? body.text}
+          </p>
+        {/if}
         {#if bodyParts?.trail}
           <button
             type="button"
@@ -328,15 +348,21 @@
             </span>
           </button>
           {#if quotedExpanded.has(di.id)}
-            <p
-              class="whitespace-pre-wrap break-words border-l-2 border-border pl-3 text-sm text-text-muted"
-            >
-              {bodyParts.trail}
-            </p>
+            {#if body.markdown}
+              <div class="border-l-2 border-border pl-3 text-text-muted">
+                <Markdown value={bodyParts.trail} images class="break-words text-text-muted" />
+              </div>
+            {:else}
+              <p
+                class="whitespace-pre-wrap break-words border-l-2 border-border pl-3 text-sm text-text-muted"
+              >
+                {bodyParts.trail}
+              </p>
+            {/if}
           {/if}
         {/if}
       {:else}
-        <Markdown value={di.body_text} />
+        <Markdown value={body.text} />
       {/if}
     {:else if di.snippet}
       <!-- The whole snippet here — this is the detail — but decoded: it arrives from Gmail

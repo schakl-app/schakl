@@ -91,6 +91,12 @@ class StoredFile(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     entity_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     entity_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    #: Set means **this file is part of its entity's body, not an attachment of it** — an
+    #: e-mail's ``cid:``-referenced signature logo or pasted screenshot. It is one column
+    #: saying two things on purpose: the MIME Content-ID is what the body's marker is rewritten
+    #: from, and its mere presence is what keeps the logo out of the attachment chips on every
+    #: message. ``GET /files`` hides these unless asked.
+    content_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),

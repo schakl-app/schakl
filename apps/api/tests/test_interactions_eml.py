@@ -389,3 +389,164 @@ async def test_upload_tenant_isolation(client_for) -> None:
         )
         assert mine.status_code == 201, mine.text
         assert uuid.UUID(mine.json()["interaction"]["id"]) != uuid.UUID(row["id"])
+
+
+# --------------------------------------------------------------------------- #
+# The formatted body: an HTML mail keeps its shape, and its inline images are
+# content of that body rather than attachments of the message.
+# --------------------------------------------------------------------------- #
+_GIF = b"GIF89a" + b"\x00" * 26
+
+
+def build_rich_eml(*, logo: bytes = _GIF, cid: str = "logo@bureau") -> bytes:
+    """A multipart/related HTML mail with a signature logo — the everyday shape."""
+    message = EmailMessage()
+    message["Subject"] = "Voorstel hosting"
+    message["From"] = "Klant Naam <klant@client.nl>"
+    message["To"] = "team@agency.nl"
+    message["Date"] = "Fri, 10 Jul 2026 14:30:00 +0200"
+    message["Message-ID"] = "<rich-1@mail.client.nl>"
+    message.set_content("Beste Stan, zie de opsomming.")
+    message.add_alternative(
+        "<html><body><p>Beste Stan,</p>"
+        "<p>Hierbij het <strong>voorstel</strong>:</p>"
+        "<ul><li>Hosting 2026</li><li>SSL-certificaat</li></ul>"
+        '<p>Zie <a href="https://client.nl/offerte">de offerte</a>.</p>'
+        f'<p><img src="cid:{cid}" alt="Bureau"></p>'
+        "</body></html>",
+        subtype="html",
+    )
+    html_part = message.get_payload()[1]
+    html_part.add_related(
+        logo, maintype="image", subtype="gif", cid=f"<{cid}>", filename="image001.gif"
+    )
+    return message.as_bytes()
+
+
+def test_parser_keeps_the_formatting_and_marks_the_inline_image() -> None:
+    parsed = parse_eml(build_rich_eml())
+    # The plain-text half is untouched: it is what search reads and the snippet is cut from.
+    assert parsed.body_text is not None and "Beste Stan" in parsed.body_text
+    assert parsed.body_markdown == (
+        "Beste Stan,\n"
+        "\n"
+        "Hierbij het **voorstel**:\n"
+        "\n"
+        "- Hosting 2026\n"
+        "- SSL-certificaat\n"
+        "\n"
+        "Zie [de offerte](https://client.nl/offerte).\n"
+        "\n"
+        "![Bureau](cid:logo@bureau)"
+    )
+    # The logo is part of the body, not an attachment of the message.
+    assert [(a.filename, a.content_id) for a in parsed.attachments] == [
+        ("image001.gif", "logo@bureau")
+    ]
+
+
+def test_a_plain_text_mail_gets_no_markdown() -> None:
+    """Received text is not our markdown: a sender's asterisks must stay asterisks."""
+    parsed = parse_eml(build_eml(body="Dit is *belangrijk* en [zie bijlage]"))
+    assert parsed.body_markdown is None
+    assert parsed.body_text == "Dit is *belangrijk* en [zie bijlage]"
+
+
+async def test_upload_renders_formatted_and_hides_the_signature_logo(
+    client_for, tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    t = await make_tenant("eml-rich")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        created = await c.post(
+            "/api/v1/interactions/upload-eml",
+            files={"file": ("bericht.eml", build_rich_eml(), "message/rfc822")},
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        payload = created.json()
+        # A logo is not a "bijlage": reporting one would describe a message nobody received.
+        assert payload["attachments_stored"] == 0
+        assert payload["attachments_skipped"] == 0
+        row = payload["interaction"]
+
+        # The stored body points at the file the logo became — a marker, never a URL.
+        assert row["body_markdown"] is not None
+        assert "**voorstel**" in row["body_markdown"]
+        assert "](file:" in row["body_markdown"] and "cid:" not in row["body_markdown"]
+
+        # …and that file is not in the attachment list the detail view draws.
+        listed = await c.get(
+            f"/api/v1/files?entity_type=interaction&entity_id={row['id']}", headers=headers
+        )
+        assert listed.json() == []
+        inline = await c.get(
+            f"/api/v1/files?entity_type=interaction&entity_id={row['id']}&include_inline=true",
+            headers=headers,
+        )
+        assert [f["content_id"] for f in inline.json()] == ["logo@bureau"]
+
+        # The marker resolves to a file that actually serves.
+        file_id = row["body_markdown"].split("](file:")[1].split(")")[0]
+        served = await c.get(f"/api/v1/files/{file_id}", headers=headers)
+        assert served.status_code == 200 and served.content == _GIF
+
+
+async def test_the_same_signature_logo_costs_one_object(client_for, tmp_path, monkeypatch) -> None:
+    """Why the two halves ship together: keeping the formatting means keeping the images, and
+    a sender's logo arrives on every message they send (docs/STORAGE.md)."""
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    from sqlalchemy import func, select
+
+    from app.core.storage.models import FileBlob
+    from app.db import async_session_maker, set_current_org
+
+    t = await make_tenant("eml-logo-dedup")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        for index in range(3):
+            body = build_rich_eml().replace(
+                b"<rich-1@mail.client.nl>", f"<rich-{index}@mail.client.nl>".encode()
+            )
+            created = await c.post(
+                "/api/v1/interactions/upload-eml",
+                files={"file": (f"m{index}.eml", body, "message/rfc822")},
+                headers=headers,
+            )
+            assert created.status_code == 201, created.text
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        blobs = await session.scalar(
+            select(func.count()).select_from(FileBlob).where(FileBlob.org_id == t.org.id)
+        )
+    assert blobs == 1, "three messages, one logo, one object"
+
+
+async def test_editing_the_body_drops_the_converted_formatting(
+    client_for, tmp_path, monkeypatch
+) -> None:
+    """An edited body is the author's, not the sender's: leaving the conversion behind would
+    render one text and store another."""
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    t = await make_tenant("eml-rich-edit")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        row = (
+            await c.post(
+                "/api/v1/interactions/upload-eml",
+                files={"file": ("bericht.eml", build_rich_eml(), "message/rfc822")},
+                headers=headers,
+            )
+        ).json()["interaction"]
+        assert row["body_markdown"] is not None
+
+        edited = await c.patch(
+            f"/api/v1/interactions/{row['id']}",
+            json={"body_text": "Samengevat: akkoord."},
+            headers=headers,
+        )
+        assert edited.status_code == 200, edited.text
+        assert edited.json()["body_markdown"] is None
+        assert edited.json()["body_text"] == "Samengevat: akkoord."

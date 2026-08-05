@@ -1675,6 +1675,10 @@ export interface paths {
         /**
          * List Files
          * @description The files attached to one entity (a task's documents, a project's documents).
+         *
+         *     ``include_inline`` also returns the files that are part of the entity's *body* — an
+         *     e-mail's ``cid:`` images. Off by default: they render inside the text, and listing them
+         *     beside the attachments put the sender's signature logo on every message.
          */
         get: operations["list_files_api_v1_files_get"];
         put?: never;
@@ -12960,6 +12964,8 @@ export interface components {
         };
         /** InteractionRead */
         InteractionRead: {
+            /** Body Markdown */
+            body_markdown?: string | null;
             /** Body Text */
             body_text?: string | null;
             /**
@@ -17859,6 +17865,8 @@ export interface components {
         StoredFileRead: {
             /** Backend */
             backend: string;
+            /** Content Id */
+            content_id?: string | null;
             /** Content Type */
             content_type: string;
             /**
@@ -24656,6 +24664,7 @@ export interface operations {
             query: {
                 entity_type: string;
                 entity_id: string;
+                include_inline?: boolean;
             };
             header?: never;
             path?: never;

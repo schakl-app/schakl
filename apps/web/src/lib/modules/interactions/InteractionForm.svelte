@@ -26,6 +26,7 @@
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import Markdown from "$lib/core/ui/Markdown.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
@@ -720,14 +721,23 @@
   {#if emailRow}
     <!-- A received message is not ours to re-type (#262): shown for context while the links
          are corrected, and deliberately not posted — the API leaves an unsent field alone. -->
-    {#if interaction?.body_text}
+    {#if interaction?.body_markdown || interaction?.body_text}
       <div class="text-sm">
         <span class="mb-1 block font-medium text-text">{t("interactions.eml.message")}</span>
-        <p
-          class="max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-muted"
-        >
-          {interaction.body_text}
-        </p>
+        {#if interaction.body_markdown}
+          <!-- Converted from the message's own HTML part, so this reads as it was sent. -->
+          <div
+            class="max-h-40 overflow-y-auto rounded-lg border border-border bg-surface px-3 py-2"
+          >
+            <Markdown value={interaction.body_markdown} images class="break-words" />
+          </div>
+        {:else}
+          <p
+            class="max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-muted"
+          >
+            {interaction.body_text}
+          </p>
+        {/if}
       </div>
     {/if}
   {:else}

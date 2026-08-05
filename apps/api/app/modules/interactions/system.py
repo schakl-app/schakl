@@ -263,8 +263,17 @@ async def email_ref(
     return row[0], row[1]
 
 
-async def set_body(ctx: EmitContext, interaction_id: uuid.UUID, body_text: str) -> None:
-    """The async body fetch landing (post-approval); a since-rejected row is a silent no-op."""
+async def set_body(
+    ctx: EmitContext,
+    interaction_id: uuid.UUID,
+    body_text: str,
+    body_markdown: str | None = None,
+) -> None:
+    """The async body fetch landing (post-approval); a since-rejected row is a silent no-op.
+
+    ``body_markdown`` is set only when the message had an HTML part the feed converted; a
+    plain-text mail leaves it ``None`` and renders as the text it is.
+    """
     row = (
         await ctx.session.execute(
             select(Interaction).where(
@@ -274,6 +283,27 @@ async def set_body(ctx: EmitContext, interaction_id: uuid.UUID, body_text: str) 
     ).scalar_one_or_none()
     if row is not None:
         row.body_text = body_text
+        row.body_markdown = body_markdown
+        await ctx.session.flush()
+
+
+async def set_body_markdown(
+    ctx: EmitContext, interaction_id: uuid.UUID, body_markdown: str
+) -> None:
+    """Re-point the formatted body's image markers once the parts they name are stored files.
+
+    Separate from :func:`set_body` because the file ids do not exist until after it ran — the
+    attachments hang off the interaction, so the row has to be there first.
+    """
+    row = (
+        await ctx.session.execute(
+            select(Interaction).where(
+                Interaction.org_id == ctx.org.id, Interaction.id == interaction_id
+            )
+        )
+    ).scalar_one_or_none()
+    if row is not None:
+        row.body_markdown = body_markdown
         await ctx.session.flush()
 
 

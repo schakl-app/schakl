@@ -44,6 +44,7 @@ async def store_system_file(
     data: bytes,
     entity_type: str,
     entity_id: uuid.UUID,
+    content_id: str | None = None,
     created_by_user_id: uuid.UUID | None = None,
 ) -> StoredFile | None:
     """Store one file for a background actor; ``None`` when validation skips it."""
@@ -76,6 +77,7 @@ async def store_system_file(
         size_bytes=len(data),
         entity_type=entity_type,
         entity_id=entity_id,
+        content_id=content_id,
         created_by_user_id=created_by_user_id,
     )
     ctx.session.add(row)

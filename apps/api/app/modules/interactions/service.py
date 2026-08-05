@@ -25,6 +25,7 @@ from app.core.activity.service import snapshot
 from app.core.auth.models import User
 from app.core.directory import ids_by_email, visible_ids
 from app.core.events import emit
+from app.core.htmlmd import rewrite_cid_images
 from app.core.models import Membership
 from app.core.richtext import (
     extract_contact_mention_ids,
@@ -633,6 +634,11 @@ class InteractionService:
             snippet=parsed.snippet,
             # Stored raw, like a gmail body: it is a received message, never markdown of ours.
             body_text=parsed.body_text,
+            # …and the formatted half, which *is* markdown of ours — we converted it from the
+            # message's own HTML part, which is exactly what makes rendering it as markdown
+            # honest. Its `cid:` image markers are rewritten below, once the parts they point
+            # at are stored files with ids.
+            body_markdown=parsed.body_markdown,
             direction=await self._upload_direction(parsed.from_email),
             owner_user_id=user.id,
             owner_name=user.full_name or user.email,
@@ -646,7 +652,14 @@ class InteractionService:
         await self._set_contacts(row, roster)
         await ActivityService(self.ctx).record_created(ENTITY_TYPE, row.id, {"source": "eml"})
         await self._record_on_hosts(row, "interaction.logged", contact_ids=roster)
-        stored, skipped = await self._store_eml_attachments(row.id, parsed.attachments)
+        stored, skipped, inline = await self._store_eml_attachments(row.id, parsed.attachments)
+        if inline:
+            # The body pointed at parts that are now files. Rewriting here rather than at
+            # render time keeps the stored body self-contained, and an unstored cid degrades
+            # to its alt text instead of leaving a marker nothing resolves.
+            row = await self.repo.update(
+                row, body_markdown=rewrite_cid_images(row.body_markdown, inline)
+            )
         return await self._present_one(row), stored, skipped
 
     async def _upload_direction(self, from_email: str | None) -> str:
@@ -666,20 +679,27 @@ class InteractionService:
 
     async def _store_eml_attachments(
         self, interaction_id: uuid.UUID, attachments: list[EmlAttachment]
-    ) -> tuple[int, int]:
-        """Store the message's attachments through the ordinary, permission-checked file
-        service (#123) — this is a person's own upload, not the gmail worker's system write.
+    ) -> tuple[int, int, dict[str, str]]:
+        """Store the message's parts through the ordinary, permission-checked file service
+        (#123) — this is a person's own upload, not the gmail worker's system write.
+
+        Returns ``(stored, skipped, {content id: file id})``. The counts are about
+        **attachments**, which an inline part is not: a signature logo is content of the body,
+        so reporting "3 bijlagen" for one PDF and two logos would describe a message nobody
+        received. An inline part that the guardrails refuse is not a skipped attachment either
+        — the body simply falls back to its alt text.
 
         One rejected attachment must never lose the message (the gmail path's rule, #180), so
         anything the storage guardrails would refuse is skipped and **counted**: the response
         says how many, rather than quietly dropping a client's PDF.
         """
         if not attachments:
-            return 0, 0
+            return 0, 0, {}
         if not self.ctx.can("files.file.write"):
-            return 0, len(attachments)
+            return 0, sum(1 for a in attachments if not a.content_id), {}
         files = FileService(self.ctx)
         stored = skipped = 0
+        inline: dict[str, str] = {}
         for attachment in attachments:
             if (
                 attachment.content_type not in settings.upload_allowed_types
@@ -690,18 +710,22 @@ class InteractionService:
                     interaction_id,
                     attachment.filename,
                 )
-                skipped += 1
+                skipped += 0 if attachment.content_id else 1
                 continue
-            await files.create(
+            row = await files.create(
                 filename=attachment.filename,
                 content_type=attachment.content_type,
                 stream=io.BytesIO(attachment.data),
                 size_bytes=len(attachment.data),
                 entity_type=ENTITY_TYPE,
                 entity_id=interaction_id,
+                content_id=attachment.content_id,
             )
-            stored += 1
-        return stored, skipped
+            if attachment.content_id:
+                inline[attachment.content_id] = str(row.id)
+            else:
+                stored += 1
+        return stored, skipped, inline
 
     async def update(self, interaction_id: uuid.UUID, data: InteractionUpdate) -> dict[str, Any]:
         row = await self._writable_or_404(interaction_id, "interactions.interaction.write")
@@ -745,6 +769,9 @@ class InteractionService:
             already = set(row.mentioned_user_ids or [])
             body = sanitize_markdown(values["body_text"])
             values["body_text"] = body
+            # An edited body is the author's, not the sender's: the converted formatting
+            # described the message as received and would now contradict the text on screen.
+            values["body_markdown"] = None
             mentioned = await self._valid_mentions(extract_mention_ids(body))
             values["mentioned_user_ids"] = [str(uid) for uid in mentioned]
             values["mentioned_contact_ids"] = [
@@ -1640,6 +1667,10 @@ class InteractionService:
             # list already selects the whole row, and ``with_body`` only blanks the payload.
             "snippet": row.snippet or markdown_excerpt(row.body_text, SNIPPET_CHARS),
             "body_text": row.body_text if with_body else None,
+            # Rides ``with_body`` for the same reason: it is the *larger* of the two, and a
+            # page of formatted e-mail bodies to draw a snippet column is exactly the payload
+            # #290 took off the list.
+            "body_markdown": row.body_markdown if with_body else None,
             "direction": row.direction,
             "company_id": row.company_id,
             "project_id": row.project_id,

@@ -1020,3 +1020,93 @@ async def test_approval_stores_attachments_once(client_for, monkeypatch, tmp_pat
                 headers=other_headers,
             )
         ).json() == []
+
+
+async def test_approval_keeps_the_html_formatting_and_inlines_the_logo(
+    client_for, monkeypatch, tmp_path
+) -> None:
+    """A synced e-mail and an uploaded ``.eml`` must read the same, so the gmail feed converts
+    its HTML part too — and the signature logo the body points at becomes content of that body
+    rather than an attachment chip on every message the sender ever sent."""
+    from app.config import settings
+    from app.core.storage.models import StoredFile
+
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+
+    async def _quiet_enqueue(function: str, *args, **kwargs) -> None:  # noqa: ARG001
+        return None
+
+    monkeypatch.setattr("app.core.jobs.enqueue", _quiet_enqueue)
+    t = await make_tenant("gmail-rich")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    html = (
+        "<html><body><p>Beste Stan,</p><ul><li>Hosting</li><li>SSL</li></ul>"
+        '<p><img src="cid:logo@bureau" alt="Bureau"></p></body></html>'
+    )
+    async with client_for(t.host) as c:
+        await c.post(
+            "/api/v1/contacts",
+            json={"first_name": "Klant", "email": "klant@client.nl"},
+            headers=headers,
+        )
+        message = _message("msg-r", sender="klant@client.nl")
+        message["payload"] = {
+            "headers": message["payload"]["headers"],
+            "mimeType": "multipart/related",
+            "parts": [
+                {
+                    "mimeType": "text/plain",
+                    "body": {"data": base64.urlsafe_b64encode(b"Beste Stan, Hosting SSL").decode()},
+                },
+                {
+                    "mimeType": "text/html",
+                    "body": {"data": base64.urlsafe_b64encode(html.encode()).decode()},
+                },
+                {
+                    # No filename at all — the way a related image often arrives. Before, that
+                    # was the reason it went unstored; now the body's own reference decides.
+                    "mimeType": "image/gif",
+                    "headers": [{"name": "Content-ID", "value": "<logo@bureau>"}],
+                    "body": {"attachmentId": "att-logo", "size": 6},
+                },
+            ],
+        }
+        stub = _StubGmail(history=["msg-r"], messages={"msg-r": message}, history_id="9900")
+        stub.messages["att-logo"] = {
+            "size": 6,
+            "data": base64.urlsafe_b64encode(b"GIF89a").decode(),
+        }
+        assert await _poll(t, connection_id, stub, monkeypatch) == 1
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            row_id = (await session.execute(select(Interaction))).scalar_one().id
+        assert (
+            await c.post(f"/api/v1/interactions/{row_id}/approve", headers=headers)
+        ).status_code == 200
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            assert await fetch_body(session, t.org, row_id) is True
+            await session.commit()
+
+        detail = (await c.get(f"/api/v1/interactions/{row_id}", headers=headers)).json()
+        # The plain part is still what search reads; the formatting rides beside it.
+        assert detail["body_text"] == "Beste Stan, Hosting SSL"
+        assert detail["body_markdown"] is not None
+        assert "- Hosting" in detail["body_markdown"]
+        assert "](file:" in detail["body_markdown"]
+
+        # The logo is inline: it draws in the body and is absent from the attachment list.
+        listed = (
+            await c.get(
+                "/api/v1/files",
+                params={"entity_type": "interaction", "entity_id": str(row_id)},
+                headers=headers,
+            )
+        ).json()
+        assert listed == []
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        stored = (await session.execute(select(StoredFile))).scalars().all()
+        assert [(f.content_id, f.size_bytes) for f in stored] == [("logo@bureau", 6)]

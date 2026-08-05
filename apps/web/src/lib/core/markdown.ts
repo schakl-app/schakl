@@ -65,6 +65,10 @@ function escapeHtml(s: string): string {
 }
 
 let configured = false;
+// `marked`'s configuration is process-wide (see `ensureConfigured`), so the per-call image
+// choice reaches the renderer through here. Rendering is synchronous, so there is no window
+// in which a second call could see the wrong value.
+let allowImages = false;
 
 function ensureConfigured(): void {
   if (configured) return;
@@ -127,6 +131,26 @@ function ensureConfigured(): void {
         },
       },
       {
+        name: "fileimage",
+        level: "inline",
+        start(src: string) {
+          const i = src.indexOf("![");
+          return i < 0 ? undefined : i;
+        },
+        tokenizer(src: string) {
+          const m = _FILE_IMAGE.exec(src);
+          if (m) return { type: "fileimage", raw: m[0], alt: m[1], id: m[2] };
+        },
+        renderer(token: Tokens.Generic) {
+          const alt = escapeHtml(String(token.alt ?? ""));
+          // Off by default, and the fallback is the alt text rather than nothing: a body that
+          // says "Bureau" reads better than a body with a hole in it.
+          if (!allowImages) return alt;
+          const id = String(token.id ?? "");
+          return `<img src="/api/v1/files/${id}" alt="${alt}" loading="lazy" />`;
+        },
+      },
+      {
         name: "crmlink",
         level: "inline",
         start(src: string) {
@@ -154,18 +178,33 @@ function ensureConfigured(): void {
   configured = true;
 }
 
+/** `![alt](file:<uuid>)` — an image the API stored for us (an e-mail's `cid:` part). */
+const _FILE_IMAGE = new RegExp(`^!\\[([^\\]]*)\\]\\(file:(${_UUID})\\)`);
+
+export interface RenderOptions {
+  /**
+   * Draw `file:<uuid>` images. Off everywhere by default and on **only** for a received
+   * e-mail body: a note has no business fetching pictures, and the marker is deliberately the
+   * one image form that cannot name a remote host — the bytes are ours, already downloaded,
+   * already de-duplicated. A remote `<img>` in a mail is a tracking pixel, and the API drops
+   * those on the way in; this is the second half of the same rule.
+   */
+  images?: boolean;
+}
+
 /** Render trusted-to-be-source markdown to sanitized HTML. Browser-only (needs a DOM). */
-export function renderMarkdown(source: string): string {
+export function renderMarkdown(source: string, options: RenderOptions = {}): string {
   ensureConfigured();
+  allowImages = options.images === true;
   // `gfm` for tables-of-nothing/strikethrough/autolinks; `breaks` so a single newline is a line
   // break (users write notes, not prose — they expect Enter to break the line).
   const html = marked.parse(source, { async: false, gfm: true, breaks: true }) as string;
   return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS,
-    ALLOWED_ATTR,
+    ALLOWED_TAGS: options.images ? [...ALLOWED_TAGS, "img"] : ALLOWED_TAGS,
+    ALLOWED_ATTR: options.images ? [...ALLOWED_ATTR, "src", "alt", "loading"] : ALLOWED_ATTR,
     // Belt-and-suspenders on link protocols; DOMPurify blocks `javascript:` by default anyway.
     // A single leading `/` (never `//`, which is protocol-relative) admits the app's own routes —
-    // the resolved crm:// references; a scheme can't hide in a path-relative URL.
+    // the resolved crm:// references and file: images; a scheme can't hide in a path-relative URL.
     ALLOWED_URI_REGEXP: /^(?:https?|mailto|tel):|^\/(?!\/)/i,
   });
 }

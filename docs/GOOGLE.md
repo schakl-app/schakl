@@ -132,6 +132,22 @@ agency tool — so, direct.
 - Store **metadata + a deep link** (`message-id`, `thread-id`, subject, snippet, participants,
   timestamp, `https://mail.google.com/mail/u/0/#all/<msgid>`) rather than full bodies by
   default. Pull the body on demand — lighter, faster, far less invasive.
+- **The body arrives twice, and the difference is the point.** `body_text` is the `text/plain`
+  part: what search reads and what the snippet is cut from. `body_markdown` is the `text/html`
+  part converted by `app/core/htmlmd.py`, and it is written **only** when the message actually
+  had one — because a received body is not our markdown, and rendering a plain-text mail as
+  markdown would turn a sender's `*sterretjes*` into italics. Every surface renders
+  `body_markdown` when it is set and `body_text` when it is not. The same conversion runs on
+  an uploaded `.eml` (`interactions/eml.py`), so a synced message and an uploaded one read
+  identically — the #262 rule, extended to formatting.
+- **An inline image is content of that body, not an attachment of the message.** A signature
+  logo is a part with a `Content-ID` the HTML points at; it is stored (`files.content_id`) and
+  the body's `cid:` marker is rewritten to `file:<uuid>`, which the web resolves at render
+  time. Two consequences: it renders *inside* the message, and it no longer appears as a chip
+  on every mail that sender ever sent. A **remote** `<img src="https://…">` is dropped to its
+  alt text at conversion — a tracking pixel is an image, and loading one tells the sender the
+  agency opened the mail. This is also why the logos are affordable at all: identical bytes are
+  stored once per org (`docs/STORAGE.md`).
 - **Ingestion:** Gmail's real-time `watch` requires **Google Pub/Sub** (unlike Calendar) —
   extra infra. Start with **periodic ARQ polling using `historyId`** (incremental, cheap); add
   Pub/Sub push later only if latency demands it.

@@ -188,19 +188,44 @@ def _walk_parts(part: dict[str, Any], mime: str) -> str | None:
 
 
 def attachment_parts(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """The MIME parts that are real attachments (#180): a filename plus an ``attachmentId``
-    to fetch the bytes by. Inline text/html parts carry no filename and stay out."""
+    """The MIME parts worth fetching (#180): a filename **or** a body reference, plus an
+    ``attachmentId`` to fetch the bytes by. Inline text/html parts have neither and stay out.
+
+    A part carrying a ``Content-ID`` is a candidate either way — whether it is *content of the
+    body* or an ordinary attachment is decided by :func:`part_content_id` against what the
+    converted body actually references, not by whether the sending client gave it a filename.
+    """
     found: list[dict[str, Any]] = []
 
     def walk(part: dict[str, Any]) -> None:
         body = part.get("body") or {}
-        if part.get("filename") and body.get("attachmentId"):
+        if body.get("attachmentId") and (part.get("filename") or part_content_id(part)):
             found.append(part)
         for sub in part.get("parts") or []:
             walk(sub)
 
     walk(payload)
     return found
+
+
+def part_content_id(part: dict[str, Any]) -> str | None:
+    """A part's ``Content-ID`` as the body spells it: ``<x@y>`` in the header, ``cid:x@y``."""
+    for header in part.get("headers") or []:
+        if (header.get("name") or "").lower() == "content-id":
+            return (header.get("value") or "").strip().strip("<>") or None
+    return None
+
+
+def extract_markdown(payload: dict[str, Any]) -> str | None:
+    """The message's ``text/html`` part converted to markdown, or ``None`` when it has none.
+
+    Deliberately the HTML part even when a ``text/plain`` alternative exists: both say the
+    same words, and only one of them still knows it had a list in it. The plain part remains
+    what :func:`extract_text` returns and what search reads.
+    """
+    from app.core.htmlmd import html_to_markdown
+
+    return html_to_markdown(_walk_parts(payload, "text/html"))
 
 
 def extract_text(payload: dict[str, Any]) -> str | None:

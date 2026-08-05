@@ -83,6 +83,11 @@ class InteractionRead(BaseModel):
     snippet: str | None = None
     #: For gmail rows this stays ``None`` until the mailbox owner approves.
     body_text: str | None = None
+    #: The same body with its formatting kept, set **only** for an e-mail whose HTML part we
+    #: converted ourselves. A client renders this when present and ``body_text`` when not:
+    #: a plain-text message is not markdown, and drawing it as such would turn a sender's
+    #: ``*sterretjes*`` into italics. Rides ``with_body`` like ``body_text`` does.
+    body_markdown: str | None = None
     direction: InteractionDirection
     company_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None

@@ -576,6 +576,16 @@
   Any consumer that must show the words *without* the markup — a notification excerpt, an email, a
   PDF, a `DataTable` cell — flattens to plain text first (the API's `markdown_to_plaintext`); it
   never truncates raw markdown by character count, which severs a link mid-`()`.
+  **A received e-mail renders through the same component, and only because the API converted it**
+  (`interactions.body_markdown`, `docs/GOOGLE.md`). The condition is the whole rule: text a
+  *sender* wrote is not markdown, so a plain-text mail keeps its plain-text branch — rendering it
+  as markdown would turn their `*sterretjes*` into italics and swallow `[iets]`. Two things ride
+  that distinction. `Markdown` grows an `images` prop, on **only** here, which draws
+  `![alt](file:<uuid>)` — an e-mail's own `cid:` parts, already downloaded, served from our
+  storage — and nothing else: a remote `<img>` in a mail is a tracking pixel, the API drops it at
+  conversion, and no other surface may fetch a picture at all. And the marker is a **stored
+  marker, not a URL**, like `mention:` and `crm://`: the renderer resolves it, so no API path is
+  frozen into a body and a consumer that draws no images ignores it.
 
 ## Navigation
 

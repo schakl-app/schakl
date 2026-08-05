@@ -22,5 +22,8 @@ class StoredFileRead(BaseModel):
     size_bytes: int
     entity_type: str | None
     entity_id: uuid.UUID | None
+    # Set means the file is part of its entity's *body* rather than attached to it — an
+    # e-mail's `cid:` image. Listed only when explicitly asked for.
+    content_id: str | None = None
     created_by_user_id: uuid.UUID | None
     created_at: datetime
