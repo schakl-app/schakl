@@ -21,6 +21,7 @@
   import { page } from "$app/state";
   import { ChevronUp, Ellipsis, ExternalLink, Paperclip, Plus } from "@lucide/svelte";
 
+  import { untrack } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
 
   import ActivityFeed from "$lib/core/activity/ActivityFeed.svelte";
@@ -145,17 +146,31 @@
 
   // Opening a row (#180/#152/#272): seed the conversation with the row itself, load the newest
   // message's extras, and — only when it actually folds one — fetch the rest of the thread.
+  //
+  // This effect depends on exactly *which row is on screen* — `open` and `item`, read above the
+  // `untrack` — and deliberately not on anything the loads below write back. It is a seed, not a
+  // sync: re-running it discards the thread, so it must fire when the row changes and never when
+  // that row's contents arrive. Left to Svelte's own bookkeeping it did the opposite.
+  // `loadAttachments` reads `attachmentsFor` to skip a fetch it already has, and an async
+  // function's prefix runs inside the caller's reaction, so that guard registered as a dependency
+  // of this effect — which the same function then wrote to. Every arriving attachment list
+  // therefore re-seeded the modal. Expanding an older message of a thread fetches *its*
+  // attachments, so the first click on one collapsed the conversation back to the anchor and
+  // re-fetched `/thread` instead of opening the message; only the second click worked, because a
+  // cache hit wrote nothing. It also cost every open of a folded conversation a second `/thread`.
   $effect(() => {
     if (!open || !item) return;
     const anchor = item;
-    trailFor = null;
-    quotedExpanded.clear();
-    messages = [anchor];
-    expanded.clear();
-    expanded.add(anchor.id);
-    if (isMailRow(anchor) && anchor.status === "logged") void loadAttachments(anchor.id);
-    if ((anchor.conversation_count ?? 1) > 1) void loadThread(anchor);
-    else if (anchor.body_text == null) void loadBody(anchor);
+    untrack(() => {
+      trailFor = null;
+      quotedExpanded.clear();
+      messages = [anchor];
+      expanded.clear();
+      expanded.add(anchor.id);
+      if (isMailRow(anchor) && anchor.status === "logged") void loadAttachments(anchor.id);
+      if ((anchor.conversation_count ?? 1) > 1) void loadThread(anchor);
+      else if (anchor.body_text == null) void loadBody(anchor);
+    });
   });
 
   // A long email conversation shows only the current message; the quoted history folds behind
