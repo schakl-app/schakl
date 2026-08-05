@@ -64,6 +64,10 @@ _DOMAIN_TABLES = (
     "invoice_payments, quote_lines, "
     "invoice_lines, quotes, invoices, invoicing_settings, invoicing_templates, "
     "invoicing_products, invoicing_tax_rates, "
+    # `reports` carries no FK to `companies` on purpose (a report outlives the client it
+    # describes, §16), so nothing cascades it — without naming it here its rows would survive
+    # into the next test. `report_profiles` precedes the templates and tones it points at.
+    "reports, report_profiles, report_templates, report_tones, reporting_settings, "
     "marketing_metrics_daily, marketing_links, marketing_company_settings, marketing_settings, "
     "interactions, interaction_kinds, "
     "calendar_event_links, google_calendar_events, google_calendar_channels, "
