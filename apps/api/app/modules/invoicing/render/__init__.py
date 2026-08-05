@@ -66,6 +66,8 @@ def render_document_html(
     config: dict[str, Any],
     brand: DocumentBrand,
     tax_groups: list[Any] | None = None,
+    pay_url: str | None = None,
+    payable_online: bool = False,
 ) -> str:
     context = build_context(
         kind=kind,
@@ -75,6 +77,8 @@ def render_document_html(
         config=config,
         brand=brand,
         tax_groups=tax_groups,
+        pay_url=pay_url,
+        payable_online=payable_online,
     )
     return render_html(context, config or {})
 
@@ -88,6 +92,8 @@ def render_document_pdf(
     config: dict[str, Any],
     brand: DocumentBrand,
     tax_groups: list[Any] | None = None,
+    pay_url: str | None = None,
+    payable_online: bool = False,
 ) -> bytes:
     """Blocking and CPU-bound — callers run it in a thread (``asyncio.to_thread``)."""
     html = render_document_html(
@@ -98,5 +104,7 @@ def render_document_pdf(
         config=config,
         brand=brand,
         tax_groups=tax_groups,
+        pay_url=pay_url,
+        payable_online=payable_online,
     )
     return html_to_pdf(html, locale=getattr(doc, "locale", None) or "nl")

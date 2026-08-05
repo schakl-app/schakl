@@ -65,6 +65,12 @@
   /* The deadline is an aside on the amount, not a second value. */
   .payment-card .note { font-weight: 400; font-style: italic; padding-left: 3mm; }
 
+  /* The portal QR (#268) — see classic.css for why the size lives here. */
+  .payment-qr { margin: 6mm 0; }
+  .payment-qr-code { width: 24mm; height: 24mm; }
+  .payment-qr-code svg { width: 100%; height: 100%; display: block; }
+  .payment-qr p { margin-top: 1.5mm; max-width: 42mm; }
+
   .meta { width: 100%; }
   .meta td { padding: 0.5mm 0; font-size: 9.5pt; }
   .meta .meta-label { color: var(--ink); padding-right: 6mm; white-space: nowrap; }

@@ -43,6 +43,7 @@ other identifiers; the dot appears solely when the official product name is disp
 | i18n (web)    | Paraglide JS (inlang) — flat JSON message catalogs, type-safe, tree-shaken |
 | API           | FastAPI · Pydantic v2 · SQLAlchemy 2.0 · Alembic → auto OpenAPI |
 | Documents     | Jinja → HTML → **WeasyPrint** (`invoicing/render/`): the page the browser previews *is* the page the PDF prints, and a tenant may bring their own design (sandboxed Jinja, no network) — `docs/INVOICING.md` |
+| Payments      | Provider-agnostic seam in `app/core/payments/` (epic #269): a `PaymentProvider` protocol, a per-provider account resolver, and the `{org}.{account}.{secret}` callback token a provider's unauthenticated POST names its tenant by (the Google channel-token pattern). `mollie` is the first implementation and Stripe/Adyen are a package, not a refactor. **A webhook body is a hint, never a fact**: only the id it names is read, and status, amount and mode come from an authenticated re-fetch with the tenant's own credential. A confirmed payment writes an ordinary `InvoicePayment` row, so invoicing stays the single answer to "what has been paid" — `docs/PAYMENTS.md`, `docs/MOLLIE.md` |
 | Typed client  | `openapi-typescript` client generated from the API's OpenAPI spec |
 | Database      | PostgreSQL (with Row-Level Security) |
 | Jobs & cache  | Redis + ARQ |
@@ -373,6 +374,31 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   are inline SVG because the engine's fetcher answers `data:` and nothing else. `marketing`
   borrows the latest published report's paragraph per section through `app/core/narratives.py`,
   so a dashboard stops being a table on the other twenty-nine days of the month.
+- **Collecting money is three rules that outlive the provider** (epic #269, `docs/PAYMENTS.md` +
+  `docs/MOLLIE.md`). #267 asked for Mollie and argued *against* an abstraction, since no second
+  provider was on the roadmap; the owner reversed that, because the issue was right about
+  *methods* and wrong about *providers* — Stripe and Adyen are ordinary asks from an agency with
+  non-EU clients, and the seam costs one file today against a rewrite of the settle path at the
+  exact moment a live tenant depends on the first one. None of the three rules that came out of
+  it is about Mollie. **A webhook body is a hint, never a fact: the authenticated re-fetch is the
+  authentication.** Mollie posts one unsigned form field and documents that this is safe *because*
+  you re-fetch; a provider that posts a whole signed event is no different, because a signature
+  proves who sent a message and not that the message is still true. So `verify_webhook` is an
+  extra gate and never *the* gate, and `handle_webhook` runs five in one order — the token names
+  the tenant, RLS is bound before anything is read, the secret is compared in constant time (a
+  mismatch is a bare 404, never a 401 that would confirm the account), the provider gets its
+  optional signature check, and only then is the body read for ids and nothing else. **An
+  idempotency guarantee that lives in application code loses the race the database would have
+  won**: a provider retries until it gets a 200 — ten times over 26 hours — so two deliveries and
+  an hourly reconcile cron are in flight against each other, and "have we settled this yet?"
+  followed by an insert leaves a window every retry enters. `SELECT … FOR UPDATE` on the intent
+  makes the common case cheap; the partial unique index on `invoice_payments (org_id, intent_id)`
+  makes the uncommon case *impossible* rather than unlikely, including across two API replicas
+  that share no memory. And **an expired licence makes a module read-only; it does not make the
+  agency's takings disappear** — the callback is the one route carrying `license_exempt`, because
+  a 402 there would drop money that has already left someone's bank account and no retry would
+  ever fix it (the provider's retries would 402 too). Gate what the agency *does*; never gate the
+  recording of what has already happened to them.
 
 ## 11. Working agreement (for Claude Code)
 

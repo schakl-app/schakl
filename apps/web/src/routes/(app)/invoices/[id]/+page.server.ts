@@ -87,6 +87,22 @@ export const load: PageServerLoad = async (event) => {
     canSend: can(event.locals.user, "invoicing.invoice.send"),
     canDelete: can(event.locals.user, "invoicing.invoice.delete"),
     canPay: can(event.locals.user, "invoicing.payment.write"),
+    /**
+     * Online payment (#267). Two questions, and they are genuinely different ones.
+     *
+     * *May you start a collection?* is the route's floor, because the `client` role holds
+     * `invoicing.payment.link:own` — for a client in the portal that button is the entire
+     * point of the screen, so gating it on `!isPortal` would hide the one control they came
+     * for (docs/UX.md, the client-portal entry). *May you re-ask the provider?* is the same
+     * key at `:any`: a repair action that spends an outbound call on every press, and a
+     * client's status arrives by callback and, failing that, by the hourly reconcile.
+     *
+     * Neither costs a round-trip. The attempts themselves ride `InvoiceRead.intents` on the
+     * detail read we already make, and whether one *can* be started rides `online_payment`
+     * beside it — the portal must not be able to read which accounts the agency connected.
+     */
+    canStartPayment: can(event.locals.user, "invoicing.payment.link"),
+    canSyncPayment: can(event.locals.user, "invoicing.payment.link", "any"),
     /** See the list route: the agency's view of a document, or only your own copy (#266). */
     canReadRegister: can(event.locals.user, "invoicing.invoice.read", "any"),
     locale: event.locals.locale,
@@ -193,6 +209,43 @@ export const actions: Actions = {
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { paymentSaved: true };
+  },
+  /**
+   * Open a checkout for this invoice (#267).
+   *
+   * The body is empty **on purpose**: the API charges the invoice's outstanding balance,
+   * recomputed at creation time, and a client-supplied amount is the one thing a payment
+   * endpoint must never accept. There is no account picker either, and there does not need to
+   * be one: the API resolves a single credential, and prefers the live one over a test one
+   * when an agency is running both (`docs/PAYMENTS.md` §2 — a test key was never a candidate
+   * for a client's money). Two *live* credentials is the one case it refuses to guess at
+   * (`errors.invoicing.payment_account_ambiguous`), and the agency resolves that by switching
+   * one off in Instellingen → Mollie rather than by answering a prompt on every invoice.
+   *
+   * Failures report as `paymentError` rather than the page's generic `error`, so the refusal
+   * lands in the card that produced it instead of at the top of a long document page.
+   */
+  startPayment: async (event) => {
+    const { error } = await apiFor(event).POST(
+      "/api/v1/invoicing/invoices/{invoice_id}/payment-intents",
+      { ...pathFor(event), body: {} },
+    );
+    if (error) return fail(400, { paymentError: apiErrorKey(error).key });
+    return { paymentStarted: true };
+  },
+  /** Re-ask the provider about one attempt. The repair path for a callback that never arrived
+   *  — a firewall, a Zero Trust rule in front of the webhook path, an outage — so that a
+   *  payment already made can be settled without waiting for the next reconcile pass. */
+  syncPayment: async (event) => {
+    const form = await event.request.formData();
+    const intent_id = String(form.get("intent_id") ?? "");
+    if (!intent_id) return fail(400, { paymentError: "errors.required" });
+    const { error } = await apiFor(event).POST(
+      "/api/v1/invoicing/invoices/{invoice_id}/payment-intents/{intent_id}/sync",
+      { params: { path: { invoice_id: event.params.id, intent_id } } },
+    );
+    if (error) return fail(400, { paymentError: apiErrorKey(error).key });
+    return { paymentSynced: true };
   },
   deletePayment: async (event) => {
     const form = await event.request.formData();

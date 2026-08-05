@@ -37,6 +37,7 @@ from app.modules.invoicing.render.colors import (
     rgb_hex,
     rgba,
 )
+from app.modules.invoicing.render.qr import qr_svg
 
 CURRENCY_SYMBOLS = {"EUR": "€", "USD": "$", "GBP": "£"}
 #: The order sections print in: what was worked, then what recurs, then what renews, then
@@ -276,8 +277,17 @@ def build_context(
     config: dict[str, Any],
     brand: DocumentBrand,
     tax_groups: list[Any] | None = None,
+    pay_url: str | None = None,
+    payable_online: bool = False,
 ) -> dict[str, Any]:
-    """Everything a design needs, resolved. See the module docstring for the contract."""
+    """Everything a design needs, resolved. See the module docstring for the contract.
+
+    ``pay_url`` is where this document lives in the client portal (#268), resolved by the
+    *service* — this module may not know a host (Golden Rule 4). Absent, the QR block simply
+    does not render. ``payable_online`` says whether a payment provider is connected, which
+    changes the caption under the code and nothing else: without one the scan still opens the
+    invoice, where the client can read it and download the PDF.
+    """
     locale = getattr(doc, "locale", None) or "nl"
     config = config or {}
 
@@ -541,6 +551,25 @@ def build_context(
         and layout.enabled("payment_box")
     )
 
+    # --- the portal QR (#268) ------------------------------------------------------------ #
+    # Same three conditions as the payment card, for the same reasons — a credit note, a
+    # quote and a settled invoice all have nothing to pay — plus two of its own. It needs a
+    # **base URL**, which only the service boundary can resolve (the renderer is sandboxed and
+    # owns no host, Golden Rule 4); and it needs the document to have been *issued*, because a
+    # draft's portal page 404s for the client it would send there. `payable` carries whether
+    # an online payment is actually possible: the code still works without a provider (it
+    # opens the invoice, where the PDF can be downloaded), so this is not a gate — it only
+    # decides which caption goes under it.
+    show_qr = (
+        kind == "invoice"
+        and not is_credit_note
+        and outstanding > 0
+        and bool(getattr(doc, "status", None) == "open")
+        and bool(pay_url)
+        and layout.enabled("payment_qr")
+    )
+    payment_qr = qr_svg(pay_url or "") if show_qr else ""
+
     # --- prose -------------------------------------------------------------------------- #
     def template_text(block: str) -> str:
         return pick_locale(config.get(block), locale)
@@ -604,6 +633,10 @@ def build_context(
         "payment_box": _entries(layout, "payment_box", payment_box_values, locale)
         if show_payment_box
         else [],
+        "payment_qr": payment_qr,
+        "payment_qr_caption": (
+            t("invoicing.doc.qr_pay") if payable_online else t("invoicing.doc.qr_view")
+        ),
         "columns": columns,
         "sections": sections,
         "grouped": len(sections) > 1,

@@ -4377,6 +4377,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoicing/invoices/{invoice_id}/payment-intents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Payment Intents
+         * @description This invoice's payment attempts. ``_READ``'s floor, not ``_MODULE``: a client must be
+         *     able to see the state of the payment they just made.
+         */
+        get: operations["list_payment_intents_api_v1_invoicing_invoices__invoice_id__payment_intents_get"];
+        put?: never;
+        /**
+         * Start Payment
+         * @description Open a hosted checkout for this invoice's outstanding balance.
+         *
+         *     The amount is the server's to decide — the body carries only *which* credential to use.
+         */
+        post: operations["start_payment_api_v1_invoicing_invoices__invoice_id__payment_intents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/invoices/{invoice_id}/payment-intents/{intent_id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Payment Intent
+         * @description Re-ask the provider about one attempt, by hand.
+         *
+         *     "Sync failures are surfaced and retryable, not silently dropped" (#267) needs a button as
+         *     well as a cron: a callback that never arrived — a firewall, a Zero Trust rule, an outage —
+         *     is fixed by an operator who can then settle the payment without waiting for the next pass.
+         *
+         *     ``:any``, unlike starting a payment: this is a **repair** action, it spends an outbound
+         *     call to the provider on every press, and a client has no use for it — their own status
+         *     arrives by callback and, failing that, by the hourly reconcile. Leaving it at the floor
+         *     would have put a rate-costed external call behind a button on a client-reachable page.
+         */
+        post: operations["sync_payment_intent_api_v1_invoicing_invoices__invoice_id__payment_intents__intent_id__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoicing/invoices/{invoice_id}/payments": {
         parameters: {
             query?: never;
@@ -4552,6 +4608,55 @@ export interface paths {
         get: operations["outstanding_api_v1_invoicing_outstanding_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/payment-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Payment Accounts
+         * @description Which payment credentials this org has connected, across every enabled provider module.
+         *
+         *     ``:any``, not the floor (#266): this is org-wide configuration — no client's row could be
+         *     narrowed to it — so a client-role ``:own`` holder must not reach it even though they may
+         *     *start* a payment. What the portal needs instead is ``InvoiceRead.online_payment``, which
+         *     answers the only question a payer has ("can I pay this here?") without naming an account.
+         *     The response carries a label, a mode and an id; never a credential.
+         */
+        get: operations["list_payment_accounts_api_v1_invoicing_payment_accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/payments/webhook/{provider}/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Payment Webhook
+         * @description The provider's callback. Returns bare statuses and no body, by design.
+         *
+         *     ``200`` also covers a reference this tenant does not know — a provider must not be able to
+         *     enumerate what exists here by reading status codes (Mollie documents exactly this).
+         */
+        post: operations["payment_webhook_api_v1_invoicing_payments_webhook__provider___token__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6120,6 +6225,75 @@ export interface paths {
          *     collapsed error #292 replaces.
          */
         post: operations["check_domain_api_v1_meta_tenant_domain_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mollie/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Accounts
+         * @description Connected Mollie keys. The key itself is never part of the response.
+         */
+        get: operations["list_accounts_api_v1_mollie_accounts_get"];
+        put?: never;
+        /**
+         * Create Account
+         * @description Store a credential. Creating does not verify it — ``/verify`` is the explicit probe, so
+         *     a typo is reported on the settings screen rather than as a failed save.
+         */
+        post: operations["create_account_api_v1_mollie_accounts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mollie/accounts/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Account */
+        delete: operations["delete_account_api_v1_mollie_accounts__account_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Account
+         * @description Rename, re-link or rotate. An omitted ``api_key`` keeps the stored one.
+         */
+        patch: operations["update_account_api_v1_mollie_accounts__account_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/mollie/accounts/{account_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Account
+         * @description Ask Mollie whether this key works, and which methods it can take.
+         *
+         *     Answers ``200`` with ``ok=false`` for a rejected credential rather than an error status:
+         *     the probe succeeded, its answer was no, and the row keeps Mollie's own words on it.
+         */
+        post: operations["verify_account_api_v1_mollie_accounts__account_id__verify_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -13898,6 +14072,83 @@ export interface components {
          * @enum {string}
          */
         InvoiceKind: "invoice" | "credit_note";
+        /**
+         * InvoicePaymentAccountRead
+         * @description A payment credential this org has connected, as an invoice screen needs it (#267).
+         *
+         *     Prefixed like everything else in this module: a bare ``PaymentAccountRead`` would collide
+         *     with the provider module's own schemas and silently qualify *both* in the generated client
+         *     (the ``TemplateRead`` lesson). No secret and no credential — the label, the mode and
+         *     whether it can start a payment right now.
+         */
+        InvoicePaymentAccountRead: {
+            /** Active */
+            active: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Label */
+            label: string;
+            /** Mode */
+            mode: string;
+            /** Provider */
+            provider: string;
+        };
+        /**
+         * InvoicePaymentIntentCreate
+         * @description Start an online payment for an invoice.
+         *
+         *     Deliberately carries **no amount**: the server charges the invoice's outstanding balance,
+         *     recomputed at creation time. A client-supplied amount is the one thing a payment endpoint
+         *     must never accept (#267's hard requirement).
+         */
+        InvoicePaymentIntentCreate: {
+            /** Account Id */
+            account_id?: string | null;
+            /** Provider */
+            provider?: string | null;
+        };
+        /** InvoicePaymentIntentRead */
+        InvoicePaymentIntentRead: {
+            /** Account Id */
+            account_id: string | null;
+            /** Amount */
+            amount: string;
+            /** Checkout Url */
+            checkout_url: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Currency */
+            currency: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Invoice Id
+             * Format: uuid
+             */
+            invoice_id: string;
+            /** Last Error */
+            last_error: string | null;
+            /** Method */
+            method: string | null;
+            /** Mode */
+            mode: string;
+            /** Provider */
+            provider: string;
+            /** Settled At */
+            settled_at: string | null;
+            status: components["schemas"]["PaymentIntentStatus"];
+            /** Synced At */
+            synced_at: string | null;
+        };
         /** InvoiceRead */
         InvoiceRead: {
             /**
@@ -13968,6 +14219,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Intents */
+            intents?: components["schemas"]["InvoicePaymentIntentRead"][];
             /** Intro */
             intro: string | null;
             /** Issue Date */
@@ -13983,6 +14236,11 @@ export interface components {
             notes: string | null;
             /** Number */
             number: string | null;
+            /**
+             * Online Payment
+             * @default false
+             */
+            online_payment: boolean;
             /**
              * Org Id
              * Format: uuid
@@ -15547,6 +15805,107 @@ export interface components {
             /** Supported Locales */
             supported_locales: string[];
         };
+        /** MollieAccountCreate */
+        MollieAccountCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Api Key */
+            api_key: string;
+            /** Name */
+            name: string;
+            /** Provider Id */
+            provider_id?: string | null;
+        };
+        /**
+         * MollieAccountRead
+         * @description One connected Mollie key, as the settings screen sees it. **Never the key.**
+         */
+        MollieAccountRead: {
+            /** Active */
+            active: boolean;
+            /**
+             * Api Key Configured
+             * @default true
+             */
+            api_key_configured: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Verified At */
+            last_verified_at?: string | null;
+            /** Methods */
+            methods?: string[];
+            mode: components["schemas"]["MollieMode"];
+            /** Name */
+            name: string;
+            /** Provider Id */
+            provider_id?: string | null;
+            status: components["schemas"]["MollieAccountStatus"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Webhook Url
+             * @default
+             */
+            webhook_url: string;
+        };
+        /**
+         * MollieAccountStatus
+         * @description Whether the stored credential still works. ``error`` is set by whatever found out.
+         * @enum {string}
+         */
+        MollieAccountStatus: "active" | "error";
+        /** MollieAccountUpdate */
+        MollieAccountUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Api Key */
+            api_key?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Provider Id */
+            provider_id?: string | null;
+        };
+        /**
+         * MollieAccountVerifyResult
+         * @description The outcome of testing a credential. **Never raises** — see the service.
+         *
+         *     ``ok=False`` with the row still saved is a real and common state: a rejected credential is
+         *     still a stored credential, and telling somebody their key is wrong is more useful than
+         *     refusing to remember what they typed.
+         */
+        MollieAccountVerifyResult: {
+            /** Error */
+            error?: string | null;
+            /** Methods */
+            methods?: string[];
+            mode?: components["schemas"]["MollieMode"] | null;
+            /** Ok */
+            ok: boolean;
+        };
+        /**
+         * MollieMode
+         * @description Which world this credential acts in. **Mollie's keys say so themselves** — a key is
+         *     literally prefixed ``test_`` or ``live_`` — so this is derived on save and never entered:
+         *     a field an admin can get wrong about money is a field that should not exist.
+         * @enum {string}
+         */
+        MollieMode: "live" | "test";
         /** MxRecord */
         MxRecord: {
             /** Exchange */
@@ -16472,6 +16831,17 @@ export interface components {
          * @enum {string}
          */
         PartyType: "agency" | "company" | "employee" | "contact";
+        /**
+         * PaymentIntentStatus
+         * @description Mirrors :class:`app.core.payments.PaymentStatus` — the provider's own vocabulary.
+         *
+         *     Stored as the provider's word rather than translated into an invoicing status, because the
+         *     two answer different questions: this says what happened at the provider, ``settled_at``
+         *     says what we did about it. Collapsing them is how "the client paid and we never booked it"
+         *     becomes invisible (CLAUDE.md §10, the Cloudflare drift rule, applied to money).
+         * @enum {string}
+         */
+        PaymentIntentStatus: "open" | "pending" | "authorized" | "paid" | "failed" | "expired" | "canceled";
         /** PaymentRead */
         PaymentRead: {
             /** Amount */
@@ -31055,6 +31425,104 @@ export interface operations {
             };
         };
     };
+    list_payment_intents_api_v1_invoicing_invoices__invoice_id__payment_intents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicePaymentIntentRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_payment_api_v1_invoicing_invoices__invoice_id__payment_intents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicePaymentIntentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicePaymentIntentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_payment_intent_api_v1_invoicing_invoices__invoice_id__payment_intents__intent_id__sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+                intent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicePaymentIntentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     add_payment_api_v1_invoicing_invoices__invoice_id__payments_post: {
         parameters: {
             query?: never;
@@ -31328,6 +31796,58 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OutstandingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_payment_accounts_api_v1_invoicing_payment_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicePaymentAccountRead"][];
+                };
+            };
+        };
+    };
+    payment_webhook_api_v1_invoicing_payments_webhook__provider___token__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -34609,6 +35129,154 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DomainCheckReport"];
+                };
+            };
+        };
+    };
+    list_accounts_api_v1_mollie_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MollieAccountRead"][];
+                };
+            };
+        };
+    };
+    create_account_api_v1_mollie_accounts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MollieAccountCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MollieAccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_account_api_v1_mollie_accounts__account_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_account_api_v1_mollie_accounts__account_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MollieAccountUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MollieAccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_account_api_v1_mollie_accounts__account_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MollieAccountVerifyResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

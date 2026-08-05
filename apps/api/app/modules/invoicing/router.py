@@ -9,13 +9,15 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 
-from app.core.permissions.deps import require_permission
+from app.core.entitlements.service import license_exempt
+from app.core.permissions.deps import no_permission_required, require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.errors import AppError
 from app.modules.invoicing import accounting
 from app.modules.invoicing.models import InvoiceStatus
+from app.modules.invoicing.payments import InvoicePaymentService, handle_webhook
 from app.modules.invoicing.render import BUILTIN_DESIGNS, builtin_source, catalog_payload
 from app.modules.invoicing.schemas import (
     BacklogGroupBy,
@@ -25,6 +27,9 @@ from app.modules.invoicing.schemas import (
     InvoiceCreate,
     InvoiceFromTime,
     InvoiceIssue,
+    InvoicePaymentAccountRead,
+    InvoicePaymentIntentCreate,
+    InvoicePaymentIntentRead,
     InvoiceRead,
     InvoiceUpdate,
     InvoicingSettingsRead,
@@ -626,6 +631,119 @@ async def delete_payment(
     return InvoiceRead.model_validate(
         await InvoiceService(ctx).delete_payment(invoice_id, payment_id)
     )
+
+
+# --- online payments (epic #269) ----------------------------------------------- #
+@router.get(
+    "/payment-accounts",
+    response_model=list[InvoicePaymentAccountRead],
+    dependencies=[require_permission("invoicing.payment.link", _MODULE)],
+)
+async def list_payment_accounts(
+    ctx: RequestContext = Depends(require_context),
+) -> list[InvoicePaymentAccountRead]:
+    """Which payment credentials this org has connected, across every enabled provider module.
+
+    ``:any``, not the floor (#266): this is org-wide configuration — no client's row could be
+    narrowed to it — so a client-role ``:own`` holder must not reach it even though they may
+    *start* a payment. What the portal needs instead is ``InvoiceRead.online_payment``, which
+    answers the only question a payer has ("can I pay this here?") without naming an account.
+    The response carries a label, a mode and an id; never a credential.
+    """
+    return [
+        InvoicePaymentAccountRead.model_validate(account, from_attributes=True)
+        for account in await InvoicePaymentService(ctx).accounts()
+    ]
+
+
+@router.post(
+    "/invoices/{invoice_id}/payment-intents",
+    response_model=InvoicePaymentIntentRead,
+    dependencies=[require_permission("invoicing.payment.link")],
+)
+async def start_payment(
+    invoice_id: uuid.UUID,
+    payload: InvoicePaymentIntentCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> InvoicePaymentIntentRead:
+    """Open a hosted checkout for this invoice's outstanding balance.
+
+    The amount is the server's to decide — the body carries only *which* credential to use.
+    """
+    return InvoicePaymentIntentRead.model_validate(
+        await InvoicePaymentService(ctx).start(invoice_id, payload)
+    )
+
+
+@router.get(
+    "/invoices/{invoice_id}/payment-intents",
+    response_model=list[InvoicePaymentIntentRead],
+    dependencies=[require_permission(_READ)],
+)
+async def list_payment_intents(
+    invoice_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> list[InvoicePaymentIntentRead]:
+    """This invoice's payment attempts. ``_READ``'s floor, not ``_MODULE``: a client must be
+    able to see the state of the payment they just made."""
+    return [
+        InvoicePaymentIntentRead.model_validate(intent)
+        for intent in await InvoicePaymentService(ctx).list_for(invoice_id)
+    ]
+
+
+@router.post(
+    "/invoices/{invoice_id}/payment-intents/{intent_id}/sync",
+    response_model=InvoicePaymentIntentRead,
+    dependencies=[require_permission("invoicing.payment.link", _MODULE)],
+)
+async def sync_payment_intent(
+    invoice_id: uuid.UUID,
+    intent_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> InvoicePaymentIntentRead:
+    """Re-ask the provider about one attempt, by hand.
+
+    "Sync failures are surfaced and retryable, not silently dropped" (#267) needs a button as
+    well as a cron: a callback that never arrived — a firewall, a Zero Trust rule, an outage —
+    is fixed by an operator who can then settle the payment without waiting for the next pass.
+
+    ``:any``, unlike starting a payment: this is a **repair** action, it spends an outbound
+    call to the provider on every press, and a client has no use for it — their own status
+    arrives by callback and, failing that, by the hourly reconcile. Leaving it at the floor
+    would have put a rate-costed external call behind a button on a client-reachable page.
+    """
+    service = InvoicePaymentService(ctx)
+    intents = await service.list_for(invoice_id)
+    intent = next((i for i in intents if i.id == intent_id), None)
+    if intent is None:
+        raise AppError("not_found", "errors.not_found", status_code=404)
+    return InvoicePaymentIntentRead.model_validate(await service.reconcile(intent))
+
+
+@router.post(
+    "/payments/webhook/{provider}/{token}",
+    dependencies=[
+        no_permission_required(
+            "Payment-provider callback; authenticated by our own per-account token "
+            "(org + account + secret) and, decisively, by re-fetching the payment from the "
+            "provider with the tenant's credential — never by a user session"
+        )
+    ],
+)
+@license_exempt(
+    "Money the client has already paid is recorded whatever the licence says. A 402 here "
+    "would take a payment that left someone's bank account and drop it — an expired licence "
+    "makes a module read-only, it does not make the agency's takings disappear."
+)
+async def payment_webhook(provider: str, token: str, request: Request) -> Response:
+    """The provider's callback. Returns bare statuses and no body, by design.
+
+    ``200`` also covers a reference this tenant does not know — a provider must not be able to
+    enumerate what exists here by reading status codes (Mollie documents exactly this).
+    """
+    status = await handle_webhook(provider, token, await request.body(), request.headers)
+    return Response(status_code=status)
 
 
 @router.get(

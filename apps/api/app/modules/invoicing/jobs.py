@@ -14,7 +14,7 @@ concept, and a reminder that fires a day early because of UTC is a wrong reminde
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,8 +34,10 @@ from app.modules.invoicing.emails import (
 from app.modules.invoicing.models import (
     Invoice,
     InvoiceKind,
+    InvoicePaymentIntent,
     InvoiceStatus,
     InvoicingSettings,
+    PaymentIntentStatus,
     Quote,
     QuoteStatus,
 )
@@ -274,3 +276,94 @@ async def _remind_org(org: Org, session: AsyncSession) -> None:
 async def invoicing_daily(ctx: dict) -> None:
     """ARQ entrypoint: reminders + quote expiry, per org via ``run_per_org``."""
     await run_per_org(_remind_org)
+
+
+# --------------------------------------------------------------------------- #
+# Online payments — the safety net under the webhook (epic #269)
+# --------------------------------------------------------------------------- #
+#: How long an intent that never reached a final state stays worth asking about. Past this it
+#: is abandoned: no provider keeps an unpaid checkout open for a week, and re-asking forever
+#: would grow one request per stale row per hour, indefinitely.
+_RECONCILE_HORIZON = timedelta(days=7)
+
+#: Never ask about more than this many in one org, one pass. A cap that is *reported* rather
+#: than silent (§17): the next pass takes the rest, and the log says so.
+_RECONCILE_LIMIT = 100
+
+
+async def _reconcile_org(org: Org, session: AsyncSession) -> None:
+    """Re-ask the provider about every payment we have not seen come to rest.
+
+    The callback is the fast path and this is the one that makes it *safe to miss*. A webhook
+    can be lost for entirely ordinary reasons — an access proxy in front of the API, a
+    redeploy, a firewall rule — and the failure is invisible from the outside: the client's
+    money moved and the invoice still says open. So the loop is the same one the callback runs,
+    on a schedule, and the two are idempotent against each other by construction (the row lock
+    plus the unique index in ``payments.py``).
+
+    Hourly rather than daily, deliberately. Mollie retries a failed webhook for 26 hours; an
+    agency chasing "the client says they paid" should not have to wait out a nightly job.
+    """
+    from app.core.jobs import system_context
+    from app.core.payments import available_accounts
+    from app.modules.invoicing.payments import InvoicePaymentService
+
+    accounts = {
+        (account.provider, account.id): account
+        for account in await available_accounts(session, org.id)
+    }
+    if not accounts:
+        return
+    cutoff = datetime.now(UTC) - _RECONCILE_HORIZON
+    rows = (
+        (
+            await session.execute(
+                select(InvoicePaymentIntent)
+                .where(
+                    InvoicePaymentIntent.org_id == org.id,
+                    InvoicePaymentIntent.settled_at.is_(None),
+                    InvoicePaymentIntent.created_at >= cutoff,
+                    InvoicePaymentIntent.status.notin_(_INTENT_ABANDONED),
+                )
+                .order_by(InvoicePaymentIntent.created_at)
+                .limit(_RECONCILE_LIMIT + 1)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if len(rows) > _RECONCILE_LIMIT:
+        logger.warning(
+            "org %s has more than %s unsettled payment intents; taking the oldest %s this pass",
+            org.slug,
+            _RECONCILE_LIMIT,
+            _RECONCILE_LIMIT,
+        )
+        rows = rows[:_RECONCILE_LIMIT]
+    if not rows:
+        return
+
+    service = InvoicePaymentService(system_context(org, session))
+    for intent in rows:
+        account = accounts.get((intent.provider, intent.account_id))
+        if account is None:
+            # The credential was disconnected while a payment was in flight. Nothing to ask
+            # with, and nothing to be done about it here — say so on the row and move on.
+            await service._note_error(intent, "credential unavailable")  # noqa: SLF001
+            continue
+        await service.reconcile(intent, account)
+
+
+#: States a reconcile stops asking about. ``paid`` is **not** here: a paid intent with no
+#: ``settled_at`` is precisely the case this cron exists to repair — the money arrived and the
+#: ledger write did not happen (a cancelled invoice at the time, a crash mid-settle).
+_INTENT_ABANDONED = (
+    PaymentIntentStatus.FAILED.value,
+    PaymentIntentStatus.EXPIRED.value,
+    PaymentIntentStatus.CANCELED.value,
+)
+
+
+async def invoicing_payments_reconcile(ctx: dict) -> None:
+    """ARQ entrypoint: re-ask every provider about payments that never came to rest."""
+    await run_per_org(_reconcile_org)

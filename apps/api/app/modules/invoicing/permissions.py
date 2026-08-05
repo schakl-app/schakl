@@ -40,6 +40,25 @@ INVOICING_PERMISSIONS: list[PermissionSpec] = [
     PermissionSpec("invoicing.quote.send", position=70),
     PermissionSpec("invoicing.quote.delete", position=80),
     PermissionSpec("invoicing.payment.write", position=90),
+    # Starting an **online** payment (epic #269) — a different act from registering one, and
+    # the only write on this module a client may hold. `payment.write` says "this money
+    # arrived" and is a bookkeeping claim; this says "open a checkout for what is owed" and
+    # settles nothing on its own: the provider's own authenticated answer does that, through
+    # a webhook nobody can forge. So a client paying their own invoice needs exactly this and
+    # nothing more, and reusing `payment.write` would have handed them the ability to declare
+    # an invoice paid.
+    #
+    # Scoped for the same reason `invoice.read` is (#266): `:own` reaches documents the
+    # company horizon already narrowed to them, `:any` additionally reaches the org-wide
+    # surface — which credentials are connected at all. Nothing here can name an amount; the
+    # server charges `outstanding` whoever asked.
+    PermissionSpec(
+        "invoicing.payment.link",
+        scopes=SCOPES,
+        position=95,
+        default_roles=(ROLE_ADMIN,),
+        default_own_roles=(ROLE_CLIENT,),
+    ),
     # Tax rates, templates, numbering, reminders, seller identity, accounting.
     PermissionSpec("invoicing.settings.manage", position=100),
     # Writing a document template's own HTML/CSS. Split from `settings.manage` because it is

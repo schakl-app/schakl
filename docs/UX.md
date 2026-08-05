@@ -837,6 +837,14 @@
   products, templates, settings and custom-field lookups exist for `DocumentForm` alone, so they
   now hang off `canWrite`. That was five wasted round-trips for every read-only viewer before it
   was a leak, and the client's invoice page went from eight API calls to two.
+  The **pay control** (epic #269) is the same rule at the other end of the scale: it is a write
+  a client legitimately holds, so it gates on `can(user, "invoicing.payment.link")` — base key,
+  because a client holds `:own` — and never on `isPortal`, which would have drawn it for a
+  restricted staff member who cannot start one and hidden it from the person it exists for.
+  Whether it can be *spent* is a second question, and `InvoiceRead.online_payment` answers it
+  without letting the client read which provider accounts the agency has connected: a padlock
+  the viewer can do nothing about is worse than no button, and the account list itself sits at
+  `:any` (`docs/PAYMENTS.md` §8).
 - **A refusal that hides which of the two gates fired.** Permissions say *may they*, the company
   horizon says *which rows exist for them* (CLAUDE.md §15), and out-of-horizon deliberately answers
   `404 errors.not_found` so a get-by-id can't leak existence. Correct — but a `client`-role login

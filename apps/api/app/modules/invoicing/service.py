@@ -34,8 +34,10 @@ from app.core.billing import resolve_auto_invoice_mode
 from app.core.branding import load_brand_logo, load_org_image
 from app.core.customfields import CustomFieldsService
 from app.core.events import emit
+from app.core.hosts import org_base_url
 from app.core.models import OrgSettings
 from app.core.numbering import format_number
+from app.core.payments import available_accounts
 from app.core.phone import normalize_phone
 from app.core.richtext import sanitize_markdown
 from app.core.sorting import apply_sort
@@ -60,6 +62,7 @@ from app.modules.invoicing.models import (
     InvoiceKind,
     InvoiceLine,
     InvoicePayment,
+    InvoicePaymentIntent,
     InvoiceStatus,
     InvoiceSubscriptionPeriod,
     InvoiceTimeEntry,
@@ -78,6 +81,7 @@ from app.modules.invoicing.render import (
     resolve_layout,
     validate_custom_source,
 )
+from app.modules.invoicing.render.qr import invoice_portal_url
 from app.modules.invoicing.sample import sample_document
 from app.modules.invoicing.schemas import (
     DocumentSend,
@@ -861,6 +865,12 @@ class _DocumentService:
         self.lines = ctx.repo(self.line_model)
         self.settings = InvoicingSettingsService(ctx)
         self.custom_fields = CustomFieldsService(ctx)
+        #: Memo for "can this org collect online at all" (epic #269). Two readers ask —
+        #: ``_attach`` for the screen's flag and ``_pay_link`` for the document's QR caption —
+        #: and the send path runs both in one request. One query per provider module is cheap;
+        #: two identical ones for the same answer is the shape docs/PERFORMANCE.md asks you to
+        #: count before writing.
+        self._payable_online: bool | None = None
 
     @property
     def issued_only(self) -> bool:
@@ -920,7 +930,36 @@ class _DocumentService:
             "tax_groups": _totals_from_rows(
                 list(doc.lines), prices_include_tax=doc.prices_include_tax
             ).groups,
+            **await self._pay_link(doc, kind),
         }
+
+    async def _pay_link(self, doc: Any, kind: str) -> dict[str, Any]:
+        """The portal deeplink the QR block encodes (#268), resolved *here*.
+
+        The renderer is sandboxed and owns no identity of its own (Golden Rule 4), so it is
+        handed a string. Only invoices get one: a quote has no portal page to pay from, and a
+        credit note is money going the other way.
+
+        ``payable_online`` costs one query per provider module and only changes the caption —
+        the code opens the invoice either way, where the client can read it and download the
+        PDF. That is why the QR is not gated on having a provider connected: an agency with no
+        Mollie account still gets a scannable link to the live document.
+        """
+        if kind != "invoice" or getattr(doc, "kind", None) == InvoiceKind.CREDIT_NOTE.value:
+            return {}
+        return {
+            "pay_url": invoice_portal_url(org_base_url(self.ctx.org), doc.id),
+            "payable_online": await self._payable(),
+        }
+
+    async def _payable(self) -> bool:
+        """Does this org hold an active payment credential? Once per request (epic #269)."""
+        if self._payable_online is None:
+            self._payable_online = any(
+                account.active
+                for account in await available_accounts(self.ctx.session, self.ctx.org.id)
+            )
+        return self._payable_online
 
     async def document_html(self, doc: Any, kind: str) -> str:
         """The document as a standalone HTML page — what the preview shows.
@@ -1092,12 +1131,14 @@ class InvoiceService(_DocumentService):
         lines_by_doc = await self._doc_lines(ids) if lines else {}
         today = await org_today(self.ctx)
         payment_rows: dict[uuid.UUID, list[InvoicePayment]] = {}
+        intent_rows: dict[uuid.UUID, list[InvoicePaymentIntent]] = {}
         # The FK only points one way, so a credited invoice had no way to name the document
         # that corrected it — the two halves of one correction were unreachable from each
         # other in the UI. Resolved on the detail read only (one grouped query, never per
         # row): a list draws the `credited` flag, which is already a column.
         credit_refs: dict[uuid.UUID, list[dict[str, Any]]] = {}
         source_numbers: dict[uuid.UUID, str] = {}
+        payable_online = False
         if payments:
             rows = (
                 await self.ctx.session.execute(
@@ -1109,6 +1150,22 @@ class InvoiceService(_DocumentService):
             ).scalars()
             for row in rows:
                 payment_rows.setdefault(row.invoice_id, []).append(row)
+            # Online payment attempts (#267), newest first: the screen's question is "is there
+            # a live checkout link right now", and the answer is at the top. One grouped query
+            # for the whole batch, like every other read here.
+            for intent in (
+                await self.ctx.session.execute(
+                    self.ctx.repo(InvoicePaymentIntent)
+                    .scoped_select()
+                    .where(InvoicePaymentIntent.invoice_id.in_(ids))
+                    .order_by(InvoicePaymentIntent.created_at.desc())
+                )
+            ).scalars():
+                intent_rows.setdefault(intent.invoice_id, []).append(intent)
+            # Whether an online payment is *possible* — asked once for the whole batch, and
+            # only on a detail read. A client may never see which accounts exist (#266), so
+            # this boolean is the portal's whole view of the question.
+            payable_online = await self._payable()
             for credit in (
                 await self.ctx.session.execute(
                     self.repo.scoped_select()
@@ -1172,6 +1229,12 @@ class InvoiceService(_DocumentService):
             )
             if payments:
                 invoice.payments = payment_rows.get(invoice.id, [])  # type: ignore[attr-defined]
+                invoice.intents = intent_rows.get(invoice.id, [])  # type: ignore[attr-defined]
+                invoice.online_payment = (  # type: ignore[attr-defined]
+                    payable_online
+                    and invoice.status == InvoiceStatus.OPEN.value
+                    and invoice.outstanding > 0  # type: ignore[attr-defined]
+                )
                 invoice.credit_notes = credit_refs.get(invoice.id, [])  # type: ignore[attr-defined]
                 invoice.credit_for_number = (  # type: ignore[attr-defined]
                     source_numbers.get(invoice.credit_for_id, "")

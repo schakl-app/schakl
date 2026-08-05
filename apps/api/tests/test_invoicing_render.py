@@ -719,3 +719,97 @@ def test_a_written_off_invoice_does_not_ask_for_the_money_back() -> None:
     )
     assert "Betaalgegevens" in partial
     assert "Gecrediteerd" in partial
+
+
+# --------------------------------------------------------------------------- #
+# The portal QR (issue #268)
+# --------------------------------------------------------------------------- #
+_QR_ON = {"design": "letterhead", "layout": [{"key": "payment_qr", "enabled": True}]}
+_PAY_URL = "https://bureau.schakl.app/invoices/6f1a0d5c-2f0e-4e9f-9c3f-0a1b2c3d4e5f"
+
+
+def _with_qr(**overrides) -> str:  # noqa: ANN003 — mirrors ``_render``'s shape
+    doc, lines, groups = sample_document("nl", "EUR", TODAY)
+    doc.status = overrides.pop("status", "open")
+    for key, value in overrides.pop("doc", {}).items():
+        setattr(doc, key, value)
+    return render_document_html(
+        kind=overrides.pop("kind", "invoice"),
+        doc=doc,
+        lines=lines,
+        seller=SELLER,
+        config=overrides.pop("config", _QR_ON),
+        brand=DocumentBrand(name="Agency"),
+        tax_groups=groups,
+        pay_url=overrides.pop("pay_url", _PAY_URL),
+        payable_online=overrides.pop("payable_online", True),
+    )
+
+
+def test_the_qr_is_off_until_a_template_asks_for_it() -> None:
+    """A block a tenant never enabled must not appear on documents they already send."""
+    assert 'class="payment-qr' not in _with_qr(config={"design": "letterhead"})
+    assert 'class="payment-qr' in _with_qr()
+
+
+def test_the_qr_is_an_inline_svg_and_survives_the_print() -> None:
+    """The document CSP allows ``img-src data:`` and nothing else, and the renderer resolves no
+    URL at all — an ``<img src="https://…">`` would be blocked in the preview and blank in the
+    PDF. So the code has to be markup the page already carries, and #268 asks for more than
+    "no exception": the bytes have to come out the other end."""
+    html = _with_qr()
+    block = html[html.index('class="payment-qr') :]
+    assert "<svg" in block[:400]
+    assert "<img" not in block[: block.index("</div>")]
+
+    doc, lines, groups = sample_document("nl", "EUR", TODAY)
+    doc.status = "open"
+    with_code = render_document_pdf(
+        kind="invoice", doc=doc, lines=lines, seller=SELLER, config=_QR_ON,
+        brand=DocumentBrand(name="Agency"), tax_groups=groups,
+        pay_url=_PAY_URL, payable_online=True,
+    )
+    without = render_document_pdf(
+        kind="invoice", doc=doc, lines=lines, seller=SELLER, config={"design": "letterhead"},
+        brand=DocumentBrand(name="Agency"), tax_groups=groups,
+    )
+    assert with_code.startswith(b"%PDF")
+    # WeasyPrint draws the matrix as vector paths, so the page with a code in it is materially
+    # bigger. A "renders without raising" assertion passes just as well on a blank 24 mm box.
+    assert len(with_code) > len(without) + 1000
+
+
+def test_the_caption_says_pay_only_when_something_can_collect() -> None:
+    """The code works either way — it opens the invoice — so a connected provider changes the
+    words and nothing else. Promising "scan om te betalen" with nothing to pay through would be
+    a control that refuses (#253), printed on paper where nobody can fix it."""
+    assert "Scan om te betalen" in _with_qr(payable_online=True)
+    assert "Scan om deze factuur te bekijken" in _with_qr(payable_online=False)
+
+
+def test_the_qr_never_appears_where_there_is_nothing_to_pay() -> None:
+    """The payment card's three conditions, for the same reasons: a credit note is money going
+    the other way, a settled invoice owes nothing, and a draft's portal page 404s for the very
+    client it would send there (``Invoice.__portal_horizon_clause__``)."""
+    assert 'class="payment-qr' not in _with_qr(status="draft")
+    assert 'class="payment-qr' not in _with_qr(doc={"paid_total": Decimal("99999.00")})
+    assert 'class="payment-qr' not in _with_qr(doc={"kind": "credit_note"})
+    # No host resolved means nothing to encode; a quote is never paid from a portal page.
+    assert 'class="payment-qr' not in _with_qr(pay_url=None)
+    assert 'class="payment-qr' not in _with_qr(kind="quote")
+
+
+def test_the_qr_encodes_the_portal_url_and_never_a_checkout_url() -> None:
+    """The security decision worth pinning: a provider's checkout URL is a bearer credential,
+    and printing one on paper hands whoever picks that paper up somebody else's bill. What the
+    document gets is the invoice's page in the portal, behind the login #193 established."""
+    from app.modules.invoicing.render.qr import invoice_portal_url, qr_svg
+
+    assert invoice_portal_url("https://bureau.schakl.app/", "abc") == (
+        "https://bureau.schakl.app/invoices/abc"
+    )
+    # Deterministic, and genuinely a function of the payload — a code that came out identical
+    # for two different URLs would pass every other assertion in this file.
+    assert qr_svg(_PAY_URL) == qr_svg(_PAY_URL)
+    assert qr_svg(_PAY_URL) != qr_svg("https://www.mollie.com/checkout/select-method/abc")
+    assert qr_svg("") == ""

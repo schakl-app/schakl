@@ -147,6 +147,14 @@ class RequestContext:
     #: there" about a client who can see them perfectly well. ``False`` for an unnarrowed
     #: session, and always ``False`` for the instance kind, which never caps.
     impersonation_narrowed: bool = False
+    #: True for a context built by ``app.core.jobs.system_context`` — a cron tick, or a
+    #: provider callback nobody is signed in for. ``user`` is then a transient placeholder that
+    #: exists in **no** ``users`` row, so anything that would *store* it must store nothing
+    #: instead: ``activity_log.actor_user_id`` carries a FK, and the trail's own contract is
+    #: that a NULL actor with no name is genuinely the system (§16). Without this flag a
+    #: settle driven by a webhook raises a foreign-key violation inside the very transaction
+    #: that books the payment — the money moves and nothing records it.
+    is_system: bool = False
 
     def repo(self, model: type[ModelT]) -> TenantScopedRepository[ModelT]:
         return TenantScopedRepository(

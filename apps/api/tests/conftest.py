@@ -61,7 +61,7 @@ _DOMAIN_TABLES = (
     "subscription_links, subscription_lines, subscription_prices, subscriptions, "
     "subscription_templates, subscription_types, "
     "invoicing_external_refs, invoice_time_entries, invoice_subscription_periods, "
-    "invoice_payments, quote_lines, "
+    "invoice_payments, invoice_payment_intents, quote_lines, "
     "invoice_lines, quotes, invoices, invoicing_settings, invoicing_templates, "
     "invoicing_products, invoicing_tax_rates, "
     # `reports` carries no FK to `companies` on purpose (a report outlives the client it
@@ -75,6 +75,7 @@ _DOMAIN_TABLES = (
     "cloudflare_pages_links, cloudflare_pages_projects, cloudflare_redirects, "
     "cloudflare_zones, cloudflare_accounts, "
     "oxxa_domains, oxxa_accounts, "
+    "mollie_accounts, "
     "websites, hosting, domain_tld_prices, domains, providers, "
     "time_entry_drafts, time_entries, time_entry_types, tasks, projects, contacts, contact_types, "
     "custom_field_definitions, "
@@ -90,7 +91,7 @@ _ENABLED_MODULES = [
     "hr",
     "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
     "domains", "hosting", "websites", "subscriptions", "invoicing", "automation",
-    "interactions", "google", "marketing", "cloudflare", "oxxa",
+    "interactions", "google", "marketing", "cloudflare", "oxxa", "mollie",
 ]
 
 

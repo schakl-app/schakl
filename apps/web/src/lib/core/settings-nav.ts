@@ -447,6 +447,27 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     permissions: ["oxxa.settings.manage"],
     module: "oxxa",
   },
+  {
+    // The payment half (epic #269): the Mollie keys an invoice is collected through. It sits
+    // with the other integrations rather than under Facturatie because what is configured here
+    // is a credential and a conversation with somebody else's service — `invoicing` owns what a
+    // payment *means*, and never learns which provider took it (`app/core/payments`).
+    //
+    // `invoicing.payment.link` deliberately does **not** open it: that permission spends a
+    // credential (it starts a checkout, and a client's own portal login holds it at `:own`),
+    // while this screen holds one. Same split as OXXA's sync-versus-settings.
+    key: "mollie",
+    href: "/settings/mollie",
+    titleKey: "settings.mollie.title",
+    subtitleKey: "settings.mollie.subtitle",
+    // Without these, the screen could not be found by searching "ideal", "creditcard" or
+    // "webhook" — the words somebody actually types when a payment did not come through, and
+    // none of which the card's own title and subtitle contain.
+    keywordsKey: "settings.search.mollie",
+    group: "integrations",
+    permissions: ["mollie.settings.manage"],
+    module: "mollie",
+  },
 
   // --- Systeem ----------------------------------------------------------- //
   {

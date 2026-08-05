@@ -376,6 +376,37 @@ expires open quotes past `valid_until`.
 Every send, reminder, payment, issue, cancel and credit lands in the activity trail (§16),
 so a disputed invoice's history reads back in one place.
 
+## Online payments (epic #269 — `payments.py`, `docs/PAYMENTS.md`)
+
+A client can pay an open invoice on a payment provider's hosted checkout, and the payment lands
+back on the invoice by itself. The architecture is provider-independent and lives in
+**`docs/PAYMENTS.md`**; `docs/MOLLIE.md` is the first (and today only) implementation. What
+belongs *here* is the part invoicing owns:
+
+- **A confirmed payment writes an ordinary `InvoicePayment` row** — `method="online"`,
+  `intent_id` set — through the same `_settle` a bookkeeper's manual entry goes through. So
+  `paid_total`, the status flip, `invoice.paid`, the reminders cron, the accounting export and
+  the company panel all needed no change and none of them knows a provider was involved.
+  `PaymentWrite.method` stays a closed `Literal` **without** `online`: nobody may hand-register
+  a payment as though a provider had confirmed it.
+- **`invoice_payment_intents` is one row per *attempt*, not per invoice.** An invoice
+  legitimately collects several (iDEAL expires in fifteen minutes; clients abandon and retry),
+  which is exactly why it is not an `ExternalRef` — that table's one-row-per-local-record key
+  would let a late callback for attempt #1 settle against attempt #2.
+- **The amount is never the caller's.** `InvoicePaymentIntentCreate` carries no amount field;
+  the server charges `outstanding_of(invoice)`, recomputed at creation, and refuses an invoice
+  that is not `open` or has nothing left to pay.
+- **`status` is the provider's word and `settled_at` is ours.** `paid` with no `settled_at` —
+  the money arrived and the ledger write did not happen — is a real, visible, repairable state,
+  and an hourly per-org cron plus a manual **Check status** button exist to repair it.
+- **Two permissions, and a client holds one of them.** `invoicing.payment.link` is scoped
+  (`:own` for the `client` role, `:any` for admins) and is *not* `invoicing.payment.write`:
+  starting a checkout settles nothing, while registering a payment is a bookkeeping claim.
+  `InvoiceRead.online_payment` is the boolean the portal draws its pay button from — it never
+  gets to read which accounts the agency has connected.
+- **The invoice's QR block encodes the portal URL, not a checkout URL** (#268). A checkout link
+  is a bearer credential and belongs on nobody's printed paper.
+
 ## The client-facing mails are the tenant's to write (`emails.py`)
 
 The invoice, quote and reminder mails are **customisable kinds** (`invoicing.invoice`,
@@ -670,5 +701,13 @@ shipped design renders from.
 - **A live accounting provider** is a new module registering an `AccountingProvider`;
   credentials encrypted per tenant (the email-settings pattern), sync state in
   `external_refs`. See #31 for the SnelStart scope.
-- **E-invoicing networks (Peppol), payment-provider webhooks** are follow-ups; the seams
-  (the rendered document, UBL, payments as first-class rows) are where they attach.
+- **A payment provider** is a new module implementing `app.core.payments.PaymentProvider` and
+  registering an account resolver — nothing in `invoicing` changes, and nothing in it may name
+  the provider. The seam, the five callback gates, the idempotency pair (a row lock plus the
+  partial unique index on `invoice_payments (org_id, intent_id)`) and a step-by-step checklist
+  for adding Stripe or Adyen are in **`docs/PAYMENTS.md`** §11; `docs/MOLLIE.md` is the worked
+  example. One webhook route serves every provider
+  (`POST /invoicing/payments/webhook/{provider}/{token}`) — do not add a second, and do not
+  believe a callback body: the authenticated re-fetch is the authentication.
+- **E-invoicing networks (Peppol)** are a follow-up; the seams (the rendered document, UBL,
+  payments as first-class rows) are where they attach.

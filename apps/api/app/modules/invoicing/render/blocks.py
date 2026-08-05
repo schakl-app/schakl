@@ -134,6 +134,15 @@ BLOCK_CATALOG: tuple[BlockSpec, ...] = (
             _f("description"),
         ),
     ),
+    # A QR that deep-links to this invoice in the client portal (#268). Off by default and
+    # placed next to the payment card, because it answers the same question in one gesture:
+    # a client scans the paper on their phone and lands on the live document — status,
+    # download, and the "pay now" button once a provider is connected (epic #269).
+    #
+    # No ``fields``: a QR has no togglable sub-parts. And no data migration — a stored layout
+    # is a diff against this catalog, not a snapshot, so a template that has never heard of
+    # this key resolves it at the catalog's own position and default.
+    BlockSpec("payment_qr", "body", default=False),
     BlockSpec("intro", "body"),
     BlockSpec(
         "lines",
