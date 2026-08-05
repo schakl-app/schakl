@@ -1384,6 +1384,25 @@ class InvoiceService(_DocumentService):
                 "conflict", "errors.invoicing.has_credit_notes", status_code=409
             )
         if is_credit:
+            # Withdrawing a note that completed a full credit would put its invoice back to
+            # billing work this org has already been handed back — and may well have
+            # re-invoiced by now, which is what the hours picker offered it for. Re-claiming
+            # cannot be done safely from here, so refuse and let them bill it again instead.
+            # Only where there *was* work to hand back, though: a credit note against an
+            # invoice of plain product lines released nothing, so withdrawing it costs
+            # nothing either, and the refusal should not reach the case it does not earn.
+            if invoice.credit_for_id is not None:
+                source = await self.repo.get(invoice.credit_for_id)
+                if (
+                    source is not None
+                    and await self._credited_by_notes(source.id) >= source.total > 0
+                    and await self._claims_provenance(source.id)
+                ):
+                    raise AppError(
+                        "conflict",
+                        "errors.invoicing.credit_released_work",
+                        status_code=409,
+                    )
             await self._release_credit(invoice)
         await self._release_time_entries(invoice.id)
         # A cancelled invoice bills nothing, so its periods go back to the cycle cron —
@@ -1409,23 +1428,7 @@ class InvoiceService(_DocumentService):
             raise AppError(
                 "conflict", "errors.invoicing.already_credit_note", status_code=409
             )
-        # How much of this invoice existing credit notes already correct. `credited_total` is
-        # not that number: it counts only what was *absorbed*, which is zero when the invoice
-        # was paid — so a paid invoice could be credited twice over, owing the client two
-        # refunds for one document. The documents themselves are the honest total.
-        already_credited = -Decimal(
-            await self.ctx.session.scalar(
-                select(func.coalesce(func.sum(Invoice.total), 0)).where(
-                    Invoice.org_id == self.ctx.org.id,
-                    Invoice.credit_for_id == source.id,
-                    Invoice.status.in_(
-                        (InvoiceStatus.OPEN.value, InvoiceStatus.PAID.value)
-                    ),
-                )
-            )
-            or 0
-        )
-        if already_credited >= source.total > 0:
+        if await self._credited_by_notes(source.id) >= source.total > 0:
             raise AppError(
                 "conflict", "errors.invoicing.already_credited", status_code=409
             )
@@ -1622,6 +1625,61 @@ class InvoiceService(_DocumentService):
         return invoice
 
     # --- crediting ------------------------------------------------------------ #
+    async def _credited_by_notes(self, source_id: uuid.UUID) -> Decimal:
+        """How much of an invoice the credit notes against it correct, as a positive amount.
+
+        Not ``credited_total``: that counts only what was *absorbed*, which is zero when the
+        invoice was already paid. The documents are the honest measure of "how much of this
+        has been credited", and both the second-credit guard and the release below need it.
+        """
+        return -Decimal(
+            await self.ctx.session.scalar(
+                select(func.coalesce(func.sum(Invoice.total), 0)).where(
+                    Invoice.org_id == self.ctx.org.id,
+                    Invoice.credit_for_id == source_id,
+                    Invoice.status.in_(
+                        (InvoiceStatus.OPEN.value, InvoiceStatus.PAID.value)
+                    ),
+                )
+            )
+            or 0
+        )
+
+    async def _claims_provenance(self, source_id: uuid.UUID) -> bool:
+        """Do this invoice's lines bill anything a cron or a picker tracks?
+
+        Read off the *lines*, which keep their provenance even after the claim rows are
+        released — so the same question answers "will releasing do anything" before the fact
+        and "did it" after it.
+        """
+        rows = (await self._doc_lines([source_id])).get(source_id, [])
+        return any(
+            row.time_entry_ids or row.subscription_id or row.domain_id for row in rows
+        )
+
+    async def _release_credited_work(self, source: Invoice) -> None:
+        """Hand back what a fully credited invoice billed, so it can be billed again.
+
+        The point of crediting is usually to re-bill correctly, and until this ran you could
+        not: the hours stayed stamped ``invoiced_at`` and the agreement's month stayed
+        retired, so the corrected work was invisible to the hours picker and to the cycle
+        cron. ``cancel`` has released both since #207 for the same stated reason — crediting
+        is that act on a document too far along to cancel.
+
+        **Only on a full credit.** A partial one corrects an amount, and nothing on it says
+        which hours or which period the corrected part was; releasing all of them would put
+        work back on offer that the standing part of the invoice still bills.
+        """
+        if source.total <= 0:
+            return
+        if await self._credited_by_notes(source.id) < source.total:
+            return
+        await self._release_time_entries(source.id)
+        await self._release_subscription_periods(source.id)
+        await ActivityService(self.ctx).record(
+            self.entity_type, source.id, "work_released"
+        )
+
     async def _apply_credit(self, credit: Invoice) -> Invoice:
         """Write an issued credit note off against the invoice it corrects.
 
@@ -1649,18 +1707,21 @@ class InvoiceService(_DocumentService):
             - Decimal(source.credited_total or 0),
         )
         applied = min(amount, room)
-        if applied <= 0:
-            return credit
-        await self.repo.update(
-            source, credited_total=Decimal(source.credited_total or 0) + applied
-        )
-        credit = await self.repo.update(credit, applied_total=applied)
-        await ActivityService(self.ctx).record(
-            self.entity_type,
-            source.id,
-            "credit_applied",
-            {"credit_id": str(credit.id), "amount": float(applied)},
-        )
+        if applied > 0:
+            await self.repo.update(
+                source, credited_total=Decimal(source.credited_total or 0) + applied
+            )
+            credit = await self.repo.update(credit, applied_total=applied)
+            await ActivityService(self.ctx).record(
+                self.entity_type,
+                source.id,
+                "credit_applied",
+                {"credit_id": str(credit.id), "amount": float(applied)},
+            )
+        # Outside the branch on purpose: a credit note against an invoice that was already
+        # *paid* absorbs nothing, so `applied` is zero — and that invoice is exactly as fully
+        # credited as the unpaid one, with the work exactly as re-billable.
+        await self._release_credited_work(source)
         return await self._settle(credit)
 
     async def _release_credit(self, credit: Invoice) -> None:

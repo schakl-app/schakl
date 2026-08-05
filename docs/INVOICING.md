@@ -78,6 +78,22 @@ invoice that owes nothing.
     refund, which is registered as a **negative payment** on the credit note and settles it.
   Re-deriving the split on every read instead would let a later payment silently move what a
   credit note is recorded as having settled.
+- **A full credit hands the work back.** Crediting is usually the prelude to re-billing
+  correctly, and until #207's follow-up you could not: the invoice went on holding
+  everything it billed, so the hours stayed stamped `invoiced_at` and the agreement's month
+  stayed retired — invisible to the hours picker and to the cycle cron alike. Issuing a
+  credit note that covers its source in full now releases that invoice's time entries,
+  subscription periods and domain periods, exactly as `cancel` has since #207 and for the
+  reason stated there. Keyed off the **documents** (`_credited_by_notes`), not off
+  `credited_total`, so a credited *paid* invoice — which absorbs nothing — releases too.
+  A **partial** credit releases nothing: it corrects an amount, and nothing on it says which
+  hours or which month the corrected part was, so releasing all of them would put work back
+  on offer that the standing part of the invoice still bills. Recorded as `work_released`.
+  The corollary: a credit note that actually released something can no longer be
+  **withdrawn** (`errors.invoicing.credit_released_work`) — the work is back on offer and may
+  already sit on a new invoice, so re-claiming it cannot be done safely; bill it again
+  instead. One that released nothing (an invoice of plain product lines) still withdraws, so
+  the refusal costs only the case that earns it.
 - **A credit note is never dunned, and never credited.** The reminders cron chases
   `outstanding > 0` (not `status = 'open'`) and skips credit notes outright — the renderer
   already guarantees a credit note never asks to be paid, so the dunning run must not

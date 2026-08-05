@@ -551,3 +551,186 @@ async def test_one_line_claims_one_agreement(client_for) -> None:
         error = clash.json()["error"]
         assert error["code"] == "validation"
         assert "errors.invoicing.one_claim_per_line" in error["fields"].values()
+
+
+async def test_a_full_credit_hands_the_work_back(client_for) -> None:
+    """Crediting an invoice makes what it billed billable again.
+
+    A credit note claims nothing (see above) — but that is about the *credit note*. The
+    invoice it corrects went on holding everything it billed: the hours stayed stamped
+    ``invoiced_at`` and the agreement's month stayed retired. So the one thing you credit an
+    invoice in order to do — bill the work again, correctly — was the one thing you could not
+    do. `cancel` had released both since #207 for exactly this reason ("otherwise cancelling
+    would silently retire an agreement's month for good"); crediting is the same act on a
+    document too far along to cancel.
+
+    Only a **full** credit releases: a partial one corrects an amount, and nothing says which
+    hours or which month the corrected part belonged to.
+    """
+    t: Tenant = await make_tenant("inv-prov-credit-release")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await _setup_org(c, headers)
+        company_id = await _company(c, headers)
+        await c.put(
+            f"/api/v1/leave/rate/{t.user.id}", json={"hourly_rate": "90.00"}, headers=headers
+        )
+        _, entry_ids = await _billable_entries(c, headers, company_id, (90, 30))
+        sub = await _subscription(c, headers, company_id)
+        offer = await _offer(c, headers, company_id, sub["id"])
+
+        invoice_id = (
+            await c.post(
+                "/api/v1/invoicing/invoices",
+                json={
+                    "company_id": company_id,
+                    "lines": [
+                        {"description": "Uren", "line_kind": "hours", "quantity": "2",
+                         "unit": "uur", "unit_price": "90", "time_entry_ids": entry_ids},
+                        {"description": "Hosting", "line_kind": "subscription",
+                         "quantity": "1", "unit_price": "249",
+                         "subscription_id": sub["id"],
+                         "period_start": offer["period_start"],
+                         "period_end": offer["period_end"]},
+                    ],
+                },
+                headers=headers,
+            )
+        ).json()["id"]
+        issued = await c.post(
+            f"/api/v1/invoicing/invoices/{invoice_id}/issue", json={}, headers=headers
+        )
+        assert issued.status_code == 200, issued.text
+        assert await _unbilled_ids(c, headers, company_id) == set()
+        assert await _already_billed(
+            c, headers, company_id, sub["id"], offer["period_end"]
+        )
+
+        credit = (
+            await c.post(
+                f"/api/v1/invoicing/invoices/{invoice_id}/credit", headers=headers
+            )
+        ).json()
+        # A draft credit note releases nothing: it is not a document yet.
+        assert await _unbilled_ids(c, headers, company_id) == set()
+
+        await c.post(
+            f"/api/v1/invoicing/invoices/{credit['id']}/issue", json={}, headers=headers
+        )
+        # Issued and covering the whole invoice: the work is on offer again.
+        assert await _unbilled_ids(c, headers, company_id) == set(entry_ids)
+        assert not await _already_billed(
+            c, headers, company_id, sub["id"], offer["period_end"]
+        )
+
+
+async def test_a_partial_credit_holds_on_to_the_work(client_for) -> None:
+    """Half the invoice still stands, and nothing says which half the hours were."""
+    t: Tenant = await make_tenant("inv-prov-credit-partial")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await _setup_org(c, headers)
+        company_id = await _company(c, headers)
+        await c.put(
+            f"/api/v1/leave/rate/{t.user.id}", json={"hourly_rate": "90.00"}, headers=headers
+        )
+        _, entry_ids = await _billable_entries(c, headers, company_id, (90, 30))
+        invoice_id = (
+            await c.post(
+                "/api/v1/invoicing/invoices",
+                json={
+                    "company_id": company_id,
+                    "lines": [
+                        {"description": "Uren", "line_kind": "hours", "quantity": "2",
+                         "unit": "uur", "unit_price": "90", "time_entry_ids": entry_ids},
+                    ],
+                },
+                headers=headers,
+            )
+        ).json()["id"]
+        await c.post(
+            f"/api/v1/invoicing/invoices/{invoice_id}/issue", json={}, headers=headers
+        )
+        credit = (
+            await c.post(
+                f"/api/v1/invoicing/invoices/{invoice_id}/credit", headers=headers
+            )
+        ).json()
+        await c.patch(
+            f"/api/v1/invoicing/invoices/{credit['id']}",
+            json={"lines": [{"description": "Correctie", "quantity": "1",
+                             "unit_price": "-50"}]},
+            headers=headers,
+        )
+        await c.post(
+            f"/api/v1/invoicing/invoices/{credit['id']}/issue", json={}, headers=headers
+        )
+        assert await _unbilled_ids(c, headers, company_id) == set(), (
+            "a partial credit names no hours, so it releases none"
+        )
+
+
+async def test_a_paid_invoice_credited_also_hands_its_work_back(client_for) -> None:
+    """The case `credited_total` alone cannot see.
+
+    A paid invoice has no room, so the credit note absorbs nothing and `credited_total` stays
+    zero — but the client has been credited in full and the work is exactly as re-billable as
+    on an unpaid one. Release keys off the *documents*, not off what they absorbed.
+    """
+    t: Tenant = await make_tenant("inv-prov-credit-paid")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await _setup_org(c, headers)
+        company_id = await _company(c, headers)
+        await c.put(
+            f"/api/v1/leave/rate/{t.user.id}", json={"hourly_rate": "90.00"}, headers=headers
+        )
+        _, entry_ids = await _billable_entries(c, headers, company_id, (60,))
+        invoice = (
+            await c.post(
+                "/api/v1/invoicing/invoices",
+                json={
+                    "company_id": company_id,
+                    "lines": [
+                        {"description": "Uren", "line_kind": "hours", "quantity": "1",
+                         "unit": "uur", "unit_price": "90", "time_entry_ids": entry_ids},
+                    ],
+                },
+                headers=headers,
+            )
+        ).json()
+        issued = (
+            await c.post(
+                f"/api/v1/invoicing/invoices/{invoice['id']}/issue", json={}, headers=headers
+            )
+        ).json()
+        await c.post(
+            f"/api/v1/invoicing/invoices/{invoice['id']}/payments",
+            json={"paid_on": _today().isoformat(), "amount": issued["total"]},
+            headers=headers,
+        )
+        assert await _unbilled_ids(c, headers, company_id) == set()
+
+        credit = (
+            await c.post(
+                f"/api/v1/invoicing/invoices/{invoice['id']}/credit", headers=headers
+            )
+        ).json()
+        settled = (
+            await c.post(
+                f"/api/v1/invoicing/invoices/{credit['id']}/issue", json={}, headers=headers
+            )
+        ).json()
+        assert settled["applied_total"] == "0.00"  # nothing absorbed…
+        assert await _unbilled_ids(c, headers, company_id) == set(entry_ids)  # …released anyway
+
+        # And that note can no longer be withdrawn: the work is back on offer, possibly
+        # already re-invoiced, and re-claiming it from here cannot be done safely.
+        withdrawn = await c.post(
+            f"/api/v1/invoicing/invoices/{settled['id']}/cancel", headers=headers
+        )
+        assert withdrawn.status_code == 409
+        assert (
+            withdrawn.json()["error"]["message"]
+            == "errors.invoicing.credit_released_work"
+        )
