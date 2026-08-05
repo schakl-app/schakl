@@ -54,6 +54,10 @@ class FakeCloudflare:
         self.pages: dict[str, list[dict]] = {}
         #: account id -> {project name -> [hostnames]}.
         self.pages_domains: dict[str, dict[str, list[dict]]] = {}
+        #: Answer the project list *without* the embedded ``domains`` array. Cloudflare puts it
+        #: there and the module reads it to avoid a call per project; this is how a test drives
+        #: the fallback for a payload that omits it.
+        self.pages_projects_omit_domains = False
         #: account id -> the Registrar domain list (#298). Cloudflare reports domains held at
         #: *other* registrars here too, which is exactly what the module has to tell apart.
         self.registrar: dict[str, list[dict]] = {}
@@ -98,6 +102,30 @@ class FakeCloudflare:
             **record,
         }
         self.dns.setdefault(zone_id, []).append(row)
+        return row
+
+    def add_pages_domain(
+        self,
+        project: str,
+        name: str,
+        *,
+        account: str = "acct-1",
+        status: str = "active",
+        error: str | None = None,
+    ) -> dict:
+        """A custom hostname already attached to a project — the state an agency arrives in.
+
+        Somebody parked a domain on a placeholder Pages project in Cloudflare's own dashboard
+        long before schakl saw the account, and nothing here created it.
+        """
+        row: dict[str, Any] = {
+            "id": f"pd-{uuid.uuid4().hex[:6]}",
+            "name": name,
+            "status": status,
+        }
+        if error is not None:
+            row["validation_data"] = {"error_message": error}
+        self.pages_domains.setdefault(account, {}).setdefault(project, []).append(row)
         return row
 
     def add_redirect_rule(self, zone_id: str, rule: dict, *, ruleset_id: str = "rs-1") -> dict:
@@ -297,7 +325,22 @@ class FakeCloudflare:
         account = parts[1]
         # accounts/{a}/pages/projects[/{name}/domains[/{host}]]
         if len(parts) == 4:
-            return _ok(self.pages.get(account, []))
+            return _ok(
+                [
+                    project
+                    if self.pages_projects_omit_domains
+                    else {
+                        **project,
+                        "domains": [
+                            host["name"]
+                            for host in self.pages_domains.get(account, {}).get(
+                                project.get("name", ""), []
+                            )
+                        ],
+                    }
+                    for project in self.pages.get(account, [])
+                ]
+            )
         if len(parts) >= 6 and parts[5] == "domains":
             project = parts[4]
             hosts = self.pages_domains.setdefault(account, {}).setdefault(project, [])

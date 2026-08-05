@@ -151,6 +151,49 @@ account whenever the tenant holds more than one, which is §3's rule in miniatur
 may each hold a project called `site`, and nothing else on the row says which Cloudflare this
 hostname lands in.
 
+### The link button was the table's only writer, and that was the same mistake one layer down
+
+Every other half of this module reconciles; Pages did not. `cloudflare_pages_links` was written
+once, by the button, and never looked at again — so `status` was frozen at whatever Cloudflare
+answered in the second the link was made. A hostname that finished provisioning read *pending*
+forever, one deleted in Cloudflare's own dashboard read as linked, `last_checked_at` described a
+check that never ran a second time, and a placeholder attached in that dashboard before schakl
+ever saw the account was invisible here. `list_pages_domains` had existed on the client the whole
+time with **no callers**. Two paths now use it, and they answer different questions.
+
+**A sync discovers.** `_sync_pages_projects` reads what each project serves and
+`_reconcile_pages_links` files it: a hostname that matches a domain record is **adopted**
+(`discovered_at`), one that matches nothing is counted and left alone — inventing a domain row
+would put a name under a client who never asked for it — and a link the project no longer serves
+is marked `missing_at`, never deleted. Adoption is safe *because* it writes nothing at
+Cloudflare: it records what is already true there, which is the same posture "connect" takes when
+it adopts an existing zone rather than creating one. Matching is longest-suffix
+(`_host_candidates`), so a tenant holding both `klant.nl` and `shop.klant.nl` never gets
+`www.shop.klant.nl` filed under the parent — the wrong client's page. Cloudflare embeds a
+project's custom domains in the project object, so the normal path costs no extra call; a payload
+without the key falls back to one call per project, capped at `PAGES_DOMAIN_SCAN_LIMIT` and
+**reported as a warning** when the cap bites, never silently truncated (§17).
+
+**A check refreshes.** `_refresh_pages_links` runs from `domain_status(live=True)` — one call per
+distinct project, statuses and error messages written back, sibling hostnames of *this* domain
+adopted. It sits outside the `zone is not None` branch for the reason the panel does: a Pages
+hostname hangs off the project's account, so inside it the one domain whose DNS lives elsewhere
+could never refresh at all. Which also means the panel needs a check control that a domain with
+no zone can reach — the connected branch's button is not reachable from there.
+
+Three rules hold the reconcile up, and none of them is about Pages.
+
+- **"We did not look" and "it is gone" are different answers.** A project whose hostname list
+  could not be read (a token without Pages, an account with no `cf_account_id`) is named in
+  `unavailable` and leaves *every* link on it untouched. Only a project that actually answered
+  may mark anything missing.
+- **Drift is reported, never resolved.** A missing link keeps its row and shows
+  `cloudflare.issue.pages_missing`; re-linking is what clears it, and that is a person's
+  decision. Deleting the row on one empty probe would erase the only record that the hostname
+  was ever ours.
+- **`missing_at` keeps the *first* time it went missing.** "Since when" is the question an agency
+  asks; restamping it every check answers "just now" forever.
+
 ## 7. Registrar — who *pays* for the name (#298)
 
 A zone is not a registration, and this section exists because the difference is money. Cloudflare

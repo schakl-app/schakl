@@ -9052,6 +9052,26 @@ export interface components {
          */
         AccountSyncResult: {
             /**
+             * Pages Domains Synced
+             * @default 0
+             */
+            pages_domains_synced: number;
+            /**
+             * Pages Links Adopted
+             * @default 0
+             */
+            pages_links_adopted: number;
+            /**
+             * Pages Links Matched
+             * @default 0
+             */
+            pages_links_matched: number;
+            /**
+             * Pages Links Missing
+             * @default 0
+             */
+            pages_links_missing: number;
+            /**
              * Pages Projects Synced
              * @default 0
              */
@@ -16686,6 +16706,8 @@ export interface components {
         };
         /** PagesLinkRead */
         PagesLinkRead: {
+            /** Discovered At */
+            discovered_at?: string | null;
             /**
              * Domain Id
              * Format: uuid
@@ -16702,6 +16724,8 @@ export interface components {
             last_checked_at?: string | null;
             /** Last Error */
             last_error?: string | null;
+            /** Missing At */
+            missing_at?: string | null;
             /**
              * Project Id
              * Format: uuid

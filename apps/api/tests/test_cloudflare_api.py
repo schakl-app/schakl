@@ -890,6 +890,264 @@ async def test_pages_links_a_domain_that_has_no_zone_here(client_for, cloudflare
         assert [link["hostname"] for link in status["pages_links"]] == ["elders.nl"]
 
 
+async def test_sync_adopts_hostnames_already_attached_at_cloudflare(
+    client_for, cloudflare
+) -> None:
+    """The case an agency actually arrives in: the domain is already on a placeholder project.
+
+    Somebody parked it in Cloudflare's own dashboard long before schakl saw the account, so
+    there is nothing to press "Aan project koppelen" for — the link has to come *back* from
+    Cloudflare or the CRM never learns about it.
+    """
+    t = await make_tenant("cf-pages-adopt")
+    headers = await auth_cookie(t.user)
+    cloudflare.pages["acct-1"] = [
+        {"name": "placeholder", "subdomain": "placeholder.pages.dev", "production_branch": "main"}
+    ]
+    cloudflare.add_pages_domain("placeholder", "klant.nl")
+    cloudflare.add_pages_domain("placeholder", "www.klant.nl", status="pending")
+    # A hostname belonging to no domain record here. Counted, never invented into one.
+    cloudflare.add_pages_domain("placeholder", "iemandanders.nl")
+    async with client_for(t.host) as c:
+        company = await _company(c, headers)
+        domain = await _domain(c, headers, "klant.nl", company)
+        account = await _account(c, headers)
+        await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/verify", headers=headers)
+
+        result = await c.post(
+            f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers
+        )
+        assert result.status_code == 200, result.text
+        assert result.json()["pages_domains_synced"] == 3
+        assert result.json()["pages_links_adopted"] == 2
+        assert result.json()["pages_links_matched"] == 2
+
+        status = (
+            await c.get(f"/api/v1/cloudflare/domains/{domain['id']}/status", headers=headers)
+        ).json()
+        assert sorted(link["hostname"] for link in status["pages_links"]) == [
+            "klant.nl",
+            "www.klant.nl",
+        ]
+        assert all(link["discovered_at"] for link in status["pages_links"])
+
+        # Adoption records what is already true; it registers nothing and writes no DNS.
+        assert not [call for call in cloudflare.calls if call[0] in {"POST", "PUT", "DELETE"}]
+        # And it is idempotent — a second sync adopts nothing and duplicates no row.
+        again = await c.post(
+            f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers
+        )
+        assert again.json()["pages_links_adopted"] == 0
+        assert again.json()["pages_links_matched"] == 2
+        status = (
+            await c.get(f"/api/v1/cloudflare/domains/{domain['id']}/status", headers=headers)
+        ).json()
+        assert len(status["pages_links"]) == 2
+
+
+async def test_sync_files_a_hostname_under_the_most_specific_domain(
+    client_for, cloudflare
+) -> None:
+    """A tenant holding both ``klant.nl`` and ``shop.klant.nl`` must not get the link filed
+    under the parent — that would put a hostname on the wrong client's page."""
+    t = await make_tenant("cf-pages-specific")
+    headers = await auth_cookie(t.user)
+    cloudflare.pages["acct-1"] = [{"name": "webshop", "subdomain": "webshop.pages.dev"}]
+    cloudflare.add_pages_domain("webshop", "www.shop.klant.nl")
+    async with client_for(t.host) as c:
+        parent_co = await _company(c, headers)
+        child_co = await _company(c, headers, "Webshop BV")
+        await _domain(c, headers, "klant.nl", parent_co)
+        child = await _domain(c, headers, "shop.klant.nl", child_co)
+        account = await _account(c, headers)
+        await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/verify", headers=headers)
+        await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers)
+
+        status = (
+            await c.get(f"/api/v1/cloudflare/domains/{child['id']}/status", headers=headers)
+        ).json()
+        assert [link["hostname"] for link in status["pages_links"]] == ["www.shop.klant.nl"]
+
+
+async def test_sync_falls_back_when_the_project_payload_omits_its_domains(
+    client_for, cloudflare
+) -> None:
+    """The embedded ``domains`` array is what makes discovery free. A payload without it must
+    still discover, one call per project — the shape is not documented as stable."""
+    t = await make_tenant("cf-pages-fallback")
+    headers = await auth_cookie(t.user)
+    cloudflare.pages_projects_omit_domains = True
+    cloudflare.pages["acct-1"] = [{"name": "placeholder", "subdomain": "placeholder.pages.dev"}]
+    cloudflare.add_pages_domain("placeholder", "klant.nl")
+    async with client_for(t.host) as c:
+        company = await _company(c, headers)
+        domain = await _domain(c, headers, "klant.nl", company)
+        account = await _account(c, headers)
+        await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/verify", headers=headers)
+        result = await c.post(
+            f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers
+        )
+        assert result.json()["pages_links_adopted"] == 1
+        assert ("GET", "/accounts/acct-1/pages/projects/placeholder/domains") in cloudflare.calls
+
+        status = (
+            await c.get(f"/api/v1/cloudflare/domains/{domain['id']}/status", headers=headers)
+        ).json()
+        assert [link["hostname"] for link in status["pages_links"]] == ["klant.nl"]
+
+
+async def test_check_refreshes_a_link_and_reports_it_gone_without_deleting_it(
+    client_for, cloudflare
+) -> None:
+    """``status`` used to be frozen at whatever Cloudflare said the second the link was made.
+
+    So a hostname that finished provisioning read *pending* forever and one deleted in
+    Cloudflare's dashboard read as linked. Both are observations, and both are *reported*: the
+    row survives being called missing, exactly as a drifted redirect rule does.
+    """
+    t = await make_tenant("cf-pages-check")
+    headers = await auth_cookie(t.user)
+    cloudflare.pages["acct-1"] = [{"name": "klant-site", "subdomain": "klant-site.pages.dev"}]
+    async with client_for(t.host) as c:
+        account, domain, _ = await _connected(c, headers, cloudflare)
+        await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers)
+        projects = (await c.get("/api/v1/cloudflare/pages/projects", headers=headers)).json()
+        linked = await c.post(
+            f"/api/v1/cloudflare/domains/{domain['id']}/pages",
+            json={"project_id": projects[0]["id"]},
+            headers=headers,
+        )
+        assert linked.json()["status"] == "pending"
+
+        # Cloudflare finishes provisioning, and somebody adds ``www`` in its own dashboard.
+        hosts = cloudflare.pages_domains["acct-1"]["klant-site"]
+        hosts[0]["status"] = "active"
+        cloudflare.add_pages_domain("klant-site", "www.klant.nl", status="pending")
+
+        report = await c.post(
+            f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers
+        )
+        assert report.status_code == 200, report.text
+        links = {link["hostname"]: link for link in report.json()["pages_links"]}
+        assert links["klant.nl"]["status"] == "active"
+        assert links["klant.nl"]["last_checked_at"]
+        # The sibling hostname is adopted: it is this domain's, and the project already ours.
+        assert links["www.klant.nl"]["status"] == "pending"
+        assert "pages_pending" in report.json()["issues"]
+
+        # Now it disappears from Cloudflare entirely.
+        cloudflare.pages_domains["acct-1"]["klant-site"] = []
+        report = await c.post(
+            f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers
+        )
+        links = {link["hostname"]: link for link in report.json()["pages_links"]}
+        assert len(links) == 2, "a missing link is reported, never deleted"
+        assert all(link["missing_at"] for link in links.values())
+        assert "pages_missing" in report.json()["issues"]
+        first_seen = links["klant.nl"]["missing_at"]
+
+        # "Since when" survives a second check — restamping it would answer "just now" forever.
+        report = await c.post(
+            f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers
+        )
+        links = {link["hostname"]: link for link in report.json()["pages_links"]}
+        assert links["klant.nl"]["missing_at"] == first_seen
+
+        # Re-linking is how the drift is resolved, so the flag clears.
+        relinked = await c.post(
+            f"/api/v1/cloudflare/domains/{domain['id']}/pages",
+            json={"project_id": projects[0]["id"]},
+            headers=headers,
+        )
+        assert relinked.json()["missing_at"] is None
+
+
+async def test_check_never_adopts_a_hostname_that_belongs_to_another_domain(
+    client_for, cloudflare
+) -> None:
+    """A suffix of this domain's name is not proof the hostname is *this domain's*.
+
+    One project can serve both clients. Filing ``www.shop.klant.nl`` under ``klant.nl`` because
+    it ends in it would put a hostname on the wrong client's page — the mistake the sync's
+    longest-suffix match exists to prevent, so the check must resolve it the same way.
+    """
+    t = await make_tenant("cf-pages-sibling")
+    headers = await auth_cookie(t.user)
+    cloudflare.pages["acct-1"] = [{"name": "klant-site", "subdomain": "klant-site.pages.dev"}]
+    async with client_for(t.host) as c:
+        account, domain, _ = await _connected(c, headers, cloudflare)
+        shop_co = await _company(c, headers, "Webshop BV")
+        shop = await _domain(c, headers, "shop.klant.nl", shop_co)
+        await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers)
+        projects = (await c.get("/api/v1/cloudflare/pages/projects", headers=headers)).json()
+        await c.post(
+            f"/api/v1/cloudflare/domains/{domain['id']}/pages",
+            json={"project_id": projects[0]["id"]},
+            headers=headers,
+        )
+        cloudflare.add_pages_domain("klant-site", "www.shop.klant.nl")
+
+        report = await c.post(
+            f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers
+        )
+        assert [link["hostname"] for link in report.json()["pages_links"]] == ["klant.nl"]
+
+        # Left for the sync, which files it under the record it actually belongs to.
+        await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers)
+        status = (
+            await c.get(f"/api/v1/cloudflare/domains/{shop['id']}/status", headers=headers)
+        ).json()
+        assert [link["hostname"] for link in status["pages_links"]] == ["www.shop.klant.nl"]
+
+
+async def test_check_leaves_links_alone_when_pages_cannot_be_read(client_for, cloudflare) -> None:
+    """"We did not look" and "it is gone" are different answers, and a token scoped away from
+    Pages must never produce the second one."""
+    t = await make_tenant("cf-pages-denied")
+    headers = await auth_cookie(t.user)
+    cloudflare.pages["acct-1"] = [{"name": "klant-site", "subdomain": "klant-site.pages.dev"}]
+    async with client_for(t.host) as c:
+        account, domain, _ = await _connected(c, headers, cloudflare)
+        await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers)
+        projects = (await c.get("/api/v1/cloudflare/pages/projects", headers=headers)).json()
+        await c.post(
+            f"/api/v1/cloudflare/domains/{domain['id']}/pages",
+            json={"project_id": projects[0]["id"]},
+            headers=headers,
+        )
+
+        cloudflare.deny.add("/pages/")
+        report = await c.post(
+            f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers
+        )
+        assert report.status_code == 200, report.text
+        assert "pages" in report.json()["unavailable"]
+        links = report.json()["pages_links"]
+        assert [link["hostname"] for link in links] == ["klant.nl"]
+        assert links[0]["missing_at"] is None
+
+
+async def test_pages_refresh_is_one_call_per_project(client_for, cloudflare) -> None:
+    """Three hostnames of one domain on one project is one Cloudflare call, not three
+    (docs/PERFORMANCE.md — invisible in the JSON, fatal at scale)."""
+    t = await make_tenant("cf-pages-batch")
+    headers = await auth_cookie(t.user)
+    cloudflare.pages["acct-1"] = [{"name": "klant-site", "subdomain": "klant-site.pages.dev"}]
+    for host in ("klant.nl", "www.klant.nl", "acc.klant.nl"):
+        cloudflare.add_pages_domain("klant-site", host)
+    async with client_for(t.host) as c:
+        account, domain, _ = await _connected(c, headers, cloudflare)
+        await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers)
+
+        cloudflare.calls.clear()
+        report = await c.post(
+            f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers
+        )
+        assert len(report.json()["pages_links"]) == 3
+        domain_calls = [call for call in cloudflare.calls if call[1].endswith("/domains")]
+        assert len(domain_calls) == 1, domain_calls
+
+
 # --------------------------------------------------------------------------------------- #
 # Authorization + horizon
 # --------------------------------------------------------------------------------------- #

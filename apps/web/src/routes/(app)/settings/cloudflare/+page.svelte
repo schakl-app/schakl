@@ -91,6 +91,28 @@
           })
         : t("cloudflare.accounts.synced_registrar_none")}
     </span>
+    <!-- What the Pages half found. A sync adopts hostnames already attached at Cloudflare, so
+         this is where an agency sees its existing setup arrive — and where drift is named
+         rather than silently resolved. -->
+    <span class="mt-1 block text-text-muted">
+      {t("cloudflare.accounts.synced_pages", {
+        projects: form.sync.pages_projects_synced,
+        domains: form.sync.pages_domains_synced,
+        adopted: form.sync.pages_links_adopted,
+      })}
+    </span>
+    {#if form.sync.pages_links_missing}
+      <span class="mt-1 block text-amber-600">
+        {t("cloudflare.accounts.synced_pages_missing", {
+          missing: form.sync.pages_links_missing,
+        })}
+      </span>
+    {/if}
+    {#if form.sync.warnings?.includes("pages_domains_truncated")}
+      <span class="mt-1 block text-amber-600">
+        {t("cloudflare.accounts.synced_pages_truncated")}
+      </span>
+    {/if}
   </p>
 {/if}
 

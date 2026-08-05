@@ -24,6 +24,7 @@
    */
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
+  import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -340,7 +341,19 @@
      leaving rows nothing on this page could remove. -->
 {#if zone || status?.pages_links?.length || (canManage && panel.projects.length > 0)}
   <section class="mt-5 border-t border-border pt-4">
-    <h3 class="text-sm font-medium text-text">{t("cloudflare.pages.title")}</h3>
+    <div class="flex flex-wrap items-baseline justify-between gap-2">
+      <h3 class="text-sm font-medium text-text">{t("cloudflare.pages.title")}</h3>
+      <!-- The zone branch has its own "check" button, and a domain whose DNS lives elsewhere
+           is not inside it — so without this the one case Pages exists for could never
+           refresh. The action is the same one; only the button is duplicated. -->
+      {#if !zone && status?.pages_links?.length}
+        <form method="POST" action="?/cfCheck" use:enhance={busy.wrap("check")}>
+          <Button variant="secondary" size="xs" loading={busy.is("check")} disabled={busy.active}>
+            {t("cloudflare.pages.check")}
+          </Button>
+        </form>
+      {/if}
+    </div>
     {#if status?.pages_links?.length}
       <ul class="mt-2 space-y-1 text-sm">
         {#each status.pages_links as link (link.id)}
@@ -349,6 +362,18 @@
               {link.hostname}
               <span class="text-text-muted">→ {link.project_name ?? ""}</span>
               {#if link.status}<span class="text-xs text-text-muted">({link.status})</span>{/if}
+              <!-- Drift, and where the row came from. A link the sync adopted is one nobody
+                   here created, so saying so is the difference between "who added this?" and
+                   a row that looks like somebody's mistake. -->
+              {#if link.missing_at}
+                <span class="block text-xs text-amber-600">
+                  {t("cloudflare.pages.missing", { when: fmtDateTime(link.missing_at) })}
+                </span>
+              {:else if link.discovered_at}
+                <span class="block text-xs text-text-muted">
+                  {t("cloudflare.pages.discovered")}
+                </span>
+              {/if}
             </span>
             {#if canManage}
               <Button
@@ -372,6 +397,15 @@
       </ul>
     {:else}
       <p class="mt-2 text-sm text-text-muted">{t("cloudflare.pages.empty")}</p>
+    {/if}
+
+    <!-- The issues box lives inside the connected branch, so a domain with no zone would get no
+         word at all that the refresh could not run. A check that silently did nothing reads as
+         "everything is fine", which is the one thing it does not know. -->
+    {#if status?.unavailable?.includes("pages")}
+      <p class="mt-2 text-xs text-amber-600">
+        {t("cloudflare.unavailable.title", { items: t("cloudflare.unavailable.pages") })}
+      </p>
     {/if}
 
     {#if !zone}

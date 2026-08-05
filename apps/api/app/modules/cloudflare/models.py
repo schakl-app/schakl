@@ -421,6 +421,19 @@ class CloudflarePagesLink(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, B
     last_checked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    #: When a look last found that Cloudflare does **not** hold this hostname on this project;
+    #: ``NULL`` means present at the last look. Drift is *reported*, never acted on — the row
+    #: stays and the panel says so, exactly as a drifted redirect rule does. Deleting a link
+    #: because one probe came back empty would silently forget a hostname a token could not
+    #: read, and there is no undo for a hostname nobody remembers registering.
+    missing_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: When a sync adopted this link from Cloudflare, rather than the link button creating it.
+    #: The two are the same row and behave identically; this is the honest answer to *who
+    #: decided this*, and it is what makes adoption safe to do automatically — recording a
+    #: hostname already registered at Cloudflare writes nothing there.
+    discovered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     @classmethod
     def __company_horizon_clause__(cls, scope: frozenset[uuid.UUID]):  # noqa: ANN206
