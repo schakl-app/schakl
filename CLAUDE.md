@@ -49,7 +49,7 @@ other identifiers; the dot appears solely when the official product name is disp
 | Auth          | App-native at the API: FastAPI Users (local username/password, verification, reset) + 2FA on local login (TOTP + backup codes, optional SMS via instance gateway; org-admin reset — docs/TWOFACTOR.md) + Authlib (OIDC relying-party, configured **per org in the DB** — Instellingen → SSO, #76; encrypted secret, runtime toggles, `SCHAKL_FORCE_LOCAL_LOGIN` break-glass) · Google OAuth for Workspace scopes |
 | File storage  | Pluggable backend (named volume · S3-compatible) behind `app/core/storage/`. A file row is **not** its bytes: `file_blobs` holds one object per distinct sha256 **per org**, so the signature logo on 500 e-mails is one object — and therefore no single row may ever delete one. Call `service.drop_file`, never `storage_for(...).delete(key)`; a nightly cron folds pre-dedup rows and reclaims what nothing references — `docs/STORAGE.md` |
 | Received mail | HTML → markdown at ingest (`app/core/htmlmd.py`), stored beside the plain text as `interactions.body_markdown` and **only** when the message had an HTML part: text a *sender* wrote is not our markdown, so a plain-text mail keeps rendering as plain text. Its `cid:` images become files marked `content_id` (body content, not attachments) and the body's marker becomes `file:<uuid>`, resolved by the renderer; a remote `<img>` is dropped — a tracking pixel is an image — `docs/GOOGLE.md` |
-| Infra         | Docker Compose · Traefik · deployed on Hetzner · Cloudflare Zero Trust |
+| Infra         | Docker Compose · Traefik · deployed on Hetzner · Cloudflare Zero Trust. **A redeploy is not an outage**: the API rolls `start-first` on two replicas because "one migration at a time" is now stated as a Postgres advisory lock (`app/core/migrations.py`) rather than as `replicas: 1` — `docs/DEPLOY.md` |
 | MCP / AI       | MCP server over Streamable HTTP (OAuth 2.1 resource server) via the official Python MCP SDK / FastMCP; mounted on the API app; tools contributed per module, read-first · every AI feature goes through one core (`app/core/ai/`, `docs/AI.md`): per-tenant provider + encrypted key, and **every in-request model call wrapped in `ctx.release_db()`** — §11's pool-drain is worst here, because a tool loop holds the connection for tens of seconds. Speech-to-text is its own credential (`docs/VOICE.md`): Anthropic has no transcription endpoint and is the default provider, so "reuse the chat provider" configures nothing |
 
 Ship these as separate containers in one Compose file: `web`, `api`, `worker`, `db`, `redis`, `traefik`.
@@ -371,6 +371,19 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   It also holds the rule for **breaking database changes**: existing self-hosted releases
   migrate themselves unattended on upgrade, so destructive schema changes go out over two
   releases (expand/contract) and the upgrade path is written down before the migration is.
+- **State a constraint as the constraint, not as a deployment shape that happens to imply it.**
+  The cloud API was pinned to `replicas: 1` + `order: stop-first` to stop two tasks racing
+  `alembic upgrade head`. The reasoning was sound and the conclusion was far too strong: one
+  replica plus stop-first is *by definition* a window with no API at all, and the web app — which
+  rolls `start-first` and therefore stays up — answered 500 on every request for the length of
+  every redeploy, because its first server hook fetches `/meta/tenant` before anything renders.
+  The web app was up precisely so that it could render an error. The actual requirement was "one
+  migration at a time", which is a Postgres advisory lock (`app/core/migrations.py`) and says
+  nothing about replica counts; with it, the loser waits and then no-ops against a schema already
+  at head. Two smells generalise. A comment that estimates its own cost (*"costs a few seconds of
+  API downtime"*) is worth measuring — this one omitted the migration and the lifespan reconcile
+  that the healthcheck already budgeted 90s for. And a service kept alive **through** a dependency's
+  planned outage needs an answer for what it serves during it; "it stays up" is not one.
 - Keep this file updated when architecture decisions change.
 - Never leave a hardcoded user-facing string or an unscoped query — treat both as build breaks.
 - After each module: register it, add its panels, add its i18n keys, run `i18n:check` + tests.

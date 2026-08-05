@@ -120,6 +120,15 @@ class Settings(BaseSettings):
     db_pool_size: int = 15
     db_pool_max_overflow: int = 15
     db_pool_timeout_seconds: int = 5
+    # The pool is PER PROCESS, so a multi-replica deployment multiplies it. `api` replicas ×
+    # (size + overflow), plus the worker's, must stay under the server's max_connections — the
+    # cloud stacks halve these defaults precisely because they run two API replicas.
+    #
+    # How long a booting instance waits for another instance's `alembic upgrade` to finish
+    # (alembic/env.py). It bounds a *rolling deploy*, not a migration: whoever holds the lock may
+    # run for as long as it likes. Generous, because the wait costs nothing while the previous
+    # release keeps serving, and a premature timeout would roll back a perfectly good migration.
+    migration_lock_timeout_seconds: int = 600
     redis_url: str = "redis://localhost:6379/0"
 
     # --- Tenancy / white-label ---

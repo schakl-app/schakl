@@ -63,10 +63,16 @@ x-api-env: &api-env
   # public endpoint:
   #     postgresql+asyncpg://USER:PASSWORD@172.16.8.3:5432/rdb
   SCHAKL_DATABASE_URL_FILE: /run/secrets/SCHAKL_DATABASE_URL
-  # The pool is per replica. api replicas × this must stay under the managed instance's
-  # max_connections, with headroom for the worker.
-  SCHAKL_DB_POOL_SIZE: ${SCHAKL_DB_POOL_SIZE:-15}
-  SCHAKL_DB_POOL_MAX_OVERFLOW: ${SCHAKL_DB_POOL_MAX_OVERFLOW:-15}
+  # The pool is per replica. api replicas × (size + overflow) must stay under the managed
+  # instance's max_connections, with headroom for the worker.
+  #
+  # HALVED FROM 15/15 WHEN THE API WENT TO TWO REPLICAS — deliberately, so the ceiling did not
+  # silently double on a managed database that was sized for one: 2 × (8 + 8) = 32, against the
+  # 1 × (15 + 15) = 30 this replaces. Total capacity is unchanged and traffic splits across the
+  # replicas, so per-replica burst headroom is the only thing that narrows. Raise BOTH together
+  # if you also raise API_REPLICAS, and check max_connections before you do.
+  SCHAKL_DB_POOL_SIZE: ${SCHAKL_DB_POOL_SIZE:-8}
+  SCHAKL_DB_POOL_MAX_OVERFLOW: ${SCHAKL_DB_POOL_MAX_OVERFLOW:-8}
 
   SCHAKL_REDIS_URL: redis://redis:6379/0
 
@@ -183,16 +189,32 @@ services:
       start_period: 90s
     deploy:
       mode: replicated
-      # MUST stay 1: the entrypoint runs `alembic upgrade head` before serving, so two tasks
-      # starting together race the migration.
-      replicas: 1
+      # Two replicas, so a redeploy is not an outage. This was pinned to 1 + stop-first because
+      # the entrypoint migrates before serving and two tasks would race `alembic upgrade head` —
+      # which meant every redeploy had a window with ZERO API tasks, and the web app (start-first,
+      # so it stays up) answered 500 on every request because its first hook fetches
+      # /meta/tenant. The race is now prevented where it actually lives: `alembic upgrade` takes
+      # a Postgres advisory lock (apps/api/alembic/env.py), so the loser waits and then no-ops.
+      replicas: ${API_REPLICAS:-2}
       restart_policy:
         condition: any
       update_config:
-        # stop-first, NOT start-first: never run two migrations at once, and never serve an
-        # old and a new schema simultaneously. Costs a few seconds of API downtime per deploy.
-        order: stop-first
+        # start-first: the new task boots, migrates, passes its healthcheck and only THEN does
+        # Swarm retire an old one — so there is always a task serving. Safe because destructive
+        # schema changes go out over two releases (docs/WORKFLOW.md, expand/contract), which is
+        # exactly the property that lets old and new code share a schema for a few seconds.
+        order: start-first
+        # One at a time, so a bad release costs one task rather than the whole service.
+        parallelism: 1
+        # Watch each task for this long before calling the update good. Must comfortably exceed
+        # the boot (image pull + migration + lifespan reconcile); the 5s default would declare
+        # success before the first task had finished migrating and rollback would never fire.
+        monitor: 180s
+        delay: 10s
         failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        order: start-first
       labels:
         # Swarm reads routing labels from deploy.labels, not the service's top-level labels.
         - "traefik.enable=true"
@@ -254,6 +276,25 @@ services:
       # Same stack, so the short service name resolves over Swarm DNS.
       SCHAKL_API_URL: http://api:8000
     networks: [proxy, internal]
+    # `node -e`, not curl/wget: the runtime image is node:22-slim, which ships neither, and Node
+    # 22 has global fetch. Hits /healthz, which resolves no tenant and never calls the API — a
+    # probe that did would drop every web replica out of rotation during an API restart.
+    #
+    # Without a healthcheck, `start-first` puts a new task into rotation the moment the container
+    # is *running* — a second or two before the SSR server binds :3000 — so every deploy leaked a
+    # handful of 502s from tasks that were not listening yet.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
     deploy:
       mode: replicated
       replicas: ${WEB_REPLICAS:-2} # stateless SSR
@@ -261,7 +302,13 @@ services:
         condition: any
       update_config:
         order: start-first
+        parallelism: 1
+        monitor: 60s
+        delay: 5s
         failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        order: start-first
       labels:
         - "traefik.enable=true"
         # Catch-all: every host, every remaining path. `PathPrefix(`/`)` rather than a
