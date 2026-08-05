@@ -13,6 +13,7 @@ gating is **one seam** (module enablement + a mount-time dependency), never spri
 from app.core.entitlements.service import (
     ensure_modules_enableable,
     invalidate_license_cache,
+    license_exempt,
     license_state,
     license_write_gate,
 )
@@ -20,6 +21,7 @@ from app.core.entitlements.service import (
 __all__ = [
     "ensure_modules_enableable",
     "invalidate_license_cache",
+    "license_exempt",
     "license_state",
     "license_write_gate",
 ]

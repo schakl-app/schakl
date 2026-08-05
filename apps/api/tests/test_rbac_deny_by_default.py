@@ -69,7 +69,7 @@ _EXEMPT_OPERATIONS = frozenset(
         # the impersonated account cannot have would trap someone inside the session. With no
         # grant on the request it mutates nothing and answers 204, which is what both sweeps see
         # here; with one, it records the stop on the contact's trail and clears the cookie.
-        ("post", "/api/v1/contacts/portal/impersonation/stop"),
+        ("post", "/api/v1/portal/impersonation/stop"),
         # Google Calendar push notifications carry no user session at all; the route
         # authenticates with our own per-channel token and 404s anything that doesn't match
         # (docs/GOOGLE.md — webhooks map back to org + connection via our own channel token).

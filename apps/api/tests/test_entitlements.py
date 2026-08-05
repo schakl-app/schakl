@@ -19,9 +19,11 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+from sqlalchemy import select as sql_select
 from sqlalchemy import text as sql_text
 
 from app.config import settings
+from app.core.auth.models import User
 from app.core.entitlements.service import (
     LicenseError,
     invalidate_license_cache,
@@ -117,6 +119,10 @@ def test_paid_module_set_is_pinned() -> None:
         "leave": "leave",
         "marketing": "marketing",
         "oxxa": "oxxa",
+        # The client portal (#193, #296) is what an agency sells access to, not a property of
+        # the address book — hence its own sku, and hence the locked invite control on an
+        # instance that has not bought it.
+        "portal": "portal",
         "projects": "projects",
         "subscriptions": "subscriptions",
         "time": "time",
@@ -281,3 +287,70 @@ async def test_mcp_surface_gated(client_for, license_key) -> None:
         r = await c.post("/mcp/", json={"jsonrpc": "2.0", "id": 1, "method": "ping"})
         assert r.status_code == 402, r.text
         assert r.json()["error"]["message"] == "errors.license_expired"
+
+
+async def test_portal_invites_are_licensed_but_the_way_out_is_not(
+    client_for, license_key
+) -> None:
+    """The portal's write gate, and the one route that must survive it (#296).
+
+    An unlicensed instance may not invite a new client — that is the whole point of the sku,
+    and it is what the web renders as a locked control. But ending an impersonation is not a
+    purchase: gating it would strand whoever was inside a client's session the moment the
+    licence lapsed, with no way out. ``license_exempt`` is what separates the two, and this
+    pins both halves — a gate that quietly covered everything would look identical until
+    somebody was trapped.
+    """
+    t = await make_tenant("lic-portal")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Klant"}, headers=headers)
+        ).json()
+        contact = (
+            await c.post(
+                "/api/v1/contacts",
+                json={
+                    "first_name": "Piet",
+                    "last_name": "Klant",
+                    "email": "piet-lic@example.com",
+                    "company_ids": [company["id"]],
+                },
+                headers=headers,
+            )
+        ).json()
+        subject = f"/api/v1/portal/logins/contact/{contact['id']}"
+
+        # Inside the bootstrap window an unlicensed install still works (the built-in trial).
+        assert (await c.post(subject, headers=headers)).status_code == 200
+        async with async_session_maker() as session:
+            portal_user = await session.scalar(
+                sql_select(User).where(User.email == "piet-lic@example.com")
+            )
+        assert portal_user is not None
+        portal_headers = await auth_cookie(portal_user)
+
+        await _reset_instance_license(grace_started_days_ago=999)
+        # Past it: no new invite goes out…
+        r = await c.post(subject, headers=headers)
+        assert r.status_code == 402, r.text
+        assert r.json()["error"]["message"] == "errors.license_expired"
+        # …but reading the state keeps working, so the screen can explain itself rather than
+        # erroring, and existing logins are never revoked by a licence lapsing.
+        state = await c.get(subject, headers=headers)
+        assert state.status_code == 200, state.text
+        assert state.json()["status"] in {"invited", "active"}
+        # …and the escape hatch answers whatever the licence says.
+        assert (
+            await c.post("/api/v1/portal/impersonation/stop", headers=headers)
+        ).status_code == 204
+
+        # The client whose login already exists still signs in, and is still *contained*: the
+        # horizon and the "is this a portal login" resolver live in contacts precisely so a
+        # lapsed licence can never widen what an existing client sees. Locking the invite is a
+        # commercial decision; un-scoping a live session would be a security incident.
+        me = await c.get("/api/v1/meta/me", headers=portal_headers)
+        assert me.status_code == 200, me.text
+        assert me.json()["is_portal"] is True
+        theirs = await c.get("/api/v1/companies", headers=portal_headers)
+        assert [row["id"] for row in theirs.json()["items"]] == [company["id"]]

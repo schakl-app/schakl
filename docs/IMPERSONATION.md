@@ -7,7 +7,7 @@ The platform lets one person operate as another, deliberately and visibly:
 | Kind | Who | As whom | Gated on | Recorded on |
 |---|---|---|---|---|
 | `instance` | an instance owner / admin (issue #26) | any member of any org | `instance.impersonate` (a capability, not a tenant permission) | the instance audit log (`instance_audit_log`) |
-| `portal` | agency staff, inside their own org (#296) | a **client contact's portal login**, and nothing else | `contacts.portal.impersonate` (a tenant permission, §15) | the contact's activity trail (`activity_log`, §16) |
+| `portal` | agency staff, inside their own org (#296) | a **client's portal login**, and nothing else | `portal.login.impersonate` (a tenant permission, §15) | the subject's activity trail (`activity_log`, §16) |
 
 Everything below the two rows is shared.
 
@@ -46,11 +46,12 @@ there.
 ## What makes `portal` safe to hand a tenant
 
 An instance owner is trusted with everything by definition. A tenant admin is not, so the portal
-kind carries three extra guarantees (`app/modules/contacts/portal.py`):
+kind carries three extra guarantees (`app/modules/portal/service.py`):
 
-1. **The target can only ever be a portal login.** The endpoint names a *contact*, and the login
-   is `contacts.user_id` — a link only the invite flow creates, and that flow refuses an address
-   that already has an account. There is no input that names an arbitrary user, so "sign in as
+1. **The target can only ever be a portal login.** The endpoint names a *portal subject* (today
+   a contact), and the login is the link that subject's own module holds — `contacts.user_id` —
+   which only the invite flow creates, and that flow refuses an address that already has an
+   account. There is no input that names an arbitrary user, so "sign in as
    the owner" is not a request that can be expressed.
 2. **It can never gain the caller a permission — the session is *capped*, not refused**
    (`PermissionSet.narrowed_to`, applied in `require_context`). Roles are tenant-editable, so
@@ -65,7 +66,7 @@ kind carries three extra guarantees (`app/modules/contacts/portal.py`):
    expressed the invariant indirectly and coupled two things that should not be coupled: every
    grant to the `client` role shrank the set of staff who could impersonate at all. #266 gave
    clients `invoicing.invoice.read:own`, money defaults to admins, and every `member` holding
-   `contacts.portal.impersonate` was instantly locked out of a feature they had been using —
+   `portal.login.impersonate` was instantly locked out of a feature they had been using —
    arriving as *"impersonation stopped working and we changed nothing"*. Capping keeps the
    security property and drops the coupling: that member signs in and simply has no invoices.
 
@@ -75,15 +76,16 @@ kind carries three extra guarantees (`app/modules/contacts/portal.py`):
    The cap applies to the `portal` kind only. An instance owner (#26) is trusted with everything
    by definition and holds *no membership in the tenant at all*, so capping would resolve to
    nothing and break cross-tenant support entirely.
-3. **It obeys the company horizon — on both sides.** The contact is loaded through the tenant
-   repository, so a membership scoped to a company group (#191/#285) can only enter the contacts
-   of its own clients; anything else answers 404, like every other read. That bounds *which
-   contact*, and until #266 nothing bounded *the companies behind them*: a contact may be linked
-   to more clients than the staff member impersonating them can see, so a scoped member could
-   read a second client through a client's session — an escalation `covers` never looked at,
-   because it compared permissions and the horizon is a different axis. The impersonator's scope
-   now intersects the target's (`None` = unrestricted, the identity), so an unrestricted staff
-   member still sees the client's real horizon and a restricted one never sees past their own.
+3. **It obeys the company horizon — on both sides.** The subject is loaded through its owning
+   module's repository (the `app/core/portal.py` seam), so a membership scoped to a company
+   group (#191/#285) can only enter the contacts of its own clients; anything else answers 404,
+   like every other read. That bounds *which contact*, and until #266 nothing bounded *the
+   companies behind them*: a contact may be linked to more clients than the staff member
+   impersonating them can see, so a scoped member could read a second client through a client's
+   session — an escalation `covers` never looked at, because it compared permissions and the
+   horizon is a different axis. The impersonator's scope now intersects the target's (`None` =
+   unrestricted, the identity), so an unrestricted staff member still sees the client's real
+   horizon and a restricted one never sees past their own.
 
 Nesting is refused (`409 errors.impersonation_nested`): an impersonated session opening a second
 grant would launder one identity into another with only the first crossing recorded.

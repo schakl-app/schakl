@@ -57,6 +57,9 @@ CLOUD_SKU = "cloud"
 _MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 _CACHE_TTL_SECONDS = 60.0
 
+#: Attribute :func:`license_exempt` stamps on an endpoint. Never read it by string elsewhere.
+LICENSE_EXEMPT_MARKER = "__schakl_license_exempt__"
+
 
 class LicenseError(ValueError):
     """The key text is not a valid, correctly signed schakl license."""
@@ -243,13 +246,38 @@ async def ensure_modules_enableable(requested: list[str], current: list[str]) ->
         )
 
 
+def license_exempt(reason: str):  # noqa: ANN201 — a decorator, typed by what it wraps
+    """Mark one route of a licensed module as exempt from its write gate, and say why.
+
+    A whole-router gate is the right default — it is what makes "licensed" mean one thing per
+    module rather than a judgement call per endpoint — but a mutation that *releases* something
+    is not a mutation of licensed data, and gating it turns an expired licence into a trap. The
+    one case today: ending your own portal impersonation (#296). If that 402'd, a lapsed licence
+    would strand whoever was inside a client's session, and the way out is not a thing anyone
+    should have to buy.
+
+    Read at request time off ``scope["endpoint"]`` — one ``getattr``, no dependant walk on the
+    hot path. Anything the router cannot identify stays gated: this fails closed.
+    """
+
+    def mark(endpoint):  # noqa: ANN001, ANN202
+        setattr(endpoint, LICENSE_EXEMPT_MARKER, reason)
+        return endpoint
+
+    return mark
+
+
 def license_write_gate(sku: str) -> Depends:  # type: ignore[valid-type]
     """Router-level dependency for licensed modules: mutations require a writable sku.
 
     Reads never block — past expiry+grace the module is read-only, not gone (epic #140)."""
 
     async def gate(request: Request) -> None:
-        if request.method in _MUTATING_METHODS and not (await license_state()).writable(sku):
+        if request.method not in _MUTATING_METHODS:
+            return
+        if getattr(request.scope.get("endpoint"), LICENSE_EXEMPT_MARKER, None):
+            return
+        if not (await license_state()).writable(sku):
             raise AppError("license_expired", "errors.license_expired", status_code=402)
 
     gate.__name__ = f"license_write_gate_{sku}"

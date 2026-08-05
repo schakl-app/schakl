@@ -20,9 +20,10 @@ stop button and the ``/meta/me`` shape should not fork:
     An **agency staff member** inside their own org signing in as a client's contact person
     (#296), to see the client portal exactly as that client sees it. Same host, same tenant, so
     no handoff: the staff session cookie is already on this hostname. Gated on
-    ``contacts.portal.impersonate`` and recorded on the contact's own activity trail (§16),
-    where the agency actually looks — not on the instance log, which is an operator surface a
-    tenant cannot read.
+    ``portal.login.impersonate`` and recorded on the *subject's* own activity trail (§16), where
+    the agency actually looks — not on the instance log, which is an operator surface a tenant
+    cannot read. Issued by the ``portal`` module, which is also the only thing that knows a
+    portal subject is a contact.
 
 The kind is a claim rather than a second cookie: one banner, one stop button, and — decisively —
 ``read_impersonation`` must be able to answer "is this grant still allowed to exist?" for both,

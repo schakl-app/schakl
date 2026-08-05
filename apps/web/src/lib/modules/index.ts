@@ -20,3 +20,4 @@ import "./google";
 import "./marketing";
 import "./cloudflare";
 import "./oxxa";
+import "./portal";

@@ -22,10 +22,7 @@ CONTACT_PERMISSIONS: list[PermissionSpec] = [
         default_roles=(ROLE_ADMIN, ROLE_MEMBER, ROLE_CLIENT),
     ),
     PermissionSpec("contacts.type.manage", position=60),
-    # Sign in as a contact's client-portal login (#296) — see what that client sees, from the
-    # inside. Deliberately **not** folded into ``members.member.write``, which already enables
-    # and disables the login: creating an invite and *becoming* the person are different
-    # capabilities, and an agency should be able to grant the first without the second.
-    # Admin-only by default (the spec default), never a client's or a member's.
-    PermissionSpec("contacts.portal.impersonate", position=70),
+    # ``contacts.portal.impersonate`` moved to the portal module as ``portal.login.impersonate``
+    # when the portal became one (#296). Stored grants are rewritten in place per org by
+    # ``@rev:296-portal-module`` in ``core/permissions/reconcile.py`` — nobody's access changes.
 ]

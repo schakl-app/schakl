@@ -399,7 +399,7 @@ async def test_portal_contact_mail_still_logs(client_for, monkeypatch) -> None:
         ).json()
         # Portal access creates a user + client-role membership for the contact's address.
         assert (
-            await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+            await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
         ).status_code == 200
 
     # Mail between the owner and the portal-enabled contact — ``to`` must be the owner's

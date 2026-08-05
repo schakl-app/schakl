@@ -76,6 +76,15 @@ REVISIONS: tuple[DefaultsRevision, ...] = (
         rescope={"invoicing.invoice.read": "invoicing.invoice.read:any"},
         grants={"client": ("invoicing.invoice.read:own",)},
     ),
+    DefaultsRevision(
+        # #296: the client portal became its own module, so the permission that was named for
+        # where it happened to live is renamed to where it belongs. Pure spelling — the key is
+        # gone from the catalog, so a role or API key still holding the old string would fail
+        # `validate_permissions` on its own next save while granting exactly what it did before.
+        # Nothing is granted here: whoever held it holds it, whoever did not still does not.
+        marker="@rev:296-portal-module",
+        rescope={"contacts.portal.impersonate": "portal.login.impersonate"},
+    ),
 )
 
 

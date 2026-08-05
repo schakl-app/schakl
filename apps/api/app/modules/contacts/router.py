@@ -12,7 +12,6 @@ from fastapi import APIRouter, Depends, Query
 
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
-from app.modules.contacts.portal import portal_router
 from app.modules.contacts.schemas import (
     ContactCreate,
     ContactLinkCreate,
@@ -27,9 +26,8 @@ from app.modules.contacts.service import ContactService, ContactTypeService
 from app.schemas import Page
 
 router = APIRouter(prefix="/contacts", tags=["contacts"])
-# Client-portal management (#193): /contacts/{contact_id}/portal — literal-suffix routes,
-# safe to include up front.
-router.include_router(portal_router)
+# Client-portal management moved out to its own module (#193): ``/api/v1/portal/logins/
+# contact/{id}``. Contacts keeps only the subject provider it registers on the core seam.
 
 
 # --- contact types (issue #91) ---------------------------------------------- #

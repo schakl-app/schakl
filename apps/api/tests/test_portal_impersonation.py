@@ -1,12 +1,13 @@
 """Signing in as a client's contact person (#296).
 
 The agency-side counterpart of the instance owner's impersonation (issue #26): staff who hold
-``contacts.portal.impersonate`` may become one of their clients' portal logins, on their own
+``portal.login.impersonate`` may become one of their clients' portal logins, on their own
 tenant, for a time-boxed window. What these tests pin is not the happy path so much as the four
 properties that make it safe to hand a tenant at all:
 
 * it needs the permission, and nothing else implies it;
-* it can never *gain* the caller a capability (``PermissionSet.covers``);
+* it can never *gain* the caller a capability — the session is the target's permissions
+  capped by the impersonator's (``PermissionSet.narrowed_to``), and a subset cannot escalate;
 * it cannot cross a tenant, and a grant is bound to the person it was issued to;
 * it is never silent — start, stop, and **every write made while it runs** name the impersonator.
 """
@@ -24,7 +25,7 @@ from app.core.auth.models import User
 from app.db import async_session_maker, set_current_org
 from tests.conftest import add_membership, auth_cookie, make_tenant
 
-IMPERSONATE = "contacts.portal.impersonate"
+IMPERSONATE = "portal.login.impersonate"
 
 
 async def _portal_contact(client_for, slug: str):
@@ -48,7 +49,7 @@ async def _portal_contact(client_for, slug: str):
             )
         ).json()
         enabled = await c.post(
-            f"/api/v1/contacts/{contact['id']}/portal", headers=headers
+            f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers
         )
         assert enabled.status_code == 200, enabled.text
     async with async_session_maker() as session:
@@ -102,7 +103,7 @@ async def test_impersonating_a_contact_runs_as_them_and_says_so(client_for) -> N
 
     async with client_for(tenant.host) as c:
         started = await c.post(
-            f"/api/v1/contacts/{contact['id']}/portal/impersonate",
+            f"/api/v1/portal/logins/contact/{contact['id']}/impersonate",
             json={"minutes": 30},
             headers=headers,
         )
@@ -156,7 +157,7 @@ async def test_a_grant_is_useless_to_anyone_else(client_for) -> None:
     async with client_for(tenant.host) as c:
         token = (
             await c.post(
-                f"/api/v1/contacts/{contact['id']}/portal/impersonate",
+                f"/api/v1/portal/logins/contact/{contact['id']}/impersonate",
                 json={"minutes": 5},
                 headers=headers,
             )
@@ -209,7 +210,7 @@ async def test_impersonation_needs_its_own_permission(client_for) -> None:
         member_headers = await auth_cookie(member_user)
 
         refused = await c.post(
-            f"/api/v1/contacts/{contact['id']}/portal/impersonate",
+            f"/api/v1/portal/logins/contact/{contact['id']}/impersonate",
             json={"minutes": 10},
             headers=member_headers,
         )
@@ -218,7 +219,7 @@ async def test_impersonation_needs_its_own_permission(client_for) -> None:
         # Granting the permission is what opens it — and nothing else changed.
         await _grant_role(c, headers, "member", {IMPERSONATE})
         allowed = await c.post(
-            f"/api/v1/contacts/{contact['id']}/portal/impersonate",
+            f"/api/v1/portal/logins/contact/{contact['id']}/impersonate",
             json={"minutes": 10},
             headers=member_headers,
         )
@@ -269,7 +270,7 @@ async def test_impersonation_may_never_gain_the_caller_a_permission(client_for) 
         # and a team read granted here. Neither refuses the session any more.
         await _grant_client_role(c, headers, add={"members.member.read"})
         started = await c.post(
-            f"/api/v1/contacts/{contact['id']}/portal/impersonate",
+            f"/api/v1/portal/logins/contact/{contact['id']}/impersonate",
             json={"minutes": 5},
             headers=member_headers,
         )
@@ -300,7 +301,7 @@ async def test_impersonation_may_never_gain_the_caller_a_permission(client_for) 
 
         # The owner holds the wildcard, so nothing is capped for them and the banner stays quiet.
         owner_started = await c.post(
-            f"/api/v1/contacts/{contact['id']}/portal/impersonate",
+            f"/api/v1/portal/logins/contact/{contact['id']}/impersonate",
             json={"minutes": 5},
             headers=headers,
         )
@@ -352,7 +353,7 @@ async def test_impersonation_cannot_widen_the_callers_company_horizon(client_for
             )
         ).json()
         assert (
-            await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+            await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
         ).status_code in (200, 201)
 
         await _grant_role(c, headers, "member", {IMPERSONATE, "contacts.contact.read"})
@@ -399,7 +400,7 @@ async def test_impersonation_cannot_widen_the_callers_company_horizon(client_for
         ).json()["items"]] == [mine["id"]]
 
         started = await c.post(
-            f"/api/v1/contacts/{contact['id']}/portal/impersonate",
+            f"/api/v1/portal/logins/contact/{contact['id']}/impersonate",
             json={"minutes": 5},
             headers=member_headers,
         )
@@ -423,7 +424,7 @@ async def test_impersonation_cannot_widen_the_callers_company_horizon(client_for
         # the *caller's* horizon, not a blanket narrowing.
         owner_body = (
             await c.post(
-                f"/api/v1/contacts/{contact['id']}/portal/impersonate",
+                f"/api/v1/portal/logins/contact/{contact['id']}/impersonate",
                 json={"minutes": 5},
                 headers=headers,
             )
@@ -457,21 +458,21 @@ async def test_impersonation_cannot_be_nested(client_for) -> None:
                 headers=headers,
             )
         ).json()
-        await c.post(f"/api/v1/contacts/{second['id']}/portal", headers=headers)
+        await c.post(f"/api/v1/portal/logins/contact/{second['id']}", headers=headers)
         # The client role is granted the permission (the owner holds it, so `covers` passes and
         # the grant is issued) — which is the only way to reach the nesting guard at all.
         await _grant_client_role(c, headers, add={IMPERSONATE})
 
         token = (
             await c.post(
-                f"/api/v1/contacts/{contact['id']}/portal/impersonate",
+                f"/api/v1/portal/logins/contact/{contact['id']}/impersonate",
                 json={"minutes": 5},
                 headers=headers,
             )
         ).json()["token"]
 
         nested = await c.post(
-            f"/api/v1/contacts/{second['id']}/portal/impersonate",
+            f"/api/v1/portal/logins/contact/{second['id']}/impersonate",
             json={"minutes": 5},
             headers=_both_cookies(headers, token),
         )
@@ -505,7 +506,7 @@ async def test_writes_made_while_impersonating_name_the_impersonator(client_for)
         ).json()
         token = (
             await c.post(
-                f"/api/v1/contacts/{contact['id']}/portal/impersonate",
+                f"/api/v1/portal/logins/contact/{contact['id']}/impersonate",
                 json={"minutes": 15},
                 headers=headers,
             )
@@ -546,7 +547,7 @@ async def test_writes_made_while_impersonating_name_the_impersonator(client_for)
         )
 
         stopped = await c.post(
-            "/api/v1/contacts/portal/impersonation/stop", headers=as_client
+            "/api/v1/portal/impersonation/stop", headers=as_client
         )
         assert stopped.status_code == 204
         # The grant cookie is cleared on the way out.
@@ -582,7 +583,7 @@ async def test_stop_is_idempotent_and_harmless_without_a_grant(client_for) -> No
     )
     async with client_for(tenant.host) as c:
         assert (
-            await c.post("/api/v1/contacts/portal/impersonation/stop", headers=headers)
+            await c.post("/api/v1/portal/impersonation/stop", headers=headers)
         ).status_code == 204
     trail = await _trail(tenant.org.id, contact["id"])
     assert not [row for row in trail if row.action == "portal_impersonation_stopped"]
@@ -607,16 +608,16 @@ async def test_a_login_that_is_disabled_or_absent_cannot_be_entered(client_for) 
         ).json()
         assert (
             await c.post(
-                f"/api/v1/contacts/{bare['id']}/portal/impersonate",
+                f"/api/v1/portal/logins/contact/{bare['id']}/impersonate",
                 json={"minutes": 5},
                 headers=headers,
             )
         ).status_code == 404
 
-        await c.delete(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        await c.delete(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
         assert (
             await c.post(
-                f"/api/v1/contacts/{contact['id']}/portal/impersonate",
+                f"/api/v1/portal/logins/contact/{contact['id']}/impersonate",
                 json={"minutes": 5},
                 headers=headers,
             )
@@ -634,7 +635,7 @@ async def test_impersonation_is_tenant_scoped(client_for) -> None:
     async with client_for(other.host) as c:
         assert (
             await c.post(
-                f"/api/v1/contacts/{contact['id']}/portal/impersonate",
+                f"/api/v1/portal/logins/contact/{contact['id']}/impersonate",
                 json={"minutes": 5},
                 headers=other_headers,
             )
@@ -644,7 +645,7 @@ async def test_impersonation_is_tenant_scoped(client_for) -> None:
         # request is refused before the contact is ever looked up.
         assert (
             await c.post(
-                f"/api/v1/contacts/{contact['id']}/portal/impersonate",
+                f"/api/v1/portal/logins/contact/{contact['id']}/impersonate",
                 json={"minutes": 5},
                 headers=other_headers,
             )
@@ -686,7 +687,7 @@ async def test_a_scoped_membership_can_only_enter_its_own_clients_contacts(clien
         scoped_headers = await auth_cookie(scoped_user)
 
         refused = await c.post(
-            f"/api/v1/contacts/{contact['id']}/portal/impersonate",
+            f"/api/v1/portal/logins/contact/{contact['id']}/impersonate",
             json={"minutes": 5},
             headers=scoped_headers,
         )

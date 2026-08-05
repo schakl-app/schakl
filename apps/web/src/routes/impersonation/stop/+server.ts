@@ -34,7 +34,7 @@ export const POST = async (event: RequestEvent) => {
   const api = apiFor(event);
 
   if (event.locals.user?.impersonationKind === "portal") {
-    await api.POST("/api/v1/contacts/portal/impersonation/stop");
+    await api.POST("/api/v1/portal/impersonation/stop");
     event.cookies.delete(IMPERSONATION_COOKIE, { path: "/" });
     const back = safeReturnPath(event.cookies.get(PORTAL_RETURN_COOKIE));
     event.cookies.delete(PORTAL_RETURN_COOKIE, { path: "/" });

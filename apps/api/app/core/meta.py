@@ -62,6 +62,21 @@ class TenantBranding(BaseModel):
     # Tab-title template (#97): free text with {page} / {brand} tokens; None = built-in format.
     tab_title_template: str | None = None
     enabled_modules: list[str]
+    # Licensing (issue #137), beside ``enabled_modules`` because it answers the other half of the
+    # same question: *enabled* is what this workspace runs, *entitled* is what it may still write
+    # to. A control whose module is enabled but not entitled renders **locked** with the upgrade
+    # path behind it (``UpgradeModal``) rather than as a button that 402s.
+    #
+    # It rides this payload rather than ``/meta/modules`` because the app layout already loads
+    # this one on every request: gating an affordance must cost no second call
+    # (docs/PERFORMANCE.md). It discloses nothing new — ``/meta/modules`` is equally public and
+    # already carries both lists — and it is module names only, never licence details.
+    licensed_modules: list[str] = Field(default_factory=list)
+    entitled_modules: list[str] = Field(default_factory=list)
+    # Instance posture (epic #199): "self_hosted" or "cloud". What an upgrade *means* differs —
+    # a plan change on cloud, a licence key on a self-hosted box — so the screen that offers one
+    # has to know which it is.
+    deployment: str = "self_hosted"
     # Public demo mode (#141): true means the app shows a persistent "this is a demo, data resets
     # every N minutes" banner and offers one-click role logins. Instance posture, not tenant data.
     demo_mode: bool = False
@@ -96,6 +111,28 @@ class DomainProbe(BaseModel):
     instance: str = domainprobe.INSTANCE_MARKER
     org: str
     nonce: str
+
+
+async def _module_entitlements() -> dict[str, list[str]]:
+    """``{licensed_modules, entitled_modules}`` — the two lists both meta payloads carry.
+
+    One helper because two endpoints must never drift into disagreeing about which modules are
+    usable: a locked control and the modules settings screen answering differently is a bug the
+    user reads as the app being broken. ``license_state()`` is cached in-process for a minute,
+    so this costs no query on the request path (docs/PERFORMANCE.md).
+    """
+    state = await license_state()
+    module_skus = {
+        name: sku
+        for name, sku in licensed_skus().items()
+        if registry.get(name) is not None
+    }
+    return {
+        "licensed_modules": sorted(module_skus),
+        "entitled_modules": sorted(
+            name for name, sku in module_skus.items() if state.writable(sku)
+        ),
+    }
 
 
 _HEX_COLOR = r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
@@ -360,6 +397,8 @@ async def tenant_branding(request: Request) -> TenantBranding:
             enabled_modules=list(s.enabled_modules)
             if s and s.enabled_modules
             else list(settings.enabled_modules),
+            **(await _module_entitlements()),
+            deployment=settings.deployment,
             demo_mode=settings.demo_mode,
             demo_reset_minutes=settings.demo_reset_minutes,
             suspended=org.status == OrgStatus.SUSPENDED.value,
@@ -504,10 +543,6 @@ async def modules(request: Request) -> ModulesMeta:
             oidc_name = row.oidc_name if row is not None and oidc_enabled else None
             local_login_enabled = sso.local_login_enabled_for(row)
             instance_email_available = instance_email_available and org.email_included
-    state = await license_state()
-    module_skus = {
-        name: sku for name, sku in licensed_skus().items() if registry.get(name) is not None
-    }
     return ModulesMeta(
         enabled_modules=[m.name for m in registry.enabled(settings.enabled_modules)],
         customizable_entity_types=customizable_entity_types(),
@@ -517,10 +552,7 @@ async def modules(request: Request) -> ModulesMeta:
         oidc_enabled=oidc_enabled,
         oidc_name=oidc_name,
         base_domain=settings.base_domain,
-        licensed_modules=sorted(module_skus),
-        entitled_modules=sorted(
-            name for name, sku in module_skus.items() if state.writable(sku)
-        ),
+        **(await _module_entitlements()),
         deployment=settings.deployment,
         instance_email_available=instance_email_available,
     )

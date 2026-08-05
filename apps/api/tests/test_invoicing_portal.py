@@ -83,7 +83,7 @@ async def _portal_login(client, headers, slug: str, company_id: str) -> dict[str
         )
     ).json()
     enabled = await client.post(
-        f"/api/v1/contacts/{contact['id']}/portal", headers=headers
+        f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers
     )
     assert enabled.status_code in (200, 201), enabled.text
     async with async_session_maker() as session:
@@ -346,7 +346,7 @@ async def test_impersonating_a_client_hides_the_invoices_it_cannot_show(client_f
             )
         ).json()
         assert (
-            await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+            await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
         ).status_code in (200, 201)
 
         async def grant_member(extra: set[str]) -> None:
@@ -359,7 +359,7 @@ async def test_impersonating_a_client_hides_the_invoices_it_cannot_show(client_f
             )
             assert res.status_code == 200, res.text
 
-        await grant_member({"contacts.portal.impersonate", "contacts.contact.read"})
+        await grant_member({"portal.login.impersonate", "contacts.contact.read"})
         invited = await c.post(
             "/api/v1/members/invite",
             json={"email": "accountmanager@bureau.nl", "role": "member"},
@@ -378,7 +378,7 @@ async def test_impersonating_a_client_hides_the_invoices_it_cannot_show(client_f
 
         # No invoice read: the session opens, and the invoices are simply not in it.
         started = await c.post(
-            f"/api/v1/contacts/{contact['id']}/portal/impersonate",
+            f"/api/v1/portal/logins/contact/{contact['id']}/impersonate",
             json={"minutes": 10},
             headers=staff,
         )
@@ -397,7 +397,7 @@ async def test_impersonating_a_client_hides_the_invoices_it_cannot_show(client_f
         await grant_member({"invoicing.invoice.read:own"})
         seeing = enter(
             await c.post(
-                f"/api/v1/contacts/{contact['id']}/portal/impersonate",
+                f"/api/v1/portal/logins/contact/{contact['id']}/impersonate",
                 json={"minutes": 10},
                 headers=staff,
             ),
@@ -413,7 +413,7 @@ async def test_impersonating_a_client_hides_the_invoices_it_cannot_show(client_f
         # `:own`, never the admin's broader one — a cap, never a promotion.
         admin_seeing = enter(
             await c.post(
-                f"/api/v1/contacts/{contact['id']}/portal/impersonate",
+                f"/api/v1/portal/logins/contact/{contact['id']}/impersonate",
                 json={"minutes": 10},
                 headers=headers,
             ),

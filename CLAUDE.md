@@ -303,6 +303,32 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   resolution is one clause**, taken by the renewal cron, the list filter, the outstanding picker
   and the per-row read alike, so a screen and the cron can never disagree about which domains
   bill. Reported wherever it changes an answer, never silently applied.
+- **The client portal is a module, and what it sells is not what it enforces** (#193/#296,
+  `docs/PORTAL.md`). Everything the portal does happens on a *contact's* page, which is why it
+  started life inside `contacts` and why that was wrong: it is a product the agency buys
+  (`sku="portal"`), it has its own lifecycle, and its subject need not be a contact at all. So
+  `app/modules/portal/` owns the invite, the disable, the impersonation and the screen, and
+  reaches the person through a third seam on `app/core/portal.py` — a `PortalSubjectProvider`
+  registered by whoever owns that row, carrying only `(entity_type, id, email, name, user_id)`.
+  Two consequences are load-bearing. **The horizon and the "is this a client login?" resolver
+  stayed in `contacts` on purpose**: they must answer whether or not this module is enabled or
+  licensed, because an entitlement decides whether you may invite someone *new* and may never
+  decide whether an existing client session stays contained — a lapsed licence that un-scoped
+  live logins would be a security incident wearing a billing event's clothes. And **a whole-router
+  write gate needs exactly one exemption** (`license_exempt`): ending your own impersonation. It
+  mutates no licensed data, and gating the way out would strand whoever was inside a client's
+  session the moment a key expired.
+- **A missing permission hides a control; a missing entitlement locks it** (#137, `docs/UX.md`).
+  Both refuse, so it is tempting to render them the same way — but only one of them is something
+  the org can *change*. A padlock a colleague can never open is a worse screen than no control at
+  all, while a paid module the agency has simply not bought is how anyone learns it exists. Hence
+  `LockedButton` → `UpgradeModal`, generic and stated once: `deployment` decides what an upgrade
+  *means* (a licence key on self-host, where Instellingen → Licentie is a real destination for the
+  instance owner and nobody else; a plan change on cloud, where in-app billing does not exist yet
+  and so the dialog explains rather than offering a button that goes nowhere — #253's "a link that
+  always refuses is a broken control"). The lists it reads (`licensed_modules`, `entitled_modules`,
+  `deployment`) ride `/meta/tenant`, which the app layout already loads, and come from the same
+  helper `/meta/modules` uses so a locked control and Instellingen → Modules can never disagree.
 
 ## 11. Working agreement (for Claude Code)
 
@@ -667,8 +693,8 @@ It is a **core, cross-cutting capability**, like custom fields (§13) — not pe
   client's contact person (#296) share the grant: a short-lived JWT in its own cookie *beside* the
   real session, with permissions resolving for the **target**, so an impersonated session is never
   more powerful than the account it entered. The tenant-level kind carries what an untrusted-by-
-  default caller needs: its own permission (`contacts.portal.impersonate`, never implied by
-  managing the login), a target that can only be a contact-linked portal login, and — since #266
+  default caller needs: its own permission (`portal.login.impersonate`, never implied by
+  managing the login), a target that can only be a subject-linked portal login, and — since #266
   — a session **capped to the intersection** of target and impersonator: permissions
   (`PermissionSet.narrowed_to`) *and* company horizon alike. A subset cannot escalate, so the
   invariant holds by construction rather than by a gate, and a scope degrades (`:any` against a

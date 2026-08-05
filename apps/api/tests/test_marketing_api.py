@@ -1242,7 +1242,7 @@ async def test_summary_is_horizon_scoped_for_portal_logins(client_for) -> None:
             )
         ).json()
         assert (
-            await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+            await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
         ).status_code == 200
         async with async_session_maker() as session:
             portal_user = await session.scalar(
