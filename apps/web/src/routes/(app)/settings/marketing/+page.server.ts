@@ -20,8 +20,10 @@ export const actions: Actions = {
     const form = await event.request.formData();
     // Empty means "keep the stored token" — the API never returns it.
     const token = String(form.get("ads_developer_token") ?? "").trim() || null;
+    // Same write-only rule for the SE Ranking key (#300): empty keeps what is stored.
+    const seranking = String(form.get("seranking_api_key") ?? "").trim() || null;
     const { error } = await apiFor(event).PUT("/api/v1/marketing/settings", {
-      body: { ads_developer_token: token },
+      body: { ads_developer_token: token, seranking_api_key: seranking },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { saved: true };

@@ -421,6 +421,17 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     module: "marketing",
   },
   {
+    // The house voice, the document templates and the org-wide schedule (#300). A client's own
+    // profile is *not* here — it belongs on the client, beside everything else about them.
+    key: "reporting",
+    href: "/settings/reporting",
+    titleKey: "settings.reporting.title",
+    subtitleKey: "settings.reporting.subtitle",
+    group: "integrations",
+    permissions: ["reporting.settings.manage"],
+    module: "reporting",
+  },
+  {
     key: "cloudflare",
     href: "/settings/cloudflare",
     titleKey: "settings.cloudflare.title",
