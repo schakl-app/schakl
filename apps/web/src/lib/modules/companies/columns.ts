@@ -15,6 +15,11 @@ export const COMPANIES_TABLE_ID = "companies";
 /** The derived budget column; its presence is what makes the list pay for the aggregate. */
 export const HOURS_COLUMN = "hours";
 
+// Every non-primary column states a `width`, because the table lays out `table-fixed`: an
+// undeclared width there is not "as wide as it needs", it is an equal share of the slack the
+// primary column is meant to absorb — so the client name ended up exactly as wide as its
+// website. The five shown by default sum to 760px beside the two gutters; the name takes the
+// rest, which is what makes it the widest column on a real screen instead of one of five equals.
 export const COMPANY_COLUMNS: ColumnMeta[] = [
   // Klantnummer first: on a list that carries one it is how people refer to the client, and
   // it is short. Shown by default because numbering is on by default — an org that turns it
@@ -27,14 +32,21 @@ export const COMPANY_COLUMNS: ColumnMeta[] = [
     width: 120,
   },
   { key: "name", labelKey: "companies.name", sortKey: "name", primary: true, width: 260 },
-  { key: "website", labelKey: "companies.website", defaultVisible: true },
-  { key: "status", labelKey: "companies.field.status", sortKey: "status", defaultVisible: true },
+  { key: "website", labelKey: "companies.website", defaultVisible: true, width: 180 },
+  {
+    key: "status",
+    labelKey: "companies.field.status",
+    sortKey: "status",
+    defaultVisible: true,
+    width: 120,
+  },
   // Sorts by the *primary* assignee's display name; the API orders by it, not by user id.
   {
     key: "assignees",
     labelKey: "companies.field.assignees",
     sortKey: "assignee",
     defaultVisible: true,
+    width: 140,
   },
   // Shown by default — seeing who has budget left is the point of the column (#25). Turning it
   // off is what proves a hidden aggregate costs nothing.
@@ -46,7 +58,13 @@ export const COMPANY_COLUMNS: ColumnMeta[] = [
     width: 200,
   },
   // Opt-in like invoice_email: a hidden column costs nothing, and most lists lead with name.
-  { key: "phone", labelKey: "companies.phone" },
-  { key: "invoice_email", labelKey: "companies.invoice_email" },
-  { key: "created_at", labelKey: "table.column.created_at", sortKey: "created_at", align: "right" },
+  { key: "phone", labelKey: "companies.phone", width: 150 },
+  { key: "invoice_email", labelKey: "companies.invoice_email", width: 200 },
+  {
+    key: "created_at",
+    labelKey: "table.column.created_at",
+    sortKey: "created_at",
+    align: "right",
+    width: 120,
+  },
 ];

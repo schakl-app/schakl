@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from fastapi import APIRouter
 
+    from app.core.bulk.spec import BulkDescriptor
     from app.core.email.kinds import EmailTemplateKind
     from app.core.impex.spec import ImpexDescriptor, ImpexExtension
     from app.core.permissions.spec import PermissionSpec
@@ -150,6 +151,12 @@ class ModuleDescriptor:
     # the same contribution model as `panels`, so a company import can carry its client's
     # contact person without companies importing contacts' internals (CLAUDE.md §6, §17).
     impex_extensions: list[ImpexExtension] = field(default_factory=list)
+    # Bulk edit/delete descriptors: the entities this module opts into acting on a whole
+    # selection at once. ``app.core.bulk.router`` mounts one update + one delete route per
+    # entry, each declaring that entity's own write/delete permission — and each descriptor
+    # borrows the module's own import shape, so a bulk edit is the form's write path repeated,
+    # never a second one (CLAUDE.md §17's pattern, applied to a selection instead of a file).
+    bulk: list[BulkDescriptor] = field(default_factory=list)
     # Actions this module contributes to the automation rule engine (issue #27).
     automation_actions: list[AutomationActionSpec] = field(default_factory=list)
     # Sections this module contributes to a periodic client report (issue #300) — the panels

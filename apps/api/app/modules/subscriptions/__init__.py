@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from arq import cron
 
+from app.modules.subscriptions.bulk import SUBSCRIPTION_BULK
 from app.modules.subscriptions.impex import (
     SUBSCRIPTION_IMPEX,
     SUBSCRIPTION_TEMPLATE_IMPEX,
@@ -29,6 +30,7 @@ module = ModuleDescriptor(
     panels=[subscriptions_company_panel],
     permissions=SUBSCRIPTION_PERMISSIONS,
     impex=[SUBSCRIPTION_IMPEX, SUBSCRIPTION_TYPE_IMPEX, SUBSCRIPTION_TEMPLATE_IMPEX],
+    bulk=[SUBSCRIPTION_BULK],
     # Daily, early org-morning: fire subscription.due and advance the cycle (#30).
     cron_jobs=[cron(advance_subscriptions, hour=5, minute=30)],
 )

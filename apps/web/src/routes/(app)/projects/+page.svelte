@@ -4,6 +4,9 @@
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
+  import BulkMenu from "$lib/core/bulk/BulkMenu.svelte";
+  import BulkResult from "$lib/core/bulk/BulkResult.svelte";
+  import type { BulkFieldDef } from "$lib/core/bulk/types";
   import { editHref } from "$lib/core/edit-intent";
   import { fmtNumber, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
@@ -23,6 +26,7 @@
   import HoursCell from "$lib/core/ui/HoursCell.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import { HOURS_COLUMN, PROJECT_COLUMNS } from "$lib/modules/projects/columns";
+  import { PROJECT_STATUSES } from "$lib/modules/projects/status";
 
   let { data, form } = $props();
 
@@ -86,28 +90,68 @@
     else url.searchParams.delete(key);
     void goto(url, { keepFocus: true, noScroll: true });
   }
+
+  // --- bulk (the ✎ menu in the toolbar) --------------------------------------
+  // Status, client and the billable default: the three that say how a *batch* of work is run —
+  // closing out a quarter, moving an account, flipping a run of internal work to non-billable.
+  // A budget is a figure agreed per project, so setting one across a selection would be wrong
+  // on nearly all of them; it is deliberately absent here and in the API's descriptor.
+  // Mirrors `apps/api/app/modules/projects/bulk.py`; labels are the import's, so the two
+  // surfaces that name the same column can never name it differently.
+  //
+  // Declared last because the client options are the picker's own (`companyItems`), and
+  // `$derived` so a client created inline reaches both controls at once.
+  let bulkSelected = $state<string[]>([]);
+  const bulkFields: BulkFieldDef[] = $derived([
+    {
+      key: "status",
+      label: t("impex.column.project.status"),
+      type: "select",
+      options: PROJECT_STATUSES.map((status) => ({
+        value: status,
+        label: t(`projects.status.${status}`),
+      })),
+    },
+    {
+      key: "company",
+      label: t("impex.column.project.company"),
+      type: "fk",
+      options: companyItems,
+    },
+    // The dialog draws Ja/Nee itself — a bare checkbox has no "leave this one alone" state.
+    { key: "billable_default", label: t("impex.column.project.billable_default"), type: "bool" },
+  ]);
 </script>
 
 {#snippet nameCell(project: Project)}
-  <a href="/projects/{project.id}" class="font-medium text-text hover:text-brand">{project.name}</a>
+  <!-- `block`, because `overflow` does not apply to an inline box: on a bare `<a>` the class
+       would set `nowrap` and nothing else, and the name would spill into Klant. -->
+  <a href="/projects/{project.id}" class="block truncate font-medium text-text hover:text-brand"
+    >{project.name}</a
+  >
 {/snippet}
 
 {#snippet companyCell(project: Project)}
   {#if companyName(project.company_id)}
-    <a href="/companies/{project.company_id}" class="text-text-muted hover:text-brand"
-      >{companyName(project.company_id)}</a
+    <a
+      href="/companies/{project.company_id}"
+      class="block truncate text-text-muted hover:text-brand">{companyName(project.company_id)}</a
     >
   {:else}<span class="text-text-muted">—</span>{/if}
 {/snippet}
 
 {#snippet statusCell(project: Project)}
-  <span class="rounded-full bg-surface px-2.5 py-0.5 text-xs font-medium text-text-muted">
+  <span
+    class="inline-block max-w-full truncate rounded-full bg-surface px-2.5 py-0.5 align-middle text-xs font-medium text-text-muted"
+  >
     {t(`projects.status.${project.status}`)}
   </span>
 {/snippet}
 
 {#snippet assigneesCell(project: Project)}
-  <Assignees assignees={project.assignees ?? []} members={data.members} />
+  <div class="flex min-w-0 items-center overflow-hidden">
+    <Assignees assignees={project.assignees ?? []} members={data.members} />
+  </div>
 {/snippet}
 
 {#snippet hoursCell(project: Project)}
@@ -156,10 +200,12 @@
   <!-- A phone gets the concept's row, not a sideways-scrolling grid (docs/UX.md). -->
   <div class="flex items-center gap-3">
     <a href="/projects/{project.id}" class="min-w-0 flex-1">
-      <span class="font-medium text-text">{project.name}</span>
-      {#if companyName(project.company_id)}
-        <span class="ml-2 text-sm text-text-muted">· {companyName(project.company_id)}</span>
-      {/if}
+      <span class="block truncate">
+        <span class="font-medium text-text">{project.name}</span>
+        {#if companyName(project.company_id)}
+          <span class="ml-2 text-sm text-text-muted">· {companyName(project.company_id)}</span>
+        {/if}
+      </span>
       {#if table.visibleKeys.includes("hours") && project.hours}
         <span class="mt-0.5 block text-xs"><HoursCell hours={project.hours} /></span>
       {/if}
@@ -232,6 +278,17 @@
       id="filter-company"
     />
   </div>
+  <!-- Bulk actions for whatever is ticked, beside Export/Import and Kolommen rather than in a
+       bar above the table: a bar appears as you select and walks the rows away from the cursor,
+       and it leaves a Delete sitting under the pointer (docs/UX.md). -->
+  <BulkMenu
+    selected={bulkSelected}
+    fields={bulkFields}
+    writePermission="projects.project.write"
+    deletePermission="projects.project.delete"
+    deleteMessage={t("projects.bulk.delete_message", { count: bulkSelected.length })}
+    fieldErrors={form?.bulkFields ?? null}
+  />
   <ImpexBar
     entity="project"
     readPermission="projects.project.read"
@@ -254,6 +311,8 @@
   />
 </div>
 
+<BulkResult result={form?.bulkResult} />
+
 <DataTable
   rows={data.projects}
   columns={table.columns}
@@ -265,6 +324,8 @@
   actions={canWrite || canDelete ? rowActions : undefined}
   {mobileRow}
   empty={emptyState}
+  selectable={canWrite || canDelete}
+  bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}
 />

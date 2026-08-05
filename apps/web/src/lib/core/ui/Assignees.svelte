@@ -62,7 +62,12 @@
 </script>
 
 {#if ordered.length > 0}
-  <span class="inline-flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 align-middle">
+  <!-- `flex-nowrap`: wrapping made a table row grow a second line for exactly the case this
+       component exists to prevent — a long name filling the line and pushing its own `+2`
+       counter under it. The chip truncates instead, and the `+N` is `shrink-0` so it survives.
+       Under the table's fixed layout a wrapped cell is the difference between a 55px row and
+       a 69px one, on every row at once. -->
+  <span class="inline-flex min-w-0 flex-nowrap items-center gap-x-3 gap-y-1 align-middle">
     {#each shown as person (person.user_id)}
       <PersonChip
         name={person.name}

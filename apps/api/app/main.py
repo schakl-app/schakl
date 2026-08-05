@@ -23,6 +23,7 @@ from app.core.ai.router import router as ai_router
 from app.core.apikeys.router import router as apikeys_router
 from app.core.auth.router import build_auth_router
 from app.core.auth.sso_router import router as sso_settings_router
+from app.core.bulk.router import build_bulk_router
 from app.core.customfields.router import router as customfields_router
 from app.core.dashboard import router as dashboard_router
 from app.core.demo import demo_guard_middleware
@@ -145,6 +146,11 @@ def create_app() -> FastAPI:
     # After module loading on purpose: the impex routes are built per opted-in entity so each
     # one declares that entity's own read/write permission (issue #77, §15 deny-by-default).
     api.include_router(build_impex_router())
+    # Same reason, same shape: one bulk update + delete route per opted-in entity, each
+    # declaring that entity's own write/delete permission — and, unlike impex, each carrying
+    # its module's license gate, because a bulk write must not be the one way an uncovered
+    # module can still be written to (app/core/bulk/router.py).
+    api.include_router(build_bulk_router())
     # Same reason, for the mails modules let a tenant rewrite: keys are stored data, so a
     # collision or a badly namespaced one is a build break rather than a tenant discovering
     # their invoice template rewriting somebody else's mail (app/core/email/kinds.py).

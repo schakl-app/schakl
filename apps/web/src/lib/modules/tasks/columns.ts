@@ -26,25 +26,50 @@ export const TASKS_TABLE_ID = "tasks";
 // The terminal sections start folded, as "done" always did. No hardcoded group list lives here
 // any more.
 
+// Every column but the primary one carries a `width`, because the table lays out `table-fixed`:
+// an undeclared width there is not "as wide as it needs", it is an equal share of whatever the
+// declared ones left, so one long client name used to squeeze the deadline into a wrap. The
+// title is the single flexible column and absorbs the slack (see `DataTable`'s `flexKey`). The
+// default-visible set sums to ~610px beside it, which leaves the title its 360 on a laptop; the
+// numeric columns are narrow because they hold "3/7" or "1u 30m", not prose.
 export const TASK_COLUMNS: ColumnMeta[] = [
   { key: "title", labelKey: "tasks.field.title", sortKey: "title", primary: true, width: 360 },
-  { key: "labels", labelKey: "tasks.field.labels", defaultVisible: true },
+  { key: "labels", labelKey: "tasks.field.labels", defaultVisible: true, width: 200 },
   // Orders by the employee's display name; the API never orders by the assignee's user id.
-  { key: "assignee", labelKey: "tasks.field.assignee", sortKey: "assignee", defaultVisible: true },
+  {
+    key: "assignee",
+    labelKey: "tasks.field.assignee",
+    sortKey: "assignee",
+    defaultVisible: true,
+    width: 180,
+  },
   // Ascending is least-urgent-first, so `-priority` floats the fires — the API ranks the
   // vocabulary rather than sorting its spelling.
-  { key: "priority", labelKey: "tasks.field.priority", sortKey: "priority", defaultVisible: true },
+  {
+    key: "priority",
+    labelKey: "tasks.field.priority",
+    sortKey: "priority",
+    defaultVisible: true,
+    width: 110,
+  },
   {
     key: "due_date",
     labelKey: "tasks.field.due_date",
     sortKey: "due_date",
     align: "right",
     defaultVisible: true,
+    width: 120,
   },
-  { key: "checklist", labelKey: "tasks.field.checklist", align: "right" },
-  { key: "comments", labelKey: "tasks.field.comments", align: "right" },
-  { key: "allocated", labelKey: "tasks.field.allocated", align: "right" },
-  { key: "project", labelKey: "tasks.field.project" },
-  { key: "company", labelKey: "tasks.field.company" },
-  { key: "created_at", labelKey: "table.column.created_at", sortKey: "created_at", align: "right" },
+  { key: "checklist", labelKey: "tasks.field.checklist", align: "right", width: 100 },
+  { key: "comments", labelKey: "tasks.field.comments", align: "right", width: 100 },
+  { key: "allocated", labelKey: "tasks.field.allocated", align: "right", width: 110 },
+  { key: "project", labelKey: "tasks.field.project", width: 180 },
+  { key: "company", labelKey: "tasks.field.company", width: 180 },
+  {
+    key: "created_at",
+    labelKey: "table.column.created_at",
+    sortKey: "created_at",
+    align: "right",
+    width: 120,
+  },
 ];

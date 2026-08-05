@@ -3,6 +3,9 @@
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
+  import BulkMenu from "$lib/core/bulk/BulkMenu.svelte";
+  import BulkResult from "$lib/core/bulk/BulkResult.svelte";
+  import type { BulkFieldDef } from "$lib/core/bulk/types";
   import { editHref } from "$lib/core/edit-intent";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
@@ -59,6 +62,25 @@
     else url.searchParams.delete(key);
     void goto(url, { keepFocus: true, noScroll: true });
   }
+
+  // --- bulk (the ✎ menu in the toolbar) --------------------------------------
+  // Only the client link, and only in the attaching direction. Someone's name, address and phone
+  // are the definition of that person and are never shared by a selection; "these six all work at
+  // Acme now" is the one thing a batch of contacts genuinely has in common. Detaching is not
+  // offered here — from the same control it is the one that gets misclicked, so it stays on the
+  // contact, where you can see which link you are breaking. Mirrors
+  // `apps/api/app/modules/contacts/bulk.py`; the label is the import's, so the two surfaces that
+  // name this column can never name it differently.
+  let bulkSelected = $state<string[]>([]);
+  const bulkFields: BulkFieldDef[] = $derived([
+    {
+      key: "company",
+      label: t("impex.column.contact.company"),
+      type: "fk",
+      // The clients the page already loaded for its own filter — the dialog costs no extra call.
+      options: companyFilterItems,
+    },
+  ]);
 
   // #80: companies to link while creating the contact. `ContactCreate.company_ids` does the
   // linking server-side (the first becomes that company's primary contact), so the picker only
@@ -162,20 +184,27 @@
 </script>
 
 {#snippet nameCell(contact: Contact)}
-  <a href="/contacts/{contact.id}" class="font-medium text-text hover:text-brand"
+  <!-- `block`, because `overflow` does not apply to an inline box: a bare `truncate` on an `<a>`
+       gets only its `nowrap` half, so under the table's fixed layout a long name runs sideways
+       over the next column instead of ellipsizing inside its own. Same for every cell below. -->
+  <a href="/contacts/{contact.id}" class="block truncate font-medium text-text hover:text-brand"
     >{fullName(contact)}</a
   >
 {/snippet}
 
 {#snippet companiesCell(contact: Contact)}
   {#if contact.companies && contact.companies.length > 0}
-    <span class="flex flex-wrap gap-1">
+    <!-- `flex-nowrap`, not `wrap`: wrapping is what makes a client with a long name a two-line
+         chip and a four-line row. The chips shrink and ellipsize instead, and the full name is
+         on the hover title. -->
+    <span class="flex min-w-0 flex-nowrap gap-1 overflow-hidden">
       {#each contact.companies as link (link.company_id)}
         <!-- Colour is the marker: the client this person is the primary contact for is
              brand-coloured, never starred (docs/UX.md). -->
         <a
           href="/companies/{link.company_id}"
-          class="rounded-full px-2 py-0.5 text-xs {link.is_primary
+          title={link.name}
+          class="truncate rounded-full px-2 py-0.5 text-xs {link.is_primary
             ? 'bg-brand/10 text-brand ring-1 ring-inset ring-brand/30'
             : 'bg-surface text-text-muted'} hover:text-brand"
         >
@@ -189,20 +218,22 @@
 
 {#snippet emailCell(contact: Contact)}
   {#if contact.email}
-    <a href="mailto:{contact.email}" class="text-text-muted hover:text-brand">{contact.email}</a>
+    <a href="mailto:{contact.email}" class="block truncate text-text-muted hover:text-brand"
+      >{contact.email}</a
+    >
   {:else}<span class="text-text-muted">—</span>{/if}
 {/snippet}
 
 {#snippet phoneCell(contact: Contact)}
   {#if contact.phone}
-    <a href="tel:{contact.phone}" class="text-text-muted hover:text-brand"
+    <a href="tel:{contact.phone}" class="block truncate text-text-muted hover:text-brand"
       >{formatPhone(contact.phone)}</a
     >
   {:else}<span class="text-text-muted">—</span>{/if}
 {/snippet}
 
 {#snippet jobCell(contact: Contact)}
-  <span class="text-text-muted">{contact.job_title || "—"}</span>
+  <span class="block truncate text-text-muted">{contact.job_title || "—"}</span>
 {/snippet}
 
 {#snippet createdCell(contact: Contact)}
@@ -233,7 +264,7 @@
   <!-- A phone gets the concept's row, not a sideways-scrolling grid (docs/UX.md). -->
   <div class="flex items-center gap-3">
     <a href="/contacts/{contact.id}" class="min-w-0 flex-1">
-      <span class="font-medium text-text">{fullName(contact)}</span>
+      <span class="block truncate font-medium text-text">{fullName(contact)}</span>
       {#if contact.email}
         <span class="mt-0.5 block truncate text-sm text-text-muted">{contact.email}</span>
       {/if}
@@ -290,6 +321,17 @@
     />
   </div>
   <div class="ml-auto flex flex-wrap items-center gap-2">
+    <!-- Bulk actions for whatever is ticked, beside Export/Import and Kolommen rather than in a
+         bar above the table: a bar appears as you select and walks the rows away from the
+         cursor, and it leaves a Delete sitting under the pointer (docs/UX.md). -->
+    <BulkMenu
+      selected={bulkSelected}
+      fields={bulkFields}
+      writePermission="contacts.contact.write"
+      deletePermission="contacts.contact.delete"
+      deleteMessage={t("contacts.bulk.delete_message", { count: bulkSelected.length })}
+      fieldErrors={form?.bulkFields ?? null}
+    />
     <!-- The Export link carries the page's current filters, so the file holds exactly the
          filtered list on screen — the whole set, not just the loaded page (issue #77). -->
     <ImpexBar
@@ -472,6 +514,8 @@
   <p class="mb-3 text-sm text-text-muted">{t("contacts.groups_page_only")}</p>
 {/if}
 
+<BulkResult result={form?.bulkResult} />
+
 <DataTable
   rows={data.contacts}
   columns={table.columns}
@@ -487,6 +531,8 @@
   actions={canWrite || canDelete ? rowActions : undefined}
   {mobileRow}
   empty={emptyState}
+  selectable={canWrite || canDelete}
+  bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}
 />

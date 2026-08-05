@@ -242,6 +242,21 @@
     the rows you happen to hold sorts the wrong set. A header is clickable only when the API can
     order by that column (`sortKey`, not `sortable`) — a header that claims to sort and doesn't is
     worse than a quiet one. Derived and custom-field columns are honest about this.
+  - **A declared column width is a width, not a hint — so the grid never scrolls sideways.** The
+    table is `table-fixed`. Under the browser's default auto layout a `width` is only advice: the
+    used width is `max(width, min-content)`, and every cell here truncates with `white-space:
+    nowrap`, which makes a column's min-content its whole unbroken line. `overflow: hidden` does
+    not reduce that — it clips only once a definite width exists, which auto layout never gives —
+    so the interacties table asked for 1210 px, laid out at 1423, and scrolled sideways on any
+    laptop while its ellipsis never appeared and the resize handle wrote a number the layout was
+    ignoring. A fixed layout makes all three true at once. Two obligations come with it, because
+    a fixed layout cannot invent slack: **exactly one column carries no width and absorbs the
+    rest** (the `primary` one, by declaration), and **every other column a list shows by default
+    needs a sensible width**, because the ones without share the remainder equally — eleven equal
+    columns is its own kind of wrong. A list whose trailing ⋯ cell holds more than the ⋯ says so
+    with `actionsWidth`; a column no longer widens to its content, it paints over its neighbour.
+    And a `truncate` span must be `block`: `overflow` does not apply to an inline box, so a bare
+    one sets `nowrap` and nothing else, and spills instead of ellipsizing.
   - **Every list ends in a pager, and the pager is the address bar** (`core/ui/Pagination.svelte`,
     docs/PERFORMANCE.md). A list is where the whole set lives, so it never shows a prefix of
     itself: the bar states the honest range ("51–100 van 812"), offers **25 / 50 / 100 / 200** per
@@ -278,16 +293,37 @@
     opens the shared wizard, and both controls check the bulk permission *and* the entity's own
     before they render, mirroring the two gates the API declares. Instellingen → Import & export
     stays as the overview of what can travel at all; it is never the only way in.
+  - **Bulk actions live behind one ✎ in the toolbar, not in a bar over the table.** Every list
+    that can act on a selection renders the same `core/bulk/BulkMenu` beside Export/Import and
+    Kolommen — the ⋯ rule for a row, applied to a selection. They started as a bar that appeared
+    above the grid the moment anything was ticked, and it had two faults worth naming: it **moved
+    the table down as you selected**, so on a list you tick from the top the rows walk away from
+    the cursor mid-gesture, and it put four write controls — one of them a Delete — directly under
+    the pointer, which is the exact shape record actions are kept out of rows for. Behind the menu
+    they sit still, read as a set, and cost a deliberate second click. The trigger carries the
+    selection count and is disabled (with a title saying why) while nothing is picked; when the
+    user holds neither the entity's write nor its delete, it is not drawn at all.
   - **A bulk action says what it will actually do, and reports what it did** (#299). A selection
     is rarely uniform — the interacties list mixes still-pending emails with reviewed ones, and
-    someone else's mailbox with your own — so each button in the `selection` bar acts on **its
-    own eligible subset** and carries that count whenever it is smaller than the selection
-    ("Goedkeuren (2)" over eight rows). A button that silently did less than it said is the
+    someone else's mailbox with your own — so each item in the menu acts on **its own eligible
+    subset** and carries that count whenever it is smaller than the selection ("Goedkeuren (2)"
+    over eight rows), and is disabled at zero. A button that silently did less than it said is the
     failure this prevents. Afterwards the page states the honest outcome — "6 goedgekeurd · 2
-    overgeslagen", with the distinct reasons — because the API reports ineligible rows instead
-    of rolling the good ones back (raising mid-batch would undo the forty-nine that worked), and
-    a UI that swallowed that would be claiming work it did not do. The eligible-subset filter is
-    still only UX: the API re-checks every row, so the bar may narrow the batch but never widens it.
+    overgeslagen", with the distinct reasons (`core/bulk/BulkResult`) — because the API reports
+    ineligible rows instead of rolling the good ones back (raising mid-batch would undo the
+    forty-nine that worked), and a UI that swallowed that would be claiming work it did not do.
+    The eligible-subset filter is still only UX: the API re-checks every row, so the menu may
+    narrow the batch but never widens it.
+  - **A field you did not touch is not sent** (`core/bulk/BulkEditDialog`). The edit dialog opens
+    blank over a selection that disagrees with itself — twelve domains at four registrars — so an
+    empty control can only honestly mean "leave each row's own alone". Reading it as "empty them
+    all" would wipe, on every row the user never looked at, exactly the value they had not thought
+    about. **Clearing is therefore a separate, deliberate tick**, offered only where the field can
+    be cleared at all, and labelled with what clearing *means* where "empty" understates it — a
+    domain with no invoicing decision follows its register (#298), it is not "not invoiced". The
+    same rule decides which controls may appear here: every one of them needs an "unchanged"
+    state, which is why there is no party picker (it always holds a type) and why a yes/no field
+    is a two-option type-ahead rather than a checkbox (which is always either ticked or not).
   - **Selecting the rows has to be cheaper than acting on them.** A bulk bar over a queue of forty
     auto-matched emails is worth nothing if reaching it costs forty clicks, so **shift extends the
     selection** from the last row ticked to the clicked one, and it does so from the row as well as

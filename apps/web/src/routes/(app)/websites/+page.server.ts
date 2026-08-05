@@ -1,5 +1,6 @@
 import { fail, redirect } from "@sveltejs/kit";
 
+import { bulkDeleteAction, bulkUpdateAction } from "$lib/core/bulk/actions.server";
 import { apiErrorKey } from "$lib/core/errors";
 import { impexAction } from "$lib/core/impex/actions.server";
 import { parseParty } from "$lib/core/party";
@@ -65,6 +66,10 @@ export const actions: Actions = {
     await saveTablePref(event, WEBSITES_TABLE_ID, parseTablePref(form));
     return { tableSaved: true };
   },
+
+  /** The ✎ menu's two actions, shared by every list that has one. */
+  bulkUpdate: (event) => bulkUpdateAction(event, "website"),
+  bulkDelete: (event) => bulkDeleteAction(event, "website"),
 
   save: async (event) => {
     const form = await event.request.formData();

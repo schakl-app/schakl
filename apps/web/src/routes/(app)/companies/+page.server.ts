@@ -1,6 +1,7 @@
 import { fail } from "@sveltejs/kit";
 
 import { parseAssignees } from "$lib/core/assignees";
+import { bulkDeleteAction, bulkUpdateAction } from "$lib/core/bulk/actions.server";
 import { apiErrorKey } from "$lib/core/errors";
 import { impexAction } from "$lib/core/impex/actions.server";
 import { apiFor } from "$lib/core/session";
@@ -118,6 +119,10 @@ export const actions: Actions = {
 
   /** CSV import (issue #77): dry-run preview by default, all-or-nothing commit on demand. */
   impex: (event) => impexAction(event, "company"),
+
+  /** The ✎ menu's two actions, shared by every list that has one. */
+  bulkUpdate: (event) => bulkUpdateAction(event, "company"),
+  bulkDelete: (event) => bulkDeleteAction(event, "company"),
 
   create: async (event) => {
     const form = await event.request.formData();

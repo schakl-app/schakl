@@ -11,6 +11,7 @@ from app.core.portal import (
     register_portal_user_resolver,
 )
 from app.core.scope import SCOPE_SOURCE_PORTAL, register_company_scope_resolver
+from app.modules.contacts.bulk import CONTACT_BULK
 from app.modules.contacts.impex import CONTACT_IMPEX, CONTACT_ON_COMPANY_EXTENSION
 from app.modules.contacts.mcp import CONTACT_MCP_TOOLS
 from app.modules.contacts.panels import contacts_company_panel
@@ -45,6 +46,7 @@ module = ModuleDescriptor(
     permissions=CONTACT_PERMISSIONS,
     mcp_tools=CONTACT_MCP_TOOLS,
     impex=[CONTACT_IMPEX],
+    bulk=[CONTACT_BULK],
     # The client's contact person, carried in the company import's own row — contributed the
     # way panels are, so companies never learns contacts' internals (CLAUDE.md §17).
     impex_extensions=[CONTACT_ON_COMPANY_EXTENSION],

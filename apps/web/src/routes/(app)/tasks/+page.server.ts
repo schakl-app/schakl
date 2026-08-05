@@ -1,5 +1,6 @@
 import { fail, redirect } from "@sveltejs/kit";
 
+import { bulkDeleteAction, bulkUpdateAction } from "$lib/core/bulk/actions.server";
 import { editHref } from "$lib/core/edit-intent";
 import { apiErrorKey } from "$lib/core/errors";
 import { t } from "$lib/core/i18n";
@@ -77,6 +78,10 @@ export const actions: Actions = {
     await saveTablePref(event, TASKS_TABLE_ID, parseTablePref(form));
     return { tableSaved: true };
   },
+
+  /** The ✎ menu's two actions, shared by every list that has one. */
+  bulkUpdate: (event) => bulkUpdateAction(event, "task"),
+  bulkDelete: (event) => bulkDeleteAction(event, "task"),
 
   /**
    * Create-then-edit (#230, docs/UX.md Principle 3): a new task is created minimal —

@@ -4,6 +4,9 @@
   import { page } from "$app/state";
   import { Pencil, Trash2 } from "@lucide/svelte";
 
+  import BulkMenu from "$lib/core/bulk/BulkMenu.svelte";
+  import BulkResult from "$lib/core/bulk/BulkResult.svelte";
+  import type { BulkFieldDef } from "$lib/core/bulk/types";
   import { editHref } from "$lib/core/edit-intent";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
@@ -52,6 +55,24 @@
   // them anyway; this stops a client-role login seeing buttons that only 403.
   const canWrite = $derived(can(page.data.user, "companies.company.write"));
   const canDelete = $derived(can(page.data.user, "companies.company.delete"));
+
+  // --- bulk (the ✎ menu in the toolbar) --------------------------------------
+  // Only the status: everything else on a client is a fact about *that* client, and a control
+  // that wrote one across a selection would exist purely to be misfired. Mirrors
+  // `apps/api/app/modules/companies/bulk.py`; labels are the import's, so the two surfaces
+  // that name the same column can never name it differently.
+  let bulkSelected = $state<string[]>([]);
+  const bulkFields: BulkFieldDef[] = [
+    {
+      key: "status",
+      label: t("impex.column.company.status"),
+      type: "select",
+      options: COMPANY_STATUSES.map((status) => ({
+        value: status,
+        label: t(`companies.status.${status}`),
+      })),
+    },
+  ];
 
   // --- columns ---------------------------------------------------------------
   // The tenant's custom fields join the built-ins as selectable columns with no code here — that
@@ -105,7 +126,8 @@
 </script>
 
 {#snippet nameCell(company: Company)}
-  <a href="/companies/{company.id}" class="font-medium text-text hover:text-brand">{company.name}</a
+  <a href="/companies/{company.id}" class="block truncate font-medium text-text hover:text-brand"
+    >{company.name}</a
   >
 {/snippet}
 
@@ -113,7 +135,9 @@
   <!-- Tabular figures so a column of numbers lines up; an unnumbered client reads as a dash
        rather than as an empty cell you cannot tell from a loading one. -->
   {#if company.client_number}
-    <span class="font-mono text-sm tabular-nums text-text-muted">{company.client_number}</span>
+    <span class="block truncate font-mono text-sm tabular-nums text-text-muted"
+      >{company.client_number}</span
+    >
   {:else}
     <span class="text-text-muted">—</span>
   {/if}
@@ -121,26 +145,36 @@
 
 {#snippet websiteCell(company: Company)}
   {#if company.website}
-    <span class="truncate text-text-muted">{company.website}</span>
+    <span class="block truncate text-text-muted">{company.website}</span>
   {:else}<span class="text-text-muted">—</span>{/if}
 {/snippet}
 
 {#snippet phoneCell(company: Company)}
   {#if company.phone}
-    <a href="tel:{company.phone}" class="text-text-muted hover:text-brand"
+    <a href="tel:{company.phone}" class="block truncate text-text-muted hover:text-brand"
       >{formatPhone(company.phone)}</a
     >
   {:else}<span class="text-text-muted">—</span>{/if}
 {/snippet}
 
 {#snippet statusCell(company: Company)}
-  <span class="rounded-full px-2.5 py-0.5 text-xs font-medium {statusPillClass(company.status)}">
+  <!-- `inline-block`, so the pill keeps its shrink-to-fit shape and still clips: the longest
+       label ("Gearchiveerd") is wider than the 120px column allows. -->
+  <span
+    class="inline-block max-w-full truncate rounded-full px-2.5 py-0.5 text-xs font-medium
+      {statusPillClass(company.status)}"
+  >
     {t(`companies.status.${company.status}`)}
   </span>
 {/snippet}
 
 {#snippet assigneesCell(company: Company)}
-  <Assignees assignees={company.assignees ?? []} members={data.members} />
+  <!-- Assignees is an `inline-flex`, and an inline box shrink-to-fits to its content rather than
+       to the column: it needs a block flex parent before its own `min-w-0` can shrink the chip
+       and let the name truncate. -->
+  <div class="flex min-w-0 items-center overflow-hidden">
+    <Assignees assignees={company.assignees ?? []} members={data.members} />
+  </div>
 {/snippet}
 
 {#snippet hoursCell(company: Company)}
@@ -175,7 +209,7 @@
   <!-- A phone gets the concept's row, not a sideways-scrolling grid (docs/UX.md). -->
   <div class="flex items-center gap-3">
     <a href="/companies/{company.id}" class="min-w-0 flex-1">
-      <span class="font-medium text-text">{company.name}</span>
+      <span class="block truncate font-medium text-text">{company.name}</span>
       {#if table.visibleKeys.includes("hours") && company.hours}
         <span class="mt-0.5 block text-xs"><HoursCell hours={company.hours} /></span>
       {:else if company.website}
@@ -250,6 +284,17 @@
     </button>
   {/if}
   <div class="ml-auto flex flex-wrap items-center gap-2">
+    <!-- Bulk actions for whatever is ticked, beside Export/Import and Kolommen rather than in a
+         bar above the table: a bar appears as you select and walks the rows away from the
+         cursor, and it leaves a Delete sitting under the pointer (docs/UX.md). -->
+    <BulkMenu
+      selected={bulkSelected}
+      fields={bulkFields}
+      writePermission="companies.company.write"
+      deletePermission="companies.company.delete"
+      deleteMessage={t("companies.bulk.delete_message", { count: bulkSelected.length })}
+      fieldErrors={form?.bulkFields ?? null}
+    />
     <!-- The Export link carries the page's current filters, so the file holds exactly the
          filtered list on screen — the whole set, not just the loaded page (issue #77). -->
     <ImpexBar
@@ -327,6 +372,8 @@
   {/if}
 {/if}
 
+<BulkResult result={form?.bulkResult} />
+
 <DataTable
   rows={data.companies}
   columns={table.columns}
@@ -338,6 +385,8 @@
   actions={canWrite || canDelete ? rowActions : undefined}
   {mobileRow}
   empty={emptyState}
+  selectable={canWrite || canDelete}
+  bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}
 />

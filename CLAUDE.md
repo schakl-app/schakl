@@ -913,3 +913,44 @@ its shape**, exactly as it does for custom fields (§13) and panels (§6).
   user with a spreadsheet of domains should have to look.
 - Large imports as a background job are still deferred (issue #77); `MAX_IMPORT_ROWS` is what
   keeps the synchronous path honest until that lands.
+
+## 18. Bulk edit & delete (core capability)
+
+A selection is a spreadsheet you never had to leave the app to make, so it uses the same
+description of the same entity. `app/core/bulk/` owns the mechanics; a module declares a
+`BulkDescriptor` that **borrows its `ImpexDescriptor`** — the column vocabulary, the batched
+reference resolvers, and `update_row`, which is its own service call. A second write path is the
+one way a bulk edit could stop meaning what an edit means: fifty picked rows must get the
+validation, activity line, events and custom-field rules that fifty visits to the form would.
+
+- **`editable` is an allow-list, never a deny-list.** What may be set across a selection is a
+  product judgement no column can carry — a domain's `name` is importable and must never be
+  bulk-writable — so a column added to an import tomorrow is not silently bulk-writable today.
+  `check_descriptor` fails at **import time** on a key that names no column, names a derived one,
+  or names a per-row type (`phone`, `email`: a national number is read in *that row's* country,
+  so one shared value is meaningless).
+- **A bad shared value is the caller's; a bad row is the row's.** An unknown status or an
+  unresolvable client is resolved once, before anything is touched, and is a **422 for the whole
+  call** — every row would fail on it identically. Row-level trouble is *reported, never raised*:
+  raising mid-batch rolls the request back and undoes the forty-nine that worked. Which is why
+  **every row runs in its own SAVEPOINT** (`begin_nested`) — catching an error without one leaves
+  the session poisoned for everything after it — and why only `AppError` is caught: that is the
+  vocabulary a service speaks when it *decides* to refuse, and anything else surfacing as "3 rows
+  skipped" is a bug nobody will ever find.
+- **Absent means leave alone; explicit `null` means clear** (`InteractionBulkLinks`' rule,
+  generalised). The dialog opens blank over rows that disagree with each other, so "I did not
+  fill this in" can never mean "empty it on all of them". `required` overrules `clearable` for
+  the same reason it does on an import.
+- **Routes are generated per entity, never generic** (§15): each declares that entity's own
+  write/delete permission, so deny-by-default stays enumerable. **No new capability gates it** —
+  the two precedents disagree deliberately and both say why: impex earns `impex.export` because
+  taking the client list out of the building in one file is a *different act*, while bulk review
+  carries the plain review permission because approving forty emails you may each approve is *the
+  same act, repeated*. A bulk edit is the second kind. Unlike impex it **does** carry its
+  module's `license_write_gate`: a bulk write must not be the one way an uncovered module can
+  still be written to.
+- The web mirrors it in `$lib/core/bulk/`: one `BulkMenu` (the ✎ beside Export/Import and
+  Kolommen — `docs/UX.md`), one dialog, one outcome banner, and `bulkUpdateAction(event, entity)`
+  spread into each list's actions the way `impexAction` already is. Field definitions live in web
+  code beside `columns.ts`, because the picker options are lookups the page already loaded and no
+  generic endpoint could hand them back without shipping the tenant.

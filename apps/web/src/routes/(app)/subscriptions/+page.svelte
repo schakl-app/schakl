@@ -4,9 +4,13 @@
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
+  import BulkMenu from "$lib/core/bulk/BulkMenu.svelte";
+  import BulkResult from "$lib/core/bulk/BulkResult.svelte";
+  import type { BulkFieldDef } from "$lib/core/bulk/types";
   import { fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
+  import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
@@ -156,10 +160,41 @@
     }),
   });
 
-  // Bulk selection (#153): the bar offers only actions valid for the whole selection (#45).
+  // --- bulk (the ✎ menu in the toolbar) --------------------------------------
+  // Status, category and client: the three things a whole selection can honestly share — an
+  // agreement moved to the client that took the account over, a batch recategorised, a run of
+  // drafts activated. The money is deliberately absent. Price, interval and the next invoice
+  // date each decide what somebody gets billed and when, and a price change *appends* to the
+  // price history rather than replacing it, so a misfired bulk price is permanent; the rate
+  // change people actually want is Prijsverhoging (#231), which knows about proration.
+  // Mirrors `apps/api/app/modules/subscriptions/bulk.py`, and the labels are the import's, so
+  // the two surfaces that name the same column can never name it differently.
   let bulkSelected = $state<string[]>([]);
-  let bulkDeleteOpen = $state(false);
-  let bulkStatusPick = $state("active");
+  // The checkboxes answer the same question the ✎ menu does, so they are gated on the same pair:
+  // the menu draws itself for a holder of *either* key, and gating the boxes on write alone would
+  // hand a delete-only member a trigger that can never leave its disabled state — there being
+  // nothing they may tick. Every other list already gates the two together.
+  const canDelete = $derived(can(page.data.user, "subscriptions.subscription.delete"));
+  const bulkFields: BulkFieldDef[] = $derived([
+    {
+      key: "status",
+      label: t("impex.column.subscription.status"),
+      type: "select",
+      options: STATUSES.map((status) => ({
+        value: status,
+        label: t(`subscriptions.status.${status}`),
+      })),
+    },
+    // The tenant's own categories and clients — the same items the form's pickers offer, so a
+    // bulk edit can only set what a single edit could.
+    { key: "type", label: t("impex.column.subscription.type"), type: "fk", options: typeItems },
+    {
+      key: "company",
+      label: t("impex.column.subscription.company"),
+      type: "fk",
+      options: companyItems,
+    },
+  ]);
 
   // "Create from template" (#142): prefill, never a server-side copy — the create form stays
   // the single validation path. Rekeys the form so the defaults re-read.
@@ -396,6 +431,17 @@
       {t("tasks.filter.clear")}
     </button>
   {/if}
+  <!-- Bulk actions for whatever is ticked, beside Export/Import and Kolommen rather than in a
+       bar above the table: a bar appears as you select and walks the rows away from the
+       cursor, and it leaves a Delete sitting under the pointer (docs/UX.md). -->
+  <BulkMenu
+    selected={bulkSelected}
+    fields={bulkFields}
+    writePermission="subscriptions.subscription.write"
+    deletePermission="subscriptions.subscription.delete"
+    deleteMessage={t("subscriptions.bulk.delete_message", { count: bulkSelected.length })}
+    fieldErrors={form?.bulkFields ?? null}
+  />
   <ImpexBar
     entity="subscription"
     readPermission="subscriptions.subscription.read"
@@ -432,29 +478,31 @@
 />
 
 {#snippet nameCell(sub: Subscription)}
+  <!-- `w-full`, because a button shrinks to fit even as a block box: without it the nowrap
+       from `truncate` would let it grow past the column and be cut mid-letter. -->
   <button
     type="button"
-    class="text-left font-medium text-text hover:text-brand"
+    class="block w-full truncate text-left font-medium text-text hover:text-brand"
     onclick={() => openEdit(sub)}>{sub.name}</button
   >
 {/snippet}
 
 {#snippet companyCell(sub: Subscription)}
   {#if sub.company_id}
-    <a href="/companies/{sub.company_id}" class="text-text-muted hover:text-brand"
+    <a href="/companies/{sub.company_id}" class="block truncate text-text-muted hover:text-brand"
       >{sub.company_name}</a
     >
   {:else}<span class="text-text-muted">—</span>{/if}
 {/snippet}
 
 {#snippet typeCell(sub: Subscription)}
-  <span class="text-text-muted"
+  <span class="block truncate text-text-muted"
     >{sub.subscription_type_id ? typeLabel(sub.subscription_type_id) : "—"}</span
   >
 {/snippet}
 
 {#snippet intervalCell(sub: Subscription)}
-  <span class="text-text-muted">{t(`subscriptions.interval.${sub.interval}`)}</span>
+  <span class="block truncate text-text-muted">{t(`subscriptions.interval.${sub.interval}`)}</span>
 {/snippet}
 
 <!-- Numbers only (#261): the interval used to ride along inline, and because its label is a
@@ -470,7 +518,10 @@
 {/snippet}
 
 {#snippet statusCell(sub: Subscription)}
-  <span class="rounded-md bg-surface px-2 py-0.5 text-xs text-text-muted"
+  <!-- `inline-block`, so the chip keeps its own width but can still clip: `overflow` does
+       nothing to an inline box, and a long label would otherwise be cut mid-letter. -->
+  <span
+    class="inline-block max-w-full truncate rounded-md bg-surface px-2 py-0.5 align-middle text-xs text-text-muted"
     >{t(`subscriptions.status.${sub.status}`)}</span
   >
 {/snippet}
@@ -527,7 +578,11 @@
 {/snippet}
 
 {#snippet mobileRow(sub: Subscription)}
-  <button type="button" class="min-w-0 flex-1 text-left" onclick={() => openEdit(sub)}>
+  <!-- `block w-full`, not `flex-1`: the row snippet is rendered into a block wrapper, so the
+       flex classes were inert and the button sized to its own text — which is what pushed the
+       phone's page 34px wider than the viewport. The lines below can only truncate against a
+       definite width. -->
+  <button type="button" class="block w-full text-left" onclick={() => openEdit(sub)}>
     <span class="block truncate text-sm font-medium text-text">{sub.name}</span>
     <span class="mt-0.5 block truncate text-xs text-text-muted">
       {sub.company_name} · {money(sub.amount)} ·
@@ -540,40 +595,7 @@
   <p class="p-6 text-sm text-text-muted">{t("subscriptions.empty")}</p>
 {/snippet}
 
-{#snippet bulkBar(ids: string[])}
-  <span class="text-xs font-medium text-text">{t("table.selected", { count: ids.length })}</span>
-  <form
-    method="POST"
-    action="?/bulkStatus"
-    use:enhance={busy.clear("bulkStatus")}
-    class="flex items-center gap-1.5"
-  >
-    {#each ids as id (id)}
-      <input type="hidden" name="ids" value={id} />
-    {/each}
-    <select
-      name="status"
-      bind:value={bulkStatusPick}
-      class="rounded-lg border border-border bg-surface-raised px-2 py-1 text-xs"
-      aria-label={t("subscriptions.field.status")}
-    >
-      {#each STATUSES as status (status)}
-        <option value={status}>{t(`subscriptions.status.${status}`)}</option>
-      {/each}
-    </select>
-    <Button size="sm" loading={busy.is("bulkStatus")} disabled={busy.active}>
-      {t("subscriptions.bulk.set_status")}
-    </Button>
-  </form>
-  <button
-    type="button"
-    class="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text hover:border-red-400 hover:text-red-600 dark:hover:border-red-500 dark:hover:text-red-400"
-    onclick={() => (bulkDeleteOpen = true)}
-  >
-    <Trash2 size={13} />
-    {t("common.delete")}
-  </button>
-{/snippet}
+<BulkResult result={form?.bulkResult} />
 
 <DataTable
   rows={data.subscriptions}
@@ -584,9 +606,8 @@
   actions={rowActions}
   {mobileRow}
   empty={emptyState}
-  selectable
+  selectable={data.canWrite || canDelete}
   bind:selected={bulkSelected}
-  selection={bulkBar}
   onsort={table.onSort}
   onresize={table.onResize}
 />
@@ -596,14 +617,6 @@
   page={data.paging.page}
   limit={data.paging.limit}
   onsize={table.onPageSize}
-/>
-
-<ConfirmDialog
-  bind:open={bulkDeleteOpen}
-  title={t("subscriptions.delete")}
-  message={t("subscriptions.bulk.delete_confirm")}
-  action="?/bulkDelete"
-  fields={{ ids: bulkSelected.join(",") }}
 />
 
 <!-- One form for create and edit (use vs edit mode: definition changes live here). -->

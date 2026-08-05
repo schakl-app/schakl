@@ -7,11 +7,13 @@
    * other list (#238); the day sections only render while the order is the timeline, so
    * sections and sort can never disagree.
    */
-  import { ArrowRightLeft, Link2, Mail, Pencil, Plus, Trash2, X } from "@lucide/svelte";
+  import { ArrowRightLeft, Check, Link2, Mail, Pencil, Plus, Trash2, X } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
+  import BulkMenu from "$lib/core/bulk/BulkMenu.svelte";
+  import BulkResult from "$lib/core/bulk/BulkResult.svelte";
   import { addMonths, isoAddDays, mondayOnOrBefore, monthOf } from "$lib/core/calendar";
   import { fmtDateTime, fmtMonthYear, fmtPeriod } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
@@ -151,12 +153,18 @@
    * Bulk review (#299): a queue of forty auto-matched emails is reviewed a screenful at a time
    * or not at all, so the review flow gets a batch form.
    *
+   * The three actions live in the shared ✎ menu beside Kolommen rather than in a bar above the
+   * table: a bar appeared as you ticked and walked the rows away from the cursor, which on a
+   * queue you work top-down is the one gesture it must not disturb. This list contributes only
+   * `items` — it has no generic bulk edit or delete, because an interaction's fields are the
+   * record of what was said and reviewing is the only thing done to a batch of them.
+   *
    * Two subsets, because the actions genuinely differ. **Re-filing** works on any of the
    * caller's own Gmail rows — `remap` has no status check, so "approve now, file later" is a
-   * real workflow. **Approving and rejecting** need a still-pending row. Each button therefore
-   * acts on its own subset and says how many rows that is whenever it is not the whole
-   * selection; the API reports the rest rather than refusing the batch, but a button that
-   * silently did less than it said would still be lying.
+   * real workflow. **Approving and rejecting** need a still-pending row. Each item therefore
+   * carries its own subset as `eligible`, which the menu renders beside the label whenever it is
+   * fewer than the selection; the API reports the rest rather than refusing the batch, but an
+   * item that silently did less than it said would still be lying.
    */
   const canReview = $derived(can(page.data.user, "interactions.interaction.review"));
   let bulkSelected = $state<string[]>([]);
@@ -171,8 +179,12 @@
   );
   let showBulkAssign = $state(false);
   let showBulkReject = $state(false);
-  /** Count on a button only when it is doing less than the selection suggests. */
-  const partial = (eligible: number) => (eligible < bulkSelected.length ? ` (${eligible})` : "");
+  // Approve is a plain POST with no dialog in front of it, so it stays a real `<form>` — that is
+  // what `use:enhance` needs, and what keeps the in-flight state and forms:check honest. A menu
+  // item has an `onclick`, not a submit button, so it fires the form from here. `requestSubmit()`
+  // and not `submit()`: only the former dispatches a submit event, which is the event `enhance`
+  // listens for — `submit()` would bypass it and do a full page POST.
+  let approveForm = $state<HTMLFormElement | null>(null);
 
   let showCreate = $state(false);
   let showUpload = $state(false);
@@ -384,7 +396,40 @@
       {/each}
     {/if}
   </select>
-  <div class="ml-auto flex items-center gap-2">
+  <!-- `flex-wrap`: three controls on one unwrappable line pushed Kolommen off the right edge of
+       a phone and scrolled the whole page sideways (docs/UX.md — a toolbar that cannot wrap). -->
+  <div class="ml-auto flex flex-wrap items-center gap-2">
+    <!-- The review trio for whatever is ticked. No `fields` / `writePermission` /
+         `deletePermission`: there is no generic bulk edit or delete here, so the menu holds
+         exactly these three. Gated on the same key as the checkboxes — the menu draws itself
+         whenever it has any item, so without this a non-reviewer would get a ✎ that can never
+         leave its disabled state, there being no boxes to tick. -->
+    {#if canReview}
+      <BulkMenu
+        selected={bulkSelected}
+        items={[
+          {
+            label: t("interactions.approve"),
+            icon: Check,
+            onclick: () => approveForm?.requestSubmit(),
+            eligible: bulkPendingIds.length,
+          },
+          {
+            label: t("interactions.assign"),
+            icon: ArrowRightLeft,
+            onclick: () => (showBulkAssign = true),
+            eligible: bulkFilableIds.length,
+          },
+          {
+            label: t("interactions.reject"),
+            icon: X,
+            onclick: () => (showBulkReject = true),
+            danger: true,
+            eligible: bulkPendingIds.length,
+          },
+        ]}
+      />
+    {/if}
     <SearchInput placeholder={t("interactions.search")} />
     <ColumnPicker
       all={table.pickerColumns}
@@ -503,14 +548,16 @@
 {#snippet kindCell(item: InteractionItem)}
   {@const Icon = kindIcon(item.kind)}
   <span class="flex items-center gap-1.5 text-text-muted">
-    <Icon size={14} aria-hidden="true" />
+    <!-- The icon is a flex item like the label beside it, so it shrinks with it: a long
+         tenant-defined kind squeezed the 14px envelope down to four and a half. -->
+    <Icon size={14} class="shrink-0" aria-hidden="true" />
     <span class="truncate">{kindText(item.kind)}</span>
   </span>
 {/snippet}
 
 {#snippet linkedCell(item: InteractionItem)}
   {@const chips = linkChips(item)}
-  <span class="flex min-w-0 flex-nowrap items-center gap-1">
+  <span class="flex min-w-0 flex-nowrap items-center gap-1 overflow-hidden">
     {#each chips.visible as chip (chip.href)}
       <!-- `relative z-10` keeps the chip clickable above the row's stretched link (#59).
            Who the moment was with must not read quieter than its timestamp (#238): the chip
@@ -536,12 +583,17 @@
 {/snippet}
 
 {#snippet ownerCell(item: InteractionItem)}
-  <span class="truncate text-text-muted">{item.owner_name ?? "—"}</span>
+  <!-- `block`, because `overflow` does not apply to an inline box: a bare `truncate` span only
+       gets its `nowrap` half, so a long name runs sideways over the next column under the
+       table's fixed layout instead of ellipsizing inside its own. -->
+  <span class="block truncate text-text-muted">{item.owner_name ?? "—"}</span>
 {/snippet}
 
 {#snippet whenCell(item: InteractionItem)}
-  <!-- Quieter than the chips on purpose (#238): a reader scans who first, then when. -->
-  <span class="whitespace-nowrap text-xs text-text-muted">{fmtDateTime(item.occurred_at)}</span>
+  <!-- Quieter than the chips on purpose (#238): a reader scans who first, then when.
+       `block truncate` rather than a bare `whitespace-nowrap`: a twelve-hour clock (#13) or a
+       wider locale outgrows this column, and nowrap alone spills it over the ⋯ cell. -->
+  <span class="block truncate text-xs text-text-muted">{fmtDateTime(item.occurred_at)}</span>
 {/snippet}
 
 {#snippet rowActions(item: InteractionItem)}
@@ -604,73 +656,26 @@
   </p>
 {/snippet}
 
-{#if form?.bulkResult}
-  <!-- A batch's honest answer is "37 done, 3 skipped, and here is why" — the API reports the
-       rows it could not do instead of rolling the good ones back, so the banner says both. -->
-  <div
-    class="mb-4 rounded-lg border border-border bg-surface-raised px-4 py-3 text-sm"
-    role="status"
-  >
-    <p class="font-medium text-text">
-      {t(`interactions.bulk.done_${form.bulkResult.kind}`, { count: form.bulkResult.succeeded })}
-      {#if form.bulkResult.failed > 0}
-        <span class="font-normal text-text-muted"
-          >· {t("interactions.bulk.skipped", { count: form.bulkResult.failed })}</span
-        >
-      {/if}
-    </p>
-    {#if form.bulkResult.reasons.length > 0}
-      <ul class="mt-1 space-y-0.5 text-xs text-text-muted">
-        {#each form.bulkResult.reasons as reason (reason)}
-          <li>{t(reason)}</li>
-        {/each}
-      </ul>
-    {/if}
-  </div>
-{/if}
+<!-- The shared banner, reading this module's own verbs: "6 goedgekeurd · 2 overgeslagen" rather
+     than the generic "bijgewerkt". Same component every list uses, one namespace over. -->
+<BulkResult result={form?.bulkResult} prefix="interactions.bulk" />
 
-{#snippet bulkBar(ids: string[])}
-  <span class="text-xs font-medium text-text">{t("table.selected", { count: ids.length })}</span>
-  <!-- Approve as matched: the headline case, and a pure status change — every row keeps the
-       client/project the Gmail matcher derived for it, so no dialog stands in the way. -->
-  <form
-    method="POST"
-    action="?/bulkApproveInteractions"
-    class="contents"
-    use:enhance={busy.keep("bulk-approve")}
-  >
-    <input type="hidden" name="ids" value={bulkPendingIds.join(",")} />
-    <Button
-      type="submit"
-      size="sm"
-      variant="secondary"
-      class="py-1.5 text-xs"
-      loading={busy.is("bulk-approve")}
-      disabled={bulkPendingIds.length === 0 || busy.active}
-    >
-      {t("interactions.approve")}{partial(bulkPendingIds.length)}
-    </Button>
-  </form>
-  <button
-    type="button"
-    disabled={bulkFilableIds.length === 0}
-    class="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text hover:border-brand hover:text-brand disabled:cursor-not-allowed disabled:opacity-40"
-    onclick={() => (showBulkAssign = true)}
-  >
-    <ArrowRightLeft size={13} />
-    {t("interactions.assign")}{partial(bulkFilableIds.length)}
-  </button>
-  <button
-    type="button"
-    disabled={bulkPendingIds.length === 0}
-    class="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text hover:border-red-400 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:border-red-500 dark:hover:text-red-400"
-    onclick={() => (showBulkReject = true)}
-  >
-    <X size={13} />
-    {t("interactions.reject")}{partial(bulkPendingIds.length)}
-  </button>
-{/snippet}
+<!-- Approve as matched: the headline case, and a pure status change — every row keeps the
+     client/project the Gmail matcher derived for it, so no dialog stands in the way. Hidden and
+     fired from the ✎ menu's Goedkeuren item, because that item is not a submit button. -->
+<form
+  method="POST"
+  action="?/bulkApproveInteractions"
+  class="hidden"
+  bind:this={approveForm}
+  use:enhance={busy.keep("bulk-approve")}
+>
+  <input type="hidden" name="ids" value={bulkPendingIds.join(",")} />
+</form>
 
+<!-- `actionsWidth`: this list's ⋯ cell also carries a labelled Beoordelen button on a pending row
+     of your own, which measures far past the 40px default. Under the fixed layout a column no
+     longer widens to fit its content — it paints over the neighbour instead. -->
 <DataTable
   rows={items}
   columns={table.columns}
@@ -679,13 +684,13 @@
   locale={data.locale}
   onRowClick={(item) => openDetail(item)}
   actions={rowActions}
+  actionsWidth={140}
   {mobileRow}
   {empty}
   {groups}
   groupBy={timelineOrder ? (item) => localDay(item.occurred_at) : undefined}
   selectable={canReview}
   bind:selected={bulkSelected}
-  selection={bulkBar}
   onsort={table.onSort}
   onresize={table.onResize}
 />

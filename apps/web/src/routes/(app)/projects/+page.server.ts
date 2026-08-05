@@ -1,5 +1,6 @@
 import { fail, redirect } from "@sveltejs/kit";
 
+import { bulkDeleteAction, bulkUpdateAction } from "$lib/core/bulk/actions.server";
 import { editHref } from "$lib/core/edit-intent";
 import { apiErrorKey } from "$lib/core/errors";
 import { t } from "$lib/core/i18n";
@@ -61,6 +62,10 @@ export const actions: Actions = {
     await saveTablePref(event, PROJECTS_TABLE_ID, parseTablePref(form));
     return { tableSaved: true };
   },
+
+  /** The ✎ menu's two actions, shared by every list that has one. */
+  bulkUpdate: (event) => bulkUpdateAction(event, "project"),
+  bulkDelete: (event) => bulkDeleteAction(event, "project"),
 
   /**
    * Create-then-edit (docs/UX.md Principle 3, same as tasks #230): a new project is created

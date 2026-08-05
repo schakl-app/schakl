@@ -1,5 +1,6 @@
 import { fail } from "@sveltejs/kit";
 
+import { bulkDeleteAction, bulkUpdateAction } from "$lib/core/bulk/actions.server";
 import { apiErrorKey } from "$lib/core/errors";
 import { impexAction } from "$lib/core/impex/actions.server";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
@@ -81,6 +82,10 @@ export const actions: Actions = {
 
   /** CSV import (issue #77): dry-run preview by default, all-or-nothing commit on demand. */
   impex: (event) => impexAction(event, "contact"),
+
+  /** The ✎ menu's two actions, shared by every list that has one. */
+  bulkUpdate: (event) => bulkUpdateAction(event, "contact"),
+  bulkDelete: (event) => bulkDeleteAction(event, "contact"),
 
   /** Inline company create from the "connected companies" picker (#115). */
   createCompany: createCompanyAction,

@@ -36,6 +36,7 @@
     rowHref,
     onRowClick,
     actions,
+    actionsWidth = 52,
     mobileRow,
     empty,
     selectable = false,
@@ -62,6 +63,14 @@
     onRowClick?: (row: T) => void;
     /** Trailing ⋯ cell (docs/UX.md: record actions live behind the overflow menu). */
     actions?: Snippet<[T]>;
+    /**
+     * Width of that trailing cell, in px. 52 is the ⋯ trigger (34) plus the cell's own `px-2`,
+     * which is all it holds on almost every list — the `w-10` it used to be never fitted, and
+     * auto layout was silently widening it. A list that also puts a labelled button there has
+     * to say so: under `table-fixed` a column no longer grows to its content, it paints over
+     * its neighbour.
+     */
+    actionsWidth?: number;
     /** Rendered instead of the grid below `sm`. */
     mobileRow?: Snippet<[T]>;
     empty?: Snippet;
@@ -239,8 +248,34 @@
     onresize?.(widths);
   }
 
+  /**
+   * The column that absorbs whatever the fixed ones leave — see the `table-fixed` note below.
+   * The primary column by declaration, the first rendered one otherwise, so there is always
+   * exactly one and the declared widths always sum to less than the table.
+   */
+  const flexKey = $derived((columns.find((c) => c.primary) ?? columns[0])?.key);
+
   function headerWidth(column: ColumnSpec<T>): number | undefined {
-    return widths[column.key] ?? column.width;
+    // A width the user dragged is authoritative even on the flexible column: they asked for
+    // that number, and under a fixed layout they now actually get it.
+    return widths[column.key] ?? (column.key === flexKey ? undefined : column.width);
+  }
+
+  /**
+   * The floor under the flexible column, in px.
+   *
+   * Absorbing the slack is fine until there is none: switch enough optional columns on and the
+   * declared widths exceed the table, at which point the one column with no width of its own
+   * gets what is left — nothing. The record's own name, the only cell that links out of the
+   * row, then renders as an empty gap. A floor turns that into an honest sideways scroll, which
+   * is what a grid genuinely too wide for its screen should do.
+   */
+  const FLEX_MIN = 160;
+
+  function cellStyle(column: ColumnSpec<T>): string | undefined {
+    const width = headerWidth(column);
+    if (width) return `width:${width}px`;
+    return column.key === flexKey ? `min-width:${FLEX_MIN}px` : undefined;
   }
 
   const checkboxClass = "h-4 w-4 cursor-pointer rounded border-border text-brand focus:ring-brand";
@@ -285,7 +320,23 @@
     class="overflow-x-auto rounded-xl border border-border bg-surface-raised
       {mobileRow ? 'hidden sm:block' : ''}"
   >
-    <table class="w-full text-sm">
+    <!--
+      `table-fixed`, and it is what stops the grid scrolling sideways on an ordinary laptop.
+
+      Under the default auto layout a declared `width` is only a hint: the used width is
+      `max(width, min-content)`, and every cell here truncates with `white-space: nowrap`, which
+      makes a column's min-content its whole unbroken line. `overflow: hidden` does not reduce
+      that — it clips only once a definite width exists, which auto layout never gives. So the
+      table grew past `w-full` (measured: 1423px of content in a 1150px box on a 1440 screen),
+      the ellipsis never appeared, and dragging a column narrower did nothing, because the width
+      being written was the one the layout was ignoring. A fixed layout makes the declared widths
+      real, `truncate` truncate, and the resize handle mean something.
+
+      The one thing fixed layout cannot do is invent slack, so exactly one column carries no
+      declared width and absorbs it (`flexKey`) — otherwise a list whose columns sum past the
+      viewport would trade a scrollbar for an overflow.
+    -->
+    <table class="w-full table-fixed text-sm">
       <thead>
         <tr class="border-b border-border text-left text-xs text-text-muted">
           {#if selectable}
@@ -309,10 +360,10 @@
             {@const direction = column.sortKey ? sortDirection(sort, column.sortKey) : null}
             <th
               scope="col"
-              class="relative px-4 py-2 font-medium {column.align === 'right'
+              class="relative overflow-hidden px-4 py-2 font-medium {column.align === 'right'
                 ? 'text-right'
                 : 'text-left'}"
-              style={headerWidth(column) ? `width:${headerWidth(column)}px` : undefined}
+              style={cellStyle(column)}
               aria-sort={direction === "asc"
                 ? "ascending"
                 : direction === "desc"
@@ -322,7 +373,7 @@
               {#if column.sortKey}
                 <button
                   type="button"
-                  class="inline-flex cursor-pointer items-center gap-1 hover:text-text"
+                  class="inline-flex max-w-full cursor-pointer items-center gap-1 hover:text-text"
                   onclick={() => onsort?.(nextSort(sort, column.sortKey!))}
                 >
                   <span class="truncate">{column.label}</span>
@@ -331,7 +382,10 @@
                     />{:else if direction === "desc"}<ArrowDown size={12} />{/if}
                 </button>
               {:else}
-                <span class="truncate">{column.label}</span>
+                <!-- `block`, because `overflow` does not apply to an inline box: a bare
+                     `truncate` span sets `nowrap` and nothing else, so a long header spills
+                     into the next column instead of ellipsizing. -->
+                <span class="block truncate">{column.label}</span>
               {/if}
 
               <!-- Resize handle. Not focusable: it moves a cosmetic width, and a keyboard user
@@ -344,7 +398,7 @@
             </th>
           {/each}
           {#if actions}
-            <th scope="col" class="w-10 px-2 py-2"
+            <th scope="col" class="px-2 py-2" style="width:{actionsWidth}px"
               ><span class="sr-only">{t("common.actions")}</span></th
             >
           {/if}
@@ -452,18 +506,29 @@
       </td>
     {/if}
     {#each columns as column, index (column.key)}
-      <td class="px-4 py-2.5 {column.align === 'right' ? 'text-right tabular-nums' : 'text-left'}">
+      <!-- `overflow-hidden`: a column no longer grows to its content under the fixed layout, so
+           anything wider has to be clipped by the cell or it paints over its neighbour. Cells
+           that want an ellipsis rather than a hard edge put `truncate` on their own content —
+           which only works because it is clipped here. -->
+      <td
+        class="overflow-hidden px-4 py-2.5 {column.align === 'right'
+          ? 'text-right tabular-nums'
+          : 'text-left'}"
+      >
         {#if column.cell}
           {@render column.cell(row)}
         {:else if column.key.startsWith(CUSTOM_PREFIX)}
-          <span class="text-text-muted">{customCellText(column.key, row, definitions, locale)}</span
+          <span class="block truncate text-text-muted"
+            >{customCellText(column.key, row, definitions, locale)}</span
           >
         {:else if index === 0 && rowHref}
-          <a href={rowHref(row)} class="font-medium text-text hover:text-brand"
+          <a href={rowHref(row)} class="block truncate font-medium text-text hover:text-brand"
             >{String((row as Record<string, unknown>)[column.key] ?? "—")}</a
           >
         {:else}
-          {String((row as Record<string, unknown>)[column.key] ?? "—")}
+          <span class="block truncate"
+            >{String((row as Record<string, unknown>)[column.key] ?? "—")}</span
+          >
         {/if}
       </td>
     {/each}
