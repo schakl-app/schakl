@@ -16,6 +16,15 @@
   configure: which company is yours is worked out from your own data. Mail purely between
   colleagues, if you log it, still lands on your own company as before.
 
+### Lists
+
+- **Selecting a run of rows takes one shift-click.** On every list with checkboxes — interacties,
+  clients, contacts, domeinen, verlof — hold shift and click a second row to select everything
+  between it and the last row you ticked. Clicking it again with shift clears that same span.
+  Collapsed sections stay out of it: only rows you can see can be swept in.
+- **The checkbox is no longer a 16-pixel target.** The whole column the checkbox sits in now ticks
+  the row, so being a few pixels off no longer opens the record you were trying to select.
+
 ## v0.21.0 — 2026-08-05
 
 ### Invoicing

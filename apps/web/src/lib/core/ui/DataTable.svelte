@@ -24,6 +24,7 @@
   import { t } from "$lib/core/i18n";
   import type { ColumnSpec } from "$lib/core/table/columns";
   import { CUSTOM_PREFIX, customCellText, nextSort, sortDirection } from "$lib/core/table/columns";
+  import { rangeSelection } from "$lib/core/table/selection";
 
   let {
     rows,
@@ -99,19 +100,69 @@
   const allSelected = $derived(rows.length > 0 && selected.length === rows.length);
   const someSelected = $derived(selected.length > 0 && !allSelected);
 
+  /** The last row ticked on its own — where a shift-click measures its range from. */
+  let anchor = $state<string | null>(null);
+
   // A new page, filter or sort is a different set of rows; a selection made against the old one
   // is meaningless and must not survive into a bulk action.
   $effect(() => {
     void rows;
     selected = [];
+    anchor = null;
   });
 
   function toggleAll() {
     selected = allSelected ? [] : rows.map((row) => row.id);
+    anchor = null;
   }
 
   function toggleRow(id: string) {
     selected = selectedSet.has(id) ? selected.filter((s) => s !== id) : [...selected, id];
+    anchor = id;
+  }
+
+  /**
+   * The order a shift-click measures its range in: the sections as drawn, minus the collapsed
+   * ones, each row once. `rangeSelection` documents why it is the visible order and not `rows`.
+   */
+  function visibleIds(): string[] {
+    const source = grouped
+      ? grouped.filter((group) => !collapsedSet.has(group.key)).flatMap((group) => group.rows)
+      : rows;
+    return [...new Set(source.map((row) => row.id))];
+  }
+
+  function extendTo(id: string) {
+    selected = rangeSelection(visibleIds(), anchor, id, selected);
+    // The anchor stays put, so dragging the range wider or narrower keeps measuring from the same
+    // end — moving it would make the next shift-click select from the wrong row.
+  }
+
+  /**
+   * One entry point for every way a row gets ticked, and it hangs on the **label**, not the box.
+   * A click that lands in the padding never reaches the box on its own: chrome suppresses a
+   * label's forward-to-its-control when shift makes the click a text-selection gesture, so the
+   * enlarged hit area would have swallowed exactly the shift-click it exists to catch.
+   *
+   * Which leaves the two paths to tell apart, and `preventDefault` is the difference:
+   * - on the box itself (or the space bar, which fires a click there too) the browser has
+   *   already flipped it, and that flip always agrees with the state below — the clicked row
+   *   ends on `!checked` whether it toggled or led a range — so it stands. Cancelling it here
+   *   would be worse than redundant: the browser restores the *old* value after the handler
+   *   returns, leaving a ticked box over an unselected row.
+   * - anywhere else in the label it has not, so the forward is cancelled (it would arrive as a
+   *   second click on the box) and the work is done here.
+   */
+  function pickRow(event: MouseEvent, id: string) {
+    if ((event.target as HTMLElement).tagName !== "INPUT") event.preventDefault();
+    if (event.shiftKey) extendTo(id);
+    else toggleRow(id);
+  }
+
+  /** The same two paths, for the header's select-all — which has no range to extend. */
+  function pickAll(event: MouseEvent) {
+    if ((event.target as HTMLElement).tagName !== "INPUT") event.preventDefault();
+    toggleAll();
   }
 
   // --- grouping --------------------------------------------------------------
@@ -238,15 +289,20 @@
       <thead>
         <tr class="border-b border-border text-left text-xs text-text-muted">
           {#if selectable}
-            <th scope="col" class="w-8 px-3 py-2">
-              <input
-                type="checkbox"
-                class={checkboxClass}
-                checked={allSelected}
-                indeterminate={someSelected}
-                aria-label={t("table.select_all")}
-                onchange={toggleAll}
-              />
+            <th scope="col" class="w-10 p-0">
+              <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+              <label
+                class="flex cursor-pointer items-center justify-center px-3 py-2"
+                onclick={pickAll}
+              >
+                <input
+                  type="checkbox"
+                  class={checkboxClass}
+                  checked={allSelected}
+                  indeterminate={someSelected}
+                  aria-label={t("table.select_all")}
+                />
+              </label>
             </th>
           {/if}
           {#each columns as column (column.key)}
@@ -330,7 +386,7 @@
              API's; this never sums `rows`, which are only the page. -->
         <tfoot class="border-t-2 border-border text-sm font-medium">
           <tr>
-            {#if selectable}<td class="px-3 py-2.5"></td>{/if}
+            {#if selectable}<td class="w-10 py-2.5"></td>{/if}
             {#each columns as column, index (column.key)}
               <td
                 class="px-4 py-2.5 {column.align === 'right'
@@ -354,26 +410,45 @@
 
 {#snippet bodyRow(row: T)}
   <!-- A whole-row click that opens a modal rather than navigating (#184). Ignore clicks that
-       land on an inner link/button/input so chips and the ⋯ menu keep their own action. -->
+       land on an inner link/button/input so chips and the ⋯ menu keep their own action.
+       Shift extends the selection instead of opening the record: on a selectable list that is
+       what the gesture means everywhere else, and answering it with a modal is the surprise. -->
   <tr
     class="hover:bg-surface {onRowClick ? 'cursor-pointer' : ''} {selectedSet.has(row.id)
       ? 'bg-brand/5'
       : ''}"
     onclick={onRowClick
       ? (e) => {
-          if (!(e.target as HTMLElement).closest("a,button,input,label,select")) onRowClick(row);
+          if ((e.target as HTMLElement).closest("a,button,input,label,select")) return;
+          if (selectable && e.shiftKey && anchor !== null) {
+            // A shift-click drags a text selection across the rows on the way; clear it, or the
+            // range the user asked for arrives under a blue smear of highlighted cells.
+            window.getSelection()?.removeAllRanges();
+            extendTo(row.id);
+            return;
+          }
+          onRowClick(row);
         }
       : undefined}
   >
     {#if selectable}
-      <td class="px-3 py-2.5">
-        <input
-          type="checkbox"
-          class={checkboxClass}
-          checked={selectedSet.has(row.id)}
-          aria-label={t("table.select_row")}
-          onchange={() => toggleRow(row.id)}
-        />
+      <!-- The whole gutter cell is the box's label, not just the 16 px box itself: a click that
+           landed a few pixels off used to miss the checkbox, fall through to the row, and open
+           the record the user was trying to tick. A stretched `<label>` is also what keeps the
+           near-miss out of the row handler below, which already ignores clicks on one. -->
+      <td class="relative w-10 p-0">
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+        <label
+          class="absolute inset-0 flex cursor-pointer items-center justify-center"
+          onclick={(e) => pickRow(e, row.id)}
+        >
+          <input
+            type="checkbox"
+            class={checkboxClass}
+            checked={selectedSet.has(row.id)}
+            aria-label={t("table.select_row")}
+          />
+        </label>
       </td>
     {/if}
     {#each columns as column, index (column.key)}
@@ -422,14 +497,22 @@
       <a {href} class="absolute inset-0" aria-label={t("table.open_row")}></a>
     {/if}
     {#if selectable}
-      <!-- A phone gets the same bulk actions; it has rows, it just has no header row. -->
-      <input
-        type="checkbox"
-        class="{checkboxClass} relative z-10"
-        checked={selectedSet.has(row.id)}
-        aria-label={t("table.select_row")}
-        onchange={() => toggleRow(row.id)}
-      />
+      <!-- A phone gets the same bulk actions; it has rows, it just has no header row. The label's
+           negative margin cancels its own padding, so the tap target grows past the box in every
+           direction while the row is laid out exactly as before — and it paints above the
+           stretched overlay, so a near-miss ticks the row instead of opening it. -->
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+      <label
+        class="relative z-10 -m-2 flex cursor-pointer items-center p-2"
+        onclick={(e) => pickRow(e, row.id)}
+      >
+        <input
+          type="checkbox"
+          class={checkboxClass}
+          checked={selectedSet.has(row.id)}
+          aria-label={t("table.select_row")}
+        />
+      </label>
     {/if}
     <div class="min-w-0 flex-1">{@render mobileRow?.(row)}</div>
   </li>

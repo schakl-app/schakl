@@ -268,6 +268,18 @@
     of rolling the good ones back (raising mid-batch would undo the forty-nine that worked), and
     a UI that swallowed that would be claiming work it did not do. The eligible-subset filter is
     still only UX: the API re-checks every row, so the bar may narrow the batch but never widens it.
+  - **Selecting the rows has to be cheaper than acting on them.** A bulk bar over a queue of forty
+    auto-matched emails is worth nothing if reaching it costs forty clicks, so **shift extends the
+    selection** from the last row ticked to the clicked one, and it does so from the row as well as
+    from its checkbox — a reviewer reaching for a range must never be answered with a detail modal.
+    The span takes the state the clicked row is moving to, and it walks the **visible** order only:
+    a range that quietly swept up rows inside a collapsed section is how a bulk reject reaches an
+    email nobody read. The gutter **cell** is the checkbox's hit area, not the 16 px box in it —
+    every list here opens the record on a row click, so a near-miss was not "nothing happened", it
+    was the wrong dialog over the tick the user meant. Two browser details make or break that pair
+    and are commented at the seam: a stretched `<label>` is also what keeps the near-miss out of the
+    row handler, and the click is handled *on* the label because chrome suppresses a label's
+    forward-to-its-control the moment shift turns the click into a text-selection gesture.
   - **A hidden column costs nothing.** An expensive column (the budget roll-up) is an opt-in
     aggregate: the page's `load` asks the API for it only when the column is visible. This is why
     column metadata is a plain module and the cell renderers are snippets — a server load can read
