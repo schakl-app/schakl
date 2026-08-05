@@ -295,8 +295,7 @@
 
   const cellClass =
     "w-full rounded-lg border border-border bg-surface-raised px-2 py-1.5 text-sm outline-none focus:border-brand";
-  const addClass =
-    "inline-flex items-center gap-1 text-sm font-medium text-brand hover:underline";
+  const addClass = "inline-flex items-center gap-1 text-sm font-medium text-brand hover:underline";
   const gridWide = "sm:grid-cols-[1fr_4.5rem_4.5rem_6.5rem_8.5rem_6.5rem_2rem]";
   const gridNarrow = "sm:grid-cols-[1fr_4.5rem_6.5rem_8.5rem_6.5rem_2rem]";
 </script>
@@ -419,6 +418,7 @@
               id="line-product-pick"
               placeholder={t("invoicing.line.add_product")}
               onselect={addProduct}
+              keepOpenOnSelect
             />
           </div>
         {/if}

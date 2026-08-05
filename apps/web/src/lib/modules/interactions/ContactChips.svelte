@@ -97,6 +97,7 @@
       : t("interactions.field.contact_placeholder")}
     allowEmpty={false}
     onselect={pick}
+    keepOpenOnSelect
     {oncreate}
   />
 

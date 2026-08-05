@@ -430,6 +430,7 @@
           placeholder={t("contacts.add_client")}
           allowEmpty={false}
           onselect={addCompany}
+          keepOpenOnSelect
           oncreate={(name) => {
             qcCompanyName = name;
             qcCompanyOpen = true;

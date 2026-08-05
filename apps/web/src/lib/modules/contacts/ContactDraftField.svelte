@@ -217,6 +217,7 @@
     placeholder={t("contacts.add_person")}
     allowEmpty={false}
     onselect={pick}
+    keepOpenOnSelect
     oncreate={openCreate}
   />
 </div>

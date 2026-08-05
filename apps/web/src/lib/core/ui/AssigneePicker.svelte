@@ -128,5 +128,6 @@
     placeholder={placeholder ?? t("assignees.add")}
     allowEmpty={false}
     onselect={pick}
+    keepOpenOnSelect
   />
 </div>

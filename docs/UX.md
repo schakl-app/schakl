@@ -142,6 +142,15 @@
   save button); `LinkField` posts per chip, because there each link is its own record.
   **"Mine" filters match any assignee, never only the primary** — otherwise the feature is
   invisible to everyone but the owner.
+  **A picker that builds a list keeps its list open** (`keepOpenOnSelect`): the chip appears, the
+  field empties, and the next name is one click away. Closing after each pick was not merely
+  brisk — it was a **dead end**, because the only thing that opened the list was the input's
+  `focus` event, and the mouse never left the input to fire another one. Adding three people to a
+  contactmoment meant click-away-click-back twice, on a control that looked broken while it did
+  it. The general half of that fix stands under every picker, single-value ones included:
+  **clicking the field opens the list, whether or not it was already focused** — a closed dropdown
+  under a focused cursor is a state the user has no gesture for. Everything else about a single
+  pick is unchanged: it still closes, because there the pick *is* the answer.
 - **One person, one shape: `PersonChip` — avatar *and* name, together.** Read-only surfaces that
   show people (list cells, detail headers) render every person the same way through `Assignees`:
   the verantwoordelijke first in the plain text colour, the rest muted. Naming the first person in
