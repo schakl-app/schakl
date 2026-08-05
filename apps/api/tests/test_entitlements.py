@@ -116,6 +116,7 @@ def test_paid_module_set_is_pinned() -> None:
         "invoicing": "invoicing",
         "leave": "leave",
         "marketing": "marketing",
+        "oxxa": "oxxa",
         "projects": "projects",
         "subscriptions": "subscriptions",
         "time": "time",
