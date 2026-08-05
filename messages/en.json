@@ -4276,9 +4276,8 @@
   "invoicing.backlog.tile.total": "Total still to invoice",
   "invoicing.backlog.count_items": "{count} rows",
   "invoicing.backlog.count_items_one": "1 row",
-  "bulk.actions": "Bulk actions",
-  "bulk.select_first": "Tick rows in the list to act on them together",
-  "bulk.edit": "Edit fields…",
+  "bulk.select_first": "Tick rows in the list first",
+  "bulk.edit": "Edit",
   "bulk.edit_title": "Edit selection",
   "bulk.edit_hint": "Applies to {count} records. Anything you leave empty keeps each record's own value.",
   "bulk.unchanged": "Leave unchanged",
@@ -4531,5 +4530,7 @@
   "reporting.profile.internal_enabled_hint": "Your own working document, with the findings the client's report leaves out. Never sent to the client.",
   "reporting.profile.active": "Reporting active for this client",
   "reporting.profile.active_hint": "Switch off to stop the schedule without losing anything on this page.",
-  "reporting.profile.reports": "Reports"
+  "reporting.profile.reports": "Reports",
+  "bulk.select": "Select rows",
+  "bulk.select_done": "Stop selecting"
 }

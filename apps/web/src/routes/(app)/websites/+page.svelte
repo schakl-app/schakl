@@ -9,7 +9,7 @@
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import type { components } from "$lib/core/api/schema";
-  import BulkMenu from "$lib/core/bulk/BulkMenu.svelte";
+  import BulkActions from "$lib/core/bulk/BulkActions.svelte";
   import BulkResult from "$lib/core/bulk/BulkResult.svelte";
   import type { BulkFieldDef } from "$lib/core/bulk/types";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
@@ -153,7 +153,7 @@
     confirmDelete = true;
   }
 
-  // --- bulk (the ✎ menu in the toolbar) --------------------------------------
+  // --- bulk (the ✎ selection mode in the toolbar) --------------------------------------
   // The hosting account and uptime monitoring: the two facts a server migration changes across a
   // whole estate at once. The domain is the row's identity and the client follows from it, so
   // neither is a field here — and the technical owner is deliberately absent even though the
@@ -161,6 +161,7 @@
   // one alone" state, which is the one thing every control in this dialog needs. Mirrors
   // `apps/api/app/modules/websites/bulk.py`; labels are the import's, so the two surfaces that
   // name the same column can never name it differently.
+  let selecting = $state(false);
   let bulkSelected = $state<string[]>([]);
   const bulkFields: BulkFieldDef[] = $derived([
     {
@@ -304,11 +305,12 @@
 
 <!-- The personal column picker: every sort is reachable from here too (docs/UX.md). -->
 <div class="mb-4 flex flex-wrap items-center justify-end gap-2">
-  <!-- Bulk actions for whatever is ticked, in the same cluster as Export/Import and Kolommen:
-       a bar that grows above the table walks the rows away from the cursor mid-selection, and
-       leaves a Delete sitting under the pointer (docs/UX.md). -->
-  <BulkMenu
-    selected={bulkSelected}
+  <!-- The ✎ that turns the list into something you are editing: it switches the checkboxes on
+       and puts Bewerken/Verwijderen beside itself (docs/UX.md). A list is for reading until
+       someone says otherwise, so nothing here costs a reader anything. -->
+  <BulkActions
+    bind:selecting
+    bind:selected={bulkSelected}
     fields={bulkFields}
     writePermission="websites.website.write"
     deletePermission="websites.website.delete"
@@ -347,7 +349,7 @@
   actions={canWrite || canDelete ? rowActions : undefined}
   {mobileRow}
   empty={emptyState}
-  selectable={canWrite || canDelete}
+  selectable={selecting}
   bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}

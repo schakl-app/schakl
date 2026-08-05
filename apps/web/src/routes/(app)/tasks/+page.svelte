@@ -7,7 +7,7 @@
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import type { components } from "$lib/core/api/schema";
-  import BulkMenu from "$lib/core/bulk/BulkMenu.svelte";
+  import BulkActions from "$lib/core/bulk/BulkActions.svelte";
   import BulkResult from "$lib/core/bulk/BulkResult.svelte";
   import type { BulkFieldDef } from "$lib/core/bulk/types";
   import { fmtDayMonth, fmtNumericDate } from "$lib/core/format";
@@ -113,7 +113,7 @@
     data.members.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
   );
 
-  // --- bulk (the ✎ menu in the toolbar) --------------------------------------
+  // --- bulk (the ✎ selection mode in the toolbar) --------------------------------------
   // Triage is a bulk gesture: hand a sprint to a colleague, move a run of tickets onto the
   // project they turned out to belong to, push a week of deadlines, close what is done. So this
   // list offers the six fields a batch can decide honestly — status, assignee, priority, project,
@@ -125,6 +125,7 @@
   // A row the write refuses — a due date moved later without a reason, a terminal status still
   // owing its contact moment (#157), a colleague's task under a `:own` grant — comes back in the
   // result banner with its own key. The other forty-nine still land; a batch is not all-or-nothing.
+  let selecting = $state(false);
   let bulkSelected = $state<string[]>([]);
   // The API's own `TaskPriority` (`apps/api/app/modules/tasks/models.py`), so a renamed value
   // fails to compile here rather than posting a priority the write rejects.
@@ -473,11 +474,12 @@
 <!-- The picker stays reachable even when a filter empties the board — the sort that emptied it
      is cycled off from here. -->
 <div class="mb-2 flex flex-wrap items-center justify-end gap-2">
-  <!-- Bulk actions for whatever is ticked, beside Export/Import and Kolommen rather than in a
-       bar above the table: a bar appears as you select and walks the rows away from the cursor,
-       and it leaves a Delete sitting under the pointer (docs/UX.md). -->
-  <BulkMenu
-    selected={bulkSelected}
+  <!-- The ✎ that turns the list into something you are editing: it switches the checkboxes on
+       and puts Bewerken/Verwijderen beside itself (docs/UX.md). A list is for reading until
+       someone says otherwise, so nothing here costs a reader anything. -->
+  <BulkActions
+    bind:selecting
+    bind:selected={bulkSelected}
     fields={bulkFields}
     writePermission="tasks.task.write"
     deletePermission="tasks.task.delete"
@@ -519,7 +521,7 @@
   actions={canDelete ? rowActions : undefined}
   {mobileRow}
   {empty}
-  selectable={canWrite || canDelete}
+  selectable={selecting}
   bind:selected={bulkSelected}
   oncollapse={table.onCollapse}
   onsort={table.onSort}

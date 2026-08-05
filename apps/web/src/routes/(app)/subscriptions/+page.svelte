@@ -4,13 +4,12 @@
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
-  import BulkMenu from "$lib/core/bulk/BulkMenu.svelte";
+  import BulkActions from "$lib/core/bulk/BulkActions.svelte";
   import BulkResult from "$lib/core/bulk/BulkResult.svelte";
   import type { BulkFieldDef } from "$lib/core/bulk/types";
   import { fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
-  import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
@@ -160,7 +159,7 @@
     }),
   });
 
-  // --- bulk (the ✎ menu in the toolbar) --------------------------------------
+  // --- bulk (the ✎ selection mode in the toolbar) --------------------------------------
   // Status, category and client: the three things a whole selection can honestly share — an
   // agreement moved to the client that took the account over, a batch recategorised, a run of
   // drafts activated. The money is deliberately absent. Price, interval and the next invoice
@@ -169,12 +168,8 @@
   // change people actually want is Prijsverhoging (#231), which knows about proration.
   // Mirrors `apps/api/app/modules/subscriptions/bulk.py`, and the labels are the import's, so
   // the two surfaces that name the same column can never name it differently.
+  let selecting = $state(false);
   let bulkSelected = $state<string[]>([]);
-  // The checkboxes answer the same question the ✎ menu does, so they are gated on the same pair:
-  // the menu draws itself for a holder of *either* key, and gating the boxes on write alone would
-  // hand a delete-only member a trigger that can never leave its disabled state — there being
-  // nothing they may tick. Every other list already gates the two together.
-  const canDelete = $derived(can(page.data.user, "subscriptions.subscription.delete"));
   const bulkFields: BulkFieldDef[] = $derived([
     {
       key: "status",
@@ -431,11 +426,12 @@
       {t("tasks.filter.clear")}
     </button>
   {/if}
-  <!-- Bulk actions for whatever is ticked, beside Export/Import and Kolommen rather than in a
-       bar above the table: a bar appears as you select and walks the rows away from the
-       cursor, and it leaves a Delete sitting under the pointer (docs/UX.md). -->
-  <BulkMenu
-    selected={bulkSelected}
+  <!-- The ✎ that turns the list into something you are editing: it switches the checkboxes on
+       and puts Bewerken/Verwijderen beside itself (docs/UX.md). A list is for reading until
+       someone says otherwise, so nothing here costs a reader anything. -->
+  <BulkActions
+    bind:selecting
+    bind:selected={bulkSelected}
     fields={bulkFields}
     writePermission="subscriptions.subscription.write"
     deletePermission="subscriptions.subscription.delete"
@@ -606,7 +602,7 @@
   actions={rowActions}
   {mobileRow}
   empty={emptyState}
-  selectable={data.canWrite || canDelete}
+  selectable={selecting}
   bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}

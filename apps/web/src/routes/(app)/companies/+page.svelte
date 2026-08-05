@@ -4,7 +4,7 @@
   import { page } from "$app/state";
   import { Pencil, Trash2 } from "@lucide/svelte";
 
-  import BulkMenu from "$lib/core/bulk/BulkMenu.svelte";
+  import BulkActions from "$lib/core/bulk/BulkActions.svelte";
   import BulkResult from "$lib/core/bulk/BulkResult.svelte";
   import type { BulkFieldDef } from "$lib/core/bulk/types";
   import { editHref } from "$lib/core/edit-intent";
@@ -56,11 +56,12 @@
   const canWrite = $derived(can(page.data.user, "companies.company.write"));
   const canDelete = $derived(can(page.data.user, "companies.company.delete"));
 
-  // --- bulk (the ✎ menu in the toolbar) --------------------------------------
+  // --- bulk (the ✎ selection mode in the toolbar) ----------------------------
   // Only the status: everything else on a client is a fact about *that* client, and a control
   // that wrote one across a selection would exist purely to be misfired. Mirrors
   // `apps/api/app/modules/companies/bulk.py`; labels are the import's, so the two surfaces
   // that name the same column can never name it differently.
+  let selecting = $state(false);
   let bulkSelected = $state<string[]>([]);
   const bulkFields: BulkFieldDef[] = [
     {
@@ -284,11 +285,12 @@
     </button>
   {/if}
   <div class="ml-auto flex flex-wrap items-center gap-2">
-    <!-- Bulk actions for whatever is ticked, beside Export/Import and Kolommen rather than in a
-         bar above the table: a bar appears as you select and walks the rows away from the
-         cursor, and it leaves a Delete sitting under the pointer (docs/UX.md). -->
-    <BulkMenu
-      selected={bulkSelected}
+    <!-- The ✎ that turns the list into something you are editing: it switches the checkboxes on
+         and puts Bewerken/Verwijderen beside itself (docs/UX.md). A list is for reading until
+         someone says otherwise, so nothing here costs a reader anything. -->
+    <BulkActions
+      bind:selecting
+      bind:selected={bulkSelected}
       fields={bulkFields}
       writePermission="companies.company.write"
       deletePermission="companies.company.delete"
@@ -385,7 +387,7 @@
   actions={canWrite || canDelete ? rowActions : undefined}
   {mobileRow}
   empty={emptyState}
-  selectable={canWrite || canDelete}
+  selectable={selecting}
   bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}

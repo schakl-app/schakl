@@ -4276,9 +4276,8 @@
   "invoicing.backlog.tile.total": "Totaal nog te factureren",
   "invoicing.backlog.count_items": "{count} regels",
   "invoicing.backlog.count_items_one": "1 regel",
-  "bulk.actions": "Bulkacties",
-  "bulk.select_first": "Vink rijen in de lijst aan om ze samen te bewerken",
-  "bulk.edit": "Velden bewerken…",
+  "bulk.select_first": "Vink eerst rijen in de lijst aan",
+  "bulk.edit": "Bewerken",
   "bulk.edit_title": "Selectie bewerken",
   "bulk.edit_hint": "Geldt voor {count} records; wat je leeg laat, houdt per record de eigen waarde.",
   "bulk.unchanged": "Ongewijzigd laten",
@@ -4531,5 +4530,7 @@
   "reporting.profile.internal_enabled_hint": "Jullie eigen werkdocument, met de bevindingen die de klantrapportage weglaat. Gaat nooit naar de klant.",
   "reporting.profile.active": "Rapportage actief voor deze klant",
   "reporting.profile.active_hint": "Zet uit om de planning te stoppen zonder iets op deze pagina kwijt te raken.",
-  "reporting.profile.reports": "Rapportages"
+  "reporting.profile.reports": "Rapportages",
+  "bulk.select": "Rijen selecteren",
+  "bulk.select_done": "Selecteren stoppen"
 }

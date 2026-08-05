@@ -3,7 +3,7 @@
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
-  import BulkMenu from "$lib/core/bulk/BulkMenu.svelte";
+  import BulkActions from "$lib/core/bulk/BulkActions.svelte";
   import BulkResult from "$lib/core/bulk/BulkResult.svelte";
   import type { BulkFieldDef } from "$lib/core/bulk/types";
   import { editHref } from "$lib/core/edit-intent";
@@ -63,7 +63,7 @@
     void goto(url, { keepFocus: true, noScroll: true });
   }
 
-  // --- bulk (the ✎ menu in the toolbar) --------------------------------------
+  // --- bulk (the ✎ selection mode in the toolbar) --------------------------------------
   // Only the client link, and only in the attaching direction. Someone's name, address and phone
   // are the definition of that person and are never shared by a selection; "these six all work at
   // Acme now" is the one thing a batch of contacts genuinely has in common. Detaching is not
@@ -71,6 +71,7 @@
   // contact, where you can see which link you are breaking. Mirrors
   // `apps/api/app/modules/contacts/bulk.py`; the label is the import's, so the two surfaces that
   // name this column can never name it differently.
+  let selecting = $state(false);
   let bulkSelected = $state<string[]>([]);
   const bulkFields: BulkFieldDef[] = $derived([
     {
@@ -321,11 +322,12 @@
     />
   </div>
   <div class="ml-auto flex flex-wrap items-center gap-2">
-    <!-- Bulk actions for whatever is ticked, beside Export/Import and Kolommen rather than in a
-         bar above the table: a bar appears as you select and walks the rows away from the
-         cursor, and it leaves a Delete sitting under the pointer (docs/UX.md). -->
-    <BulkMenu
-      selected={bulkSelected}
+    <!-- The ✎ that turns the list into something you are editing: it switches the checkboxes on
+       and puts Bewerken/Verwijderen beside itself (docs/UX.md). A list is for reading until
+       someone says otherwise, so nothing here costs a reader anything. -->
+    <BulkActions
+      bind:selecting
+      bind:selected={bulkSelected}
       fields={bulkFields}
       writePermission="contacts.contact.write"
       deletePermission="contacts.contact.delete"
@@ -531,7 +533,7 @@
   actions={canWrite || canDelete ? rowActions : undefined}
   {mobileRow}
   empty={emptyState}
-  selectable={canWrite || canDelete}
+  selectable={selecting}
   bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}

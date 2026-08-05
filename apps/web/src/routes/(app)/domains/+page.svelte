@@ -4,7 +4,7 @@
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import type { components } from "$lib/core/api/schema";
-  import BulkMenu from "$lib/core/bulk/BulkMenu.svelte";
+  import BulkActions from "$lib/core/bulk/BulkActions.svelte";
   import BulkResult from "$lib/core/bulk/BulkResult.svelte";
   import type { BulkFieldDef } from "$lib/core/bulk/types";
   import { fmtMoney, fmtNumericDate } from "$lib/core/format";
@@ -76,12 +76,13 @@
     confirmDelete = true;
   }
 
-  // --- bulk (the ✎ menu in the toolbar) --------------------------------------
+  // --- bulk (the ✎ selection mode in the toolbar) --------------------------------------
   // The register is where one shared value over a long list is the normal case: a portfolio
   // moves to another registrar, a client's names are pointed at a new DNS or mail provider, a
   // batch changes hands, or somebody finally decides which of them we invoice. The name is
   // deliberately absent — it *is* the record. Mirrors `apps/api/app/modules/domains/bulk.py`;
   // labels are the import's, so the two surfaces that name the same column never differ.
+  let selecting = $state(false);
   let bulkSelected = $state<string[]>([]);
 
   // Typed off the generated client so a status the API dropped stops compiling here.
@@ -304,11 +305,12 @@
 
 <!-- The personal column picker: every sort is reachable from here too (docs/UX.md). -->
 <div class="mb-4 flex flex-wrap items-center justify-end gap-2">
-  <!-- Bulk actions for whatever is ticked, beside Export/Import and Kolommen rather than in a
-       bar above the table: a bar appears as you select and walks the rows away from the
-       cursor, and it leaves a Delete sitting under the pointer (docs/UX.md). -->
-  <BulkMenu
-    selected={bulkSelected}
+  <!-- The ✎ that turns the list into something you are editing: it switches the checkboxes on
+       and puts Bewerken/Verwijderen beside itself (docs/UX.md). A list is for reading until
+       someone says otherwise, so nothing here costs a reader anything. -->
+  <BulkActions
+    bind:selecting
+    bind:selected={bulkSelected}
     fields={bulkFields}
     writePermission="domains.domain.write"
     deletePermission="domains.domain.delete"
@@ -348,7 +350,7 @@
   actions={canDelete ? rowActions : undefined}
   {mobileRow}
   empty={emptyState}
-  selectable={canWrite || canDelete}
+  selectable={selecting}
   bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}

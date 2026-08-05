@@ -975,8 +975,10 @@ validation, activity line, events and custom-field rules that fifty visits to th
   same act, repeated*. A bulk edit is the second kind. Unlike impex it **does** carry its
   module's `license_write_gate`: a bulk write must not be the one way an uncovered module can
   still be written to.
-- The web mirrors it in `$lib/core/bulk/`: one `BulkMenu` (the ✎ beside Export/Import and
-  Kolommen — `docs/UX.md`), one dialog, one outcome banner, and `bulkUpdateAction(event, entity)`
-  spread into each list's actions the way `impexAction` already is. Field definitions live in web
-  code beside `columns.ts`, because the picker options are lookups the page already loaded and no
-  generic endpoint could hand them back without shipping the tenant.
+- The web mirrors it in `$lib/core/bulk/`: one `BulkActions` (the ✎ beside Export/Import and
+  Kolommen, which **switches the checkboxes on** and puts the actions beside itself — a list has
+  no selection gutter until someone asks for one, `docs/UX.md`), one dialog, one outcome banner,
+  and `bulkUpdateAction(event, entity)` spread into each list's actions the way `impexAction`
+  already is. Field definitions live in web code beside `columns.ts`, because the picker options
+  are lookups the page already loaded and no generic endpoint could hand them back without
+  shipping the tenant.

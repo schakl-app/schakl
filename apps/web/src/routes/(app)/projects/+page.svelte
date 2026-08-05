@@ -4,7 +4,7 @@
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
-  import BulkMenu from "$lib/core/bulk/BulkMenu.svelte";
+  import BulkActions from "$lib/core/bulk/BulkActions.svelte";
   import BulkResult from "$lib/core/bulk/BulkResult.svelte";
   import type { BulkFieldDef } from "$lib/core/bulk/types";
   import { editHref } from "$lib/core/edit-intent";
@@ -91,7 +91,7 @@
     void goto(url, { keepFocus: true, noScroll: true });
   }
 
-  // --- bulk (the ✎ menu in the toolbar) --------------------------------------
+  // --- bulk (the ✎ selection mode in the toolbar) --------------------------------------
   // Status, client and the billable default: the three that say how a *batch* of work is run —
   // closing out a quarter, moving an account, flipping a run of internal work to non-billable.
   // A budget is a figure agreed per project, so setting one across a selection would be wrong
@@ -101,6 +101,7 @@
   //
   // Declared last because the client options are the picker's own (`companyItems`), and
   // `$derived` so a client created inline reaches both controls at once.
+  let selecting = $state(false);
   let bulkSelected = $state<string[]>([]);
   const bulkFields: BulkFieldDef[] = $derived([
     {
@@ -278,11 +279,12 @@
       id="filter-company"
     />
   </div>
-  <!-- Bulk actions for whatever is ticked, beside Export/Import and Kolommen rather than in a
-       bar above the table: a bar appears as you select and walks the rows away from the cursor,
-       and it leaves a Delete sitting under the pointer (docs/UX.md). -->
-  <BulkMenu
-    selected={bulkSelected}
+  <!-- The ✎ that turns the list into something you are editing: it switches the checkboxes on
+       and puts Bewerken/Verwijderen beside itself (docs/UX.md). A list is for reading until
+       someone says otherwise, so nothing here costs a reader anything. -->
+  <BulkActions
+    bind:selecting
+    bind:selected={bulkSelected}
     fields={bulkFields}
     writePermission="projects.project.write"
     deletePermission="projects.project.delete"
@@ -324,7 +326,7 @@
   actions={canWrite || canDelete ? rowActions : undefined}
   {mobileRow}
   empty={emptyState}
-  selectable={canWrite || canDelete}
+  selectable={selecting}
   bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}

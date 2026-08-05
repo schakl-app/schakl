@@ -293,19 +293,24 @@
     opens the shared wizard, and both controls check the bulk permission *and* the entity's own
     before they render, mirroring the two gates the API declares. Instellingen → Import & export
     stays as the overview of what can travel at all; it is never the only way in.
-  - **Bulk actions live behind one ✎ in the toolbar, not in a bar over the table.** Every list
-    that can act on a selection renders the same `core/bulk/BulkMenu` beside Export/Import and
-    Kolommen — the ⋯ rule for a row, applied to a selection. They started as a bar that appeared
-    above the grid the moment anything was ticked, and it had two faults worth naming: it **moved
-    the table down as you selected**, so on a list you tick from the top the rows walk away from
-    the cursor mid-gesture, and it put four write controls — one of them a Delete — directly under
-    the pointer, which is the exact shape record actions are kept out of rows for. Behind the menu
-    they sit still, read as a set, and cost a deliberate second click. The trigger carries the
-    selection count and is disabled (with a title saying why) while nothing is picked; when the
-    user holds neither the entity's write nor its delete, it is not drawn at all.
+  - **Acting on several rows is a mode, and the ✎ in the toolbar is how you enter it**
+    (`core/bulk/BulkActions`). A list is for reading, so there are **no checkboxes until someone
+    asks for them**: pressing ✎ is what turns the list into something you are editing, and the
+    same press puts Bewerken and Verwijderen beside it. Pressing it again puts the list back and
+    drops whatever was picked — a selection nobody can see must not survive to be acted on.
+    The actions sit **next to** the ✎ rather than behind a second click: by the time three rows
+    are ticked the user already knows which one they want, and a dropdown would put the thing
+    they came for one click further away than the boxes that feed it. They are disabled until
+    something is ticked, with the reason in the title, because in this mode the buttons *are* the
+    point and hiding them would leave a mode whose purpose is invisible. When the user holds
+    neither the entity's write nor its delete, the ✎ is not drawn at all — there is no mode to
+    enter. Two earlier shapes were wrong and are worth naming: a bar that appeared above the grid
+    **moved the table down as you selected**, walking the rows away from the cursor on a list you
+    tick top-down; and a permanently visible checkbox gutter made every reader pay for a writer's
+    feature.
   - **A bulk action says what it will actually do, and reports what it did** (#299). A selection
     is rarely uniform — the interacties list mixes still-pending emails with reviewed ones, and
-    someone else's mailbox with your own — so each item in the menu acts on **its own eligible
+    someone else's mailbox with your own — so each button acts on **its own eligible
     subset** and carries that count whenever it is smaller than the selection ("Goedkeuren (2)"
     over eight rows), and is disabled at zero. A button that silently did less than it said is the
     failure this prevents. Afterwards the page states the honest outcome — "6 goedgekeurd · 2

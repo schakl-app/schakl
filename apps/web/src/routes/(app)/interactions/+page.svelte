@@ -12,7 +12,7 @@
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
-  import BulkMenu from "$lib/core/bulk/BulkMenu.svelte";
+  import BulkActions from "$lib/core/bulk/BulkActions.svelte";
   import BulkResult from "$lib/core/bulk/BulkResult.svelte";
   import { addMonths, isoAddDays, mondayOnOrBefore, monthOf } from "$lib/core/calendar";
   import { fmtDateTime, fmtMonthYear, fmtPeriod } from "$lib/core/format";
@@ -153,11 +153,11 @@
    * Bulk review (#299): a queue of forty auto-matched emails is reviewed a screenful at a time
    * or not at all, so the review flow gets a batch form.
    *
-   * The three actions live in the shared ✎ menu beside Kolommen rather than in a bar above the
-   * table: a bar appeared as you ticked and walked the rows away from the cursor, which on a
-   * queue you work top-down is the one gesture it must not disturb. This list contributes only
-   * `items` — it has no generic bulk edit or delete, because an interaction's fields are the
-   * record of what was said and reviewing is the only thing done to a batch of them.
+   * The three actions ride the shared ✎ selection mode beside Kolommen: pressing it turns the
+   * checkboxes on and puts Goedkeuren / Toewijzen / Afwijzen next to itself, so a queue nobody
+   * is triaging today looks like an ordinary list. This one contributes only `items` — it has
+   * no generic bulk edit or delete, because an interaction's fields are the record of what was
+   * said and reviewing is the only thing done to a batch of them.
    *
    * Two subsets, because the actions genuinely differ. **Re-filing** works on any of the
    * caller's own Gmail rows — `remap` has no status check, so "approve now, file later" is a
@@ -167,6 +167,7 @@
    * item that silently did less than it said would still be lying.
    */
   const canReview = $derived(can(page.data.user, "interactions.interaction.review"));
+  let selecting = $state(false);
   let bulkSelected = $state<string[]>([]);
   const selectedItems = $derived(items.filter((item) => bulkSelected.includes(item.id)));
   const bulkFilableIds = $derived(
@@ -400,13 +401,13 @@
        a phone and scrolled the whole page sideways (docs/UX.md — a toolbar that cannot wrap). -->
   <div class="ml-auto flex flex-wrap items-center gap-2">
     <!-- The review trio for whatever is ticked. No `fields` / `writePermission` /
-         `deletePermission`: there is no generic bulk edit or delete here, so the menu holds
-         exactly these three. Gated on the same key as the checkboxes — the menu draws itself
-         whenever it has any item, so without this a non-reviewer would get a ✎ that can never
-         leave its disabled state, there being no boxes to tick. -->
+         `deletePermission`: there is no generic bulk edit or delete here, so the mode offers
+         exactly these three. Gated on the review key, because that is the permission all three
+         of them declare — without it the ✎ would switch on a mode holding nothing. -->
     {#if canReview}
-      <BulkMenu
-        selected={bulkSelected}
+      <BulkActions
+        bind:selecting
+        bind:selected={bulkSelected}
         items={[
           {
             label: t("interactions.approve"),
@@ -662,7 +663,7 @@
 
 <!-- Approve as matched: the headline case, and a pure status change — every row keeps the
      client/project the Gmail matcher derived for it, so no dialog stands in the way. Hidden and
-     fired from the ✎ menu's Goedkeuren item, because that item is not a submit button. -->
+     fired from the mode's Goedkeuren button, which sits in the toolbar and is not a submit. -->
 <form
   method="POST"
   action="?/bulkApproveInteractions"
@@ -689,7 +690,7 @@
   {empty}
   {groups}
   groupBy={timelineOrder ? (item) => localDay(item.occurred_at) : undefined}
-  selectable={canReview}
+  selectable={selecting}
   bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}
