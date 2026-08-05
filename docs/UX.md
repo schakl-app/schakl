@@ -715,11 +715,35 @@
   ship complete in both locales; the *tenant's own* labels (leave types, contact types, custom
   fields, e-mail templates, roles, …) never demand both languages — one language is enough and
   a missing locale falls back to the other at render time. Editors use the shared
-  `core/ui/I18nTextField` — **one field with an NL/EN switcher, never two side-by-side
-  inputs** — which posts every locale (`label_nl`/`label_en`) so form actions stay unchanged,
-  and deliberately carries no `required` (a required attribute on a hidden locale input blocks
-  the submit invisibly). The e-mail template editor follows the same switch-a-language shape
-  with its per-locale forms.
+  `core/ui/I18nTextField` — **one field, never two side-by-side inputs** — which posts every
+  locale (`label_nl`/`label_en`) so form actions stay unchanged, and deliberately carries no
+  `required` (a required attribute on a hidden locale input blocks the submit invisibly).
+- **One language switcher per surface, at the top — never one per field** (owner feedback,
+  2026-08-05). *Which* language you are typing in is a fact about the whole screen, not about a
+  label, so it is chosen once: `core/ui/I18nLocaleSwitcher` goes at the top of the page, card or
+  dialog, and every translatable field under it follows the shared choice in
+  `core/i18n-edit.svelte.ts`. The rule is what the old shape argued for at the wrong scale — a
+  switcher beside each label is right for one field and absurd for a dozen, and Instellingen →
+  Navigatie proved it by drawing one per nav item plus one per group, each flipped by hand to
+  write the English column. Consequences worth knowing:
+  - **The choice is a module singleton, not a context.** A dialog opened from a page is its own
+    component tree, so a provider would have to be threaded into every modal holding a label
+    field; and carrying the choice across screens is exactly what someone filling in the English
+    column of six settings pages wants. It persists in `localStorage`, is never written on the
+    server, and opens on the reader's own UI language.
+  - **A page and the dialog it opens may each render one** — they share the state, so they cannot
+    disagree, and a dialog that covers its page still carries the control it needs.
+  - **The locales come from the catalog, not from a hardcoded pair.** `editLocales()` derives them
+    from Paraglide's `locales`, so a third language is still just a JSON file (CLAUDE.md §8); a
+    surface whose languages come from *data* (the mail templates, one row per `(kind, locale)`)
+    passes its own list and `resolveEditLocale` narrows the shared choice to it.
+  - **Fields carry no language chrome of their own** — no tab strip, no "NL" prefix, no `(nl)` in
+    the label. The switcher above says which language this is; repeating it per row is the noise
+    the rule exists to remove. What a field *may* show is the value it would fall back to, as its
+    placeholder.
+  - **This applies to hand-rolled per-locale editors too**, not just `I18nTextField`: the invoice
+    template editor (field labels + the three text blocks), the mail templates, and the marketing
+    dashboard's tile and key-event names all read the same shared locale.
 - Branding (logo, colors, brand name incl. hide-name option, favicon) is runtime, per
   tenant, via Huisstijl — never hardcoded. Charts use their own validated, colorblind-safe
   palette (see the dataviz procedure), not the tenant color.
@@ -739,6 +763,11 @@
   prune rather than a list to choose from, and nothing on screen said where the lines had come
   from. What replaced it is the shape to copy — the section states what is waiting ("12"), and
   a picker adds only what was ticked. Offer the count, never the contents.
+- **A per-field control for a page-level decision.** Every translatable label carried its own
+  NL/EN switcher, so Instellingen → Navigatie drew a dozen of them and writing the English column
+  meant flipping each one, in order, by hand — and the marketing tile editor answered the same
+  question by stacking both languages in every tile. Neither is a field-level choice: ask once, at
+  the top of the surface, and let the fields follow (`I18nLocaleSwitcher`, under i18n & theming).
 - **A per-row field that can only be filled in one way.** The invoice line editor asked for a
   *unit* on every line, including the hours ones, where the only correct answer is "uur" — and
   for a *type*, which is just the section the line already sits in. Both were dropped: derive

@@ -23,6 +23,7 @@
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import Pagination from "$lib/core/ui/Pagination.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import I18nLocaleSwitcher from "$lib/core/ui/I18nLocaleSwitcher.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import Markdown from "$lib/core/ui/Markdown.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
@@ -952,6 +953,7 @@
       })}
       class="space-y-3"
     >
+      <I18nLocaleSwitcher />
       {#key qcTypeName}
         <I18nTextField
           label={t("common.label_field")}

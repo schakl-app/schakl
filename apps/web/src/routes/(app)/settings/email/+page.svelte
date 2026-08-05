@@ -1,10 +1,12 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
+  import { editLocales, resolveEditLocale } from "$lib/core/i18n-edit.svelte";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import I18nLocaleSwitcher from "$lib/core/ui/I18nLocaleSwitcher.svelte";
 
   let { data, form } = $props();
 
@@ -43,9 +45,11 @@
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 
-  // Tenant mail templates (#161 tier 2): one editor per (kind, locale). The locales render
-  // behind a language switcher instead of side by side (owner feedback) — you edit one
-  // language at a time, and every translation is optional (blank = built-in default).
+  // Tenant mail templates (#161 tier 2): one editor per (kind, locale). You edit one language at
+  // a time and every translation is optional (blank = built-in default) — and *which* language is
+  // the section's own choice, not one switcher per mail kind (docs/UX.md). The offered locales
+  // come from the rows the API returned rather than from the app's catalog, so a kind that
+  // somehow carries only one is never asked to show a language it has no editor for.
   //
   // Which mails are on offer comes from the API, never from a list here: core's auth pair
   // plus whatever the enabled modules contribute (invoicing's invoice/quote/reminder). A
@@ -53,9 +57,15 @@
   const templateKinds = $derived(data.templates?.kinds ?? []);
   const templatesByKind = (kind: string) =>
     (data.templates?.templates ?? []).filter((tpl) => tpl.kind === kind);
-  let activeTplLocale = $state<Record<string, string>>({});
+  // In the app's own order (reader's language first), not the order the rows happened to arrive
+  // in — otherwise this one screen opens on a different language than every other editor.
+  const templateLocales = $derived.by(() => {
+    const present = new Set((data.templates?.templates ?? []).map((tpl) => tpl.locale));
+    const known = editLocales().filter((locale) => present.has(locale));
+    return [...known, ...[...present].filter((locale) => !known.includes(locale))];
+  });
   const tplLocale = (kind: string) =>
-    activeTplLocale[kind] ?? templatesByKind(kind)[0]?.locale ?? "nl";
+    resolveEditLocale(templatesByKind(kind).map((tpl) => tpl.locale));
   // Per kind, because they differ: an invoice mail interpolates a number and an amount, a
   // reset mail a link. One shared list would advertise markers that reach the inbox literally.
   const variablesHint = (variables: string[]) => variables.map((v) => `{${v}}`).join("  ");
@@ -329,8 +339,15 @@
 {#if data.templates}
   <!-- Tenant-customisable mails (#161 tier 2). Blank = the built-in default. -->
   <section class="mt-6 max-w-2xl rounded-xl border border-border bg-surface-raised p-5">
-    <h2 class="text-lg font-semibold text-text">{t("settings.email.templates.title")}</h2>
-    <p class="mt-1 text-sm text-text-muted">{t("settings.email.templates.subtitle")}</p>
+    <div class="flex flex-wrap items-start justify-between gap-2">
+      <div>
+        <h2 class="text-lg font-semibold text-text">{t("settings.email.templates.title")}</h2>
+        <p class="mt-1 text-sm text-text-muted">{t("settings.email.templates.subtitle")}</p>
+      </div>
+      {#if templateLocales.length > 1}
+        <I18nLocaleSwitcher locales={templateLocales} hint={false} />
+      {/if}
+    </div>
 
     {#if !active}
       <p
@@ -342,28 +359,9 @@
 
     {#each templateKinds as kind (kind.key)}
       <div class="mt-5">
-        <div class="flex items-center justify-between gap-2">
-          <div>
-            <h3 class="text-sm font-semibold text-text">{t(kind.label_key)}</h3>
-            <p class="text-xs text-text-muted">{t(kind.hint_key)}</p>
-          </div>
-          <div class="flex gap-0.5" role="tablist">
-            {#each templatesByKind(kind.key) as tpl (tpl.locale)}
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tplLocale(kind.key) === tpl.locale}
-                class="rounded px-1.5 py-0.5 text-[11px] font-medium uppercase {tplLocale(
-                  kind.key,
-                ) === tpl.locale
-                  ? 'bg-brand text-white'
-                  : 'text-text-muted hover:bg-surface'}"
-                onclick={() => (activeTplLocale[kind.key] = tpl.locale)}
-              >
-                {tpl.locale}
-              </button>
-            {/each}
-          </div>
+        <div>
+          <h3 class="text-sm font-semibold text-text">{t(kind.label_key)}</h3>
+          <p class="text-xs text-text-muted">{t(kind.hint_key)}</p>
         </div>
         <div class="mt-2">
           {#each templatesByKind(kind.key) as tpl (tpl.locale)}

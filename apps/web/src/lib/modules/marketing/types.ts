@@ -77,14 +77,17 @@ export interface CompanyLayout {
 export interface SourceEditState {
   /** Visible tiles in display order — the dnd items (`svelte-dnd-action` needs `{id}`). */
   tiles: { id: string }[];
-  /** Per-tile label overrides for every metric key (empty string = no override). */
-  labels: Record<string, { nl: string; en: string }>;
+  /** Per-tile label overrides for every metric key, `{metric: {locale: label}}` (empty string =
+   *  no override). Keyed by locale rather than by `{nl, en}` fields: the editor writes whichever
+   *  language the surface's `I18nLocaleSwitcher` is on, and a new locale is a JSON file, not a
+   *  type change (CLAUDE.md §8). */
+  labels: Record<string, Record<string, string>>;
   /** Enabled drill-down kinds. */
   drilldowns: string[];
   /** Default charted metric ("" = automatic). */
   chart_metric: string;
-  /** GA4 only: per key-event labels keyed by the raw `eventName`. */
-  event_labels: Record<string, { nl: string; en: string }>;
+  /** GA4 only: per key-event labels keyed by the raw `eventName`, `{event: {locale: label}}`. */
+  event_labels: Record<string, Record<string, string>>;
   /** Hide this whole source from the client's dashboard. */
   hidden: boolean;
 }

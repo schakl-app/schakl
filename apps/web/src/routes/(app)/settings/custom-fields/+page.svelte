@@ -10,6 +10,7 @@
   import Button from "$lib/core/ui/Button.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import I18nLocaleSwitcher from "$lib/core/ui/I18nLocaleSwitcher.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
 
@@ -155,7 +156,10 @@
   use:enhance={busy.clear("create")}
   class="rounded-xl border border-border bg-surface-raised p-5"
 >
-  <h2 class="mb-4 text-sm font-semibold text-text">{t("settings.custom_fields.new")}</h2>
+  <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+    <h2 class="text-sm font-semibold text-text">{t("settings.custom_fields.new")}</h2>
+    <I18nLocaleSwitcher hint={false} />
+  </div>
   <input type="hidden" name="entity_type" value={data.entityType} />
   <div class="grid gap-3 sm:grid-cols-2">
     <div class="sm:col-span-2">
@@ -237,6 +241,7 @@
         <input type="hidden" name="id" value={editDef.id} />
         <input type="hidden" name="key" value={editDef.key} />
         <input type="hidden" name="data_type" value={editDef.data_type} />
+        <I18nLocaleSwitcher />
         <div class="grid grid-cols-2 gap-3">
           <div>
             <div class="mb-1 block text-sm font-medium text-text">

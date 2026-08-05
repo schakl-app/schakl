@@ -10,6 +10,7 @@
   import Button from "$lib/core/ui/Button.svelte";
   import AutoInvoiceModeField from "$lib/modules/invoicing/AutoInvoiceModeField.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import I18nLocaleSwitcher from "$lib/core/ui/I18nLocaleSwitcher.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import NumberFormatField from "$lib/core/ui/NumberFormatField.svelte";
@@ -672,6 +673,7 @@
       class="space-y-3"
     >
       {#if editingRate}<input type="hidden" name="id" value={editingRate.id} />{/if}
+      <I18nLocaleSwitcher />
       <div class="grid gap-3 sm:grid-cols-2">
         <div class="sm:col-span-2">
           {#key editingRate?.id ?? "new"}

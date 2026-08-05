@@ -7,6 +7,7 @@ import { fail, type RequestEvent } from "@sveltejs/kit";
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
 import { createErrorKey, slugify } from "$lib/core/slug";
+import { locales } from "$lib/paraglide/runtime";
 
 function parseIds(raw: FormDataEntryValue | null): string[] {
   try {
@@ -17,9 +18,10 @@ function parseIds(raw: FormDataEntryValue | null): string[] {
   }
 }
 
-/** Only the filled locales — an empty string stored would shadow the render-time fallback. */
+/** Only the filled locales — an empty string stored would shadow the render-time fallback. Over
+ *  the configured catalog, so a locale the editor offers can never be one this drops. */
 export function parseLabelI18n(form: FormData): Record<string, string> {
-  const entries = (["nl", "en"] as const)
+  const entries = locales
     .map((locale) => [locale, String(form.get(`label_${locale}`) ?? "").trim()] as const)
     .filter(([, value]) => value);
   return Object.fromEntries(entries);

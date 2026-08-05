@@ -17,6 +17,9 @@
   import { ChevronDown, ChevronUp, Lock } from "@lucide/svelte";
 
   import { t } from "$lib/core/i18n";
+  import { editLocale } from "$lib/core/i18n-edit.svelte";
+  import I18nLocaleSwitcher from "$lib/core/ui/I18nLocaleSwitcher.svelte";
+
   import DocumentFrame from "./DocumentFrame.svelte";
   import type { BlockSpec, TemplateConfig, TemplateLayoutBlock } from "./templateConfig";
   import { DEFAULT_CONFIG, layoutForApi, mergeLayout, moveItem } from "./templateConfig";
@@ -39,8 +42,10 @@
   let tab = $state<Tab>("design");
   /** Which block's field list is unfolded. One at a time — the list is long enough already. */
   let openBlock = $state<string | null>(null);
-  /** Which language the layout tab's label boxes are editing. */
-  let labelLocale = $state("nl");
+  /** Which language the tenant's own wording — the layout tab's label boxes and the texts tab —
+   *  is being written in. The surface's single `I18nLocaleSwitcher`, shared with every other
+   *  translation editor in the app (docs/UX.md), not a switch per box. */
+  const labelLocale = $derived(editLocale.current);
 
   const TABS: { key: Tab; label: string }[] = $derived([
     { key: "design" as const, label: t("settings.invoicing.tab_design") },
@@ -287,6 +292,12 @@
       {/each}
     </div>
 
+    <!-- One switcher for every box the tenant types their own wording into — the field labels on
+         the layout tab and the three text blocks (docs/UX.md). The other tabs carry none. -->
+    {#if tab === "layout" || tab === "texts"}
+      <I18nLocaleSwitcher hint={false} />
+    {/if}
+
     {#if tab === "design"}
       <fieldset>
         <legend class="mb-1 text-sm font-medium text-text">
@@ -410,23 +421,6 @@
           onclick={resetLayout}>{t("settings.invoicing.layout_reset")}</button
         >
       </div>
-      <!-- Which language the label boxes below are editing. One switch rather than two boxes
-           per field: the list is long enough already, and a label is a word, not a paragraph. -->
-      <div class="flex items-center gap-2">
-        <span class="text-xs text-text-muted">{t("settings.invoicing.field_label")}</span>
-        <div class="flex gap-1">
-          {#each ["nl", "en"] as loc (loc)}
-            <button
-              type="button"
-              class="rounded border px-2 py-0.5 text-xs uppercase {labelLocale === loc
-                ? 'border-brand text-text'
-                : 'border-border text-text-muted'}"
-              aria-pressed={labelLocale === loc}
-              onclick={() => (labelLocale = loc)}>{loc}</button
-            >
-          {/each}
-        </div>
-      </div>
       <ul class="divide-y divide-border rounded-lg border border-border">
         {#each layout as block (block.key)}
           <li>
@@ -523,8 +517,6 @@
                          and only while it is switched on. -->
                     {#if field.labelled && field.enabled}
                       <div class="flex items-center gap-2 pb-1 pl-6 pr-[4.5rem] pt-0.5">
-                        <span class="shrink-0 text-xs uppercase text-text-muted">{labelLocale}</span
-                        >
                         <input
                           type="text"
                           maxlength="60"
@@ -545,27 +537,27 @@
         {/each}
       </ul>
     {:else if tab === "texts"}
-      {#each ["nl", "en"] as textLocale (textLocale)}
-        {#each [{ block: "intro_i18n" as const, label: "intro_text" }, { block: "payment_i18n" as const, label: "payment_text" }, { block: "footer_i18n" as const, label: "footer_text" }] as entry (entry.block)}
-          <div>
-            <label
-              for="tpl-{entry.block}-{textLocale}"
-              class="mb-1 block text-sm font-medium text-text"
-            >
-              {t(`settings.invoicing.${entry.label}`, { locale: textLocale })}
-            </label>
-            <textarea
-              id="tpl-{entry.block}-{textLocale}"
-              rows="2"
-              value={config[entry.block]?.[textLocale] ?? ""}
-              oninput={(e) =>
-                (config = {
-                  ...config,
-                  [entry.block]: { ...config[entry.block], [textLocale]: e.currentTarget.value },
-                })}
-              class={inputClass}></textarea>
-          </div>
-        {/each}
+      <!-- One language at a time, chosen above: six stacked boxes made the tab read as a form
+           that wanted all of them, when a document prints in exactly one language. -->
+      {#each [{ block: "intro_i18n" as const, label: "intro_text" }, { block: "payment_i18n" as const, label: "payment_text" }, { block: "footer_i18n" as const, label: "footer_text" }] as entry (entry.block)}
+        <div>
+          <label
+            for="tpl-{entry.block}-{labelLocale}"
+            class="mb-1 block text-sm font-medium text-text"
+          >
+            {t(`settings.invoicing.${entry.label}`)}
+          </label>
+          <textarea
+            id="tpl-{entry.block}-{labelLocale}"
+            rows="2"
+            value={config[entry.block]?.[labelLocale] ?? ""}
+            oninput={(e) =>
+              (config = {
+                ...config,
+                [entry.block]: { ...config[entry.block], [labelLocale]: e.currentTarget.value },
+              })}
+            class={inputClass}></textarea>
+        </div>
       {/each}
     {:else if tab === "source"}
       <p class="text-xs text-text-muted">{t("settings.invoicing.source_hint")}</p>

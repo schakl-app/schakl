@@ -14,6 +14,8 @@
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { editLocales } from "$lib/core/i18n-edit.svelte";
+  import I18nLocaleSwitcher from "$lib/core/ui/I18nLocaleSwitcher.svelte";
 
   import MarketingSourceSection from "./MarketingSourceSection.svelte";
   import {
@@ -93,6 +95,18 @@
   // in progress must not be yanked around by their own round-trip.
   let edit = $state<Partial<Record<MarketingSource, SourceEditState>>>({});
 
+  /** One editable slot per locale, seeded from what is stored. Any locale the store carries but
+   *  the app no longer ships is kept: dropping it here would delete it on the next save. */
+  function blankLabels(
+    locales: string[],
+    stored: Record<string, string> | undefined,
+  ): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const locale of locales) out[locale] = "";
+    for (const [locale, value] of Object.entries(stored ?? {})) out[locale] = value ?? "";
+    return out;
+  }
+
   function seedEdit(): Partial<Record<MarketingSource, SourceEditState>> {
     const out: Partial<Record<MarketingSource, SourceEditState>> = {};
     for (const src of allSources) {
@@ -100,16 +114,16 @@
       const all = ALL_METRICS[src.source] ?? [];
       const stored: SourceLayout = metrics?.layout?.sources?.[src.source] ?? {};
       const visible = (stored.tiles ?? all).filter((k) => all.includes(k));
-      const labels: Record<string, { nl: string; en: string }> = {};
+      // Every locale gets an entry so the inputs can bind straight into it — a label the tenant
+      // never typed is an empty string, not a missing key the editor would have to create mid-render.
+      const locales = editLocales();
+      const labels: Record<string, Record<string, string>> = {};
       for (const key of all) {
-        labels[key] = {
-          nl: stored.labels?.[key]?.nl ?? "",
-          en: stored.labels?.[key]?.en ?? "",
-        };
+        labels[key] = blankLabels(locales, stored.labels?.[key]);
       }
-      const event_labels: Record<string, { nl: string; en: string }> = {};
+      const event_labels: Record<string, Record<string, string>> = {};
       for (const [key, l] of Object.entries(stored.event_labels ?? {})) {
-        event_labels[key] = { nl: l.nl ?? "", en: l.en ?? "" };
+        event_labels[key] = blankLabels(locales, l);
       }
       out[src.source] = {
         tiles: visible.map((id) => ({ id })),
@@ -128,6 +142,15 @@
     editMode = !editMode;
   }
 
+  /** Only the languages actually typed in — a blank one is "no override", never a stored "". */
+  function filledLabels(labels: Record<string, string>): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const [locale, value] of Object.entries(labels)) {
+      if (value?.trim()) out[locale] = value.trim();
+    }
+    return out;
+  }
+
   // The serialized layout: sources not on this screen carried through untouched, edited ones
   // rebuilt under the same rules the old editor used (empty labels dropped, chart only if
   // visible, `hidden`/`event_labels` only when set).
@@ -141,9 +164,7 @@
       const visible = ed.tiles.map((t) => t.id).filter((id) => allKeys.includes(id));
       const labels: Record<string, Record<string, string>> = {};
       for (const [key, l] of Object.entries(ed.labels)) {
-        const entry: Record<string, string> = {};
-        if (l.nl.trim()) entry.nl = l.nl.trim();
-        if (l.en.trim()) entry.en = l.en.trim();
+        const entry = filledLabels(l);
         if (Object.keys(entry).length) labels[key] = entry;
       }
       const src: SourceLayout = {
@@ -156,9 +177,7 @@
       if (source === "ga4") {
         const eventLabels: Record<string, Record<string, string>> = {};
         for (const [key, l] of Object.entries(ed.event_labels)) {
-          const entry: Record<string, string> = {};
-          if (l.nl.trim()) entry.nl = l.nl.trim();
-          if (l.en.trim()) entry.en = l.en.trim();
+          const entry = filledLabels(l);
           if (Object.keys(entry).length) eventLabels[key] = entry;
         }
         if (Object.keys(eventLabels).length) src.event_labels = eventLabels;
@@ -236,7 +255,11 @@
 {/if}
 
 {#if editMode}
-  <p class="mb-4 text-xs text-text-muted">{t("marketing.layout.edit_hint")}</p>
+  <!-- One switcher for every tile and key-event name below, not one per input (docs/UX.md). -->
+  <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+    <p class="text-xs text-text-muted">{t("marketing.layout.edit_hint")}</p>
+    <I18nLocaleSwitcher hint={false} />
+  </div>
 {/if}
 
 {#if metrics?.needs_connection}

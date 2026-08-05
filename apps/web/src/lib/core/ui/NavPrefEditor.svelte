@@ -8,8 +8,10 @@
    * Instellingen) are not anyone's to hide.
    *
    * In `renamable` mode (Instellingen → Navigatie only) each item — and each nav group — also
-   * gets an optional tenant label via the shared `I18nTextField` (one field, NL/EN switcher,
-   * never required; empty = the declared name, shown as the placeholder). Those labels are
+   * gets an optional tenant label via the shared `I18nTextField` (one field, never required;
+   * empty = the declared name, shown as the placeholder). The language those fields are in is
+   * chosen **once** for the whole editor by the `I18nLocaleSwitcher` at the top: this screen is
+   * why that rule exists — a dozen nav items each drew their own switcher. Those labels are
    * org-wide config, so the personal editor never shows them; it still posts order + visibility
    * alone, and the row text there just reflects whatever the org renamed the item to.
    */
@@ -20,6 +22,7 @@
   import type { NavLabelMap, NavPrefItem } from "$lib/core/registry";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
+  import I18nLocaleSwitcher from "$lib/core/ui/I18nLocaleSwitcher.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
 
   let {
@@ -110,7 +113,10 @@
   class="max-w-lg rounded-xl border border-border bg-surface-raised p-5"
 >
   <input type="hidden" name="items" value={serialized} />
-  {#if renamable}<input type="hidden" name="groups" value={groupKeys} />{/if}
+  {#if renamable}
+    <input type="hidden" name="groups" value={groupKeys} />
+    <I18nLocaleSwitcher class="mb-3" />
+  {/if}
   {#if rows.length === 0}
     <p class="text-sm text-text-muted">{t("settings.navigation.empty")}</p>
   {:else}
@@ -156,7 +162,6 @@
                 basename={`itemlabel_${row.key}`}
                 values={row.custom ?? {}}
                 placeholder={row.label}
-                hint={false}
               />
             </div>
           {/if}
@@ -179,7 +184,6 @@
                 basename={`grouplabel_${group.key}`}
                 values={groupLabelByKey.get(group.key) ?? {}}
                 placeholder={group.label}
-                hint={false}
               />
             </div>
           </li>

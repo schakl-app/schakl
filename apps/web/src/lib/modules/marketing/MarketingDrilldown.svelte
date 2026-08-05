@@ -14,7 +14,8 @@
    */
   import { ExternalLink, Plus, X } from "@lucide/svelte";
 
-  import { t } from "$lib/core/i18n";
+  import { localeLabel, t } from "$lib/core/i18n";
+  import { editLocale } from "$lib/core/i18n-edit.svelte";
 
   import { drilldownLabel, fmtMetric, metricLabel, sourceLabel } from "./format";
   import type { DrilldownResponse, MarketingSource, SourceEditState } from "./types";
@@ -71,16 +72,20 @@
     void load();
   });
 
+  // The language these name fields are written in — the dashboard's shared switcher (docs/UX.md),
+  // so one choice covers every key event here and every tile above.
+  const locale = $derived(editLocale.current);
+
   /** Pure read for the template. Creating a missing entry here would mutate state during
    *  render — Svelte 5 rejects that (state_unsafe_mutation), which froze this card on
    *  "Loading" the moment the fetch returned real rows. Entries are created in setLabel,
    *  which only ever runs from an input event. */
-  function labelValue(key: string, locale: "nl" | "en"): string {
+  function labelValue(key: string): string {
     return edit?.event_labels[key]?.[locale] ?? "";
   }
-  function setLabel(key: string, locale: "nl" | "en", value: string) {
+  function setLabel(key: string, value: string) {
     if (!edit) return;
-    const entry = (edit.event_labels[key] ??= { nl: "", en: "" });
+    const entry = (edit.event_labels[key] ??= {});
     entry[locale] = value;
   }
   function removeLabel(key: string) {
@@ -101,7 +106,7 @@
   function addEvent() {
     const name = newEventName.trim();
     if (!edit || !name || edit.event_labels[name]) return;
-    edit.event_labels[name] = { nl: "", en: "" };
+    edit.event_labels[name] = {};
     newEventName = "";
   }
 </script>
@@ -158,18 +163,13 @@
                     <div class="space-y-1">
                       <code class="block break-all text-xs text-text-muted">{row.key}</code>
                       <input
-                        value={labelValue(row.key, "nl")}
-                        oninput={(e) => setLabel(row.key!, "nl", e.currentTarget.value)}
+                        value={labelValue(row.key)}
+                        oninput={(e) => setLabel(row.key!, e.currentTarget.value)}
                         onchange={() => onchange?.()}
-                        placeholder="{t('marketing.layout.label_nl')}: {row.key}"
-                        maxlength="80"
-                        class="w-full min-w-32 rounded border border-border bg-surface px-1.5 py-0.5 text-xs text-text outline-none focus:border-brand"
-                      />
-                      <input
-                        value={labelValue(row.key, "en")}
-                        oninput={(e) => setLabel(row.key!, "en", e.currentTarget.value)}
-                        onchange={() => onchange?.()}
-                        placeholder={t("marketing.layout.label_en")}
+                        aria-label={t("marketing.layout.label_in", {
+                          language: localeLabel(locale),
+                        })}
+                        placeholder={row.key}
                         maxlength="80"
                         class="w-full min-w-32 rounded border border-border bg-surface px-1.5 py-0.5 text-xs text-text outline-none focus:border-brand"
                       />
@@ -204,20 +204,13 @@
               <code class="min-w-24 break-all text-xs text-text-muted">{key}</code>
               <span class="ml-auto flex min-w-0 flex-wrap items-center gap-1">
                 <input
-                  value={labelValue(key, "nl")}
-                  oninput={(e) => setLabel(key, "nl", e.currentTarget.value)}
+                  value={labelValue(key)}
+                  oninput={(e) => setLabel(key, e.currentTarget.value)}
                   onchange={() => onchange?.()}
-                  placeholder="{t('marketing.layout.label_nl')}: {key}"
+                  aria-label={t("marketing.layout.label_in", { language: localeLabel(locale) })}
+                  placeholder={key}
                   maxlength="80"
                   class="w-36 min-w-0 rounded border border-border bg-surface px-1.5 py-0.5 text-xs text-text outline-none focus:border-brand"
-                />
-                <input
-                  value={labelValue(key, "en")}
-                  oninput={(e) => setLabel(key, "en", e.currentTarget.value)}
-                  onchange={() => onchange?.()}
-                  placeholder={t("marketing.layout.label_en")}
-                  maxlength="80"
-                  class="w-32 min-w-0 rounded border border-border bg-surface px-1.5 py-0.5 text-xs text-text outline-none focus:border-brand"
                 />
                 <button
                   type="button"

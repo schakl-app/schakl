@@ -1,24 +1,26 @@
 <script lang="ts">
   /**
-   * One tenant-translated text field with a language switcher (owner feedback): instead of
-   * two side-by-side inputs the editor shows a single field and NL/EN tabs, and **every
-   * translation is optional** — a missing language falls back at render time, never blocks
-   * a save. Each locale still posts its own input (`<basename>_<locale>`), the inactive
-   * ones hidden but present, so existing form actions keep reading `label_nl` / `label_en`
-   * unchanged. Deliberately no `required`: a required attribute on a hidden input blocks
-   * the submit invisibly, and the policy is that one language is enough.
+   * One tenant-translated text field. The editor shows a **single** input — never two side-by-side
+   * — and which language it shows comes from the surface's own `I18nLocaleSwitcher`
+   * (`core/i18n-edit`), not from a switcher on this field: eight translatable labels on one screen
+   * used to draw eight switchers to flip one at a time (owner feedback, 2026-08-05).
+   *
+   * **Every translation is optional** — a missing language falls back at render time, never blocks
+   * a save. Each locale still posts its own input (`<basename>_<locale>`), the inactive ones hidden
+   * but present, so existing form actions keep reading `label_nl` / `label_en` unchanged.
+   * Deliberately no `required`: a required attribute on a hidden input blocks the submit invisibly,
+   * and the policy is that one language is enough.
    */
-  import { t } from "$lib/core/i18n";
+  import { editLocales, resolveEditLocale } from "$lib/core/i18n-edit.svelte";
 
   let {
     label,
     basename,
     values = {},
-    locales = ["nl", "en"],
+    locales = editLocales(),
     idPrefix = basename,
     textarea = false,
     rows = 3,
-    hint = true,
     placeholder = "",
   }: {
     /** The field's visible label (e.g. "Label", "Naam"). */
@@ -31,13 +33,11 @@
     idPrefix?: string;
     textarea?: boolean;
     rows?: number;
-    /** Show the one-line "translations are optional" hint under the field. */
-    hint?: boolean;
     /** Placeholder shown when a locale is blank — e.g. the value it would fall back to. */
     placeholder?: string;
   } = $props();
 
-  let active = $state(locales[0]);
+  const active = $derived(resolveEditLocale(locales));
   // Deliberate initial capture: the record's stored labels seed the editor once.
   // svelte-ignore state_referenced_locally
   let texts = $state<Record<string, string>>(
@@ -49,26 +49,7 @@
 </script>
 
 <div>
-  <div class="mb-1 flex items-center justify-between gap-2">
-    <label for={`${idPrefix}-${active}`} class="block text-sm text-text">{label}</label>
-    <div class="flex gap-0.5" role="tablist">
-      {#each locales as locale (locale)}
-        <button
-          type="button"
-          role="tab"
-          aria-selected={active === locale}
-          class="rounded px-1.5 py-0.5 text-[11px] font-medium uppercase {active === locale
-            ? 'bg-brand text-white'
-            : texts[locale]?.trim()
-              ? 'text-text-muted hover:bg-surface'
-              : 'text-text-muted/50 hover:bg-surface'}"
-          onclick={() => (active = locale)}
-        >
-          {locale}
-        </button>
-      {/each}
-    </div>
-  </div>
+  <label for={`${idPrefix}-${active}`} class="mb-1 block text-sm text-text">{label}</label>
   {#each locales as locale (locale)}
     <div class={active === locale ? "" : "hidden"}>
       {#if textarea}
@@ -90,7 +71,4 @@
       {/if}
     </div>
   {/each}
-  {#if hint}
-    <p class="mt-1 text-xs text-text-muted">{t("common.translations_optional")}</p>
-  {/if}
 </div>
