@@ -350,6 +350,29 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   always refuses is a broken control"). The lists it reads (`licensed_modules`, `entitled_modules`,
   `deployment`) ride `/meta/tenant`, which the app layout already loads, and come from the same
   helper `/meta/modules` uses so a locked control and Instellingen → Modules can never disagree.
+- **A report is a record, and the voice it is written in is the tenant's** (#300,
+  `docs/REPORTING.md`). The monthly client report is `reporting` — its own module and `sku`,
+  because a document has a lifecycle (drafted → reviewed → published → sent), an audience and a
+  commercial boundary that a live dashboard does not; a tenant licences `marketing` without it.
+  `reports.data_snapshot` freezes **every number the document prints**, which is what makes it
+  reopenable, makes prose and tables agree by construction rather than by both re-querying, and —
+  with `UNIQUE (org, company, audience, period_start)` — makes a re-run update a document instead
+  of mailing a client a second copy. **Sections come from the registry** (`report_sections`, the
+  panels pattern applied to documents), so `marketing` owns the traffic/rankings/audit half and
+  reporting names no module. **The prompt is three layers and they must not fuse**: product
+  invariants are code, the agency's editorial voice is a `report_tones` row, and what is true
+  about one client is a `report_profiles` row that reaches the model **inside the JSON, never
+  appended to the prompt** — a house style compiled into `prompts.py` is a tenant's decision we
+  took for them, and a client profile concatenated into the instructions is obeyed. A banned
+  phrase is *checked* after generation, not merely requested. **Review is the default and
+  auto-send is a per-client setting**: prose a model wrote leaving under the agency's brand
+  unread is not a thing to arrive at by not choosing. Externality follows §15/#266 —
+  `Report.__portal_horizon_clause__` (own companies, never internal, never unpublished) lives on
+  the model because `GET /files` declares no permission and `entity_visible` is its only gate.
+  The renderer is shared with invoicing (`app/core/documents/`) rather than copied, and charts
+  are inline SVG because the engine's fetcher answers `data:` and nothing else. `marketing`
+  borrows the latest published report's paragraph per section through `app/core/narratives.py`,
+  so a dashboard stops being a table on the other twenty-nine days of the month.
 
 ## 11. Working agreement (for Claude Code)
 

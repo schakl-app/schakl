@@ -2791,7 +2791,7 @@
   "ai.time.parse_empty": "Kon hier geen registratie uit afleiden; voeg een tijd, duur of klantnaam toe en probeer opnieuw.",
   "permissions.marketing.metrics.read": "Marketingcijfers bekijken",
   "permissions.marketing.link.manage": "Marketingkoppelingen beheren",
-  "permissions.marketing.report.read": "Marketingoverzicht bekijken",
+  "permissions.marketing.overview.read": "Marketingoverzicht bekijken",
   "module.marketing.label": "Marketing",
   "overview.tab.marketing": "Marketing",
   "marketing.panel.title": "Marketing",

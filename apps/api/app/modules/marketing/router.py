@@ -2,7 +2,7 @@
 
 Every route declares a permission (deny-by-default, §15). Reads of a client's performance ride
 ``marketing.metrics.read``; managing links + listing pickable accounts rides
-``marketing.link.manage``; the cross-client grid rides ``marketing.report.read``.
+``marketing.link.manage``; the cross-client grid rides ``marketing.overview.read``.
 """
 
 from __future__ import annotations
@@ -186,7 +186,7 @@ async def summary(
 @router.get(
     "/overview",
     response_model=OverviewResponse,
-    dependencies=[require_permission("marketing.report.read")],
+    dependencies=[require_permission("marketing.overview.read")],
 )
 async def overview(
     range_days: int = Query(30, ge=1, le=400),

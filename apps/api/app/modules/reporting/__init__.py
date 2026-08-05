@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from arq import cron
 
+from app.core.narratives import register_narrative_provider
 from app.modules.reporting.emails import REPORTING_EMAIL_KINDS
 from app.modules.reporting.jobs import (
     reporting_run_report,
@@ -36,6 +37,7 @@ from app.modules.reporting.jobs import (
 from app.modules.reporting.panels import reporting_company_panel
 from app.modules.reporting.permissions import REPORTING_PERMISSIONS
 from app.modules.reporting.router import router
+from app.modules.reporting.service import latest_company_narrative
 from app.registry import ModuleDescriptor, registry
 
 module = ModuleDescriptor(
@@ -56,3 +58,8 @@ module = ModuleDescriptor(
 )
 
 registry.register(module)
+
+# The narrative seam (`app/core/narratives.py`): a live marketing dashboard borrows the
+# paragraph the latest published report already wrote about each section, dated. Registered
+# rather than imported, so `marketing` keeps working with this module uninstalled.
+register_narrative_provider(latest_company_narrative)

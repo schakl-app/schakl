@@ -22,5 +22,5 @@ MARKETING_PERMISSIONS: list[PermissionSpec] = [
     PermissionSpec("marketing.link.manage", position=20),
     # The cross-client morning-coffee grid (Overzicht → Marketing) is a reporting screen, and
     # reporting is manager-only here (docs/UX.md).
-    PermissionSpec("marketing.report.read", position=30),
+    PermissionSpec("marketing.overview.read", position=30),
 ]

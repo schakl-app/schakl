@@ -809,3 +809,39 @@ def _merge_warnings(
         if warning not in out:
             out.append(warning)
     return out
+
+
+async def latest_company_narrative(ctx: RequestContext, company_id: uuid.UUID):  # noqa: ANN201
+    """The narrative seam's provider (``app/core/narratives.py``), registered at import.
+
+    Goes through ``ReportService`` on purpose: its repository is the portal-aware one, so a
+    client login borrows prose only from their own *published, client-facing* reports, and
+    staff without ``reporting.report.read`` borrow none at all. Reaching into ``reports``
+    directly here would be a second copy of that rule.
+
+    One indexed read — the panel that calls it is drawn on every company page.
+    """
+    from app.core.narratives import CompanyNarrative
+
+    if not ctx.can("reporting.report.read"):
+        return None
+    service = ReportService(ctx)
+    row = await ctx.session.scalar(
+        service.repo.scoped_select()
+        .where(
+            Report.company_id == company_id,
+            Report.audience == ReportAudience.CLIENT.value,
+            Report.published_at.is_not(None),
+        )
+        .order_by(Report.period_start.desc())
+        .limit(1)
+    )
+    if row is None or not row.narrative:
+        return None
+    narrative = dict(row.narrative)
+    return CompanyNarrative(
+        report_id=row.id,
+        period_label=(row.data_snapshot or {}).get("period", {}).get("label", ""),
+        summary=str(narrative.pop("summary", "") or ""),
+        sections={key: str(value) for key, value in narrative.items() if value},
+    )

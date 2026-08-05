@@ -30,6 +30,7 @@ from app.core.auth.models import User
 from app.core.cache import get_redis
 from app.core.crypto import decrypt, encrypt
 from app.core.jobs import enqueue
+from app.core.narratives import latest_narrative
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
 from app.errors import AppError
@@ -844,6 +845,9 @@ class MarketingService:
                 )
                 sm.hidden = hidden
                 sources.append(sm)
+        # Borrowed through the seam, never read out of `reports`: the lender's own service
+        # decides what a client-facing login may see (#300).
+        narrative = await latest_narrative(self.ctx, company_id)
         return CompanyMarketing(
             company_id=company_id,
             range_days=range_days,
@@ -855,6 +859,7 @@ class MarketingService:
             # settings write it configures.
             layout=layout if can_manage else None,
             websites=websites,
+            narrative=narrative.as_payload() if narrative is not None else None,
         )
 
     async def _metrics_for_links(
@@ -1186,7 +1191,7 @@ class MarketingService:
 
     # --- cross-client overview (#133), stored data only ----------------------------------- #
     async def overview(self, range_days: int, sort: str | None) -> OverviewResponse:
-        self.ctx.require("marketing.report.read")
+        self.ctx.require("marketing.overview.read")
         range_days = max(1, min(range_days, 400))
         today = await self._today()
         cur_end = today - timedelta(days=1)
@@ -1295,7 +1300,7 @@ class MarketingService:
         (GA4 sessions where linked and visible, else GSC clicks), from stored data only.
 
         Rides ``marketing.metrics.read`` like the per-company read it teases, so — unlike
-        ``overview``, whose grid is ``marketing.report.read`` — it must honour the company
+        ``overview``, whose grid is ``marketing.overview.read`` — it must honour the company
         horizon (#191): the portal ``client`` role holds the same read, and this may never
         return a row its caller could not fetch client-by-client. Per-client curation (#192)
         applies exactly like the panel/tab: a hidden tile feeds no number here either.

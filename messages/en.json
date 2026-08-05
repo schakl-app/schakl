@@ -2791,7 +2791,7 @@
   "ai.time.parse_empty": "Couldn't derive an entry from this; add a time, duration or client name and try again.",
   "permissions.marketing.metrics.read": "View marketing metrics",
   "permissions.marketing.link.manage": "Manage marketing links",
-  "permissions.marketing.report.read": "View marketing overview",
+  "permissions.marketing.overview.read": "View marketing overview",
   "module.marketing.label": "Marketing",
   "overview.tab.marketing": "Marketing",
   "marketing.panel.title": "Marketing",
