@@ -4373,5 +4373,6 @@
   "errors.invoicing.payment_provider_unreachable": "The payment provider could not be reached. Try again in a moment.",
   "errors.invoicing.payment_provider_failed": "The payment provider refused this request.",
   "errors.mollie_credential_unreadable": "The stored Mollie key can no longer be decrypted. Enter it again.",
-  "errors.mollie.not_an_api_key": "This does not look like a Mollie API key. A key starts with test_ or live_."
+  "errors.mollie.not_an_api_key": "This does not look like a Mollie API key. A key starts with test_ or live_.",
+  "permissions.group.reporting": "Reporting"
 }

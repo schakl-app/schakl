@@ -4373,5 +4373,6 @@
   "errors.invoicing.payment_provider_unreachable": "De betaalprovider is niet bereikbaar. Probeer het zo opnieuw.",
   "errors.invoicing.payment_provider_failed": "De betaalprovider weigert dit verzoek.",
   "errors.mollie_credential_unreadable": "De opgeslagen Mollie-sleutel kan niet meer ontsleuteld worden. Voer hem opnieuw in.",
-  "errors.mollie.not_an_api_key": "Dit lijkt geen Mollie-API-sleutel. Een sleutel begint met test_ of live_."
+  "errors.mollie.not_an_api_key": "Dit lijkt geen Mollie-API-sleutel. Een sleutel begint met test_ of live_.",
+  "permissions.group.reporting": "Rapportages"
 }
