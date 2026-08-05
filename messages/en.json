@@ -3965,6 +3965,7 @@
   "cloudflare.pages.title": "Cloudflare Pages",
   "cloudflare.pages.empty": "This domain is not served from a Pages project.",
   "cloudflare.pages.no_projects": "No Pages projects fetched yet. Fetch the zones for the account first.",
+  "cloudflare.pages.no_zone_hint": "This domain is not connected to a Cloudflare zone, so we cannot point its DNS. The hostname is registered on the project; at the DNS provider, point it to the project's pages.dev address yourself. Until then Cloudflare keeps the hostname pending.",
   "cloudflare.pages.project": "Project",
   "cloudflare.pages.hostname": "Hostname",
   "cloudflare.pages.hostname_help": "Leave empty for the domain itself.",

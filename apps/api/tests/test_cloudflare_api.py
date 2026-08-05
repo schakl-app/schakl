@@ -850,6 +850,46 @@ async def test_pages_link_registers_the_hostname_and_points_dns(client_for, clou
         assert [r for r in cloudflare.dns[zone_id] if r["type"] == "CNAME"]
 
 
+async def test_pages_links_a_domain_that_has_no_zone_here(client_for, cloudflare) -> None:
+    """A Pages hostname hangs off the *project's* account, not off this domain's zone.
+
+    The panel used to draw the whole Pages surface inside the connected branch, which read as
+    "this domain cannot be served from Pages" for every client whose DNS lives elsewhere. The
+    API never had that limit: the hostname is registered and only the CNAME step is skipped —
+    Cloudflare keeps the hostname pending until the DNS provider points it.
+    """
+    t = await make_tenant("cf-pages-nozone")
+    headers = await auth_cookie(t.user)
+    cloudflare.pages["acct-1"] = [
+        {"name": "klant-site", "subdomain": "klant-site.pages.dev", "production_branch": "main"}
+    ]
+    async with client_for(t.host) as c:
+        company = await _company(c, headers)
+        account = await _account(c, headers)
+        domain = await _domain(c, headers, "elders.nl", company)
+        await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/verify", headers=headers)
+        await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers)
+        projects = (await c.get("/api/v1/cloudflare/pages/projects", headers=headers)).json()
+        # What the picker labels a project by once a tenant holds more than one account.
+        assert projects[0]["account_name"] == "Agency"
+
+        linked = await c.post(
+            f"/api/v1/cloudflare/domains/{domain['id']}/pages",
+            json={"project_id": projects[0]["id"]},  # no hostname: the domain itself
+            headers=headers,
+        )
+        assert linked.status_code == 201, linked.text
+        assert linked.json()["hostname"] == "elders.nl"
+        assert cloudflare.pages_domains["acct-1"]["klant-site"][0]["name"] == "elders.nl"
+
+        # And the panel can still find it: the status read is stored rows, zone or no zone.
+        status = (
+            await c.get(f"/api/v1/cloudflare/domains/{domain['id']}/status", headers=headers)
+        ).json()
+        assert status["zone"] is None
+        assert [link["hostname"] for link in status["pages_links"]] == ["elders.nl"]
+
+
 # --------------------------------------------------------------------------------------- #
 # Authorization + horizon
 # --------------------------------------------------------------------------------------- #

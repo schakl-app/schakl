@@ -13,6 +13,11 @@
    * `cloudflare.zone.manage`, base key. A domain page is client-reachable through the portal,
    * and none of this is a client's to touch.
    *
+   * The zone decides what *this* Cloudflare account can be asked about the domain, so the
+   * redirect and the DNS table live behind it. **Pages does not**: a custom hostname is
+   * registered on a project, and the project names its own account (`docs/CLOUDFLARE.md` §6).
+   * It therefore renders whether or not the domain is connected here.
+   *
    * **Host contract:** `?/cfConnect`, `?/cfCheck`, `?/cfSaveRedirect`, `?/cfRemoveRedirect`,
    * `?/cfLinkPages`, `?/cfUnlinkPages` plus the DNS actions used by `CloudflareDns` (spread
    * `cloudflareActions`).
@@ -322,7 +327,18 @@
     {/if}
   </section>
 
-  <!-- Cloudflare Pages ----------------------------------------------------------------- -->
+  <!-- DNS ------------------------------------------------------------------------------- -->
+  <CloudflareDns zoneId={zone.id} zoneName={zone.name} {canManage} />
+{/if}
+
+<!-- Cloudflare Pages -----------------------------------------------------------------------
+     Outside the zone branch on purpose. A Pages custom hostname is registered on a *project*,
+     which is an account-level thing: the API resolves the account from the project and only
+     writes the CNAME when this domain happens to have a zone here. Drawn inside the connected
+     branch, the feature read as "you cannot serve this domain from Pages" for every domain
+     whose DNS lives elsewhere — and hid the links of a domain whose zone was later unlinked,
+     leaving rows nothing on this page could remove. -->
+{#if zone || status?.pages_links?.length || (canManage && panel.projects.length > 0)}
   <section class="mt-5 border-t border-border pt-4">
     <h3 class="text-sm font-medium text-text">{t("cloudflare.pages.title")}</h3>
     {#if status?.pages_links?.length}
@@ -358,6 +374,10 @@
       <p class="mt-2 text-sm text-text-muted">{t("cloudflare.pages.empty")}</p>
     {/if}
 
+    {#if !zone}
+      <p class="mt-2 text-xs text-text-muted">{t("cloudflare.pages.no_zone_hint")}</p>
+    {/if}
+
     {#if canManage}
       {#if panel.projects.length === 0}
         <p class="mt-2 text-xs text-text-muted">{t("cloudflare.pages.no_projects")}</p>
@@ -372,7 +392,14 @@
             <label class={labelClass} for="cf-project">{t("cloudflare.pages.project")}</label>
             <select id="cf-project" name="project_id" class={inputClass}>
               {#each panel.projects as project (project.id)}
-                <option value={project.id}>{project.name}</option>
+                <!-- The account is named only where the tenant has more than one: two accounts
+                     may each hold a project called "site", and the account is what decides
+                     which Cloudflare this hostname is registered at. -->
+                <option value={project.id}>
+                  {panel.accounts.length > 1 && project.account_name
+                    ? `${project.name} · ${project.account_name}`
+                    : project.name}
+                </option>
               {/each}
             </select>
           </div>
@@ -381,7 +408,7 @@
             <input
               id="cf-hostname"
               name="hostname"
-              placeholder={zone.name}
+              placeholder={status?.domain_name ?? ""}
               class={inputClass}
             />
           </div>
@@ -398,9 +425,6 @@
       {/if}
     {/if}
   </section>
-
-  <!-- DNS ------------------------------------------------------------------------------- -->
-  <CloudflareDns zoneId={zone.id} zoneName={zone.name} {canManage} />
 {/if}
 
 <ConfirmDialog

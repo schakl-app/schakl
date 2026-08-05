@@ -3965,6 +3965,7 @@
   "cloudflare.pages.title": "Cloudflare Pages",
   "cloudflare.pages.empty": "Dit domein wordt niet vanaf een Pages-project geserveerd.",
   "cloudflare.pages.no_projects": "Nog geen Pages-projecten opgehaald. Haal eerst de zones van het account op.",
+  "cloudflare.pages.no_zone_hint": "Dit domein is niet met een Cloudflare-zone verbonden, dus wij kunnen de DNS niet aanpassen. De hostnaam wordt wel bij het project geregistreerd; wijs hem bij de DNS-provider zelf naar het pages.dev-adres van het project. Tot die tijd houdt Cloudflare de hostnaam op 'pending'.",
   "cloudflare.pages.project": "Project",
   "cloudflare.pages.hostname": "Hostnaam",
   "cloudflare.pages.hostname_help": "Laat leeg voor het domein zelf.",

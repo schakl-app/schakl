@@ -124,7 +124,34 @@ Account-level **Bulk Redirects** are deliberately not inspected: enumerating lis
 one hostname is expensive and needs account scopes most tokens will not have. An agency using
 them will see our rule and their bulk redirect both apply — worth knowing.
 
-## 6. Registrar — who *pays* for the name (#298)
+## 6. Pages — a hostname on a project, not on a zone
+
+A Pages custom hostname is registered on the **project**, and a project belongs to an
+**account**. That is the whole reason this surface does not wait on a zone: `link_pages_project`
+resolves the account from `payload.project_id`, and the zone is consulted only for the second
+half of the job.
+
+Both halves matter, and doing only the first is the failure worth naming: Cloudflare leaves a
+custom domain at *pending* forever while nothing resolves to `<project>.pages.dev`, which reads
+as a Cloudflare problem and is not. So linking registers the hostname **and** writes the CNAME
+when the domain has a zone here (`_ensure_pages_cname`, never over an existing record). When it
+has no zone, the registration still happens and pointing DNS is the agency's to do at whatever
+provider holds the domain — the panel says so rather than hiding the control.
+
+The hostname must be the domain or a subdomain of it
+(`errors.cloudflare_hostname_not_in_domain`). Not a formatting rule:
+`cloudflare_pages_links.domain_id` is what gives a link its client (#285), so accepting another
+client's hostname here would file it under the wrong company.
+
+**The panel drew all of this inside the connected branch, and that was wrong.** A domain whose
+DNS lives elsewhere is exactly the domain an agency serves from Pages, so the feature read as
+"this domain cannot be served from Pages" for the case it exists to cover; and unlinking a zone
+hid links that nothing on the domain page could then remove. The project picker names the
+account whenever the tenant holds more than one, which is §3's rule in miniature: two accounts
+may each hold a project called `site`, and nothing else on the row says which Cloudflare this
+hostname lands in.
+
+## 7. Registrar — who *pays* for the name (#298)
 
 A zone is not a registration, and this section exists because the difference is money. Cloudflare
 will happily answer DNS for a domain the client registered at their own registrar and renews
@@ -184,7 +211,7 @@ Run these the day a real Registrar account exists (`docs/OXXA.md` §1's discipli
    only the first sets `registrar_synced_at`, and that difference decides whether the register is
    allowed to narrow invoicing at all.
 
-## 7. Permissions (§15)
+## 8. Permissions (§15)
 
 | key | covers |
 |---|---|
@@ -203,7 +230,7 @@ each declares `__company_horizon_clause__` (#285 failure mode 1), and the one cr
 `domains` states the horizon predicate in exactly one place, `CloudflareService._domain_or_404`
 (failure mode 3).
 
-## 8. Errors
+## 9. Errors
 
 `message` in the error envelope is always an i18n key (§9), so Cloudflare's own text never goes
 in it — it is not translatable. Where the operation still commits (verify, sync, check) the text
@@ -215,7 +242,7 @@ Worth knowing: a **malformed** credential answers `400/6003`, not `401` — Clou
 header before it looks the token up. That code is mapped to `errors.cloudflare_token_rejected`,
 or the message would point at Cloudflare rather than at the token the admin just pasted.
 
-## 9. Testing
+## 10. Testing
 
 `tests/cloudflare_fake.py` is a stateful stand-in installed through `client.set_transport` — the
 only network seam. A test sets up "the zone already redirects" by writing the rule into the fake's
@@ -223,7 +250,7 @@ only network seam. A test sets up "the zone already redirects" by writing the ru
 Nothing in the suite touches the network, and a test that forgot to install the fake fails loudly
 on connect rather than quietly hitting `api.cloudflare.com`.
 
-## 10. What is not here
+## 11. What is not here
 
 The **registrar half of #278** — OXXA sync, and the write path that pushes a connected zone's
 nameservers back to the registrar so "Connect to Cloudflare" becomes one action instead of two.
