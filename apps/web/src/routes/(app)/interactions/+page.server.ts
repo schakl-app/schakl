@@ -1,5 +1,6 @@
 import { redirect } from "@sveltejs/kit";
 
+import { bulkDeleteAction } from "$lib/core/bulk/actions.server";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
@@ -100,6 +101,13 @@ export const actions: Actions = {
     await saveTablePref(event, INTERACTIONS_TABLE_ID, parseTablePref(form));
     return { tableSaved: true };
   },
+
+  /**
+   * Bulk delete, the one generic action a contact moment takes (there is nothing on one worth
+   * setting across a selection, so no `bulkUpdate`). The three review actions are the module's
+   * own and live in `interactionActions` below.
+   */
+  bulkDelete: (event) => bulkDeleteAction(event, "interaction"),
 
   // The page's own `createCompany` / `createProject` are gone: both now ride in
   // `interactionActions` as `createInteractionCompany` / `createInteractionProject`, so every

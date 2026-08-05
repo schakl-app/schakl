@@ -16,7 +16,7 @@ import { fail, type RequestEvent } from "@sveltejs/kit";
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
 
-import type { BulkEntity, BulkOutcome } from "./types";
+import type { BulkDeleteEntity, BulkOutcome, BulkUpdateEntity } from "./types";
 
 /**
  * The selection, however the form spelled it.
@@ -69,7 +69,7 @@ function refuse(error: string, bulkFields: Record<string, string> | null = null)
   return fail(400, { error, bulkFields });
 }
 
-export async function bulkUpdateAction(event: RequestEvent, entity: BulkEntity) {
+export async function bulkUpdateAction(event: RequestEvent, entity: BulkUpdateEntity) {
   const form = await event.request.formData();
   const selection = ids(form);
   if (selection.length === 0) return refuse("errors.required");
@@ -94,7 +94,7 @@ export async function bulkUpdateAction(event: RequestEvent, entity: BulkEntity) 
   return outcome("update", data);
 }
 
-export async function bulkDeleteAction(event: RequestEvent, entity: BulkEntity) {
+export async function bulkDeleteAction(event: RequestEvent, entity: BulkDeleteEntity) {
   const form = await event.request.formData();
   const selection = ids(form);
   if (selection.length === 0) return refuse("errors.required");

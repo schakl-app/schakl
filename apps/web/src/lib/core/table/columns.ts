@@ -40,6 +40,14 @@ export interface ColumnMeta {
   align?: "left" | "right";
   /** The row's identity column. Always shown, never reorderable away, carries the row link. */
   primary?: boolean;
+  /**
+   * The column that absorbs whatever the fixed widths leave (`DataTable` lays out
+   * `table-fixed`). Defaults to `primary`, which is right wherever the identity column is also
+   * the long one — a client's name, a task's title. It is not always: an invoice is identified
+   * by a number 130px wide and the widest thing on its row is the client, so that list says so
+   * here rather than handing its slack to a column that cannot use it.
+   */
+  flex?: boolean;
 }
 
 /** A column ready to render: metadata, a resolved label, and optionally its own cell renderer. */

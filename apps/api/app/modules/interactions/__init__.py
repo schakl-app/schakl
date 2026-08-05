@@ -7,6 +7,7 @@ package self-registers the module (router, company panel, permissions, i18n name
 
 from __future__ import annotations
 
+from app.modules.interactions.bulk import INTERACTION_BULK
 from app.modules.interactions.panels import interactions_company_panel
 from app.modules.interactions.permissions import INTERACTION_PERMISSIONS
 from app.modules.interactions.router import router
@@ -21,6 +22,7 @@ module = ModuleDescriptor(
     sku="interactions",
     panels=[interactions_company_panel],
     permissions=INTERACTION_PERMISSIONS,
+    bulk=[INTERACTION_BULK],
 )
 
 registry.register(module)

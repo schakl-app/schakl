@@ -4,7 +4,8 @@
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
-  import BulkActions from "$lib/core/bulk/BulkActions.svelte";
+  import BulkBar from "$lib/core/bulk/BulkBar.svelte";
+  import BulkToggle from "$lib/core/bulk/BulkToggle.svelte";
   import BulkResult from "$lib/core/bulk/BulkResult.svelte";
   import type { BulkFieldDef } from "$lib/core/bulk/types";
   import { editHref } from "$lib/core/edit-intent";
@@ -122,6 +123,15 @@
     // The dialog draws Ja/Nee itself — a bare checkbox has no "leave this one alone" state.
     { key: "billable_default", label: t("impex.column.project.billable_default"), type: "bool" },
   ]);
+  // One configuration, spread into the ✎ in the toolbar and the strip above the table: they
+  // render in different places and must never disagree about what this list can do.
+  const bulkConfig = $derived({
+    fields: bulkFields,
+    writePermission: "projects.project.write",
+    deletePermission: "projects.project.delete",
+    deleteMessage: t("projects.bulk.delete_message", { count: bulkSelected.length }),
+    fieldErrors: form?.bulkFields ?? null,
+  });
 </script>
 
 {#snippet nameCell(project: Project)}
@@ -279,39 +289,37 @@
       id="filter-company"
     />
   </div>
-  <!-- The ✎ that turns the list into something you are editing: it switches the checkboxes on
-       and puts Bewerken/Verwijderen beside itself (docs/UX.md). A list is for reading until
-       someone says otherwise, so nothing here costs a reader anything. -->
-  <BulkActions
-    bind:selecting
-    bind:selected={bulkSelected}
-    fields={bulkFields}
-    writePermission="projects.project.write"
-    deletePermission="projects.project.delete"
-    deleteMessage={t("projects.bulk.delete_message", { count: bulkSelected.length })}
-    fieldErrors={form?.bulkFields ?? null}
-  />
-  <ImpexBar
-    entity="project"
-    readPermission="projects.project.read"
-    writePermission="projects.project.write"
-    filters={{
-      q: page.url.searchParams.get("q"),
-      company_id: data.companyFilter,
-      mine: data.mine,
-      sort: data.table.sort,
-    }}
-    locale={data.locale}
-    {form}
-  />
-  <ColumnPicker
-    all={table.pickerColumns}
-    visible={table.visibleKeys}
-    sort={table.sort}
-    onchange={table.onColumnsChange}
-    onsort={table.onSort}
-  />
+  <!-- The list's own controls, pushed right: the filters read left-to-right, what you can *do*
+       with the list sits at the far end, and that is the same on every list here. -->
+  <div class="ml-auto flex flex-wrap items-center gap-2">
+    <ImpexBar
+      entity="project"
+      readPermission="projects.project.read"
+      writePermission="projects.project.write"
+      filters={{
+        q: page.url.searchParams.get("q"),
+        company_id: data.companyFilter,
+        mine: data.mine,
+        sort: data.table.sort,
+      }}
+      locale={data.locale}
+      {form}
+    />
+    <ColumnPicker
+      all={table.pickerColumns}
+      visible={table.visibleKeys}
+      sort={table.sort}
+      onchange={table.onColumnsChange}
+      onsort={table.onSort}
+    />
+    <!-- Last in the toolbar, always: it is the only control here that changes what the *rows*
+         do rather than what the list shows, so it sits after Kolommen rather than among the
+         list's own controls. Pressing it opens the selection strip above the table. -->
+    <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
+  </div>
 </div>
+
+<BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
 
 <BulkResult result={form?.bulkResult} />
 

@@ -87,7 +87,7 @@ def build_bulk_router() -> APIRouter:
         gate = [license_write_gate(module.sku)] if module.sku else []
         for descriptor in module.bulk:
             check_descriptor(descriptor)
-            if descriptor.editable:
+            if descriptor.editable and descriptor.write_permission:
                 router.add_api_route(
                     f"/{descriptor.entity_type}/update",
                     _update_endpoint(descriptor),

@@ -16,14 +16,20 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
 from sqlalchemy import text
 
 from app.config import settings
+from app.core.bulk import BulkDescriptor, BulkField
+from app.core.bulk.spec import check_descriptor
 from app.core.permissions.deps import iter_route_leaves
 from app.db import async_session_maker, set_current_org
 from app.main import app
+from app.modules.invoicing.models import Invoice
 from app.registry import registry
 from tests.conftest import add_membership, auth_cookie, make_tenant, org_today
+from tests.test_interactions_api import _seed_gmail_row
+from tests.test_invoicing_api import _setup_org as _seed_invoicing_settings
 
 #: The entities that opted in when the capability shipped — the floor the route sweep checks
 #: against, so it can never pass by iterating a list a refactor emptied.
@@ -673,3 +679,262 @@ def test_every_registered_descriptor_gets_the_routes_it_declared() -> None:
     # And the entities the feature shipped for are actually among them, so the sweep above
     # cannot pass by iterating an empty-ish set that lost an entity to a refactor.
     assert {descriptor.entity_type for descriptor in descriptors} >= _SHIPPED_ENTITIES
+
+
+# --------------------------------------------------------------------------- #
+# Delete-only entities: a descriptor that borrows no import shape
+#
+# An invoice is a numbered document and a contact moment is the record of something that was
+# said, so neither has a CSV surface to borrow a column vocabulary from — and neither has a
+# field a selection could sensibly be given one value for. What they do have is the case a
+# batch is most obviously wanted for: a run of drafts generated from the wrong period, forty
+# mis-logged e-mails. These pin that the second shape is a real shape — the descriptor names
+# its own entity, mounts a delete route and **no update route at all** — and that the per-row
+# savepoint is what makes a mixed selection an honest answer rather than a refusal.
+# --------------------------------------------------------------------------- #
+async def _invoice(c, headers, company_id: str, *, issue: bool = False) -> dict:
+    created = await c.post(
+        "/api/v1/invoicing/invoices",
+        json={
+            "company_id": company_id,
+            "lines": [{"description": "Werk", "quantity": "1", "unit_price": "100"}],
+        },
+        headers=headers,
+    )
+    assert created.status_code == 201, created.text
+    if not issue:
+        return created.json()
+    issued = await c.post(
+        f"/api/v1/invoicing/invoices/{created.json()['id']}/issue", json={}, headers=headers
+    )
+    assert issued.status_code == 200, issued.text
+    return issued.json()
+
+
+async def _interaction(c, headers, subject: str) -> dict:
+    created = await c.post(
+        "/api/v1/interactions",
+        json={
+            "kind": "physical_meeting",
+            "occurred_at": "2026-07-10T14:30:00+00:00",
+            "subject": subject,
+        },
+        headers=headers,
+    )
+    assert created.status_code == 201, created.text
+    return created.json()
+
+
+async def test_a_mixed_invoice_selection_deletes_the_drafts_and_reports_the_rest(
+    client_for,
+) -> None:
+    """The headline for the delete-only shape: a mixed selection is answered, not refused.
+
+    ``InvoiceService.delete`` allows drafts only — an issued invoice is a numbered legal
+    document, cancelled rather than removed — and somebody clearing out a duplicated run has
+    both kinds on screen. Refusing the whole batch over the issued ones would make the control
+    useless exactly when it is reached for; deleting them would destroy the numbering.
+
+    So both halves are pinned at once. The drafts really go, each issued row comes back under
+    its own key (``errors.invoicing.not_draft``, the 409 the single-row endpoint raises), and
+    the draft sent **after** an issued one still commits — which is the per-row SAVEPOINT, and
+    the reason a refusal that escaped the batch would have rolled the whole request back.
+    """
+    t = await make_tenant("bulk-inv-del")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await _seed_invoicing_settings(c, headers)
+        company = await _company(c, headers, "Klant BV")
+        drafts = [await _invoice(c, headers, company["id"]) for _ in range(2)]
+        issued = [await _invoice(c, headers, company["id"], issue=True) for _ in range(2)]
+        assert [row["status"] for row in issued] == ["open", "open"]
+
+        # Interleaved on purpose: what must survive a refusal is the rows that come after it.
+        result = await c.post(
+            "/api/v1/bulk/invoice/delete",
+            json={
+                "ids": [drafts[0]["id"], issued[0]["id"], drafts[1]["id"], issued[1]["id"]],
+            },
+            headers=headers,
+        )
+        assert result.status_code == 200, result.text
+        assert result.json() == {
+            "succeeded": 2,
+            "failed": [
+                {"id": issued[0]["id"], "error": "errors.invoicing.not_draft"},
+                {"id": issued[1]["id"], "error": "errors.invoicing.not_draft"},
+            ],
+        }
+
+        for draft in drafts:
+            assert (
+                await c.get(f"/api/v1/invoicing/invoices/{draft['id']}", headers=headers)
+            ).status_code == 404
+        # Not merely unreported — the numbered documents are still there, and still issued.
+        for invoice in issued:
+            still = await c.get(f"/api/v1/invoicing/invoices/{invoice['id']}", headers=headers)
+            assert still.status_code == 200, still.text
+            assert still.json()["status"] == "open"
+            assert still.json()["number"] == invoice["number"]
+
+
+async def test_a_gmail_row_is_reported_while_the_rest_of_the_interactions_are_deleted(
+    client_for,
+) -> None:
+    """The same contract for the other delete-only entity, refused for its own reason.
+
+    ``InteractionService.delete`` guards with ``_writable_or_404`` (someone else's row without
+    ``:any`` reads as absent) and ``_reviewless_only`` (a gmail-sourced row changes through the
+    review flow, never through a plain delete). The second is the cheap one to stage — seed a
+    gmail row for the caller themselves and the ownership half passes, leaving exactly one
+    refusal — and it is the one a real selection meets: the Interacties list mixes logged
+    e-mails with notes somebody typed.
+
+    Its ``errors.interactions_gmail_readonly`` also rides ``BulkService._reason``'s other
+    branch: a refusal carrying no ``fields`` is already its own reason and passes through whole.
+    """
+    t = await make_tenant("bulk-int-del")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        from_gmail = await _seed_gmail_row(t, t.user.id, message_id="m1", thread_id="t1")
+        manual = [await _interaction(c, headers, subject) for subject in ("Kick-off", "Bellen")]
+
+        result = await c.post(
+            "/api/v1/bulk/interaction/delete",
+            json={"ids": [from_gmail, *(row["id"] for row in manual)]},
+            headers=headers,
+        )
+        assert result.status_code == 200, result.text
+        assert result.json() == {
+            "succeeded": 2,
+            "failed": [{"id": from_gmail, "error": "errors.interactions_gmail_readonly"}],
+        }
+
+        for row in manual:
+            assert (
+                await c.get(f"/api/v1/interactions/{row['id']}", headers=headers)
+            ).status_code == 404
+        assert (
+            await c.get(f"/api/v1/interactions/{from_gmail}", headers=headers)
+        ).status_code == 200
+
+
+def test_a_delete_only_entity_mounts_no_update_route() -> None:
+    """Delete-only as a fact about the app, not an intention stated in a docstring.
+
+    ``BulkService.update`` answers 404 for a descriptor with no writer, but that is the
+    defence-in-depth half; what must be true first is that no update route exists to declare a
+    write permission these entities never gave one for. A route pair mounted unconditionally
+    would put "set a field on forty invoices" on the surface — which is a way to move money or
+    a document's status without going through the endpoint that owns the rule.
+
+    Walked with ``iter_route_leaves``: ``app.routes`` holds ``_IncludedRouter`` stubs, so a path
+    scan there finds nothing and stays green forever. And an editable entity's update route is
+    asserted *present* in the same breath, so the absences above cannot pass because the naming
+    convention moved.
+    """
+    names = {route.name for route in iter_route_leaves(app.routes)}
+
+    assert "bulk_update_company" in names, "the naming convention this test asserts against"
+    for entity in ("invoice", "interaction"):
+        assert f"bulk_delete_{entity}" in names
+        assert f"bulk_update_{entity}" not in names
+
+
+async def test_bulk_invoice_delete_needs_the_invoices_own_delete_permission(client_for) -> None:
+    """A delete-only route declares the entity's own key, exactly as the edit routes do.
+
+    Checked against a caller who demonstrably still **reads** invoices: without that control
+    the 403 could as well be "this member cannot see invoicing at all", and the test would pass
+    while gating nothing.
+    """
+    t = await make_tenant("bulk-inv-rbac")
+    admin = await make_tenant("bulk-inv-rbac-a", email="admin@bulk-inv-rbac.example")
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        await add_membership(session, t.org.id, admin.user.id, role="admin")
+        await session.commit()
+    owner_headers = await auth_cookie(t.user)
+    admin_headers = await auth_cookie(admin.user, org_id=t.org.id)
+
+    async with client_for(t.host) as c:
+        await _seed_invoicing_settings(c, owner_headers)
+        company = await _company(c, owner_headers, "Klant BV")
+        draft = await _invoice(c, owner_headers, company["id"])
+        assert (await c.get("/api/v1/invoicing/invoices", headers=admin_headers)).status_code == 200
+
+    await _drop_permissions(t.org.id, ["invoicing.invoice.delete"])
+    async with client_for(t.host) as c:
+        # Still reads — so the refusal below is about the delete, not about the module.
+        assert (await c.get("/api/v1/invoicing/invoices", headers=admin_headers)).status_code == 200
+        refused = await c.post(
+            "/api/v1/bulk/invoice/delete", json={"ids": [draft["id"]]}, headers=admin_headers
+        )
+        assert refused.status_code == 403, refused.text
+        assert (
+            await c.get(f"/api/v1/invoicing/invoices/{draft['id']}", headers=owner_headers)
+        ).status_code == 200
+
+
+async def test_a_delete_only_bulk_call_cannot_reach_another_tenants_rows(client_for) -> None:
+    """Golden Rule 1 again, on the shape that has no import descriptor behind it.
+
+    The selection rides ``scoped_select()`` whether or not there is a column vocabulary, so a
+    foreign id is simply absent — and "not found" is the only thing it may ever read as.
+    """
+    a = await make_tenant("bulk-inv-iso-a")
+    b = await make_tenant("bulk-inv-iso-b")
+    a_headers = await auth_cookie(a.user)
+    b_headers = await auth_cookie(b.user)
+    async with client_for(b.host) as cb:
+        await _seed_invoicing_settings(cb, b_headers)
+        company_b = await _company(cb, b_headers, "Klant van B")
+        draft_b = await _invoice(cb, b_headers, company_b["id"])
+
+    async with client_for(a.host) as ca:
+        result = await ca.post(
+            "/api/v1/bulk/invoice/delete", json={"ids": [draft_b["id"]]}, headers=a_headers
+        )
+        assert result.status_code == 200, result.text
+        assert result.json() == {
+            "succeeded": 0,
+            "failed": [{"id": draft_b["id"], "error": "errors.not_found"}],
+        }
+
+    async with client_for(b.host) as cb:
+        assert (
+            await cb.get(f"/api/v1/invoicing/invoices/{draft_b['id']}", headers=b_headers)
+        ).status_code == 200
+
+
+async def _never_called(ctx, row) -> None:  # pragma: no cover - the descriptor never runs
+    raise AssertionError("check_descriptor refuses before anything can call this")
+
+
+def test_check_descriptor_refuses_a_descriptor_that_cannot_work() -> None:
+    """Import time, not request time — a module's mistake must stop the app coming up.
+
+    The two rules the delete-only shape added are the ones a copy-paste gets wrong. A
+    descriptor that names neither an entity nor an import has no path segment to mount on, and
+    ``entity_type`` would only discover that mid-request; one that declares editable columns
+    with no import shape is declaring a vocabulary nothing can read — its columns, resolvers
+    and writer all come from the import descriptor it does not have. Either surfaces as one
+    tenant's confusing 500 halfway through a batch if it is allowed to load.
+    """
+    with pytest.raises(RuntimeError, match="neither an entity nor an import"):
+        check_descriptor(
+            BulkDescriptor(
+                model=Invoice,
+                delete_permission="invoicing.invoice.delete",
+                delete_row=_never_called,
+            )
+        )
+
+    with pytest.raises(RuntimeError, match="borrows no import shape"):
+        check_descriptor(
+            BulkDescriptor(
+                model=Invoice,
+                entity="invoice",
+                editable=(BulkField("status"),),
+            )
+        )

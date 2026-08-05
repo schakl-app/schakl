@@ -12,7 +12,8 @@
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
-  import BulkActions from "$lib/core/bulk/BulkActions.svelte";
+  import BulkBar from "$lib/core/bulk/BulkBar.svelte";
+  import BulkToggle from "$lib/core/bulk/BulkToggle.svelte";
   import BulkResult from "$lib/core/bulk/BulkResult.svelte";
   import { addMonths, isoAddDays, mondayOnOrBefore, monthOf } from "$lib/core/calendar";
   import { fmtDateTime, fmtMonthYear, fmtPeriod } from "$lib/core/format";
@@ -153,16 +154,16 @@
    * Bulk review (#299): a queue of forty auto-matched emails is reviewed a screenful at a time
    * or not at all, so the review flow gets a batch form.
    *
-   * The three actions ride the shared ✎ selection mode beside Kolommen: pressing it turns the
-   * checkboxes on and puts Goedkeuren / Toewijzen / Afwijzen next to itself, so a queue nobody
-   * is triaging today looks like an ordinary list. This one contributes only `items` — it has
-   * no generic bulk edit or delete, because an interaction's fields are the record of what was
-   * said and reviewing is the only thing done to a batch of them.
+   * The three actions ride the shared ✎ selection mode: pressing it turns the checkboxes on and
+   * opens the strip above the table holding Goedkeuren / Toewijzen / Afwijzen, so a queue nobody
+   * is triaging today looks like an ordinary list. **Verwijderen joins them** — a mis-logged
+   * import or a test thread is a batch like any other — but there is no bulk *edit*: an
+   * interaction's fields are the record of what was said, and no two rows want the same value.
    *
-   * Two subsets, because the actions genuinely differ. **Re-filing** works on any of the
+   * Two subsets, because the review actions genuinely differ. **Re-filing** works on any of the
    * caller's own Gmail rows — `remap` has no status check, so "approve now, file later" is a
    * real workflow. **Approving and rejecting** need a still-pending row. Each item therefore
-   * carries its own subset as `eligible`, which the menu renders beside the label whenever it is
+   * carries its own subset as `eligible`, which the bar renders beside the label whenever it is
    * fewer than the selection; the API reports the rest rather than refusing the batch, but an
    * item that silently did less than it said would still be lying.
    */
@@ -181,11 +182,47 @@
   let showBulkAssign = $state(false);
   let showBulkReject = $state(false);
   // Approve is a plain POST with no dialog in front of it, so it stays a real `<form>` — that is
-  // what `use:enhance` needs, and what keeps the in-flight state and forms:check honest. A menu
-  // item has an `onclick`, not a submit button, so it fires the form from here. `requestSubmit()`
+  // what `use:enhance` needs, and what keeps the in-flight state and forms:check honest. A bar
+  // button has an `onclick`, not a submit, so it fires the form from here. `requestSubmit()`
   // and not `submit()`: only the former dispatches a submit event, which is the event `enhance`
   // listens for — `submit()` would bypass it and do a full page POST.
   let approveForm = $state<HTMLFormElement | null>(null);
+
+  // One configuration, spread into the ✎ in the toolbar and the strip above the table: they
+  // render in different places and must never disagree about what this list can do.
+  const bulkConfig = $derived({
+    // The review trio only for someone who may review: they all declare that one permission,
+    // and a non-reviewer holding only `delete` should get the ✎ with Verwijderen in it, not
+    // three buttons that would 403.
+    items: canReview
+      ? [
+          {
+            label: t("interactions.approve"),
+            icon: Check,
+            onclick: () => approveForm?.requestSubmit(),
+            eligible: bulkPendingIds.length,
+          },
+          {
+            label: t("interactions.assign"),
+            icon: ArrowRightLeft,
+            onclick: () => (showBulkAssign = true),
+            eligible: bulkFilableIds.length,
+          },
+          {
+            label: t("interactions.reject"),
+            icon: X,
+            onclick: () => (showBulkReject = true),
+            danger: true,
+            eligible: bulkPendingIds.length,
+          },
+        ]
+      : [],
+    // No `fields`: nothing on a contact moment is worth setting across a selection. Delete is
+    // the one generic action it takes (`app/modules/interactions/bulk.py`), and the service
+    // refuses per row what it always refuses — a row still in review, or someone else's.
+    deletePermission: "interactions.interaction.delete",
+    deleteMessage: t("interactions.bulk.delete_message", { count: bulkSelected.length }),
+  });
 
   let showCreate = $state(false);
   let showUpload = $state(false);
@@ -400,37 +437,6 @@
   <!-- `flex-wrap`: three controls on one unwrappable line pushed Kolommen off the right edge of
        a phone and scrolled the whole page sideways (docs/UX.md — a toolbar that cannot wrap). -->
   <div class="ml-auto flex flex-wrap items-center gap-2">
-    <!-- The review trio for whatever is ticked. No `fields` / `writePermission` /
-         `deletePermission`: there is no generic bulk edit or delete here, so the mode offers
-         exactly these three. Gated on the review key, because that is the permission all three
-         of them declare — without it the ✎ would switch on a mode holding nothing. -->
-    {#if canReview}
-      <BulkActions
-        bind:selecting
-        bind:selected={bulkSelected}
-        items={[
-          {
-            label: t("interactions.approve"),
-            icon: Check,
-            onclick: () => approveForm?.requestSubmit(),
-            eligible: bulkPendingIds.length,
-          },
-          {
-            label: t("interactions.assign"),
-            icon: ArrowRightLeft,
-            onclick: () => (showBulkAssign = true),
-            eligible: bulkFilableIds.length,
-          },
-          {
-            label: t("interactions.reject"),
-            icon: X,
-            onclick: () => (showBulkReject = true),
-            danger: true,
-            eligible: bulkPendingIds.length,
-          },
-        ]}
-      />
-    {/if}
     <SearchInput placeholder={t("interactions.search")} />
     <ColumnPicker
       all={table.pickerColumns}
@@ -439,6 +445,10 @@
       onchange={table.onColumnsChange}
       onsort={table.onSort}
     />
+    <!-- Last in the toolbar, always: it is the only control here that changes what the *rows*
+         do rather than what the list shows, so it sits after Kolommen rather than among the
+         list's own controls. Pressing it opens the selection strip above the table. -->
+    <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
   </div>
 </div>
 
@@ -657,8 +667,12 @@
   </p>
 {/snippet}
 
+<BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
+
 <!-- The shared banner, reading this module's own verbs: "6 goedgekeurd · 2 overgeslagen" rather
-     than the generic "bijgewerkt". Same component every list uses, one namespace over. -->
+     than the generic "bijgewerkt". Same component every list uses, one namespace over — and
+     `done_delete` is the one verb the two namespaces share, so a bulk delete reads correctly
+     from here too. -->
 <BulkResult result={form?.bulkResult} prefix="interactions.bulk" />
 
 <!-- Approve as matched: the headline case, and a pure status change — every row keeps the

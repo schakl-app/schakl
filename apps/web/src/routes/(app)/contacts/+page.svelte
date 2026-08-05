@@ -3,7 +3,8 @@
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
-  import BulkActions from "$lib/core/bulk/BulkActions.svelte";
+  import BulkBar from "$lib/core/bulk/BulkBar.svelte";
+  import BulkToggle from "$lib/core/bulk/BulkToggle.svelte";
   import BulkResult from "$lib/core/bulk/BulkResult.svelte";
   import type { BulkFieldDef } from "$lib/core/bulk/types";
   import { editHref } from "$lib/core/edit-intent";
@@ -82,6 +83,15 @@
       options: companyFilterItems,
     },
   ]);
+  // One configuration, spread into the ✎ in the toolbar and the strip above the table: they
+  // render in different places and must never disagree about what this list can do.
+  const bulkConfig = $derived({
+    fields: bulkFields,
+    writePermission: "contacts.contact.write",
+    deletePermission: "contacts.contact.delete",
+    deleteMessage: t("contacts.bulk.delete_message", { count: bulkSelected.length }),
+    fieldErrors: form?.bulkFields ?? null,
+  });
 
   // #80: companies to link while creating the contact. `ContactCreate.company_ids` does the
   // linking server-side (the first becomes that company's primary contact), so the picker only
@@ -322,18 +332,6 @@
     />
   </div>
   <div class="ml-auto flex flex-wrap items-center gap-2">
-    <!-- The ✎ that turns the list into something you are editing: it switches the checkboxes on
-       and puts Bewerken/Verwijderen beside itself (docs/UX.md). A list is for reading until
-       someone says otherwise, so nothing here costs a reader anything. -->
-    <BulkActions
-      bind:selecting
-      bind:selected={bulkSelected}
-      fields={bulkFields}
-      writePermission="contacts.contact.write"
-      deletePermission="contacts.contact.delete"
-      deleteMessage={t("contacts.bulk.delete_message", { count: bulkSelected.length })}
-      fieldErrors={form?.bulkFields ?? null}
-    />
     <!-- The Export link carries the page's current filters, so the file holds exactly the
          filtered list on screen — the whole set, not just the loaded page (issue #77). -->
     <ImpexBar
@@ -355,6 +353,10 @@
       onchange={table.onColumnsChange}
       onsort={table.onSort}
     />
+    <!-- Last in the toolbar, always: it is the only control here that changes what the *rows*
+         do rather than what the list shows, so it sits after Kolommen rather than among the
+         list's own controls. Pressing it opens the selection strip above the table. -->
+    <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
   </div>
 </div>
 
@@ -515,6 +517,8 @@
        out loud — a cap is reported, never silent (docs/PERFORMANCE.md). -->
   <p class="mb-3 text-sm text-text-muted">{t("contacts.groups_page_only")}</p>
 {/if}
+
+<BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
 
 <BulkResult result={form?.bulkResult} />
 

@@ -12,11 +12,21 @@
  * answers 422 `impex.errors.unknown_column` if it drifts, which is the drift showing up as a
  * failed save rather than a silent no-op.
  */
+import type { Component } from "svelte";
+
 import type { paths } from "$lib/core/api/schema";
 
-/** Entity slugs with a bulk update route — read off the generated client, never re-typed. */
+/**
+ * Entity slugs with a bulk route — read off the generated client, never re-typed.
+ *
+ * The two are not the same set, and saying so in the types is what makes a mistake a compile
+ * error: an invoice and a contact moment can be deleted in bulk but have no fields a selection
+ * could share, so they mount `/delete` and no `/update`.
+ */
 type UpdateEntityOf<T> = T extends `/api/v1/bulk/${infer E}/update` ? E : never;
-export type BulkEntity = UpdateEntityOf<keyof paths>;
+type DeleteEntityOf<T> = T extends `/api/v1/bulk/${infer E}/delete` ? E : never;
+export type BulkUpdateEntity = UpdateEntityOf<keyof paths>;
+export type BulkDeleteEntity = DeleteEntityOf<keyof paths>;
 
 export interface BulkOption {
   value: string;
@@ -54,6 +64,45 @@ export interface BulkFieldDef {
   clearLabel?: string;
   /** Placeholder for the free-text / number / date control. */
   placeholder?: string;
+}
+
+/** One module-specific bulk action, contributed by the list (the interacties review trio). */
+export interface BulkAction {
+  label: string;
+  icon?: Component;
+  onclick: () => void;
+  danger?: boolean;
+  /**
+   * How many of the selected rows this action can actually do. Rendered beside the label
+   * whenever it is fewer than the selection, and disables the button at zero — a control that
+   * silently did less than it said is the failure this prevents (docs/UX.md, #299).
+   */
+  eligible?: number;
+}
+
+/**
+ * One list's whole bulk configuration.
+ *
+ * `BulkToggle` and `BulkBar` render in different places — the switch belongs with the list's
+ * controls, the actions belong with the rows — but they answer to the same settings, so they
+ * take the same props and a page spreads one object into both. Each ignores what it does not
+ * need, which is what keeps the two from drifting into two half-configurations.
+ */
+export interface BulkConfig {
+  /** The fields this entity can be bulk-edited on; empty means no Bewerken. */
+  fields?: BulkFieldDef[];
+  /** The entity's own write key. Omit together with `fields` for a delete-only list. */
+  writePermission?: string;
+  /** The entity's own delete key. Omit for a list with no bulk delete. */
+  deletePermission?: string;
+  /** The confirmation copy — entity-specific, because "12 clients" is not "12 rows". */
+  deleteMessage?: string;
+  /** Module-specific actions, shown before the generic pair. */
+  items?: BulkAction[];
+  updateAction?: string;
+  deleteAction?: string;
+  /** Per-field message keys from a rejected save (the API's 422 `fields`). */
+  fieldErrors?: Record<string, string> | null;
 }
 
 /**

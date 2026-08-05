@@ -251,9 +251,11 @@
     laptop while its ellipsis never appeared and the resize handle wrote a number the layout was
     ignoring. A fixed layout makes all three true at once. Two obligations come with it, because
     a fixed layout cannot invent slack: **exactly one column carries no width and absorbs the
-    rest** (the `primary` one, by declaration), and **every other column a list shows by default
-    needs a sensible width**, because the ones without share the remainder equally — eleven equal
-    columns is its own kind of wrong. A list whose trailing ⋯ cell holds more than the ⋯ says so
+    rest**, and **every other column a list shows by default needs a sensible width**, because
+    the ones without share the remainder equally — eleven equal columns is its own kind of wrong.
+    The absorbing column is the `primary` one by default, which is right wherever the identity
+    column is also the long one; a list where it is not says so with `flex` (an invoice is
+    identified by a number 130 px wide, and the widest thing on its row is the client). A list whose trailing ⋯ cell holds more than the ⋯ says so
     with `actionsWidth`; a column no longer widens to its content, it paints over its neighbour.
     And a `truncate` span must be `block`: `overflow` does not apply to an inline box, so a bare
     one sets `nowrap` and nothing else, and spills instead of ellipsizing.
@@ -293,20 +295,29 @@
     opens the shared wizard, and both controls check the bulk permission *and* the entity's own
     before they render, mirroring the two gates the API declares. Instellingen → Import & export
     stays as the overview of what can travel at all; it is never the only way in.
-  - **Acting on several rows is a mode, and the ✎ in the toolbar is how you enter it**
-    (`core/bulk/BulkActions`). A list is for reading, so there are **no checkboxes until someone
-    asks for them**: pressing ✎ is what turns the list into something you are editing, and the
-    same press puts Bewerken and Verwijderen beside it. Pressing it again puts the list back and
-    drops whatever was picked — a selection nobody can see must not survive to be acted on.
-    The actions sit **next to** the ✎ rather than behind a second click: by the time three rows
-    are ticked the user already knows which one they want, and a dropdown would put the thing
-    they came for one click further away than the boxes that feed it. They are disabled until
-    something is ticked, with the reason in the title, because in this mode the buttons *are* the
-    point and hiding them would leave a mode whose purpose is invisible. When the user holds
-    neither the entity's write nor its delete, the ✎ is not drawn at all — there is no mode to
-    enter. Two earlier shapes were wrong and are worth naming: a bar that appeared above the grid
-    **moved the table down as you selected**, walking the rows away from the cursor on a list you
-    tick top-down; and a permanently visible checkbox gutter made every reader pay for a writer's
+  - **Acting on several rows is a mode, and the ✎ is how you enter it** (`core/bulk/BulkToggle`
+    + `core/bulk/BulkBar`). A list is for reading, so there are **no checkboxes until someone
+    asks for them**: pressing ✎ is what turns the list into something you are editing. Pressing
+    it again puts the list back and drops whatever was picked — a selection nobody can see must
+    not survive to be acted on by the next thing that opens. Where each half lives is the rest of
+    the rule:
+    - **The ✎ is the last control in the toolbar, on every list**, after Kolommen. It is the only
+      one there that changes what the *rows* do rather than what the list shows, so it sits apart
+      from them rather than among them — and a list whose Export/Kolommen cluster is not already
+      right-aligned gets `ml-auto` so the ✎ lands in the same place everywhere.
+    - **The actions are their own strip, above the table** — the brand-tinted frame this app uses
+      for a live selection, holding the count on the left and the buttons on the right. They are
+      not more toolbar: Export changes what you *get*, Verwijderen changes what *is*. Rendering
+      them inline made the toolbar reflow every time the mode opened and made the new controls
+      read as more list chrome.
+    - They are **disabled until something is ticked**, with the reason in the title, because in
+      this mode the buttons are the point and hiding them would leave a mode whose purpose is
+      invisible. When the user holds neither the entity's write nor its delete, the ✎ is not
+      drawn at all — there is no mode to enter.
+
+    Two earlier shapes were wrong and are worth naming: a bar that appeared *as you ticked* moved
+    the table down mid-gesture, walking the rows away from the cursor on a list you tick
+    top-down; and a permanently visible checkbox gutter made every reader pay for a writer's
     feature.
   - **A bulk action says what it will actually do, and reports what it did** (#299). A selection
     is rarely uniform — the interacties list mixes still-pending emails with reviewed ones, and

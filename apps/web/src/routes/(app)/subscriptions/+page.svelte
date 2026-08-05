@@ -4,7 +4,8 @@
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
-  import BulkActions from "$lib/core/bulk/BulkActions.svelte";
+  import BulkBar from "$lib/core/bulk/BulkBar.svelte";
+  import BulkToggle from "$lib/core/bulk/BulkToggle.svelte";
   import BulkResult from "$lib/core/bulk/BulkResult.svelte";
   import type { BulkFieldDef } from "$lib/core/bulk/types";
   import { fmtMoney, fmtNumericDate } from "$lib/core/format";
@@ -191,6 +192,15 @@
       options: companyItems,
     },
   ]);
+  // One configuration, spread into the ✎ in the toolbar and the strip above the table: they
+  // render in different places and must never disagree about what this list can do.
+  const bulkConfig = $derived({
+    fields: bulkFields,
+    writePermission: "subscriptions.subscription.write",
+    deletePermission: "subscriptions.subscription.delete",
+    deleteMessage: t("subscriptions.bulk.delete_message", { count: bulkSelected.length }),
+    fieldErrors: form?.bulkFields ?? null,
+  });
 
   // "Create from template" (#142): prefill, never a server-side copy — the create form stays
   // the single validation path. Rekeys the form so the defaults re-read.
@@ -427,37 +437,33 @@
       {t("tasks.filter.clear")}
     </button>
   {/if}
-  <!-- The ✎ that turns the list into something you are editing: it switches the checkboxes on
-       and puts Bewerken/Verwijderen beside itself (docs/UX.md). A list is for reading until
-       someone says otherwise, so nothing here costs a reader anything. -->
-  <BulkActions
-    bind:selecting
-    bind:selected={bulkSelected}
-    fields={bulkFields}
-    writePermission="subscriptions.subscription.write"
-    deletePermission="subscriptions.subscription.delete"
-    deleteMessage={t("subscriptions.bulk.delete_message", { count: bulkSelected.length })}
-    fieldErrors={form?.bulkFields ?? null}
-  />
-  <ImpexBar
-    entity="subscription"
-    readPermission="subscriptions.subscription.read"
-    writePermission="subscriptions.subscription.write"
-    filters={{
-      status: data.statusFilter,
-      company_id: data.companyFilter,
-      sort: data.table.sort,
-    }}
-    locale={data.locale}
-    {form}
-  />
-  <ColumnPicker
-    all={table.pickerColumns}
-    visible={table.visibleKeys}
-    sort={table.sort}
-    onchange={table.onColumnsChange}
-    onsort={table.onSort}
-  />
+  <!-- The list's own controls, pushed right: the filters read left-to-right, what you can *do*
+       with the list sits at the far end, and that is the same on every list here. -->
+  <div class="ml-auto flex flex-wrap items-center gap-2">
+    <ImpexBar
+      entity="subscription"
+      readPermission="subscriptions.subscription.read"
+      writePermission="subscriptions.subscription.write"
+      filters={{
+        status: data.statusFilter,
+        company_id: data.companyFilter,
+        sort: data.table.sort,
+      }}
+      locale={data.locale}
+      {form}
+    />
+    <ColumnPicker
+      all={table.pickerColumns}
+      visible={table.visibleKeys}
+      sort={table.sort}
+      onchange={table.onColumnsChange}
+      onsort={table.onSort}
+    />
+    <!-- Last in the toolbar, always: it is the only control here that changes what the *rows*
+         do rather than what the list shows, so it sits after Kolommen rather than among the
+         list's own controls. Pressing it opens the selection strip above the table. -->
+    <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
+  </div>
 </div>
 
 {#if form?.templateSaved}
@@ -591,6 +597,8 @@
 {#snippet emptyState()}
   <p class="p-6 text-sm text-text-muted">{t("subscriptions.empty")}</p>
 {/snippet}
+
+<BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
 
 <BulkResult result={form?.bulkResult} />
 

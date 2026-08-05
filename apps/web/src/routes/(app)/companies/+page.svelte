@@ -4,7 +4,8 @@
   import { page } from "$app/state";
   import { Pencil, Trash2 } from "@lucide/svelte";
 
-  import BulkActions from "$lib/core/bulk/BulkActions.svelte";
+  import BulkBar from "$lib/core/bulk/BulkBar.svelte";
+  import BulkToggle from "$lib/core/bulk/BulkToggle.svelte";
   import BulkResult from "$lib/core/bulk/BulkResult.svelte";
   import type { BulkFieldDef } from "$lib/core/bulk/types";
   import { editHref } from "$lib/core/edit-intent";
@@ -74,6 +75,15 @@
       })),
     },
   ];
+  // One configuration, spread into the ✎ in the toolbar and the strip above the table: they
+  // render in different places and must never disagree about what this list can do.
+  const bulkConfig = $derived({
+    fields: bulkFields,
+    writePermission: "companies.company.write",
+    deletePermission: "companies.company.delete",
+    deleteMessage: t("companies.bulk.delete_message", { count: bulkSelected.length }),
+    fieldErrors: form?.bulkFields ?? null,
+  });
 
   // --- columns ---------------------------------------------------------------
   // The tenant's custom fields join the built-ins as selectable columns with no code here — that
@@ -285,18 +295,6 @@
     </button>
   {/if}
   <div class="ml-auto flex flex-wrap items-center gap-2">
-    <!-- The ✎ that turns the list into something you are editing: it switches the checkboxes on
-         and puts Bewerken/Verwijderen beside itself (docs/UX.md). A list is for reading until
-         someone says otherwise, so nothing here costs a reader anything. -->
-    <BulkActions
-      bind:selecting
-      bind:selected={bulkSelected}
-      fields={bulkFields}
-      writePermission="companies.company.write"
-      deletePermission="companies.company.delete"
-      deleteMessage={t("companies.bulk.delete_message", { count: bulkSelected.length })}
-      fieldErrors={form?.bulkFields ?? null}
-    />
     <!-- The Export link carries the page's current filters, so the file holds exactly the
          filtered list on screen — the whole set, not just the loaded page (issue #77). -->
     <ImpexBar
@@ -319,6 +317,10 @@
       onchange={table.onColumnsChange}
       onsort={table.onSort}
     />
+    <!-- Last in the toolbar, always: it is the only control here that changes what the *rows*
+         do rather than what the list shows, so it sits after Kolommen rather than among the
+         list's own controls. Pressing it opens the selection strip above the table. -->
+    <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
   </div>
 </div>
 
@@ -373,6 +375,8 @@
     <div class="mb-6 h-64 animate-pulse rounded-xl border border-border bg-surface-raised"></div>
   {/if}
 {/if}
+
+<BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
 
 <BulkResult result={form?.bulkResult} />
 

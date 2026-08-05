@@ -57,12 +57,16 @@ class BulkService:
         self, descriptor: BulkDescriptor, payload: BulkUpdateRequest
     ) -> dict[str, Any]:
         """Set the payload's fields on every row of the selection the caller may write."""
+        writer = descriptor.writer
+        if writer is None or descriptor.write_permission is None:
+            # A delete-only entity mounts no update route; this is the service-level answer to
+            # the same question, so a non-HTTP caller cannot reach further than HTTP can.
+            raise AppError("not_found", "errors.not_found", status_code=404)
         # The route declares it too; this is the defence-in-depth half (CLAUDE.md §15), and
         # what keeps a service-level caller (MCP, a future job) gated identically.
         self.ctx.require(descriptor.write_permission)
         values = await resolve_values(self.ctx, descriptor, payload.values)
         rows, failed = await self._selection(descriptor, payload.ids)
-        writer = descriptor.writer
         succeeded = 0
         for row in rows:
             # A fresh dict per row: a writer is free to consume its values, and one that did

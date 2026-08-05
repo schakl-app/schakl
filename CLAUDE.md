@@ -975,10 +975,18 @@ validation, activity line, events and custom-field rules that fifty visits to th
   same act, repeated*. A bulk edit is the second kind. Unlike impex it **does** carry its
   module's `license_write_gate`: a bulk write must not be the one way an uncovered module can
   still be written to.
-- The web mirrors it in `$lib/core/bulk/`: one `BulkActions` (the ✎ beside Export/Import and
-  Kolommen, which **switches the checkboxes on** and puts the actions beside itself — a list has
-  no selection gutter until someone asks for one, `docs/UX.md`), one dialog, one outcome banner,
-  and `bulkUpdateAction(event, entity)` spread into each list's actions the way `impexAction`
-  already is. Field definitions live in web code beside `columns.ts`, because the picker options
-  are lookups the page already loaded and no generic endpoint could hand them back without
-  shipping the tenant.
+- **An entity with no import shape still gets a bulk delete.** `impex` is optional; a descriptor
+  that names its `entity`, its model, its delete permission and its service call is complete.
+  Deleting needs no column vocabulary, and requiring one would have excluded the two entities
+  where a batch is most obviously wanted: a run of **draft invoices** and a run of mis-logged
+  **contact moments**. Neither has a field a selection could share, so neither mounts an update
+  route — and the web's `BulkUpdateEntity` / `BulkDeleteEntity` are separate types read off the
+  generated client, so asking for the wrong one is a compile error.
+- The web mirrors it in `$lib/core/bulk/`: `BulkToggle` (the ✎, **last** in every toolbar, which
+  switches the checkboxes on) and `BulkBar` (the actions, in their own strip above the table) —
+  a list has no selection gutter until someone asks for one, and the actions are not more
+  toolbar (`docs/UX.md`). Both take the same `BulkConfig`, so a page configures once and spreads
+  into both. Plus one dialog, one outcome banner, and `bulkUpdateAction(event, entity)` spread
+  into each list's actions the way `impexAction` already is. Field definitions live in web code
+  beside `columns.ts`, because the picker options are lookups the page already loaded and no
+  generic endpoint could hand them back without shipping the tenant.

@@ -1,5 +1,6 @@
 import { fail, redirect } from "@sveltejs/kit";
 
+import { bulkDeleteAction } from "$lib/core/bulk/actions.server";
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
@@ -74,6 +75,13 @@ export const actions: Actions = {
     await saveTablePref(event, INVOICES_TABLE_ID, parseTablePref(form));
     return { tableSaved: true };
   },
+
+  /**
+   * Bulk delete, the one generic action an invoice takes — there is nothing on one a selection
+   * could sensibly share, and every status move is its own endpoint with its own rules. The API
+   * allows drafts only and reports the rest per row.
+   */
+  bulkDelete: (event) => bulkDeleteAction(event, "invoice"),
   delete: async (event) => {
     const form = await event.request.formData();
     const id = String(form.get("id") ?? "");

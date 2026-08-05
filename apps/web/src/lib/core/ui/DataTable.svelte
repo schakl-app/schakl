@@ -250,10 +250,13 @@
 
   /**
    * The column that absorbs whatever the fixed ones leave — see the `table-fixed` note below.
-   * The primary column by declaration, the first rendered one otherwise, so there is always
-   * exactly one and the declared widths always sum to less than the table.
+   * A column that says `flex` wins; otherwise the primary one, which is the long column on most
+   * lists; otherwise the first. Always exactly one, so the declared widths always sum to less
+   * than the table.
    */
-  const flexKey = $derived((columns.find((c) => c.primary) ?? columns[0])?.key);
+  const flexKey = $derived(
+    (columns.find((c) => c.flex) ?? columns.find((c) => c.primary) ?? columns[0])?.key,
+  );
 
   function headerWidth(column: ColumnSpec<T>): number | undefined {
     // A width the user dragged is authoritative even on the flexible column: they asked for

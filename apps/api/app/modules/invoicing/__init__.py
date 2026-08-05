@@ -10,6 +10,7 @@ from __future__ import annotations
 from arq import cron
 
 from app.core.events import subscribe
+from app.modules.invoicing.bulk import INVOICE_BULK
 from app.modules.invoicing.emails import INVOICING_EMAIL_KINDS
 from app.modules.invoicing.events import on_domain_due, on_subscription_due
 from app.modules.invoicing.jobs import invoicing_daily, invoicing_payments_reconcile
@@ -27,6 +28,7 @@ module = ModuleDescriptor(
     sku="invoicing",
     panels=[invoicing_company_panel],
     permissions=INVOICING_PERMISSIONS,
+    bulk=[INVOICE_BULK],
     # The three mails a client reads (invoice, quote, reminder), rewritable per locale in
     # Instellingen -> E-mail like the auth mails already were (#161 tier 2, §6).
     email_templates=INVOICING_EMAIL_KINDS,

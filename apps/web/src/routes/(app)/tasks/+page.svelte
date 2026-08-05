@@ -7,7 +7,8 @@
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import type { components } from "$lib/core/api/schema";
-  import BulkActions from "$lib/core/bulk/BulkActions.svelte";
+  import BulkBar from "$lib/core/bulk/BulkBar.svelte";
+  import BulkToggle from "$lib/core/bulk/BulkToggle.svelte";
   import BulkResult from "$lib/core/bulk/BulkResult.svelte";
   import type { BulkFieldDef } from "$lib/core/bulk/types";
   import { fmtDayMonth, fmtNumericDate } from "$lib/core/format";
@@ -157,6 +158,15 @@
     // The one clearable field here: a task that loses its deadline is a real state, not a gap.
     { key: "due_date", label: t("impex.column.task.due_date"), type: "date", clearable: true },
   ]);
+  // One configuration, spread into the ✎ in the toolbar and the strip above the table: they
+  // render in different places and must never disagree about what this list can do.
+  const bulkConfig = $derived({
+    fields: bulkFields,
+    writePermission: "tasks.task.write",
+    deletePermission: "tasks.task.delete",
+    deleteMessage: t("tasks.bulk.delete_message", { count: bulkSelected.length }),
+    fieldErrors: form?.bulkFields ?? null,
+  });
 
   function setFilter(key: string, value: string) {
     const url = resetPage(new URL(page.url));
@@ -474,18 +484,6 @@
 <!-- The picker stays reachable even when a filter empties the board — the sort that emptied it
      is cycled off from here. -->
 <div class="mb-2 flex flex-wrap items-center justify-end gap-2">
-  <!-- The ✎ that turns the list into something you are editing: it switches the checkboxes on
-       and puts Bewerken/Verwijderen beside itself (docs/UX.md). A list is for reading until
-       someone says otherwise, so nothing here costs a reader anything. -->
-  <BulkActions
-    bind:selecting
-    bind:selected={bulkSelected}
-    fields={bulkFields}
-    writePermission="tasks.task.write"
-    deletePermission="tasks.task.delete"
-    deleteMessage={t("tasks.bulk.delete_message", { count: bulkSelected.length })}
-    fieldErrors={form?.bulkFields ?? null}
-  />
   <ImpexBar
     entity="task"
     readPermission="tasks.task.read"
@@ -506,7 +504,13 @@
     onchange={table.onColumnsChange}
     onsort={table.onSort}
   />
+  <!-- Last in the toolbar, always: it is the only control here that changes what the *rows*
+         do rather than what the list shows, so it sits after Kolommen rather than among the
+         list's own controls. Pressing it opens the selection strip above the table. -->
+  <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
 </div>
+
+<BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
 
 <BulkResult result={form?.bulkResult} />
 

@@ -4532,5 +4532,8 @@
   "reporting.profile.active_hint": "Zet uit om de planning te stoppen zonder iets op deze pagina kwijt te raken.",
   "reporting.profile.reports": "Rapportages",
   "bulk.select": "Rijen selecteren",
-  "bulk.select_done": "Selecteren stoppen"
+  "bulk.select_done": "Selecteren stoppen",
+  "invoicing.bulk.delete_message": "{count} facturen verwijderen? Alleen concepten kunnen weg; een verstuurde factuur is een genummerd document en wordt gecrediteerd. De rest blijft staan en wordt gemeld.",
+  "interactions.bulk.delete_message": "{count} contactmomenten verwijderen? Hun bijlagen en deelnemers gaan mee.",
+  "interactions.bulk.done_delete": "{count} verwijderd"
 }

@@ -67,14 +67,25 @@ class BulkField:
 
 @dataclass(frozen=True)
 class BulkDescriptor:
-    """Everything core needs to edit or delete a selection of one entity type."""
+    """Everything core needs to edit or delete a selection of one entity type.
 
-    #: The import shape this borrows: columns, options, reference resolvers and the writer.
-    impex: ImpexDescriptor
+    An entity that has an import shape borrows it and declares almost nothing. One that does
+    not — an **invoice** is a numbered document, not a spreadsheet row, and a **contact moment**
+    is the record of something that was said — still gets a bulk *delete* by naming its model,
+    its permission and its service call. Deleting is not editing: it needs no column vocabulary,
+    so requiring one would have kept the two entities where a batch is most obviously wanted
+    (a run of draft invoices, a run of mis-logged e-mails) from having it at all.
+    """
+
     #: The ORM model, loaded through ``ctx.repo(model).scoped_select()`` — which is what makes
     #: tenant isolation *and* the company horizon true by construction rather than by a check
     #: every descriptor would have to remember (CLAUDE.md §15).
     model: type[Any]
+    #: The import shape this borrows: columns, options, reference resolvers and the writer.
+    #: ``None`` for a delete-only entity, which needs none of them.
+    impex: ImpexDescriptor | None = None
+    #: Required when there is no ``impex`` to take it from; it is the route's path segment.
+    entity: str | None = None
     #: The columns a bulk edit may set, in the order the dialog shows them.
     editable: tuple[BulkField, ...] = ()
     #: The entity's own delete permission. ``None`` means this entity has no bulk delete —
@@ -84,31 +95,34 @@ class BulkDescriptor:
     #: Overrides the import's writer where the module has none (tasks import create-only, so
     #: its ``update_row`` is an unreachable ``NotImplementedError``).
     update_row: UpdateRow | None = None
+    #: Overrides the import's write permission; required when there is no ``impex``.
+    write_permission_override: str | None = None
 
     @property
     def entity_type(self) -> str:
-        return self.impex.entity_type
+        name = self.entity or (self.impex.entity_type if self.impex else None)
+        if name is None:  # check_descriptor refuses this at import time
+            raise RuntimeError("bulk descriptor names no entity")
+        return name
 
     @property
-    def write_permission(self) -> str:
-        return self.impex.write_permission
-
-    @property
-    def read_permission(self) -> str:
-        return self.impex.read_permission
+    def write_permission(self) -> str | None:
+        return self.write_permission_override or (
+            self.impex.write_permission if self.impex else None
+        )
 
     @property
     def resolvers(self) -> Mapping[str, Any]:
-        return self.impex.fk_resolvers
+        return self.impex.fk_resolvers if self.impex else {}
 
     @property
-    def writer(self) -> UpdateRow:
-        return self.update_row or self.impex.update_row
+    def writer(self) -> UpdateRow | None:
+        return self.update_row or (self.impex.update_row if self.impex else None)
 
     @property
     def columns(self) -> dict[str, ImpexColumn]:
         """The editable columns by key, with :class:`BulkField`'s overrides applied."""
-        by_key = {column.key: column for column in self.impex.columns}
+        by_key = {column.key: column for column in self.impex.columns} if self.impex else {}
         out: dict[str, ImpexColumn] = {}
         for spec in self.editable:
             column = by_key[spec.key]
@@ -126,10 +140,21 @@ def check_descriptor(descriptor: BulkDescriptor) -> None:
     as one tenant's confusing 500 halfway through a batch. This is ``impex.router``'s
     ``_check_extensions``, applied to the same kind of contribution.
     """
+    if descriptor.entity is None and descriptor.impex is None:
+        raise RuntimeError(f"bulk: {descriptor.model!r} names neither an entity nor an import")
     where = f"bulk: {descriptor.entity_type!r}"
-    by_key = {column.key: column for column in descriptor.impex.columns}
     if not descriptor.editable and descriptor.delete_permission is None:
         raise RuntimeError(f"{where} declares neither an editable column nor a delete")
+    if descriptor.editable:
+        # The columns, the resolvers and the writer all come from the import shape; an editable
+        # entity without one would be declaring a vocabulary nothing can read.
+        if descriptor.impex is None:
+            raise RuntimeError(f"{where} declares editable columns but borrows no import shape")
+        if descriptor.write_permission is None:
+            raise RuntimeError(f"{where} declares editable columns but no write permission")
+        if descriptor.writer is None:
+            raise RuntimeError(f"{where} declares editable columns but no writer")
+    by_key = {column.key: column for column in descriptor.impex.columns} if descriptor.impex else {}
     seen: set[str] = set()
     for spec in descriptor.editable:
         column = by_key.get(spec.key)
@@ -148,7 +173,7 @@ def check_descriptor(descriptor: BulkDescriptor) -> None:
                 f"{where} declares editable column {spec.key!r} of type "
                 f"{column.data_type!r}, which is per-row and cannot be shared by a selection"
             )
-        if column.data_type in ("fk", "party") and spec.key not in descriptor.impex.fk_resolvers:
+        if column.data_type in ("fk", "party") and spec.key not in descriptor.resolvers:
             raise RuntimeError(
                 f"{where} declares editable reference column {spec.key!r} with no resolver on "
                 "the import descriptor — it would refuse every value it was given"
