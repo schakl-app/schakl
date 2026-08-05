@@ -4,6 +4,7 @@ import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
+import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { QUOTE_COLUMNS, QUOTES_TABLE_ID } from "$lib/modules/invoicing/columns";
 
@@ -19,6 +20,7 @@ export const load: PageServerLoad = async (event) => {
   const statusFilter = event.url.searchParams.get("status") ?? undefined;
   const companyFilter = event.url.searchParams.get("company") ?? undefined;
   const q = event.url.searchParams.get("q") ?? undefined;
+  const paging = resolvePaging(event.url, pref);
 
   // Only the URL-dependent read; the client picker comes from the section layout, which does
   // not rerun on a filter or sort click (#290).
@@ -26,8 +28,8 @@ export const load: PageServerLoad = async (event) => {
     params: {
       // `lines: false` — the index never draws a line (#290, docs/PERFORMANCE.md).
       query: {
-        limit: 200,
-        offset: 0,
+        limit: paging.limit,
+        offset: paging.offset,
         sort,
         status: statusFilter,
         company_id: companyFilter,
@@ -40,6 +42,7 @@ export const load: PageServerLoad = async (event) => {
   return {
     quotes: quotes.data?.items ?? [],
     total: quotes.data?.total ?? 0,
+    paging,
     table: { pref, sort: sort ?? null, widths: resolved.widths },
     statusFilter: statusFilter ?? "",
     companyFilter: companyFilter ?? "",

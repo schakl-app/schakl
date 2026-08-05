@@ -15,6 +15,7 @@
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import Pagination from "$lib/core/ui/Pagination.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import ProviderQuickCreate from "$lib/core/ui/ProviderQuickCreate.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
@@ -252,6 +253,13 @@
   empty={emptyState}
   onsort={table.onSort}
   onresize={table.onResize}
+/>
+
+<Pagination
+  total={data.total}
+  page={data.paging.page}
+  limit={data.paging.limit}
+  onsize={table.onPageSize}
 />
 
 {#if canWrite}

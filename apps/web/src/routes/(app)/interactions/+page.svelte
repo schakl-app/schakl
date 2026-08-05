@@ -19,11 +19,13 @@
   import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
+  import { resetPage } from "$lib/core/table/paging";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import Pagination from "$lib/core/ui/Pagination.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
@@ -96,13 +98,7 @@
       if (value === null) url.searchParams.delete(key);
       else url.searchParams.set(key, value);
     }
-    url.searchParams.delete("offset");
-    return url.pathname + url.search;
-  }
-  function pageHref(offset: number): string {
-    const url = new URL(page.url);
-    if (offset <= 0) url.searchParams.delete("offset");
-    else url.searchParams.set("offset", String(offset));
+    resetPage(url);
     return url.pathname + url.search;
   }
   function applyFilter(patch: Record<string, string | null>): void {
@@ -694,35 +690,12 @@
   onresize={table.onResize}
 />
 
-{#if data.total > data.limit}
-  <div class="mt-4 flex items-center justify-between text-sm" data-sveltekit-preload-data="hover">
-    <span class="text-text-muted">
-      {t("interactions.page_of", {
-        from: data.offset + 1,
-        to: Math.min(data.offset + data.limit, data.total),
-        total: data.total,
-      })}
-    </span>
-    <div class="flex gap-2">
-      {#if data.offset > 0}
-        <a
-          href={pageHref(data.offset - data.limit)}
-          class="rounded-lg border border-border px-3 py-1.5 text-text hover:border-brand hover:text-brand"
-        >
-          {t("common.previous")}
-        </a>
-      {/if}
-      {#if data.offset + data.limit < data.total}
-        <a
-          href={pageHref(data.offset + data.limit)}
-          class="rounded-lg border border-border px-3 py-1.5 text-text hover:border-brand hover:text-brand"
-        >
-          {t("common.next")}
-        </a>
-      {/if}
-    </div>
-  </div>
-{/if}
+<Pagination
+  total={data.total}
+  page={data.paging.page}
+  limit={data.paging.limit}
+  onsize={table.onPageSize}
+/>
 
 <Modal bind:open={showCreate} title={t("interactions.add")}>
   <InteractionForm mentions={mentionCandidates} onsaved={() => (showCreate = false)} />

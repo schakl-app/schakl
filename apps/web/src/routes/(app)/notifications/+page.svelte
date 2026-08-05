@@ -20,9 +20,11 @@
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
+  import { resetPage } from "$lib/core/table/paging";
   import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import Pagination from "$lib/core/ui/Pagination.svelte";
   import { ENTITY_TYPES, NOTIFICATION_COLUMNS } from "$lib/modules/notifications/columns";
   import {
     dayLabel,
@@ -71,14 +73,7 @@
       if (value === null) url.searchParams.delete(key);
       else url.searchParams.set(key, value);
     }
-    url.searchParams.delete("offset"); // a new filter starts at the first page
-    return url.pathname + url.search;
-  }
-
-  function pageHref(offset: number): string {
-    const url = new URL(page.url);
-    if (offset <= 0) url.searchParams.delete("offset");
-    else url.searchParams.set("offset", String(offset));
+    resetPage(url); // a new filter starts at the first page
     return url.pathname + url.search;
   }
 
@@ -231,32 +226,9 @@
   onresize={table.onResize}
 />
 
-{#if data.total > data.limit}
-  <div class="mt-4 flex items-center justify-between text-sm" data-sveltekit-preload-data="hover">
-    <span class="text-text-muted">
-      {t("notifications.page_of", {
-        from: data.offset + 1,
-        to: Math.min(data.offset + data.limit, data.total),
-        total: data.total,
-      })}
-    </span>
-    <div class="flex gap-2">
-      {#if data.offset > 0}
-        <a
-          href={pageHref(data.offset - data.limit)}
-          class="rounded-lg border border-border px-3 py-1.5 text-text hover:border-brand hover:text-brand"
-        >
-          {t("common.previous")}
-        </a>
-      {/if}
-      {#if data.offset + data.limit < data.total}
-        <a
-          href={pageHref(data.offset + data.limit)}
-          class="rounded-lg border border-border px-3 py-1.5 text-text hover:border-brand hover:text-brand"
-        >
-          {t("common.next")}
-        </a>
-      {/if}
-    </div>
-  </div>
-{/if}
+<Pagination
+  total={data.total}
+  page={data.paging.page}
+  limit={data.paging.limit}
+  onsize={table.onPageSize}
+/>

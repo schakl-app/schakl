@@ -11,6 +11,7 @@ import {
 import { readAutoInvoiceMode } from "$lib/modules/invoicing/types";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
+import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { DOMAIN_COLUMNS, DOMAINS_TABLE_ID } from "$lib/modules/domains/columns";
 import { readInvoiceable } from "$lib/modules/domains/normalize";
@@ -36,15 +37,18 @@ export const load: PageServerLoad = async (event) => {
   const resolved = resolveColumns(DOMAIN_COLUMNS, pref);
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
 
+  const paging = resolvePaging(event.url, pref);
+
   // Only the URL-dependent read; every picker and definition set comes from the section
   // layout, which does not rerun on search or sort navigation (#290).
   const domains = await api.GET("/api/v1/domains", {
-    params: { query: { limit: 200, offset: 0, q, sort } },
+    params: { query: { limit: paging.limit, offset: paging.offset, q, sort } },
   });
 
   return {
     domains: domains.data?.items ?? [],
     total: domains.data?.total ?? 0,
+    paging,
     agencyLabel: event.locals.theme?.brandName ?? "",
     q: q ?? "",
     table: { pref, sort: sort ?? null, widths: resolved.widths },

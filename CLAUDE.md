@@ -249,13 +249,27 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
 - **Definition of done** for a feature: migration written, endpoints + tenant scoping,
   **every route declaring a permission** (§15) and its `PermissionSpec`s on the module
   descriptor with `en`+`nl` labels, web UI (**every entity-reference picker offers inline-create →
-  full dialog → auto-select**, `docs/UX.md`), `nl.json` + `en.json` keys, test for tenant
+  full dialog → auto-select**, and **every list screen ends in the shared pager**, `docs/UX.md`),
+  `nl.json` + `en.json` keys, test for tenant
   isolation, **a mutable entity records its changes to the activity log and its detail view
   renders the trail** (§16), docs/OpenAPI updated. **Performance is part of done, not a
   follow-up**: a list endpoint exposes `count=false` and skips whatever the caller opts out of, a
   row carries only what its screen draws, aggregates are computed in SQL with the company horizon
   carried, every unbounded read is capped, section-shared lookups live in the section's layout
   load, and the whole thing lands with a `count_queries` budget test (`docs/PERFORMANCE.md`).
+- **A list screen pages; it never shows a prefix of itself.** The old shape — `limit: 200,
+  offset: 0` and a sentence apologising for it — made a tenant who outgrew the cap read a sample
+  as the whole answer, with row 201 reachable only by guessing a search term. One contract now
+  covers every index (`$lib/core/table/paging.ts`, `core/ui/Pagination.svelte`): **the URL is the
+  view** (`?page=` / `?size=`, so the back button lands where the user left and a page is
+  shareable — hence `<a href>`, never a click handler), **the load resolves and the API applies**
+  (`resolvePaging(event.url, pref)` → `limit`/`offset`; a filter the API cannot express is a
+  missing query parameter, never a licence to narrow the slice in the browser), **every filter,
+  search and sort drops the page** (`resetPage`), and **the size is a saved personal default, not
+  state** (`TablePref.page_size`, 50 by default, beside the column layout — the *page* stays in
+  the URL, or two tabs fight over one number). A group count inside a page counts the page, so a
+  sectioned list says so. The narrow exceptions — a grouped inventory, a report whose subtotals
+  span the whole set, an approval queue meant to be emptied — are named in `docs/PERFORMANCE.md`.
 
 ## 10. Phased plan (build gates)
 

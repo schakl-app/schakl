@@ -8,6 +8,7 @@ import { readAutoInvoiceMode } from "$lib/modules/invoicing/types";
 import { apiFor } from "$lib/core/session";
 import { createErrorKey, slugify } from "$lib/core/slug";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
+import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { SUBSCRIPTION_COLUMNS, SUBSCRIPTIONS_TABLE_ID } from "$lib/modules/subscriptions/columns";
 import { manageActions, parseLabelI18n } from "$lib/modules/subscriptions/manage.server";
@@ -76,6 +77,7 @@ export const load: PageServerLoad = async (event) => {
   const typeFilter = event.url.searchParams.get("type") ?? undefined;
   const companyFilter = event.url.searchParams.get("company") || undefined;
   const statusFilter = event.url.searchParams.get("status") || undefined;
+  const paging = resolvePaging(event.url, pref);
 
   // The client/project pickers and the two custom-field sets come from the section layout, which
   // does not rerun on filter or sort navigation (#290).
@@ -83,8 +85,8 @@ export const load: PageServerLoad = async (event) => {
     api.GET("/api/v1/subscriptions", {
       params: {
         query: {
-          limit: 200,
-          offset: 0,
+          limit: paging.limit,
+          offset: paging.offset,
           sort,
           subscription_type_id: typeFilter,
           company_id: companyFilter,
@@ -107,6 +109,7 @@ export const load: PageServerLoad = async (event) => {
   return {
     subscriptions: subscriptions.data?.items ?? [],
     total: subscriptions.data?.total ?? 0,
+    paging,
     summary: summary.data ?? null,
     types: types.data ?? [],
     templates: templates.data ?? [],

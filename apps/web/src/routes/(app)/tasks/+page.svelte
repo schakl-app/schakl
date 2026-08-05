@@ -11,11 +11,13 @@
   import { can } from "$lib/core/permissions";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
+  import { resetPage } from "$lib/core/table/paging";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import Pagination from "$lib/core/ui/Pagination.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import { TASK_COLUMNS } from "$lib/modules/tasks/columns";
   import { ALL_ASSIGNEES } from "$lib/modules/tasks/filters";
@@ -108,7 +110,7 @@
   );
 
   function setFilter(key: string, value: string) {
-    const url = new URL(page.url);
+    const url = resetPage(new URL(page.url));
     if (value) url.searchParams.set(key, value);
     else url.searchParams.delete(key);
     void goto(url, { keepFocus: true, noScroll: true });
@@ -447,6 +449,13 @@
   oncollapse={table.onCollapse}
   onsort={table.onSort}
   onresize={table.onResize}
+/>
+
+<Pagination
+  total={data.total}
+  page={data.paging.page}
+  limit={data.paging.limit}
+  onsize={table.onPageSize}
 />
 
 <ConfirmDialog

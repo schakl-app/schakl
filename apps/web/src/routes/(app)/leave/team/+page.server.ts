@@ -4,6 +4,7 @@ import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
+import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { LEAVE_TEAM_COLUMNS, LEAVE_TEAM_TABLE_ID } from "$lib/modules/leave/columns";
 // The employment editors (work schedule, contracts, recurring free days) are the same shared
@@ -43,15 +44,20 @@ export const load: PageServerLoad = async (event) => {
   const pref = readTablePref(prefs, LEAVE_TEAM_TABLE_ID);
   const resolved = resolveColumns(LEAVE_TEAM_COLUMNS, pref);
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
+  // Only the year table pages. The pending queue is a queue: it is meant to be emptied, and a
+  // second page of decisions waiting on you is a workload problem, not a paging one.
+  const paging = resolvePaging(event.url, pref);
 
   // Only the year/sort-dependent reads. The member names and the employment editors' data come
   // from the section layout, which does not rerun on a year switch or a sort click (#290).
   const [pending, yearRequests, groups] = await Promise.all([
     api.GET("/api/v1/leave/requests", {
-      params: { query: { all_users: true, status: "pending", limit: 100, offset: 0 } },
+      params: { query: { all_users: true, status: "pending", limit: 200, offset: 0 } },
     }),
     api.GET("/api/v1/leave/requests", {
-      params: { query: { all_users: true, year, limit: 200, offset: 0, sort } },
+      params: {
+        query: { all_users: true, year, limit: paging.limit, offset: paging.offset, sort },
+      },
     }),
     // The combined per-group balances for the whole roster (#282): the same expiry-aware figures
     // the employee sees on /leave, so the team table and the personal page can never disagree.
@@ -80,8 +86,8 @@ export const load: PageServerLoad = async (event) => {
     currentYear: currentYear(),
     pending: pendingItems,
     yearRequests: yearRequests.data?.items ?? [],
-    // Silent truncation reads as "covered everything": the page states N of M when it isn't.
     yearRequestsTotal: yearRequests.data?.total ?? 0,
+    paging,
     groups: groups.data ?? [],
     extraGroups,
     table: { pref, sort: sort ?? null, widths: resolved.widths },

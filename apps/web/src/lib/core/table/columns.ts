@@ -62,6 +62,12 @@ export interface TablePref {
   widths?: Record<string, number>;
   /** Keys of the collapsed row groups — a personal view option, like the columns (#38). */
   collapsed?: string[];
+  /**
+   * Rows per page. Personal and per list, for the same reason the column layout is: how much of
+   * a list you want at once is a property of you and that screen, not of the org. `undefined`
+   * means "never chosen" and falls back to the list's own default — see `paging.ts`.
+   */
+  page_size?: number;
 }
 
 export interface ResolvedTable<C> {
@@ -101,7 +107,9 @@ export function readTablePref(prefs: unknown, listId: string): TablePref {
       if (typeof value === "number" && Number.isFinite(value) && value > 0) widths[key] = value;
     }
   }
-  return { columns, sort, widths, collapsed };
+  const size = Number(pref.page_size);
+  const page_size = Number.isFinite(size) && size > 0 ? Math.floor(size) : undefined;
+  return { columns, sort, widths, collapsed, page_size };
 }
 
 /**

@@ -18,6 +18,7 @@ import { t } from "$lib/core/i18n";
 
 import type { ColumnMeta, ColumnSpec, TablePref } from "./columns";
 import { resolveColumns } from "./columns";
+import { resetPage } from "./paging";
 
 export interface TableLayoutInput<T> {
   /** Every column the list can show, custom fields included, in declaration order. */
@@ -78,6 +79,7 @@ export function createTableLayout<T>(input: TableLayoutInput<T>) {
     body.set("sort", pref.sort ?? "");
     body.set("widths", JSON.stringify(resolved.widths));
     body.set("collapsed", collapsed.join(","));
+    body.set("page_size", pref.page_size ? String(pref.page_size) : "");
 
     // `/api/v1/prefs` replaces a list's entry wholesale, so every field goes every time — a
     // partial write would erase the ones it left out.
@@ -123,10 +125,22 @@ export function createTableLayout<T>(input: TableLayoutInput<T>) {
       const url = new URL(page.url);
       if (next) url.searchParams.set("sort", next);
       else url.searchParams.delete("sort");
+      // A re-sort reorders the whole set, so page 4 of the old order is a different four hundred
+      // rows in the new one. Back to the first page (`paging.ts`).
+      resetPage(url);
       // The URL drives the fetch — server-side sort, shareable, and the back button works. The
       // saved preference only remembers it for next time.
       void goto(url, { keepFocus: true, noScroll: true });
       pref = { ...pref, sort: next };
+      void save();
+    },
+
+    /**
+     * Remember the chosen page size for next time. The navigation itself is `Pagination`'s —
+     * the URL is the current view, this is only its default (`paging.ts`).
+     */
+    onPageSize(size: number): void {
+      pref = { ...pref, page_size: size };
       void save();
     },
 

@@ -23,6 +23,7 @@
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import Pagination from "$lib/core/ui/Pagination.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import PartyPicker from "$lib/core/ui/PartyPicker.svelte";
   import ProviderQuickCreate from "$lib/core/ui/ProviderQuickCreate.svelte";
@@ -305,6 +306,13 @@
   empty={emptyState}
   onsort={table.onSort}
   onresize={table.onResize}
+/>
+
+<Pagination
+  total={data.total}
+  page={data.paging.page}
+  limit={data.paging.limit}
+  onsize={table.onPageSize}
 />
 
 {#if canWrite}

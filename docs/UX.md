@@ -242,6 +242,26 @@
     the rows you happen to hold sorts the wrong set. A header is clickable only when the API can
     order by that column (`sortKey`, not `sortable`) — a header that claims to sort and doesn't is
     worse than a quiet one. Derived and custom-field columns are honest about this.
+  - **Every list ends in a pager, and the pager is the address bar** (`core/ui/Pagination.svelte`,
+    docs/PERFORMANCE.md). A list is where the whole set lives, so it never shows a prefix of
+    itself: the bar states the honest range ("51–100 van 812"), offers **25 / 50 / 100 / 200** per
+    page, and appears only once there is more than one page — a pager over nine rows is
+    decoration. Three things it must keep being:
+    - **Links, not buttons.** `<a href="?page=3">` is what gives the back button, middle-click,
+      preload-on-hover and a page you can send someone. Opening a client from page 4 and coming
+      back to page 1 was the bug; the URL carrying the view is the fix, and SvelteKit restores
+      the scroll position on top of it.
+    - **Reset by every filter.** Search, a status pill, a client picker, a re-sort — each drops
+      `?page=` (`resetPage`), because page 7 of the old filter is usually nothing at all in the
+      new one, and an empty page reads as "the filter found nothing".
+    - **A saved size, a per-visit page.** How many rows you want is a personal preference and
+      rides in `prefs.tables.<list>.page_size` beside the column layout (UX Principle 6, never an
+      org setting). *Which* page you are on is not a preference at all — it belongs to the URL,
+      or two tabs would fight over one number.
+    On a phone the numbered pages give way to "Pagina 2 van 17" with prev/next: twelve tap
+    targets six pixels apart is not a control. And because a page is a slice, a **group heading
+    inside one counts the slice** — a sectioned list says so out loud rather than letting
+    "Acme (2)" read as the whole answer.
   - **Every sort is reachable from the Kolommen menu, not only from a header.** Below `sm` there
     *are* no headers, so a header-only sort is a sort mobile users don't have. The menu is the one
     surface both sizes share: each sortable column carries an ↕ that cycles ascending → descending →
@@ -785,8 +805,20 @@
 - Taking `.date()` of a UTC instant to name a local day. Amsterdam's midnight is 22:00 UTC the day
   *before* in summer, so a monthly budget reported its period as starting 30 June. Half the year the
   bug is invisible, which is why it is pinned on a fixed date rather than on `today`.
-- A totals row summed from `rows`. The page holds 200 of a longer set, so it prints the total *of
-  the page* — which looks exactly like the right answer. Totals come from the API.
+- A totals row summed from `rows`. The page holds one slice of a longer set, so it prints the
+  total *of the page* — which looks exactly like the right answer. Totals come from the API.
+- **A list that shows the first N and calls it the list.** Every index asked for 200 rows at
+  `offset: 0` and stopped, so a tenant who outgrew the cap got a prefix indistinguishable from
+  the whole answer, and row 201 was reachable only by guessing a narrow enough search. Two
+  screens had grown their own prev/next by hand; twelve had nothing. They all share one pager
+  now (`core/ui/Pagination.svelte`), and the reason it is shared is that the interesting parts —
+  the URL carrying the page so the back button works, every filter resetting it, the size saved
+  per user — are exactly the parts a hand-rolled copy leaves out.
+- **A filter applied in the browser.** The clients list narrowed `data.companies` by status in
+  the page. That was survivable only while the page *was* the list: against a paged list it
+  filters the fifty rows you happen to hold and reports a total counted over all of them. The
+  API already took `status` — the export was sending it. If an API cannot filter it, that is a
+  missing query parameter, not a licence to filter the slice.
 - **A flex or grid item without `min-w-0`.** Its `min-width` defaults to `auto`, so it is sized by
   its widest descendant instead of by the row. The shell's content column had no `min-w-0`, so one
   over-wide page did not scroll or clip — it *grew the shell*: `<body>` laid out at 716 px on a

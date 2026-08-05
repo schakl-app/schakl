@@ -13,12 +13,14 @@
   import { navLabel, pageTitle } from "$lib/core/title";
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
+  import { resetPage } from "$lib/core/table/paging";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import Pagination from "$lib/core/ui/Pagination.svelte";
   import PhoneInput from "$lib/core/ui/PhoneInput.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
@@ -52,7 +54,7 @@
   // Client filter (#154) — the tasks page's URL-param shape; the API applies it.
   const companyFilterItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
   function setFilter(key: string, value: string) {
-    const url = new URL(page.url);
+    const url = resetPage(new URL(page.url));
     if (value) url.searchParams.set(key, value);
     else url.searchParams.delete(key);
     void goto(url, { keepFocus: true, noScroll: true });
@@ -463,13 +465,11 @@
   </form>
 {/if}
 
-{#if data.contacts.length < data.total}
-  <!-- The list is one page of 100. Sectioned by client, "Acme (2)" above a client that has seven
-       contacts reads as the whole answer, so say what is actually on screen — a cap is reported,
-       never silent (docs/PERFORMANCE.md). -->
-  <p class="mb-3 text-sm text-amber-700 dark:text-amber-400">
-    {t("contacts.truncated", { shown: data.contacts.length, total: data.total })}
-  </p>
+{#if data.total > data.paging.limit}
+  <!-- Sectioned by client, "Acme (2)" above a client that has seven contacts reads as the whole
+       answer. The pager below says which slice this is, but the *group counts* still need saying
+       out loud — a cap is reported, never silent (docs/PERFORMANCE.md). -->
+  <p class="mb-3 text-sm text-text-muted">{t("contacts.groups_page_only")}</p>
 {/if}
 
 <DataTable
@@ -489,6 +489,13 @@
   empty={emptyState}
   onsort={table.onSort}
   onresize={table.onResize}
+/>
+
+<Pagination
+  total={data.total}
+  page={data.paging.page}
+  limit={data.paging.limit}
+  onsize={table.onPageSize}
 />
 
 <ConfirmDialog

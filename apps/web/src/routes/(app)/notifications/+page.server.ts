@@ -3,6 +3,7 @@ import { fail } from "@sveltejs/kit";
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
+import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import {
   asEntityType,
@@ -11,8 +12,6 @@ import {
 } from "$lib/modules/notifications/columns";
 
 import type { Actions, PageServerLoad } from "./$types";
-
-const PAGE_SIZE = 50;
 
 /**
  * One call: the inbox page. The unread total the bell shows is the layout's, not this page's —
@@ -26,13 +25,13 @@ export const load: PageServerLoad = async (event) => {
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
   const unreadOnly = event.url.searchParams.get("unread") === "1";
   const entityType = asEntityType(event.url.searchParams.get("entity_type"));
-  const offset = Math.max(0, Number(event.url.searchParams.get("offset") ?? 0) || 0);
+  const paging = resolvePaging(event.url, pref);
 
   const { data } = await apiFor(event).GET("/api/v1/notifications", {
     params: {
       query: {
-        limit: PAGE_SIZE,
-        offset,
+        limit: paging.limit,
+        offset: paging.offset,
         sort,
         unread: unreadOnly ? true : undefined,
         entity_type: entityType,
@@ -43,8 +42,7 @@ export const load: PageServerLoad = async (event) => {
   return {
     items: data?.items ?? [],
     total: data?.total ?? 0,
-    offset,
-    limit: PAGE_SIZE,
+    paging,
     unreadOnly,
     entityType: entityType ?? null,
     table: { pref, sort: sort ?? null, widths: resolved.widths },

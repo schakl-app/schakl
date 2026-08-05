@@ -14,6 +14,7 @@
   import { navLabel, pageTitle } from "$lib/core/title";
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
+  import { resetPage } from "$lib/core/table/paging";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Assignees from "$lib/core/ui/Assignees.svelte";
   import Button from "$lib/core/ui/Button.svelte";
@@ -21,6 +22,7 @@
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import HoursCell from "$lib/core/ui/HoursCell.svelte";
+  import Pagination from "$lib/core/ui/Pagination.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
   import { COMPANY_COLUMNS, HOURS_COLUMN } from "$lib/modules/companies/columns";
@@ -79,23 +81,17 @@
     reloadOn: [HOURS_COLUMN],
   });
 
-  const filtered = $derived(
-    data.statusFilter
-      ? data.companies.filter((c) => c.status === data.statusFilter)
-      : data.companies,
-  );
-
+  // Every filter here is the API's — a browser-side one narrows the page you happen to hold, not
+  // the list — and every one of them resets to page 1 (`paging.ts`).
   function setStatusFilter(status: string) {
-    const url = new URL(page.url);
+    const url = resetPage(new URL(page.url));
     if (status && status !== data.statusFilter) url.searchParams.set("status", status);
     else url.searchParams.delete("status");
     void goto(url, { keepFocus: true, noScroll: true });
   }
 
-  // Unlike the status pills, "my clients" is filtered server-side — the list is paginated, so a
-  // client-side filter would only ever narrow the page you happen to be on.
   function toggleMine() {
-    const url = new URL(page.url);
+    const url = resetPage(new URL(page.url));
     if (data.mine) url.searchParams.delete("mine");
     else url.searchParams.set("mine", "1");
     void goto(url, { keepFocus: true, noScroll: true });
@@ -332,7 +328,7 @@
 {/if}
 
 <DataTable
-  rows={filtered}
+  rows={data.companies}
   columns={table.columns}
   sort={table.sort}
   widths={table.widths}
@@ -344,6 +340,13 @@
   empty={emptyState}
   onsort={table.onSort}
   onresize={table.onResize}
+/>
+
+<Pagination
+  total={data.total}
+  page={data.paging.page}
+  limit={data.paging.limit}
+  onsize={table.onPageSize}
 />
 
 <ConfirmDialog

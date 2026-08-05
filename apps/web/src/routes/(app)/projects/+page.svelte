@@ -12,12 +12,14 @@
   import { navLabel, pageTitle } from "$lib/core/title";
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
+  import { resetPage } from "$lib/core/table/paging";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Assignees from "$lib/core/ui/Assignees.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import Pagination from "$lib/core/ui/Pagination.svelte";
   import HoursCell from "$lib/core/ui/HoursCell.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import { HOURS_COLUMN, PROJECT_COLUMNS } from "$lib/modules/projects/columns";
@@ -70,7 +72,7 @@
 
   // Filtered by the API — matching any assignee, not just the primary.
   function toggleMine() {
-    const url = new URL(page.url);
+    const url = resetPage(new URL(page.url));
     if (data.mine) url.searchParams.delete("mine");
     else url.searchParams.set("mine", "1");
     void goto(url, { keepFocus: true, noScroll: true });
@@ -79,7 +81,7 @@
   // Client filter (#154) — the tasks page's URL-param shape; the API applies it.
   const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
   function setFilter(key: string, value: string) {
-    const url = new URL(page.url);
+    const url = resetPage(new URL(page.url));
     if (value) url.searchParams.set(key, value);
     else url.searchParams.delete(key);
     void goto(url, { keepFocus: true, noScroll: true });
@@ -265,6 +267,13 @@
   empty={emptyState}
   onsort={table.onSort}
   onresize={table.onResize}
+/>
+
+<Pagination
+  total={data.total}
+  page={data.paging.page}
+  limit={data.paging.limit}
+  onsize={table.onPageSize}
 />
 
 <ConfirmDialog

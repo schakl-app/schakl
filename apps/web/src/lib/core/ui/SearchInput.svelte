@@ -5,6 +5,7 @@
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { resetPage } from "$lib/core/table/paging";
 
   let { placeholder = t("common.search") }: { placeholder?: string } = $props();
 
@@ -15,6 +16,9 @@
     const url = new URL(page.url);
     if (value.trim()) url.searchParams.set("q", value.trim());
     else url.searchParams.delete("q");
+    // A new search is a new set — page 4 of the old one would land on an empty page and read
+    // as "nothing found" (`paging.ts`).
+    resetPage(url);
     void goto(url, { keepFocus: true, noScroll: true });
   }
 

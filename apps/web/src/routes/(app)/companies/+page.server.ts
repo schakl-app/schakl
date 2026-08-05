@@ -5,6 +5,7 @@ import { apiErrorKey } from "$lib/core/errors";
 import { impexAction } from "$lib/core/impex/actions.server";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
+import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { COMPANIES_TABLE_ID, COMPANY_COLUMNS, HOURS_COLUMN } from "$lib/modules/companies/columns";
 
@@ -41,6 +42,11 @@ export const load: PageServerLoad = async (event) => {
   const q = event.url.searchParams.get("q") || undefined;
   // "My clients" is filtered by the API (any assignee, not just the primary), never in the page.
   const mine = event.url.searchParams.get("mine") === "1";
+  // So is the status pill. It used to narrow `data.companies` in the browser, which was survivable
+  // only while the page *was* the list; against a paged list it would filter the fifty rows you
+  // happen to hold and report a total counted over all of them. The export already sent `status`
+  // to the API, so the screen and its spreadsheet now agree by construction.
+  const status = event.url.searchParams.get("status") || undefined;
   const api = apiFor(event);
 
   // The saved column layout comes from the layout load, which does not rerun on filter or sort
@@ -52,18 +58,22 @@ export const load: PageServerLoad = async (event) => {
   const pref = readTablePref(parent.prefs, COMPANIES_TABLE_ID);
   const resolved = resolveColumns(COMPANY_COLUMNS, pref);
 
-  //   1. the sort, which the *server* applies — sorting a 200-row page of a longer list in the
-  //      browser sorts the wrong set. The URL wins over the saved default so a sorted list stays
+  //   1. the sort, which the *server* applies — sorting one page of a longer list in the browser
+  //      sorts the wrong set. The URL wins over the saved default so a sorted list stays
   //      shareable and the back button works.
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
   //   2. whether to pay for the budget roll-up at all. Hidden column, no aggregate (#24).
   const hours = resolved.columns.some((column) => column.key === HOURS_COLUMN);
+  //   3. the page size, whose saved default the URL likewise overrides (`paging.ts`).
+  const paging = resolvePaging(event.url, pref);
 
   // Only the URL-dependent read happens here. The custom-field definitions the table renders
   // its columns from, and the member names the assignee column needs, come from the section
   // layout — which does not rerun on filter or sort navigation (#290).
   const companiesRes = await api.GET("/api/v1/companies", {
-    params: { query: { limit: 200, offset: 0, q, mine, sort, hours } },
+    params: {
+      query: { limit: paging.limit, offset: paging.offset, q, mine, status, sort, hours },
+    },
   });
 
   const definitions = parent.definitions;
@@ -87,11 +97,12 @@ export const load: PageServerLoad = async (event) => {
   return {
     companies: companiesRes.data?.items ?? [],
     total: companiesRes.data?.total ?? 0,
+    paging,
     createForm,
     definitions,
     members,
     table: { pref, sort: sort ?? null, widths: resolved.widths },
-    statusFilter: event.url.searchParams.get("status") ?? "",
+    statusFilter: status ?? "",
     mine,
     locale: event.locals.locale,
   };

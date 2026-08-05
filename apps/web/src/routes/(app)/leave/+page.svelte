@@ -11,6 +11,7 @@
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import Pagination from "$lib/core/ui/Pagination.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import { labelDotClass } from "$lib/core/ui/colors";
   import { LEAVE_COLUMNS } from "$lib/modules/leave/columns";
@@ -386,13 +387,13 @@
   onsort={table.onSort}
   onresize={table.onResize}
 />
-{#if data.requestsTotal > data.requests.length}
-  <!-- A weekly free-day pattern alone is ~52 requests a year; silent truncation would read as
-       "this is everything". -->
-  <p class="mt-2 text-xs text-text-muted">
-    {t("leave.list.truncated", { shown: data.requests.length, total: data.requestsTotal })}
-  </p>
-{/if}
+
+<Pagination
+  total={data.requestsTotal}
+  page={data.paging.page}
+  limit={data.paging.limit}
+  onsize={table.onPageSize}
+/>
 
 <ConfirmDialog
   bind:open={bulkCancelOpen}

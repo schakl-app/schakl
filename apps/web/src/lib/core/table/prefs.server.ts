@@ -13,6 +13,7 @@ import type { RequestEvent } from "@sveltejs/kit";
 
 import { apiFor } from "$lib/core/session";
 import type { TablePref } from "$lib/core/table/columns";
+import { MAX_PAGE_SIZE } from "$lib/core/table/paging";
 
 export async function saveTablePref(
   event: RequestEvent,
@@ -51,5 +52,11 @@ export function parseTablePref(form: FormData): TablePref {
     .map((key) => key.trim())
     .filter(Boolean);
 
-  return { columns, sort: sort || null, widths, collapsed };
+  // Blank means "no choice made" — the list falls back to its own default. Storing a 0 or a NaN
+  // instead would be a saved preference for showing nothing.
+  const size = Number(String(form.get("page_size") ?? "").trim());
+  const page_size =
+    Number.isFinite(size) && size >= 1 ? Math.min(Math.floor(size), MAX_PAGE_SIZE) : undefined;
+
+  return { columns, sort: sort || null, widths, collapsed, page_size };
 }

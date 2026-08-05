@@ -10,6 +10,7 @@
   import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
+  import { resetPage } from "$lib/core/table/paging";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
@@ -17,6 +18,7 @@
   import AutoInvoiceModeField from "$lib/modules/invoicing/AutoInvoiceModeField.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import Pagination from "$lib/core/ui/Pagination.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import Markdown from "$lib/core/ui/Markdown.svelte";
@@ -126,7 +128,7 @@
   }
   // All filters ride URL params and the API applies them (#153) — the list is paginated.
   function setFilter(key: string, value: string) {
-    const url = new URL(page.url);
+    const url = resetPage(new URL(page.url));
     if (value) url.searchParams.set(key, value);
     else url.searchParams.delete(key);
     void goto(url, { keepFocus: true, noScroll: true });
@@ -384,7 +386,7 @@
     <button
       class="text-xs text-text-muted underline hover:text-text"
       onclick={() => {
-        const url = new URL(page.url);
+        const url = resetPage(new URL(page.url));
         url.searchParams.delete("type");
         url.searchParams.delete("status");
         url.searchParams.delete("company");
@@ -587,6 +589,13 @@
   selection={bulkBar}
   onsort={table.onSort}
   onresize={table.onResize}
+/>
+
+<Pagination
+  total={data.total}
+  page={data.paging.page}
+  limit={data.paging.limit}
+  onsize={table.onPageSize}
 />
 
 <ConfirmDialog

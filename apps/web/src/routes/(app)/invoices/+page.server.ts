@@ -4,6 +4,7 @@ import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
+import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { INVOICE_COLUMNS, INVOICES_TABLE_ID } from "$lib/modules/invoicing/columns";
 
@@ -20,22 +21,23 @@ export const load: PageServerLoad = async (event) => {
   const companyFilter = event.url.searchParams.get("company") ?? undefined;
   const overdue = event.url.searchParams.get("overdue") === "1";
   const q = event.url.searchParams.get("q") ?? undefined;
+  const paging = resolvePaging(event.url, pref);
 
   // Only the URL-dependent read; the tiles and the client picker come from the section layout,
   // which does not rerun on a filter or sort click (#290).
   const invoices = await api.GET("/api/v1/invoicing/invoices", {
     params: {
       query: {
-        limit: 200,
-        offset: 0,
+        limit: paging.limit,
+        offset: paging.offset,
         sort,
         status: statusFilter,
         company_id: companyFilter,
         overdue,
         q,
         // The index draws number, client, date, status and total — never a line. Loading
-        // every line of 200 invoices to derive tax groups nobody renders was the heaviest
-        // thing this response did (#290, docs/PERFORMANCE.md).
+        // every line of a whole page of invoices to derive tax groups nobody renders was the
+        // heaviest thing this response did (#290, docs/PERFORMANCE.md).
         lines: false,
       },
     },
@@ -44,6 +46,7 @@ export const load: PageServerLoad = async (event) => {
   return {
     invoices: invoices.data?.items ?? [],
     total: invoices.data?.total ?? 0,
+    paging,
     table: { pref, sort: sort ?? null, widths: resolved.widths },
     statusFilter: statusFilter ?? "",
     companyFilter: companyFilter ?? "",

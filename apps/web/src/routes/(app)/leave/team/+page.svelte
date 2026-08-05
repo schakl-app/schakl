@@ -14,6 +14,7 @@
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import Pagination from "$lib/core/ui/Pagination.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import { labelDotClass } from "$lib/core/ui/colors";
   import { LEAVE_TEAM_COLUMNS } from "$lib/modules/leave/columns";
@@ -627,16 +628,13 @@
   onsort={table.onSort}
   onresize={table.onResize}
 />
-{#if data.yearRequestsTotal > data.yearRequests.length}
-  <!-- The org's year can outgrow the fetch cap (a weekly free-day pattern alone is ~52 rows per
-       person); silent truncation would read as "this is everything". -->
-  <p class="mt-2 text-xs text-text-muted">
-    {t("leave.list.truncated", {
-      shown: data.yearRequests.length,
-      total: data.yearRequestsTotal,
-    })}
-  </p>
-{/if}
+
+<Pagination
+  total={data.yearRequestsTotal}
+  page={data.paging.page}
+  limit={data.paging.limit}
+  onsize={table.onPageSize}
+/>
 
 <ConfirmDialog
   bind:open={bulkRejectOpen}
