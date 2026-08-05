@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Google
+
+- **An email waiting for review no longer defaults to your own company.** Most agencies keep
+  themselves in their own client list — it is where their own domains, hosting and invoices
+  hang — with their staff and their `info@`/`administratie@` address as contact people on it.
+  Those records date from the day the system was set up, so on any thread with a colleague in
+  Cc they were matched first and the email was filed under the agency instead of the customer
+  who actually sent it. Every message in the approval queue arrived pre-filled with the wrong
+  client, to be corrected by hand. The customer is now looked for first: your own people and
+  your own company rank last, and among the rest the sender of an incoming message — or the
+  addressee of one you sent — counts for more than whoever was merely kept in Cc. Nothing to
+  configure: which company is yours is worked out from your own data. Mail purely between
+  colleagues, if you log it, still lands on your own company as before.
+
 ## v0.21.0 — 2026-08-05
 
 ### Invoicing

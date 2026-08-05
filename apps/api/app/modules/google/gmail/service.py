@@ -17,6 +17,7 @@ from __future__ import annotations
 import base64
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy import select, text
@@ -68,6 +69,7 @@ async def poll_connection(
                 await session.flush()
                 return 0
             excluded_label_id = await _excluded_label_id(client, connection)
+            internals = await _internals(session, org.id)
             logged = 0
             for message_id in message_ids:
                 try:
@@ -82,6 +84,7 @@ async def poll_connection(
                             client,
                             message_id,
                             excluded_label_id,
+                            internals,
                         )
                 except Exception as ingest_exc:  # noqa: BLE001 — a poison message must not wedge the mailbox
                     # A dead grant is the *connection's* problem: let the outer handler mark
@@ -172,6 +175,7 @@ async def _ingest_message(
     client,
     message_id: str,
     excluded_label_id: str | None,
+    internals: Internals,
 ) -> int:
     ctx = SystemContext(org=org, session=session)
     if await interactions_system.gmail_message_seen(ctx, connection.user_id, message_id):
@@ -205,10 +209,10 @@ async def _ingest_message(
     participants = matching.parse_participants(headers)
     if not participants:
         return 0
-    internal = matching.internal_only(participants, await _member_emails(session, org.id))
+    internal = matching.internal_only(participants, internals.member_emails)
     if internal and not settings_row.gmail_log_internal:
         return 0
-    matches = await _match_contacts(session, org.id, participants)
+    matches = await _match_contacts(session, org.id, participants, internals)
     if not matches and not internal:
         # External mail still needs a known contact; without the internal opt-in nothing
         # changes here — every newsletter and cold email stays out.
@@ -217,7 +221,13 @@ async def _ingest_message(
     inherited = (
         await interactions_system.thread_mappings(ctx, thread_id) if thread_id else None
     )
-    mappings = dict(inherited) if inherited else matching.resolve_mappings(matches)
+    mappings = (
+        dict(inherited)
+        if inherited
+        else matching.resolve_mappings(
+            matches, internal_company_ids=internals.company_ids
+        )
+    )
     pending = matching.decide_status(
         settings_row.gmail_approval_mode,
         settings_row.gmail_thread_followup,
@@ -311,14 +321,37 @@ async def _owner_name(session: AsyncSession, user_id: uuid.UUID) -> str | None:
     return row[0] or row[1]
 
 
-async def _member_emails(session: AsyncSession, org_id: uuid.UUID) -> set[str]:
-    """The *staff* addresses, for the colleague-chatter filter (``internal_only``).
+@dataclass(frozen=True)
+class Internals:
+    """Who counts as *us*, resolved once per poll rather than once per message.
+
+    Both halves answer the same question — "is this person the agency, or the client?" —
+    which the feed asks twice: to skip colleague-only chatter, and to rank the mapping (#305).
+    """
+
+    #: Staff addresses.
+    member_emails: frozenset[str]
+    #: Companies that are the agency itself rather than one of its clients.
+    company_ids: frozenset[uuid.UUID]
+
+
+async def _internals(session: AsyncSession, org_id: uuid.UUID) -> Internals:
+    """The staff addresses, and the companies they are the contacts of.
 
     A portal login (#193) is an ordinary membership whose user is a client's contact — so a
     naive all-memberships set makes every portal-invited client look like a colleague, and
     ``internal_only`` then silently drops their entire correspondence (polls succeed,
     ``logged:0`` forever). Portal users are excluded through the core seam; they keep
     matching as *contacts*, which is what they are.
+
+    The company half is **derived, never configured**: an agency that keeps its own company in
+    its own list — the ordinary thing to do, and what invoicing and its own domains want — has
+    staff on it as contacts, and no other company does. So "a company whose contact is a
+    colleague" identifies it without asking anyone to set a flag they would forget, and it
+    stays right when a second entity is added later. Nothing is hidden on the strength of it:
+    it only ranks a company below a genuine client (``resolve_mappings``), so the failure mode
+    of a staff member who really is a contact at a client is one email filed where a reviewer
+    would have filed it anyway.
     """
     rows = await session.execute(
         text(
@@ -329,40 +362,70 @@ async def _member_emails(session: AsyncSession, org_id: uuid.UUID) -> set[str]:
     )
     pairs = [(row[0], row[1]) for row in rows]
     portal = await portal_user_ids(session, org_id, {uid for uid, _ in pairs})
-    return {email for uid, email in pairs if uid not in portal}
+    member_emails = frozenset(email for uid, email in pairs if uid not in portal)
+    if not member_emails:
+        return Internals(member_emails=member_emails, company_ids=frozenset())
+    company_rows = await session.execute(
+        text(
+            "SELECT DISTINCT cc.company_id FROM company_contacts cc "
+            "JOIN contacts c ON c.id = cc.contact_id AND c.org_id = cc.org_id "
+            "WHERE cc.org_id = :oid AND lower(c.email) = ANY(:emails)"
+        ),
+        {"oid": org_id, "emails": sorted(member_emails)},
+    )
+    return Internals(
+        member_emails=member_emails,
+        company_ids=frozenset(row[0] for row in company_rows),
+    )
 
 
 async def _match_contacts(
-    session: AsyncSession, org_id: uuid.UUID, participants: list[dict[str, str]]
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    participants: list[dict[str, str]],
+    internals: Internals,
 ) -> list[matching.ContactMatch]:
-    """Participant addresses → contacts (+ their companies, oldest link first). Bare-table
-    lookups, never a contacts-module import (§6)."""
-    addresses = sorted({p["email"] for p in participants})
-    if not addresses:
+    """Participant addresses → contacts (+ their companies, oldest link first), each carrying
+    the header it was found on and whether it is a colleague, which is what ``resolve_mappings``
+    ranks by. Bare-table lookups, never a contacts-module import (§6)."""
+    # First occurrence wins: participants read From, To, Cc, so this is the most central header
+    # each address appears on.
+    roles: dict[str, str] = {}
+    for participant in participants:
+        roles.setdefault(participant["email"], participant["role"])
+    if not roles:
         return []
+    addresses = sorted(roles)
     contact_rows = await session.execute(
         text(
-            "SELECT id FROM contacts WHERE org_id = :oid AND lower(email) = ANY(:addrs) "
-            "ORDER BY created_at"
+            "SELECT id, lower(email) FROM contacts "
+            "WHERE org_id = :oid AND lower(email) = ANY(:addrs) ORDER BY created_at"
         ),
         {"oid": org_id, "addrs": addresses},
     )
-    matches: list[matching.ContactMatch] = []
-    for (contact_id,) in contact_rows:
-        company_rows = await session.execute(
-            text(
-                "SELECT company_id FROM company_contacts "
-                "WHERE org_id = :oid AND contact_id = :cid ORDER BY created_at"
-            ),
-            {"oid": org_id, "cid": contact_id},
+    found = [(row[0], row[1]) for row in contact_rows]
+    if not found:
+        return []
+    # One query for every match's companies — per-contact would be N+1 in the poll loop.
+    link_rows = await session.execute(
+        text(
+            "SELECT contact_id, company_id FROM company_contacts "
+            "WHERE org_id = :oid AND contact_id = ANY(:cids) ORDER BY created_at"
+        ),
+        {"oid": org_id, "cids": [contact_id for contact_id, _ in found]},
+    )
+    companies: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for contact_id, company_id in link_rows:
+        companies.setdefault(contact_id, []).append(company_id)
+    return [
+        matching.ContactMatch(
+            contact_id=contact_id,
+            company_ids=companies.get(contact_id, []),
+            role=roles.get(email, "to"),
+            is_staff=email in internals.member_emails,
         )
-        matches.append(
-            matching.ContactMatch(
-                contact_id=contact_id,
-                company_ids=[row[0] for row in company_rows],
-            )
-        )
-    return matches
+        for contact_id, email in found
+    ]
 
 
 # --------------------------------------------------------------------------- #

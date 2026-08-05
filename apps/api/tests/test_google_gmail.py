@@ -78,6 +78,67 @@ def test_mapping_resolution_and_status_decision() -> None:
     assert not matching.decide_status("auto_approve", "inherit_pending", inherited=False)
 
 
+def test_mapping_ranks_the_client_above_the_agency() -> None:
+    """#305: the agency is a company in its own list, so it matched like a client did.
+
+    Its own record is the older one — created at setup, long before this week's customer — so
+    "oldest link first" handed *every* email to the agency itself, and the reviewer remapped
+    each one by hand. A colleague in Cc is not what the mail is about.
+    """
+    colleague, house, client = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    ours, theirs = uuid.uuid4(), uuid.uuid4()
+    internal = frozenset({ours})
+
+    # Oldest first, as the query returns them: staff, then our own office address, then the
+    # customer who actually sent the thing.
+    matches = [
+        matching.ContactMatch(colleague, [ours], role="cc", is_staff=True),
+        matching.ContactMatch(house, [ours], role="to"),
+        matching.ContactMatch(client, [theirs], role="from"),
+    ]
+    resolved = matching.resolve_mappings(matches, internal_company_ids=internal)
+    assert resolved == {"contact_id": client, "company_id": theirs}
+
+    # Role breaks the tie between two outsiders: the sender outranks the Cc.
+    other = uuid.uuid4()
+    cc_first = [
+        matching.ContactMatch(other, [ours], role="cc", is_staff=True),
+        matching.ContactMatch(house, [theirs], role="cc"),
+        matching.ContactMatch(client, [theirs], role="from"),
+    ]
+    assert matching.resolve_mappings(cc_first, internal_company_ids=internal)[
+        "contact_id"
+    ] == client
+
+    # Ranked, never filtered: internal-only mail (gmail_log_internal) has nowhere else to go.
+    only_us = [matching.ContactMatch(colleague, [ours], role="from", is_staff=True)]
+    assert matching.resolve_mappings(only_us, internal_company_ids=internal) == {
+        "contact_id": colleague,
+        "company_id": ours,
+    }
+
+    # A colleague listed on a client's company too: the company list is ranked, not just the
+    # contacts that produced it.
+    both = [matching.ContactMatch(colleague, [ours, theirs], role="from", is_staff=True)]
+    assert (
+        matching.resolve_mappings(both, internal_company_ids=internal)["company_id"] == theirs
+    )
+
+    # A colleague carries the staff flag on their own, so a thread with one on it ranks right
+    # even before the company set is derived. Knowing the *company* is what covers the people
+    # on it who hold no login — ``office@``, ``administratie@`` — and it outranks the header:
+    # our own address sending, with the customer in Cc, is still the customer's thread.
+    house_only = [
+        matching.ContactMatch(house, [ours], role="from"),
+        matching.ContactMatch(client, [theirs], role="cc"),
+    ]
+    assert matching.resolve_mappings(house_only)["company_id"] == ours
+    assert (
+        matching.resolve_mappings(house_only, internal_company_ids=internal)["company_id"]
+        == theirs
+    )
+
+
 def test_body_extraction_prefers_plain_text() -> None:
     def _b64(value: str) -> str:
         return base64.urlsafe_b64encode(value.encode()).decode()
@@ -192,6 +253,7 @@ def _message(
     *,
     sender: str,
     to: str = "me@agency.nl",
+    cc: str | None = None,
     subject: str = "Offerte",
     labels: list[str] | None = None,
     thread: str = "thr-1",
@@ -204,6 +266,8 @@ def _message(
         {"name": "Subject", "value": subject},
         {"name": "Message-ID", "value": rfc822 or f"<{message_id}@mail>"},
     ]
+    if cc:
+        headers.append({"name": "Cc", "value": cc})
     payload: dict = {"headers": headers}
     if body_text is not None:
         payload["mimeType"] = "text/plain"
@@ -372,6 +436,69 @@ async def test_a_matched_email_lands_on_the_contact_roster(client_for, monkeypat
             await c.get(f"/api/v1/interactions?contact_id={contact['id']}", headers=headers)
         ).json()
         assert [row["id"] for row in filtered["items"]] == [listed[0]["id"]]
+
+
+async def test_poll_files_under_the_client_not_the_agency(client_for, monkeypatch) -> None:
+    """#305: an email in review defaulted to the agency's own company, every time.
+
+    An agency keeps itself in its own company list — that is where its own domains, hosting
+    and invoices hang — with its staff and its ``administratie@`` address as contacts on it.
+    Those records date from setup, so on any thread with a colleague in Cc they matched
+    *first*, and "oldest link first" filed the mail under the agency instead of the customer
+    who sent it. Seeded in exactly that order, because the order is the bug.
+    """
+    t = await make_tenant("gmail-house")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        house = (
+            await c.post("/api/v1/companies", json={"name": "Bureau zelf"}, headers=headers)
+        ).json()
+        # A colleague (a real member) and the office address, both contacts on our own company.
+        for first_name, email in (("Collega", t.user.email), ("Office", "office@agency.nl")):
+            await c.post(
+                "/api/v1/contacts",
+                json={
+                    "first_name": first_name,
+                    "email": email,
+                    "company_ids": [house["id"]],
+                },
+                headers=headers,
+            )
+        client_co = (
+            await c.post("/api/v1/companies", json={"name": "Client NL"}, headers=headers)
+        ).json()
+        klant = (
+            await c.post(
+                "/api/v1/contacts",
+                json={
+                    "first_name": "Klant",
+                    "email": "klant@client.nl",
+                    "company_ids": [client_co["id"]],
+                },
+                headers=headers,
+            )
+        ).json()
+
+    stub = _StubGmail(
+        history=["msg-1"],
+        messages={
+            "msg-1": _message(
+                "msg-1",
+                sender="Klant <klant@client.nl>",
+                to=t.user.email,
+                cc="office@agency.nl",
+            )
+        },
+        history_id="9200",
+    )
+    assert await _poll(t, connection_id, stub, monkeypatch) == 1
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        row = (await session.execute(select(Interaction))).scalar_one()
+        assert row.company_id == uuid.UUID(client_co["id"])
+        assert row.contact_id == uuid.UUID(klant["id"])
 
 
 async def test_portal_contact_mail_still_logs(client_for, monkeypatch) -> None:
