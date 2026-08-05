@@ -210,12 +210,17 @@ class MarketingSettingsRead(BaseModel):
     #: True when the deprecated ``SCHAKL_GOOGLE_ADS_DEVELOPER_TOKEN`` env var is set — the fallback
     #: still used when no token is stored, so the UI can say "using the environment value".
     env_ads_token_configured: bool = False
+    #: Whether the agency's SE Ranking API key is stored (#300). One key covers every client
+    #: project; the value itself is never returned, like the token above.
+    seranking_api_key_configured: bool = False
 
 
 class MarketingSettingsWrite(BaseModel):
     #: The Google Ads developer token. Empty/omitted keeps the stored one (the Google-client-secret
     #: rule); the API never plays it back.
     ads_developer_token: str | None = Field(default=None, max_length=1024)
+    #: The agency's SE Ranking API key (#300). Same write-only rule.
+    seranking_api_key: str | None = Field(default=None, max_length=1024)
 
 
 class DrilldownRowOut(BaseModel):

@@ -16,6 +16,8 @@ import json
 import logging
 import uuid
 from collections import defaultdict
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -74,8 +76,9 @@ from app.modules.marketing.schemas import (
     SourceMetrics,
     WebsiteRef,
 )
-from app.modules.marketing.sources import source_for
+from app.modules.marketing.sources import source_auth, source_for
 from app.modules.marketing.sources.base import (
+    AUTH_ORG_KEY,
     AVERAGED_METRICS,
     LOWER_IS_BETTER,
     METRICS_BY_SOURCE,
@@ -86,6 +89,23 @@ logger = logging.getLogger("schakl.marketing")
 
 #: Impression/session-weighted, not summed, when aggregating a period (see module doc).
 _WEIGHT_BY_METRIC = {"ctr": "impressions", "position": "impressions", "engagementRate": "sessions"}
+
+#: The picker's option list is cached briefly — the same 10 minutes the Google path uses.
+_ACCOUNTS_CACHE_SECONDS = 600
+
+
+def _org_key_error(exc: Exception, source: str) -> str:
+    """Turn an org-key source's HTTP failure into something an admin can act on.
+
+    A rejected key and a bad gateway are different problems with different fixes, and "er ging
+    iets mis" sends an admin to the wrong screen. Only the two that are actually diagnosable
+    get their own key; everything else keeps the generic one rather than guessing.
+    """
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    if status in (401, 403):
+        return f"marketing.{source}_key_rejected"
+    return "marketing.accounts_error"
+
 
 #: The connect-flow query flag that adds each source's scope (the picker's connect deep-link).
 _CONNECT_FLAG = {
@@ -181,12 +201,113 @@ async def resolve_ads_developer_token(session: AsyncSession, org_id: uuid.UUID) 
     return settings.google_ads_developer_token or None
 
 
+async def resolve_seranking_key(session: AsyncSession, org_id: uuid.UUID) -> str | None:
+    """The agency's SE Ranking API key for ``org_id`` (#300).
+
+    No env fallback, deliberately: the Ads token has one because it *was* env config before
+    #134 and existing installs had to keep working. SE Ranking never was, so introducing an
+    environment variable now would create the very thing CLAUDE.md §5 argues against — a
+    setting a self-hoster edits in a file rather than in Instellingen.
+    """
+    row = await session.scalar(
+        select(MarketingSettings).where(MarketingSettings.org_id == org_id)
+    )
+    if row is not None and row.seranking_api_key_encrypted:
+        try:
+            return decrypt(row.seranking_api_key_encrypted)
+        except ValueError:  # key rotated: the stored secret is unreadable, so it is not there
+            return None
+    return None
+
+
+@asynccontextmanager
+async def org_key_client(api_key: str) -> AsyncIterator[Any]:
+    """An HTTP client for an org-key source, with the credential already on it.
+
+    The mirror of ``google_client.acting_as`` for a source that has no OAuth: same shape at the
+    call site, so the service's three fetch paths read the same whichever kind of source they
+    are serving. Timeouts are generous because a site-audit report is a large document, and
+    bounded because a hung request inside a cron would hold a worker slot indefinitely.
+    """
+    import httpx
+
+    client = httpx.AsyncClient(
+        headers={
+            "Authorization": f"Token {api_key}",
+            "Accept": "application/json",
+        },
+        timeout=httpx.Timeout(30.0, connect=10.0),
+        follow_redirects=True,
+    )
+    try:
+        yield client
+    finally:
+        await client.aclose()
+
+
 class MarketingService:
     def __init__(self, ctx: RequestContext) -> None:
         self.ctx = ctx
 
     async def _resolve_ads_developer_token(self) -> str | None:
         return await resolve_ads_developer_token(self.ctx.session, self.ctx.org.id)
+
+    # --- org-key sources (#300) ------------------------------------------------------------ #
+    async def _org_key_accounts(
+        self, source: MarketingSource, adapter: Any
+    ) -> AccountsResponse:
+        """The picker for a source with no OAuth: one agency key, configured or not.
+
+        ``connected``/``has_scope`` are reported true because for this kind of source they are
+        not questions — there is no connection to make and no scope to grant. The only
+        prerequisite is the key, which rides ``configured`` exactly as the Ads developer token
+        already does, so the web teaches "not configured yet" from a state it can already draw.
+        """
+        key = await resolve_seranking_key(self.ctx.session, self.ctx.org.id)
+        if not key:
+            return AccountsResponse(
+                source=source, connected=True, has_scope=True, configured=False
+            )
+        cache_key = f"schakl:marketing:accounts:{self.ctx.org.id}:{source.value}"
+        redis = get_redis()
+        cached = await redis.get(cache_key)
+        if cached is not None:
+            return AccountsResponse(
+                source=source,
+                connected=True,
+                has_scope=True,
+                accounts=[AvailableAccount(**item) for item in json.loads(cached)],
+            )
+        try:
+            # The pool connection is handed back for the live listing, the same rule the
+            # Google path follows (docs/PERFORMANCE.md).
+            async with org_key_client(key) as client, self.ctx.release_db():
+                fetched = await adapter.list_accounts(client)
+        except Exception as exc:  # noqa: BLE001 — a live fetch failure teaches, never 500s
+            logger.warning("marketing %s account listing failed: %s", source.value, exc)
+            return AccountsResponse(
+                source=source,
+                connected=True,
+                has_scope=True,
+                error=_org_key_error(exc, source.value),
+            )
+        options = [
+            AvailableAccount(
+                external_id=option.external_id,
+                display_name=option.display_name,
+                config=option.config,
+                account_hint=option.account_hint,
+            )
+            for option in fetched
+        ]
+        await redis.set(
+            cache_key,
+            json.dumps([option.model_dump(mode="json") for option in options]),
+            ex=_ACCOUNTS_CACHE_SECONDS,
+        )
+        return AccountsResponse(
+            source=source, connected=True, has_scope=True, accounts=options
+        )
 
     # --- shared helpers ------------------------------------------------------------------- #
     async def _today(self) -> date:
@@ -581,6 +702,8 @@ class MarketingService:
     async def available_accounts(self, source: MarketingSource) -> AccountsResponse:
         self.ctx.require("marketing.link.manage")
         adapter = source_for(source.value)
+        if source_auth(source.value) == AUTH_ORG_KEY:
+            return await self._org_key_accounts(source, adapter)
         flag = _CONNECT_FLAG[source.value]
         connection = await google_client.connection_for(
             self.ctx.session, self.ctx.org.id, self.ctx.user.id
@@ -861,6 +984,69 @@ class MarketingService:
         return "ok" if has_data else "pending"
 
     # --- drill-downs (#133), live behind a Redis TTL -------------------------------------- #
+    async def _org_key_drilldown(
+        self,
+        link: MarketingLink,
+        adapter: Any,
+        kind: str,
+        start: date,
+        end: date,
+        deep_link: str,
+        source: MarketingSource,
+        src_layout: Any,
+    ) -> DrilldownResponse:
+        """The drill-down path for a source with no per-user connection (#300).
+
+        Cached and released exactly like the Google one; what differs is the unavailable
+        reason. "Reconnect your Google account" is meaningless advice for a missing agency
+        API key, and an admin who follows it ends up on a screen that cannot help them.
+        """
+        key = await resolve_seranking_key(self.ctx.session, self.ctx.org.id)
+        if not key:
+            return DrilldownResponse(
+                source=source, kind=kind, available=False,
+                unavailable_reason=f"marketing.{link.source}_not_configured",
+                deep_link=deep_link,
+            )
+        redis = get_redis()
+        cache_key = f"schakl:marketing:drill:{link.id}:{kind}:{start}:{end}"
+        cached = await redis.get(cache_key)
+        if cached is not None:
+            payload = json.loads(cached)
+            return DrilldownResponse(
+                source=source, kind=kind, columns=payload["columns"],
+                rows=[DrilldownRowOut(**row) for row in payload["rows"]],
+                deep_link=deep_link,
+            )
+        try:
+            async with org_key_client(key) as client, self.ctx.release_db():
+                table = await adapter.drilldown(
+                    client, link.external_id, kind, start, end, link.config or {}
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("marketing %s drilldown failed: %s", link.source, exc)
+            return DrilldownResponse(
+                source=source, kind=kind, available=False,
+                unavailable_reason=_org_key_error(exc, link.source), deep_link=deep_link,
+            )
+        rows = [
+            DrilldownRowOut(label=row.label, href=row.href, metrics=row.metrics)
+            for row in table.rows
+        ]
+        await redis.set(
+            cache_key,
+            json.dumps(
+                {
+                    "columns": table.columns,
+                    "rows": [row.model_dump(mode="json") for row in rows],
+                }
+            ),
+            ex=_DRILLDOWN_TTL,
+        )
+        return DrilldownResponse(
+            source=source, kind=kind, columns=table.columns, rows=rows, deep_link=deep_link
+        )
+
     async def drilldown(
         self, company_id: uuid.UUID, link_id: uuid.UUID, kind: str, range_days: int
     ) -> DrilldownResponse:
@@ -884,6 +1070,11 @@ class MarketingService:
         start = end - timedelta(days=range_days - 1)
         deep_link = adapter.deep_link(link.external_id, link.config or {})
         source = MarketingSource(link.source)
+
+        if source_auth(link.source) == AUTH_ORG_KEY:
+            return await self._org_key_drilldown(
+                link, adapter, kind, start, end, deep_link, source, src_layout
+            )
 
         connection = (
             await self.ctx.session.get(GoogleConnection, link.connection_id)
@@ -1204,33 +1395,50 @@ class MarketingSettingsService:
         return MarketingSettingsRead(
             ads_developer_token_configured=bool(row and row.ads_developer_token_encrypted),
             env_ads_token_configured=bool(settings.google_ads_developer_token),
+            seranking_api_key_configured=bool(row and row.seranking_api_key_encrypted),
         )
 
     async def get(self) -> MarketingSettingsRead:
         return self._read(await self._row())
 
+    @staticmethod
+    def _rotated(stored: str | None, submitted: str | None) -> str | None:
+        """The ciphertext to store for a write-only secret.
+
+        An empty submission keeps the stored one, and a resent *identical* value is not a
+        change — Fernet is randomised, so re-encrypting on every save would rewrite the column
+        each time an admin pressed Save on an unrelated field. The Google-client-secret rule,
+        now shared by both secrets on this row rather than written out twice (#300).
+        """
+        if not submitted:
+            return stored
+        current: str | None = None
+        if stored:
+            try:
+                current = decrypt(stored)
+            except ValueError:  # rotated key: the stored secret is dead anyway
+                current = None
+        return stored if current == submitted else encrypt(submitted)
+
     async def save(self, data: MarketingSettingsWrite) -> MarketingSettingsRead:
         self.ctx.require("marketing.link.manage")
         row = await self._row()
-        # An empty token keeps the stored one; a resent identical token is not a change (Fernet
-        # would otherwise re-encrypt on every save) — the Google-client-secret rule.
-        token_encrypted = row.ads_developer_token_encrypted if row else None
-        if data.ads_developer_token:
-            stored_plain: str | None = None
-            if token_encrypted:
-                try:
-                    stored_plain = decrypt(token_encrypted)
-                except ValueError:  # rotated key: the stored token is dead anyway
-                    stored_plain = None
-            if stored_plain != data.ads_developer_token:
-                token_encrypted = encrypt(data.ads_developer_token)
+        ads = self._rotated(
+            row.ads_developer_token_encrypted if row else None, data.ads_developer_token
+        )
+        seranking = self._rotated(
+            row.seranking_api_key_encrypted if row else None, data.seranking_api_key
+        )
         if row is None:
             row = MarketingSettings(
-                org_id=self.ctx.org.id, ads_developer_token_encrypted=token_encrypted
+                org_id=self.ctx.org.id,
+                ads_developer_token_encrypted=ads,
+                seranking_api_key_encrypted=seranking,
             )
             self.ctx.session.add(row)
         else:
-            row.ads_developer_token_encrypted = token_encrypted
+            row.ads_developer_token_encrypted = ads
+            row.seranking_api_key_encrypted = seranking
         await self.ctx.session.flush()
         return self._read(row)
 
@@ -1246,6 +1454,9 @@ async def sync_link_range(
     link but never raises, so one broken link never stops the others' sync.
     """
     adapter = source_for(link.source)
+    if source_auth(link.source) == AUTH_ORG_KEY:
+        await _sync_org_key_link(session, org, link, adapter, start, end)
+        return
     if link.connection_id is None:
         link.last_error = "errors.google_not_connected"
         return
@@ -1287,6 +1498,39 @@ async def sync_link_range(
         link.last_error = _failure_key(detail, str(detail or exc)[:500], source=link.source)
         return
 
+    await _upsert_daily(session, link, daily)
+    link.last_error = None
+    link.last_synced_at = datetime.now(UTC)
+
+
+async def _sync_org_key_link(
+    session: Any,
+    org: Any,
+    link: MarketingLink,
+    adapter: Any,
+    start: date,
+    end: date,
+) -> None:
+    """Nightly sync for an org-key source (#300).
+
+    Same contract as the Google path and for the same reason: it swallows its own errors and
+    records them on the link, so one client's broken SE Ranking project never stops the other
+    clients' sync. A missing key is a *configuration* state, not an error — it is what an
+    install that has not set one up yet looks like every night, and it must not fill the log.
+    """
+    key = await resolve_seranking_key(session, org.id)
+    if not key:
+        link.last_error = f"marketing.{link.source}_not_configured"
+        return
+    try:
+        async with org_key_client(key) as client:
+            daily = await adapter.fetch_daily(
+                client, link.external_id, start, end, link.config or {}
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("marketing %s sync failed for link %s: %s", link.source, link.id, exc)
+        link.last_error = _org_key_error(exc, link.source)
+        return
     await _upsert_daily(session, link, daily)
     link.last_error = None
     link.last_synced_at = datetime.now(UTC)
