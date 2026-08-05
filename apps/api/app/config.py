@@ -86,6 +86,13 @@ class Settings(BaseSettings):
     storage_s3_key_prefix: str = ""
     # Path-style addressing is MinIO-safe and Hetzner supports both; default on.
     storage_s3_force_path_style: bool = True
+    # De-duplication maintenance (docs/STORAGE.md). The fold pass is bounded per org per run so
+    # an instance with a large backlog converges over a few nights instead of hammering the
+    # backend in one go; the grace window is how long an unreferenced blob is kept before its
+    # bytes are reclaimed, which is also the window in which restoring a mistaken delete is
+    # still a row insert rather than a restore from backup.
+    storage_fold_batch: int = 500
+    storage_blob_grace_hours: int = 24
     # Upload guardrails: bytes, and an allow-list of content types (images, pdf, plain text,
     # archives, office docs — the practical attachment set; extend per deployment via env).
     upload_max_bytes: int = 10 * 1024 * 1024

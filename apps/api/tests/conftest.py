@@ -75,7 +75,7 @@ _DOMAIN_TABLES = (
     "time_entry_drafts, time_entries, time_entry_types, tasks, projects, contacts, contact_types, "
     "custom_field_definitions, "
     "membership_company_groups, company_group_members, company_groups, hr_documents, "
-    "files, activity_log, dashboard_prefs, nav_prefs, user_prefs, companies, "
+    "files, file_blobs, activity_log, dashboard_prefs, nav_prefs, user_prefs, companies, "
     "api_keys, service_accounts, "
     "email_settings, org_email_templates, org_auth_settings, org_sso_provisions, "
     "role_audit_log, membership_roles, role_permissions, roles, memberships, org_settings, "

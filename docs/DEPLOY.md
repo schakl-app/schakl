@@ -181,6 +181,12 @@ volume **`storage-data`**, mounted into `api` and `worker` at `SCHAKL_STORAGE_PA
 - **Limits are instance config:** `SCHAKL_UPLOAD_MAX_BYTES` (default 10 MB) and
   `SCHAKL_UPLOAD_ALLOWED_TYPES` (a JSON list; defaults to images, PDF, text, zip and office
   documents). The API refuses anything outside them with `413`/`422`.
+- **Identical bytes are stored once, per org** — see `docs/STORAGE.md` for the model. Two
+  consequences for operators: deleting a file no longer frees space immediately (a nightly
+  cron reclaims it after `SCHAKL_STORAGE_BLOB_GRACE_HOURS`, default 24), and existing
+  duplicates are folded in batches of `SCHAKL_STORAGE_FOLD_BATCH` (default 500) per org per
+  night, so a large instance reclaims its backlog over several days rather than at upgrade.
+  Both are `worker` settings; the cron runs at 03:15 UTC.
 
 ### S3-compatible object storage (issue #190, off by default)
 

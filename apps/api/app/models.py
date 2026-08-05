@@ -26,7 +26,7 @@ from app.core.permissions.models import (  # noqa: F401
     RolePermission,
 )
 from app.core.providers.models import Provider  # noqa: F401
-from app.core.storage.models import StoredFile  # noqa: F401
+from app.core.storage.models import FileBlob, StoredFile  # noqa: F401
 from app.db import Base  # noqa: F401
 
 for _name in settings.enabled_modules:

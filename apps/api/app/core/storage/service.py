@@ -1,4 +1,13 @@
-"""Tenant-scoped file service (issue #123). All DB access via the org-scoped repository."""
+"""Tenant-scoped file service (issue #123). All DB access via the org-scoped repository.
+
+``write_file`` / ``drop_file`` are module-level on purpose. Three surfaces store bytes for a
+person — the generic upload here, a client's logo (``companies``) and an HR dossier document
+(``hr``) — and they cannot all go through :class:`FileService`, because each is gated on *its
+own* permission rather than on ``files.file.write``. Before de-duplication that cost three
+copies of the same six lines; now those lines carry a rule that is silently wrong if one copy
+forgets it (**a shared blob's bytes are not one row's to delete**), so there is one copy and
+the permission check stays with the caller who owns it.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +18,7 @@ from typing import BinaryIO
 
 from app.config import settings
 from app.core.events import emit
+from app.core.storage import blobs
 from app.core.storage.backend import StorageUnavailableError, get_storage, storage_for
 from app.core.storage.models import StoredFile
 from app.core.tenancy import RequestContext
@@ -21,6 +31,110 @@ from app.errors import AppError
 PUBLIC_ENTITY_TYPES = frozenset({"branding"})
 
 logger = logging.getLogger("schakl.storage")
+
+
+def check_upload(content_type: str, size_bytes: int) -> None:
+    """The instance guardrails every stored-file surface applies, in one place."""
+    if content_type not in settings.upload_allowed_types:
+        raise AppError(
+            "validation",
+            "errors.upload_type",
+            status_code=422,
+            fields={"file": "errors.upload_type"},
+        )
+    if size_bytes > settings.upload_max_bytes:
+        raise AppError(
+            "validation",
+            "errors.upload_too_large",
+            status_code=413,
+            fields={"file": "errors.upload_too_large"},
+        )
+
+
+async def write_file(
+    ctx: RequestContext,
+    *,
+    filename: str,
+    content_type: str,
+    stream: BinaryIO,
+    entity_type: str | None = None,
+    entity_id: uuid.UUID | None = None,
+) -> StoredFile:
+    """Store a person's upload, de-duplicated, and return its row.
+
+    Authorization belongs to the caller: this is reached from three differently-gated routes
+    and enforces none of them. The instance guardrails (allowed type, size ceiling) *are*
+    enforced here, against the **measured** size — a multipart ``Content-Length`` is the
+    client's claim about its own upload.
+    """
+    digest, measured = await blobs.digest_stream(stream)
+    check_upload(content_type, measured)
+    blob = await blobs.reserve(ctx.session, ctx.org.id, sha256=digest, size_bytes=measured)
+    if blob.needs_bytes:
+        # Blocking IO off the event loop; the row only exists once the bytes do. An S3 put is
+        # an external HTTP call, so it must not pin the request's pooled DB connection
+        # (docs/PERFORMANCE.md) — release it for the duration; local disk writes are fast and
+        # keep the plain path. A de-duplication hit skips this block entirely, which on S3
+        # saves the upload round trip as well as the object.
+        try:
+            if settings.storage_backend == "s3":
+                async with ctx.release_db():
+                    await asyncio.to_thread(get_storage().put, blob.storage_key, stream)
+            else:
+                await asyncio.to_thread(get_storage().put, blob.storage_key, stream)
+        except Exception:
+            # ``release_db`` commits, so the reservation may already be durable: drop it
+            # rather than leave a blob the next write de-duplicates onto and finds empty.
+            await blobs.release(ctx.session, blob.id)
+            raise
+    return await ctx.repo(StoredFile).create(
+        id=uuid.uuid4(),
+        backend=blob.backend,
+        storage_key=blob.storage_key,
+        blob_id=blob.id,
+        filename=filename[:255],
+        content_type=content_type,
+        size_bytes=measured,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        created_by_user_id=ctx.user.id,
+    )
+
+
+async def drop_file(ctx: RequestContext, stored: StoredFile) -> None:
+    """Remove a file row, and its bytes only if this row is the only thing that could own them.
+
+    A **shared** blob's bytes are not this row's to delete: another file may hold the same
+    content, and only a whole-table view can tell. So the row goes, the bytes stay, and the
+    storage maintenance cron (``jobs.py``) reclaims them once nothing references the blob —
+    which also means deleting a file makes no external call on the request path at all.
+
+    A pre-de-duplication row (``blob_id IS NULL``) owns its object outright and keeps the
+    original behaviour. Bytes go after the row: a failed row delete keeps the file consistent,
+    while a dangling object is merely orphaned space. Deletes dispatch on the row's own backend
+    (#190) — a pre-S3 local row keeps deleting from the volume — and an S3 delete, an external
+    call, releases the DB connection for the duration. An unreachable backend must not block
+    the row's removal: the object is orphaned space, not a broken tenant.
+    """
+    file_id, backend_name, key = stored.id, stored.backend, stored.storage_key
+    shared = stored.blob_id is not None
+    await ctx.repo(StoredFile).delete(stored)
+    if shared:
+        return
+    try:
+        backend = storage_for(backend_name)
+    except StorageUnavailableError:
+        logger.warning(
+            "deleting file row %s without its bytes: backend=%s is not configured",
+            file_id,
+            backend_name,
+        )
+        return
+    if backend_name == "s3":
+        async with ctx.release_db():
+            await asyncio.to_thread(backend.delete, key)
+    else:
+        await asyncio.to_thread(backend.delete, key)
 
 
 class FileService:
@@ -48,41 +162,16 @@ class FileService:
                     status_code=422,
                     fields={"file": "errors.upload_type"},
                 )
-        if content_type not in settings.upload_allowed_types:
-            raise AppError(
-                "validation",
-                "errors.upload_type",
-                status_code=422,
-                fields={"file": "errors.upload_type"},
-            )
-        if size_bytes > settings.upload_max_bytes:
-            raise AppError(
-                "validation",
-                "errors.upload_too_large",
-                status_code=413,
-                fields={"file": "errors.upload_too_large"},
-            )
-        file_id = uuid.uuid4()
-        key = f"{self.ctx.org.id}/{file_id}"
-        # Blocking IO off the event loop; the row only exists once the bytes do. An S3 put is
-        # an external HTTP call, so it must not pin the request's pooled DB connection
-        # (docs/PERFORMANCE.md) — release it for the duration; local disk writes are fast and
-        # keep the plain path.
-        if settings.storage_backend == "s3":
-            async with self.ctx.release_db():
-                await asyncio.to_thread(get_storage().put, key, stream)
-        else:
-            await asyncio.to_thread(get_storage().put, key, stream)
-        stored = await self.repo.create(
-            id=file_id,
-            backend=settings.storage_backend,
-            storage_key=key,
-            filename=filename[:255],
+        # Cheap refusal on the caller's claimed size before the stream is read at all; the
+        # authoritative check is on the measured size, inside ``write_file``.
+        check_upload(content_type, size_bytes)
+        stored = await write_file(
+            self.ctx,
+            filename=filename,
             content_type=content_type,
-            size_bytes=size_bytes,
+            stream=stream,
             entity_type=entity_type,
             entity_id=entity_id,
-            created_by_user_id=self.ctx.user.id,
         )
         # Modules react through the bus (§6): the owning module validates the target exists
         # and writes its own activity line — core storage knows nothing about tasks/projects.
@@ -101,27 +190,7 @@ class FileService:
             raise AppError("forbidden", "errors.forbidden", status_code=403)
         payload = self._event_payload(stored, "removed")
         entity_type, entity_id = stored.entity_type, stored.entity_id
-        backend_name = stored.backend
-        await self.repo.delete(stored)
-        # Bytes go after the row: a failed row delete keeps the file consistent, while a
-        # dangling blob is merely orphaned space. Deletes dispatch on the row's own backend
-        # (#190) — a pre-S3 local row keeps deleting from the volume — and an S3 delete, an
-        # external call, releases the DB connection for the duration. An unreachable backend
-        # must not block the row's removal: the blob is orphaned space, not a broken tenant.
-        try:
-            backend = storage_for(backend_name)
-        except StorageUnavailableError:
-            logger.warning(
-                "deleting file row %s without its bytes: backend=%s is not configured",
-                payload["file_id"],
-                backend_name,
-            )
-        else:
-            if backend_name == "s3":
-                async with self.ctx.release_db():
-                    await asyncio.to_thread(backend.delete, payload["storage_key"])
-            else:
-                await asyncio.to_thread(backend.delete, payload["storage_key"])
+        await drop_file(self.ctx, stored)
         if entity_type and entity_id:
             await emit("file.removed", self.ctx, payload)
 
