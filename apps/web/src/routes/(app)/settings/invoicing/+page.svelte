@@ -551,7 +551,7 @@
           name="default_hourly_rate"
           type="number"
           min="0"
-          step="0.01"
+          step="any"
           value={data.settings?.default_hourly_rate ?? ""}
           class={inputClass}
         />
@@ -693,7 +693,7 @@
             type="number"
             min="0"
             max="100"
-            step="0.01"
+            step="any"
             required
             value={editingRate ? Number(editingRate.rate) : ""}
             class={inputClass}
@@ -863,7 +863,7 @@
             id="product-price"
             name="unit_price"
             type="number"
-            step="0.01"
+            step="any"
             min="0"
             required
             value={editingProduct ? Number(editingProduct.unit_price) : ""}

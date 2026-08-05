@@ -351,14 +351,14 @@
               <input
                 class="{cellClass} text-right"
                 type="number"
-                step="0.01"
+                step="any"
                 aria-label={t("invoicing.line.quantity")}
                 bind:value={line.quantity}
               />
               <input
                 class="{cellClass} text-right"
                 type="number"
-                step="0.01"
+                step="any"
                 aria-label={t("invoicing.line.unit_price")}
                 bind:value={line.unit_price}
               />

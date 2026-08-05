@@ -525,7 +525,7 @@
           id="pay-amount"
           name="amount"
           type="number"
-          step="0.01"
+          step="any"
           required
           value={invoice.outstanding}
           class={inputClass}
