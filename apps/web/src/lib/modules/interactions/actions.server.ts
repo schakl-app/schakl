@@ -135,7 +135,8 @@ export const interactionActions = {
       body: {
         kind: String(form.get("kind") ?? "note"),
         occurred_at: occurred,
-        subject: String(form.get("subject") ?? "").trim(),
+        // Optional: an empty field is `null`, not `""` — the row is then titled by its kind.
+        subject: String(form.get("subject") ?? "").trim() || null,
         body_text: String(form.get("body_text") ?? "").trim() || null,
         direction: String(form.get("direction") ?? "none") as "none",
         ...(logTime ? { log_time: logTime } : {}),
@@ -219,7 +220,9 @@ export const interactionActions = {
       body: {
         kind: String(form.get("kind") ?? "note"),
         ...(occurred ? { occurred_at: occurred } : {}),
-        subject: String(form.get("subject") ?? "").trim(),
+        // Emptied on purpose clears it — the form always renders this field, so a blank one
+        // is a decision, unlike the conditionally-rendered fields below.
+        subject: String(form.get("subject") ?? "").trim() || null,
         // Only fields the form actually rendered are sent (the API's PATCH is
         // `exclude_unset`): editing an uploaded email (#262) offers neither the note editor
         // nor the direction select, and an absent field must leave the received message

@@ -26,13 +26,24 @@ from app.core.auth.models import User
 from app.core.directory import ids_by_email, visible_ids
 from app.core.events import emit
 from app.core.models import Membership
-from app.core.richtext import extract_contact_mention_ids, extract_mention_ids, sanitize_markdown
+from app.core.richtext import (
+    extract_contact_mention_ids,
+    extract_mention_ids,
+    markdown_excerpt,
+    sanitize_markdown,
+)
 from app.core.sorting import apply_sort, user_sort_name
 from app.core.storage.service import FileService
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
 from app.errors import AppError
-from app.modules.interactions.eml import EmlAttachment, EmlParseError, looks_like_eml, parse_eml
+from app.modules.interactions.eml import (
+    SNIPPET_CHARS,
+    EmlAttachment,
+    EmlParseError,
+    looks_like_eml,
+    parse_eml,
+)
 from app.modules.interactions.models import (
     DEFAULT_KINDS,
     ENTITY_TYPE,
@@ -89,6 +100,11 @@ _LINK_TABLES = {
 #: Must match ``notifications.events.INTERACTION_MENTIONED`` (#151) — a string on the bus,
 #: like the gmail feed's ``PENDING_EVENT``, never a cross-module import (CLAUDE.md §6).
 MENTIONED_EVENT = "interactions.mentioned"
+
+#: How much of an untitled row stands in for its subject where one line quotes it — a trail
+#: entry, a bell notification. Shorter than the timeline's ``SNIPPET_CHARS``: those read on a
+#: row of their own, these are quoted mid-sentence after somebody's name.
+LINE_TEASER_CHARS = 80
 
 # A lightweight table ref, like ``_LINK_TABLES``' raw SQL — never the contacts module's
 # internals (CLAUDE.md §6). Only what the sort expression touches.
@@ -467,7 +483,9 @@ class InteractionService:
             kind=data.kind,
             status=InteractionStatus.LOGGED.value,
             occurred_at=await self._as_instant(data.occurred_at),
-            subject=data.subject.strip(),
+            # Blank is ``NULL``, never ``""`` — the column is nullable and every reader falls
+            # back to the kind's label, which an empty string would defeat.
+            subject=(data.subject or "").strip() or None,
             body_text=body,
             direction=data.direction.value,
             owner_user_id=user.id,
@@ -511,7 +529,9 @@ class InteractionService:
             company_id=row.company_id,
             project_id=row.project_id,
             task_id=row.task_id,
-            description=row.subject,
+            # A subject is optional (schemas.py), so the notes stand in for it: a timesheet row
+            # reading "Gebeld over de verlenging…" beats a blank one on a call nobody titled.
+            description=row.subject or markdown_excerpt(row.body_text, SNIPPET_CHARS),
             entry_type_key=entry_type_key,
             interaction_id=row.id,
         )
@@ -711,8 +731,9 @@ class InteractionService:
         }
         if values.get("direction") is not None:
             values["direction"] = values["direction"].value
-        if "subject" in values and values["subject"]:
-            values["subject"] = values["subject"].strip()
+        if "subject" in values:
+            # Sent-and-blank clears it (schemas.py); an absent key never reaches here at all.
+            values["subject"] = (values["subject"] or "").strip() or None
         if "participants" in sent:
             values["participants"] = [p.model_dump() for p in data.participants or []]
         if values.get("occurred_at") is not None:
@@ -1196,7 +1217,16 @@ class InteractionService:
 
     # --- helpers ---------------------------------------------------------------- #
     def _host_payload(self, row: Interaction) -> dict[str, Any]:
-        return {"interaction_id": str(row.id), "kind": row.kind, "subject": row.subject}
+        # The host's trail quotes the subject (`activity.action.interaction.logged`), so an
+        # untitled row falls back to the source's snippet, then to its own opening words —
+        # anything but a pair of empty quotes on the company's activity feed.
+        return {
+            "interaction_id": str(row.id),
+            "kind": row.kind,
+            "subject": row.subject
+            or row.snippet
+            or markdown_excerpt(row.body_text, LINE_TEASER_CHARS),
+        }
 
     async def _record_on_hosts(
         self, row: Interaction, action: str, *, contact_ids: list[uuid.UUID] | None = None
@@ -1302,7 +1332,9 @@ class InteractionService:
             self.ctx,
             {
                 "interaction_id": row.id,
-                "subject": row.subject,
+                # The bell line quotes this (`notifications.event.interactions.mentioned`), so
+                # an untitled note falls back to its own opening words rather than to “”.
+                "subject": row.subject or markdown_excerpt(row.body_text, LINE_TEASER_CHARS),
                 # Link targets for the notification (format.ts): the host the note hangs on.
                 "task_id": row.task_id,
                 "project_id": row.project_id,
@@ -1597,7 +1629,16 @@ class InteractionService:
             "status": row.status,
             "occurred_at": row.occurred_at,
             "subject": row.subject,
-            "snippet": row.snippet,
+            # A row we wrote has no ``snippet`` column to read: only a *source* hands us one
+            # (Gmail's own, the ``.eml`` parser's), so a hand-logged call or note carried its
+            # text in ``body_text`` and previewed as nothing at all — the timeline drew a title
+            # and a timestamp over an empty space where the words were. The stored column keeps
+            # meaning "the preview the source gave us"; the field means "the teaser to show",
+            # and for our own markdown that is derived here. Deliberately not written on save:
+            # derived, every row that already exists gains its preview without a backfill, and
+            # an edited note can never leave a stale teaser behind. Costs nothing extra — the
+            # list already selects the whole row, and ``with_body`` only blanks the payload.
+            "snippet": row.snippet or markdown_excerpt(row.body_text, SNIPPET_CHARS),
             "body_text": row.body_text if with_body else None,
             "direction": row.direction,
             "company_id": row.company_id,

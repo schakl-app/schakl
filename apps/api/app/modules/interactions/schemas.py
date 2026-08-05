@@ -154,7 +154,12 @@ class InteractionCreate(BaseModel):
     #: Validated by the service against the org's active kinds; ``email`` is never manual.
     kind: str = Field(min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
     occurred_at: datetime
-    subject: str = Field(..., min_length=1, max_length=500)
+    #: Optional, like the column and like every other source's rows. A logged phone call is
+    #: titled by what it *is* — a gmail or ``.eml`` row often arrives without a Subject header,
+    #: and every surface already falls back to the kind's own label. Demanding one here made a
+    #: caller invent "Telefoongesprek" before they could write down what was said. Blank is
+    #: stored as ``NULL``, never as an empty string.
+    subject: str | None = Field(None, max_length=500)
     body_text: str | None = None
     direction: InteractionDirection = InteractionDirection.NONE
     company_id: uuid.UUID | None = None
@@ -170,7 +175,10 @@ class InteractionCreate(BaseModel):
 class InteractionUpdate(BaseModel):
     kind: str | None = Field(None, min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
     occurred_at: datetime | None = None
-    subject: str | None = Field(None, min_length=1, max_length=500)
+    #: Sent blank (or ``null``) clears it — an edit may take a subject off a row as readily as
+    #: a create may never give it one. Absent still means "leave it alone", as everywhere else
+    #: on this partial write.
+    subject: str | None = Field(None, max_length=500)
     body_text: str | None = None
     direction: InteractionDirection | None = None
     company_id: uuid.UUID | None = None

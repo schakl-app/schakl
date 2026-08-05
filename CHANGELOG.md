@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Contactmomenten
+
+- **A logged call, meeting or note now shows what was written in it.** The timeline previewed
+  e-mails and nothing else: a phone call you had typed a paragraph into drew its title, its time
+  and then blank space, so the one thing worth reading was invisible until you opened the row.
+  Every contactmoment now carries a teaser of its own notes, on the record's timeline and in the
+  Interacties list alike — including the ones already logged, without anything having to be
+  converted.
+- **The subject is no longer required.** A call is titled by what it *is*, and every screen
+  already fell back to the kind ("Telefoongesprek") when there was no subject — Gmail and
+  uploaded e-mails have always arrived without one. Demanding a subject meant inventing a title
+  before you could write down what was said. Leave it empty and the field shows the title the row
+  will carry; an existing one can be cleared the same way.
+
 ### Google
 
 - **An email waiting for review no longer defaults to your own company.** Most agencies keep

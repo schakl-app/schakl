@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.core.richtext import markdown_to_plaintext, sanitize_markdown
+from app.core.richtext import markdown_excerpt, markdown_to_plaintext, sanitize_markdown
 
 
 def test_sanitize_strips_raw_html_keeps_markdown() -> None:
@@ -41,3 +41,18 @@ def test_plaintext_flattens_syntax() -> None:
     # A link resolves to its text before any truncation, so a cut can't sever `](url)`.
     assert "https://" not in flat
     assert "[" not in flat and "]" not in flat
+
+
+def test_excerpt_flattens_then_caps() -> None:
+    md = "**Gebeld** met @[Jan](mention:user:x) over de [offerte](https://x.com)\n\n- akkoord"
+    assert markdown_excerpt(md, 200) == "Gebeld met @Jan over de offerte akkoord"
+    # The cap counts *readable* characters, so a teaser is never mostly link syntax.
+    short = markdown_excerpt(md, 20)
+    assert short is not None and len(short) == 20 and short.endswith("…")
+
+
+def test_excerpt_answers_none_when_nothing_readable_is_left() -> None:
+    """``None``, never ``""`` — the callers fall back to a subject or a kind label on it."""
+    assert markdown_excerpt(None, 50) is None
+    assert markdown_excerpt("", 50) is None
+    assert markdown_excerpt("   \n\n  ", 50) is None

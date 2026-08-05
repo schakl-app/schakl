@@ -113,6 +113,23 @@ def markdown_to_plaintext(value: str) -> str:
     return text
 
 
+def markdown_excerpt(value: str | None, limit: int) -> str | None:
+    """A teaser of a markdown body: flattened, single-spaced, cut to ``limit`` characters.
+
+    The preview for text somebody wrote *here*, as opposed to the ``snippet`` an e-mail source
+    hands us — a notification line, a contactmoment's timeline row. Flattening runs **before**
+    the cap for two reasons that are the same reason: a cut by character count could sever a
+    ``[label](url)`` mid-syntax, and a teaser reading ``**Afgesproken**`` shows syntax where it
+    promised words. ``None`` when there is nothing readable left, so a caller can fall back.
+    """
+    if not value:
+        return None
+    text = " ".join(markdown_to_plaintext(value).split())
+    if not text:
+        return None
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
 #: What rendered markdown may contain on a document. No ``img`` and no ``iframe``: the
 #: document renderer inlines the images *it* chose as data URIs and refuses every other
 #: fetch, so an ``<img>`` here could only ever be a request we do not want to make.

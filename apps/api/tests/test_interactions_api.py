@@ -321,6 +321,131 @@ async def test_manual_email_kind_refused(client_for) -> None:
         assert resp.status_code == 422
 
 
+async def test_a_manual_row_previews_its_own_notes(client_for) -> None:
+    """A hand-logged call must show a teaser of what was written, like every other row.
+
+    Only a *source* fills the ``snippet`` column (Gmail's own, the ``.eml`` parser's), so a
+    call's text lived in ``body_text`` and the timeline drew nothing under the title. The read
+    derives it — markdown flattened, mentions readable, whitespace collapsed — and the list row
+    carries it while still shipping no body.
+    """
+    t = await make_tenant("inter-preview")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        body = "**Gebeld** met de klant over de [offerte](https://klant.nl/x).\n\n- akkoord\n"
+        created = await c.post(
+            "/api/v1/interactions",
+            json={
+                "kind": "call",
+                "occurred_at": _NOW.isoformat(),
+                "subject": "Telefonisch akkoord",
+                "body_text": body,
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        teaser = "Gebeld met de klant over de offerte. akkoord"
+        assert created.json()["snippet"] == teaser
+
+        # The list is where it was missing: a teaser, and still no body on the wire (#290).
+        listed = (await c.get("/api/v1/interactions", headers=headers)).json()["items"][0]
+        assert listed["snippet"] == teaser
+        assert listed["body_text"] is None
+
+        # Derived, not stored: editing the note rewrites the teaser, it never goes stale.
+        edited = await c.patch(
+            f"/api/v1/interactions/{created.json()['id']}",
+            json={"body_text": "Teruggebeld: klant wil eerst intern overleggen."},
+            headers=headers,
+        )
+        assert edited.status_code == 200, edited.text
+        assert edited.json()["snippet"] == "Teruggebeld: klant wil eerst intern overleggen."
+
+        # A row with nothing written on it previews nothing — never an empty string.
+        bare = await c.post(
+            "/api/v1/interactions",
+            json={"kind": "call", "occurred_at": _NOW.isoformat(), "subject": "Kort"},
+            headers=headers,
+        )
+        assert bare.json()["snippet"] is None
+
+
+async def test_a_long_note_is_cut_to_a_teaser(client_for) -> None:
+    """The preview is a teaser, not the note: a wall of text is capped, with an ellipsis."""
+    t = await make_tenant("inter-preview-long")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        created = await c.post(
+            "/api/v1/interactions",
+            json={
+                "kind": "note",
+                "occurred_at": _NOW.isoformat(),
+                "subject": "Verslag",
+                "body_text": "woord " * 200,
+            },
+            headers=headers,
+        )
+        snippet = created.json()["snippet"]
+        assert len(snippet) <= 200
+        assert snippet.endswith("…")
+
+
+async def test_subject_is_optional_and_blank_stores_null(client_for) -> None:
+    """A logged call is titled by what it *is*: the subject is optional, like the column and
+    like every other source's rows, and every surface already falls back to the kind's label.
+    Blank is stored as ``NULL`` — an empty string would defeat that fallback."""
+    t = await make_tenant("inter-no-subject")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        created = await c.post(
+            "/api/v1/interactions",
+            json={
+                "kind": "call",
+                "occurred_at": _NOW.isoformat(),
+                "body_text": "Klant belde over de verlenging.",
+                "log_time": {
+                    "started_at": "2026-07-10T14:00:00Z",
+                    "ended_at": "2026-07-10T14:15:00Z",
+                },
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        row = created.json()
+        assert row["subject"] is None
+        # The timesheet row the ride-along wrote is titled by the notes rather than blank.
+        entry = (await c.get("/api/v1/time/entries", headers=headers)).json()["items"][0]
+        assert entry["description"] == "Klant belde over de verlenging."
+
+        # Sent blank on a write is `NULL`, not `""` — on the create path and the edit path.
+        whitespace = await c.post(
+            "/api/v1/interactions",
+            json={"kind": "note", "occurred_at": _NOW.isoformat(), "subject": "   "},
+            headers=headers,
+        )
+        assert whitespace.status_code == 201
+        assert whitespace.json()["subject"] is None
+
+        cleared = await c.patch(
+            f"/api/v1/interactions/{row['id']}", json={"subject": ""}, headers=headers
+        )
+        assert cleared.status_code == 200, cleared.text
+        assert cleared.json()["subject"] is None
+        # …and an absent key still leaves it alone, the way every other field on this PATCH does.
+        titled = (
+            await c.patch(
+                f"/api/v1/interactions/{row['id']}", json={"subject": "Verlenging"}, headers=headers
+            )
+        ).json()
+        assert titled["subject"] == "Verlenging"
+        untouched = (
+            await c.patch(
+                f"/api/v1/interactions/{row['id']}", json={"direction": "inbound"}, headers=headers
+            )
+        ).json()
+        assert untouched["subject"] == "Verlenging"
+
+
 async def test_member_edits_own_admin_edits_any(client_for) -> None:
     t = await make_tenant("inter-scope")  # owner
     owner_headers = await auth_cookie(t.user)

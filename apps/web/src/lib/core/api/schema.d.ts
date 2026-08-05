@@ -12843,7 +12843,7 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             /** Subject */
-            subject: string;
+            subject?: string | null;
             /** Task Id */
             task_id?: string | null;
         };

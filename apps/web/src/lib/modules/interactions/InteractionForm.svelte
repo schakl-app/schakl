@@ -550,12 +550,16 @@
     <p class="-mt-2 text-xs text-text-muted">{t("interactions.log_time_hint")}</p>
   {/if}
 
+  <!-- Optional (#22 follow-up): a logged phone call is titled by what it *is*, and every
+       surface already falls back to the kind's label — so the placeholder shows the title the
+       row will carry when this is left empty, rather than demanding one be invented before
+       the notes below can be written. -->
   <label class="block text-sm">
     <span class="mb-1 block font-medium text-text">{t("interactions.field.subject")}</span>
     <input
       name="subject"
       value={interaction?.subject ?? ""}
-      required
+      placeholder={kindDef ? kindLabel(kindDef, locale) : ""}
       maxlength="500"
       class="w-full min-w-0 rounded-lg border border-border bg-surface px-3 py-2 text-sm"
     />
