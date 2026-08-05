@@ -1,4 +1,11 @@
-"""Request/response models for ``/api/v1/reporting`` (issue #300)."""
+"""Request/response models for ``/api/v1/reporting`` (issue #300).
+
+Every name is **prefixed**. This module shipped with bare ``ReportRead``, ``TemplateRead`` and
+friends, and FastAPI resolves a component-name collision by qualifying *both* sides: the AI
+core's ``ReportRead`` became ``app__core__ai__schemas__ReportRead`` and the tasks and invoicing
+``TemplateRead`` were renamed alongside it, in three modules that changed nothing. A prefix here
+is what keeps the next ``gen:client`` from rewriting someone else's types.
+"""
 
 from __future__ import annotations
 
@@ -17,7 +24,7 @@ from app.modules.reporting.models import (
 
 
 # --- tones ------------------------------------------------------------------------------ #
-class ToneWrite(BaseModel):
+class ReportToneWrite(BaseModel):
     name: str = Field(min_length=1, max_length=160)
     description: str | None = Field(default=None, max_length=500)
     instructions: str = Field(default="", max_length=20_000)
@@ -28,7 +35,7 @@ class ToneWrite(BaseModel):
     position: int = 0
 
 
-class ToneRead(BaseModel):
+class ReportToneRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
@@ -44,21 +51,21 @@ class ToneRead(BaseModel):
 
 
 # --- templates -------------------------------------------------------------------------- #
-class TemplateLayoutSection(BaseModel):
+class ReportTemplateLayoutSection(BaseModel):
     key: str = Field(max_length=120)
     enabled: bool = True
     label_i18n: dict[str, str] = Field(default_factory=dict)
 
 
-class TemplateLayout(BaseModel):
-    sections: list[TemplateLayoutSection] = Field(default_factory=list, max_length=100)
+class ReportTemplateLayout(BaseModel):
+    sections: list[ReportTemplateLayoutSection] = Field(default_factory=list, max_length=100)
 
 
-class TemplateWrite(BaseModel):
+class ReportTemplateWrite(BaseModel):
     name: str = Field(min_length=1, max_length=160)
     audience: ReportAudience = ReportAudience.CLIENT
     design: str = Field(default="standard", max_length=32)
-    layout: TemplateLayout = Field(default_factory=TemplateLayout)
+    layout: ReportTemplateLayout = Field(default_factory=ReportTemplateLayout)
     custom_html: str | None = None
     custom_css: str | None = None
     accent_color: str | None = Field(default=None, max_length=16)
@@ -67,7 +74,7 @@ class TemplateWrite(BaseModel):
     is_default: bool = False
 
 
-class TemplateRead(BaseModel):
+class ReportTemplateRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
@@ -93,13 +100,13 @@ class SectionCatalogEntry(BaseModel):
 
 
 # --- profiles --------------------------------------------------------------------------- #
-class Recipient(BaseModel):
+class ReportRecipient(BaseModel):
     contact_id: uuid.UUID | None = None
     email: str = Field(max_length=320)
     name: str = Field(default="", max_length=200)
 
 
-class Schedule(BaseModel):
+class ReportSchedule(BaseModel):
     """A profile's own schedule. Every field may be absent, and absent means *inherit*."""
 
     cadence: ReportCadence | None = None
@@ -112,7 +119,7 @@ class Schedule(BaseModel):
     publish_to_portal: bool | None = None
 
 
-class ProfileWrite(BaseModel):
+class ReportProfileWrite(BaseModel):
     tone_id: uuid.UUID | None = None
     template_id: uuid.UUID | None = None
     internal_template_id: uuid.UUID | None = None
@@ -126,13 +133,13 @@ class ProfileWrite(BaseModel):
     conversion_goals: str | None = Field(default=None, max_length=4000)
     scope_notes: str | None = Field(default=None, max_length=4000)
     avoid_topics: str | None = Field(default=None, max_length=4000)
-    recipients: list[Recipient] = Field(default_factory=list, max_length=50)
-    schedule: Schedule = Field(default_factory=Schedule)
+    recipients: list[ReportRecipient] = Field(default_factory=list, max_length=50)
+    schedule: ReportSchedule = Field(default_factory=ReportSchedule)
     internal_enabled: bool = True
     active: bool = True
 
 
-class ProfileRead(BaseModel):
+class ReportProfileRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
@@ -162,7 +169,7 @@ class ProfileRead(BaseModel):
 
 # --- settings --------------------------------------------------------------------------- #
 class ReportingSettingsWrite(BaseModel):
-    schedule: Schedule = Field(default_factory=Schedule)
+    schedule: ReportSchedule = Field(default_factory=ReportSchedule)
     default_locale: str = Field(default="nl", max_length=8)
     footer_text: str | None = Field(default=None, max_length=2000)
 
@@ -196,7 +203,7 @@ class ReportRow(BaseModel):
     created_at: datetime | None = None
 
 
-class ReportRead(ReportRow):
+class ReportDetail(ReportRow):
     compare_start: date | None = None
     compare_end: date | None = None
     data_snapshot: dict = Field(default_factory=dict)
@@ -214,7 +221,7 @@ class ReportList(BaseModel):
     total: int | None = None
 
 
-class GenerateRequest(BaseModel):
+class ReportRunRequest(BaseModel):
     company_id: uuid.UUID
     audience: ReportAudience = ReportAudience.CLIENT
     #: An explicit period, for a backfill or a correction. Omitted means the schedule's own —
@@ -227,28 +234,28 @@ class GenerateRequest(BaseModel):
     refresh_data: bool = False
 
 
-class NarrativeUpdate(BaseModel):
+class ReportNarrativeUpdate(BaseModel):
     """Hand-edited prose. Every key present is stored and marked as edited."""
 
     narrative: dict[str, str] = Field(default_factory=dict)
 
 
-class RewriteRequest(BaseModel):
+class ReportRewriteRequest(BaseModel):
     section_key: str = Field(max_length=120)
 
 
-class SendRequest(BaseModel):
+class ReportSendRequest(BaseModel):
     #: Overrides the profile's recipients for this one send.
-    recipients: list[Recipient] | None = None
+    recipients: list[ReportRecipient] | None = None
     publish: bool = True
 
 
 class ReportActionResult(BaseModel):
-    report: ReportRead
+    report: ReportDetail
     queued: bool = False
 
 
-class GenerateBatchRequest(BaseModel):
+class ReportRunBatchRequest(BaseModel):
     """Run the whole book of clients for one period — the "it is the 5th" button."""
 
     company_ids: list[uuid.UUID] | None = None
@@ -257,6 +264,6 @@ class GenerateBatchRequest(BaseModel):
     period_end: date | None = None
 
 
-class GenerateBatchResult(BaseModel):
+class ReportRunBatchResult(BaseModel):
     queued: int
     skipped: list[dict[Literal["company_id", "reason"], Any]] = Field(default_factory=list)

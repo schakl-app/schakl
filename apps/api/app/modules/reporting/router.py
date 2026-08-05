@@ -16,24 +16,24 @@ from app.core.tenancy import RequestContext, require_context
 from app.errors import AppError
 from app.modules.reporting.models import ReportAudience
 from app.modules.reporting.schemas import (
-    GenerateBatchRequest,
-    GenerateBatchResult,
-    GenerateRequest,
-    NarrativeUpdate,
-    ProfileRead,
-    ProfileWrite,
     ReportActionResult,
+    ReportDetail,
     ReportingSettingsRead,
     ReportingSettingsWrite,
     ReportList,
-    ReportRead,
-    RewriteRequest,
+    ReportNarrativeUpdate,
+    ReportProfileRead,
+    ReportProfileWrite,
+    ReportRewriteRequest,
+    ReportRunBatchRequest,
+    ReportRunBatchResult,
+    ReportRunRequest,
+    ReportSendRequest,
+    ReportTemplateRead,
+    ReportTemplateWrite,
+    ReportToneRead,
+    ReportToneWrite,
     SectionCatalogEntry,
-    SendRequest,
-    TemplateRead,
-    TemplateWrite,
-    ToneRead,
-    ToneWrite,
 )
 from app.modules.reporting.service import (
     ProfileService,
@@ -49,10 +49,10 @@ router = APIRouter(prefix="/reporting", tags=["reporting"])
 # --- tones ------------------------------------------------------------------------------- #
 @router.get(
     "/tones",
-    response_model=list[ToneRead],
+    response_model=list[ReportToneRead],
     dependencies=[require_permission("reporting.profile.manage")],
 )
-async def list_tones(ctx: RequestContext = Depends(require_context)) -> list[ToneRead]:
+async def list_tones(ctx: RequestContext = Depends(require_context)) -> list[ReportToneRead]:
     """Readable by whoever assigns one to a client, editable only by an admin (the service
     re-checks) — a manager must be able to see what voice they are picking."""
     return await ToneService(ctx).list()
@@ -60,24 +60,24 @@ async def list_tones(ctx: RequestContext = Depends(require_context)) -> list[Ton
 
 @router.post(
     "/tones",
-    response_model=ToneRead,
+    response_model=ReportToneRead,
     status_code=201,
     dependencies=[require_permission("reporting.settings.manage")],
 )
 async def create_tone(
-    payload: ToneWrite, ctx: RequestContext = Depends(require_context)
-) -> ToneRead:
+    payload: ReportToneWrite, ctx: RequestContext = Depends(require_context)
+) -> ReportToneRead:
     return await ToneService(ctx).create(payload)
 
 
 @router.put(
     "/tones/{tone_id}",
-    response_model=ToneRead,
+    response_model=ReportToneRead,
     dependencies=[require_permission("reporting.settings.manage")],
 )
 async def update_tone(
-    tone_id: uuid.UUID, payload: ToneWrite, ctx: RequestContext = Depends(require_context)
-) -> ToneRead:
+    tone_id: uuid.UUID, payload: ReportToneWrite, ctx: RequestContext = Depends(require_context)
+) -> ReportToneRead:
     return await ToneService(ctx).update(tone_id, payload)
 
 
@@ -95,13 +95,13 @@ async def delete_tone(
 # --- templates --------------------------------------------------------------------------- #
 @router.get(
     "/templates",
-    response_model=list[TemplateRead],
+    response_model=list[ReportTemplateRead],
     dependencies=[require_permission("reporting.profile.manage")],
 )
 async def list_templates(
     audience: ReportAudience | None = Query(None),
     ctx: RequestContext = Depends(require_context),
-) -> list[TemplateRead]:
+) -> list[ReportTemplateRead]:
     return await TemplateService(ctx).list(audience.value if audience else None)
 
 
@@ -120,26 +120,26 @@ async def section_catalog(
 
 @router.post(
     "/templates",
-    response_model=TemplateRead,
+    response_model=ReportTemplateRead,
     status_code=201,
     dependencies=[require_permission("reporting.settings.manage")],
 )
 async def create_template(
-    payload: TemplateWrite, ctx: RequestContext = Depends(require_context)
-) -> TemplateRead:
+    payload: ReportTemplateWrite, ctx: RequestContext = Depends(require_context)
+) -> ReportTemplateRead:
     return await TemplateService(ctx).create(payload)
 
 
 @router.put(
     "/templates/{template_id}",
-    response_model=TemplateRead,
+    response_model=ReportTemplateRead,
     dependencies=[require_permission("reporting.settings.manage")],
 )
 async def update_template(
     template_id: uuid.UUID,
-    payload: TemplateWrite,
+    payload: ReportTemplateWrite,
     ctx: RequestContext = Depends(require_context),
-) -> TemplateRead:
+) -> ReportTemplateRead:
     return await TemplateService(ctx).update(template_id, payload)
 
 
@@ -180,12 +180,12 @@ async def save_settings(
 # --- per-client profile -------------------------------------------------------------------- #
 @router.get(
     "/companies/{company_id}/profile",
-    response_model=ProfileRead,
+    response_model=ReportProfileRead,
     dependencies=[require_permission("reporting.profile.manage")],
 )
 async def get_profile(
     company_id: uuid.UUID, ctx: RequestContext = Depends(require_context)
-) -> ProfileRead:
+) -> ReportProfileRead:
     """The client's reporting setup. A company that has never had one answers with the
     inherited defaults rather than a 404 — the form is the same either way."""
     return await ProfileService(ctx).get(company_id)
@@ -193,14 +193,14 @@ async def get_profile(
 
 @router.put(
     "/companies/{company_id}/profile",
-    response_model=ProfileRead,
+    response_model=ReportProfileRead,
     dependencies=[require_permission("reporting.profile.manage")],
 )
 async def save_profile(
     company_id: uuid.UUID,
-    payload: ProfileWrite,
+    payload: ReportProfileWrite,
     ctx: RequestContext = Depends(require_context),
-) -> ProfileRead:
+) -> ReportProfileRead:
     return await ProfileService(ctx).save(company_id, payload)
 
 
@@ -229,12 +229,12 @@ async def list_reports(
 
 @router.get(
     "/reports/{report_id}",
-    response_model=ReportRead,
+    response_model=ReportDetail,
     dependencies=[require_permission("reporting.report.read")],
 )
 async def get_report(
     report_id: uuid.UUID, ctx: RequestContext = Depends(require_context)
-) -> ReportRead:
+) -> ReportDetail:
     return await ReportService(ctx).get(report_id)
 
 
@@ -262,7 +262,7 @@ async def preview_report(
     dependencies=[require_permission("reporting.report.write")],
 )
 async def generate_report(
-    payload: GenerateRequest, ctx: RequestContext = Depends(require_context)
+    payload: ReportRunRequest, ctx: RequestContext = Depends(require_context)
 ) -> ReportActionResult:
     """Queue a run. Never generates inline — it calls several APIs and a model."""
     report, queued = await ReportService(ctx).generate(payload)
@@ -271,65 +271,65 @@ async def generate_report(
 
 @router.post(
     "/reports/generate-batch",
-    response_model=GenerateBatchResult,
+    response_model=ReportRunBatchResult,
     dependencies=[require_permission("reporting.report.write")],
 )
 async def generate_batch(
-    payload: GenerateBatchRequest, ctx: RequestContext = Depends(require_context)
-) -> GenerateBatchResult:
+    payload: ReportRunBatchRequest, ctx: RequestContext = Depends(require_context)
+) -> ReportRunBatchResult:
     return await ReportService(ctx).generate_batch(payload)
 
 
 @router.put(
     "/reports/{report_id}/narrative",
-    response_model=ReportRead,
+    response_model=ReportDetail,
     dependencies=[require_permission("reporting.report.write")],
 )
 async def edit_narrative(
     report_id: uuid.UUID,
-    payload: NarrativeUpdate,
+    payload: ReportNarrativeUpdate,
     ctx: RequestContext = Depends(require_context),
-) -> ReportRead:
+) -> ReportDetail:
     """Hand-edit the prose before it goes out — the point of review-before-send."""
     return await ReportService(ctx).update_narrative(report_id, payload)
 
 
 @router.post(
     "/reports/{report_id}/rewrite",
-    response_model=ReportRead,
+    response_model=ReportDetail,
     dependencies=[require_permission("reporting.report.write")],
 )
 async def rewrite_section(
     report_id: uuid.UUID,
-    payload: RewriteRequest,
+    payload: ReportRewriteRequest,
     ctx: RequestContext = Depends(require_context),
-) -> ReportRead:
+) -> ReportDetail:
     return await ReportService(ctx).rewrite_section(report_id, payload.section_key)
 
 
 @router.post(
     "/reports/{report_id}/publish",
-    response_model=ReportRead,
+    response_model=ReportDetail,
     dependencies=[require_permission("reporting.report.send")],
 )
 async def publish_report(
     report_id: uuid.UUID,
     published: bool = Query(True),
     ctx: RequestContext = Depends(require_context),
-) -> ReportRead:
+) -> ReportDetail:
     return await ReportService(ctx).publish(report_id, published)
 
 
 @router.post(
     "/reports/{report_id}/send",
-    response_model=ReportRead,
+    response_model=ReportDetail,
     dependencies=[require_permission("reporting.report.send")],
 )
 async def send_report(
     report_id: uuid.UUID,
-    payload: SendRequest,
+    payload: ReportSendRequest,
     ctx: RequestContext = Depends(require_context),
-) -> ReportRead:
+) -> ReportDetail:
     return await ReportService(ctx).send(report_id, payload)
 
 

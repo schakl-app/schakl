@@ -12876,48 +12876,6 @@ export interface components {
             /** Quiet Hours Start */
             quiet_hours_start?: string | null;
         };
-        /**
-         * GenerateBatchRequest
-         * @description Run the whole book of clients for one period — the "it is the 5th" button.
-         */
-        GenerateBatchRequest: {
-            /** @default client */
-            audience: components["schemas"]["ReportAudience"];
-            /** Company Ids */
-            company_ids?: string[] | null;
-            /** Period End */
-            period_end?: string | null;
-            /** Period Start */
-            period_start?: string | null;
-        };
-        /** GenerateBatchResult */
-        GenerateBatchResult: {
-            /** Queued */
-            queued: number;
-            /** Skipped */
-            skipped?: {
-                [key: string]: unknown;
-            }[];
-        };
-        /** GenerateRequest */
-        GenerateRequest: {
-            /** @default client */
-            audience: components["schemas"]["ReportAudience"];
-            /**
-             * Company Id
-             * Format: uuid
-             */
-            company_id: string;
-            /** Period End */
-            period_end?: string | null;
-            /** Period Start */
-            period_start?: string | null;
-            /**
-             * Refresh Data
-             * @default false
-             */
-            refresh_data: boolean;
-        };
         /** GenerateResult */
         GenerateResult: {
             /** Created */
@@ -15977,16 +15935,6 @@ export interface components {
             ok: boolean;
         };
         /**
-         * NarrativeUpdate
-         * @description Hand-edited prose. Every key present is stored and marked as edited.
-         */
-        NarrativeUpdate: {
-            /** Narrative */
-            narrative?: {
-                [key: string]: string;
-            };
-        };
-        /**
          * NavGroupPref
          * @description A tenant label for a sidebar *group* heading (e.g. ``assets`` → "Hosting & domeinen").
          */
@@ -17319,117 +17267,6 @@ export interface components {
             /** Rows */
             rows: components["schemas"]["ProductivityRow"][];
         };
-        /** ProfileRead */
-        ProfileRead: {
-            /**
-             * Active
-             * @default true
-             */
-            active: boolean;
-            /** Avoid Topics */
-            avoid_topics?: string | null;
-            /** Business Context */
-            business_context?: string | null;
-            /**
-             * Company Id
-             * Format: uuid
-             */
-            company_id: string;
-            /** Conversion Goals */
-            conversion_goals?: string | null;
-            /** Effective Schedule */
-            effective_schedule?: {
-                [key: string]: unknown;
-            };
-            /** Goals */
-            goals?: string | null;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /**
-             * Internal Enabled
-             * @default true
-             */
-            internal_enabled: boolean;
-            /** Internal Template Id */
-            internal_template_id?: string | null;
-            /** Key Services */
-            key_services?: string | null;
-            /**
-             * Locale
-             * @default nl
-             */
-            locale: string;
-            /** Next Run On */
-            next_run_on?: string | null;
-            /** Priority Pages */
-            priority_pages?: string | null;
-            /** Recipients */
-            recipients?: {
-                [key: string]: unknown;
-            }[];
-            /** Schedule */
-            schedule?: {
-                [key: string]: unknown;
-            };
-            /** Scope Notes */
-            scope_notes?: string | null;
-            /** Sea Focus */
-            sea_focus?: string | null;
-            /** Seo Focus */
-            seo_focus?: string | null;
-            /** Template Id */
-            template_id?: string | null;
-            /** Tone Id */
-            tone_id?: string | null;
-        };
-        /** ProfileWrite */
-        ProfileWrite: {
-            /**
-             * Active
-             * @default true
-             */
-            active: boolean;
-            /** Avoid Topics */
-            avoid_topics?: string | null;
-            /** Business Context */
-            business_context?: string | null;
-            /** Conversion Goals */
-            conversion_goals?: string | null;
-            /** Goals */
-            goals?: string | null;
-            /**
-             * Internal Enabled
-             * @default true
-             */
-            internal_enabled: boolean;
-            /** Internal Template Id */
-            internal_template_id?: string | null;
-            /** Key Services */
-            key_services?: string | null;
-            /**
-             * Locale
-             * @default nl
-             */
-            locale: string;
-            /** Priority Pages */
-            priority_pages?: string | null;
-            /** Recipients */
-            recipients?: components["schemas"]["Recipient"][];
-            schedule?: components["schemas"]["Schedule"];
-            /** Scope Notes */
-            scope_notes?: string | null;
-            /** Sea Focus */
-            sea_focus?: string | null;
-            /** Seo Focus */
-            seo_focus?: string | null;
-            /** Template Id */
-            template_id?: string | null;
-            /** Tone Id */
-            tone_id?: string | null;
-        };
         /**
          * ProjectCost
          * @description A project's logged time in money (#111): Σ minutes × the employee's effective rate
@@ -17952,18 +17789,6 @@ export interface components {
             /** Read */
             read: boolean;
         };
-        /** Recipient */
-        Recipient: {
-            /** Contact Id */
-            contact_id?: string | null;
-            /** Email */
-            email: string;
-            /**
-             * Name
-             * @default
-             */
-            name: string;
-        };
         /** Recurrence */
         Recurrence: {
             freq: components["schemas"]["RecurrenceFreq"];
@@ -18251,7 +18076,7 @@ export interface components {
              * @default false
              */
             queued: boolean;
-            report: components["schemas"]["app__modules__reporting__schemas__ReportRead"];
+            report: components["schemas"]["ReportDetail"];
         };
         /**
          * ReportAudience
@@ -18306,6 +18131,82 @@ export interface components {
          * @enum {string}
          */
         ReportDelivery: "review" | "auto";
+        /** ReportDetail */
+        ReportDetail: {
+            /** Audience */
+            audience: string;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Company Name */
+            company_name: string;
+            /** Compare End */
+            compare_end?: string | null;
+            /** Compare Start */
+            compare_start?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Data Snapshot */
+            data_snapshot?: {
+                [key: string]: unknown;
+            };
+            /** Edited Sections */
+            edited_sections?: string[];
+            /** Generated By Name */
+            generated_by_name?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Locale */
+            locale: string;
+            /** Narrative */
+            narrative?: {
+                [key: string]: unknown;
+            };
+            /** Pdf File Id */
+            pdf_file_id?: string | null;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /**
+             * Period Start
+             * Format: date
+             */
+            period_start: string;
+            /** Published At */
+            published_at?: string | null;
+            /** Sections */
+            sections?: {
+                [key: string]: unknown;
+            }[];
+            /** Sent At */
+            sent_at?: string | null;
+            /** Sent To */
+            sent_to?: {
+                [key: string]: unknown;
+            }[];
+            /** Status */
+            status: string;
+            /** Template Id */
+            template_id?: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Warning Count
+             * @default 0
+             */
+            warning_count: number;
+            /** Warnings */
+            warnings?: {
+                [key: string]: unknown;
+            }[];
+        };
         /** ReportGenerateRequest */
         ReportGenerateRequest: {
             /**
@@ -18332,6 +18233,177 @@ export interface components {
             items: components["schemas"]["ReportRow"][];
             /** Total */
             total?: number | null;
+        };
+        /**
+         * ReportNarrativeUpdate
+         * @description Hand-edited prose. Every key present is stored and marked as edited.
+         */
+        ReportNarrativeUpdate: {
+            /** Narrative */
+            narrative?: {
+                [key: string]: string;
+            };
+        };
+        /** ReportProfileRead */
+        ReportProfileRead: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Avoid Topics */
+            avoid_topics?: string | null;
+            /** Business Context */
+            business_context?: string | null;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Conversion Goals */
+            conversion_goals?: string | null;
+            /** Effective Schedule */
+            effective_schedule?: {
+                [key: string]: unknown;
+            };
+            /** Goals */
+            goals?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Internal Enabled
+             * @default true
+             */
+            internal_enabled: boolean;
+            /** Internal Template Id */
+            internal_template_id?: string | null;
+            /** Key Services */
+            key_services?: string | null;
+            /**
+             * Locale
+             * @default nl
+             */
+            locale: string;
+            /** Next Run On */
+            next_run_on?: string | null;
+            /** Priority Pages */
+            priority_pages?: string | null;
+            /** Recipients */
+            recipients?: {
+                [key: string]: unknown;
+            }[];
+            /** Schedule */
+            schedule?: {
+                [key: string]: unknown;
+            };
+            /** Scope Notes */
+            scope_notes?: string | null;
+            /** Sea Focus */
+            sea_focus?: string | null;
+            /** Seo Focus */
+            seo_focus?: string | null;
+            /** Template Id */
+            template_id?: string | null;
+            /** Tone Id */
+            tone_id?: string | null;
+        };
+        /** ReportProfileWrite */
+        ReportProfileWrite: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Avoid Topics */
+            avoid_topics?: string | null;
+            /** Business Context */
+            business_context?: string | null;
+            /** Conversion Goals */
+            conversion_goals?: string | null;
+            /** Goals */
+            goals?: string | null;
+            /**
+             * Internal Enabled
+             * @default true
+             */
+            internal_enabled: boolean;
+            /** Internal Template Id */
+            internal_template_id?: string | null;
+            /** Key Services */
+            key_services?: string | null;
+            /**
+             * Locale
+             * @default nl
+             */
+            locale: string;
+            /** Priority Pages */
+            priority_pages?: string | null;
+            /** Recipients */
+            recipients?: components["schemas"]["ReportRecipient"][];
+            schedule?: components["schemas"]["ReportSchedule"];
+            /** Scope Notes */
+            scope_notes?: string | null;
+            /** Sea Focus */
+            sea_focus?: string | null;
+            /** Seo Focus */
+            seo_focus?: string | null;
+            /** Template Id */
+            template_id?: string | null;
+            /** Tone Id */
+            tone_id?: string | null;
+        };
+        /** ReportRead */
+        ReportRead: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Content */
+            content: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By Name */
+            created_by_name: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Language */
+            language: string;
+            /** Period */
+            period: string;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ReportRecipient */
+        ReportRecipient: {
+            /** Contact Id */
+            contact_id?: string | null;
+            /** Email */
+            email: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+        };
+        /** ReportRewriteRequest */
+        ReportRewriteRequest: {
+            /** Section Key */
+            section_key: string;
         };
         /**
          * ReportRow
@@ -18385,6 +18457,222 @@ export interface components {
             warning_count: number;
         };
         /**
+         * ReportRunBatchRequest
+         * @description Run the whole book of clients for one period — the "it is the 5th" button.
+         */
+        ReportRunBatchRequest: {
+            /** @default client */
+            audience: components["schemas"]["ReportAudience"];
+            /** Company Ids */
+            company_ids?: string[] | null;
+            /** Period End */
+            period_end?: string | null;
+            /** Period Start */
+            period_start?: string | null;
+        };
+        /** ReportRunBatchResult */
+        ReportRunBatchResult: {
+            /** Queued */
+            queued: number;
+            /** Skipped */
+            skipped?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** ReportRunRequest */
+        ReportRunRequest: {
+            /** @default client */
+            audience: components["schemas"]["ReportAudience"];
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Period End */
+            period_end?: string | null;
+            /** Period Start */
+            period_start?: string | null;
+            /**
+             * Refresh Data
+             * @default false
+             */
+            refresh_data: boolean;
+        };
+        /**
+         * ReportSchedule
+         * @description A profile's own schedule. Every field may be absent, and absent means *inherit*.
+         */
+        ReportSchedule: {
+            cadence?: components["schemas"]["ReportCadence"] | null;
+            compare?: components["schemas"]["ReportCompare"] | null;
+            /** Day Of Month */
+            day_of_month?: number | null;
+            delivery?: components["schemas"]["ReportDelivery"] | null;
+            /** Hour */
+            hour?: number | null;
+            /** Publish To Portal */
+            publish_to_portal?: boolean | null;
+        };
+        /** ReportSendRequest */
+        ReportSendRequest: {
+            /**
+             * Publish
+             * @default true
+             */
+            publish: boolean;
+            /** Recipients */
+            recipients?: components["schemas"]["ReportRecipient"][] | null;
+        };
+        /** ReportTemplateLayout */
+        ReportTemplateLayout: {
+            /** Sections */
+            sections?: components["schemas"]["ReportTemplateLayoutSection"][];
+        };
+        /** ReportTemplateLayoutSection */
+        ReportTemplateLayoutSection: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Key */
+            key: string;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            };
+        };
+        /** ReportTemplateRead */
+        ReportTemplateRead: {
+            /** Accent Color */
+            accent_color?: string | null;
+            /** Audience */
+            audience: string;
+            /** Cover Image File Id */
+            cover_image_file_id?: string | null;
+            /** Custom Css */
+            custom_css?: string | null;
+            /** Custom Html */
+            custom_html?: string | null;
+            /** Design */
+            design: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Intro Text */
+            intro_text?: string | null;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /** Layout */
+            layout?: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+        };
+        /** ReportTemplateWrite */
+        ReportTemplateWrite: {
+            /** Accent Color */
+            accent_color?: string | null;
+            /** @default client */
+            audience: components["schemas"]["ReportAudience"];
+            /** Cover Image File Id */
+            cover_image_file_id?: string | null;
+            /** Custom Css */
+            custom_css?: string | null;
+            /** Custom Html */
+            custom_html?: string | null;
+            /**
+             * Design
+             * @default standard
+             */
+            design: string;
+            /** Intro Text */
+            intro_text?: string | null;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            layout?: components["schemas"]["ReportTemplateLayout"];
+            /** Name */
+            name: string;
+        };
+        /** ReportToneRead */
+        ReportToneRead: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Banned Phrases */
+            banned_phrases?: string[];
+            /** Description */
+            description?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Instructions
+             * @default
+             */
+            instructions: string;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /** Preferred Phrases */
+            preferred_phrases?: string[];
+        };
+        /** ReportToneWrite */
+        ReportToneWrite: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Banned Phrases */
+            banned_phrases?: string[];
+            /** Description */
+            description?: string | null;
+            /**
+             * Instructions
+             * @default
+             */
+            instructions: string;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /** Preferred Phrases */
+            preferred_phrases?: string[];
+        };
+        /**
          * ReportTotals
          * @description Aggregates over the full filtered report set (not just the returned page).
          */
@@ -18434,7 +18722,7 @@ export interface components {
             default_locale: string;
             /** Footer Text */
             footer_text?: string | null;
-            schedule?: components["schemas"]["Schedule"];
+            schedule?: components["schemas"]["ReportSchedule"];
         };
         /**
          * RevenueStats
@@ -18456,11 +18744,6 @@ export interface components {
             total_previous: number;
             /** Year */
             year: number;
-        };
-        /** RewriteRequest */
-        RewriteRequest: {
-            /** Section Key */
-            section_key: string;
         };
         /** RoleCreate */
         RoleCreate: {
@@ -18663,21 +18946,6 @@ export interface components {
             steps: unknown[];
             /** Trigger Event */
             trigger_event: string;
-        };
-        /**
-         * Schedule
-         * @description A profile's own schedule. Every field may be absent, and absent means *inherit*.
-         */
-        Schedule: {
-            cadence?: components["schemas"]["ReportCadence"] | null;
-            compare?: components["schemas"]["ReportCompare"] | null;
-            /** Day Of Month */
-            day_of_month?: number | null;
-            delivery?: components["schemas"]["ReportDelivery"] | null;
-            /** Hour */
-            hour?: number | null;
-            /** Publish To Portal */
-            publish_to_portal?: boolean | null;
         };
         /** ScheduleCreate */
         ScheduleCreate: {
@@ -18882,16 +19150,6 @@ export interface components {
             vat_number?: string | null;
             /** Website */
             website?: string | null;
-        };
-        /** SendRequest */
-        SendRequest: {
-            /**
-             * Publish
-             * @default true
-             */
-            publish: boolean;
-            /** Recipients */
-            recipients?: components["schemas"]["Recipient"][] | null;
         };
         /** SeriesData */
         SeriesData: {
@@ -20608,25 +20866,6 @@ export interface components {
             /** Title */
             title: string;
         };
-        /** TemplateLayout */
-        TemplateLayout: {
-            /** Sections */
-            sections?: components["schemas"]["TemplateLayoutSection"][];
-        };
-        /** TemplateLayoutSection */
-        TemplateLayoutSection: {
-            /**
-             * Enabled
-             * @default true
-             */
-            enabled: boolean;
-            /** Key */
-            key: string;
-            /** Label I18N */
-            label_i18n?: {
-                [key: string]: string;
-            };
-        };
         /**
          * TemplatePreview
          * @description Render a sample document with a config that has not been saved.
@@ -20651,34 +20890,6 @@ export interface components {
          * @enum {string}
          */
         TemplateTrigger: "manual" | "company_status";
-        /** TemplateWrite */
-        TemplateWrite: {
-            /** Accent Color */
-            accent_color?: string | null;
-            /** @default client */
-            audience: components["schemas"]["ReportAudience"];
-            /** Cover Image File Id */
-            cover_image_file_id?: string | null;
-            /** Custom Css */
-            custom_css?: string | null;
-            /** Custom Html */
-            custom_html?: string | null;
-            /**
-             * Design
-             * @default standard
-             */
-            design: string;
-            /** Intro Text */
-            intro_text?: string | null;
-            /**
-             * Is Default
-             * @default false
-             */
-            is_default: boolean;
-            layout?: components["schemas"]["TemplateLayout"];
-            /** Name */
-            name: string;
-        };
         /** TenantBranding */
         TenantBranding: {
             /** Accent Color */
@@ -21328,75 +21539,6 @@ export interface components {
             tld: string;
             /** Valid From */
             valid_from?: string | null;
-        };
-        /** ToneRead */
-        ToneRead: {
-            /**
-             * Active
-             * @default true
-             */
-            active: boolean;
-            /** Banned Phrases */
-            banned_phrases?: string[];
-            /** Description */
-            description?: string | null;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /**
-             * Instructions
-             * @default
-             */
-            instructions: string;
-            /**
-             * Is Default
-             * @default false
-             */
-            is_default: boolean;
-            /** Key */
-            key: string;
-            /** Name */
-            name: string;
-            /**
-             * Position
-             * @default 0
-             */
-            position: number;
-            /** Preferred Phrases */
-            preferred_phrases?: string[];
-        };
-        /** ToneWrite */
-        ToneWrite: {
-            /**
-             * Active
-             * @default true
-             */
-            active: boolean;
-            /** Banned Phrases */
-            banned_phrases?: string[];
-            /** Description */
-            description?: string | null;
-            /**
-             * Instructions
-             * @default
-             */
-            instructions: string;
-            /**
-             * Is Default
-             * @default false
-             */
-            is_default: boolean;
-            /** Name */
-            name: string;
-            /**
-             * Position
-             * @default 0
-             */
-            position: number;
-            /** Preferred Phrases */
-            preferred_phrases?: string[];
         };
         /** TriggerInfo */
         TriggerInfo: {
@@ -22056,39 +22198,6 @@ export interface components {
                 [key: string]: unknown;
             };
         };
-        /** ReportRead */
-        app__core__ai__schemas__ReportRead: {
-            /**
-             * Company Id
-             * Format: uuid
-             */
-            company_id: string;
-            /** Content */
-            content: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Created By Name */
-            created_by_name: string | null;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Language */
-            language: string;
-            /** Period */
-            period: string;
-            /** Title */
-            title: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-        };
         /** DomainStatus */
         app__core__domainflow__DomainStatus: {
             /** Apex */
@@ -22304,115 +22413,6 @@ export interface components {
             payload?: {
                 [key: string]: unknown;
             };
-        };
-        /** ReportRead */
-        app__modules__reporting__schemas__ReportRead: {
-            /** Audience */
-            audience: string;
-            /**
-             * Company Id
-             * Format: uuid
-             */
-            company_id: string;
-            /** Company Name */
-            company_name: string;
-            /** Compare End */
-            compare_end?: string | null;
-            /** Compare Start */
-            compare_start?: string | null;
-            /** Created At */
-            created_at?: string | null;
-            /** Data Snapshot */
-            data_snapshot?: {
-                [key: string]: unknown;
-            };
-            /** Edited Sections */
-            edited_sections?: string[];
-            /** Generated By Name */
-            generated_by_name?: string | null;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Locale */
-            locale: string;
-            /** Narrative */
-            narrative?: {
-                [key: string]: unknown;
-            };
-            /** Pdf File Id */
-            pdf_file_id?: string | null;
-            /**
-             * Period End
-             * Format: date
-             */
-            period_end: string;
-            /**
-             * Period Start
-             * Format: date
-             */
-            period_start: string;
-            /** Published At */
-            published_at?: string | null;
-            /** Sections */
-            sections?: {
-                [key: string]: unknown;
-            }[];
-            /** Sent At */
-            sent_at?: string | null;
-            /** Sent To */
-            sent_to?: {
-                [key: string]: unknown;
-            }[];
-            /** Status */
-            status: string;
-            /** Template Id */
-            template_id?: string | null;
-            /** Title */
-            title: string;
-            /**
-             * Warning Count
-             * @default 0
-             */
-            warning_count: number;
-            /** Warnings */
-            warnings?: {
-                [key: string]: unknown;
-            }[];
-        };
-        /** TemplateRead */
-        app__modules__reporting__schemas__TemplateRead: {
-            /** Accent Color */
-            accent_color?: string | null;
-            /** Audience */
-            audience: string;
-            /** Cover Image File Id */
-            cover_image_file_id?: string | null;
-            /** Custom Css */
-            custom_css?: string | null;
-            /** Custom Html */
-            custom_html?: string | null;
-            /** Design */
-            design: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Intro Text */
-            intro_text?: string | null;
-            /**
-             * Is Default
-             * @default false
-             */
-            is_default: boolean;
-            /** Layout */
-            layout?: {
-                [key: string]: unknown;
-            };
-            /** Name */
-            name: string;
         };
         /** LinkCreate */
         app__modules__tasks__schemas__LinkCreate: {
@@ -22674,7 +22674,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__core__ai__schemas__ReportRead"][];
+                    "application/json": components["schemas"]["ReportRead"][];
                 };
             };
             /** @description Validation Error */
@@ -22707,7 +22707,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__core__ai__schemas__ReportRead"];
+                    "application/json": components["schemas"]["ReportRead"];
                 };
             };
             /** @description Validation Error */
@@ -22771,7 +22771,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__core__ai__schemas__ReportRead"];
+                    "application/json": components["schemas"]["ReportRead"];
                 };
             };
             /** @description Validation Error */
@@ -22806,7 +22806,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__core__ai__schemas__ReportRead"];
+                    "application/json": components["schemas"]["ReportRead"];
                 };
             };
             /** @description Validation Error */
@@ -36824,7 +36824,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProfileRead"];
+                    "application/json": components["schemas"]["ReportProfileRead"];
                 };
             };
             /** @description Validation Error */
@@ -36849,7 +36849,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ProfileWrite"];
+                "application/json": components["schemas"]["ReportProfileWrite"];
             };
         };
         responses: {
@@ -36859,7 +36859,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProfileRead"];
+                    "application/json": components["schemas"]["ReportProfileRead"];
                 };
             };
             /** @description Validation Error */
@@ -36917,7 +36917,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["GenerateRequest"];
+                "application/json": components["schemas"]["ReportRunRequest"];
             };
         };
         responses: {
@@ -36950,7 +36950,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["GenerateBatchRequest"];
+                "application/json": components["schemas"]["ReportRunBatchRequest"];
             };
         };
         responses: {
@@ -36960,7 +36960,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GenerateBatchResult"];
+                    "application/json": components["schemas"]["ReportRunBatchResult"];
                 };
             };
             /** @description Validation Error */
@@ -36991,7 +36991,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__modules__reporting__schemas__ReportRead"];
+                    "application/json": components["schemas"]["ReportDetail"];
                 };
             };
             /** @description Validation Error */
@@ -37045,7 +37045,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["NarrativeUpdate"];
+                "application/json": components["schemas"]["ReportNarrativeUpdate"];
             };
         };
         responses: {
@@ -37055,7 +37055,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__modules__reporting__schemas__ReportRead"];
+                    "application/json": components["schemas"]["ReportDetail"];
                 };
             };
             /** @description Validation Error */
@@ -37150,7 +37150,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__modules__reporting__schemas__ReportRead"];
+                    "application/json": components["schemas"]["ReportDetail"];
                 };
             };
             /** @description Validation Error */
@@ -37175,7 +37175,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RewriteRequest"];
+                "application/json": components["schemas"]["ReportRewriteRequest"];
             };
         };
         responses: {
@@ -37185,7 +37185,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__modules__reporting__schemas__ReportRead"];
+                    "application/json": components["schemas"]["ReportDetail"];
                 };
             };
             /** @description Validation Error */
@@ -37210,7 +37210,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SendRequest"];
+                "application/json": components["schemas"]["ReportSendRequest"];
             };
         };
         responses: {
@@ -37220,7 +37220,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__modules__reporting__schemas__ReportRead"];
+                    "application/json": components["schemas"]["ReportDetail"];
                 };
             };
             /** @description Validation Error */
@@ -37304,7 +37304,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__modules__reporting__schemas__TemplateRead"][];
+                    "application/json": components["schemas"]["ReportTemplateRead"][];
                 };
             };
             /** @description Validation Error */
@@ -37327,7 +37327,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["TemplateWrite"];
+                "application/json": components["schemas"]["ReportTemplateWrite"];
             };
         };
         responses: {
@@ -37337,7 +37337,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__modules__reporting__schemas__TemplateRead"];
+                    "application/json": components["schemas"]["ReportTemplateRead"];
                 };
             };
             /** @description Validation Error */
@@ -37382,7 +37382,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["TemplateWrite"];
+                "application/json": components["schemas"]["ReportTemplateWrite"];
             };
         };
         responses: {
@@ -37392,7 +37392,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__modules__reporting__schemas__TemplateRead"];
+                    "application/json": components["schemas"]["ReportTemplateRead"];
                 };
             };
             /** @description Validation Error */
@@ -37450,7 +37450,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ToneRead"][];
+                    "application/json": components["schemas"]["ReportToneRead"][];
                 };
             };
         };
@@ -37464,7 +37464,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ToneWrite"];
+                "application/json": components["schemas"]["ReportToneWrite"];
             };
         };
         responses: {
@@ -37474,7 +37474,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ToneRead"];
+                    "application/json": components["schemas"]["ReportToneRead"];
                 };
             };
             /** @description Validation Error */
@@ -37499,7 +37499,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ToneWrite"];
+                "application/json": components["schemas"]["ReportToneWrite"];
             };
         };
         responses: {
@@ -37509,7 +37509,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ToneRead"];
+                    "application/json": components["schemas"]["ReportToneRead"];
                 };
             };
             /** @description Validation Error */

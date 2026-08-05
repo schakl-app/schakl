@@ -37,23 +37,23 @@ from app.modules.reporting.models import (
     ReportTone,
 )
 from app.modules.reporting.schemas import (
-    GenerateBatchRequest,
-    GenerateBatchResult,
-    GenerateRequest,
-    NarrativeUpdate,
-    ProfileRead,
-    ProfileWrite,
+    ReportDetail,
     ReportingSettingsRead,
     ReportingSettingsWrite,
     ReportList,
-    ReportRead,
+    ReportNarrativeUpdate,
+    ReportProfileRead,
+    ReportProfileWrite,
     ReportRow,
+    ReportRunBatchRequest,
+    ReportRunBatchResult,
+    ReportRunRequest,
+    ReportSendRequest,
+    ReportTemplateRead,
+    ReportTemplateWrite,
+    ReportToneRead,
+    ReportToneWrite,
     SectionCatalogEntry,
-    SendRequest,
-    TemplateRead,
-    TemplateWrite,
-    ToneRead,
-    ToneWrite,
 )
 from app.registry import registry
 
@@ -106,7 +106,7 @@ class ToneService:
             position=0,
         )
 
-    async def list(self) -> list[ToneRead]:
+    async def list(self) -> list[ReportToneRead]:
         await self.ensure_default()
         rows = (
             await self.ctx.session.execute(
@@ -115,7 +115,7 @@ class ToneService:
                 .order_by(ReportTone.position, ReportTone.name)
             )
         ).scalars().all()
-        return [ToneRead.model_validate(row) for row in rows]
+        return [ReportToneRead.model_validate(row) for row in rows]
 
     async def resolve(self, tone_id: uuid.UUID | None) -> ReportTone | None:
         """The profile's tone, else the org default. NULL means *inherit*, never *none*."""
@@ -131,15 +131,15 @@ class ToneService:
         )
         return row or await self.ensure_default()
 
-    async def create(self, data: ToneWrite) -> ToneRead:
+    async def create(self, data: ReportToneWrite) -> ReportToneRead:
         self.ctx.require("reporting.settings.manage")
         key = await self._unique_key(_slugify(data.name))
         if data.is_default:
             await self._clear_default()
         row = await self.ctx.repo(ReportTone).create(key=key, **_tone_values(data))
-        return ToneRead.model_validate(row)
+        return ReportToneRead.model_validate(row)
 
-    async def update(self, tone_id: uuid.UUID, data: ToneWrite) -> ToneRead:
+    async def update(self, tone_id: uuid.UUID, data: ReportToneWrite) -> ReportToneRead:
         self.ctx.require("reporting.settings.manage")
         row = await self.ctx.repo(ReportTone).get_or_404(tone_id)
         if data.is_default and not row.is_default:
@@ -147,7 +147,7 @@ class ToneService:
         for field, value in _tone_values(data).items():
             setattr(row, field, value)
         await self.ctx.session.flush()
-        return ToneRead.model_validate(row)
+        return ReportToneRead.model_validate(row)
 
     async def delete(self, tone_id: uuid.UUID) -> None:
         self.ctx.require("reporting.settings.manage")
@@ -187,7 +187,7 @@ class ToneService:
         return f"{base}-{uuid.uuid4().hex[:6]}"
 
 
-def _tone_values(data: ToneWrite) -> dict[str, Any]:
+def _tone_values(data: ReportToneWrite) -> dict[str, Any]:
     return {
         "name": data.name,
         "description": data.description,
@@ -207,12 +207,12 @@ class TemplateService:
     def __init__(self, ctx: RequestContext) -> None:
         self.ctx = ctx
 
-    async def list(self, audience: str | None = None) -> list[TemplateRead]:
+    async def list(self, audience: str | None = None) -> list[ReportTemplateRead]:
         stmt = self.ctx.repo(ReportTemplate).scoped_select().order_by(ReportTemplate.name)
         if audience:
             stmt = stmt.where(ReportTemplate.audience == audience)
         rows = (await self.ctx.session.execute(stmt)).scalars().all()
-        return [TemplateRead.model_validate(row) for row in rows]
+        return [ReportTemplateRead.model_validate(row) for row in rows]
 
     def catalog(self) -> list[SectionCatalogEntry]:
         """Every section a template may order — the registry, made visible to the editor."""
@@ -247,15 +247,15 @@ class TemplateService:
             .limit(1)
         )
 
-    async def create(self, data: TemplateWrite) -> TemplateRead:
+    async def create(self, data: ReportTemplateWrite) -> ReportTemplateRead:
         self.ctx.require("reporting.settings.manage")
         self._validate(data)
         if data.is_default:
             await self._clear_default(data.audience.value)
         row = await self.ctx.repo(ReportTemplate).create(**_template_values(data))
-        return TemplateRead.model_validate(row)
+        return ReportTemplateRead.model_validate(row)
 
-    async def update(self, template_id: uuid.UUID, data: TemplateWrite) -> TemplateRead:
+    async def update(self, template_id: uuid.UUID, data: ReportTemplateWrite) -> ReportTemplateRead:
         self.ctx.require("reporting.settings.manage")
         row = await self.ctx.repo(ReportTemplate).get_or_404(template_id)
         self._validate(data, current=row)
@@ -264,7 +264,7 @@ class TemplateService:
         for field, value in _template_values(data).items():
             setattr(row, field, value)
         await self.ctx.session.flush()
-        return TemplateRead.model_validate(row)
+        return ReportTemplateRead.model_validate(row)
 
     async def delete(self, template_id: uuid.UUID) -> None:
         self.ctx.require("reporting.settings.manage")
@@ -272,7 +272,7 @@ class TemplateService:
             await self.ctx.repo(ReportTemplate).get_or_404(template_id)
         )
 
-    def _validate(self, data: TemplateWrite, current: ReportTemplate | None = None) -> None:
+    def _validate(self, data: ReportTemplateWrite, current: ReportTemplate | None = None) -> None:
         """Refuse a template that cannot render, at save time — and gate *authoring* code.
 
         Writing Jinja that runs on the agency's server is a strictly larger act than arranging
@@ -305,7 +305,7 @@ class TemplateService:
             row.is_default = False
 
 
-def _template_values(data: TemplateWrite) -> dict[str, Any]:
+def _template_values(data: ReportTemplateWrite) -> dict[str, Any]:
     return {
         "name": data.name,
         "audience": data.audience.value,
@@ -369,7 +369,7 @@ class ProfileService:
     async def _company_or_404(self, company_id: uuid.UUID) -> Company:
         return await self.ctx.repo(Company).get_or_404(company_id)
 
-    async def get(self, company_id: uuid.UUID) -> ProfileRead:
+    async def get(self, company_id: uuid.UUID) -> ReportProfileRead:
         self.ctx.require("reporting.profile.manage")
         await self._company_or_404(company_id)
         row = await self.ctx.session.scalar(
@@ -379,7 +379,7 @@ class ProfileService:
         )
         return await self._read(row, company_id)
 
-    async def save(self, company_id: uuid.UUID, data: ProfileWrite) -> ProfileRead:
+    async def save(self, company_id: uuid.UUID, data: ReportProfileWrite) -> ReportProfileRead:
         self.ctx.require("reporting.profile.manage")
         await self._company_or_404(company_id)
         row = await self.ctx.session.scalar(
@@ -417,16 +417,16 @@ class ProfileService:
 
     async def _read(
         self, row: ReportProfile | None, company_id: uuid.UUID
-    ) -> ProfileRead:
+    ) -> ReportProfileRead:
         schedule = await self.effective_schedule(row)
         if row is None:
-            return ProfileRead(
+            return ReportProfileRead(
                 id=uuid.UUID(int=0),
                 company_id=company_id,
                 effective_schedule=schedule,
                 next_run_on=await self.next_run(schedule),
             )
-        payload = ProfileRead.model_validate(row)
+        payload = ReportProfileRead.model_validate(row)
         payload.effective_schedule = schedule
         payload.next_run_on = (
             await self.next_run(schedule) if row.active else None
@@ -543,11 +543,11 @@ class ReportService:
             raise AppError("not_found", "errors.not_found", status_code=404)
         return report
 
-    async def get(self, report_id: uuid.UUID) -> ReportRead:
+    async def get(self, report_id: uuid.UUID) -> ReportDetail:
         return await self._read(await self._get(report_id))
 
-    async def _read(self, report: Report) -> ReportRead:
-        payload = ReportRead.model_validate(report)
+    async def _read(self, report: Report) -> ReportDetail:
+        payload = ReportDetail.model_validate(report)
         payload.warning_count = len(report.warnings or [])
         titles = {
             spec.key: translate(spec.title_key, report.locale)
@@ -566,7 +566,7 @@ class ReportService:
         return payload
 
     # --- generation ----------------------------------------------------------------------- #
-    async def generate(self, data: GenerateRequest) -> tuple[ReportRead, bool]:
+    async def generate(self, data: ReportRunRequest) -> tuple[ReportDetail, bool]:
         """Create or find the run and hand it to a worker. Never generates in the request.
 
         Gathering touches several external APIs and a model call; doing it inline would hold a
@@ -640,7 +640,7 @@ class ReportService:
         )
         return await self._read(report), True
 
-    async def generate_batch(self, data: GenerateBatchRequest) -> GenerateBatchResult:
+    async def generate_batch(self, data: ReportRunBatchRequest) -> ReportRunBatchResult:
         """Every client with an active profile, one job each.
 
         One job *per client*, never a loop inside one transaction: the workflow this replaces
@@ -658,7 +658,7 @@ class ReportService:
         for profile in profiles:
             try:
                 _, started = await self.generate(
-                    GenerateRequest(
+                    ReportRunRequest(
                         company_id=profile.company_id,
                         audience=data.audience,
                         period_start=data.period_start,
@@ -671,12 +671,12 @@ class ReportService:
             queued += 1 if started else 0
             if not started:
                 skipped.append({"company_id": profile.company_id, "reason": "already_ready"})
-        return GenerateBatchResult(queued=queued, skipped=skipped)
+        return ReportRunBatchResult(queued=queued, skipped=skipped)
 
     # --- review --------------------------------------------------------------------------- #
     async def update_narrative(
-        self, report_id: uuid.UUID, data: NarrativeUpdate
-    ) -> ReportRead:
+        self, report_id: uuid.UUID, data: ReportNarrativeUpdate
+    ) -> ReportDetail:
         """A human's edit. Marked as edited, so a later regenerate leaves it alone."""
         self.ctx.require("reporting.report.write")
         report = await self._get(report_id)
@@ -694,7 +694,7 @@ class ReportService:
         await self.ctx.session.flush()
         return await self._read(report)
 
-    async def rewrite_section(self, report_id: uuid.UUID, section_key: str) -> ReportRead:
+    async def rewrite_section(self, report_id: uuid.UUID, section_key: str) -> ReportDetail:
         """Rewrite one paragraph against that section's own data."""
         from app.core.ai.service import AIService
         from app.modules.reporting import narrative as narrative_mod
@@ -734,7 +734,7 @@ class ReportService:
         return await self._read(report)
 
     # --- delivery -------------------------------------------------------------------------- #
-    async def publish(self, report_id: uuid.UUID, published: bool) -> ReportRead:
+    async def publish(self, report_id: uuid.UUID, published: bool) -> ReportDetail:
         """Make the document visible in the client portal — or take it back down."""
         self.ctx.require("reporting.report.send")
         report = await self._get(report_id)
@@ -758,7 +758,7 @@ class ReportService:
             await emit("report.published", self.ctx, {"report_id": str(report.id)})
         return await self._read(report)
 
-    async def send(self, report_id: uuid.UUID, data: SendRequest) -> ReportRead:
+    async def send(self, report_id: uuid.UUID, data: ReportSendRequest) -> ReportDetail:
         """Mail the report to its recipients, with the PDF attached."""
         from app.modules.reporting.delivery import send_report
 
