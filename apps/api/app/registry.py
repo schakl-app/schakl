@@ -11,13 +11,13 @@ module permission list: adding a module ships its ``<module>.<resource>.<action>
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from datetime import date
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    import uuid
-
     from fastapi import APIRouter
 
     from app.core.email.kinds import EmailTemplateKind
@@ -43,6 +43,70 @@ class AutomationActionSpec:
     key: str                      # e.g. "task.create" — unique across modules
     handler: Any                  # async (ActionContext, config: dict) -> dict (step result)
     title_key: str = ""           # i18n key for the editor; default automation.action.<key>
+    position: int = 100
+
+
+#: What a report section is generated *for*: one client, one period, one comparison.
+#: A period, not "the last 30 days" — the difference between a panel and a report.
+@dataclass(frozen=True)
+class ReportWindow:
+    """The subject of one report run, handed to every section provider (issue #300)."""
+
+    company_id: uuid.UUID
+    start: date
+    end: date
+    #: The period this one is measured against — the same span a year earlier by default.
+    #: ``None`` when the client has no comparable history, which a section must *say* rather
+    #: than print as a row of zeros (the n8n workflow's silent "N/A" is what this avoids).
+    compare_start: date | None
+    compare_end: date | None
+    #: The **document's** language, not the caller's UI locale. A Dutch agency reporting to a
+    #: German client sends German from a Dutch screen (docs/INVOICING.md's rule for documents).
+    locale: str = "nl"
+
+
+#: ``async (ctx, window) -> dict | None``. ``None`` means "this module has nothing for this
+#: client" — a client with no GA4 link simply has no traffic section, which is not an error and
+#: must not print an empty table.
+ReportSectionProvider = Callable[
+    ["RequestContext", ReportWindow], Awaitable[dict[str, Any] | None]
+]
+
+#: Who a section is for. ``client`` prints in the document the agency's customer reads;
+#: ``internal`` only in the marketeer's analysis. A section is never *both* by accident —
+#: the split is what lets the client document ban the word "advies" while the internal one is
+#: made of it.
+AUDIENCE_CLIENT = "client"
+AUDIENCE_INTERNAL = "internal"
+AUDIENCE_BOTH = "both"
+
+
+@dataclass(frozen=True)
+class ReportSectionSpec:
+    """A section a module contributes to a periodic report (issue #300).
+
+    The panels pattern (below) applied to documents, and for the same reason: adding
+    "zoekwoordposities" to every client's monthly report must be a change to the module that
+    owns rankings, not an edit to the reporting module. Reporting composes what it is given
+    and knows the name of no module.
+
+    A section carries more than a panel because a document needs more: the period it covers,
+    the comparison, a table shape the renderer can lay out, and — the piece that makes the
+    narrative possible — a ``brief_key`` naming the i18n text that tells the model what this
+    section is *about*. The tenant's tone says how to write; the brief says what to write
+    about; the data says what is true.
+    """
+
+    key: str                      # unique, module-namespaced: "marketing.traffic_channels"
+    title_key: str                # i18n key for the section heading
+    provider: ReportSectionProvider
+    #: i18n key of the default narrative brief handed to the model for this section.
+    brief_key: str = ""
+    audience: str = AUDIENCE_CLIENT
+    #: The permission the *generating* caller must hold for this section to be gathered. A
+    #: section is skipped, never 403'd: a report is assembled from whatever the generator may
+    #: read, and a member without ad-spend access simply produces a report without it.
+    requires_permission: str | None = None
     position: int = 100
 
 
@@ -88,6 +152,11 @@ class ModuleDescriptor:
     impex_extensions: list[ImpexExtension] = field(default_factory=list)
     # Actions this module contributes to the automation rule engine (issue #27).
     automation_actions: list[AutomationActionSpec] = field(default_factory=list)
+    # Sections this module contributes to a periodic client report (issue #300) — the panels
+    # contribution model, applied to documents. The reporting module composes these and names
+    # no module; disabling the contributor removes its section from every future report, while
+    # already-generated ones keep theirs (a report stores its own snapshot).
+    report_sections: list[ReportSectionSpec] = field(default_factory=list)
     # Outgoing mails this module lets the tenant rewrite (Instellingen -> E-mail), the same
     # contribution model as `panels`: core declares the auth mails and holds no module list
     # (`app.core.email.kinds`). Keys are namespaced by the module and asserted at mount time.
@@ -127,6 +196,30 @@ class ModuleRegistry:
         for module in self.enabled(names):
             panels.extend(p for p in module.panels if p.entity_type == entity_type)
         return sorted(panels, key=lambda p: (p.position, p.key))
+
+    def report_sections_for(
+        self, audience: str, names: list[str]
+    ) -> list[ReportSectionSpec]:
+        """Every enabled module's report sections for one audience, ordered (issue #300).
+
+        ``both`` matches either audience, so a section that reads the same to a client and to
+        the marketeer (the traffic table) is declared once rather than twice.
+        """
+        sections = [
+            spec
+            for module in self.enabled(names)
+            for spec in module.report_sections
+            if spec.audience in (audience, AUDIENCE_BOTH)
+        ]
+        return sorted(sections, key=lambda s: (s.position, s.key))
+
+    def report_section(self, key: str, names: list[str]) -> ReportSectionSpec | None:
+        """One section by key — what "regenerate just this paragraph" resolves against."""
+        for module in self.enabled(names):
+            for spec in module.report_sections:
+                if spec.key == key:
+                    return spec
+        return None
 
     def impex_extensions_for(self, entity_type: str, names: list[str]) -> list[ImpexExtension]:
         """Columns the enabled modules contribute to ``entity_type``'s import/export shape.
