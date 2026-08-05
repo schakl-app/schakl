@@ -30,7 +30,8 @@ module = ModuleDescriptor(
     permissions=TASK_PERMISSIONS,
     impex=[TASK_IMPEX],
     mcp_tools=TASK_MCP_TOOLS,
-    # 04:00 UTC ≈ early morning in Europe/Amsterdam; the job reasons in local dates itself.
+    # 04:00 UTC is early morning across European zones; the job resolves each org's own local
+    # date itself (CLAUDE.md §8), so the cron hour only has to be early enough for all of them.
     cron_jobs=[
         cron(spawn_scheduled_recurrences, hour=4, minute=0),
         # After the recurrences exist, so a task spawned this morning can already be overdue.

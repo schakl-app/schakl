@@ -11,7 +11,7 @@ Two things make this idempotent rather than a daily nag:
   cron reads through the one published interface the notifications module exposes
   (``prefs.due_soon_thresholds``) rather than by reaching into its tables.
 
-ARQ cron fires in UTC; ``today_local`` reasons in ``Europe/Amsterdam`` so "due today" means
+ARQ cron fires in UTC; the sweep reasons on **this org's** calendar so "due today" means
 what a person in Amsterdam means by it.
 """
 
@@ -25,8 +25,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import SystemContext, emit
 from app.core.models import Org
+from app.core.timezone import org_today
 from app.modules.tasks.models import Task
-from app.modules.tasks.recurrence import today_local
 from app.modules.tasks.statuses import load_statuses, non_terminal_keys
 
 
@@ -52,7 +52,7 @@ async def remind_for_org(org: Org, session: AsyncSession, *, today: date | None 
     # means to each person, through its published helper — never by reading its tables (§6).
     from app.modules.notifications.prefs import due_soon_thresholds
 
-    today = today or today_local()
+    today = today or await org_today(session, org.id)
     thresholds = await due_soon_thresholds(session, org.id)
     horizon = today + timedelta(days=max(thresholds.values()))
 

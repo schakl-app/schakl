@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import auth_cookie, make_tenant, org_today
 
 
 async def test_task_crud_and_status_toggle(client_for) -> None:
@@ -171,11 +171,10 @@ async def test_completed_at_set_and_cleared(client_for) -> None:
 async def test_due_filters(client_for) -> None:
     from datetime import timedelta
 
-    from app.modules.tasks.recurrence import today_local
-
+    
     t = await make_tenant("task-due")
     headers = await auth_cookie(t.user)
-    today = today_local()
+    today = org_today()
     async with client_for(t.host) as c:
         await c.post(
             "/api/v1/tasks",

@@ -35,6 +35,7 @@ from app.config import settings
 from app.core.crypto import decrypt
 from app.core.events import EmitContext
 from app.core.net_guard import is_public_address
+from app.core.timezone import org_zoneinfo
 from app.i18n import translate
 from app.modules.notifications.events import (
     CHANNEL_EMAIL,
@@ -196,6 +197,8 @@ class ExternalChannel:
         if not configs:
             return
         now = datetime.now(UTC)
+        # This org's wall clock decides where a digest slot falls (CLAUDE.md §8).
+        tz = await org_zoneinfo(session, org_id)
         by_user = {row.user_id: row for row in notifications}
         # Every channel's rule for this event in one query — never one per channel.
         channel_prefs = await resolve_channel_prefs(session, org_id, event.event_type, configs)
@@ -217,7 +220,7 @@ class ExternalChannel:
                     channel=CHANNEL_EXTERNAL,
                     channel_config_id=config.id,
                     status="pending",
-                    deliver_after=compute_visible_at(pref, now),
+                    deliver_after=compute_visible_at(pref, now, tz=tz),
                 )
             )
 
@@ -253,6 +256,8 @@ class EmailChannel:
             ctx.session, ctx.org.id, event.event_type, [row.user_id for row in notifications]
         )
         now = datetime.now(UTC)
+        # Same rule as the external channel: the org's calendar, resolved once.
+        tz = await org_zoneinfo(ctx.session, ctx.org.id)
         for row in notifications:
             pref = prefs.get(row.user_id)
             if pref is None or not pref.enabled:
@@ -263,7 +268,7 @@ class EmailChannel:
                     notification_id=row.id,
                     channel=CHANNEL_EMAIL,
                     status="pending",
-                    deliver_after=compute_visible_at(pref, now),
+                    deliver_after=compute_visible_at(pref, now, tz=tz),
                 )
             )
 

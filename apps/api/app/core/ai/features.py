@@ -13,7 +13,7 @@ import logging
 import re
 import uuid
 from collections.abc import AsyncIterator
-from datetime import UTC, date, datetime
+from datetime import date
 from typing import Any
 
 from sqlalchemy import select
@@ -508,7 +508,7 @@ async def stream_digest(
     system = prompts.digest_system(
         locale=service.locale(),
         brand=service.ctx.org.name,
-        today=datetime.now(UTC).date(),
+        today=await org_today(service.ctx.session, service.ctx.org.id),
     )
     async for event in service.stream(
         "reporting",

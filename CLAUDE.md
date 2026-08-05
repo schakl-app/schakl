@@ -225,6 +225,18 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   `app.core.timezone.org_zoneinfo`. Stored instants stay `TIMESTAMPTZ`/UTC; date-only values stay
   wall-clock UTC; leave `TIME` stays naive (§14). No per-user override yet — the resolution seam
   is in place for one.
+- **No module keeps its own clock.** `ZoneInfo("Europe/Amsterdam")` anywhere but
+  `config.default_timezone` is a build break in spirit: three modules each grew a private `_TZ`
+  and quietly handed every tenant Amsterdam's midnight — project budget periods rolled over on
+  the wrong day, task recurrence and reminders called the wrong day "today", and digests fired an
+  hour early in Lisbon and an hour late in Warsaw. A function that reasons about a wall clock
+  **takes the zone (or the local day) as an argument**; whoever has the org resolves it once via
+  `org_zoneinfo` / `org_today`. The instance default is read through `resolve_zoneinfo(None)`, per
+  call rather than at import, so configuration is never frozen into a module constant. The same
+  rule binds the tests: `tests/conftest.org_today()` is the one "today" an expectation may use —
+  a test computing it from `date.today()` or UTC agrees with the app only on a developer's
+  machine and fails on CI, which runs in UTC. A test may still *name* a zone when the zone is its
+  subject (a DST boundary); that is an input, not an assumption.
 
 ## 9. Conventions
 

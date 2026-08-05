@@ -4,10 +4,15 @@
 every month/week/day. "Available hours" therefore means *this period's* remaining, and every
 period boundary needs a concrete instant to count from.
 
-Boundaries are **Europe/Amsterdam**, the platform's default timezone (CLAUDE.md §8), not UTC.
-The rest of the time module works in UTC, so a monthly budget used to roll over at 01:00 or 02:00
-local — an hour of work landing in the wrong month twice a year. The instant returned here is
-still UTC; only the *day* it names is local.
+Boundaries are **local calendar days in the tenant's own zone** (CLAUDE.md §8), not UTC. The rest
+of the time module works in UTC, so a monthly budget used to roll over at 01:00 or 02:00 local —
+an hour of work landing in the wrong month twice a year. The instant returned here is still UTC;
+only the *day* it names is local.
+
+*Which* zone is the caller's to supply, and every caller has one: `org_zoneinfo(session, org_id)`
+resolves the org's `org_settings.timezone` and falls back to the instance default. These functions
+stay pure so a test can pin both the clock and the zone, but the default is the configured
+instance zone — never a hardcoded city. An agency in Lisbon closes its month at Lisbon midnight.
 """
 
 from __future__ import annotations
@@ -15,8 +20,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-# The same timezone the task recurrence engine already runs on (tasks/recurrence.py).
-_TZ = ZoneInfo("Europe/Amsterdam")
+from app.core.timezone import resolve_zoneinfo
 
 # Stands in for "no lower bound" where a query needs a concrete timestamp. No time entry can
 # predate it, so a `total` budget counts everything.
@@ -25,7 +29,15 @@ EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 BUDGET_PERIODS: tuple[str, ...] = ("total", "monthly", "weekly", "daily")
 
 
-def period_start_date(budget_period: str, *, now: datetime | None = None) -> date | None:
+def _zone(tz: ZoneInfo | None) -> ZoneInfo:
+    """The caller's zone, or the **configured** instance default — resolved per call, not at
+    import, so a test (or a differently configured instance) is never stuck with a stale one."""
+    return tz if tz is not None else resolve_zoneinfo(None)
+
+
+def period_start_date(
+    budget_period: str, *, now: datetime | None = None, tz: ZoneInfo | None = None
+) -> date | None:
     """The **local calendar day** the current budget period began. ``None`` for ``total``.
 
     This is the day a human names ("since 1 July"), and the one a client sends back as a
@@ -34,9 +46,10 @@ def period_start_date(budget_period: str, *, now: datetime | None = None) -> dat
     reports 30 June for a July budget and drags the previous month's last evening into the
     period it is supposed to exclude.
 
-    ``now`` is injectable so tests can pin a date instead of racing the clock.
+    ``now`` and ``tz`` are injectable so tests can pin a date and a zone instead of racing the
+    clock or inheriting the box's configuration.
     """
-    today = (now or datetime.now(UTC)).astimezone(_TZ).date()
+    today = (now or datetime.now(UTC)).astimezone(_zone(tz)).date()
     if budget_period == "monthly":
         return today.replace(day=1)
     if budget_period == "weekly":
@@ -46,17 +59,22 @@ def period_start_date(budget_period: str, *, now: datetime | None = None) -> dat
     return None
 
 
-def period_start(budget_period: str, *, now: datetime | None = None) -> datetime | None:
+def period_start(
+    budget_period: str, *, now: datetime | None = None, tz: ZoneInfo | None = None
+) -> datetime | None:
     """The UTC instant the current budget period began. ``None`` for ``total`` — it never resets.
 
-    ``now`` is injectable so tests can pin a date instead of racing the clock.
+    ``now`` and ``tz`` are injectable so tests can pin a date and a zone instead of racing the
+    clock or inheriting the box's configuration.
     """
-    day = period_start_date(budget_period, now=now)
+    day = period_start_date(budget_period, now=now, tz=tz)
     if day is None:
         return None
-    return datetime.combine(day, time.min, tzinfo=_TZ).astimezone(UTC)
+    return datetime.combine(day, time.min, tzinfo=_zone(tz)).astimezone(UTC)
 
 
-def period_bound(budget_period: str, *, now: datetime | None = None) -> datetime:
+def period_bound(
+    budget_period: str, *, now: datetime | None = None, tz: ZoneInfo | None = None
+) -> datetime:
     """``period_start`` with ``total`` collapsed to ``EPOCH``, for queries that need a timestamp."""
-    return period_start(budget_period, now=now) or EPOCH
+    return period_start(budget_period, now=now, tz=tz) or EPOCH

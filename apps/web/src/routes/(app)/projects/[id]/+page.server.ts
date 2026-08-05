@@ -34,7 +34,7 @@ export const load: PageServerLoad = async (event) => {
   const project_id = event.params.id;
 
   // `hours=true` costs one grouped query and replaces the separate `/time/logged` call this page
-  // used to make. It also carries the period start the API resolved in Europe/Amsterdam — the
+  // used to make. It also carries the period start the API resolved on the org's clock — the
   // browser used to recompute that in UTC, which lands on the wrong day for half the year. The
   // budget bar and the Uren panel below it now count from exactly the same instant (#43).
   const { data: project } = await api.GET("/api/v1/projects/{project_id}", {

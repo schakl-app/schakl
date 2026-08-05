@@ -11,7 +11,7 @@ export function formatMinutes(total: number): string {
 }
 
 // Entry times are stored as the wall-clock the user typed (as UTC), so render them in UTC to
-// round-trip exactly — the whole app is single-timezone (Europe/Amsterdam) in practice.
+// round-trip exactly — a tenant works in one zone at a time (`getTimeZone()`, CLAUDE.md §8).
 const _timeFmt = new Intl.DateTimeFormat("nl-NL", {
   hour: "2-digit",
   minute: "2-digit",

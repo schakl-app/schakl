@@ -20,23 +20,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.events import SystemContext, emit
 from app.core.models import Org
 from app.core.permissions.service import permission_holder_ids
-from app.core.timezone import DEFAULT_TIMEZONE, org_zoneinfo
+from app.core.timezone import org_zoneinfo, resolve_zoneinfo
 from app.modules.time.models import TimeEntry
 
-# Fallback only: ``remind_for_org`` resolves each org's own zone (CLAUDE.md §8). "Last week" is a
+# No module-level zone (CLAUDE.md §8): ``remind_for_org`` resolves each org's own, and an
+# omitted ``tz`` falls back to the *configured* instance default read per call — freezing
+# `settings` into an import-time constant is the same mistake one step smaller. "Last week" is a
 # local-calendar span, so a cloud tenant east of us must not be nudged on our Monday.
-_DEFAULT_TZ = ZoneInfo(DEFAULT_TIMEZONE)
 
 
-def previous_week_start(today: date | None = None, tz: ZoneInfo = _DEFAULT_TZ) -> date:
+def previous_week_start(today: date | None = None, tz: ZoneInfo | None = None) -> date:
     """The Monday of the ISO week before ``today`` (local, because the cron fires in UTC)."""
+    tz = tz if tz is not None else resolve_zoneinfo(None)
     today = today or datetime.now(tz).date()
     this_monday = today - timedelta(days=today.weekday())
     return this_monday - timedelta(days=7)
 
 
-def _week_bounds(week_start: date, tz: ZoneInfo = _DEFAULT_TZ) -> tuple[datetime, datetime]:
+def _week_bounds(week_start: date, tz: ZoneInfo | None = None) -> tuple[datetime, datetime]:
     """The UTC instants the local week opens and closes — DST-correct, unlike ``+7 days`` in UTC."""
+    tz = tz if tz is not None else resolve_zoneinfo(None)
     start = datetime.combine(week_start, time.min, tzinfo=tz).astimezone(UTC)
     end = datetime.combine(week_start + timedelta(days=7), time.min, tzinfo=tz).astimezone(UTC)
     return start, end

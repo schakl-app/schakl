@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import SystemContext, emit
 from app.core.models import Org
+from app.core.timezone import org_zoneinfo
 from app.modules.projects.budget import period_bound, period_start_date
 from app.modules.projects.models import Project, ProjectAssignee, ProjectStatus
 
@@ -61,7 +62,10 @@ async def watch_for_org(org: Org, session: AsyncSession) -> int:
         return 0
 
     ctx = SystemContext(org=org, session=session)
-    periods = {p.id: period_bound(p.budget_period) for p in projects}
+    # This org's own calendar decides where its month starts (CLAUDE.md §8) — resolved once for
+    # the whole sweep, never per project.
+    tz = await org_zoneinfo(session, org.id)
+    periods = {p.id: period_bound(p.budget_period, tz=tz) for p in projects}
     logged = await TimeService(ctx).minutes_by_project(periods)
 
     emitted = 0
@@ -71,7 +75,7 @@ async def watch_for_org(org: Org, session: AsyncSession) -> int:
             continue
         spent = logged.get(project.id, LoggedMinutes()).total / 60
         percent = round(spent / budget * 100)
-        period = period_start_date(project.budget_period)
+        period = period_start_date(project.budget_period, tz=tz)
         recipients = await _assignees(session, org.id, project.id)
         if not recipients:
             continue

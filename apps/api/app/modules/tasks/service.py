@@ -30,6 +30,7 @@ from app.core.richtext import (
 )
 from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext, TenantScopedRepository
+from app.core.timezone import org_today
 from app.core.urls import reject_dangerous_url
 from app.errors import AppError
 from app.modules.tasks import recurrence as rec_mod
@@ -391,7 +392,7 @@ class TaskService:
         # its date, and the status sort ranks by the tenant's configured order — both read from
         # ``task_statuses`` rather than a hardcoded open/done tuple.
         statuses = await load_statuses(self.ctx.session, self.ctx.org.id)
-        today = rec_mod.today_local()
+        today = await org_today(self.ctx.session, self.ctx.org.id)
         if due == "overdue":
             stmt = stmt.where(
                 Task.due_date < today, Task.status.in_(non_terminal_keys(statuses))
@@ -454,7 +455,7 @@ class TaskService:
         """Open task counts by project/company without shipping all source rows to the web."""
         statuses = await load_statuses(self.ctx.session, self.ctx.org.id)
         open_keys = non_terminal_keys(statuses)
-        today = rec_mod.today_local()
+        today = await org_today(self.ctx.session, self.ctx.org.id)
         # Start from the repository-scoped relation, not the bare tasks table: portal visibility
         # and a manager's company horizon remain API-boundary guarantees even on an aggregate.
         visible = self.repo.scoped_select().subquery()
@@ -699,7 +700,9 @@ class TaskService:
         values["priority"] = data.priority.value
         values["recurrence"] = data.recurrence.model_dump(mode="json") if data.recurrence else None
         values["recurrence_next_run"] = rec_mod.compute_next_run(
-            values["recurrence"], data.due_date
+            values["recurrence"],
+            data.due_date,
+            today=await org_today(self.ctx.session, self.ctx.org.id),
         )
         values["position"] = await self._next_position()
         task = await self.repo.create(**values)
@@ -924,6 +927,7 @@ class TaskService:
             values["recurrence_next_run"] = rec_mod.compute_next_run(
                 values.get("recurrence", task.recurrence),
                 values.get("due_date", task.due_date),
+                today=await org_today(self.ctx.session, self.ctx.org.id),
             )
 
         changed = [

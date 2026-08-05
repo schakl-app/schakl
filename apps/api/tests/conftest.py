@@ -12,7 +12,7 @@ import subprocess
 import uuid
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +41,7 @@ from app.core.auth.backend import write_session_token  # noqa: E402
 from app.core.auth.models import User  # noqa: E402
 from app.core.models import Membership, Org, OrgSettings  # noqa: E402
 from app.core.permissions.service import create_membership, seed_system_roles  # noqa: E402
+from app.core.timezone import resolve_zoneinfo  # noqa: E402
 from app.db import async_session_maker, engine, set_current_org  # noqa: E402
 from app.main import app  # noqa: E402
 
@@ -170,6 +171,28 @@ async def add_membership(
     every gated endpoint 403s. Always go through this (or ``make_tenant``).
     """
     return await create_membership(session, org_id, user_id, role)
+
+
+def org_today() -> date:
+    """Today on the **org's** calendar — the only "today" the API ever means.
+
+    Every date the API derives for itself (a domain's default ``start_date``, a renewal
+    boundary, an invoice's due date) comes from ``app.core.timezone.org_today``, which resolves
+    the tenant's zone and falls back to the instance default. A test that builds the expected
+    value from ``date.today()`` or ``datetime.now(UTC).date()`` is asserting against a
+    *different clock*, and the two disagree for the hours between local midnight and UTC
+    midnight — two in summer, one in winter.
+
+    **That gap is invisible where it is written and fires where it is not.** A developer's
+    machine in ``Europe/Amsterdam`` makes ``date.today()`` agree with the app by coincidence;
+    the CI runner is UTC, where it does not. It is the shape behind "CI went red and my diff
+    touched no date code" (`test_domain_pricing_fields_and_tld_stamping`, nightly).
+
+    Resolved from the same setting the app reads — never a hardcoded
+    ``ZoneInfo("Europe/Amsterdam")`` — so an instance configured for another zone does not need
+    its tests edited to keep telling the truth.
+    """
+    return datetime.now(resolve_zoneinfo(None)).date()
 
 
 def leave_workday(index: int = 0) -> date:

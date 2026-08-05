@@ -33,7 +33,7 @@
    * "Reset" posts an empty set, which deletes this scope's rows — the API's own meaning of reset.
    *
    * Deliberately not exposed: an in-app digest's time-of-day and weekday (the columns exist and
-   * fall back to 08:00 Europe/Amsterdam, on Monday). The e-mail digest schedule *is* exposed, as
+   * fall back to 08:00 on the org's clock, on Monday). The e-mail digest schedule *is* exposed, as
    * one global choice, because e-mail leaves the app and when it lands is worth controlling.
    */
   import { enhance } from "$app/forms";

@@ -17,19 +17,16 @@ from __future__ import annotations
 
 import uuid as uuid_mod
 from datetime import UTC, datetime, timedelta
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
 
 from app.db import async_session_maker, set_current_org
-from tests.conftest import Tenant, auth_cookie, make_tenant
+from tests.conftest import Tenant, auth_cookie, make_tenant, org_today
 from tests.test_invoicing_api import _company, _setup_org
 
-AMS = ZoneInfo("Europe/Amsterdam")
-
-
-def _today():
-    return datetime.now(AMS).date()
+#: The API derives its dates on the org's calendar, so the expectations must too
+#: (``conftest.org_today``) — never a zone hardcoded per test file.
+_today = org_today
 
 
 async def _subscription(client, headers, company_id: str) -> dict:

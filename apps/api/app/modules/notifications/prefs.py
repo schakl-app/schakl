@@ -11,13 +11,15 @@ quiet hours and the due-soon threshold.
 
 Scheduling is expressed entirely as ``visible_at``: there is no digest cron and no synthetic
 digest row. A daily-digest event writes its notification row immediately with
-``visible_at`` = the next 08:00 Europe/Amsterdam; the bell counts and the list shows only rows
-whose ``visible_at`` has passed. At 08:00 the count simply jumps and the day-grouped list *is*
-the digest — so "every number opens" (docs/UX.md) holds by construction.
+``visible_at`` = the next 08:00 on the org's own clock; the bell counts and the list shows
+only rows whose ``visible_at`` has passed. At 08:00 the count simply jumps and the day-grouped
+list *is* the digest — so "every number opens" (docs/UX.md) holds by construction.
 
-All wall-clock reasoning happens in ``Europe/Amsterdam`` (the platform timezone, CLAUDE.md §8);
-adding a ``timedelta`` to a zone-aware local datetime does wall-clock arithmetic, so a daily
-digest stays at 08:00 across a DST transition instead of drifting an hour.
+**This module names no city.** All wall-clock reasoning happens in the org's zone
+(``org_settings.timezone``, CLAUDE.md §8), which the caller resolves and passes in — a constant
+here would hand every tenant somebody else's morning. Given the right zone, adding a
+``timedelta`` to a zone-aware local datetime does wall-clock arithmetic, so a daily digest stays
+at 08:00 across a DST transition instead of drifting an hour.
 """
 
 from __future__ import annotations
@@ -48,22 +50,25 @@ from app.modules.notifications.events import (
 )
 from app.modules.notifications.models import NotificationChannelConfig, NotificationPreference
 
-AMSTERDAM = ZoneInfo("Europe/Amsterdam")
-
 
 # --------------------------------------------------------------------------- #
 # Scheduling
 # --------------------------------------------------------------------------- #
-def compute_visible_at(pref: ResolvedPref, now: datetime) -> datetime:
+def compute_visible_at(pref: ResolvedPref, now: datetime, *, tz: ZoneInfo) -> datetime:
     """When this notification should surface in the bell, given the recipient's cadence.
 
     ``immediate`` honours ``delay_minutes`` (a grace period that also lets a burst of edits
     collapse into one row); the digest cadences ignore it — the cadence *is* the delay.
+
+    ``tz`` is **the org's** zone (`app.core.timezone.org_zoneinfo`), and it is required rather
+    than defaulted: "daily at 08:00" is a wall-clock promise, and a hardcoded city delivered a
+    tenant in Lisbon their morning digest at 07:00 and one in Warsaw theirs at 09:00 (CLAUDE.md
+    §8). The instant returned is still UTC; only the wall clock it is computed against is local.
     """
     if pref.digest == DIGEST_IMMEDIATE:
         return now + timedelta(minutes=pref.delay_minutes) if pref.delay_minutes else now
 
-    local = now.astimezone(AMSTERDAM)
+    local = now.astimezone(tz)
     if pref.digest == DIGEST_HOURLY:
         slot = local.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
     elif pref.digest == DIGEST_WEEKLY:

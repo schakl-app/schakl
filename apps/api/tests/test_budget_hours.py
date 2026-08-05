@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from app.modules.projects.budget import period_start, period_start_date
 from tests.conftest import add_membership, auth_cookie, leave_workday, make_tenant
@@ -23,23 +24,32 @@ def _iso(dt: datetime) -> str:
 
 
 def test_the_period_start_names_a_local_day_not_a_utc_instant() -> None:
-    """The day a period began, in Amsterdam — the one a client sends back as `date_from` (#43).
+    """The day a period began, on the tenant's calendar — what a client sends back as
+    `date_from` (#43).
 
     In summer, Amsterdam-local midnight is 22:00 UTC the day *before*, so taking `.date()` of the
     UTC instant reported 30 June for a July budget. Half the year that bug is invisible, which is
     why it is pinned on a fixed date rather than on `today`.
+
+    The zone is passed **in**, and that is the point: it is this test's input, not something
+    `budget.py` may assume. A tenant configured for another zone gets their own midnight.
     """
+    zone = ZoneInfo("Europe/Amsterdam")
     summer = datetime(2026, 7, 9, 12, 0, tzinfo=UTC)  # CEST, UTC+2
     winter = datetime(2026, 1, 9, 12, 0, tzinfo=UTC)  # CET, UTC+1
 
-    assert period_start_date("monthly", now=summer).isoformat() == "2026-07-01"
-    assert period_start_date("monthly", now=winter).isoformat() == "2026-01-01"
-    assert period_start_date("weekly", now=summer).isoformat() == "2026-07-06"  # Monday
-    assert period_start_date("daily", now=summer).isoformat() == "2026-07-09"
-    assert period_start_date("total", now=summer) is None
+    assert period_start_date("monthly", now=summer, tz=zone).isoformat() == "2026-07-01"
+    assert period_start_date("monthly", now=winter, tz=zone).isoformat() == "2026-01-01"
+    assert period_start_date("weekly", now=summer, tz=zone).isoformat() == "2026-07-06"  # Mon
+    assert period_start_date("daily", now=summer, tz=zone).isoformat() == "2026-07-09"
+    assert period_start_date("total", now=summer, tz=zone) is None
 
     # The instant it names is still the local midnight, and it still precedes the local day.
-    assert period_start("monthly", now=summer).isoformat() == "2026-06-30T22:00:00+00:00"
+    assert period_start("monthly", now=summer, tz=zone).isoformat() == "2026-06-30T22:00:00+00:00"
+
+    # And a different tenant zone genuinely moves the boundary — the regression this guards.
+    lisbon = ZoneInfo("Europe/Lisbon")
+    assert period_start("monthly", now=summer, tz=lisbon).isoformat() == "2026-06-30T23:00:00+00:00"
 
 
 async def _entry(

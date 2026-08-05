@@ -11,6 +11,7 @@ from __future__ import annotations
 import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 
@@ -289,35 +290,40 @@ async def test_a_burst_collapses_into_the_pending_row() -> None:
 
 
 def test_daily_digest_lands_at_the_next_local_0800_across_dst() -> None:
+    """The zone is an argument, not an assumption: "daily at 08:00" is a wall-clock promise, and
+    whose wall clock is `org_settings.timezone` (CLAUDE.md §8). Named here because *this* test is
+    about DST, and Amsterdam has two offsets a year to be wrong about."""
+    zone = ZoneInfo("Europe/Amsterdam")
     pref = ResolvedPref(
         enabled=True, delay_minutes=0, digest="daily",
         digest_time=time(8, 0), digest_weekday=None,
     )
     # Summer (CEST, UTC+2): 07:00 local is 05:00Z → next 08:00 local is 06:00Z.
-    summer = compute_visible_at(pref, datetime(2026, 7, 10, 5, 0, tzinfo=UTC))
+    summer = compute_visible_at(pref, datetime(2026, 7, 10, 5, 0, tzinfo=UTC), tz=zone)
     assert summer == datetime(2026, 7, 10, 6, 0, tzinfo=UTC)
     # Winter (CET, UTC+1): the same wall clock is one hour earlier in UTC.
-    winter = compute_visible_at(pref, datetime(2026, 1, 15, 5, 0, tzinfo=UTC))
+    winter = compute_visible_at(pref, datetime(2026, 1, 15, 5, 0, tzinfo=UTC), tz=zone)
     assert winter == datetime(2026, 1, 15, 7, 0, tzinfo=UTC)
     # Past today's slot → tomorrow, not an hour that already went by.
-    tomorrow = compute_visible_at(pref, datetime(2026, 7, 10, 9, 0, tzinfo=UTC))
+    tomorrow = compute_visible_at(pref, datetime(2026, 7, 10, 9, 0, tzinfo=UTC), tz=zone)
     assert tomorrow == datetime(2026, 7, 11, 6, 0, tzinfo=UTC)
 
 
 def test_immediate_honours_a_delay_and_digests_ignore_it() -> None:
+    zone = ZoneInfo("Europe/Amsterdam")
     now = datetime(2026, 7, 10, 5, 0, tzinfo=UTC)
     immediate = ResolvedPref(
         enabled=True, delay_minutes=15, digest="immediate",
         digest_time=None, digest_weekday=None,
     )
-    assert compute_visible_at(immediate, now) == now + timedelta(minutes=15)
+    assert compute_visible_at(immediate, now, tz=zone) == now + timedelta(minutes=15)
 
     weekly = ResolvedPref(
         enabled=True, delay_minutes=15, digest="weekly",
         digest_time=time(8, 0), digest_weekday=0,  # Monday
     )
     # 2026-07-10 is a Friday; the next Monday 08:00 CEST is 2026-07-13 06:00Z.
-    assert compute_visible_at(weekly, now) == datetime(2026, 7, 13, 6, 0, tzinfo=UTC)
+    assert compute_visible_at(weekly, now, tz=zone) == datetime(2026, 7, 13, 6, 0, tzinfo=UTC)
 
 
 async def test_fan_out_is_bounded_not_n_plus_one(count_queries) -> None:

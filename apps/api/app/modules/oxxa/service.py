@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -33,6 +33,7 @@ from app.core.crypto import decrypt, encrypt
 from app.core.providers.models import Provider
 from app.core.registrar.backend import split_suffix
 from app.core.tenancy import RequestContext
+from app.core.timezone import org_today
 from app.errors import AppError
 from app.modules.oxxa.client import (
     OxxaAuthError,
@@ -745,7 +746,8 @@ class OxxaService:
             )
         if row is not None:
             account_name = next((a.name for a in accounts if a.id == row.account_id), None)
-            issues.extend(self._domain_issues(row, domain))
+            today = await org_today(self.ctx.session, self.ctx.org.id)
+            issues.extend(self._domain_issues(row, domain, today=today))
 
         # The name is already in hand from ``_domain_or_404``; a second query for it would be a
         # query this page-load endpoint does not need (docs/PERFORMANCE.md).
@@ -760,9 +762,10 @@ class OxxaService:
         }
 
     @staticmethod
-    def _domain_issues(row: OxxaDomain, domain: DomainRow) -> list[str]:
+    def _domain_issues(row: OxxaDomain, domain: DomainRow, *, today: date) -> list[str]:
+        """``today`` is the org's own day (CLAUDE.md §8): "expires in 30 days" is a calendar
+        claim, and UTC gets it wrong for the hours either side of local midnight."""
         issues: list[str] = []
-        today = datetime.now(UTC).date()
         if row.expires_on:
             if row.expires_on < today:
                 issues.append(ISSUE_EXPIRED)
