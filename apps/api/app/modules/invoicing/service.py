@@ -2268,7 +2268,10 @@ class InvoiceService(_DocumentService):
         shown so an agency can tell "nobody drafted this and nobody will" from "this one is
         automated and simply has arrears from before it was".
         """
-        self.ctx.require("invoicing.invoice.read")
+        # ``:any``, matching the route and ``uninvoiced_report`` (#266/#302): this is the
+        # org's whole recurring backlog across every client — the invoicing module, not a
+        # document a client could be shown their own copy of.
+        self.ctx.require("invoicing.invoice.read", "any")
         from app.modules.domains.service import DomainService
         from app.modules.subscriptions.service import SubscriptionService
 

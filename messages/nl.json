@@ -1713,6 +1713,7 @@
   "instance.purge_confirm": "Typ {slug} ter bevestiging",
   "instance.purge_action": "Vernietigen",
   "instance.impersonation_banner": "{actor} is ingelogd als {target}",
+  "instance.impersonation_narrowed": "u ziet minder dan zij: alleen wat uw eigen rechten toelaten",
   "instance.impersonation_stop": "Stoppen",
   "instance.handoff_continue": "Doorgaan naar het eigen adres van deze organisatie",
   "instance.handoff_stopped": "Impersonatie beëindigd",

@@ -185,6 +185,11 @@ class MeInfo(BaseModel):
     #: is the same either way; the **stop** differs (a different endpoint audits it to a
     #: different trail), so the web has to know which one it is looking at.
     impersonation_kind: str | None = None
+    #: This portal impersonation is running as **less** than the client actually holds, because
+    #: the impersonator does not hold it either (#266). The banner has to say so: the point of
+    #: signing in as a client is to see what they see, so an unlabelled narrowed view is a screen
+    #: that lies — staff would report "their invoices are missing" about a client who has them.
+    impersonation_narrowed: bool = False
     #: AI features usable in this tenant (epic #131): empty until an admin configures a
     #: provider under Instellingen → AI — "off means invisible". Rides the payload the web
     #: already fetches per request, so gating an affordance costs no extra call.
@@ -227,6 +232,7 @@ def _me_info(
         impersonated_by=ctx.impersonated_by.email if ctx.impersonated_by else None,
         impersonation_expires_at=ctx.impersonation_expires_at,
         impersonation_kind=ctx.impersonation_kind,
+        impersonation_narrowed=ctx.impersonation_narrowed,
     )
 
 

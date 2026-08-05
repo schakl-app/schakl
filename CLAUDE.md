@@ -656,17 +656,26 @@ It is a **core, cross-cutting capability**, like custom fields (§13) — not pe
   real session, with permissions resolving for the **target**, so an impersonated session is never
   more powerful than the account it entered. The tenant-level kind carries what an untrusted-by-
   default caller needs: its own permission (`contacts.portal.impersonate`, never implied by
-  managing the login), a target that can only be a contact-linked portal login, the company
-  horizon, and a hard refusal when the target holds a permission the caller does not
-  (`PermissionSet.covers` — roles are tenant-editable, so "it's only a client" bounds nothing).
+  managing the login), a target that can only be a contact-linked portal login, and — since #266
+  — a session **capped to the intersection** of target and impersonator: permissions
+  (`PermissionSet.narrowed_to`) *and* company horizon alike. A subset cannot escalate, so the
+  invariant holds by construction rather than by a gate, and a scope degrades (`:any` against a
+  caller's `:own` keeps `:own`) rather than dropping a screen they can open anyway. Only
+  `is_superuser` still refuses outright (`errors.impersonation_escalation`): a different axis
+  (§5), not a permission, so no intersection bounds it. The cap is `portal`-only — an instance
+  owner holds no membership in the tenant, so capping would leave them nothing.
+  It replaced a `covers` **refusal**, and the reason generalises: the refusal stated the
+  invariant indirectly and **coupled two things that should not be coupled** — every grant to the
+  tenant-editable `client` role shrank the set of staff who could impersonate at all, and #266's
+  invoice read locked out every `member` overnight with *"impersonation stopped working and we
+  changed nothing"*. Prefer narrowing a session to refusing one wherever the security property
+  survives it. The horizon half was never guarded at all: `covers` compared permissions, so a
+  member scoped to one company group could read a second client through a client's session.
+  **A capped session must say so** (`/meta/me`'s `impersonation_narrowed`, on the banner): the
+  point of the feature is seeing what the client sees, and an unlabelled partial view is a
+  screen that lies about someone else's account.
   **Stopping declares no permission on purpose**: it runs as the impersonated account, and gating
   the way out behind a permission that account cannot hold would trap someone inside the session.
-  A corollary worth knowing before you grant the `client` role anything: **widening `client`
-  narrows who may impersonate it.** #266 gave it `invoicing.invoice.read:own`, and money defaults
-  to admins, so a `member` holding `contacts.portal.impersonate` is now refused — entering the
-  session would hand them invoices they cannot read, which is the guard working. The remedy is a
-  permission grant, and the refusal names itself (`errors.impersonation_escalation`), but check
-  the roles you expect to impersonate before adding to `client` (`docs/IMPERSONATION.md`).
 - **Scope is what lets one key serve a client and the agency at once** (#266, `docs/INVOICING.md`).
   Before you grant an existing permission to `client`, list every route that declares it: reads
   cluster, and `invoicing.invoice.read` gated seven endpoints of which only three were documents —

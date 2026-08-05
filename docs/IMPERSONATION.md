@@ -52,22 +52,38 @@ kind carries three extra guarantees (`app/modules/contacts/portal.py`):
    is `contacts.user_id` — a link only the invite flow creates, and that flow refuses an address
    that already has an account. There is no input that names an arbitrary user, so "sign in as
    the owner" is not a request that can be expressed.
-2. **It can never gain the caller a permission** (`PermissionSet.covers`). Roles are
-   tenant-editable, so "it's only a client" is not by itself a bound on what the client role
-   holds; the target's effective set must already be covered by the caller's, or the answer is
-   `403 errors.impersonation_escalation`. A superuser target is refused outright.
-   **Widening the `client` role therefore narrows who may impersonate it**, and #266 is the
-   first time that bit: the seeded `client` role now holds `invoicing.invoice.read:own`, money
-   defaults to admins, so a `member` granted `contacts.portal.impersonate` and nothing
-   financial is refused — entering the session would let them read that client's invoices,
-   which is the exact thing the guard exists to stop. Not a bug and not worth weakening; but
-   it arrives as *"impersonation stopped working and we changed nothing"*, so: the remedy is
-   to give the impersonator the same read in Instellingen → Rollen, and the refusal already
-   names itself rather than being a bare 403. Expect the same shape from every future grant to
-   `client` — check it against the roles you expect to impersonate before shipping one.
-3. **It obeys the company horizon.** The contact is loaded through the tenant repository, so a
-   membership scoped to a company group (#191/#285) can only enter the contacts of its own
-   clients; anything else answers 404, like every other read.
+2. **It can never gain the caller a permission — the session is *capped*, not refused**
+   (`PermissionSet.narrowed_to`, applied in `require_context`). Roles are tenant-editable, so
+   "it's only a client" is not by itself a bound on what the client role holds. The impersonated
+   session therefore runs as **the target's permissions intersected with the impersonator's**:
+   a subset of the caller's set by construction, so escalation is not merely forbidden, it is
+   unrepresentable. A superuser target is still refused outright (`403
+   errors.impersonation_escalation`) — `is_superuser` is a different authorization axis (§5),
+   not a permission, so no intersection bounds it.
+
+   This replaced a `covers` **refusal** in #266, and the reason is worth keeping. The refusal
+   expressed the invariant indirectly and coupled two things that should not be coupled: every
+   grant to the `client` role shrank the set of staff who could impersonate at all. #266 gave
+   clients `invoicing.invoice.read:own`, money defaults to admins, and every `member` holding
+   `contacts.portal.impersonate` was instantly locked out of a feature they had been using —
+   arriving as *"impersonation stopped working and we changed nothing"*. Capping keeps the
+   security property and drops the coupling: that member signs in and simply has no invoices.
+
+   A scope **degrades rather than drops**: a caller holding `x:own` against a target's `x:any`
+   keeps `x:own`. Dropping it would hide a screen they can open on their own account.
+
+   The cap applies to the `portal` kind only. An instance owner (#26) is trusted with everything
+   by definition and holds *no membership in the tenant at all*, so capping would resolve to
+   nothing and break cross-tenant support entirely.
+3. **It obeys the company horizon — on both sides.** The contact is loaded through the tenant
+   repository, so a membership scoped to a company group (#191/#285) can only enter the contacts
+   of its own clients; anything else answers 404, like every other read. That bounds *which
+   contact*, and until #266 nothing bounded *the companies behind them*: a contact may be linked
+   to more clients than the staff member impersonating them can see, so a scoped member could
+   read a second client through a client's session — an escalation `covers` never looked at,
+   because it compared permissions and the horizon is a different axis. The impersonator's scope
+   now intersects the target's (`None` = unrestricted, the identity), so an unrestricted staff
+   member still sees the client's real horizon and a restricted one never sees past their own.
 
 Nesting is refused (`409 errors.impersonation_nested`): an impersonated session opening a second
 grant would launder one identity into another with only the first crossing recorded.

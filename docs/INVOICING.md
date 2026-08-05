@@ -234,6 +234,13 @@ entity_id)` from the caller and declares `no_permission_required` — so a clien
 draft everywhere else could still list the documents attached to it. Fixed in core, because
 `directory.py` already had the rule and having it in one of two places is how they drift.
 
+**Portal impersonation changed shape here too.** Giving `client` an invoice read means staff
+signing in as a client could read that client's invoices — which `PermissionSet.covers` (#296)
+stopped by refusing the whole session, locking out every `member` who cannot read invoices. It
+now **caps** instead: an impersonated portal session runs as the target intersected with the
+impersonator, so that member signs in and simply has no invoices, and the banner says the view
+is narrowed. See `docs/IMPERSONATION.md` — the guard is unchanged in strength, only in shape.
+
 **Existing orgs need a one-time nudge, and it is not a migration.** The startup reconciler
 diffs `org_settings.applied_permission_defaults` by *key*, so widening an already-applied
 key's `default_roles` changes nothing — and no per-role diff could tell *never offered* from

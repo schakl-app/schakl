@@ -14652,6 +14652,11 @@ export interface components {
             /** Impersonation Kind */
             impersonation_kind?: string | null;
             /**
+             * Impersonation Narrowed
+             * @default false
+             */
+            impersonation_narrowed: boolean;
+            /**
              * Is Instance Admin
              * @default false
              */

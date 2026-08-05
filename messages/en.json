@@ -1713,6 +1713,7 @@
   "instance.purge_confirm": "Type {slug} to confirm",
   "instance.purge_action": "Destroy",
   "instance.impersonation_banner": "{actor} is signed in as {target}",
+  "instance.impersonation_narrowed": "you see less than they do — only what your own permissions allow",
   "instance.impersonation_stop": "Stop",
   "instance.handoff_continue": "Continue to this organization's own address",
   "instance.handoff_stopped": "Impersonation ended",

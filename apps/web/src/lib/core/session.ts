@@ -33,6 +33,13 @@ export interface SessionUser {
    *  client's contact). The banner is the same; the stop goes to a different endpoint, which is
    *  why the web has to know. Never taken from the form — the API says which one this is. */
   impersonationKind: string | null;
+  /**
+   * This portal impersonation is running as *less* than the client actually holds, because the
+   * impersonator does not hold it either (#266). The banner says so: signing in as a client is
+   * for seeing what they see, so an unlabelled partial view is a screen that lies — staff would
+   * report "their invoices are missing" about a client who has them.
+   */
+  impersonationNarrowed: boolean;
   /** AI features usable in this tenant (epic #131). Empty until an admin configures a
    *  provider under Instellingen → AI — "off means invisible", so an empty list renders
    *  no AI affordance anywhere. */
@@ -98,6 +105,7 @@ export async function fetchUser(event: ApiEvent): Promise<SessionUser | null> {
     impersonatedBy: data.impersonated_by ?? null,
     impersonationExpiresAt: data.impersonation_expires_at ?? null,
     impersonationKind: data.impersonation_kind ?? null,
+    impersonationNarrowed: data.impersonation_narrowed ?? false,
     aiFeatures: data.ai_features ?? [],
   };
 }

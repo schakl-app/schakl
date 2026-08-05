@@ -302,6 +302,7 @@ async def test_client_cannot_reach_the_invoicing_modules_own_surfaces(client_for
             "/api/v1/invoicing/products",  # the agency's price list
             "/api/v1/invoicing/templates",
             "/api/v1/invoicing/uninvoiced",  # employee names + hourly rates, org-wide
+            "/api/v1/invoicing/recurring-backlog",  # every client's unbilled agreements (#302)
             f"/api/v1/invoicing/invoices/{invoice['id']}/refs",  # accounting-sync internals
         ):
             res = await c.get(path, headers=portal)
@@ -313,18 +314,17 @@ async def test_client_cannot_reach_the_invoicing_modules_own_surfaces(client_for
         assert (await c.get("/api/v1/invoicing/quotes", headers=portal)).status_code == 403
 
 
-async def test_impersonating_a_client_now_needs_an_invoice_read(client_for) -> None:
-    """A consequence of #266 worth stating out loud rather than discovering in support.
+async def test_impersonating_a_client_hides_the_invoices_it_cannot_show(client_for) -> None:
+    """Signing in as a client shows their screens, minus what the impersonator may not see.
 
-    Portal impersonation refuses when the target holds a permission the caller does not
-    (``PermissionSet.covers``, #296) — that is the whole guard. Granting the ``client`` role
-    an invoice read therefore means a staff member who cannot read invoices can no longer
-    sign in as a client: doing so would let them read that client's invoices, which is
-    precisely what the guard exists to prevent. Money defaults to admins here, so the staff
-    role this bites is `member`.
-
-    The remedy is legible in Instellingen → Rollen — give the impersonator the same read —
-    and it is not a bug, but it *is* new, so it gets a test rather than a surprise.
+    Granting the ``client`` role an invoice read means a staff member who cannot read invoices
+    would, through a client session, be able to — which is what the #296 guard exists to stop.
+    It used to stop it by **refusing the whole session**; that also meant every grant to the
+    tenant-editable ``client`` role silently shrank the set of staff who could impersonate at
+    all. Since #266 the session is instead capped to the impersonator's own set
+    (``PermissionSet.narrowed_to`` in ``require_context``): a `member` without an invoice read
+    signs in fine and simply has no invoices, and ``/meta/me`` says the view is narrowed so the
+    banner does not let a partial screen pass for the client's real one.
     """
     t = await make_tenant("inv-portal-imp")
     headers = await auth_cookie(t.user)
@@ -372,32 +372,61 @@ async def test_impersonating_a_client_now_needs_an_invoice_read(client_for) -> N
             )
         staff = await auth_cookie(staff_user)
 
-        refused = await c.post(
+        def enter(res, base):  # noqa: ANN202 — the grant cookie set beside the real session
+            body = res.json()
+            return {**base, "Cookie": f"{base['Cookie']}; {body['cookie']}={body['token']}"}
+
+        # No invoice read: the session opens, and the invoices are simply not in it.
+        started = await c.post(
             f"/api/v1/contacts/{contact['id']}/portal/impersonate",
             json={"minutes": 10},
             headers=staff,
         )
-        assert refused.status_code == 403, refused.text
-        # A named refusal, not a bare 403 — the admin's lever is a permission grant.
-        assert refused.json()["error"]["message"] == "errors.impersonation_escalation"
+        assert started.status_code == 200, started.text
+        blind = enter(started, staff)
+        me = (await c.get("/api/v1/meta/me", headers=blind)).json()
+        assert me["impersonated_by"] == "accountmanager@bureau.nl"
+        assert not any(p.startswith("invoicing.invoice.read") for p in me["permissions"])
+        # Said out loud, so the banner can: an unlabelled partial view is a screen that lies.
+        assert me["impersonation_narrowed"] is True
+        assert (await c.get("/api/v1/invoicing/invoices", headers=blind)).status_code == 403
+        # The rest of the client's portal is intact — narrowed, not broken.
+        assert (await c.get("/api/v1/companies", headers=blind)).status_code == 200
 
-        # Give them the same read the client holds and it opens.
+        # Give them the client's own read and the invoices appear, unnarrowed.
         await grant_member({"invoicing.invoice.read:own"})
-        allowed = await c.post(
-            f"/api/v1/contacts/{contact['id']}/portal/impersonate",
-            json={"minutes": 10},
-            headers=staff,
+        seeing = enter(
+            await c.post(
+                f"/api/v1/contacts/{contact['id']}/portal/impersonate",
+                json={"minutes": 10},
+                headers=staff,
+            ),
+            staff,
         )
-        assert allowed.status_code == 200, allowed.text
+        me = (await c.get("/api/v1/meta/me", headers=seeing)).json()
+        assert "invoicing.invoice.read:own" in me["permissions"]
+        assert me["impersonation_narrowed"] is False
+        listed = await c.get("/api/v1/invoicing/invoices", headers=seeing)
+        assert listed.status_code == 200, listed.text
 
-        # And an admin — who holds the read at `:any` — was never blocked at all.
-        assert (
+        # An admin holds the read at `:any`; the impersonated session still gets the *client's*
+        # `:own`, never the admin's broader one — a cap, never a promotion.
+        admin_seeing = enter(
             await c.post(
                 f"/api/v1/contacts/{contact['id']}/portal/impersonate",
                 json={"minutes": 10},
                 headers=headers,
-            )
-        ).status_code == 200
+            ),
+            headers,
+        )
+        me = (await c.get("/api/v1/meta/me", headers=admin_seeing)).json()
+        assert "invoicing.invoice.read:own" in me["permissions"]
+        assert "invoicing.invoice.read:any" not in me["permissions"]
+        assert me["impersonation_narrowed"] is False
+        # …so the module surfaces stay shut even for an owner inside a client session.
+        assert (
+            await c.get("/api/v1/invoicing/products", headers=admin_seeing)
+        ).status_code == 403
 
 
 async def test_restricted_staff_still_see_their_clients_drafts(client_for) -> None:

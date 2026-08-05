@@ -184,9 +184,6 @@ async def test_impersonation_needs_its_own_permission(client_for) -> None:
 
     async with client_for(tenant.host) as c:
         # A member holds neither; give them everything member management needs and nothing more.
-        # ``invoicing.invoice.read:own`` rides along because the *target* holds it since #266
-        # (a client reads their own invoices) and ``covers`` refuses a caller who does not —
-        # that guard is what the next test is about, so it must not fire in this one.
         roles = (await c.get("/api/v1/roles", headers=headers)).json()
         member_role = next(r for r in roles if r["key"] == "member")
         await c.patch(
@@ -194,11 +191,7 @@ async def test_impersonation_needs_its_own_permission(client_for) -> None:
             json={
                 "permissions": sorted(
                     set(member_role["permissions"])
-                    | {
-                        "members.member.write",
-                        "contacts.contact.read",
-                        "invoicing.invoice.read:own",
-                    }
+                    | {"members.member.write", "contacts.contact.read"}
                 )
             },
             headers=headers,
@@ -245,23 +238,22 @@ async def _grant_role(client, headers, key: str, add: set[str]) -> None:
 
 async def test_impersonation_may_never_gain_the_caller_a_permission(client_for) -> None:
     """A tenant can edit the ``client`` role freely, so "it's only a client" is not a bound on
-    what that login holds. If the target holds something the caller doesn't, the answer is 403 —
-    otherwise impersonation would be a privilege-escalation route with an audit trail."""
+    what that login holds — but the answer is no longer to refuse the session (#266).
+
+    The session **runs as the target capped by the impersonator**
+    (``PermissionSet.narrowed_to``, applied in ``require_context``), so a permission the caller
+    does not hold simply is not in it. That states the invariant directly — a subset cannot
+    escalate — and decouples two things that should never have been coupled: under the old
+    ``covers`` refusal, every grant to the ``client`` role shrank the set of staff who could
+    impersonate at all.
+    """
     tenant, headers, contact, _company, _portal_user = await _portal_contact(
         client_for, "imp-escalate"
     )
 
     async with client_for(tenant.host) as c:
-        # A member who may impersonate, but may not read the team. They also need the client's
-        # own invoice read (#266): the seeded `client` role holds `invoicing.invoice.read:own`,
-        # and `covers` is exactly what this test is about — the baseline below has to start from
-        # a caller who covers the target, or it would pass for the wrong reason.
-        await _grant_role(
-            c,
-            headers,
-            "member",
-            {IMPERSONATE, "contacts.contact.read", "invoicing.invoice.read:own"},
-        )
+        # A member who may impersonate, and read contacts — but may not read the team.
+        await _grant_role(c, headers, "member", {IMPERSONATE, "contacts.contact.read"})
         await c.post(
             "/api/v1/members/invite",
             json={"email": "beperkt-imp@example.com", "role": "member"},
@@ -273,33 +265,176 @@ async def test_impersonation_may_never_gain_the_caller_a_permission(client_for) 
             )
         member_headers = await auth_cookie(member_user)
 
-        # Baseline: the client holds nothing extra, so it works.
-        assert (
-            await c.post(
-                f"/api/v1/contacts/{contact['id']}/portal/impersonate",
-                json={"minutes": 5},
-                headers=member_headers,
-            )
-        ).status_code == 200
-
-        # Now the client role holds a permission the member does not.
+        # The client role holds two things the member does not: the seeded invoice read (#266)
+        # and a team read granted here. Neither refuses the session any more.
         await _grant_client_role(c, headers, add={"members.member.read"})
-        refused = await c.post(
+        started = await c.post(
             f"/api/v1/contacts/{contact['id']}/portal/impersonate",
             json={"minutes": 5},
             headers=member_headers,
         )
-        assert refused.status_code == 403
-        assert refused.json()["error"]["message"] == "errors.impersonation_escalation"
+        assert started.status_code == 200, started.text
+        impersonated = {
+            **member_headers,
+            "Cookie": f"{member_headers['Cookie']}; "
+            f"{started.json()['cookie']}={started.json()['token']}",
+        }
 
-        # The owner holds the wildcard, so the same call is fine for them.
+        me = await c.get("/api/v1/meta/me", headers=impersonated)
+        assert me.status_code == 200, me.text
+        body = me.json()
+        # Running as the contact…
+        assert body["impersonated_by"] == "beperkt-imp@example.com"
+        assert body["impersonation_kind"] == "portal"
+        # …but without the two capabilities the member lacks, and saying so.
+        assert "members.member.read" not in body["permissions"]
+        assert not any(p.startswith("invoicing.invoice.read") for p in body["permissions"])
+        assert body["impersonation_narrowed"] is True
+        # The refusal follows: holding neither, the client session cannot reach them either.
+        assert (await c.get("/api/v1/members", headers=impersonated)).status_code == 403
         assert (
+            await c.get("/api/v1/invoicing/invoices", headers=impersonated)
+        ).status_code == 403
+        # What they *do* share still works — this is a narrowed session, not a broken one.
+        assert (await c.get("/api/v1/companies", headers=impersonated)).status_code == 200
+
+        # The owner holds the wildcard, so nothing is capped for them and the banner stays quiet.
+        owner_started = await c.post(
+            f"/api/v1/contacts/{contact['id']}/portal/impersonate",
+            json={"minutes": 5},
+            headers=headers,
+        )
+        assert owner_started.status_code == 200
+        owner_impersonated = {
+            **headers,
+            "Cookie": f"{headers['Cookie']}; "
+            f"{owner_started.json()['cookie']}={owner_started.json()['token']}",
+        }
+        owner_me = (await c.get("/api/v1/meta/me", headers=owner_impersonated)).json()
+        assert owner_me["impersonation_narrowed"] is False
+        assert "members.member.read" in owner_me["permissions"]
+        # …and it is still the *client's* set, never the owner's wildcard.
+        assert "*" not in owner_me["permissions"]
+
+
+async def test_impersonation_cannot_widen_the_callers_company_horizon(client_for) -> None:
+    """The horizon caps the same way the permissions do (#266) — and this half was never
+    guarded at all.
+
+    ``covers`` compared *permissions*; the company horizon is a different axis. A contact may
+    be linked to more clients than the staff member impersonating them can see, and the
+    impersonate endpoint only bounds which **contact** is reachable, not the companies behind
+    it. So a member scoped to one company group could enter a client's session and read a
+    second client through it — an escalation the old refusal would have waved straight through
+    whenever the permission sets happened to match.
+    """
+    tenant = await make_tenant("imp-horizon")
+    headers = await auth_cookie(tenant.user)
+
+    async with client_for(tenant.host) as c:
+        mine = (
+            await c.post("/api/v1/companies", json={"name": "Binnen BV"}, headers=headers)
+        ).json()
+        theirs = (
+            await c.post("/api/v1/companies", json={"name": "Buiten BV"}, headers=headers)
+        ).json()
+        # One contact, linked to *both* clients — the whole point of the test.
+        contact = (
+            await c.post(
+                "/api/v1/contacts",
+                json={
+                    "first_name": "Piet",
+                    "last_name": "Breed",
+                    "email": "piet-imp-horizon@example.com",
+                    "company_ids": [mine["id"], theirs["id"]],
+                },
+                headers=headers,
+            )
+        ).json()
+        assert (
+            await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        ).status_code in (200, 201)
+
+        await _grant_role(c, headers, "member", {IMPERSONATE, "contacts.contact.read"})
+        assert (
+            await c.post(
+                "/api/v1/members/invite",
+                json={"email": "beperkt-hor@example.com", "role": "member"},
+                headers=headers,
+            )
+        ).status_code in (200, 201)
+        async with async_session_maker() as session:
+            member_user = await session.scalar(
+                select(User).where(User.email == "beperkt-hor@example.com")
+            )
+        member_headers = await auth_cookie(member_user)
+
+        # Scope the member to one client only.
+        members = (await c.get("/api/v1/members", headers=headers)).json()
+        rows = members["items"] if isinstance(members, dict) else members
+        membership_id = next(
+            m["membership_id"] for m in rows if m["email"] == "beperkt-hor@example.com"
+        )
+        group = (
+            await c.post("/api/v1/companies/groups", json={"name": "Groep"}, headers=headers)
+        ).json()
+        assert (
+            await c.put(
+                f"/api/v1/companies/groups/{group['id']}/companies",
+                json={"company_ids": [mine["id"]]},
+                headers=headers,
+            )
+        ).status_code == 204
+        assert (
+            await c.put(
+                f"/api/v1/companies/groups/{group['id']}/memberships",
+                json={"membership_ids": [membership_id]},
+                headers=headers,
+            )
+        ).status_code == 204
+
+        # On their own account they see one client.
+        assert [x["id"] for x in (
+            await c.get("/api/v1/companies", headers=member_headers)
+        ).json()["items"]] == [mine["id"]]
+
+        started = await c.post(
+            f"/api/v1/contacts/{contact['id']}/portal/impersonate",
+            json={"minutes": 5},
+            headers=member_headers,
+        )
+        assert started.status_code == 200, started.text
+        body = started.json()
+        impersonated = {
+            **member_headers,
+            "Cookie": f"{member_headers['Cookie']}; {body['cookie']}={body['token']}",
+        }
+
+        # Inside the client's session they still see one — not the client's two.
+        listed = await c.get("/api/v1/companies", headers=impersonated)
+        assert listed.status_code == 200, listed.text
+        assert [x["id"] for x in listed.json()["items"]] == [mine["id"]]
+        assert listed.json()["total"] == 1
+        assert (
+            await c.get(f"/api/v1/companies/{theirs['id']}", headers=impersonated)
+        ).status_code == 404
+
+        # The owner is unrestricted, so impersonating the same contact shows both — the cap is
+        # the *caller's* horizon, not a blanket narrowing.
+        owner_body = (
             await c.post(
                 f"/api/v1/contacts/{contact['id']}/portal/impersonate",
                 json={"minutes": 5},
                 headers=headers,
             )
-        ).status_code == 200
+        ).json()
+        owner_impersonated = {
+            **headers,
+            "Cookie": f"{headers['Cookie']}; {owner_body['cookie']}={owner_body['token']}",
+        }
+        assert (
+            await c.get("/api/v1/companies", headers=owner_impersonated)
+        ).json()["total"] == 2
 
 
 async def test_impersonation_cannot_be_nested(client_for) -> None:

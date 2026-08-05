@@ -417,7 +417,7 @@ async def uninvoiced(
 @router.get(
     "/recurring-backlog",
     response_model=RecurringBacklogReport,
-    dependencies=[require_permission("invoicing.invoice.read")],
+    dependencies=[require_permission(_READ, _MODULE)],
 )
 async def recurring_backlog(
     group: BacklogGroupBy = Query("company", description="company | month | source"),

@@ -302,13 +302,22 @@ class PortalService:
             # No login, or a disabled one — there is nothing to sign in as.
             raise AppError("not_found", "errors.not_found", status_code=404)
 
-        target_permissions = await self._target_permissions(user.id)
-        if target_permissions is None:
+        if await self._target_permissions(user.id) is None:
+            # No membership: there is no session to enter.
             raise AppError("not_found", "errors.not_found", status_code=404)
         # Impersonation may hand you another view of the data; it may never hand you a capability
-        # you don't have. A tenant can edit the client role freely, and an instance owner is a
-        # different authorization axis entirely (§5) that no tenant permission may reach.
-        if user.is_superuser or not self.ctx.permissions.covers(target_permissions):
+        # you don't have. That invariant now holds *inside* the session — ``require_context``
+        # runs a portal impersonation as the target **capped by the impersonator**
+        # (``PermissionSet.narrowed_to``), and a subset cannot escalate. So this no longer
+        # refuses: a member without an invoice read signs in and simply does not see invoices,
+        # instead of being told the whole session is forbidden. Refusing was the indirect way of
+        # saying it, and it coupled two things that should not be coupled — every grant to the
+        # tenant-editable ``client`` role silently shrank the set of staff who could impersonate
+        # at all (#266 gave clients an invoice read and locked out every member without one).
+        #
+        # ``is_superuser`` stays a hard refusal: it is a different authorization axis entirely
+        # (§5), not a permission, so no intersection bounds it.
+        if user.is_superuser:
             raise AppError(
                 "forbidden", "errors.impersonation_escalation", status_code=403
             )
