@@ -22,4 +22,7 @@ CONTACT_PERMISSIONS: list[PermissionSpec] = [
         default_roles=(ROLE_ADMIN, ROLE_MEMBER, ROLE_CLIENT),
     ),
     PermissionSpec("contacts.type.manage", position=60),
+    # ``contacts.portal.impersonate`` moved to the portal module as ``portal.login.impersonate``
+    # when the portal became one (#296). Stored grants are rewritten in place per org by
+    # ``@rev:296-portal-module`` in ``core/permissions/reconcile.py`` — nobody's access changes.
 ]

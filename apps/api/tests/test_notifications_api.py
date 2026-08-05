@@ -363,10 +363,11 @@ async def test_notifications_tenant_isolation(client_for) -> None:
                 headers=b_headers,
             )
         ).json() == []
-        # A's session on B's host is not a member there.
+        # A's session is not a session on B's host at all — a session names its org
+        # (CLAUDE.md §5), so it is refused before membership is even asked about.
         assert (
             await client.get("/api/v1/notifications", headers=a_headers)
-        ).status_code == 403
+        ).status_code == 401
 
 
 async def test_email_pending_is_a_first_class_matrix_event(client_for) -> None:

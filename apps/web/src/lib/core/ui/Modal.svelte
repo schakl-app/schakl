@@ -10,8 +10,9 @@
   }: {
     open?: boolean;
     title: string;
-    /** Max width; wider ones exist for surfaces that carry a table (the schedule picker, #188). */
-    size?: "lg" | "xl" | "2xl" | "3xl";
+    /** Max width; wider ones exist for surfaces that carry a table (the schedule picker, #188)
+     *  or a rendered document beside its controls (the invoice template editor). */
+    size?: "lg" | "xl" | "2xl" | "3xl" | "5xl";
     children: Snippet;
   } = $props();
 
@@ -20,6 +21,7 @@
     xl: "max-w-xl",
     "2xl": "max-w-2xl",
     "3xl": "max-w-3xl",
+    "5xl": "max-w-5xl",
   } as const;
 
   function onkeydown(e: KeyboardEvent) {
@@ -41,7 +43,9 @@
       role="dialog"
       aria-modal="true"
       aria-label={title}
-      class="relative z-50 mt-8 w-full {maxWidth[size]} rounded-xl border border-border bg-surface-raised p-5 shadow-xl"
+      class="relative z-50 mt-8 w-full {maxWidth[
+        size
+      ]} rounded-xl border border-border bg-surface-raised p-5 shadow-xl"
     >
       <div class="mb-4 flex items-center justify-between">
         <h2 class="text-base font-semibold text-text">{title}</h2>

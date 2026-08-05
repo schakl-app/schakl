@@ -23,6 +23,7 @@ from app.core.models import Org, OrgSettings, OrgStatus
 from app.core.timezone import org_zoneinfo
 from app.db import async_session_maker, set_current_org
 from app.modules.domains.dns import fetch_dns
+from app.modules.domains.invoiceable import invoiceable_condition
 from app.modules.domains.models import BILLABLE_STATUSES, Domain, DomainTldPrice
 from app.modules.domains.service import add_months
 
@@ -64,6 +65,12 @@ async def _advance_renewals_org(org: Org, session: AsyncSession) -> None:
     date* — history answers, current state never reprices (#250). A due domain with no
     resolvable price is left untouched: once the org prices its TLD, the next run bills
     from the original due date, nothing is silently skipped or back-filled.
+
+    A domain that is **not invoiced** (#298 — the register says the agency does not hold its
+    registration, or somebody said so) raises nothing, but its cycle still rolls forward, the
+    discipline ``AutoInvoiceMode.OFF`` already follows. Freezing the date instead would leave a
+    silent debt: switching the flag back on a year later would fire one missed year per cron
+    run until it caught up, drafting invoices for periods nobody meant to bill.
     """
     today = datetime.now(await org_zoneinfo(session, org.id)).date()
     due = (
@@ -82,6 +89,19 @@ async def _advance_renewals_org(org: Org, session: AsyncSession) -> None:
     )
     if not due:
         return
+    # One query for the whole batch, never one per domain: the flag is three-state and its
+    # NULL leg is a question for the registrar registers (docs/PERFORMANCE.md).
+    billing = set(
+        (
+            await session.scalars(
+                select(Domain.id).where(
+                    Domain.org_id == org.id,
+                    Domain.id.in_([d.id for d in due]),
+                    invoiceable_condition(org.id),
+                )
+            )
+        ).all()
+    )
     org_currency = (
         await session.scalar(
             select(OrgSettings.currency).where(OrgSettings.org_id == org.id)
@@ -89,9 +109,13 @@ async def _advance_renewals_org(org: Org, session: AsyncSession) -> None:
         or "EUR"
     )
     ctx = SystemContext(org=org, session=session)
-    advanced = 0
+    advanced = skipped = 0
     for domain in due:
         invoice_date = domain.next_invoice_date
+        if domain.id not in billing:
+            domain.next_invoice_date = add_months(invoice_date, 12)
+            skipped += 1
+            continue
         price_row = None
         if domain.tld:
             price_row = await session.scalar(
@@ -120,6 +144,11 @@ async def _advance_renewals_org(org: Org, session: AsyncSession) -> None:
                 "company_id": domain.company_id,
                 "name": domain.name,
                 "tld": domain.tld,
+                # This domain's override of how far the consumer takes the invoice, or None
+                # to inherit the org default. Carried, not resolved: the vocabulary and the
+                # org setting belong to `invoicing` (§6). The cycle advances either way — an
+                # undrafted renewal stays outstanding and the editor's picker offers it.
+                "auto_invoice_mode": domain.auto_invoice_mode,
                 "amount": str(amount),
                 "currency": currency,
                 "period_start": add_months(invoice_date, -12).isoformat(),
@@ -128,8 +157,13 @@ async def _advance_renewals_org(org: Org, session: AsyncSession) -> None:
         )
         domain.next_invoice_date = add_months(invoice_date, 12)
         advanced += 1
-    if advanced:
-        logger.info("advanced %s due domain renewals in org %s", advanced, org.slug)
+    if advanced or skipped:
+        logger.info(
+            "advanced %s due domain renewals in org %s (%s not invoiced)",
+            advanced,
+            org.slug,
+            skipped,
+        )
 
 
 async def advance_domain_renewals(ctx: dict) -> None:

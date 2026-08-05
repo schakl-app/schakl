@@ -54,6 +54,21 @@ class AISettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     #: is put behind an explicit "budget reached" acknowledgement, never silently allowed.
     monthly_token_budget: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
+    # --- speech-to-text (#246) ------------------------------------------------------- #
+    # Its own credential, because the chat provider usually cannot do it: Anthropic has no
+    # transcription endpoint at all, and it is this product's default provider. NULL here
+    # means "reuse the chat provider", which only resolves for one that can transcribe — so
+    # a tenant on Anthropic points these at whatever speech service they do have, without
+    # giving up Claude for everything else.
+    speech_provider: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    speech_base_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    speech_api_key_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    speech_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: Soft cap on transcribed seconds per calendar month; NULL = unlimited. Seconds, not
+    #: tokens: an audio model reports no token usage, and folding one unit into the other
+    #: would corrupt both the token budget and the settings meter.
+    monthly_audio_seconds_budget: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
 
 class AIUsage(UUIDPrimaryKeyMixin, OrgScopedMixin, Base):
     """One row per AI request: counts and labels only, never content (#126)."""
@@ -70,6 +85,12 @@ class AIUsage(UUIDPrimaryKeyMixin, OrgScopedMixin, Base):
     model: Mapped[str] = mapped_column(String(255), nullable=False)
     tokens_in: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     tokens_out: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    #: Transcribed audio, for the speech feature (#246). Its own column because seconds are
+    #: not tokens: writing them into ``tokens_out`` would corrupt the token budget and the
+    #: settings meter alike. Zero for every text request.
+    audio_seconds: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

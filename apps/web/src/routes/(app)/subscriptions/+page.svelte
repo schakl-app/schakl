@@ -6,6 +6,7 @@
   import { page } from "$app/state";
   import { fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
@@ -13,6 +14,7 @@
   import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
+  import AutoInvoiceModeField from "$lib/modules/invoicing/AutoInvoiceModeField.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
@@ -392,6 +394,18 @@
       {t("tasks.filter.clear")}
     </button>
   {/if}
+  <ImpexBar
+    entity="subscription"
+    readPermission="subscriptions.subscription.read"
+    writePermission="subscriptions.subscription.write"
+    filters={{
+      status: data.statusFilter,
+      company_id: data.companyFilter,
+      sort: data.table.sort,
+    }}
+    locale={data.locale}
+    {form}
+  />
   <ColumnPicker
     all={table.pickerColumns}
     visible={table.visibleKeys}
@@ -750,6 +764,16 @@
           </div>
         {/if}
       </div>
+      <!-- How far the cycle cron takes this agreement's invoice. Asked here rather than
+           inferred, because an agency automating twelve hosting retainers still assembles by
+           hand the one client whose invoice is argued over every month, and per-org config
+           cannot express that. "Follow the organisation setting" is the default. -->
+      <AutoInvoiceModeField
+        name="auto_invoice_mode"
+        value={editing?.auto_invoice_mode ?? ""}
+        inheritable
+        orgMode={data.invoicingSettings?.auto_invoice_mode ?? "draft"}
+      />
       <div>
         <span class="mb-1 block text-sm font-medium text-text"
           >{t("subscriptions.field.projects")}</span

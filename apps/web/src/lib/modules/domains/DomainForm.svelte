@@ -9,13 +9,16 @@
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import PartyPicker from "$lib/core/ui/PartyPicker.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
+  import AutoInvoiceModeField from "$lib/modules/invoicing/AutoInvoiceModeField.svelte";
   import type { components } from "$lib/core/api/schema";
+  import InvoiceableField from "$lib/modules/domains/InvoiceableField.svelte";
   import { normalizeDomainName, tldOf } from "$lib/modules/domains/normalize";
 
   type Domain = components["schemas"]["DomainRead"];
   type Provider = components["schemas"]["ProviderRead"];
   type Definition = components["schemas"]["CustomFieldDefinitionRead"];
   type Member = components["schemas"]["MemberLookup"];
+  type AutoInvoiceMode = components["schemas"]["AutoInvoiceMode"];
 
   let {
     domain = null,
@@ -30,6 +33,8 @@
     nameDefault = "",
     initialCompanyId = "",
     tldPrices = [],
+    orgMode = null,
+    formId = undefined,
     oncreatecompany,
     oncreatecontact,
     oncreateprovider,
@@ -47,6 +52,10 @@
     /** Current TLD list prices (#250): the resolved rate shown while typing a name.
      * Empty when the viewer lacks `domains.tld_price.read` — the hint simply stays away. */
     tldPrices?: { tld: string; amount: string; currency: string }[];
+    /** The org's automation level, named in the "follow the organisation" hint. */
+    orgMode?: AutoInvoiceMode | null;
+    /** Associate the radios with a form rendered outside this component. */
+    formId?: string;
     /** Prefills the name on create — for quick-create from another form's picker (#115). */
     nameDefault?: string;
     /** Preselects the client on a fresh form (quick-create from a client page). */
@@ -144,6 +153,26 @@
       </p>
     </div>
   </div>
+
+  <!-- Whether the renewal is billed on at all (#298). Above the automation level on purpose:
+       "do we invoice this" comes before "how far does the cron take it". -->
+  <InvoiceableField
+    name="invoiceable"
+    value={domain?.invoiceable ?? null}
+    source={domain?.invoiceable_source ?? null}
+    registers={domain?.registers ?? []}
+    {formId}
+  />
+
+  <!-- How far the renewal cron takes this domain's invoice. Only about the paper: nothing
+       here renews the registration. Defaults to following the organisation setting. -->
+  <AutoInvoiceModeField
+    name="auto_invoice_mode"
+    value={domain?.auto_invoice_mode ?? ""}
+    inheritable
+    {orgMode}
+    formId={formId}
+  />
 
   <div>
     <label for="{idPrefix}-company" class="mb-1 block text-sm text-text"

@@ -234,6 +234,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ai/time/transcribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Time Transcribe
+         * @description Speech to text for the quick-add field (#246).
+         *
+         *     ``ai.use`` is the enumerable route permission; the service additionally requires
+         *     ``time.entry.write``, because the transcript exists to become a time entry.
+         */
+        post: operations["time_transcribe_api_v1_ai_time_transcribe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ai/usage": {
         parameters: {
             query?: never;
@@ -519,7 +542,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Auth:Cookie.Login */
+        /**
+         * Auth:Cookie.Login
+         * @description Password login, **for the org this hostname resolves to**.
+         *
+         *     ``user_manager.authenticate`` looks the account up through the org-scoped ``get_by_email``
+         *     (``manager.py``), so a correct password belonging to a *different* tenant answers exactly
+         *     like a wrong one — the caller is never told that the address exists somewhere else. The
+         *     org then rides into the token, because a session is minted for one tenant (``backend.py``).
+         */
         post: operations["auth_cookie_login_api_v1_auth_login_post"];
         delete?: never;
         options?: never;
@@ -735,6 +766,357 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Accounts
+         * @description Configured Cloudflare accounts. The API token is never part of the response.
+         */
+        get: operations["list_accounts_api_v1_cloudflare_accounts_get"];
+        put?: never;
+        /** Create Account */
+        post: operations["create_account_api_v1_cloudflare_accounts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/accounts/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Account Options
+         * @description Names only, for the "which account" picker — choosing one is ``zone.manage``'s job, and
+         *     should not require holding the credential screen's permission.
+         */
+        get: operations["list_account_options_api_v1_cloudflare_accounts_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/accounts/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Account
+         * @description Forget the credential and its synced inventory. Nothing at Cloudflare is deleted.
+         */
+        delete: operations["delete_account_api_v1_cloudflare_accounts__account_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Account
+         * @description Rename, repoint or rotate. An omitted ``api_token`` keeps the stored one.
+         */
+        patch: operations["update_account_api_v1_cloudflare_accounts__account_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/cloudflare/accounts/{account_id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Account
+         * @description Pull the account's zones and Pages projects, matching zones to domains by apex.
+         */
+        post: operations["sync_account_api_v1_cloudflare_accounts__account_id__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/accounts/{account_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Account
+         * @description Probe what this token can do and store the answer, so the UI can name a missing scope.
+         */
+        post: operations["verify_account_api_v1_cloudflare_accounts__account_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/domains/{domain_id}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cloudflare Check Domain
+         * @description Ask Cloudflare what it actually has: drift, conflicting redirects, whether the apex is
+         *     proxied at all. Persists the observation; every probe fails softly and names itself.
+         */
+        post: operations["cloudflare_check_domain_api_v1_cloudflare_domains__domain_id__check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/domains/{domain_id}/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Connect Domain
+         * @description Adopt this domain's existing Cloudflare zone, or create one. Adoption always wins.
+         */
+        post: operations["connect_domain_api_v1_cloudflare_domains__domain_id__connect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/domains/{domain_id}/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link Pages Project
+         * @description Serve a hostname of this domain from a Pages project (registers it *and* points DNS).
+         */
+        post: operations["link_pages_project_api_v1_cloudflare_domains__domain_id__pages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/domains/{domain_id}/redirect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Redirect
+         * @description Set the domain-wide redirect and push it to Cloudflare as a Redirect Rule.
+         */
+        put: operations["set_redirect_api_v1_cloudflare_domains__domain_id__redirect_put"];
+        post?: never;
+        /**
+         * Remove Redirect
+         * @description Delete the rule we created at Cloudflare. Rules we did not create are never touched.
+         */
+        delete: operations["remove_redirect_api_v1_cloudflare_domains__domain_id__redirect_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/domains/{domain_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cloudflare Domain Status
+         * @description Stored state only — no Cloudflare call, so this is safe on a page load.
+         */
+        get: operations["cloudflare_domain_status_api_v1_cloudflare_domains__domain_id__status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/pages/links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unlink Pages Project
+         * @description Detach the hostname from the project. Its DNS record is left alone on purpose.
+         */
+        delete: operations["unlink_pages_project_api_v1_cloudflare_pages_links__link_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/pages/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Pages Projects
+         * @description Synced Pages projects — the picker's source, so it never waits on Cloudflare.
+         */
+        get: operations["list_pages_projects_api_v1_cloudflare_pages_projects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/zones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Zones */
+        get: operations["list_zones_api_v1_cloudflare_zones_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/zones/{zone_id}/dns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Dns
+         * @description The zone's records, read live from Cloudflare — never a cached copy (see schemas).
+         */
+        get: operations["list_dns_api_v1_cloudflare_zones__zone_id__dns_get"];
+        put?: never;
+        /** Create Dns Record */
+        post: operations["create_dns_record_api_v1_cloudflare_zones__zone_id__dns_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/zones/{zone_id}/dns/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Dns
+         * @description The zone as a BIND file (Cloudflare's own export) or a CSV built here.
+         */
+        get: operations["export_dns_api_v1_cloudflare_zones__zone_id__dns_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloudflare/zones/{zone_id}/dns/{record_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Dns Record */
+        delete: operations["delete_dns_record_api_v1_cloudflare_zones__zone_id__dns__record_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Dns Record */
+        patch: operations["update_dns_record_api_v1_cloudflare_zones__zone_id__dns__record_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/cloudflare/zones/{zone_id}/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link Zone
+         * @description Match a synced zone to a domain by hand, where the apex did not match automatically.
+         */
+        post: operations["link_zone_api_v1_cloudflare_zones__zone_id__link_post"];
+        /**
+         * Unlink Zone
+         * @description Forget the match. The zone keeps serving at Cloudflare.
+         */
+        delete: operations["unlink_zone_api_v1_cloudflare_zones__zone_id__link_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1042,42 +1424,6 @@ export interface paths {
         head?: never;
         /** Update Contact Company Link */
         patch: operations["update_contact_company_link_api_v1_contacts__contact_id__links__company_id__patch"];
-        trace?: never;
-    };
-    "/api/v1/contacts/{contact_id}/portal": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Portal State */
-        get: operations["portal_state_api_v1_contacts__contact_id__portal_get"];
-        put?: never;
-        /** Enable Portal */
-        post: operations["enable_portal_api_v1_contacts__contact_id__portal_post"];
-        /** Disable Portal */
-        delete: operations["disable_portal_api_v1_contacts__contact_id__portal_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/contacts/{contact_id}/portal/resend": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Resend Portal Invite */
-        post: operations["resend_portal_invite_api_v1_contacts__contact_id__portal_resend_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/api/v1/custom-fields/definitions": {
@@ -1629,7 +1975,7 @@ export interface paths {
         };
         /**
          * Google Oauth Callback
-         * @description Store the grant and land the browser back on the account card.
+         * @description Store the grant and land the browser back where the connect started.
          *
          *     A denied consent or a state mismatch is a redirect with an error marker, never a JSON
          *     envelope — a human is holding this request.
@@ -1656,9 +2002,12 @@ export interface paths {
          *
          *     ``access_type=offline`` + ``prompt=consent`` guarantee a refresh token on every connect;
          *     ``include_granted_scopes`` makes a later reconnect *add* scopes instead of replacing them
-         *     (incremental authorization — the docs/GOOGLE.md §1 bridge). The ``include_analytics`` /
-         *     ``include_search_console`` / ``include_ads`` flags are how the marketing module (epic #134)
-         *     walks a connection up to its GA4/GSC/Ads scopes over this same flow — no second OAuth.
+         *     (incremental authorization — the docs/GOOGLE.md §1 bridge). ``include_marketing`` is how the
+         *     marketing module (epic #134) walks a connection up to GA4 *and* Search Console *and* Ads in
+         *     **one** consent; the per-source flags remain for a caller that genuinely wants only one.
+         *
+         *     ``next`` is where to land afterwards (site-relative only, :func:`safe_return_path`) — consent
+         *     is asked from the page that needed it, so that is the page to come back to.
          */
         get: operations["oauth_connect_api_v1_google_oauth_connect_get"];
         put?: never;
@@ -1952,6 +2301,166 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/impex/domain/columns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Columns Domain
+         * @description Every column a domain import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+         */
+        get: operations["impex_columns_domain_api_v1_impex_domain_columns_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/domain/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Export Domain
+         * @description Export the current filtered domain list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+         */
+        get: operations["impex_export_domain_api_v1_impex_domain_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/domain/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Import Domain
+         * @description Import domain rows from a spreadsheet, upserting on the first of `name` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
+         */
+        post: operations["impex_import_domain_api_v1_impex_domain_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/domain/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Inspect Domain
+         * @description Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+         */
+        post: operations["impex_inspect_domain_api_v1_impex_domain_inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/domain_tld_price/columns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Columns Domain Tld Price
+         * @description Every column a domain_tld_price import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+         */
+        get: operations["impex_columns_domain_tld_price_api_v1_impex_domain_tld_price_columns_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/domain_tld_price/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Export Domain Tld Price
+         * @description Export the current filtered domain_tld_price list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+         */
+        get: operations["impex_export_domain_tld_price_api_v1_impex_domain_tld_price_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/domain_tld_price/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Import Domain Tld Price
+         * @description Import domain_tld_price rows from a spreadsheet, create-only (no natural key) (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
+         */
+        post: operations["impex_import_domain_tld_price_api_v1_impex_domain_tld_price_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/domain_tld_price/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Inspect Domain Tld Price
+         * @description Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+         */
+        post: operations["impex_inspect_domain_tld_price_api_v1_impex_domain_tld_price_inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/impex/entities": {
         parameters: {
             query?: never;
@@ -1966,6 +2475,86 @@ export interface paths {
         get: operations["list_impex_entities_api_v1_impex_entities_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/hosting/columns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Columns Hosting
+         * @description Every column a hosting import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+         */
+        get: operations["impex_columns_hosting_api_v1_impex_hosting_columns_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/hosting/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Export Hosting
+         * @description Export the current filtered hosting list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+         */
+        get: operations["impex_export_hosting_api_v1_impex_hosting_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/hosting/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Import Hosting
+         * @description Import hosting rows from a spreadsheet, upserting on the first of `name` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
+         */
+        post: operations["impex_import_hosting_api_v1_impex_hosting_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/hosting/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Inspect Hosting
+         * @description Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+         */
+        post: operations["impex_inspect_hosting_api_v1_impex_hosting_inspect_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2132,6 +2721,166 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/impex/subscription_template/columns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Columns Subscription Template
+         * @description Every column a subscription_template import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+         */
+        get: operations["impex_columns_subscription_template_api_v1_impex_subscription_template_columns_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/subscription_template/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Export Subscription Template
+         * @description Export the current filtered subscription_template list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+         */
+        get: operations["impex_export_subscription_template_api_v1_impex_subscription_template_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/subscription_template/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Import Subscription Template
+         * @description Import subscription_template rows from a spreadsheet, upserting on the first of `name` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
+         */
+        post: operations["impex_import_subscription_template_api_v1_impex_subscription_template_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/subscription_template/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Inspect Subscription Template
+         * @description Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+         */
+        post: operations["impex_inspect_subscription_template_api_v1_impex_subscription_template_inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/subscription_type/columns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Columns Subscription Type
+         * @description Every column a subscription_type import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+         */
+        get: operations["impex_columns_subscription_type_api_v1_impex_subscription_type_columns_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/subscription_type/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Export Subscription Type
+         * @description Export the current filtered subscription_type list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+         */
+        get: operations["impex_export_subscription_type_api_v1_impex_subscription_type_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/subscription_type/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Import Subscription Type
+         * @description Import subscription_type rows from a spreadsheet, upserting on the first of `key` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
+         */
+        post: operations["impex_import_subscription_type_api_v1_impex_subscription_type_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/subscription_type/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Inspect Subscription Type
+         * @description Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+         */
+        post: operations["impex_inspect_subscription_type_api_v1_impex_subscription_type_inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/impex/task/columns": {
         parameters: {
             query?: never;
@@ -2286,6 +3035,86 @@ export interface paths {
          * @description Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
          */
         post: operations["impex_inspect_time_entry_api_v1_impex_time_entry_inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/website/columns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Columns Website
+         * @description Every column a website import can write into: the entity's own, those contributed by other modules, and this organisation's custom fields — with the labels, types and aliases a mapping UI needs.
+         */
+        get: operations["impex_columns_website_api_v1_impex_website_columns_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/website/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Impex Export Website
+         * @description Export the current filtered website list as CSV (UTF-8, BOM). Headers are stable column keys plus the tenant's custom-field keys — the file re-imports into the same organisation unchanged.
+         */
+        get: operations["impex_export_website_api_v1_impex_website_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/website/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Import Website
+         * @description Import website rows from a spreadsheet, upserting on the first of `domain` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
+         */
+        post: operations["impex_import_website_api_v1_impex_website_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/impex/website/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impex Inspect Website
+         * @description Read an uploaded file and report what it is — format, worksheets, encoding, row count — plus each of its columns with sample cells and the suggested target column. Writes nothing and reads no records; returns a fingerprint the import repeats so a mapping cannot be applied to a different file.
+         */
+        post: operations["impex_inspect_website_api_v1_impex_website_inspect_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2888,6 +3717,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/interactions/bulk/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Approve Interactions
+         * @description Approve a selection, optionally filing all of it in one step.
+         *
+         *     Sending no link fields is "approve as matched": each row keeps the client/project the
+         *     gmail feed derived for it. Rows are independent — an ineligible one comes back in
+         *     ``failed`` rather than rolling the batch back.
+         */
+        post: operations["bulk_approve_interactions_api_v1_interactions_bulk_approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/interactions/bulk/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Assign Interactions
+         * @description File a selection without approving it — the batch form of remap, so it re-files logged
+         *     rows too. An absent link field leaves every row's own alone.
+         */
+        post: operations["bulk_assign_interactions_api_v1_interactions_bulk_assign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/interactions/bulk/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Reject Interactions
+         * @description Reject a selection. Permanent per row: the metadata goes and the message is suppressed,
+         *     so a re-poll never resurrects it.
+         */
+        post: operations["bulk_reject_interactions_api_v1_interactions_bulk_reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/interactions/kinds": {
         parameters: {
             query?: never;
@@ -3054,29 +3949,6 @@ export interface paths {
          *     modal expands into. A row not in a conversation is its own one-message thread.
          */
         get: operations["get_interaction_thread_api_v1_interactions__interaction_id__thread_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/invoicing/billable-subscriptions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Billable Subscriptions
-         * @description A client's active agreements as ready-made invoice lines (the "＋ abonnement" pick).
-         *
-         *     ``already_billed`` marks a period a document already claims: shown rather than hidden,
-         *     so the answer to "did I invoice March yet?" is on the picker instead of on a duplicate.
-         */
-        get: operations["billable_subscriptions_api_v1_invoicing_billable_subscriptions_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3275,6 +4147,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoicing/invoices/{invoice_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview Invoice
+         * @description The invoice as HTML — **the same artefact** ``/pdf`` prints.
+         *
+         *     The detail page and the print route render this in a frame rather than drawing the
+         *     document a second time in Svelte. That is what makes "the preview and the PDF disagree"
+         *     unrepresentable, and it is the only way a tenant's own HTML template can be previewed at
+         *     all: a Svelte component cannot render someone else's Jinja.
+         */
+        get: operations["preview_invoice_api_v1_invoicing_invoices__invoice_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoicing/invoices/{invoice_id}/refs": {
         parameters: {
             query?: never;
@@ -3344,6 +4241,31 @@ export interface paths {
          * @description UBL 2.1 XML — importable by Exact Online, SnelStart, Moneybird, e-Boekhouden.
          */
         get: operations["download_ubl_api_v1_invoicing_invoices__invoice_id__ubl_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/outstanding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Outstanding
+         * @description Everything a client still has to be invoiced for: hours, agreement periods, renewals.
+         *
+         *     The source the editor's three sections pick from, in one round trip. Periods a document
+         *     already claims are marked ``already_billed`` rather than omitted, so "did I invoice March
+         *     yet?" is answered on the picker instead of by a duplicate a week later. On
+         *     ``invoice.write`` and not ``.read``: this is a build-an-invoice surface, not a report.
+         */
+        get: operations["outstanding_api_v1_invoicing_outstanding_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3517,6 +4439,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoicing/quotes/{quote_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview Quote */
+        get: operations["preview_quote_api_v1_invoicing_quotes__quote_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoicing/quotes/{quote_id}/reject": {
         parameters: {
             query?: never;
@@ -3545,6 +4484,31 @@ export interface paths {
         put?: never;
         /** Send Quote */
         post: operations["send_quote_api_v1_invoicing_quotes__quote_id__send_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/recurring-backlog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recurring Backlog
+         * @description Org-wide recurring work still to invoice (#302): agreement periods and domain renewals
+         *     that no document claims yet.
+         *
+         *     The other half of "nog te factureren" — ``/uninvoiced`` answers it for hours. Read-only
+         *     and on ``.read`` for the same reason that one is: browsing the backlog is a view, and
+         *     building the invoice stays a ``.write`` act in the editor.
+         */
+        get: operations["recurring_backlog_api_v1_invoicing_recurring_backlog_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3625,6 +4589,55 @@ export interface paths {
         patch: operations["update_tax_rate_api_v1_invoicing_tax_rates__tax_rate_id__patch"];
         trace?: never;
     };
+    "/api/v1/invoicing/template-blocks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Template Blocks
+         * @description What a template may rearrange: the block/field catalog plus the shipped designs.
+         *
+         *     Keys only — the editor resolves `invoicing.block.*` / `invoicing.field.*` in the
+         *     *viewer's* locale, because the API does not pick a locale for someone else's screen
+         *     (§17's rule). ``can_author`` is here so the editor can hide the HTML/CSS tab rather than
+         *     offer a control whose save will 403; the API is still the boundary (§15).
+         */
+        get: operations["template_blocks_api_v1_invoicing_template_blocks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/template-blocks/{design}/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Template Source
+         * @description A shipped design's own HTML and CSS, to start a custom template from.
+         *
+         *     Writing one from a blank page means knowing the whole render context by heart; branching
+         *     from the design they already like means changing the two things they want changed. These
+         *     are the same files the shipped design renders from, so what they get is what they saw.
+         */
+        get: operations["template_source_api_v1_invoicing_template_blocks__design__source_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoicing/templates": {
         parameters: {
             query?: never;
@@ -3637,6 +4650,32 @@ export interface paths {
         put?: never;
         /** Create Template */
         post: operations["create_template_api_v1_invoicing_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/templates/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Template
+         * @description Render a **sample** document with an unsaved config — the editor's live preview.
+         *
+         *     Against a sample rather than a real invoice on purpose: the editor is reached from
+         *     Settings, where no document is in hand, and a design must be judged on one that exercises
+         *     every block (two line kinds, a paid amount, a VAT split) rather than on whichever invoice
+         *     happened to be first. It renders the tenant's real seller identity and branding, because
+         *     those are what the design has to sit around.
+         */
+        post: operations["preview_template_api_v1_invoicing_templates_preview_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4648,6 +5687,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/meta/domain-probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Domain Probe
+         * @description Answer, to whoever can reach this hostname, that *this* instance serves *that* org.
+         *
+         *     The custom-domain check fetches this over the public internet (:mod:`app.core.domainprobe`)
+         *     because a DNS comparison cannot see through a proxy. It reveals nothing the equally public
+         *     ``/meta/tenant`` does not — a slug for a hostname — and the echoed nonce is what makes a
+         *     cached or replayed body distinguishable from a live answer.
+         */
+        get: operations["domain_probe_api_v1_meta_domain_probe_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/meta/instance": {
         parameters: {
             query?: never;
@@ -5037,6 +6101,204 @@ export interface paths {
         patch: operations["set_read_api_v1_notifications__notification_id__patch"];
         trace?: never;
     };
+    "/api/v1/oxxa/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Accounts
+         * @description Configured OXXA logins. The API password is never part of the response.
+         */
+        get: operations["list_accounts_api_v1_oxxa_accounts_get"];
+        put?: never;
+        /**
+         * Create Account
+         * @description Store a credential. Creating does not verify it — ``/verify`` is the explicit probe, so
+         *     a typo is reported on the settings screen rather than as a failed save.
+         */
+        post: operations["create_account_api_v1_oxxa_accounts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oxxa/accounts/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Account Options
+         * @description Names only, for the "which register" picker — choosing one is the sync/push caller's
+         *     job, and should not require holding the credential screen's permission.
+         */
+        get: operations["list_account_options_api_v1_oxxa_accounts_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oxxa/accounts/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Account
+         * @description Forget the credential and the register synced from it. Nothing at OXXA is deleted.
+         */
+        delete: operations["delete_account_api_v1_oxxa_accounts__account_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Account
+         * @description Rename, repoint or rotate. An omitted ``api_password`` keeps the stored one.
+         */
+        patch: operations["update_account_api_v1_oxxa_accounts__account_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/oxxa/accounts/{account_id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Account
+         * @description Pull the whole register and reconcile it. One request to OXXA, not one per domain.
+         */
+        post: operations["sync_account_api_v1_oxxa_accounts__account_id__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oxxa/accounts/{account_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Account
+         * @description Probe the credential and cache the TLDs it may operate on.
+         *
+         *     Also brings back the reseller balance: a register that has run out of credit stops renewing
+         *     domains, and nothing else in schakl would ever mention it.
+         */
+        post: operations["verify_account_api_v1_oxxa_accounts__account_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oxxa/domains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Register
+         * @description The stored register. ``linked=false`` is the one worth looking at: domains the agency is
+         *     paying to renew that no schakl record — and therefore no invoice — knows about.
+         */
+        get: operations["list_register_api_v1_oxxa_domains_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oxxa/domains/{domain_id}/nameservers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Push Nameservers
+         * @description Repoint the domain's delegation at the registrar.
+         *
+         *     Its own permission, not ``domains.domain.write``: this changes where the world resolves a
+         *     client's domain, which is a different blast radius from editing our record of it.
+         *     Idempotent — pushing the delegation a domain already has writes nothing at OXXA.
+         */
+        post: operations["push_nameservers_api_v1_oxxa_domains__domain_id__nameservers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oxxa/domains/{domain_id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Domain
+         * @description Re-read one domain from the registrar, including DNSSEC and the registrant's name.
+         */
+        post: operations["refresh_domain_api_v1_oxxa_domains__domain_id__refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oxxa/domains/{domain_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Domain Status
+         * @description Stored rows only — never calls OXXA, so the domain page renders when OXXA is down.
+         */
+        get: operations["domain_status_api_v1_oxxa_domains__domain_id__status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/permissions/catalog": {
         parameters: {
             query?: never;
@@ -5048,6 +6310,82 @@ export interface paths {
         get: operations["permission_catalog_api_v1_permissions_catalog_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/impersonation/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop Portal Impersonation */
+        post: operations["stop_portal_impersonation_api_v1_portal_impersonation_stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/logins/{entity_type}/{subject_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Portal Login State */
+        get: operations["portal_login_state_api_v1_portal_logins__entity_type___subject_id__get"];
+        put?: never;
+        /**
+         * Enable Portal Login
+         * @description Invite this subject to the portal, or re-enable a login that was switched off.
+         */
+        post: operations["enable_portal_login_api_v1_portal_logins__entity_type___subject_id__post"];
+        /** Disable Portal Login */
+        delete: operations["disable_portal_login_api_v1_portal_logins__entity_type___subject_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/logins/{entity_type}/{subject_id}/impersonate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Impersonate Portal Login
+         * @description Sign in as this subject's portal login, time-boxed and on their own trail (#296).
+         */
+        post: operations["impersonate_portal_login_api_v1_portal_logins__entity_type___subject_id__impersonate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/logins/{entity_type}/{subject_id}/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resend Portal Invite */
+        post: operations["resend_portal_invite_api_v1_portal_logins__entity_type___subject_id__resend_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5288,7 +6626,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Email Settings */
+        /**
+         * Get Email Settings
+         * @description The org's stored transport *and* the one actually sending (epic #199).
+         *
+         *     Always an object, never ``null``: "nothing stored" and "nothing sending" are different
+         *     answers on cloud, and a null body could only ever say the first.
+         */
         get: operations["get_email_settings_api_v1_settings_email_get"];
         /** Save Email Settings */
         put: operations["save_email_settings_api_v1_settings_email_put"];
@@ -6702,8 +8046,15 @@ export interface components {
             };
             /** Has Key */
             has_key: boolean;
+            /**
+             * Has Speech Key
+             * @default false
+             */
+            has_speech_key: boolean;
             /** House Style */
             house_style: string | null;
+            /** Monthly Audio Seconds Budget */
+            monthly_audio_seconds_budget?: number | null;
             /** Monthly Token Budget */
             monthly_token_budget: number | null;
             /**
@@ -6711,6 +8062,17 @@ export interface components {
              * @enum {string}
              */
             provider: "anthropic" | "openai" | "openai_compatible";
+            /**
+             * Speech Available
+             * @default false
+             */
+            speech_available: boolean;
+            /** Speech Base Url */
+            speech_base_url?: string | null;
+            /** Speech Model */
+            speech_model?: string | null;
+            /** Speech Provider */
+            speech_provider?: ("openai" | "openai_compatible") | null;
         };
         /** AISettingsWrite */
         AISettingsWrite: {
@@ -6726,6 +8088,8 @@ export interface components {
             };
             /** House Style */
             house_style?: string | null;
+            /** Monthly Audio Seconds Budget */
+            monthly_audio_seconds_budget?: number | null;
             /** Monthly Token Budget */
             monthly_token_budget?: number | null;
             /**
@@ -6733,6 +8097,14 @@ export interface components {
              * @enum {string}
              */
             provider: "anthropic" | "openai" | "openai_compatible";
+            /** Speech Api Key */
+            speech_api_key?: string | null;
+            /** Speech Base Url */
+            speech_base_url?: string | null;
+            /** Speech Model */
+            speech_model?: string | null;
+            /** Speech Provider */
+            speech_provider?: ("openai" | "openai_compatible") | null;
         };
         /**
          * AITestResult
@@ -6772,6 +8144,167 @@ export interface components {
             /** Tokens Total */
             tokens_total: number;
         };
+        /** AccountCreate */
+        AccountCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Api Token */
+            api_token: string;
+            /** Cf Account Id */
+            cf_account_id?: string | null;
+            /** Name */
+            name: string;
+            /** Provider Id */
+            provider_id?: string | null;
+        };
+        /**
+         * AccountOption
+         * @description An account as a *picker* needs it: a name to choose between, nothing else.
+         *
+         *     Separate from :class:`AccountRead` because the two have different readers. Choosing which
+         *     Cloudflare account to create a zone in is part of ``cloudflare.zone.manage``; seeing how a
+         *     credential is configured, what it may do and why it last failed is ``settings.manage``. One
+         *     endpoint serving both would have forced the picker's holder to hold the credential screen's
+         *     permission (docs/UX.md: a control that renders without checking `can()` — inverted).
+         */
+        AccountOption: {
+            /** Active */
+            active: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * AccountRead
+         * @description A configured Cloudflare account. Never carries the token.
+         */
+        AccountRead: {
+            /** Active */
+            active: boolean;
+            /** Capabilities */
+            capabilities?: {
+                [key: string]: boolean;
+            };
+            /** Cf Account Id */
+            cf_account_id?: string | null;
+            /** Cf Account Name */
+            cf_account_name?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Synced At */
+            last_synced_at?: string | null;
+            /** Last Verified At */
+            last_verified_at?: string | null;
+            /** Name */
+            name: string;
+            /** Provider Id */
+            provider_id?: string | null;
+            /** Provider Name */
+            provider_name?: string | null;
+            /** Status */
+            status: string;
+            /**
+             * Token Configured
+             * @default true
+             */
+            token_configured: boolean;
+            /**
+             * Zone Count
+             * @default 0
+             */
+            zone_count: number;
+        };
+        /**
+         * AccountSyncResult
+         * @description The outcome of pulling an account's inventory. Counts, not rows — the lists are paginated
+         *     endpoints of their own.
+         */
+        AccountSyncResult: {
+            /**
+             * Pages Projects Synced
+             * @default 0
+             */
+            pages_projects_synced: number;
+            /**
+             * Registrar Domains At Cloudflare
+             * @default 0
+             */
+            registrar_domains_at_cloudflare: number;
+            /**
+             * Registrar Domains Matched
+             * @default 0
+             */
+            registrar_domains_matched: number;
+            /**
+             * Registrar Domains Synced
+             * @default 0
+             */
+            registrar_domains_synced: number;
+            /**
+             * Registrar Read
+             * @default false
+             */
+            registrar_read: boolean;
+            /** Warnings */
+            warnings?: string[];
+            /**
+             * Zones Matched
+             * @default 0
+             */
+            zones_matched: number;
+            /**
+             * Zones Synced
+             * @default 0
+             */
+            zones_synced: number;
+        };
+        /** AccountUpdate */
+        AccountUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Api Token */
+            api_token?: string | null;
+            /** Cf Account Id */
+            cf_account_id?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Provider Id */
+            provider_id?: string | null;
+        };
+        /**
+         * AccountVerifyResult
+         * @description What a verify learned. ``account`` is filled when the token sees exactly one account.
+         */
+        AccountVerifyResult: {
+            /** Account Choices */
+            account_choices?: {
+                [key: string]: string;
+            }[];
+            /** Capabilities */
+            capabilities?: {
+                [key: string]: boolean;
+            };
+            /** Cf Account Id */
+            cf_account_id?: string | null;
+            /** Cf Account Name */
+            cf_account_name?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Ok */
+            ok: boolean;
+        };
         /**
          * AccountsResponse
          * @description A picker's option list plus the state that lets an empty list *teach* (#132).
@@ -6794,6 +8327,8 @@ export interface components {
              * @default false
              */
             connected: boolean;
+            /** Connected Via */
+            connected_via?: components["schemas"]["ConnectionOwner"][];
             /** Error */
             error?: string | null;
             /**
@@ -6851,6 +8386,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Impersonator Name */
+            impersonator_name?: string | null;
             /** Payload */
             payload: {
                 [key: string]: unknown;
@@ -7069,6 +8606,34 @@ export interface components {
             /** Target User Id */
             target_user_id: string | null;
         };
+        /**
+         * AutoInvoiceMode
+         * @description How far a recurring-billing cron takes an invoice on its own.
+         *
+         *     A **level, not a switch**, because "automatic invoicing" means four different amounts of
+         *     automation to four different agencies, and what separates them is how much of a mistake
+         *     reaches the client. Each step strictly contains the one before it:
+         *
+         *     - ``OFF`` — nothing is raised. The period stays outstanding and the invoice editor's
+         *       picker offers it, which is the entire manual path: nothing is lost, it waits for a human.
+         *     - ``DRAFT`` — a draft appears, numberless, and a human issues it. **The default**, and what
+         *       every instance did before this level existed, so an upgrade changes nothing.
+         *     - ``ISSUE`` — the draft is issued too: it takes its number, freezes its bill-to snapshot
+         *       and starts counting towards its due date. Nobody outside the agency has seen it yet.
+         *     - ``SEND`` — and it is e-mailed to the client, with the document attached.
+         *
+         *     ``ISSUE`` and ``SEND`` deliberately overrule ``docs/INVOICING.md``'s original *"a human
+         *     sends invoices"* rule (#31) — an owner decision, recorded there. They are opt-in per org
+         *     and overridable per agreement precisely because they are the two steps a delete cannot
+         *     undo: an issued invoice is corrected by a credit note, and a sent one has been read.
+         *
+         *     It lives in core rather than in `invoicing` because three modules need the word:
+         *     `subscriptions` and `domains` each store an agreement's override and put it on their
+         *     ``due`` event, and `invoicing` resolves it against the org default. A module importing
+         *     another module's enum is exactly what §6 forbids.
+         * @enum {string}
+         */
+        AutoInvoiceMode: "off" | "draft" | "issue" | "send";
         /** AvailableAccount */
         AvailableAccount: {
             /** Account Hint */
@@ -7087,25 +8652,25 @@ export interface components {
             /** External Id */
             external_id: string;
         };
+        /** BacklogSourceTotal */
+        BacklogSourceTotal: {
+            /** Amount */
+            amount: string;
+            /** Count */
+            count: number;
+        };
         /** BackupCodesOut */
         BackupCodesOut: {
             /** Backup Codes */
             backup_codes: string[];
         };
         /**
-         * BillableSubscription
-         * @description One of a client's agreements, offered to the line editor as a ready-made line.
-         *
-         *     ``already_billed`` is the honest half of the answer: the period is *shown* with the claim
-         *     that holds it, rather than hidden, so a user who wonders "did I already invoice March?"
-         *     reads it here instead of finding out from a duplicate.
+         * BillableDomain
+         * @description A domain and every renewal period of it still outstanding (#250) — the subscription
+         *     shape, one entity over. Renewals already print in a document's subscription section; a
+         *     picker that claimed to show everything outstanding and omitted them would be lying.
          */
-        BillableSubscription: {
-            /**
-             * Already Billed
-             * @default false
-             */
-            already_billed: boolean;
+        BillableDomain: {
             /** Amount */
             amount: string;
             /** Currency */
@@ -7115,14 +8680,64 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Lines */
-            lines?: components["schemas"]["SubscriptionLineOffer"][];
+            /**
+             * Invoiceable
+             * @default true
+             */
+            invoiceable: boolean;
             /** Name */
             name: string;
-            /** Period End */
-            period_end: string | null;
-            /** Period Start */
-            period_start: string | null;
+            /**
+             * No Cycle
+             * @default false
+             */
+            no_cycle: boolean;
+            /**
+             * No Price
+             * @default false
+             */
+            no_price: boolean;
+            /** Periods */
+            periods?: components["schemas"]["PeriodOffer"][];
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+        };
+        /**
+         * BillableSubscription
+         * @description One of a client's agreements and every period of it still outstanding.
+         */
+        BillableSubscription: {
+            /** Amount */
+            amount: string;
+            /** Currency */
+            currency: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Interval
+             * @default
+             */
+            interval: string;
+            /** Name */
+            name: string;
+            /**
+             * No Cycle
+             * @default false
+             */
+            no_cycle: boolean;
+            /** Periods */
+            periods?: components["schemas"]["PeriodOffer"][];
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
         };
         /** Body_auth_cookie_login_api_v1_auth_login_post */
         Body_auth_cookie_login_api_v1_auth_login_post: {
@@ -7189,6 +8804,123 @@ export interface components {
         };
         /** Body_impex_import_contact_api_v1_impex_contact_import_post */
         Body_impex_import_contact_api_v1_impex_contact_import_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file; headers are the export's keys
+             */
+            file?: string | null;
+            /**
+             * Fingerprint
+             * @description The fingerprint from `/inspect`. Supplied and mismatched is a 409 — a mapping is positional and must not be applied to a different file.
+             */
+            fingerprint?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Mapping
+             * @description JSON object mapping a file column **index** to a target column key, e.g. `{"0": "name", "3": "city"}`. Unmapped columns are skipped. Omit the field entirely to use the file's own header row as the mapping, where every header must be an exact column key.
+             */
+            mapping?: string | null;
+            /**
+             * Match Key
+             * @description Force the upsert to match on this column (must be one of the entity's natural keys). Default: the first natural key each row fills.
+             */
+            match_key?: string | null;
+            /**
+             * Sheet
+             * @description Which worksheet to read (.xlsx only; default the first).
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file — tab, comma or semicolon separated, first line the header. Max 1 MiB.
+             */
+            text?: string | null;
+        };
+        /** Body_impex_import_domain_api_v1_impex_domain_import_post */
+        Body_impex_import_domain_api_v1_impex_domain_import_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file; headers are the export's keys
+             */
+            file?: string | null;
+            /**
+             * Fingerprint
+             * @description The fingerprint from `/inspect`. Supplied and mismatched is a 409 — a mapping is positional and must not be applied to a different file.
+             */
+            fingerprint?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Mapping
+             * @description JSON object mapping a file column **index** to a target column key, e.g. `{"0": "name", "3": "city"}`. Unmapped columns are skipped. Omit the field entirely to use the file's own header row as the mapping, where every header must be an exact column key.
+             */
+            mapping?: string | null;
+            /**
+             * Match Key
+             * @description Force the upsert to match on this column (must be one of the entity's natural keys). Default: the first natural key each row fills.
+             */
+            match_key?: string | null;
+            /**
+             * Sheet
+             * @description Which worksheet to read (.xlsx only; default the first).
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file — tab, comma or semicolon separated, first line the header. Max 1 MiB.
+             */
+            text?: string | null;
+        };
+        /** Body_impex_import_domain_tld_price_api_v1_impex_domain_tld_price_import_post */
+        Body_impex_import_domain_tld_price_api_v1_impex_domain_tld_price_import_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file; headers are the export's keys
+             */
+            file?: string | null;
+            /**
+             * Fingerprint
+             * @description The fingerprint from `/inspect`. Supplied and mismatched is a 409 — a mapping is positional and must not be applied to a different file.
+             */
+            fingerprint?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Mapping
+             * @description JSON object mapping a file column **index** to a target column key, e.g. `{"0": "name", "3": "city"}`. Unmapped columns are skipped. Omit the field entirely to use the file's own header row as the mapping, where every header must be an exact column key.
+             */
+            mapping?: string | null;
+            /**
+             * Match Key
+             * @description Force the upsert to match on this column (must be one of the entity's natural keys). Default: the first natural key each row fills.
+             */
+            match_key?: string | null;
+            /**
+             * Sheet
+             * @description Which worksheet to read (.xlsx only; default the first).
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file — tab, comma or semicolon separated, first line the header. Max 1 MiB.
+             */
+            text?: string | null;
+        };
+        /** Body_impex_import_hosting_api_v1_impex_hosting_import_post */
+        Body_impex_import_hosting_api_v1_impex_hosting_import_post: {
             /**
              * File
              * @description CSV, TSV or .xlsx file; headers are the export's keys
@@ -7304,6 +9036,84 @@ export interface components {
              */
             text?: string | null;
         };
+        /** Body_impex_import_subscription_template_api_v1_impex_subscription_template_import_post */
+        Body_impex_import_subscription_template_api_v1_impex_subscription_template_import_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file; headers are the export's keys
+             */
+            file?: string | null;
+            /**
+             * Fingerprint
+             * @description The fingerprint from `/inspect`. Supplied and mismatched is a 409 — a mapping is positional and must not be applied to a different file.
+             */
+            fingerprint?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Mapping
+             * @description JSON object mapping a file column **index** to a target column key, e.g. `{"0": "name", "3": "city"}`. Unmapped columns are skipped. Omit the field entirely to use the file's own header row as the mapping, where every header must be an exact column key.
+             */
+            mapping?: string | null;
+            /**
+             * Match Key
+             * @description Force the upsert to match on this column (must be one of the entity's natural keys). Default: the first natural key each row fills.
+             */
+            match_key?: string | null;
+            /**
+             * Sheet
+             * @description Which worksheet to read (.xlsx only; default the first).
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file — tab, comma or semicolon separated, first line the header. Max 1 MiB.
+             */
+            text?: string | null;
+        };
+        /** Body_impex_import_subscription_type_api_v1_impex_subscription_type_import_post */
+        Body_impex_import_subscription_type_api_v1_impex_subscription_type_import_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file; headers are the export's keys
+             */
+            file?: string | null;
+            /**
+             * Fingerprint
+             * @description The fingerprint from `/inspect`. Supplied and mismatched is a 409 — a mapping is positional and must not be applied to a different file.
+             */
+            fingerprint?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Mapping
+             * @description JSON object mapping a file column **index** to a target column key, e.g. `{"0": "name", "3": "city"}`. Unmapped columns are skipped. Omit the field entirely to use the file's own header row as the mapping, where every header must be an exact column key.
+             */
+            mapping?: string | null;
+            /**
+             * Match Key
+             * @description Force the upsert to match on this column (must be one of the entity's natural keys). Default: the first natural key each row fills.
+             */
+            match_key?: string | null;
+            /**
+             * Sheet
+             * @description Which worksheet to read (.xlsx only; default the first).
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file — tab, comma or semicolon separated, first line the header. Max 1 MiB.
+             */
+            text?: string | null;
+        };
         /** Body_impex_import_task_api_v1_impex_task_import_post */
         Body_impex_import_task_api_v1_impex_task_import_post: {
             /**
@@ -7345,6 +9155,45 @@ export interface components {
         };
         /** Body_impex_import_time_entry_api_v1_impex_time_entry_import_post */
         Body_impex_import_time_entry_api_v1_impex_time_entry_import_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file; headers are the export's keys
+             */
+            file?: string | null;
+            /**
+             * Fingerprint
+             * @description The fingerprint from `/inspect`. Supplied and mismatched is a 409 — a mapping is positional and must not be applied to a different file.
+             */
+            fingerprint?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Mapping
+             * @description JSON object mapping a file column **index** to a target column key, e.g. `{"0": "name", "3": "city"}`. Unmapped columns are skipped. Omit the field entirely to use the file's own header row as the mapping, where every header must be an exact column key.
+             */
+            mapping?: string | null;
+            /**
+             * Match Key
+             * @description Force the upsert to match on this column (must be one of the entity's natural keys). Default: the first natural key each row fills.
+             */
+            match_key?: string | null;
+            /**
+             * Sheet
+             * @description Which worksheet to read (.xlsx only; default the first).
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file — tab, comma or semicolon separated, first line the header. Max 1 MiB.
+             */
+            text?: string | null;
+        };
+        /** Body_impex_import_website_api_v1_impex_website_import_post */
+        Body_impex_import_website_api_v1_impex_website_import_post: {
             /**
              * File
              * @description CSV, TSV or .xlsx file; headers are the export's keys
@@ -7430,6 +9279,78 @@ export interface components {
              */
             text?: string | null;
         };
+        /** Body_impex_inspect_domain_api_v1_impex_domain_inspect_post */
+        Body_impex_inspect_domain_api_v1_impex_domain_inspect_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file
+             */
+            file?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Sheet
+             * @description Worksheet to read (.xlsx only)
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file
+             */
+            text?: string | null;
+        };
+        /** Body_impex_inspect_domain_tld_price_api_v1_impex_domain_tld_price_inspect_post */
+        Body_impex_inspect_domain_tld_price_api_v1_impex_domain_tld_price_inspect_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file
+             */
+            file?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Sheet
+             * @description Worksheet to read (.xlsx only)
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file
+             */
+            text?: string | null;
+        };
+        /** Body_impex_inspect_hosting_api_v1_impex_hosting_inspect_post */
+        Body_impex_inspect_hosting_api_v1_impex_hosting_inspect_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file
+             */
+            file?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Sheet
+             * @description Worksheet to read (.xlsx only)
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file
+             */
+            text?: string | null;
+        };
         /** Body_impex_inspect_project_api_v1_impex_project_inspect_post */
         Body_impex_inspect_project_api_v1_impex_project_inspect_post: {
             /**
@@ -7478,6 +9399,54 @@ export interface components {
              */
             text?: string | null;
         };
+        /** Body_impex_inspect_subscription_template_api_v1_impex_subscription_template_inspect_post */
+        Body_impex_inspect_subscription_template_api_v1_impex_subscription_template_inspect_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file
+             */
+            file?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Sheet
+             * @description Worksheet to read (.xlsx only)
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file
+             */
+            text?: string | null;
+        };
+        /** Body_impex_inspect_subscription_type_api_v1_impex_subscription_type_inspect_post */
+        Body_impex_inspect_subscription_type_api_v1_impex_subscription_type_inspect_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file
+             */
+            file?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Sheet
+             * @description Worksheet to read (.xlsx only)
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file
+             */
+            text?: string | null;
+        };
         /** Body_impex_inspect_task_api_v1_impex_task_inspect_post */
         Body_impex_inspect_task_api_v1_impex_task_inspect_post: {
             /**
@@ -7504,6 +9473,30 @@ export interface components {
         };
         /** Body_impex_inspect_time_entry_api_v1_impex_time_entry_inspect_post */
         Body_impex_inspect_time_entry_api_v1_impex_time_entry_inspect_post: {
+            /**
+             * File
+             * @description CSV, TSV or .xlsx file
+             */
+            file?: string | null;
+            /**
+             * Has Header
+             * @description Is the first row a header?
+             * @default true
+             */
+            has_header: boolean;
+            /**
+             * Sheet
+             * @description Worksheet to read (.xlsx only)
+             */
+            sheet?: string | null;
+            /**
+             * Text
+             * @description A pasted table instead of a file
+             */
+            text?: string | null;
+        };
+        /** Body_impex_inspect_website_api_v1_impex_website_inspect_post */
+        Body_impex_inspect_website_api_v1_impex_website_inspect_post: {
             /**
              * File
              * @description CSV, TSV or .xlsx file
@@ -7577,6 +9570,11 @@ export interface components {
             company_id?: string | null;
             /** Contact Id */
             contact_id?: string | null;
+            /**
+             * Contact Ids
+             * @description Everyone the message was with; wins over contact_id
+             */
+            contact_ids?: string[] | null;
             /**
              * File
              * @description An exported .eml message
@@ -7681,6 +9679,11 @@ export interface components {
         CalendarFeedItem: {
             /** All Day */
             all_day: boolean;
+            /**
+             * Cancelled
+             * @default false
+             */
+            cancelled: boolean;
             /** End */
             end: string;
             /** Ends At */
@@ -8048,6 +10051,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Impersonator Name */
+            impersonator_name?: string | null;
             /** Mentioned Contact Ids */
             mentioned_contact_ids?: string[];
             /** Mentioned Task Ids */
@@ -8355,6 +10360,48 @@ export interface components {
             website?: string | null;
         };
         /**
+         * ConnectRequest
+         * @description "Connect this domain to Cloudflare" — adopt the existing zone, or create one.
+         */
+        ConnectRequest: {
+            /** Account Id */
+            account_id?: string | null;
+            /**
+             * Create If Missing
+             * @default true
+             */
+            create_if_missing: boolean;
+        };
+        /**
+         * ConnectionOwner
+         * @description Whose Google grant a link (or an available account) rides on.
+         *
+         *     A marketing link syncs through **one person's** connection, and every colleague looking at
+         *     that client sees the result without any hint of whose it is — so a working link reads as
+         *     "connected" to its owner and as nothing in particular to everyone else, and the natural
+         *     reaction is to connect a second account for the same data. Naming the owner is also the
+         *     only warning anyone gets that the link dies the day that person leaves.
+         *
+         *     Both the person and the Google account: they are routinely different addresses, and which
+         *     Google account holds the Ads access is exactly what the next person needs to know.
+         */
+        ConnectionOwner: {
+            /** Email */
+            email: string;
+            /**
+             * Is Me
+             * @default false
+             */
+            is_me: boolean;
+            /** Name */
+            name: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /**
          * ConnectionRead
          * @description The caller's own connection — or the admin list's per-user rows.
          */
@@ -8583,6 +10630,25 @@ export interface components {
             /** Phone */
             phone?: string | null;
         };
+        /**
+         * CreditNoteRef
+         * @description A credit note as seen from the invoice it corrects — enough to link to it and say
+         *     how much of it that invoice absorbed.
+         */
+        CreditNoteRef: {
+            /** Applied Total */
+            applied_total: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Number */
+            number?: string | null;
+            status: components["schemas"]["InvoiceStatus"];
+            /** Total */
+            total: string;
+        };
         /** CustomFieldDefinitionCreate */
         CustomFieldDefinitionCreate: {
             /**
@@ -8715,8 +10781,12 @@ export interface components {
             address_line1?: string | null;
             /** Address Line2 */
             address_line2?: string | null;
+            /** Attn */
+            attn?: string | null;
             /** City */
             city?: string | null;
+            /** Client Number */
+            client_number?: string | null;
             /** Coc Number */
             coc_number?: string | null;
             /** Country */
@@ -8833,6 +10903,18 @@ export interface components {
             password: string;
         };
         /**
+         * DnsExport
+         * @description A zone export. ``content`` is the file body; the client saves it under ``filename``.
+         */
+        DnsExport: {
+            /** Content */
+            content: string;
+            /** Content Type */
+            content_type: string;
+            /** Filename */
+            filename: string;
+        };
+        /**
          * DnsRecordCard
          * @description One record to create at the customer's DNS provider, renderable as a copy-paste card.
          */
@@ -8857,6 +10939,58 @@ export interface components {
             type: string;
             /** Value */
             value: string;
+        };
+        /**
+         * DnsRecordRead
+         * @description One record as Cloudflare reports it. Read live — never stored (a DNS record is not our
+         *     data, and a cached copy would be wrong within minutes of any change).
+         */
+        DnsRecordRead: {
+            /** Comment */
+            comment?: string | null;
+            /** Content */
+            content: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Priority */
+            priority?: number | null;
+            /**
+             * Proxied
+             * @default false
+             */
+            proxied: boolean;
+            /**
+             * Ttl
+             * @default 1
+             */
+            ttl: number;
+            /** Type */
+            type: string;
+        };
+        /** DnsRecordWrite */
+        DnsRecordWrite: {
+            /** Comment */
+            comment?: string | null;
+            /** Content */
+            content: string;
+            /** Name */
+            name: string;
+            /** Priority */
+            priority?: number | null;
+            /**
+             * Proxied
+             * @default false
+             */
+            proxied: boolean;
+            /**
+             * Ttl
+             * @default 1
+             */
+            ttl: number;
+            /** Type */
+            type: string;
         };
         /**
          * DocumentSend
@@ -8928,6 +11062,7 @@ export interface components {
         };
         /** DomainCreate */
         DomainCreate: {
+            auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
             /**
              * Company Id
              * Format: uuid
@@ -8947,6 +11082,8 @@ export interface components {
             email_enabled: boolean;
             /** Email Provider Id */
             email_provider_id?: string | null;
+            /** Invoiceable */
+            invoiceable?: boolean | null;
             /** Name */
             name: string;
             /** Price Override */
@@ -8961,8 +11098,28 @@ export interface components {
             /** @default active */
             status: components["schemas"]["DomainStatus-Input"];
         };
+        /**
+         * DomainProbe
+         * @description The routing proof a custom-domain check fetches over the public internet.
+         *
+         *     Deliberately three constants and nothing else: the software marker that says the answer
+         *     came from this application at all, the org the requested hostname resolves to, and the
+         *     caller's own nonce echoed back so a cached body cannot pass for a live one.
+         */
+        DomainProbe: {
+            /**
+             * Instance
+             * @default schakl
+             */
+            instance: string;
+            /** Nonce */
+            nonce: string;
+            /** Org */
+            org: string;
+        };
         /** DomainRead */
         DomainRead: {
+            auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
             /**
              * Company Id
              * Format: uuid
@@ -9005,6 +11162,19 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Invoiceable */
+            invoiceable?: boolean | null;
+            /**
+             * Invoiceable Effective
+             * @default true
+             */
+            invoiceable_effective: boolean;
+            /**
+             * Invoiceable Source
+             * @default default
+             * @enum {string}
+             */
+            invoiceable_source: "explicit" | "register" | "default";
             /** Mx Records */
             mx_records?: components["schemas"]["MxRecord"][] | null;
             /** Name */
@@ -9022,6 +11192,8 @@ export interface components {
             price_override?: string | null;
             /** Redirect Url */
             redirect_url?: string | null;
+            /** Registers */
+            registers?: string[];
             /** Registrar Provider Id */
             registrar_provider_id?: string | null;
             /** Registrar Provider Name */
@@ -9046,13 +11218,91 @@ export interface components {
             updated_at: string;
         };
         /**
+         * DomainRegistrarStatus
+         * @description What this module knows about one domain, **from stored rows only**.
+         *
+         *     Never calls OXXA. A domain page must not wait on an outside API to render and must still
+         *     render when that API is down (docs/PERFORMANCE.md); ``POST /domains/{id}/refresh`` is the
+         *     explicit "go look" action, mirroring the domains module's own refresh.
+         */
+        DomainRegistrarStatus: {
+            /** Account Id */
+            account_id?: string | null;
+            /** Account Name */
+            account_name?: string | null;
+            /**
+             * Configured
+             * @default false
+             */
+            configured: boolean;
+            /**
+             * Domain Id
+             * Format: uuid
+             */
+            domain_id: string;
+            /** Issues */
+            issues?: string[];
+            registrar?: components["schemas"]["RegistrarDomainRead"] | null;
+        };
+        /**
          * DomainStatus
          * @description Operational state of a domain. ``redirect``'s uptime/redirect webhook is a later slice.
          * @enum {string}
          */
         "DomainStatus-Input": "active" | "redirect" | "parked" | "expired" | "inactive";
+        /**
+         * DomainStatusRead
+         * @description Everything known about one domain's Cloudflare state.
+         *
+         *     ``live`` says whether Cloudflare was actually asked. The stored read (``GET .../status``) is
+         *     the cheap one a page load uses; ``POST .../check`` is the one that talks to Cloudflare and
+         *     fills in ``conflicts``, ``origin`` and the redirect observation (docs/PERFORMANCE.md — a
+         *     detail page must not depend on an outside API being up).
+         */
+        DomainStatusRead: {
+            /** Candidates */
+            candidates?: components["schemas"]["ZoneCandidate"][];
+            /** Conflicts */
+            conflicts?: components["schemas"]["RedirectConflict"][];
+            /**
+             * Domain Id
+             * Format: uuid
+             */
+            domain_id: string;
+            /** Domain Name */
+            domain_name: string;
+            /** Domain Redirect Url */
+            domain_redirect_url?: string | null;
+            /** Domain Status */
+            domain_status?: string | null;
+            /** Expected Nameservers */
+            expected_nameservers?: string[];
+            /** Issues */
+            issues?: string[];
+            /**
+             * Live
+             * @default false
+             */
+            live: boolean;
+            /**
+             * Nameservers Delegated
+             * @default false
+             */
+            nameservers_delegated: boolean;
+            /** Observed Nameservers */
+            observed_nameservers?: string[];
+            origin?: components["schemas"]["OriginState"] | null;
+            /** Pages Links */
+            pages_links?: components["schemas"]["PagesLinkRead"][];
+            redirect?: components["schemas"]["RedirectRead"] | null;
+            redirect_live?: components["schemas"]["RedirectObservation"] | null;
+            /** Unavailable */
+            unavailable?: string[];
+            zone?: components["schemas"]["ZoneRead"] | null;
+        };
         /** DomainUpdate */
         DomainUpdate: {
+            auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
             /** Company Id */
             company_id?: string | null;
             /** Custom */
@@ -9066,6 +11316,8 @@ export interface components {
             email_enabled?: boolean | null;
             /** Email Provider Id */
             email_provider_id?: string | null;
+            /** Invoiceable */
+            invoiceable?: boolean | null;
             /** Name */
             name?: string | null;
             /** Price Override */
@@ -9358,12 +11610,31 @@ export interface components {
         };
         /**
          * EmailSettingsRead
-         * @description The stored configuration minus its secrets: enough to repopulate the form.
+         * @description The stored configuration minus its secrets (enough to repopulate the form), **plus
+         *     what is actually sending right now**.
+         *
+         *     The two differ exactly where it matters: an org on the cloud's included e-mail (epic
+         *     #199) stores nothing at all, so a read that only described storage said "nothing
+         *     configured" while every mail was leaving through the operator's transport. The
+         *     ``active_*`` fields are the answer to "which transport is live, and as whom" — always
+         *     present, so no client has to re-derive it from instance config it cannot see.
          */
         EmailSettingsRead: {
-            /** From Email */
+            /** Active From Email */
+            active_from_email?: string | null;
+            /** Active From Name */
+            active_from_name?: string | null;
+            /** Active Provider */
+            active_provider?: ("smtp" | "brevo" | "sendgrid" | "smtp2go" | "instance") | null;
+            /**
+             * From Email
+             * @default
+             */
             from_email: string;
-            /** From Name */
+            /**
+             * From Name
+             * @default
+             */
             from_name: string;
             /**
              * Has Secret
@@ -9372,13 +11643,15 @@ export interface components {
             has_secret: boolean;
             /** Host */
             host?: string | null;
+            /**
+             * Instance Email Available
+             * @default false
+             */
+            instance_email_available: boolean;
             /** Port */
             port?: number | null;
-            /**
-             * Provider
-             * @enum {string}
-             */
-            provider: "smtp" | "brevo" | "sendgrid" | "smtp2go" | "instance";
+            /** Provider */
+            provider?: ("smtp" | "brevo" | "sendgrid" | "smtp2go" | "instance") | null;
             /** Reply To */
             reply_to?: string | null;
             /** Security */
@@ -10427,10 +12700,117 @@ export interface components {
             company_id?: string | null;
             /** Contact Id */
             contact_id?: string | null;
+            /**
+             * Contact Ids
+             * @description Everyone the moment was with. Wins over contact_id; [] clears the roster.
+             */
+            contact_ids?: string[] | null;
             /** Project Id */
             project_id?: string | null;
             /** Task Id */
             task_id?: string | null;
+        };
+        /**
+         * InteractionBulkApprove
+         * @description Approve a selection, optionally filing all of it in the same step (the batch form of
+         *     #183). Sending no link fields at all is the plain "approve as matched": every row keeps
+         *     whatever the gmail matcher derived for it, and the batch is a pure status change.
+         */
+        InteractionBulkApprove: {
+            /** Company Id */
+            company_id?: string | null;
+            /** Contact Id */
+            contact_id?: string | null;
+            /**
+             * Contact Ids
+             * @description Everyone the moment was with. Wins over contact_id; [] clears the roster.
+             */
+            contact_ids?: string[] | null;
+            /** Ids */
+            ids: string[];
+            /** Project Id */
+            project_id?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+        };
+        /**
+         * InteractionBulkAssign
+         * @description File a selection without approving it — triage now, read and approve later. The batch
+         *     form of ``remap``, so it works on logged rows too (re-filing a mis-matched run of emails).
+         */
+        InteractionBulkAssign: {
+            /** Company Id */
+            company_id?: string | null;
+            /** Contact Id */
+            contact_id?: string | null;
+            /**
+             * Contact Ids
+             * @description Everyone the moment was with. Wins over contact_id; [] clears the roster.
+             */
+            contact_ids?: string[] | null;
+            /** Ids */
+            ids: string[];
+            /** Project Id */
+            project_id?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+        };
+        /**
+         * InteractionBulkFailure
+         * @description One row the batch could not do, and why — an i18n key from the same vocabulary the
+         *     single-row endpoints raise.
+         */
+        InteractionBulkFailure: {
+            /** Error */
+            error: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /** InteractionBulkReject */
+        InteractionBulkReject: {
+            /** Ids */
+            ids: string[];
+            /**
+             * Suppress Thread
+             * @default false
+             */
+            suppress_thread: boolean;
+        };
+        /**
+         * InteractionBulkResult
+         * @description What a bulk call actually did.
+         *
+         *     Rows are independent: a stale or ineligible one is **reported, never raised**. Raising
+         *     mid-batch would roll the whole request back (``require_context`` rolls back on any
+         *     exception), so one row someone else already reviewed in another tab would silently undo
+         *     the forty-nine that worked. A payload-level problem — a ``company_id`` that does not
+         *     exist — is still a 422 for the whole call, because it is the caller's, not a row's.
+         */
+        InteractionBulkResult: {
+            /** Failed */
+            failed?: components["schemas"]["InteractionBulkFailure"][];
+            /** Succeeded */
+            succeeded: number;
+        };
+        /**
+         * InteractionContactRef
+         * @description One person on the roster (#300), labelled — what the web draws a chip from.
+         *
+         *     Prefixed with the module's own name on purpose: a bare ``ContactRef`` would make FastAPI
+         *     qualify *every* module's schema of that name in the OpenAPI components, renaming other
+         *     modules' types in the generated client.
+         */
+        InteractionContactRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name?: string | null;
         };
         /**
          * InteractionCreate
@@ -10443,6 +12823,11 @@ export interface components {
             company_id?: string | null;
             /** Contact Id */
             contact_id?: string | null;
+            /**
+             * Contact Ids
+             * @description Everyone the moment was with. Wins over contact_id; [] clears the roster.
+             */
+            contact_ids?: string[] | null;
             /** @default none */
             direction: components["schemas"]["InteractionDirection"];
             /** Kind */
@@ -10590,6 +12975,8 @@ export interface components {
             contact_id?: string | null;
             /** Contact Name */
             contact_name?: string | null;
+            /** Contacts */
+            contacts?: components["schemas"]["InteractionContactRef"][];
             /**
              * Conversation Count
              * @default 1
@@ -10662,6 +13049,11 @@ export interface components {
             company_id?: string | null;
             /** Contact Id */
             contact_id?: string | null;
+            /**
+             * Contact Ids
+             * @description Everyone the moment was with. Wins over contact_id; [] clears the roster.
+             */
+            contact_ids?: string[] | null;
             /** Project Id */
             project_id?: string | null;
             /** Task Id */
@@ -10685,6 +13077,11 @@ export interface components {
             company_id?: string | null;
             /** Contact Id */
             contact_id?: string | null;
+            /**
+             * Contact Ids
+             * @description Everyone the moment was with. Wins over contact_id; [] clears the roster.
+             */
+            contact_ids?: string[] | null;
             direction?: components["schemas"]["InteractionDirection"] | null;
             /** Kind */
             kind?: string | null;
@@ -10714,6 +13111,8 @@ export interface components {
             custom?: {
                 [key: string]: unknown;
             };
+            /** Delivery Date */
+            delivery_date?: string | null;
             /** Due Date */
             due_date?: string | null;
             /** Exchange Rate */
@@ -10774,6 +13173,11 @@ export interface components {
         InvoiceKind: "invoice" | "credit_note";
         /** InvoiceRead */
         InvoiceRead: {
+            /**
+             * Applied Total
+             * @default 0
+             */
+            applied_total: string;
             /** Cancelled At */
             cancelled_at: string | null;
             /**
@@ -10795,6 +13199,23 @@ export interface components {
             created_at: string;
             /** Credit For Id */
             credit_for_id: string | null;
+            /**
+             * Credit For Number
+             * @default
+             */
+            credit_for_number: string;
+            /** Credit Notes */
+            credit_notes?: components["schemas"]["CreditNoteRef"][];
+            /**
+             * Credited
+             * @default false
+             */
+            credited: boolean;
+            /**
+             * Credited Total
+             * @default 0
+             */
+            credited_total: string;
             /** Currency */
             currency: string;
             /** Custom */
@@ -10802,12 +13223,19 @@ export interface components {
                 [key: string]: unknown;
             };
             customer?: components["schemas"]["CustomerRead"];
+            /** Delivery Date */
+            delivery_date?: string | null;
             /** Domain Id */
             domain_id: string | null;
             /** Due Date */
             due_date: string | null;
             /** Exchange Rate */
             exchange_rate: string | null;
+            /**
+             * Fully Credited
+             * @default false
+             */
+            fully_credited: boolean;
             /**
              * Id
              * Format: uuid
@@ -10903,6 +13331,8 @@ export interface components {
             custom?: {
                 [key: string]: unknown;
             } | null;
+            /** Delivery Date */
+            delivery_date?: string | null;
             /** Due Date */
             due_date?: string | null;
             /** Exchange Rate */
@@ -10928,6 +13358,7 @@ export interface components {
         };
         /** InvoicingSettingsRead */
         InvoicingSettingsRead: {
+            auto_invoice_mode: components["schemas"]["AutoInvoiceMode"];
             company_details: components["schemas"]["SellerDetails"];
             /** Default Due Days */
             default_due_days: number;
@@ -10960,6 +13391,7 @@ export interface components {
         };
         /** InvoicingSettingsWrite */
         InvoicingSettingsWrite: {
+            auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
             company_details?: components["schemas"]["SellerDetails"] | null;
             /** Default Due Days */
             default_due_days?: number | null;
@@ -12017,36 +14449,54 @@ export interface components {
         };
         /**
          * LineKind
-         * @description What a document line *is* — the three things this platform bills for.
+         * @description What a document line *is* — the four things this platform bills for.
          *
-         *     An agency's invoice mixes worked hours, recurring agreements and one-off sales, and the
-         *     reader has to tell them apart: "24 uur × € 95" and "Hosting maart" answer different
-         *     questions. So the kind is a **property of the line**, carried from wherever it was built
-         *     (``from_time`` stamps hours, the subscription cycle stamps subscription, a product pick
-         *     stamps product) through to the rendered document, which groups and subtotals by it.
+         *     An agency's invoice mixes worked hours, recurring agreements, domain renewals and one-off
+         *     sales, and the reader has to tell them apart: "24 uur × € 95", "Hosting maart" and
+         *     "vlotr.nl 2026–2027" answer different questions. So the kind is a **property of the
+         *     line**, carried from wherever it was built (``from_time`` stamps hours, the subscription
+         *     cycle stamps subscription, the renewal cron stamps domain, a product pick stamps product)
+         *     through to the rendered document, which groups and subtotals by it.
          *
          *     It is presentation and provenance, never money: totals are computed from quantity, price
          *     and tax exactly as before, and a tenant who wants one flat table simply keeps every line
          *     on the default.
+         *
+         *     ``DOMAIN`` was folded into ``SUBSCRIPTION`` until #302, on the reasoning that a renewal is
+         *     a recurring line and no reader had asked for the distinction. A reader has: a register of
+         *     forty domains renewing across the year is the item an agency reconciles line by line
+         *     against the registrar's own invoice, and burying it in the band that also holds three
+         *     hosting retainers is what made that reconciliation a manual sort. Rows written before the
+         *     split keep saying ``subscription`` — the kind is a snapshot (§14's #64 rule), so the
+         *     documents a client already read do not change shape underneath them, and every read path
+         *     treats the two as one legacy family where it has to (see ``_CLAIM_SOURCES``).
          * @enum {string}
          */
-        LineKind: "product" | "hours" | "subscription";
+        LineKind: "product" | "hours" | "subscription" | "domain";
         /** LineRead */
         LineRead: {
             /** Amount */
             amount: string;
             /** Description */
             description: string;
+            /** Domain Id */
+            domain_id?: string | null;
             /**
              * Id
              * Format: uuid
              */
             id: string;
             line_kind: components["schemas"]["LineKind"];
+            /** Period End */
+            period_end?: string | null;
+            /** Period Start */
+            period_start?: string | null;
             /** Position */
             position: number;
             /** Quantity */
             quantity: string;
+            /** Subscription Id */
+            subscription_id?: string | null;
             tax_category: components["schemas"]["TaxCategory"];
             /** Tax Name */
             tax_name: string;
@@ -12054,6 +14504,8 @@ export interface components {
             tax_rate_id: string | null;
             /** Tax Rate Pct */
             tax_rate_pct: string;
+            /** Time Entry Ids */
+            time_entry_ids?: string[];
             /** Unit */
             unit: string | null;
             /** Unit Price */
@@ -12063,6 +14515,8 @@ export interface components {
         LineWrite: {
             /** Description */
             description: string;
+            /** Domain Id */
+            domain_id?: string | null;
             /** @default product */
             line_kind: components["schemas"]["LineKind"];
             /** Period End */
@@ -12080,6 +14534,8 @@ export interface components {
             tax_rate_id?: string | null;
             /** Time Entry Id */
             time_entry_id?: string | null;
+            /** Time Entry Ids */
+            time_entry_ids?: string[];
             /** Unit */
             unit?: string | null;
             /**
@@ -12196,6 +14652,13 @@ export interface components {
             impersonated_by?: string | null;
             /** Impersonation Expires At */
             impersonation_expires_at?: string | null;
+            /** Impersonation Kind */
+            impersonation_kind?: string | null;
+            /**
+             * Impersonation Narrowed
+             * @default false
+             */
+            impersonation_narrowed: boolean;
             /**
              * Is Instance Admin
              * @default false
@@ -12394,6 +14857,33 @@ export interface components {
             gmail_sync_enabled?: boolean | null;
         };
         /**
+         * NameserverPush
+         * @description Ask the registrar to delegate a domain to exactly these nameservers.
+         */
+        NameserverPush: {
+            /** Account Id */
+            account_id?: string | null;
+            /** Nameservers */
+            nameservers: string[];
+        };
+        /**
+         * NameserverPushResult
+         * @description What the push did. ``changed=False`` is a success: the delegation was already right, so
+         *     nothing was written at the registrar — which is what makes a retry free.
+         */
+        NameserverPushResult: {
+            /** Changed */
+            changed: boolean;
+            /** Error */
+            error?: string | null;
+            /** Nameservers */
+            nameservers?: string[];
+            /** Nsgroup Ref */
+            nsgroup_ref?: string | null;
+            /** Ok */
+            ok: boolean;
+        };
+        /**
          * NavGroupPref
          * @description A tenant label for a sidebar *group* heading (e.g. ``assets`` → "Hosting & domeinen").
          */
@@ -12481,6 +14971,11 @@ export interface components {
              * @default activate
              */
             custom_domain_mode: string;
+            /**
+             * Email Included
+             * @default true
+             */
+            email_included: boolean;
             /** Enabled Modules */
             enabled_modules?: string[] | null;
             /** Locale */
@@ -12516,6 +15011,11 @@ export interface components {
             default_locale: string | null;
             /** Deleted At */
             deleted_at: string | null;
+            /**
+             * Email Included
+             * @default true
+             */
+            email_included: boolean;
             /** Enabled Modules */
             enabled_modules: string[];
             /** Ends At */
@@ -12633,6 +15133,11 @@ export interface components {
             custom_domain_verified: boolean;
             /** Deleted At */
             deleted_at: string | null;
+            /**
+             * Email Included
+             * @default true
+             */
+            email_included: boolean;
             /** Ends At */
             ends_at?: string | null;
             /** Exported At */
@@ -12669,10 +15174,55 @@ export interface components {
         };
         /** OrgUpdate */
         OrgUpdate: {
+            /** Email Included */
+            email_included?: boolean | null;
             /** Name */
             name?: string | null;
             /** Slug */
             slug?: string | null;
+        };
+        /**
+         * OriginState
+         * @description Whether traffic for this domain reaches Cloudflare's edge at all.
+         *
+         *     A redirect rule on a zone with no proxied record for the apex is inert. This is the check
+         *     that turns "I set the redirect and nothing happens" into a sentence.
+         *
+         *     ``www`` is tracked separately because it fails separately: a proxied apex beside an
+         *     unproxied ``www`` leaves the one hostname a domain redirect exists to catch serving
+         *     nothing, while the apex answers and the report otherwise reads healthy.
+         */
+        OriginState: {
+            /**
+             * Apex Proxied
+             * @default false
+             */
+            apex_proxied: boolean;
+            /**
+             * Has Records
+             * @default false
+             */
+            has_records: boolean;
+            /**
+             * Www Proxied
+             * @default false
+             */
+            www_proxied: boolean;
+        };
+        /**
+         * OutstandingRead
+         * @description Everything a client still has to be invoiced for, in one round trip.
+         *
+         *     Three buckets because the editor has three sections, and one call because the picker
+         *     opens on all three at once: three browser fetches for one dialog is the shape
+         *     ``docs/PERFORMANCE.md`` exists to prevent.
+         */
+        OutstandingRead: {
+            /** Domains */
+            domains?: components["schemas"]["BillableDomain"][];
+            hours: components["schemas"]["UnbilledRead"];
+            /** Subscriptions */
+            subscriptions?: components["schemas"]["BillableSubscription"][];
         };
         /** OverviewResponse */
         OverviewResponse: {
@@ -12706,6 +15256,145 @@ export interface components {
             show_key_events: boolean;
             /** Sources Present */
             sources_present?: components["schemas"]["MarketingSource"][];
+        };
+        /** OxxaAccountCreate */
+        OxxaAccountCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Api Password */
+            api_password: string;
+            /** Api User */
+            api_user: string;
+            /** Name */
+            name: string;
+            /** Provider Id */
+            provider_id?: string | null;
+        };
+        /**
+         * OxxaAccountOption
+         * @description An account as a *picker* needs it. Separate from :class:`OxxaAccountRead` for the reason
+         *     ``cloudflare``'s is: choosing which register to act through is ``registrar.sync``'s business,
+         *     while seeing how a credential is configured and why it last failed is ``settings.manage``.
+         */
+        OxxaAccountOption: {
+            /** Active */
+            active: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * OxxaAccountRead
+         * @description A configured OXXA reseller login. Never carries the password.
+         */
+        OxxaAccountRead: {
+            /** Active */
+            active: boolean;
+            /** Api User */
+            api_user: string;
+            /**
+             * Domain Count
+             * @default 0
+             */
+            domain_count: number;
+            /** Funds Available */
+            funds_available?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Synced At */
+            last_synced_at?: string | null;
+            /** Last Verified At */
+            last_verified_at?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Password Configured
+             * @default true
+             */
+            password_configured: boolean;
+            /** Provider Id */
+            provider_id?: string | null;
+            /** Provider Name */
+            provider_name?: string | null;
+            /** Status */
+            status: string;
+            /**
+             * Tld Count
+             * @default 0
+             */
+            tld_count: number;
+        };
+        /**
+         * OxxaAccountSyncResult
+         * @description The outcome of one register sync.
+         */
+        OxxaAccountSyncResult: {
+            /**
+             * Drifted
+             * @default 0
+             */
+            drifted: number;
+            /** Error */
+            error?: string | null;
+            /**
+             * Found
+             * @default 0
+             */
+            found: number;
+            /**
+             * Matched
+             * @default 0
+             */
+            matched: number;
+            /** Ok */
+            ok: boolean;
+            /**
+             * Unmatched
+             * @default 0
+             */
+            unmatched: number;
+        };
+        /** OxxaAccountUpdate */
+        OxxaAccountUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Api Password */
+            api_password?: string | null;
+            /** Api User */
+            api_user?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Provider Id */
+            provider_id?: string | null;
+        };
+        /**
+         * OxxaAccountVerifyResult
+         * @description What a verify learned. Never raises for a working-but-limited credential.
+         */
+        OxxaAccountVerifyResult: {
+            /** Error */
+            error?: string | null;
+            /** Funds Available */
+            funds_available?: string | null;
+            /** Ok */
+            ok: boolean;
+            /**
+             * Tld Count
+             * @default 0
+             */
+            tld_count: number;
         };
         /** Page[CompanyRead] */
         Page_CompanyRead_: {
@@ -12817,6 +15506,17 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[RegistrarDomainRead] */
+        Page_RegistrarDomainRead_: {
+            /** Items */
+            items: components["schemas"]["RegistrarDomainRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** Page[RunRead] */
         Page_RunRead_: {
             /** Items */
@@ -12871,6 +15571,76 @@ export interface components {
             offset: number;
             /** Total */
             total: number;
+        };
+        /** Page[ZoneRead] */
+        Page_ZoneRead_: {
+            /** Items */
+            items: components["schemas"]["ZoneRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** PagesLinkCreate */
+        PagesLinkCreate: {
+            /** Hostname */
+            hostname?: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+        };
+        /** PagesLinkRead */
+        PagesLinkRead: {
+            /**
+             * Domain Id
+             * Format: uuid
+             */
+            domain_id: string;
+            /** Hostname */
+            hostname: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Checked At */
+            last_checked_at?: string | null;
+            /** Last Error */
+            last_error?: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Name */
+            project_name?: string | null;
+            /** Status */
+            status?: string | null;
+        };
+        /** PagesProjectRead */
+        PagesProjectRead: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Account Name */
+            account_name?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Production Branch */
+            production_branch?: string | null;
+            /** Subdomain */
+            subdomain?: string | null;
         };
         /**
          * PanelData
@@ -13000,6 +15770,38 @@ export interface components {
              */
             paid_on: string;
         };
+        /**
+         * PeriodOffer
+         * @description One outstanding billing period of one agreement — the unit the picker selects.
+         *
+         *     A period, not an agreement: an agreement that has been paused, whose automation was off,
+         *     or that was simply never billed owes *several*, and offering only the next one is the
+         *     reason a user reaches for a hand-typed line. ``already_billed`` is shown rather than
+         *     hidden, so "did I invoice March?" is answered on the picker instead of by a duplicate.
+         */
+        PeriodOffer: {
+            /**
+             * Already Billed
+             * @default false
+             */
+            already_billed: boolean;
+            /** Amount */
+            amount: string;
+            /**
+             * Future
+             * @default false
+             */
+            future: boolean;
+            /** Lines */
+            lines?: components["schemas"]["SubscriptionLineOffer"][];
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /** Period Start */
+            period_start: string | null;
+        };
         /** PermissionCatalog */
         PermissionCatalog: {
             /** Groups */
@@ -13032,10 +15834,42 @@ export interface components {
             /** Trial Ends At */
             trial_ends_at?: string | null;
         };
-        /** PortalState */
-        PortalState: {
+        /** PortalImpersonateRequest */
+        PortalImpersonateRequest: {
+            /**
+             * Minutes
+             * @default 30
+             */
+            minutes: number;
+        };
+        /** PortalImpersonateResponse */
+        PortalImpersonateResponse: {
+            /** Cookie */
+            cookie: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Target Email */
+            target_email: string;
+            /** Target Name */
+            target_name?: string | null;
+            /** Token */
+            token: string;
+        };
+        /**
+         * PortalLoginState
+         * @description Where one subject's client login stands. Named for the module, not for ``contacts``:
+         *     the subject is whatever registered a provider (``app/core/portal.py``).
+         */
+        PortalLoginState: {
             /** Email */
             email?: string | null;
+            /** Entity Type */
+            entity_type: string;
+            /** Invite Email */
+            invite_email?: string | null;
             /** Invite Email Error */
             invite_email_error?: string | null;
             /** Invite Email Sent */
@@ -13046,6 +15880,8 @@ export interface components {
              * @enum {string}
              */
             status: "none" | "invited" | "active" | "disabled";
+            /** Subject Id */
+            subject_id: string;
         };
         /** PreferenceMatrix */
         PreferenceMatrix: {
@@ -13650,6 +16486,11 @@ export interface components {
              * @default activate
              */
             custom_domain_mode: string;
+            /**
+             * Email Included
+             * @default true
+             */
+            email_included: boolean;
             /** Enabled Modules */
             enabled_modules?: string[] | null;
             /** Locale */
@@ -13689,6 +16530,11 @@ export interface components {
              * @default []
              */
             dns_records: components["schemas"]["DnsRecordCard"][];
+            /**
+             * Email Included
+             * @default true
+             */
+            email_included: boolean;
             /** Id */
             id: string;
             /** Name */
@@ -13902,6 +16748,265 @@ export interface components {
          * @enum {string}
          */
         RecurrenceMode: "after_completion" | "schedule";
+        /** RecurringBacklogGroup */
+        RecurringBacklogGroup: {
+            /** Amount */
+            amount: string;
+            /** Count */
+            count: number;
+            /** Key */
+            key: string;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+        };
+        /**
+         * RecurringBacklogItem
+         * @description One outstanding period: an agreement's month or a domain's renewal year (#302).
+         */
+        RecurringBacklogItem: {
+            /** Amount */
+            amount: string;
+            auto_mode: components["schemas"]["AutoInvoiceMode"];
+            /** Company Id */
+            company_id: string | null;
+            /**
+             * Company Name
+             * @default
+             */
+            company_name: string;
+            /** Currency */
+            currency: string;
+            /**
+             * Future
+             * @default false
+             */
+            future: boolean;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /** Period Start */
+            period_start: string | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "subscription" | "domain";
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+        };
+        /**
+         * RecurringBacklogReport
+         * @description Org-wide recurring work still to invoice (#302) — the other half of "nog te
+         *     factureren", beside :class:`UninvoicedReport`'s hours.
+         */
+        RecurringBacklogReport: {
+            /**
+             * Group
+             * @enum {string}
+             */
+            group: "company" | "month" | "source";
+            /** Groups */
+            groups: components["schemas"]["RecurringBacklogGroup"][];
+            /** Items */
+            items: components["schemas"]["RecurringBacklogItem"][];
+            org_auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "all" | "subscription" | "domain";
+            /** Total Amount */
+            total_amount: string;
+            /** Total Count */
+            total_count: number;
+            /** Totals By Source */
+            totals_by_source?: {
+                [key: string]: components["schemas"]["BacklogSourceTotal"];
+            };
+            /** Truncated */
+            truncated: boolean;
+        };
+        /**
+         * RedirectConflict
+         * @description Something *else* on this zone that already redirects, or could.
+         *
+         *     Reported rather than resolved: Cloudflare evaluates redirect rules top-down and we cannot
+         *     evaluate a tenant's filter expression to know whether it catches this hostname. Naming it
+         *     lets the admin decide; silently appending our rule below it would look like it worked.
+         */
+        RedirectConflict: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "redirect_rule" | "page_rule";
+        };
+        /**
+         * RedirectObservation
+         * @description What Cloudflare currently has for our rule, next to what we asked for.
+         */
+        RedirectObservation: {
+            /** Differences */
+            differences?: string[];
+            /**
+             * Present
+             * @default false
+             */
+            present: boolean;
+            /** Status Code */
+            status_code?: number | null;
+            /** Target */
+            target?: string | null;
+        };
+        /** RedirectRead */
+        RedirectRead: {
+            /**
+             * Domain Id
+             * Format: uuid
+             */
+            domain_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Include Subdomains */
+            include_subdomains: boolean;
+            /** Last Checked At */
+            last_checked_at?: string | null;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Pushed At */
+            last_pushed_at?: string | null;
+            /** Last Status */
+            last_status: string;
+            /** Preserve Path */
+            preserve_path: boolean;
+            /** Preserve Query */
+            preserve_query: boolean;
+            /** Status Code */
+            status_code: number;
+            /** Target Url */
+            target_url: string;
+            /**
+             * Zone Id
+             * Format: uuid
+             */
+            zone_id: string;
+        };
+        /**
+         * RedirectWrite
+         * @description The tenant's intent for a domain-wide redirect.
+         */
+        RedirectWrite: {
+            /**
+             * Ensure Origin
+             * @default true
+             */
+            ensure_origin: boolean;
+            /**
+             * Include Subdomains
+             * @default true
+             */
+            include_subdomains: boolean;
+            /**
+             * Preserve Path
+             * @default true
+             */
+            preserve_path: boolean;
+            /**
+             * Preserve Query
+             * @default true
+             */
+            preserve_query: boolean;
+            /**
+             * Status Code
+             * @default 301
+             */
+            status_code: number;
+            /** Target Url */
+            target_url: string;
+        };
+        /**
+         * RegistrarDomainRead
+         * @description One row of the register as schakl stores it.
+         */
+        RegistrarDomainRead: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Autorenew */
+            autorenew?: boolean | null;
+            /** Contact Refs */
+            contact_refs?: {
+                [key: string]: string;
+            };
+            /** Dnssec */
+            dnssec?: boolean | null;
+            /** Domain Id */
+            domain_id?: string | null;
+            /** Domain Name */
+            domain_name?: string | null;
+            /** Expires On */
+            expires_on?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Synced At */
+            last_synced_at?: string | null;
+            /** Name */
+            name: string;
+            /** Ns Desired */
+            ns_desired?: string[] | null;
+            /** Ns Observed */
+            ns_observed?: string[] | null;
+            /** Ns Push Status */
+            ns_push_status: string;
+            /** Ns Pushed At */
+            ns_pushed_at?: string | null;
+            /** Nsgroup Ref */
+            nsgroup_ref?: string | null;
+            /** Registrant */
+            registrant?: {
+                [key: string]: unknown;
+            } | null;
+            /** Registrant Name */
+            registrant_name?: string | null;
+            /** Sld */
+            sld: string;
+            /** Tld */
+            tld: string;
+            /** Transfer Lock */
+            transfer_lock?: boolean | null;
+        };
         /** ReportCreate */
         ReportCreate: {
             /**
@@ -14394,6 +17499,8 @@ export interface components {
             address_line1?: string | null;
             /** Address Line2 */
             address_line2?: string | null;
+            /** Bic */
+            bic?: string | null;
             /** City */
             city?: string | null;
             /** Coc Number */
@@ -14412,6 +17519,8 @@ export interface components {
             postal_code?: string | null;
             /** Vat Number */
             vat_number?: string | null;
+            /** Website */
+            website?: string | null;
         };
         /** SeriesData */
         SeriesData: {
@@ -14553,6 +17662,7 @@ export interface components {
             channels?: {
                 [key: string]: number;
             } | null;
+            connection_owner?: components["schemas"]["ConnectionOwner"] | null;
             /** Currency */
             currency?: string | null;
             /**
@@ -14783,6 +17893,7 @@ export interface components {
         SubscriptionCreate: {
             /** Amount */
             amount: number | string;
+            auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
             /**
              * Company Id
              * Format: uuid
@@ -14936,6 +18047,7 @@ export interface components {
             activated_at?: string | null;
             /** Amount */
             amount?: string | null;
+            auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
             /**
              * Company Id
              * Format: uuid
@@ -15287,6 +18399,7 @@ export interface components {
             amount?: number | string | null;
             /** Amount Valid From */
             amount_valid_from?: string | null;
+            auto_invoice_mode?: components["schemas"]["AutoInvoiceMode"] | null;
             /** Company Id */
             company_id?: string | null;
             /** Currency */
@@ -15860,6 +18973,93 @@ export interface components {
             company_id: string;
         };
         /**
+         * TemplateBackground
+         * @description The mark printed behind the page — a letterhead, not a watermark.
+         *
+         *     ``file_id`` is a tenant file (the same store the logo lives in); absent, the tenant's own
+         *     logo is used, which is what makes the letterhead design work the moment it is picked. The
+         *     numbers are percentages of the page, and every one of them is re-clamped at render time:
+         *     this is tenant-writable config, and an opacity of 40 would black out the text.
+         */
+        TemplateBackground: {
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /** File Id */
+            file_id?: string | null;
+            /**
+             * Opacity
+             * @default 0.04
+             */
+            opacity: number;
+            /**
+             * Repeat
+             * @default false
+             */
+            repeat: boolean;
+            /**
+             * Rotate
+             * @default 0
+             */
+            rotate: number;
+            /**
+             * Scale
+             * @default 78
+             */
+            scale: number;
+            /**
+             * Use Logo
+             * @default true
+             */
+            use_logo: boolean;
+            /**
+             * X
+             * @default 50
+             */
+            x: number;
+            /**
+             * Y
+             * @default 50
+             */
+            y: number;
+        };
+        /**
+         * TemplateBlock
+         * @description One block of the document. Position in ``layout`` is its print order.
+         *
+         *     Both this and its fields are a **partial** statement: keys the catalog knows and this
+         *     layout does not are resolved at their catalog position with their catalog default
+         *     (``render.blocks.resolve_layout``). That is what lets a field added by a later release
+         *     appear on documents whose layout was written before it existed.
+         */
+        TemplateBlock: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Fields */
+            fields?: components["schemas"]["TemplateField"][];
+            /** Key */
+            key: string;
+        };
+        /**
+         * TemplateCatalog
+         * @description What the template editor needs to draw itself. Keys only — the client owns labels.
+         */
+        TemplateCatalog: {
+            /** Blocks */
+            blocks: {
+                [key: string]: unknown;
+            }[];
+            /** Can Author */
+            can_author: boolean;
+            /** Designs */
+            designs: string[];
+        };
+        /**
          * TemplateChecklistItem
          * @description One item of a checklist template — a title and an optional markdown description (issue #66).
          *
@@ -15875,6 +19075,12 @@ export interface components {
         /**
          * TemplateColumns
          * @description Which line columns the rendered document shows.
+         *
+         *     **Superseded by** ``TemplateConfig.layout``'s ``lines`` block, which orders the columns as
+         *     well as toggling them. Kept because every template stored before layouts existed carries
+         *     one, and it is still the input while a template has no layout of its own — upgrading a
+         *     release must not redesign a document a tenant has already approved. The service writes it
+         *     back from the layout on save, so the two can never disagree.
          */
         TemplateColumns: {
             /**
@@ -15907,15 +19113,28 @@ export interface components {
         TemplateConfig: {
             /** Accent Color */
             accent_color?: string | null;
+            background?: components["schemas"]["TemplateBackground"];
             columns?: components["schemas"]["TemplateColumns"];
+            /** Css */
+            css?: string | null;
+            /**
+             * Design
+             * @default classic
+             * @enum {string}
+             */
+            design: "classic" | "letterhead" | "custom";
             /** Footer I18N */
             footer_i18n?: {
                 [key: string]: string;
             };
+            /** Html */
+            html?: string | null;
             /** Intro I18N */
             intro_i18n?: {
                 [key: string]: string;
             };
+            /** Layout */
+            layout?: components["schemas"]["TemplateBlock"][];
             /** Payment I18N */
             payment_i18n?: {
                 [key: string]: string;
@@ -15925,6 +19144,23 @@ export interface components {
              * @default true
              */
             show_logo: boolean;
+        };
+        /**
+         * TemplateField
+         * @description One field inside a block. Position in the list is its print order.
+         */
+        TemplateField: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Key */
+            key: string;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            };
         };
         /** TemplateItemBase */
         TemplateItemBase: {
@@ -16000,6 +19236,25 @@ export interface components {
             title: string;
         };
         /**
+         * TemplatePreview
+         * @description Render a sample document with a config that has not been saved.
+         */
+        TemplatePreview: {
+            config: components["schemas"]["TemplateConfig"];
+            /** Template Id */
+            template_id?: string | null;
+        };
+        /**
+         * TemplateSource
+         * @description A shipped design's own source, for branching a custom template off it.
+         */
+        TemplateSource: {
+            /** Css */
+            css: string;
+            /** Html */
+            html: string;
+        };
+        /**
          * TemplateTrigger
          * @enum {string}
          */
@@ -16034,6 +19289,11 @@ export interface components {
              */
             demo_reset_minutes: number;
             /**
+             * Deployment
+             * @default self_hosted
+             */
+            deployment: string;
+            /**
              * Domain Unhealthy
              * @default false
              */
@@ -16042,8 +19302,12 @@ export interface components {
             enabled_modules: string[];
             /** Ends Warning Until */
             ends_warning_until?: string | null;
+            /** Entitled Modules */
+            entitled_modules?: string[];
             /** Favicon Url */
             favicon_url: string | null;
+            /** Licensed Modules */
+            licensed_modules?: string[];
             /** Logo Url */
             logo_url: string | null;
             /** Primary Color */
@@ -16349,12 +19613,22 @@ export interface components {
             override_budget: boolean;
             /** Text */
             text: string;
+            /** Today */
+            today?: string | null;
         };
         /**
          * TimeParseResult
          * @description A *draft* entry: prefills the form, never creates anything (#129).
+         *
+         *     Every field is optional and an unstated one stays ``None`` — notably ``billable``, whose
+         *     third state is what lets the form keep the project's own default (#284, #246). A ``False``
+         *     here would be indistinguishable from the user having said "niet declarabel".
          */
         TimeParseResult: {
+            /** Billable */
+            billable?: boolean | null;
+            /** Break Minutes */
+            break_minutes?: number | null;
             /** Company Id */
             company_id?: string | null;
             /** Date */
@@ -16365,6 +19639,8 @@ export interface components {
             duration_minutes?: number | null;
             /** End */
             end?: string | null;
+            /** Entry Type Key */
+            entry_type_key?: string | null;
             /** Project Id */
             project_id?: string | null;
             /** Start */
@@ -16444,6 +19720,35 @@ export interface components {
             /** Minutes */
             minutes: number;
             running: components["schemas"]["TimeEntryRead"] | null;
+        };
+        /**
+         * TimeTranscribeRequest
+         * @description A recorded quick-add line (#246).
+         *
+         *     The clip rides base64-in-JSON rather than multipart: the web app reaches the API through
+         *     one same-origin proxy that forwards JSON, and a second transport for one endpoint would be
+         *     a worse trade than 33% on a clip measured in tens of kilobytes.
+         */
+        TimeTranscribeRequest: {
+            /** Audio */
+            audio: string;
+            /** Language */
+            language?: string | null;
+            /**
+             * Override Budget
+             * @default false
+             */
+            override_budget: boolean;
+        };
+        /**
+         * TimeTranscribeResult
+         * @description Just the words. The transcript goes back into the quick-add field for the user to read
+         *     and fix before it is parsed — a misheard client name is the failure mode worth catching,
+         *     and it is only catchable while the text is still visible.
+         */
+        TimeTranscribeResult: {
+            /** Text */
+            text: string;
         };
         /**
          * TimeWorkspace
@@ -16685,8 +19990,23 @@ export interface components {
             entries: components["schemas"]["UnbilledEntry"][];
             /** Hourly Rate */
             hourly_rate: string | null;
+            /**
+             * Total Amount
+             * @default 0
+             */
+            total_amount: string;
+            /**
+             * Total Count
+             * @default 0
+             */
+            total_count: number;
             /** Total Minutes */
             total_minutes: number;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
         };
         /**
          * UninvoicedGroup
@@ -17130,6 +20450,86 @@ export interface components {
             title?: string | null;
         };
         /**
+         * ZoneCandidate
+         * @description One account's answer to "do you have this zone?" — the shape ambiguity is reported in.
+         */
+        ZoneCandidate: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Account Name */
+            account_name: string;
+            /** Cf Zone Id */
+            cf_zone_id: string;
+            /** Name Servers */
+            name_servers?: string[];
+            /** Status */
+            status: string;
+        };
+        /** ZoneLink */
+        ZoneLink: {
+            /**
+             * Domain Id
+             * Format: uuid
+             */
+            domain_id: string;
+        };
+        /** ZoneRead */
+        ZoneRead: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Account Name */
+            account_name?: string | null;
+            /** Cf Zone Id */
+            cf_zone_id: string;
+            /** Domain Id */
+            domain_id?: string | null;
+            /** Domain Name */
+            domain_name?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Synced At */
+            last_synced_at?: string | null;
+            /** Name */
+            name: string;
+            /** Name Servers */
+            name_servers?: string[];
+            /** Original Name Servers */
+            original_name_servers?: string[];
+            /**
+             * Paused
+             * @default false
+             */
+            paused: boolean;
+            /** Plan */
+            plan?: string | null;
+            /** Status */
+            status: string;
+        };
+        /**
+         * ZoneRecords
+         * @description A zone's live records plus the state of the read itself.
+         */
+        ZoneRecords: {
+            /** Records */
+            records?: components["schemas"]["DnsRecordRead"][];
+            /**
+             * Zone Id
+             * Format: uuid
+             */
+            zone_id: string;
+            /** Zone Name */
+            zone_name: string;
+        };
+        /**
          * ActivityItem
          * @description One line of a record's paper trail.
          */
@@ -17160,6 +20560,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Impersonator Name */
+            impersonator_name?: string | null;
             /** Payload */
             payload?: {
                 [key: string]: unknown;
@@ -17330,6 +20732,7 @@ export interface components {
              * @default true
              */
             connection_ok: boolean;
+            connection_owner?: components["schemas"]["ConnectionOwner"] | null;
             /** Display Name */
             display_name: string;
             /** External Id */
@@ -17992,6 +21395,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TimeReconstructResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    time_transcribe_api_v1_ai_time_transcribe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TimeTranscribeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeTranscribeResult"];
                 };
             };
             /** @description Validation Error */
@@ -18928,6 +22364,731 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Page_RunRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_accounts_api_v1_cloudflare_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountRead"][];
+                };
+            };
+        };
+    };
+    create_account_api_v1_cloudflare_accounts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_account_options_api_v1_cloudflare_accounts_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountOption"][];
+                };
+            };
+        };
+    };
+    delete_account_api_v1_cloudflare_accounts__account_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_account_api_v1_cloudflare_accounts__account_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_account_api_v1_cloudflare_accounts__account_id__sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountSyncResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_account_api_v1_cloudflare_accounts__account_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountVerifyResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cloudflare_check_domain_api_v1_cloudflare_domains__domain_id__check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainStatusRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    connect_domain_api_v1_cloudflare_domains__domain_id__connect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZoneRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_pages_project_api_v1_cloudflare_domains__domain_id__pages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PagesLinkCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagesLinkRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_redirect_api_v1_cloudflare_domains__domain_id__redirect_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RedirectWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RedirectRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_redirect_api_v1_cloudflare_domains__domain_id__redirect_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cloudflare_domain_status_api_v1_cloudflare_domains__domain_id__status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainStatusRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlink_pages_project_api_v1_cloudflare_pages_links__link_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_pages_projects_api_v1_cloudflare_pages_projects_get: {
+        parameters: {
+            query?: {
+                account_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagesProjectRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_zones_api_v1_cloudflare_zones_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                account_id?: string | null;
+                domain_id?: string | null;
+                /** @description true: matched to a domain; false: orphans */
+                linked?: boolean | null;
+                q?: string | null;
+                /** @description Compute the total. False for pickers. */
+                count?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ZoneRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_dns_api_v1_cloudflare_zones__zone_id__dns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                zone_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZoneRecords"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_dns_record_api_v1_cloudflare_zones__zone_id__dns_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                zone_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DnsRecordWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DnsRecordRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_dns_api_v1_cloudflare_zones__zone_id__dns_export_get: {
+        parameters: {
+            query?: {
+                format?: string;
+            };
+            header?: never;
+            path: {
+                zone_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DnsExport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_dns_record_api_v1_cloudflare_zones__zone_id__dns__record_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                zone_id: string;
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_dns_record_api_v1_cloudflare_zones__zone_id__dns__record_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                zone_id: string;
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DnsRecordWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DnsRecordRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_zone_api_v1_cloudflare_zones__zone_id__link_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                zone_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ZoneLink"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZoneRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlink_zone_api_v1_cloudflare_zones__zone_id__link_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                zone_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZoneRead"];
                 };
             };
             /** @description Validation Error */
@@ -19892,130 +24053,6 @@ export interface operations {
             };
         };
     };
-    portal_state_api_v1_contacts__contact_id__portal_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                contact_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PortalState"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    enable_portal_api_v1_contacts__contact_id__portal_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                contact_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PortalState"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    disable_portal_api_v1_contacts__contact_id__portal_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                contact_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PortalState"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    resend_portal_invite_api_v1_contacts__contact_id__portal_resend_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                contact_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PortalState"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_definitions_api_v1_custom_fields_definitions_get: {
         parameters: {
             query: {
@@ -20278,6 +24315,8 @@ export interface operations {
                 q?: string | null;
                 /** @description name | company | status | registrar | dns | dnssec | email_enabled | start_date | next_invoice_date | created_at | updated_at, '-' desc */
                 sort?: string | null;
+                /** @description Filter on the *resolved* billing answer (#298), not the stored flag: false lists what is registered elsewhere and therefore never invoiced. */
+                invoiceable?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -21188,9 +25227,11 @@ export interface operations {
         parameters: {
             query?: {
                 include_gmail?: boolean;
+                include_marketing?: boolean;
                 include_analytics?: boolean;
                 include_search_console?: boolean;
                 include_ads?: boolean;
+                next?: string;
             };
             header?: never;
             path?: never;
@@ -21814,6 +25855,239 @@ export interface operations {
             };
         };
     };
+    impex_columns_domain_api_v1_impex_domain_columns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexColumnsResponse"];
+                };
+            };
+        };
+    };
+    impex_export_domain_api_v1_impex_domain_export_get: {
+        parameters: {
+            query?: {
+                /** @description Search, as on the list */
+                q?: string | null;
+                company_id?: string | null;
+                /** @description List sort key, '-' desc */
+                sort?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_import_domain_api_v1_impex_domain_import_post: {
+        parameters: {
+            query?: {
+                /** @description Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. */
+                dry_run?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_import_domain_api_v1_impex_domain_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_inspect_domain_api_v1_impex_domain_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_inspect_domain_api_v1_impex_domain_inspect_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexInspectReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_columns_domain_tld_price_api_v1_impex_domain_tld_price_columns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexColumnsResponse"];
+                };
+            };
+        };
+    };
+    impex_export_domain_tld_price_api_v1_impex_domain_tld_price_export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+        };
+    };
+    impex_import_domain_tld_price_api_v1_impex_domain_tld_price_import_post: {
+        parameters: {
+            query?: {
+                /** @description Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. */
+                dry_run?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_import_domain_tld_price_api_v1_impex_domain_tld_price_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_inspect_domain_tld_price_api_v1_impex_domain_tld_price_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_inspect_domain_tld_price_api_v1_impex_domain_tld_price_inspect_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexInspectReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_impex_entities_api_v1_impex_entities_get: {
         parameters: {
             query?: never;
@@ -21830,6 +26104,130 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImpexEntityInfo"][];
+                };
+            };
+        };
+    };
+    impex_columns_hosting_api_v1_impex_hosting_columns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexColumnsResponse"];
+                };
+            };
+        };
+    };
+    impex_export_hosting_api_v1_impex_hosting_export_get: {
+        parameters: {
+            query?: {
+                /** @description Search, as on the list */
+                q?: string | null;
+                company_id?: string | null;
+                /** @description List sort key, '-' desc */
+                sort?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_import_hosting_api_v1_impex_hosting_import_post: {
+        parameters: {
+            query?: {
+                /** @description Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. */
+                dry_run?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_import_hosting_api_v1_impex_hosting_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_inspect_hosting_api_v1_impex_hosting_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_inspect_hosting_api_v1_impex_hosting_inspect_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexInspectReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -22061,6 +26459,224 @@ export interface operations {
         requestBody?: {
             content: {
                 "multipart/form-data": components["schemas"]["Body_impex_inspect_subscription_api_v1_impex_subscription_inspect_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexInspectReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_columns_subscription_template_api_v1_impex_subscription_template_columns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexColumnsResponse"];
+                };
+            };
+        };
+    };
+    impex_export_subscription_template_api_v1_impex_subscription_template_export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+        };
+    };
+    impex_import_subscription_template_api_v1_impex_subscription_template_import_post: {
+        parameters: {
+            query?: {
+                /** @description Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. */
+                dry_run?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_import_subscription_template_api_v1_impex_subscription_template_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_inspect_subscription_template_api_v1_impex_subscription_template_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_inspect_subscription_template_api_v1_impex_subscription_template_inspect_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexInspectReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_columns_subscription_type_api_v1_impex_subscription_type_columns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexColumnsResponse"];
+                };
+            };
+        };
+    };
+    impex_export_subscription_type_api_v1_impex_subscription_type_export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+        };
+    };
+    impex_import_subscription_type_api_v1_impex_subscription_type_import_post: {
+        parameters: {
+            query?: {
+                /** @description Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. */
+                dry_run?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_import_subscription_type_api_v1_impex_subscription_type_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_inspect_subscription_type_api_v1_impex_subscription_type_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_inspect_subscription_type_api_v1_impex_subscription_type_inspect_post"];
             };
         };
         responses: {
@@ -22319,6 +26935,128 @@ export interface operations {
         requestBody?: {
             content: {
                 "multipart/form-data": components["schemas"]["Body_impex_inspect_time_entry_api_v1_impex_time_entry_inspect_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexInspectReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_columns_website_api_v1_impex_website_columns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpexColumnsResponse"];
+                };
+            };
+        };
+    };
+    impex_export_website_api_v1_impex_website_export_get: {
+        parameters: {
+            query?: {
+                company_id?: string | null;
+                /** @description List sort key, '-' desc */
+                sort?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_import_website_api_v1_impex_website_import_post: {
+        parameters: {
+            query?: {
+                /** @description Validate and report creates/updates/errors without writing anything. `false` applies the file all-or-nothing in one transaction. */
+                dry_run?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_import_website_api_v1_impex_website_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impex_inspect_website_api_v1_impex_website_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_impex_inspect_website_api_v1_impex_website_inspect_post"];
             };
         };
         responses: {
@@ -23732,6 +28470,105 @@ export interface operations {
             };
         };
     };
+    bulk_approve_interactions_api_v1_interactions_bulk_approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InteractionBulkApprove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InteractionBulkResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_assign_interactions_api_v1_interactions_bulk_assign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InteractionBulkAssign"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InteractionBulkResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_reject_interactions_api_v1_interactions_bulk_reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InteractionBulkReject"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InteractionBulkResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_interaction_kinds_api_v1_interactions_kinds_get: {
         parameters: {
             query?: {
@@ -24144,37 +28981,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InteractionRead"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    billable_subscriptions_api_v1_invoicing_billable_subscriptions_get: {
-        parameters: {
-            query: {
-                company_id: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BillableSubscription"][];
                 };
             };
             /** @description Validation Error */
@@ -24623,6 +29429,35 @@ export interface operations {
             };
         };
     };
+    preview_invoice_api_v1_invoicing_invoices__invoice_id__preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     invoice_refs_api_v1_invoicing_invoices__invoice_id__refs_get: {
         parameters: {
             query?: never;
@@ -24738,6 +29573,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    outstanding_api_v1_invoicing_outstanding_get: {
+        parameters: {
+            query: {
+                company_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutstandingRead"];
                 };
             };
             /** @description Validation Error */
@@ -25202,6 +30068,35 @@ export interface operations {
             };
         };
     };
+    preview_quote_api_v1_invoicing_quotes__quote_id__preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                quote_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     reject_quote_api_v1_invoicing_quotes__quote_id__reject_post: {
         parameters: {
             query?: never;
@@ -25259,6 +30154,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QuoteRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recurring_backlog_api_v1_invoicing_recurring_backlog_get: {
+        parameters: {
+            query?: {
+                /** @description company | month | source */
+                group?: "company" | "month" | "source";
+                /** @description all | subscription | domain */
+                source?: "all" | "subscription" | "domain";
+                /** @description cap on the item detail, not the totals */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurringBacklogReport"];
                 };
             };
             /** @description Validation Error */
@@ -25473,6 +30404,57 @@ export interface operations {
             };
         };
     };
+    template_blocks_api_v1_invoicing_template_blocks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateCatalog"];
+                };
+            };
+        };
+    };
+    template_source_api_v1_invoicing_template_blocks__design__source_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                design: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateSource"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_templates_api_v1_invoicing_templates_get: {
         parameters: {
             query?: {
@@ -25525,6 +30507,37 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["app__modules__invoicing__schemas__TemplateRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_template_api_v1_invoicing_templates_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplatePreview"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -27595,6 +32608,37 @@ export interface operations {
             };
         };
     };
+    domain_probe_api_v1_meta_domain_probe_get: {
+        parameters: {
+            query: {
+                nonce: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainProbe"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     deployment_meta_api_v1_meta_instance_get: {
         parameters: {
             query?: never;
@@ -28415,6 +33459,342 @@ export interface operations {
             };
         };
     };
+    list_accounts_api_v1_oxxa_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OxxaAccountRead"][];
+                };
+            };
+        };
+    };
+    create_account_api_v1_oxxa_accounts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OxxaAccountCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OxxaAccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_account_options_api_v1_oxxa_accounts_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OxxaAccountOption"][];
+                };
+            };
+        };
+    };
+    delete_account_api_v1_oxxa_accounts__account_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_account_api_v1_oxxa_accounts__account_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OxxaAccountUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OxxaAccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_account_api_v1_oxxa_accounts__account_id__sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OxxaAccountSyncResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_account_api_v1_oxxa_accounts__account_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OxxaAccountVerifyResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_register_api_v1_oxxa_domains_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                account_id?: string | null;
+                /** @description true = matched to a schakl domain, false = only the unmatched */
+                linked?: boolean | null;
+                q?: string | null;
+                /** @description false skips the count query (docs/PERFORMANCE.md) */
+                count?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_RegistrarDomainRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    push_nameservers_api_v1_oxxa_domains__domain_id__nameservers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NameserverPush"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NameserverPushResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_domain_api_v1_oxxa_domains__domain_id__refresh_post: {
+        parameters: {
+            query?: {
+                account_id?: string | null;
+            };
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainRegistrarStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    domain_status_api_v1_oxxa_domains__domain_id__status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainRegistrarStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     permission_catalog_api_v1_permissions_catalog_get: {
         parameters: {
             query?: never;
@@ -28431,6 +33811,188 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PermissionCatalog"];
+                };
+            };
+        };
+    };
+    stop_portal_impersonation_api_v1_portal_impersonation_stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    portal_login_state_api_v1_portal_logins__entity_type___subject_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entity_type: string;
+                subject_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalLoginState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enable_portal_login_api_v1_portal_logins__entity_type___subject_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entity_type: string;
+                subject_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalLoginState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disable_portal_login_api_v1_portal_logins__entity_type___subject_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entity_type: string;
+                subject_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalLoginState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impersonate_portal_login_api_v1_portal_logins__entity_type___subject_id__impersonate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entity_type: string;
+                subject_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortalImpersonateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalImpersonateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resend_portal_invite_api_v1_portal_logins__entity_type___subject_id__resend_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entity_type: string;
+                subject_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortalLoginState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -29136,7 +34698,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EmailSettingsRead"] | null;
+                    "application/json": components["schemas"]["EmailSettingsRead"];
                 };
             };
         };

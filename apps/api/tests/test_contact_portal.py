@@ -46,10 +46,10 @@ async def test_portal_invite_round_trip(client_for) -> None:
 
     async with client_for(t.host) as c:
         # Nothing yet.
-        state = (await c.get(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)).json()
-        assert state["status"] == "none"
+        state = await c.get(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
+        assert state.json()["status"] == "none"
 
-        enabled = await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        enabled = await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
         assert enabled.status_code == 200, enabled.text
         assert enabled.json()["status"] == "invited"
         # No transport configured in tests: reported, never silently swallowed.
@@ -69,12 +69,12 @@ async def test_portal_invite_round_trip(client_for) -> None:
         assert "marketing.metrics.read" in me.json()["permissions"]
 
         # Disable → login refused (the cookie no longer authenticates), everything kept.
-        disabled = await c.delete(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        disabled = await c.delete(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
         assert disabled.json()["status"] == "disabled"
         assert (await c.get("/api/v1/meta/me", headers=portal_headers)).status_code == 401
 
         # Re-enable reuses the same account.
-        again = await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        again = await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
         assert again.json()["status"] == "invited"
         assert (await c.get("/api/v1/meta/me", headers=portal_headers)).status_code == 200
 
@@ -108,7 +108,7 @@ async def test_portal_email_collision_is_refused(client_for) -> None:
             json={"email": t.user.email},
             headers=headers,
         )
-        res = await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        res = await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
         assert res.status_code == 409
         assert res.json()["error"]["message"] == "errors.portal_email_in_use"
 
@@ -116,7 +116,7 @@ async def test_portal_email_collision_is_refused(client_for) -> None:
         await c.patch(
             f"/api/v1/contacts/{contact['id']}", json={"email": ""}, headers=headers
         )
-        res = await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        res = await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
         assert res.status_code == 422
 
 
@@ -129,7 +129,7 @@ async def test_portal_horizon_is_the_contacts_companies(client_for) -> None:
     linked, other = company_ids
 
     async with client_for(t.host) as c:
-        await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
         async with async_session_maker() as session:
             portal_user = await session.scalar(
                 select(User).where(User.email == contact["email"])
@@ -179,7 +179,7 @@ async def test_portal_user_excluded_from_notification_fanout(client_for) -> None
 
     t, headers, contact, company_ids = await _tenant_with_contact(client_for, "portal-fan")
     async with client_for(t.host) as c:
-        await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
         await c.post(
             "/api/v1/members/invite",
             json={"email": "extern-fan@example.com", "role": "client"},
@@ -212,7 +212,7 @@ async def test_portal_user_excluded_from_staff_pickers(client_for) -> None:
     so that filter alone would have matched."""
     t, headers, contact, _ = await _tenant_with_contact(client_for, "portal-picker")
     async with client_for(t.host) as c:
-        await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
 
         lookup = (await c.get("/api/v1/members/lookup", headers=headers)).json()
         emails = {m["email"] for m in lookup}
@@ -233,7 +233,7 @@ async def test_portal_user_hidden_from_team_list(client_for) -> None:
     contact link) stays listed — hiding them would orphan them."""
     t, headers, contact, _ = await _tenant_with_contact(client_for, "portal-team")
     async with client_for(t.host) as c:
-        await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
         await c.post(
             "/api/v1/members/invite",
             json={"email": "extern@example.com", "role": "client"},
@@ -274,7 +274,7 @@ async def test_portal_reads_only_their_companies_contacts(client_for) -> None:
             )
         ).json()
 
-        await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
         async with async_session_maker() as session:
             portal_user = await session.scalar(
                 select(User).where(User.email == contact["email"])
@@ -324,7 +324,7 @@ async def test_portal_contact_read_hides_out_of_horizon_links(client_for) -> Non
                 headers=headers,
             )
         ).json()
-        await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
         async with async_session_maker() as session:
             portal_user = await session.scalar(
                 select(User).where(User.email == contact["email"])
@@ -361,7 +361,7 @@ async def test_portal_can_add_a_contact_to_its_own_company(client_for) -> None:
     mine, theirs = company_ids
 
     async with client_for(t.host) as c:
-        await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
         roles = (await c.get("/api/v1/roles", headers=headers)).json()
         client_role = next(r for r in roles if r["key"] == "client")
         granted = await c.patch(
@@ -436,7 +436,7 @@ async def test_portal_link_mutations_respect_the_horizon(client_for) -> None:
                 headers=headers,
             )
         ).json()
-        await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
         roles = (await c.get("/api/v1/roles", headers=headers)).json()
         client_role = next(r for r in roles if r["key"] == "client")
         await c.patch(
@@ -475,7 +475,7 @@ async def test_portal_state_is_tenant_scoped(client_for) -> None:
     other_headers = await auth_cookie(other.user)
     async with client_for(other.host) as c:
         assert (
-            await c.get(f"/api/v1/contacts/{contact['id']}/portal", headers=other_headers)
+            await c.get(f"/api/v1/portal/logins/contact/{contact['id']}", headers=other_headers)
         ).status_code == 404
 
 
@@ -501,7 +501,7 @@ async def test_portal_sees_only_client_visible_tasks(client_for) -> None:
             )
         ).json()
 
-        await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+        await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
         async with async_session_maker() as session:
             portal_user = await session.scalar(
                 select(User).where(User.email == contact["email"])

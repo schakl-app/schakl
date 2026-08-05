@@ -121,3 +121,70 @@ async def test_contact_sort_never_crosses_tenants(client_for) -> None:
         headers = await auth_cookie(b.user)
         page = (await c.get("/api/v1/contacts?sort=company", headers=headers)).json()
         assert page["items"] == []
+
+
+async def test_filtering_by_company_still_sorts_by_name(client_for) -> None:
+    """The pair that used to 500 (#301): a link filter **and** a case-insensitive name sort.
+
+    The filter was a join plus ``DISTINCT``, and ``SELECT DISTINCT`` demands that every
+    ``ORDER BY`` expression appear in the select list — which ``lower(first_name)`` does not. So
+    the *filtered* list died on exactly the sorts the unfiltered list handles, and every scoped
+    contact picker (the interaction move dialog, its create form, the bulk assign dialog) got an
+    empty roster the moment a client was picked. ``contactsForScope`` swallows the failure, so it
+    read as "this client has no contacts" rather than as an error.
+    """
+    t = await make_tenant("cs-scoped")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers, "Klant BV")
+        elsewhere = await _company(c, headers, "Andere BV")
+        for first in ("Charlie", "alpha", "Bravo"):
+            await _link(c, headers, await _contact(c, headers, first), company)
+        await _link(c, headers, await _contact(c, headers, "Zeta"), elsewhere)
+
+        for key in ("first_name", "last_name", "email", "job_title"):
+            res = await c.get(f"/api/v1/contacts?company_id={company}&sort={key}", headers=headers)
+            assert res.status_code == 200, f"{key}: {res.text}"
+
+        page = (
+            await c.get(f"/api/v1/contacts?company_id={company}&sort=first_name", headers=headers)
+        ).json()
+        # Sorted case-insensitively, and narrowed to this client — the other one's person is out.
+        assert [i["first_name"] for i in page["items"]] == ["alpha", "Bravo", "Charlie"]
+        assert page["total"] == 3
+
+
+async def test_a_type_filter_lists_a_multi_company_contact_once(client_for) -> None:
+    """What the ``DISTINCT`` was actually there for, kept by the ``EXISTS`` that replaced it.
+
+    A type lives on the *link*, so someone holding it at two clients matched the join twice. An
+    ``EXISTS`` cannot multiply a row, so the folding is structural rather than repaired after
+    the fact — and ``total`` counts people, not links.
+    """
+    t = await make_tenant("cs-type-dup")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        type_id = (
+            await c.post(
+                "/api/v1/contacts/types",
+                json={"key": "technical", "label_i18n": {}},
+                headers=headers,
+            )
+        ).json()["id"]
+        contact = await _contact(c, headers, "Bridget")
+        for name in ("Klant een", "Klant twee"):
+            company = await _company(c, headers, name)
+            res = await c.post(
+                f"/api/v1/contacts/{contact}/links",
+                json={"company_id": company, "contact_type_id": type_id},
+                headers=headers,
+            )
+            assert res.status_code == 201, res.text
+
+        page = (
+            await c.get(
+                f"/api/v1/contacts?contact_type_id={type_id}&sort=first_name", headers=headers
+            )
+        ).json()
+        assert [i["first_name"] for i in page["items"]] == ["Bridget"]
+        assert page["total"] == 1

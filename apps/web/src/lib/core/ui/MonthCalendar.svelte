@@ -13,6 +13,7 @@
     eventChipParts,
     eventLinkAttrs,
     eventsByDayMap,
+    eventTitleAttr,
     isoDiffDays,
     monthGrid,
   } from "$lib/core/calendar";
@@ -112,7 +113,7 @@
                 {...eventLinkAttrs(event.href)}
                 class="{parts.class} {event.draggable && onmove ? 'cursor-grab' : ''}"
                 style={parts.style}
-                title={event.title}
+                title={eventTitleAttr(event)}
                 draggable={Boolean(event.draggable && onmove)}
                 ondragstart={(e) => dragStart(e, event, day)}
                 ondragend={() => (dragging = null)}
@@ -121,7 +122,7 @@
                 {event.title}
               </a>
             {:else}
-              <span class={parts.class} style={parts.style} title={event.title}>
+              <span class={parts.class} style={parts.style} title={eventTitleAttr(event)}>
                 {#if event.tentative}?{/if}
                 {event.title}
               </span>

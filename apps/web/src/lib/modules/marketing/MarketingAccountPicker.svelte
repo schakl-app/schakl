@@ -8,6 +8,7 @@
    * picker exception (docs/UX.md), like invited employees.
    */
   import { enhance } from "$app/forms";
+  import { page } from "$app/state";
 
   import { t } from "$lib/core/i18n";
   import Combobox from "$lib/core/ui/Combobox.svelte";
@@ -25,6 +26,10 @@
     /** The client website the new link attaches to ("" = client-level). */
     websiteId?: string;
   } = $props();
+
+  // One consent covers all three sources, and it comes back *here* — this picker is where the
+  // gap was noticed, so it is where the user expects to land with it closed.
+  const connect = $derived(connectHref(page.url.pathname + page.url.search));
 
   let loading = $state(true);
   let response = $state<AccountsResponse | null>(null);
@@ -46,6 +51,7 @@
         accounts: [],
         error: "marketing.accounts_error",
         connect_flag: "",
+        connected_via: [],
       };
     } finally {
       loading = false;
@@ -56,6 +62,9 @@
     void load();
   });
 
+  const colleagues = $derived(
+    (response?.connected_via ?? []).map((o) => `${o.name} (${o.email})`).join(", "),
+  );
   const linked = $derived(new Set(linkedIds));
   const items = $derived(
     (response?.accounts ?? [])
@@ -88,23 +97,52 @@
     <p class="text-sm text-text-muted">
       {t("marketing.empty.needs_connection")}
     </p>
-    <a href={connectHref([source])} class="text-sm font-medium text-brand hover:underline">
+    {#if colleagues}
+      <!-- A colleague's grant already reaches this source; picking accounts still needs the
+           caller's own, but knowing whose it is beats a bare "not connected". -->
+      <p class="text-xs text-text-muted">
+        {t("marketing.connected_via_other", { who: colleagues })}
+      </p>
+    {/if}
+    <a
+      href={connect}
+      data-sveltekit-preload-data="off"
+      class="text-sm font-medium text-brand hover:underline"
+    >
       {t("marketing.connect_cta")}
     </a>
   {:else if response && !response.has_scope}
     <p class="text-sm text-text-muted">
       {t("marketing.no_scope", { source: t(`marketing.source.${source}`) })}
     </p>
-    <a href={connectHref([source])} class="text-sm font-medium text-brand hover:underline">
+    {#if colleagues}
+      <p class="text-xs text-text-muted">
+        {t("marketing.connected_via_other", { who: colleagues })}
+      </p>
+    {/if}
+    <a
+      href={connect}
+      data-sveltekit-preload-data="off"
+      class="text-sm font-medium text-brand hover:underline"
+    >
       {t("marketing.reconnect")}
     </a>
   {:else if response && !response.configured}
     <p class="text-sm text-text-muted">{t("marketing.ads_not_configured")}</p>
   {:else if response?.error}
     <p class="text-sm text-red-600 dark:text-red-400">{t(response.error)}</p>
-    <a href={connectHref([source])} class="text-sm font-medium text-brand hover:underline">
-      {t("marketing.reconnect")}
-    </a>
+    <!-- A disabled Cloud API is not a token problem: a reconnect mints the same token against
+         the same project and fails identically, so don't offer it as the cure. Neither is a
+         sunset Google Ads API version — that one is fixed by upgrading, not by consenting. -->
+    {#if response?.error !== "marketing.api_not_enabled" && response?.error !== "marketing.ads_api_version"}
+      <a
+        href={connect}
+        data-sveltekit-preload-data="off"
+        class="text-sm font-medium text-brand hover:underline"
+      >
+        {t("marketing.reconnect")}
+      </a>
+    {/if}
   {:else if items.length === 0}
     <p class="text-sm text-text-muted">{t("marketing.picker.none")}</p>
   {:else}

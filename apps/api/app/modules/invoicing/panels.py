@@ -9,13 +9,16 @@ from __future__ import annotations
 import uuid
 
 from app.core.tenancy import RequestContext
+from app.modules.invoicing.calc import outstanding_of
 from app.modules.invoicing.service import InvoiceService, QuoteService, org_today
 from app.registry import PanelSpec
 
 
 async def _invoicing_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
     # Money: the panel stays empty for someone without the read grant rather than erroring
-    # the whole company page (the subscriptions-panel stance).
+    # the whole company page (the subscriptions-panel stance). The base key, so an ``:own``
+    # holder — a client on their own company page (#266) — gets the panel; ``for_company``
+    # then leaves the agency's drafts out of it.
     if not ctx.can("invoicing.invoice.read"):
         return {"invoices": [], "quotes": [], "forbidden": True}
     invoices = await InvoiceService(ctx).for_company(company_id)
@@ -35,10 +38,14 @@ async def _invoicing_provider(ctx: RequestContext, company_id: uuid.UUID) -> dic
                 "issue_date": i.issue_date.isoformat() if i.issue_date else None,
                 "due_date": i.due_date.isoformat() if i.due_date else None,
                 "overdue": bool(
-                    i.status == "open" and i.due_date is not None and i.due_date < today
+                    i.status == "open"
+                    and i.due_date is not None
+                    and i.due_date < today
+                    and outstanding_of(i) > 0
                 ),
                 "total": str(i.total),
-                "outstanding": str(i.total - i.paid_total),
+                "outstanding": str(outstanding_of(i)),
+                "credited": bool(i.credited_total),
                 "currency": i.currency,
             }
             for i in invoices

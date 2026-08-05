@@ -93,8 +93,10 @@ class Org(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # (`app.core.hosts.custom_domain_live`).
     cf_hostname_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     cf_ssl_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    # Tri-state DNS drift check: does custom_domain still resolve toward the CNAME target?
-    # NULL = never checked or resolver unavailable — a lookup timeout must not read as
+    # Tri-state routing check (`app.core.domainflow.routing_check`): does traffic for
+    # custom_domain still reach this instance? NULL = no verdict — never checked, the resolver
+    # was unavailable, or the domain sits behind a proxy that neither DNS nor a fetch could
+    # see through. Only positive evidence writes False; "we could not tell" must never read as
     # "the customer moved their DNS away".
     domain_dns_ok: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     domain_cert_expires_at: Mapped[datetime | None] = mapped_column(
@@ -129,6 +131,16 @@ class Org(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     lifecycle_notified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+    # May this org send through the operator's own transport — the cloud "included e-mail"
+    # (epic #199)? An *entitlement*, so it lives beside `plan` on `orgs` and is written only
+    # from the instance surface; the tenant chooses whether to use it, never whether they
+    # have it. True by default (what an org gets when nobody said otherwise, and what every
+    # pre-existing org already behaved as); False leaves the org bring-your-own-transport,
+    # exactly as if the instance had none. Inert wherever the instance transport is unset.
+    email_included: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
     )
 
 

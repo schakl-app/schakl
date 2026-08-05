@@ -180,6 +180,17 @@ class Subscription(
     #: drafts (nothing to invoice yet). Left unset by the operator, the first activation
     #: derives it as ``start_date`` + one period (#223) — the create form doesn't ask for it.
     next_invoice_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    #: How far the billing cron takes this agreement's invoice on its own, overriding the
+    #: org's default. ``NULL`` means *inherit*, not *off* — the same three-state discipline
+    #: the leave schedules use (§14). The vocabulary belongs to ``invoicing``
+    #: (``AutoInvoiceMode``); this module stores the choice and puts it on the ``due`` event,
+    #: because a cron that resolved the level itself would need to read another module's
+    #: settings table (§6).
+    #:
+    #: It exists per agreement because per-org config cannot express a per-agreement fact: an
+    #: agency automating twelve hosting retainers still assembles by hand the one client whose
+    #: invoice is argued over every month, and "turn the feature off" is not an answer to that.
+    auto_invoice_mode: Mapped[str | None] = mapped_column(String(10), nullable=True)
     #: Hours of work the fee includes per period; consumption is measured against the time
     #: logged on the *linked* projects (the same aggregate every budget bar reads, #25).
     included_hours: Mapped[Decimal | None] = mapped_column(Numeric(7, 2), nullable=True)

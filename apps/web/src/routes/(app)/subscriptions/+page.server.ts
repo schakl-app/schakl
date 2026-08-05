@@ -1,8 +1,10 @@
 import { fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
+import { impexAction } from "$lib/core/impex/actions.server";
 import { can } from "$lib/core/permissions";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
+import { readAutoInvoiceMode } from "$lib/modules/invoicing/types";
 import { apiFor } from "$lib/core/session";
 import { createErrorKey, slugify } from "$lib/core/slug";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
@@ -49,6 +51,9 @@ function subscriptionBody(form: FormData) {
     start_date: String(form.get("start_date") ?? "").trim(),
     end_date: String(form.get("end_date") ?? "").trim() || null,
     next_invoice_date: String(form.get("next_invoice_date") ?? "").trim() || null,
+    // "" is the inherit choice, and it must reach the API as an explicit null: the column's
+    // third state is "follow the org", which is not the same as any level.
+    auto_invoice_mode: readAutoInvoiceMode(form.get("auto_invoice_mode")),
     included_hours: String(form.get("included_hours") ?? "").trim() || null,
     notes: String(form.get("notes") ?? "").trim() || null,
     amount: amount || undefined,
@@ -74,7 +79,7 @@ export const load: PageServerLoad = async (event) => {
 
   // The client/project pickers and the two custom-field sets come from the section layout, which
   // does not rerun on filter or sort navigation (#290).
-  const [subscriptions, summary, types, templates] = await Promise.all([
+  const [subscriptions, summary, types, templates, invoicingSettings] = await Promise.all([
     api.GET("/api/v1/subscriptions", {
       params: {
         query: {
@@ -93,6 +98,10 @@ export const load: PageServerLoad = async (event) => {
       params: { query: { include_inactive: canManageTypes || canManageTemplates } },
     }),
     api.GET("/api/v1/subscriptions/templates"),
+    // Only to name the inherited level in the form's "follow the organisation" hint. A
+    // caller who cannot read invoicing settings (or an instance without the module) simply
+    // gets the seeded default in the hint, never an error.
+    api.GET("/api/v1/invoicing/settings"),
   ]);
 
   return {
@@ -101,6 +110,7 @@ export const load: PageServerLoad = async (event) => {
     summary: summary.data ?? null,
     types: types.data ?? [],
     templates: templates.data ?? [],
+    invoicingSettings: invoicingSettings.data ?? null,
     typeFilter: typeFilter ?? "",
     companyFilter: companyFilter ?? "",
     statusFilter: statusFilter ?? "",
@@ -113,6 +123,8 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
+  /** Import/export from this list's own toolbar (issue #77) — the shared wizard's three steps. */
+  impex: (event) => impexAction(event, "subscription"),
   /** Persist this user's column layout. Personal, in-view — never org settings (docs/UX.md §6). */
   saveTable: async (event) => {
     const form = await event.request.formData();

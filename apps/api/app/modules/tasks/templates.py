@@ -15,6 +15,7 @@ from sqlalchemy import func, select, text
 
 from app.core.richtext import sanitize_markdown
 from app.core.tenancy import RequestContext
+from app.core.timezone import org_today
 from app.errors import AppError
 from app.modules.tasks.models import (
     Task,
@@ -25,7 +26,6 @@ from app.modules.tasks.models import (
     TaskTemplateItem,
     TemplateTrigger,
 )
-from app.modules.tasks.recurrence import today_local
 from app.modules.tasks.schemas import (
     TemplateChecklistItem,
     TemplateCreate,
@@ -189,10 +189,13 @@ class TemplateService:
             )
             or 0.0
         )
+        # Relative due dates are counted from *this org's* today (CLAUDE.md §8), resolved once
+        # for the whole template rather than per item.
+        today = await org_today(session, org_id)
         created: list[Task] = []
         for offset, item in enumerate(items, start=1):
             due = (
-                today_local() + timedelta(days=item.relative_due_days)
+                today + timedelta(days=item.relative_due_days)
                 if item.relative_due_days is not None
                 else None
             )

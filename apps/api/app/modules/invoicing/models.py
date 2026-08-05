@@ -45,6 +45,11 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.activity import AuditableMixin
+
+# The automation level is core vocabulary, not this module's: `subscriptions` and `domains`
+# each store an agreement's override, and neither may import from here (§6). Re-exported so
+# this module's own readers still find it where they expect it.
+from app.core.billing import AutoInvoiceMode
 from app.core.customfields import CustomizableMixin
 from app.core.mixins import OrgScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
 from app.db import Base
@@ -72,22 +77,33 @@ class QuoteStatus(StrEnum):
 
 
 class LineKind(StrEnum):
-    """What a document line *is* — the three things this platform bills for.
+    """What a document line *is* — the four things this platform bills for.
 
-    An agency's invoice mixes worked hours, recurring agreements and one-off sales, and the
-    reader has to tell them apart: "24 uur × € 95" and "Hosting maart" answer different
-    questions. So the kind is a **property of the line**, carried from wherever it was built
-    (``from_time`` stamps hours, the subscription cycle stamps subscription, a product pick
-    stamps product) through to the rendered document, which groups and subtotals by it.
+    An agency's invoice mixes worked hours, recurring agreements, domain renewals and one-off
+    sales, and the reader has to tell them apart: "24 uur × € 95", "Hosting maart" and
+    "vlotr.nl 2026–2027" answer different questions. So the kind is a **property of the
+    line**, carried from wherever it was built (``from_time`` stamps hours, the subscription
+    cycle stamps subscription, the renewal cron stamps domain, a product pick stamps product)
+    through to the rendered document, which groups and subtotals by it.
 
     It is presentation and provenance, never money: totals are computed from quantity, price
     and tax exactly as before, and a tenant who wants one flat table simply keeps every line
     on the default.
+
+    ``DOMAIN`` was folded into ``SUBSCRIPTION`` until #302, on the reasoning that a renewal is
+    a recurring line and no reader had asked for the distinction. A reader has: a register of
+    forty domains renewing across the year is the item an agency reconciles line by line
+    against the registrar's own invoice, and burying it in the band that also holds three
+    hosting retainers is what made that reconciliation a manual sort. Rows written before the
+    split keep saying ``subscription`` — the kind is a snapshot (§14's #64 rule), so the
+    documents a client already read do not change shape underneath them, and every read path
+    treats the two as one legacy family where it has to (see ``_CLAIM_SOURCES``).
     """
 
     PRODUCT = "product"
     HOURS = "hours"
     SUBSCRIPTION = "subscription"
+    DOMAIN = "domain"
 
 
 class TaxCategory(StrEnum):
@@ -167,6 +183,19 @@ class InvoicingSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Bas
     quote_seq_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     number_reset_yearly: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")
+    )
+
+    # --- recurring billing ------------------------------------------------------ #
+    #: How far the subscription/domain cron takes an invoice by itself (:class:`AutoInvoiceMode`).
+    #: The org-wide default; an agreement may override it, because an agency that automates its
+    #: hosting retainers still hand-assembles the one client whose invoices are always argued
+    #: over — and per-org config cannot express a per-agreement fact (§14's rule, one entity
+    #: over). ``draft`` is the seeded value: it is what every instance did before this column.
+    auto_invoice_mode: Mapped[str] = mapped_column(
+        String(10),
+        nullable=False,
+        default=AutoInvoiceMode.DRAFT.value,
+        server_default=text("'draft'"),
     )
 
     # --- reminders (issue #207: automatic, opt-in) ------------------------------ #
@@ -360,6 +389,11 @@ class Invoice(
         String(20), nullable=False, default=InvoiceStatus.DRAFT.value, index=True
     )
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    #: When the goods or service were actually delivered — the *leverdatum* a Dutch invoice
+    #: states when it differs from the invoice date. Nullable and printed only by a template
+    #: whose layout asks for it: most invoices are dated the day they are delivered, and a
+    #: field repeating the date above it is noise.
+    delivery_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     template_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("invoicing_templates.id", ondelete="SET NULL"),
@@ -379,8 +413,21 @@ class Invoice(
     period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
     period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
     #: Sum of registered payments, maintained by the payment writes (list pages read it
-    #: without an aggregate); outstanding = total − paid_total.
+    #: without an aggregate); outstanding = total − paid_total − credited_total.
     paid_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    #: How much of this invoice issued credit notes have written off — the second way a
+    #: balance comes down, and the reason a credited invoice leaves arrears and dunning.
+    #: Positive on the invoice being corrected, allocated when the credit note is issued.
+    credited_total: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=0, server_default="0"
+    )
+    #: The mirror of the above on a credit note: how much of it the invoice it corrects
+    #: absorbed. Whatever the source had no room for is a refund the client is owed, which
+    #: is what keeps "credit an open invoice" (nothing moves) apart from "credit a paid one"
+    #: (money goes back). Frozen at issue: an allocation happens once.
+    applied_total: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=0, server_default="0"
+    )
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -395,6 +442,39 @@ class Invoice(
     reminders_paused: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
+    #: Raised and issued by the cron under ``AutoInvoiceMode.SEND``, and not yet mailed.
+    #:
+    #: The send is a **separate pass** (``jobs.py``) rather than part of the drafting handler,
+    #: for one reason: ``run_per_org`` gives a whole org one transaction, so a later
+    #: subscription raising anything would roll back an invoice whose e-mail had already left
+    #: the building. A flag set inside that transaction and read by the next job is only ever
+    #: read for an invoice that committed. Cleared on success, and on a structural failure
+    #: that retrying cannot fix — recorded on the trail either way, never as daily noise.
+    auto_send_pending: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+
+    @classmethod
+    def __portal_horizon_clause__(cls, scope: frozenset[uuid.UUID] | None):  # noqa: ANN206
+        """The stricter rule an **external (client) login** reads invoices by (#266).
+
+        Two narrowings, and only the first is a horizon. ``company_id`` is ``NOT NULL``, so
+        the company match is the plain one the repository would build itself — there is no
+        unattached invoice to exempt the way a company-less task is exempted. The second is
+        the reason this clause exists at all: **a draft is invisible.** It carries no number,
+        it was never sent, its money is still being edited (the post-issue lock only starts at
+        issue) and the client has no relationship with it — showing one would tell them what
+        the agency is about to charge before the agency has decided.
+
+        It lives on the model, like ``Contact.__portal_horizon_clause__``, so that every path
+        gives the client the same answer *by construction* rather than by several predicates
+        happening to agree — the list and its total, the detail, and ``/pdf`` ``/preview``
+        ``/ubl``, which all load through ``get()``. A draft that 404s on the detail and
+        renders on the download is the same leak one route later (§15, #285).
+        """
+        return cls.company_id.in_(scope or frozenset()) & (
+            cls.status != InvoiceStatus.DRAFT.value
+        )
 
 
 class Quote(
@@ -452,6 +532,21 @@ class Quote(
     #: The customer's words when accepting/rejecting — worth keeping verbatim.
     decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    @classmethod
+    def __portal_horizon_clause__(cls, scope: frozenset[uuid.UUID] | None):  # noqa: ANN206
+        """``Invoice.__portal_horizon_clause__`` for quotes — defensive, and unused today.
+
+        #266 deliberately left quotes out: whether a client should watch an offer's status
+        before they have accepted it is a product decision nobody has made, and
+        ``invoicing.quote.read`` stays staff-only, so no client reaches a quote at all. This
+        exists because that is a *grant* rather than a *mechanism* — the role is freely
+        editable in Instellingen → Rollen — and the day a tenant ticks it, the answer should
+        already be "your own, and never our drafts" rather than the whole quote register.
+        """
+        return cls.company_id.in_(scope or frozenset()) & (
+            cls.status != QuoteStatus.DRAFT.value
+        )
+
 
 class _LineColumns:
     """One priced line. ``tax_rate_pct``/``tax_name`` are snapshots taken when the line is
@@ -459,8 +554,8 @@ class _LineColumns:
     document keeps saying what it said."""
 
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    #: Hours / subscription / product — what this line is, so the document can group and
-    #: subtotal by it (see :class:`LineKind`). Snapshotted like every other line column.
+    #: Hours / subscription / domain / product — what this line is, so the document can group
+    #: and subtotal by it (see :class:`LineKind`). Snapshotted like every other line column.
     line_kind: Mapped[str] = mapped_column(
         String(20),
         nullable=False,
@@ -487,6 +582,20 @@ class _LineColumns:
 
 
 class InvoiceLine(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, _LineColumns, Base):
+    """An invoice line, plus **what it bills** — provenance the quote line deliberately lacks.
+
+    A quote claims nothing: it bills no hour and retires no period, so these columns live
+    here rather than on ``_LineColumns``. They exist because the claim tables alone could not
+    answer *which line* billed a thing, and the editor replaces lines wholesale on every
+    save: without provenance on the row, re-saving a draft posted lines that had forgotten
+    their claims, and the service dutifully released them (the cron then billed the period a
+    second time). The line is now the record and the claim tables are rebuilt from it.
+
+    ``time_entry_ids`` is a **list** because one line may bill many entries — ``from_time``
+    groups per project or per day by design, and "24 uur — Project X" is one line over
+    fourteen entries. The others are singular: a line bills one agreement's one period.
+    """
+
     __tablename__ = "invoice_lines"
 
     invoice_id: Mapped[uuid.UUID] = mapped_column(
@@ -495,6 +604,17 @@ class InvoiceLine(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, _LineColu
         nullable=False,
         index=True,
     )
+    #: The unbilled time entries this line bills — bare UUIDs (§6), validated through the
+    #: time module's table on write. Empty for every other kind of line.
+    time_entry_ids: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    #: The agreement this line bills a period of (#30) — cross-module, so no FK (§6).
+    subscription_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    #: The domain this line bills a renewal period of (#250) — cross-module, so no FK (§6).
+    domain_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
 
 
 class QuoteLine(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, _LineColumns, Base):
@@ -583,6 +703,36 @@ class InvoiceSubscriptionPeriod(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMi
         index=True,
     )
     subscription_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+
+
+class InvoiceDomainPeriod(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """Which domain renewal periods an invoice already billed — the third claim table.
+
+    ``invoices.domain_id`` + ``uq_invoices_domain_period`` answered the renewal cron only for
+    the invoice the cron itself raised: one column holds one domain, while an agency's
+    year-end invoice routinely carries eleven renewals next to some hours. So the claim moves
+    here on the same shape as :class:`InvoiceSubscriptionPeriod`, and ``on_domain_due``
+    consults it before drafting — which is what makes a hand-picked renewal stop the cron.
+    The partial index on ``invoices`` stays as the backstop for the cron's own path.
+    """
+
+    __tablename__ = "invoice_domain_periods"
+    __table_args__ = (
+        # One domain, one renewal period, one invoice.
+        UniqueConstraint(
+            "org_id", "domain_id", "period_end", name="uq_invoice_domain_periods_period"
+        ),
+    )
+
+    invoice_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("invoices.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    domain_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
     period_end: Mapped[date] = mapped_column(Date, nullable=False)
 

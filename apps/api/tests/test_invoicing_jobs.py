@@ -5,8 +5,7 @@ from __future__ import annotations
 
 import uuid
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import timedelta
 
 from app.core.email.senders import Sender
 from app.core.events import SystemContext
@@ -14,15 +13,15 @@ from app.core.models import Org
 from app.db import async_session_maker, set_current_org
 from app.modules.invoicing.events import on_subscription_due
 from app.modules.invoicing.jobs import invoicing_daily
-from tests.conftest import Tenant, auth_cookie, make_tenant
+from tests.conftest import Tenant, auth_cookie, make_tenant, org_today
 
-AMS = ZoneInfo("Europe/Amsterdam")
 CBC = "{urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2}"
 CAC = "{urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2}"
 
 
-def _today():
-    return datetime.now(AMS).date()
+#: The API derives its dates on the org's calendar, so the expectations must too
+#: (``conftest.org_today``) — never a zone hardcoded per test file.
+_today = org_today
 
 
 async def _setup_org(client, headers) -> None:
@@ -287,3 +286,158 @@ async def test_ubl_export_reconciles_and_codes_reverse_charge(client_for) -> Non
             for line in root.findall(f"{CAC}InvoiceLine")
         ]
         assert line_nets == ["850.00", "500.00"]
+
+
+async def test_the_dunning_run_chases_neither_a_credit_note_nor_a_written_off_invoice(
+    client_for, monkeypatch
+) -> None:
+    """The cron used to select on ``status == 'open'`` and nothing else.
+
+    That is two wrong letters in one run. An invoice a credit note had written off was still
+    chased for money the client no longer owed — and because a credit note is *itself* an open
+    document that could never reach ``paid``, the run also dunned the credit note, politely
+    asking the client to transfer a negative amount.
+    """
+    tenant: Tenant = await make_tenant("inv-credit-dun")
+    headers = await auth_cookie(tenant.user)
+    long_ago = (_today() - timedelta(days=15)).isoformat()
+    async with client_for(tenant.host) as client:
+        await _setup_org(client, headers)
+        await client.put(
+            "/api/v1/invoicing/settings",
+            json={"reminders_enabled": True, "reminder_days": [7]},
+            headers=headers,
+        )
+        company_id = await _company(client, headers)
+
+        async def overdue_invoice(price: str) -> dict:
+            invoice = (
+                await client.post(
+                    "/api/v1/invoicing/invoices",
+                    json={
+                        "company_id": company_id,
+                        "lines": [
+                            {"description": "W", "quantity": "1", "unit_price": price}
+                        ],
+                    },
+                    headers=headers,
+                )
+            ).json()
+            return (
+                await client.post(
+                    f"/api/v1/invoicing/invoices/{invoice['id']}/issue",
+                    json={"due_date": long_ago},
+                    headers=headers,
+                )
+            ).json()
+
+        credited = await overdue_invoice("100")
+        still_owed = await overdue_invoice("250")
+        refundable = await overdue_invoice("400")
+
+        # (a) An invoice written off in full. It stays `open` — nobody paid it — so only the
+        # netted outstanding keeps it out of the run.
+        credit = (
+            await client.post(
+                f"/api/v1/invoicing/invoices/{credited['id']}/credit", headers=headers
+            )
+        ).json()
+        await client.post(
+            f"/api/v1/invoicing/invoices/{credit['id']}/issue",
+            json={"due_date": long_ago},
+            headers=headers,
+        )
+
+        # (b) A credit note against an invoice that was already **paid**: it absorbs nothing,
+        # so it stays open with a refund due and a due date of its own. This is the one that
+        # would be mailed a payment reminder for a negative amount, and only the `kind`
+        # filter stops it — a real state, not a hypothetical one.
+        await client.post(
+            f"/api/v1/invoicing/invoices/{refundable['id']}/payments",
+            json={"paid_on": _today().isoformat(), "amount": "484"},
+            headers=headers,
+        )
+        refund_note = (
+            await client.post(
+                f"/api/v1/invoicing/invoices/{refundable['id']}/credit", headers=headers
+            )
+        ).json()
+        refund_note = (
+            await client.post(
+                f"/api/v1/invoicing/invoices/{refund_note['id']}/issue",
+                json={"due_date": long_ago},
+                headers=headers,
+            )
+        ).json()
+        assert refund_note["status"] == "open"  # genuinely open, and owed to the client
+        assert refund_note["outstanding"] == "-484.00"
+
+        # (c) A credit note hand-written with positive lines. Odd data, and the only state
+        # the outstanding predicate does not already exclude — but the renderer guarantees a
+        # credit note never asks to be paid, so the dunning run must not either.
+        odd = (
+            await client.post(
+                "/api/v1/invoicing/invoices",
+                json={
+                    "company_id": company_id,
+                    "kind": "credit_note",
+                    "lines": [{"description": "W", "quantity": "1", "unit_price": "50"}],
+                },
+                headers=headers,
+            )
+        ).json()
+        odd = (
+            await client.post(
+                f"/api/v1/invoicing/invoices/{odd['id']}/issue",
+                json={"due_date": long_ago},
+                headers=headers,
+            )
+        ).json()
+        assert odd["kind"] == "credit_note"
+        assert odd["outstanding"] == "60.50"  # positive: the predicate would let it through
+
+    sent: list = []
+
+    async def fake_send(provider, config, sender, message):  # noqa: ANN001
+        sent.append(message)
+        return True, None
+
+    async def fake_transport(session, org_id):  # noqa: ANN001
+        return ("smtp", {}, Sender(from_email="mail@agency.nl", from_name="Agency"))
+
+    monkeypatch.setattr("app.modules.invoicing.jobs.send_email", fake_send)
+    monkeypatch.setattr("app.modules.invoicing.jobs.load_transport", fake_transport)
+
+    await invoicing_daily({})
+
+    assert len(sent) == 1, "only the invoice that is still owed may be chased"
+
+    async with client_for(tenant.host) as client:
+        written_off = (
+            await client.get(
+                f"/api/v1/invoicing/invoices/{credited['id']}", headers=headers
+            )
+        ).json()
+        assert written_off["reminder_count"] == 0
+        note = (
+            await client.get(
+                f"/api/v1/invoicing/invoices/{credit['id']}", headers=headers
+            )
+        ).json()
+        assert note["reminder_count"] == 0
+        owed_back = (
+            await client.get(
+                f"/api/v1/invoicing/invoices/{refund_note['id']}", headers=headers
+            )
+        ).json()
+        assert owed_back["reminder_count"] == 0, "never dun a client for a refund we owe"
+        positive_note = (
+            await client.get(f"/api/v1/invoicing/invoices/{odd['id']}", headers=headers)
+        ).json()
+        assert positive_note["reminder_count"] == 0, "a credit note is never dunned"
+        chased = (
+            await client.get(
+                f"/api/v1/invoicing/invoices/{still_owed['id']}", headers=headers
+            )
+        ).json()
+        assert chased["reminder_count"] == 1

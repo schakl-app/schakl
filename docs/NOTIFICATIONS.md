@@ -57,7 +57,8 @@ an unattended upgrade can roll back. Dropping them is the contract half, a later
 ## Cadence → `deliver_after` → one bundled message
 
 Every cadence (`immediate`, `hourly`, `daily`, `weekly`) is expressed the same way, by
-`prefs.compute_visible_at`: it turns "daily at 08:00" into the next 08:00 in `Europe/Amsterdam`,
+`prefs.compute_visible_at`: it turns "daily at 08:00" into the next 08:00 **on the org's own
+clock** (`org_settings.timezone`, CLAUDE.md §8 — the zone is passed in, never read from a constant),
 doing **wall-clock** arithmetic so a digest does not drift an hour across a DST change.
 
 - The in-app channel writes that instant to `notifications.visible_at` — the bell simply does not

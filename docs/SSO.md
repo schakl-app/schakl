@@ -19,9 +19,10 @@ it by default). The page holds everything the flow needs:
   If the secret key is still the shipped default, the page warns — set a real
   `SCHAKL_SECRET_KEY` before storing a client secret in production.
 - **Display name** — what the login button says ("Inloggen met &lt;name&gt;").
-- **Role for new users** + **auto-provision** — whether a first SSO login creates a
+- **Role for new users** + **auto-provision** — whether a **first** SSO login creates a
   membership, and with which role. With auto-provision off, only people who already have
-  access can sign in through SSO.
+  access can sign in through SSO. It applies to first contact only: someone whose access was
+  removed is not given it back by signing in again (see below).
 - **Callback URL** — displayed read-only, derived from the org's verified custom domain (or
   `<slug>.<base_domain>`). Copy it into the IdP; see below for why it must match exactly.
 - **Test connection** — fetches and validates the discovery document server-side.
@@ -50,6 +51,34 @@ is a post-setup, per-org setting — the boot-time deadlock of issue #75 no long
    local password login regardless of any org's enforce setting. When the IdP is down,
    misconfigured, or the enforce toggle was flipped in error: set the variable, restart the
    API, sign in locally, fix or disable SSO in Instellingen → Single sign-on, then unset it.
+
+## What the flow guarantees
+
+Three properties are in the code rather than in a setting, because none of them is a choice a
+tenant should have to make:
+
+1. **PKCE (S256) on every authorization request.** The client generates a verifier, sends only
+   its hash to the IdP, and proves possession at the token exchange
+   ([`core/auth/sso.py`](../apps/api/app/core/auth/sso.py), `code_challenge_method`). Without
+   it the authorization code is bearer-only between the IdP and the callback: anything that
+   observes that URL (a proxy log, browser history, an extension, a redirect URI registered
+   one character too loosely) can redeem it. `state` defends against CSRF; it does nothing
+   about a stolen code. Every IdP schakl targets supports PKCE, and one that ignores the
+   parameter behaves exactly as before.
+2. **A first sign-in provisions; a later one never re-provisions.** "Auto-provision" means
+   *first contact with this organization*, not "has no membership at this moment" — the two
+   were the same test, so removing an SSO user in Instellingen → Gebruikers lasted until their
+   next sign-in and then silently undid itself. The organization remembers that it once
+   admitted the account, and JIT stays out of it from then on. Restoring access is a
+   deliberate act: add the membership back, with the role you mean.
+3. **No membership means no session.** A caller the IdP authenticates who is not a member here
+   — auto-provision is off, or their access was withdrawn — is sent back to the login screen
+   with *"Your account is not a member of this organization"*, and no cookie is set. A session
+   every endpoint would refuse is still a credential; it should not exist.
+
+A session is also minted **for one organization**: the token names it, and it is not a session
+on any other host, even for someone who is a member of both. That is a platform-wide rule
+rather than an SSO one — see [`CLOUD.md`](CLOUD.md).
 
 ## The redirect URI is fixed by the code
 

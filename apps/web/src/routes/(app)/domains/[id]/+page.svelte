@@ -65,6 +65,9 @@
 
   const domain = $derived(data.domain);
   const website = $derived(data.website);
+  // Defaulted server-side (#298), so the schema types it optional; an absent list and an empty
+  // one mean the same thing here — no register holds this name.
+  const registers = $derived(domain.registers ?? []);
 
   // The website form's own bundle streams in behind the page (#290) — the hosting picker, the
   // website custom fields and the hosting ones are only ever drawn inside a modal, and most
@@ -228,6 +231,29 @@
             {:else}
               {t("domains.no_price")}
             {/if}
+          </dd>
+        </div>
+        <!-- Whether the renewal is billed on (#298), with the rule that decided it: a "no"
+             nobody can explain is the one an agency notices a year late. -->
+        <div class="flex justify-between gap-3">
+          <dt class="text-text-muted">{t("domains.invoiceable.legend")}</dt>
+          <dd class="text-right text-text">
+            {domain.invoiceable_effective
+              ? t("domains.invoiceable.yes")
+              : t("domains.invoiceable.no")}
+            <span class="block text-xs text-text-muted">
+              {#if domain.invoiceable != null}
+                {t("domains.invoiceable.source_explicit")}
+              {:else if registers.length > 0}
+                {t("domains.invoiceable.follow_hint_held", {
+                  register: registers.map((key) => t(`domains.register.${key}`)).join(", "),
+                })}
+              {:else if domain.invoiceable_source === "register"}
+                {t("domains.invoiceable.follow_hint_absent")}
+              {:else}
+                {t("domains.invoiceable.follow_hint_none")}
+              {/if}
+            </span>
           </dd>
         </div>
         <div class="flex justify-between">

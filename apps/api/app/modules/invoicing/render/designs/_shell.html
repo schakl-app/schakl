@@ -1,0 +1,157 @@
+{#
+  The page every design sits inside: A4 geometry, the type stack, the palette as custom
+  properties, the watermark and the background mark.
+
+  Why the furniture lives here and not in each design: a tenant's own template renders in
+  this shell too (`custom.html`), so "bring your own HTML" means writing the *content* of an
+  invoice, not re-deriving page margins, the € font stack and a status watermark. It also
+  means a design cannot accidentally lose the CONCEPT stamp on a draft.
+
+  The same HTML is what the browser previews and what WeasyPrint prints, so screen-only
+  affordances go in `@media screen` and paper-only ones in `@media print`; nothing is
+  conditional on which consumer asked.
+#}
+<!doctype html>
+<html lang="{{ locale }}">
+  <head>
+    <meta charset="utf-8" />
+    <title>{{ heading }} {{ number }}</title>
+    <style>
+      @page {
+        size: A4;
+        margin: 16mm;
+      }
+
+      :root {
+        --accent: {{ palette.accent }};
+        --accent-wash: {{ palette.accent_wash }};
+        --accent-soft: {{ palette.accent_soft }};
+        --accent-line: {{ palette.accent_line }};
+        --accent-hairline: {{ palette.accent_hairline }};
+        --ink: {{ palette.ink }};
+        --muted: {{ palette.muted }};
+        --rule: {{ palette.rule }};
+        --wash: {{ palette.wash }};
+      }
+
+      * { box-sizing: border-box; }
+
+      html { -webkit-text-size-adjust: 100%; }
+
+      body {
+        margin: 0;
+        /* Inter is installed in the API image; the rest are the fallbacks a browser
+           previewing this page will already have. */
+        font-family: Inter, "Helvetica Neue", Arial, "DejaVu Sans", sans-serif;
+        font-size: 10pt;
+        line-height: 1.45;
+        /* Paper is white whatever the app theme, so the ink is pinned rather than
+           inherited from a theme variable that does not exist here. */
+        color: var(--ink);
+        background: #fff;
+      }
+
+      p { margin: 0; }
+      table { border-collapse: collapse; width: 100%; }
+      td, th { vertical-align: top; }
+      a { color: inherit; text-decoration: none; }
+
+      .muted { color: var(--muted); }
+      .accent { color: var(--accent); }
+      .right { text-align: right; }
+      .center { text-align: center; }
+      .num { font-variant-numeric: tabular-nums; }
+      .strong { font-weight: 600; }
+      /* An aside on the value beside it, never part of it — so it keeps its own weight
+         whatever the value it trails. */
+      .note { padding-left: 2mm; font-weight: 400; }
+      /* Micro-labels: uppercase and tracked, the way the app marks a field name. */
+      .micro {
+        font-size: 7pt;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      /* --- the background mark ------------------------------------------------------- #
+         Fixed, so it repeats on every page of a long invoice rather than scrolling off the
+         first one. Behind everything and non-interactive; its opacity is the tenant's. */
+      .doc-background {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: -2;
+      }
+      .doc-background img {
+        position: absolute;
+        transform: translate(-50%, -50%) rotate({{ background.rotate if background else 0 }}deg);
+        left: {{ background.x if background else 50 }}%;
+        top: {{ background.y if background else 50 }}%;
+        width: {{ background.scale if background else 78 }}%;
+        opacity: {{ background.opacity if background else 0.04 }};
+      }
+
+      .doc-watermark {
+        position: fixed;
+        top: 42%;
+        left: 0;
+        width: 100%;
+        text-align: center;
+        transform: rotate(-24deg);
+        font-size: 58pt;
+        font-weight: 800;
+        letter-spacing: 0.1em;
+        color: #eee;
+        z-index: -1;
+      }
+
+      /* Content sits above both. */
+      .doc { position: relative; z-index: 0; }
+
+      /* A table must never split a row across pages, and a header repeats when it does. */
+      thead { display: table-header-group; }
+      tr { break-inside: avoid; }
+      .avoid-break { break-inside: avoid; }
+
+      @media screen {
+        body {
+          background: #f5f5f5;
+          padding: 24px 12px;
+        }
+        .doc {
+          /* The preview shows the A4 the printer will produce, margins and all. */
+          width: 210mm;
+          min-height: 297mm;
+          padding: 16mm;
+          margin: 0 auto;
+          background: #fff;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+        }
+        .doc-background, .doc-watermark { position: absolute; }
+      }
+
+      {% block design_css %}{% endblock %}
+
+      {# The tenant's own CSS is last, so it wins every tie without !important. The filter
+         is what keeps it *CSS*: a stylesheet that closes its own <style> element would be
+         writing markup into the page, not styling it. #}
+      {{ custom_css | css }}
+    </style>
+  </head>
+  <body>
+    <div class="doc">
+      {% if background %}
+        <div class="doc-background" aria-hidden="true">
+          <img src="{{ background.url }}" alt="" />
+        </div>
+      {% endif %}
+      {% if watermark %}
+        <div class="doc-watermark" aria-hidden="true">{{ watermark }}</div>
+      {% endif %}
+      {% block body %}{% endblock %}
+    </div>
+  </body>
+</html>

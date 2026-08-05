@@ -15,7 +15,7 @@
   import Modal from "$lib/core/ui/Modal.svelte";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import DocumentForm from "$lib/modules/invoicing/DocumentForm.svelte";
-  import DocumentView from "$lib/modules/invoicing/DocumentView.svelte";
+  import DocumentFrame from "$lib/modules/invoicing/DocumentFrame.svelte";
 
   let { data, form } = $props();
 
@@ -39,9 +39,6 @@
   let qcContactName = $state("");
   // The quote's client rides along (#247): the new contact links to it by default.
   let qcContactCompany = $state<{ id: string; name: string } | null>(null);
-
-  const template = $derived(data.templates.find((tpl) => tpl.id === quote.template_id) ?? null);
-  const theme = $derived(page.data.theme);
 
   const enabled = $derived(page.data.theme?.enabledModules ?? []);
   const panelSpecs = $derived(entityPanelsFor(enabled, "quote"));
@@ -199,14 +196,11 @@
       <input type="hidden" name="_status" value={quote.status} form="doc-form-quote" />
     </div>
   {:else}
-    <DocumentView
-      doc={quote}
-      kind="quote"
-      {template}
-      seller={data.settings?.company_details ?? {}}
-      brandName={theme?.brandName ?? ""}
-      logoUrl={theme?.logoUrl ?? null}
-      brandColor={theme?.primaryColor ?? "#4f46e5"}
+    <DocumentFrame
+      src="/quotes/{quote.id}/preview"
+      version={quote.updated_at}
+      title={`${t("invoicing.kind.quote")} ${quote.number ?? ""}`}
+      class="mx-auto max-w-3xl"
     />
   {/if}
 

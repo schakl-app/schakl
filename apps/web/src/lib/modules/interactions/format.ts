@@ -72,7 +72,10 @@ export interface InteractionItem {
   company_id?: string | null;
   project_id?: string | null;
   task_id?: string | null;
+  /** The **lead** contact — chip 0 of `contacts` (#300). Read `contacts` for who it was with. */
   contact_id?: string | null;
+  /** Everyone the moment was with, in chip order, labelled by the API (#300). */
+  contacts?: { id: string; name?: string | null }[];
   /** Labels of the linked records (#147), resolved by the API — the row chips read these. */
   company_name?: string | null;
   project_name?: string | null;
@@ -108,6 +111,26 @@ export interface InteractionItem {
  * as our markdown) and carries the attachments the message came with. A `manual` row's body is
  * the author's own note.
  */
+/**
+ * The people a row names, as chips (#300) — one place, because five surfaces draw them.
+ *
+ * Falls back to the lead pair when `contacts` is absent, which is what a panel payload from an
+ * older API build (or a cached page) carries: the chip is the same fact at an earlier age, and
+ * dropping it would silently blank the column instead of showing one name.
+ */
+export function contactChips(
+  item: Pick<InteractionItem, "contacts" | "contact_id" | "contact_name">,
+): { href: string; label: string }[] {
+  const people = item.contacts?.length
+    ? item.contacts
+    : item.contact_id
+      ? [{ id: item.contact_id, name: item.contact_name }]
+      : [];
+  return people
+    .filter((person) => person.name)
+    .map((person) => ({ href: `/contacts/${person.id}`, label: person.name as string }));
+}
+
 export function isMailRow(item: Pick<InteractionItem, "source">): boolean {
   return item.source === "gmail" || item.source === "upload";
 }

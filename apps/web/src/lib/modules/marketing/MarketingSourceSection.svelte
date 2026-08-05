@@ -18,7 +18,15 @@
   import TrendChart from "$lib/core/ui/charts/TrendChart.svelte";
 
   import MarketingDrilldown from "./MarketingDrilldown.svelte";
-  import { deltaClass, deltaView, drilldownLabel, fmtMetric, metricLabel, sourceLabel, tileLabel } from "./format";
+  import {
+    deltaClass,
+    deltaView,
+    drilldownLabel,
+    fmtMetric,
+    metricLabel,
+    sourceLabel,
+    tileLabel,
+  } from "./format";
   import { ALL_METRICS, DRILLDOWNS, type SourceEditState, type SourceMetrics } from "./types";
 
   let {
@@ -48,11 +56,7 @@
   // edit state wins, so a drag or hide shows before its round-trip lands.
   const allMetricKeys = $derived(ALL_METRICS[src.source] ?? []);
   const metrics = $derived(
-    edit
-      ? edit.tiles.map((t) => t.id)
-      : src.tiles?.length
-        ? src.tiles
-        : allMetricKeys,
+    edit ? edit.tiles.map((t) => t.id) : src.tiles?.length ? src.tiles : allMetricKeys,
   );
   const drilldowns = $derived(
     src.drilldowns ??
@@ -126,6 +130,15 @@
     <div class="flex items-center gap-2">
       <h2 class="text-base font-semibold text-text">{sourceLabel(src.source)}</h2>
       <span class="truncate text-sm text-text-muted">{src.display_name}</span>
+      {#if src.connection_owner}
+        <!-- Whose Google grant feeds this section. A colleague reading a client's dashboard
+             otherwise has no way to tell that these numbers hang on one person's account. -->
+        <span class="truncate text-xs text-text-muted" title={src.connection_owner.email}>
+          {t("marketing.via", {
+            who: src.connection_owner.is_me ? t("marketing.via_me") : src.connection_owner.name,
+          })}
+        </span>
+      {/if}
       {#if edit?.hidden}
         <span
           class="rounded-lg bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300"
@@ -269,7 +282,8 @@
          fetch until they're actually shown (docs/PERFORMANCE.md). -->
     <div class="grid gap-5 md:grid-cols-2">
       {#each allDrilldownKinds as kind (kind)}
-        {@const enabled = edit.drilldowns.includes(kind) && !(kind === "key_events" && keyEventsLocked)}
+        {@const enabled =
+          edit.drilldowns.includes(kind) && !(kind === "key_events" && keyEventsLocked)}
         {#if enabled}
           <div class="relative rounded-lg border border-border p-3">
             <button
@@ -366,7 +380,9 @@
                   style="width: {(value / channelMax) * 100}%"
                 ></span>
               </span>
-              <span class="w-16 shrink-0 text-right tabular-nums text-text">{fmtNumber(value, 0)}</span>
+              <span class="w-16 shrink-0 text-right tabular-nums text-text"
+                >{fmtNumber(value, 0)}</span
+              >
             </li>
           {/each}
         </ul>

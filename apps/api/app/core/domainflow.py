@@ -28,12 +28,13 @@ import re
 import secrets
 import uuid
 from datetime import UTC, datetime
+from typing import NamedTuple
 
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.core import dnscheck, hosts
+from app.core import dnscheck, domainprobe, hosts
 from app.core.instance import audit, repo
 from app.core.models import Org
 from app.errors import AppError
@@ -217,7 +218,7 @@ def _relative_host(name: str, domain: str, zone: str | None) -> str:
     return name
 
 
-def _is_apex(domain: str, zone: str | None = None) -> bool:
+def is_apex(domain: str, zone: str | None = None) -> bool:
     if zone is not None:
         return domain == zone
     return domain.count(".") == 1
@@ -271,7 +272,7 @@ def status_for(org: Org, *, zone: str | None = None) -> DomainStatus:
         custom_domain_verified_at=org.custom_domain_verified_at,
         pending_domain=org.pending_domain,
         ownership_verified_at=org.pending_domain_ownership_verified_at,
-        apex=_is_apex(domain, zone) if domain else None,
+        apex=is_apex(domain, zone) if domain else None,
         records=record_cards(org, zone=zone),
         cname_target=_cname_target(),
         hostname_status=org.cf_hostname_status,
@@ -585,41 +586,133 @@ async def _check_ownership(org: Org) -> DomainCheck:
     return _check("ownership", "failed", "txt_wrong_value", expected=expected, observed=observed)
 
 
-async def _check_dns_target(domain: str, target: str) -> DomainCheck:
+class _DnsEvidence(NamedTuple):
+    """What DNS alone can say about the traffic record, and the raw material behind it.
+
+    Only ``check.state == "ok"`` is proof. Everything else is circumstantial, and *how*
+    circumstantial depends on ``cname_seen``: a CNAME that is visible and points elsewhere is
+    an observed wrong value, while addresses that merely fail to match are what every proxied
+    domain in the world looks like. :func:`routing_check` is the only caller allowed to turn
+    any of this into a state.
+    """
+
+    check: DomainCheck
+    addresses: list[str]
+    cname_seen: bool
+
+
+async def _dns_evidence(domain: str, target: str) -> _DnsEvidence:
     result = await dnscheck.cname(domain)
     if result.error == dnscheck.TIMEOUT:
-        return _check("dns_target", "pending", "dns_timeout", expected=target)
-    if result.error == dnscheck.SERVFAIL:
-        return _check("dns_target", "failed", "dns_servfail", expected=target)
-    if result.error == dnscheck.NXDOMAIN:
-        return _check("dns_target", "pending", "target_nxdomain", expected=target)
-    if target in result.values:
-        return _check("dns_target", "ok", "target_ok", expected=target, observed=target)
-    if result.values:
-        return _check(
-            "dns_target",
-            "failed",
-            "target_wrong",
-            expected=target,
-            observed=", ".join(result.values[:3]),
+        return _DnsEvidence(
+            _check("dns_target", "pending", "dns_timeout", expected=target), [], False
         )
-    # No CNAME (an apex cannot carry one, or a proxying CDN hides it): compare what the name
-    # and the target actually resolve to. Matching addresses = effectively pointed at us.
+    if result.error == dnscheck.SERVFAIL:
+        return _DnsEvidence(
+            _check("dns_target", "failed", "dns_servfail", expected=target), [], False
+        )
+    if result.error == dnscheck.NXDOMAIN:
+        return _DnsEvidence(
+            _check("dns_target", "pending", "target_nxdomain", expected=target), [], False
+        )
+    if target in result.values:
+        return _DnsEvidence(
+            _check("dns_target", "ok", "target_ok", expected=target, observed=target), [], True
+        )
+    cname_values = list(result.values)
+    # No matching CNAME. Either the record points elsewhere, or there is no CNAME to see at
+    # all — an apex cannot carry one, and a proxying CDN answers with its own addresses
+    # instead. Compare what the two names actually resolve to; matching addresses mean the
+    # name effectively points here.
     observed_a, target_a = await dnscheck.a_records(domain), await dnscheck.a_records(target)
     if observed_a.values and set(observed_a.values) & set(target_a.values):
-        return _check("dns_target", "ok", "target_ok", expected=target, observed=target)
-    if observed_a.values:
-        return _check(
-            "dns_target",
-            "failed",
-            "target_wrong",
-            expected=target,
-            observed=", ".join(observed_a.values[:4]),
+        return _DnsEvidence(
+            _check("dns_target", "ok", "target_ok", expected=target, observed=target),
+            observed_a.values,
+            bool(cname_values),
         )
-    return _check("dns_target", "pending", "target_missing", expected=target)
+    observed = ", ".join((cname_values or observed_a.values)[:4])
+    if cname_values or observed_a.values:
+        return _DnsEvidence(
+            _check("dns_target", "failed", "target_wrong", expected=target, observed=observed),
+            observed_a.values,
+            bool(cname_values),
+        )
+    return _DnsEvidence(
+        _check("dns_target", "pending", "target_missing", expected=target), [], False
+    )
 
 
-def _hostname_checks(record: dict | None) -> list[DomainCheck]:
+async def routing_check(
+    domain: str,
+    target: str,
+    *,
+    slug: str | None = None,
+    edge_ok: bool | None = None,
+) -> DomainCheck:
+    """Does traffic for ``domain`` reach this instance? The one answer both callers use.
+
+    The wizard's "check now" and the unattended sweep ask the same question, so they run the
+    same function — the two implementations that preceded this could and did disagree, and a
+    customer told "your domain is fine" while the sweep mailed them an outage is the worst of
+    both.
+
+    **Addresses are the weakest evidence available, so they are asked last and never decide
+    alone.** A domain fronted by the customer's own Cloudflare — the supported orange-to-orange
+    setup — publishes anycast addresses from *their* zone; comparing them against the edge
+    hostname's own anycast addresses can only ever mismatch, no matter how correctly the
+    domain is configured. In order of strength:
+
+    1. an explicit CNAME to the edge, or addresses that match it — DNS proves it outright;
+    2. a fetch of the domain that this instance answers for this org
+       (:mod:`app.core.domainprobe`) — proof through any proxy, any CDN, any apex flattening;
+    3. a fetch that something *else* answered — proof of the opposite;
+    4. the edge network reporting the hostname active — Cloudflare would not, if the
+       customer's DNS had stopped reaching it;
+    5. nothing conclusive — ``pending``, never ``failed``. A domain that is serving must not
+       be demoted because we could not confirm it; the states above are what demote it.
+    """
+    dns, addresses, cname_seen = await _dns_evidence(domain, target)
+    if dns.state == "ok" or dns.code == "dns_timeout":
+        return dns
+    verdict = domainprobe.UNKNOWN
+    # Fetch only when the name resolves to *something* that is not us. A name that resolves to
+    # nothing yet (the wizard's normal state while a record propagates, and its most-polled
+    # one) has nobody to answer, and a zone answering SERVFAIL serves nobody either — spending
+    # a connection timeout on each poll to learn that would be the slowest possible no.
+    if slug and dns.code == "target_wrong":
+        verdict = await domainprobe.probe(domain, slug, addresses=addresses or None)
+    if verdict == domainprobe.OURS:
+        return _check(
+            "dns_target", "ok", "target_proxied", expected=target, observed=dns.observed
+        )
+    if verdict == domainprobe.OTHER:
+        return _check(
+            "dns_target", "failed", "target_wrong", expected=target, observed=dns.observed
+        )
+    if edge_ok:
+        return _check(
+            "dns_target", "ok", "target_edge_confirmed", expected=target, observed=dns.observed
+        )
+    if dns.code == "target_wrong" and not cname_seen:
+        # Addresses that do not match, and no CNAME to explain them: that is what *every*
+        # proxied domain looks like, and it establishes nothing. Reads pending, demotes
+        # nothing. Two neighbours are deliberately left alone — a CNAME that is visible and
+        # points elsewhere is an observed wrong value (the wizard must still say *where* it
+        # went, #292), and a zone that SERVFAILs serves nobody either way.
+        return _check(
+            "dns_target", "pending", "target_unconfirmed", expected=target, observed=dns.observed
+        )
+    return dns
+
+
+def dns_verdict(check: DomainCheck) -> bool | None:
+    """The tri-state ``orgs.domain_dns_ok`` column for one routing check. ``None`` — no
+    verdict — is a first-class outcome: it must never be recorded as "the customer moved"."""
+    return {"ok": True, "failed": False}.get(check.state)
+
+
+def hostname_checks(record: dict | None) -> list[DomainCheck]:
     """Map one Cloudflare custom-hostname record to hostname + certificate checks."""
     if record is None:
         return [_check("hostname", "failed", "hostname_deleted")]
@@ -671,15 +764,14 @@ def _hostname_checks(record: dict | None) -> list[DomainCheck]:
 
 async def _routing_checks(org: Org) -> tuple[list[DomainCheck], bool, dict | None]:
     """The independent routing/certificate states (#292), whether all are go, and the
-    custom-hostname record behind them — which activation seeds its lifecycle state from."""
-    checks: list[DomainCheck] = []
-    target = _cname_target()
-    target_ok = True
-    if target is not None:
-        target_check = await _check_dns_target(org.pending_domain, target)
-        checks.append(target_check)
-        target_ok = target_check.state == "ok"
+    custom-hostname record behind them — which activation seeds its lifecycle state from.
 
+    The edge is asked **before** the routing check, because the routing check takes the edge's
+    verdict as one of its signals: a proxied domain publishes nobody's addresses but its
+    proxy's, and Cloudflare reporting the hostname active is what says the customer's DNS
+    still reaches it. The checks are returned in display order regardless.
+    """
+    edge_checks: list[DomainCheck] = []
     edge_ok = True
     record: dict | None = None
     if _cf_configured():
@@ -695,14 +787,25 @@ async def _routing_checks(org: Org) -> tuple[list[DomainCheck], bool, dict | Non
             if record is None:
                 # Deleted behind our back: forget the id so the next check re-provisions.
                 org.pending_cf_hostname_id = None
-                checks.append(_check("hostname", "failed", "hostname_deleted"))
+                edge_checks.append(_check("hostname", "failed", "hostname_deleted"))
             else:
-                hostname_checks = _hostname_checks(record)
-                checks.extend(hostname_checks)
-                edge_ok = all(item.state == "ok" for item in hostname_checks)
+                edge_checks = hostname_checks(record)
+                edge_ok = all(item.state == "ok" for item in edge_checks)
         except CloudflareError as exc:
             code, state = _classify_cloudflare(exc, exc.status)
-            checks.append(_check("hostname", state, code, observed=str(exc)[:200]))
+            edge_checks.append(_check("hostname", state, code, observed=str(exc)[:200]))
+
+    checks: list[DomainCheck] = []
+    target = _cname_target()
+    target_ok = True
+    if target is not None:
+        # No slug is passed while the domain is still pending: it does not resolve to this org
+        # yet (``resolve_org`` requires a *verified* domain), so a probe could only ever answer
+        # "unknown". Here the edge's own verdict carries the proxied case.
+        target_check = await routing_check(org.pending_domain, target, edge_ok=edge_ok)
+        checks.append(target_check)
+        target_ok = target_check.state == "ok"
+    checks.extend(edge_checks)
     return checks, target_ok and edge_ok, record
 
 
@@ -756,32 +859,38 @@ async def run_checks(session: AsyncSession, actor, org: Org) -> DomainCheckRepor
     if stage(org) == STAGE_ACTIVE and org.custom_domain and not org.pending_domain:
         # Monitoring for an active domain: the same independent states — and this is also the
         # "check now" that writes the lifecycle columns ``hosts.custom_domain_live`` reads
-        # (#291). One probe feeds both, so the diagnostics the customer sees and the canonical
-        # -host decision can never disagree; the daily sweep does the identical reconciliation
-        # unattended (``domain_health.refresh_domain_health``).
-        target = _cname_target()
-        if target is not None:
-            target_check = await _check_dns_target(org.custom_domain, target)
-            checks.append(target_check)
-            # Tri-state like the sweep's drift check: a lookup that could not answer must
-            # never be recorded as "the customer moved their DNS away".
-            org.domain_dns_ok = {"ok": True, "failed": False}.get(target_check.state)
-            org.domain_checked_at = checked_at
+        # (#291). One reconciliation feeds both, so the diagnostics the customer sees and the
+        # canonical-host decision can never disagree; the daily sweep runs the identical one
+        # unattended (``domain_health.refresh_domain_health``), down to ``routing_check``.
+        edge_checks: list[DomainCheck] = []
+        edge_ok: bool | None = None
         if _cf_configured() and org.cf_hostname_id:
             from app.core.cloud.cloudflare import CloudflareError, get_custom_hostname
 
             try:
                 record = await get_custom_hostname(org.cf_hostname_id)
-                checks.extend(_hostname_checks(record))
+                edge_checks = hostname_checks(record)
+                edge_ok = all(item.state == "ok" for item in edge_checks)
                 error = _apply_hostname_health(org, record)
             except CloudflareError as exc:
                 code, state = _classify_cloudflare(exc, exc.status)
-                checks.append(_check("hostname", state, code, observed=str(exc)[:200]))
+                edge_checks.append(_check("hostname", state, code, observed=str(exc)[:200]))
                 # An API blip is not a state change: keep the last known statuses (the sweep
                 # takes the same position) and record what went wrong instead.
                 error = str(exc)
             org.domain_check_error = error[:500] if error else None
             org.domain_checked_at = checked_at
+        target = _cname_target()
+        if target is not None:
+            target_check = await routing_check(
+                org.custom_domain, target, slug=org.slug, edge_ok=edge_ok
+            )
+            checks.append(target_check)
+            # Tri-state: a check that could not establish an answer must never be recorded as
+            # "the customer moved their DNS away".
+            org.domain_dns_ok = dns_verdict(target_check)
+            org.domain_checked_at = checked_at
+        checks.extend(edge_checks)
         await session.flush()
 
     failed = [item.code for item in checks if item.state != "ok"]

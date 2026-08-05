@@ -16,8 +16,26 @@ export const load: PageServerLoad = async (event) => {
   const invoice_id = event.params.id;
   const context = { entityId: invoice_id, periodStart: null };
   const enabled = event.locals.theme?.enabledModules ?? [];
-  const panels = entityPanelsFor(enabled, "invoice");
-
+  const canWrite = can(event.locals.user, "invoicing.invoice.write");
+  const isPortal = event.locals.user?.isPortal ?? false;
+  /**
+   * The trail is the agency's own record of this document — who changed the total while it
+   * was a draft, when it was issued and sent. A client never saw the draft (#266), so the
+   * history of one is not theirs to read; the tasks detail page draws the same line
+   * (`isPortal ? [] : data.panels`). `activity.read` is a client default, so the *panel*
+   * gate is what stops it here.
+   */
+  const panels = isPortal ? [] : entityPanelsFor(enabled, "invoice");
+  /**
+   * Six lookups below exist for one consumer: `DocumentForm`. Loading them for a viewer who
+   * cannot open it was always six wasted round-trips; since #266 four of them also answer 403
+   * to a client (the price list, the template library, the tax rates and the seller's bank
+   * details are `:any` now), so the load would be asking for what it may not have.
+   * docs/UX.md: skip the fetch you would 403 on, and gate the read rather than only the write.
+   *
+   * Still **one** round of calls — a skipped lookup is `undefined` inside the same
+   * `Promise.all` (the section layout's pattern), never a second await.
+   */
   const [
     invoice,
     contacts,
@@ -31,36 +49,46 @@ export const load: PageServerLoad = async (event) => {
     api.GET("/api/v1/invoicing/invoices/{invoice_id}", {
       params: { path: { invoice_id } },
     }),
-    api.GET("/api/v1/contacts", { params: { query: { limit: 200, count: false, sort: "first_name" } } }),
-    api.GET("/api/v1/invoicing/tax-rates"),
-    api.GET("/api/v1/invoicing/products"),
-    api.GET("/api/v1/invoicing/templates", { params: { query: { include_inactive: true } } }),
-    api.GET("/api/v1/invoicing/settings"),
-    api.GET("/api/v1/custom-fields/definitions", {
-      params: { query: { entity_type: "contact" } },
-    }),
+    canWrite
+      ? api.GET("/api/v1/contacts", {
+          params: { query: { limit: 200, count: false, sort: "first_name" } },
+        })
+      : undefined,
+    canWrite ? api.GET("/api/v1/invoicing/tax-rates") : undefined,
+    canWrite ? api.GET("/api/v1/invoicing/products") : undefined,
+    canWrite
+      ? api.GET("/api/v1/invoicing/templates", { params: { query: { include_inactive: true } } })
+      : undefined,
+    canWrite ? api.GET("/api/v1/invoicing/settings") : undefined,
+    canWrite
+      ? api.GET("/api/v1/custom-fields/definitions", {
+          params: { query: { entity_type: "contact" } },
+        })
+      : undefined,
     ...panels.map((panel) => panel.load(api, context)),
   ]);
   if (!invoice.data) throw httpError(404);
 
   return {
     invoice: invoice.data,
-    contacts: contactLookups(contacts.data?.items),
-    taxRates: taxRates.data ?? [],
-    products: products.data ?? [],
-    templates: templates.data ?? [],
-    settings: settings.data ?? null,
-    contactDefinitions: contactDefinitions.data ?? [],
+    contacts: contactLookups(contacts?.data?.items),
+    taxRates: taxRates?.data ?? [],
+    products: products?.data ?? [],
+    templates: templates?.data ?? [],
+    settings: settings?.data ?? null,
+    contactDefinitions: contactDefinitions?.data ?? [],
     context,
     panels: panels.map((panel, i) => ({
       key: panel.key,
       titleKey: panel.titleKey,
       data: panelData[i],
     })),
-    canWrite: can(event.locals.user, "invoicing.invoice.write"),
+    canWrite,
     canSend: can(event.locals.user, "invoicing.invoice.send"),
     canDelete: can(event.locals.user, "invoicing.invoice.delete"),
     canPay: can(event.locals.user, "invoicing.payment.write"),
+    /** See the list route: the agency's view of a document, or only your own copy (#266). */
+    canReadRegister: can(event.locals.user, "invoicing.invoice.read", "any"),
     locale: event.locals.locale,
   };
 };

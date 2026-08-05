@@ -12,7 +12,7 @@ import subprocess
 import uuid
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -34,13 +34,14 @@ os.environ.setdefault("SCHAKL_PASSWORD_RESET_RATE_LIMIT_PER_MINUTE", "0")
 
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 from pwdlib import PasswordHash  # noqa: E402
-from sqlalchemy import text  # noqa: E402
+from sqlalchemy import select, text  # noqa: E402
 
 from app.core import dnscheck  # noqa: E402
-from app.core.auth.backend import get_jwt_strategy  # noqa: E402
+from app.core.auth.backend import write_session_token  # noqa: E402
 from app.core.auth.models import User  # noqa: E402
 from app.core.models import Membership, Org, OrgSettings  # noqa: E402
 from app.core.permissions.service import create_membership, seed_system_roles  # noqa: E402
+from app.core.timezone import resolve_zoneinfo  # noqa: E402
 from app.db import async_session_maker, engine, set_current_org  # noqa: E402
 from app.main import app  # noqa: E402
 
@@ -67,13 +68,16 @@ _DOMAIN_TABLES = (
     "interactions, interaction_kinds, "
     "calendar_event_links, google_calendar_events, google_calendar_channels, "
     "drive_links, drive_folder_jobs, gmail_suppressions, google_connections, google_settings, "
+    "cloudflare_pages_links, cloudflare_pages_projects, cloudflare_redirects, "
+    "cloudflare_zones, cloudflare_accounts, "
+    "oxxa_domains, oxxa_accounts, "
     "websites, hosting, domain_tld_prices, domains, providers, "
     "time_entry_drafts, time_entries, time_entry_types, tasks, projects, contacts, contact_types, "
     "custom_field_definitions, "
     "membership_company_groups, company_group_members, company_groups, hr_documents, "
     "files, activity_log, dashboard_prefs, nav_prefs, user_prefs, companies, "
     "api_keys, service_accounts, "
-    "email_settings, org_email_templates, org_auth_settings, "
+    "email_settings, org_email_templates, org_auth_settings, org_sso_provisions, "
     "role_audit_log, membership_roles, role_permissions, roles, memberships, org_settings, "
     "service_access_grants, instance_api_keys, impersonation_handoffs, "
     "instance_audit_log, user_two_factor, users, orgs"
@@ -82,7 +86,7 @@ _ENABLED_MODULES = [
     "hr",
     "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
     "domains", "hosting", "websites", "subscriptions", "invoicing", "automation",
-    "interactions", "google", "marketing",
+    "interactions", "google", "marketing", "cloudflare", "oxxa",
 ]
 
 
@@ -101,6 +105,12 @@ async def _clean_db() -> AsyncIterator[None]:
     yield
     # Dispose the pool so each test's event loop gets fresh asyncpg connections.
     await engine.dispose()
+    # Same reason, same shape: the AI core keeps one keep-alive httpx client per process
+    # (#246). Its connections belong to the loop that opened them, so carrying it into the
+    # next test fails in ways that look nothing like their cause.
+    from app.core.ai import providers as ai_providers
+
+    await ai_providers.aclose()
 
 
 @dataclass
@@ -163,6 +173,28 @@ async def add_membership(
     return await create_membership(session, org_id, user_id, role)
 
 
+def org_today() -> date:
+    """Today on the **org's** calendar — the only "today" the API ever means.
+
+    Every date the API derives for itself (a domain's default ``start_date``, a renewal
+    boundary, an invoice's due date) comes from ``app.core.timezone.org_today``, which resolves
+    the tenant's zone and falls back to the instance default. A test that builds the expected
+    value from ``date.today()`` or ``datetime.now(UTC).date()`` is asserting against a
+    *different clock*, and the two disagree for the hours between local midnight and UTC
+    midnight — two in summer, one in winter.
+
+    **That gap is invisible where it is written and fires where it is not.** A developer's
+    machine in ``Europe/Amsterdam`` makes ``date.today()`` agree with the app by coincidence;
+    the CI runner is UTC, where it does not. It is the shape behind "CI went red and my diff
+    touched no date code" (`test_domain_pricing_fields_and_tld_stamping`, nightly).
+
+    Resolved from the same setting the app reads — never a hardcoded
+    ``ZoneInfo("Europe/Amsterdam")`` — so an instance configured for another zone does not need
+    its tests edited to keep telling the truth.
+    """
+    return datetime.now(resolve_zoneinfo(None)).date()
+
+
 def leave_workday(index: int = 0) -> date:
     """The ``index``-th weekday from the first Monday of November, this year.
 
@@ -176,9 +208,42 @@ def leave_workday(index: int = 0) -> date:
     return monday + timedelta(weeks=index // 5, days=index % 5)
 
 
-async def auth_cookie(user: User) -> dict[str, str]:
-    """A Cookie header carrying a valid session for ``user`` (skips the login form)."""
-    token = await get_jwt_strategy().write_token(user)
+#: ``auth_cookie(user)`` with no org named — "the org this user obviously means".
+INFER_ORG = object()
+
+
+async def auth_cookie(user: User, org_id: Any = INFER_ORG) -> dict[str, str]:
+    """A Cookie header carrying a valid session for ``user`` (skips the login form).
+
+    A session is minted **for one org** (``app/core/auth/backend.py``), so the token needs one.
+    Almost every test has a user with exactly one membership, which is the org they mean, so it
+    is looked up rather than threaded through a thousand call sites. Pass ``org_id`` explicitly
+    when the user belongs to several — or ``None`` deliberately, to build the org-less session
+    the cloud console's apex mints, which must reach no tenant data at all.
+    """
+    if org_id is INFER_ORG:
+        # ``memberships`` is RLS-forced and the GUC is per transaction, so "every org this user
+        # belongs to" cannot be one statement — it is asked once per org, which a truncated-
+        # between-tests database makes cheap (`orgs` itself has no RLS).
+        async with async_session_maker() as session:
+            candidates = (await session.execute(select(Org.id))).scalars().all()
+            org_ids = []
+            for candidate in candidates:
+                await set_current_org(session, candidate)
+                found = await session.scalar(
+                    select(Membership.id).where(
+                        Membership.org_id == candidate, Membership.user_id == user.id
+                    )
+                )
+                if found is not None:
+                    org_ids.append(candidate)
+        if len(org_ids) > 1:
+            raise AssertionError(
+                f"{user.email} is a member of {len(org_ids)} orgs — pass auth_cookie(user, "
+                "org_id=…) to say which session you mean."
+            )
+        org_id = org_ids[0] if org_ids else None
+    token = await write_session_token(user, org_id)
     return {"Cookie": f"schakl_auth={token}"}
 
 

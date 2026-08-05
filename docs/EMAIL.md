@@ -12,10 +12,38 @@
 | Notification (immediate, digest, per-channel) | `app/modules/notifications/external.py` + `render.py` | `send_org_email` |
 | Channel / e-mail settings / template test sends | `notifications/channel_admin.py`, `core/email/service.py` | `send_org_email` |
 | Invoice / quote / reminder (request + cron) | `app/modules/invoicing/emails.py`, `jobs.py` | `send_email` directly¹ |
+| Custom-domain alert (cloud, daily sweep) | `app/core/cloud/domain_alert.py` | `send_org_email` |
 
 ¹ The invoicing request path does its network call inside `ctx.release_db()` and the worker
 has no request, so both bypass `send_org_email` — they call `apply_branding` themselves.
 If you add a third bypass, you own the same obligation.
+
+## Which transport sends, and how the org is told
+
+`send_org_email` resolves in one order, and every surface that reports on e-mail must agree
+with it:
+
+1. the org's own `email_settings` row (SMTP / Brevo / SendGrid / SMTP2GO), else
+2. the **operator's** transport (`SCHAKL_INSTANCE_EMAIL_*`) — either chosen explicitly
+   (`provider="instance"`) or fallen back to with no row at all, and in both cases only
+   while `orgs.email_included` is true for this org (epic #199, `instance_email_allowed`),
+   else
+3. nothing: `(False, "errors.email_not_configured")`.
+
+**Stored ≠ active, and the API says both.** Included e-mail stores nothing, so a settings
+read that only described storage claimed "not configured" while every mail was going out
+fine — and offered a blank SMTP form under it. `GET /settings/email` therefore always
+returns an object carrying `active_provider` / `active_from_email` / `active_from_name` (as
+whom it actually leaves — on included e-mail, the instance's address under the org's own
+brand) plus `instance_email_available` for *this* org. `provider = null` means nothing is
+stored; `active_provider = null` means nothing can send. A new surface answers "is e-mail on
+here?" from `active_provider`, never from the presence of a row.
+
+The entitlement is operator state on `orgs`, written only from the instance/provisioning
+surface (Console → org, or `email_included` on org creation, default true). The tenant
+chooses whether to *use* the included transport, never whether they have it — and a
+withdrawn entitlement stops a stored `provider="instance"` row from sending rather than
+silently rerouting it.
 
 ## The two layers
 

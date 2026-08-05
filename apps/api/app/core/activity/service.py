@@ -17,6 +17,7 @@ from enum import Enum
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.orm import aliased
 
 from app.core.activity.models import ActivityLog
 from app.core.auth.models import User
@@ -80,12 +81,21 @@ class ActivityService:
     ) -> None:
         """Append one trail entry in the current transaction. No-op flush is the caller's."""
         actor = self.ctx.user
+        # Whoever is really at the keyboard (#296). ``getattr`` because a ``SystemContext`` (a
+        # cron tick) has no such field and can never be impersonating anyone.
+        impersonator = getattr(self.ctx, "impersonated_by", None)
         row = ActivityLog(
             org_id=self.ctx.org.id,
             entity_type=entity_type,
             entity_id=entity_id,
             actor_user_id=actor.id if actor else None,
             actor_name=_display_name(actor.full_name, actor.email) if actor else None,
+            impersonator_user_id=impersonator.id if impersonator else None,
+            impersonator_name=(
+                _display_name(impersonator.full_name, impersonator.email)
+                if impersonator
+                else None
+            ),
             action=action,
             payload=payload or {},
         )
@@ -116,10 +126,23 @@ class ActivityService:
         self, entity_type: str, entity_id: uuid.UUID, limit: int = 20
     ) -> list[dict[str, Any]]:
         """The trail for one entity, newest first, with the actor resolved per issue #64."""
+        # The impersonator resolves exactly like the actor — live name while the account exists,
+        # snapshot once it doesn't — so it rides the same statement on a second alias rather than
+        # costing a query per row (docs/PERFORMANCE.md).
+        impersonator = aliased(User)
         rows = (
             await self.ctx.session.execute(
-                select(ActivityLog, User.full_name, User.email)
+                select(
+                    ActivityLog,
+                    User.full_name,
+                    User.email,
+                    impersonator.full_name,
+                    impersonator.email,
+                )
                 .outerjoin(User, User.id == ActivityLog.actor_user_id)
+                .outerjoin(
+                    impersonator, impersonator.id == ActivityLog.impersonator_user_id
+                )
                 .where(
                     ActivityLog.org_id == self.ctx.org.id,
                     ActivityLog.entity_type == entity_type,
@@ -130,7 +153,7 @@ class ActivityService:
             )
         ).all()
         items: list[dict[str, Any]] = []
-        for row, full_name, email in rows:
+        for row, full_name, email, imp_full_name, imp_email in rows:
             if email is not None:  # the account still exists — the live name wins
                 actor_name, actor_deleted = _display_name(full_name, email), False
             else:  # SET NULL fired (or never had an actor): fall back to the snapshot
@@ -144,6 +167,12 @@ class ActivityService:
                     "action": row.action,
                     "actor_name": actor_name,
                     "actor_deleted": actor_deleted,
+                    # None on the overwhelming majority of rows: nobody was impersonating.
+                    "impersonator_name": (
+                        _display_name(imp_full_name, imp_email)
+                        if imp_email is not None
+                        else row.impersonator_name
+                    ),
                     "payload": row.payload,
                     "created_at": row.created_at,
                 }

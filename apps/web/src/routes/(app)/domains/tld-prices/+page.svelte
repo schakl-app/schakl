@@ -12,6 +12,7 @@
   import { page } from "$app/state";
   import { fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
@@ -201,7 +202,14 @@
   </p>
 {/if}
 
-<div class="mb-4 flex items-center justify-end">
+<div class="mb-4 flex flex-wrap items-center justify-end gap-2">
+  <ImpexBar
+    entity="domain_tld_price"
+    readPermission="domains.tld_price.read"
+    writePermission="domains.tld_price.manage"
+    locale={data.locale}
+    {form}
+  />
   <ColumnPicker
     all={table.pickerColumns}
     visible={table.visibleKeys}

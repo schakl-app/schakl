@@ -149,7 +149,8 @@ POST   /api/v1/instance/provisioning/orgs/{slug}/activate …and reactivation
 ```
 
 Create payload: `{name, slug, owner_email, owner_password?, owner_full_name?, brand_name?,
-locale?, enabled_modules?, plan?, trial_days?, custom_domain?, custom_domain_mode?}`. With
+locale?, enabled_modules?, plan?, trial_days?, email_included?, custom_domain?,
+custom_domain_mode?}`. `email_included` defaults to **true** (see *Included e-mail* below). With
 `owner_password` the org is fully auto-configured (the owner can log in immediately at the
 returned `url`); without it the owner arrives via the forgot-password flow like an invited
 member. The provisioned owner is a plain org `owner`, **never** `is_superuser` (#201).
@@ -199,6 +200,28 @@ There is **no org** on the instance-management domain. On cloud, the base domain
 
 The web app decides via `GET /api/v1/meta/instance` (`{deployment, is_instance_host,
 needs_setup, base_domain}`).
+
+### A session belongs to one org — and a console session to none
+
+`users` is instance-level and the password check is tenant-blind, so on a multi-org box "these
+credentials are correct" and "these credentials are correct **here**" were the same sentence:
+org A's login screen minted a real session for a member of org B. Two ends now agree
+([`core/auth/backend.py`](../apps/api/app/core/auth/backend.py), CLAUDE.md §5):
+
+- the **account lookup** is narrowed to the org the hostname resolves to, so login,
+  password-reset and request-verify all answer as if the address did not exist — one tenant
+  cannot enumerate, or mail, another's people;
+- the **token names its org**, and `require_context` refuses anything else with a 401 (an
+  authentication answer — the membership check is a separate question).
+
+The console's own session is the deliberate `None` case: the apex resolves to no org, so it
+mints an **org-less** session that reaches the instance surface and no tenant data whatsoever.
+Entering a tenant is the impersonation handoff, which mints a session naming *that* org for
+exactly the grant's lifetime — so an operator on a customer's hostname is there on a credential
+that says which customer, and expires with the reason it was created.
+
+One operational consequence, worth putting in release notes: a token issued before the claim
+existed names no org, which fails closed. Everyone signs in once after the upgrade.
 
 ## Domains & TLS (#202)
 
@@ -349,8 +372,8 @@ After a custom domain verifies, the org has **two valid origins**: the operator-
 
 **Verified is ownership; live is activation.** With Cloudflare for SaaS, creating the custom
 hostname is not activation: the domain counts as **live** only once Cloudflare reports the
-hostname `active`, its DV certificate `active`, and the DNS drift check still sees the domain
-pointing at the SaaS target. That state lives on `orgs` (`cf_hostname_status`,
+hostname `active`, its DV certificate `active`, and the routing check has not established that
+the domain stopped pointing here. That state lives on `orgs` (`cf_hostname_status`,
 `cf_ssl_status`, `domain_dns_ok`, `domain_cert_expires_at`, `domain_checked_at`,
 `domain_check_error`) and is written in three places, all of them the same reconciliation:
 activation seeds it from the custom-hostname record it already holds (the wizard's
@@ -364,6 +387,38 @@ Traefik/Let's Encrypt posture) there is no state to poll: the router and certifi
 the verification directly, so verified = live — today's behaviour, unchanged. Orgs verified
 before this state existed stay live until the first sweep records the truth: an upgrade must
 never silently demote a working domain.
+
+### "Does it still point here?" — and why addresses cannot answer it
+
+The routing check (`domainflow.routing_check`) is the one answer both the wizard's *check now*
+and the sweep use. It exists in that shape because the first version of it did not: it compared
+the addresses the custom domain resolves to against the edge hostname's, and **a domain fronted
+by the customer's own Cloudflare publishes their zone's anycast addresses and no CNAME at all**.
+That configuration — orange-to-orange, a supported Cloudflare for SaaS setup — mismatches on
+every comparison no matter how correctly it is set up, which demoted healthy domains to the slug
+host and mailed their owners about an outage that was not happening.
+
+So evidence is now ranked, addresses are the weakest kind, and the first row that applies wins:
+
+| Signal | Verdict | Why it is trusted at that strength |
+|---|---|---|
+| CNAME to the edge, or matching addresses | **ok** (`target_ok`) | DNS proves it outright; nothing else is fetched. |
+| A fetch of `https://<domain>/api/v1/meta/domain-probe?nonce=…` that this instance answers for this org | **ok** (`target_proxied`) | End-to-end proof, through any proxy, CDN or apex flattening. The nonce is what a cache cannot echo. |
+| A fetch something *else* answered — a 200 that is not ours, a stranger's 404 | **failed** (`target_wrong`) | Positive proof of the opposite: the hostname serves someone else now. |
+| Cloudflare reporting the hostname `active` | **ok** (`target_edge_confirmed`) | The edge would not, if the customer's DNS had stopped reaching it. Carries the case where a WAF blocks our fetch — which outranks the row below, since serving beats record shape. |
+| A visible CNAME pointing elsewhere | **failed** (`target_wrong`) | An observed wrong value; the wizard must still say *where* it went (#292). A proxied domain has no visible CNAME, so this never fires for one. |
+| Nothing conclusive | **pending** (`target_unconfirmed`) | No consequence at all: `domain_dns_ok` stays `NULL`, the domain keeps serving and nobody is mailed. |
+
+The fetch is skipped where it could only stall: the name resolving to nothing (the wizard's
+most-polled state while a record propagates) and a zone answering SERVFAIL both mean nobody is
+there to answer, and a connection timeout per poll is the slowest possible way to learn that.
+
+**Only positive evidence writes `domain_dns_ok = false`.** "We could not tell" is a first-class
+outcome with no side effects — a domain that is serving must never be demoted because a firewall
+declined to answer us. The probe is not a security boundary: ownership is proven by the TXT
+challenge long before anything is fetched, and the endpoint reveals only what the equally public
+`/meta/tenant` already does. It refuses to fetch loopback/private addresses (a custom domain is
+customer-controlled), follows no redirects, and stops reading at 16 KiB.
 
 **The policy, per surface** (`app.core.hosts` is the one helper):
 
@@ -395,12 +450,30 @@ The custom hostnames schakl creates are **exact, non-wildcard** names validated 
 DCV **as long as the hostname stays `active` and keeps resolving to the SaaS target** — the
 customer does not need Cloudflare as their DNS provider and does not need to proxy anything
 in their own zone; the CNAME routes their traffic through the schakl edge, which answers the
-renewal challenge itself. Renewal breaks when the domain stops pointing at the target,
-another CDN sits in front of it, or a CAA record blocks the CA — which is exactly what the
-sweep watches: it re-reads every hostname's status/SSL state, runs the DNS drift check, and
-mails the org's domain managers **once per distinct problem** (`orgs.domain_alerted_for`
+renewal challenge itself. They *may* proxy it (orange-to-orange), and the routing check above
+is what keeps that supported rather than merely tolerated. Renewal breaks when the domain stops
+pointing at the target or a CAA record blocks the CA — which is exactly what the
+sweep watches: it re-reads every hostname's status/SSL state, runs the routing check, and
+mails the org's administrators **once per distinct problem** (`orgs.domain_alerted_for`
 fingerprint) — on any not-live state, and ahead of an expiry closer than 15 days (Cloudflare
 renews ~30 days out, so 15 means renewal has been failing for weeks).
+
+**The alert carries the diagnosis, not just the verdict** (`cloud/domain_alert.py`). The
+reconciliation returns the per-layer `DomainCheck`s it decided with, so the mail lists the
+records the domain needs, the value each must hold, what DNS answers instead, and each failing
+layer's own explanation — in the same `settings.domain.*` catalog strings the settings screen
+renders, because a mail that phrased the problem its own way would be a second implementation
+of the diagnosis. Its links point at the **slug** host: the custom domain is exactly what may
+not be answering.
+
+**Who is told: administrators, and only them.** Recipients hold `settings.domain.write` (or
+the owner wildcard) — nobody is mailed about infrastructure they cannot change — *and* are
+staff: a `client`-role or contact-linked portal account is never a recipient even if a
+misconfigured role grants it the permission (#274's definition of an external login). The
+mail names its own recipients, so an admin knows whether a colleague already has it. The
+fingerprint is recorded **only when a mail actually went out**; an org whose administrators
+are all inactive, or whose transport is down, is alerted again tomorrow instead of having its
+outage silently marked as handled.
 
 **Delegated DCV is deliberately deferred.** It would let certificates renew even while the
 domain points elsewhere, at the cost of every customer adding a permanent `_acme-challenge`
@@ -497,6 +570,24 @@ usable on self-host):
   domain — displayed as the org's brand name), and Instellingen → E-mail offers the
   explicit choice: *included e-mail* (`provider="instance"`, stores only from-name and
   reply-to) or any bring-your-own provider, exactly as before.
+
+**Per org, not per instance.** `orgs.email_included` (default **true**) decides whether a
+given org may use the operator's transport at all — an entitlement beside `plan`, written
+only from the instance surface: the `email_included` field on org creation (both org-creation
+forms and `POST /instance/provisioning/orgs`, ticked/true by default) and the toggle on the
+console / instance-admin org page (`PATCH /instance/orgs/{org_id}`, a partial update, so a
+rename never carries an entitlement change). False makes the org exactly as unconfigured as
+one on a box with no instance transport: no fallback, the choice is refused (`409
+errors.instance_email_unavailable`), and a *stored* `provider="instance"` row stops sending
+rather than being rerouted. Default true because an operator who never touches the field
+must not provision orgs that silently cannot mail.
+
+**The tenant's screen says which transport is live.** Included e-mail stores nothing, so
+Instellingen → E-mail used to read "not configured" over a blank SMTP form while mail was
+leaving happily. `GET /settings/email` now always returns an object with `active_provider`,
+`active_from_email`, `active_from_name` and this org's `instance_email_available`; the page
+states the active transport and the address it sends as, offers a test send, and opens the
+form on what is actually sending. See `docs/EMAIL.md` → *Which transport sends*.
 
 Google Workspace and LLM providers deliberately stay **bring-your-own-keys per org** on
 cloud — no platform-owned OAuth broker (that remains its own issue, #203) and no shared AI

@@ -7,6 +7,7 @@ never by the running app (the app discovers modules in ``main.py``).
 from __future__ import annotations
 
 import importlib
+import importlib.util
 
 from app.config import settings
 from app.core.activity.models import ActivityLog  # noqa: F401
@@ -29,4 +30,11 @@ from app.core.storage.models import StoredFile  # noqa: F401
 from app.db import Base  # noqa: F401
 
 for _name in settings.enabled_modules:
-    importlib.import_module(f"app.modules.{_name}.models")
+    # A module need not own a table. ``portal`` is the proof: it manages client logins against
+    # rows another module owns, reached through the subject seam (``app/core/portal.py``), so
+    # shipping it an empty ``models.py`` would be a file that lies about what the module is.
+    # ``find_spec`` rather than catching ``ModuleNotFoundError`` on purpose — the latter also
+    # swallows a genuinely broken import *inside* a module's models, which is exactly the
+    # failure this aggregator exists to surface.
+    if importlib.util.find_spec(f"app.modules.{_name}.models") is not None:
+        importlib.import_module(f"app.modules.{_name}.models")

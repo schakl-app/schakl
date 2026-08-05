@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -58,6 +59,18 @@ class ParticipantRead(Participant):
     user_id: uuid.UUID | None = None
 
 
+class InteractionContactRef(BaseModel):
+    """One person on the roster (#300), labelled — what the web draws a chip from.
+
+    Prefixed with the module's own name on purpose: a bare ``ContactRef`` would make FastAPI
+    qualify *every* module's schema of that name in the OpenAPI components, renaming other
+    modules' types in the generated client.
+    """
+
+    id: uuid.UUID
+    name: str | None = None
+
+
 class InteractionRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -74,12 +87,19 @@ class InteractionRead(BaseModel):
     company_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
+    #: The **lead** contact — the roster's first chip (#300). Kept because the ``contact`` sort
+    #: column orders by it and the gmail thread-inheritance copies it forward; read ``contacts``
+    #: for who the moment was actually with.
     contact_id: uuid.UUID | None = None
+    #: Everyone the moment was with, in the order they were picked (#300), labelled in one
+    #: batched query over the page. Always contains ``contact_id`` first, when there is one.
+    contacts: list[InteractionContactRef] = Field(default_factory=list)
     #: Labels of the linked records (#147), resolved in one batched query per table — the
     #: web draws link chips from these, never from a raw id or a 200-row lookup.
     company_name: str | None = None
     project_name: str | None = None
     task_title: str | None = None
+    #: The lead contact's label — ``contacts[0].name``, kept for the same reason the id is.
     contact_name: str | None = None
     #: This moment is a task's designated closing contact moment (#157) — resolved in one
     #: batched query over the page, so the web can mark it as the one that closed the task.
@@ -110,6 +130,24 @@ class InteractionLogTime(BaseModel):
     ended_at: datetime
 
 
+#: How every write path reads the two contact fields (#300), stated once because four schemas
+#: carry them and a caller that guessed differently would silently write the wrong roster:
+#:
+#: * ``contact_ids`` sent → **that is the roster**, in that order; ``[]`` empties it.
+#: * ``contact_ids`` absent, ``contact_id`` sent → a one-person roster (``null`` empties it).
+#:   This is what keeps every pre-#300 caller — an older web build, an MCP tool, a script —
+#:   writing exactly what it always wrote.
+#: * both absent → on a create, nobody; on a partial write, the roster is left alone.
+#:
+#: A factory rather than one shared constant: a ``FieldInfo`` belongs to the model that declares
+#: it, and handing the same instance to four of them invites the kind of bug nobody looks for.
+def _contact_ids_field() -> Any:  # noqa: ANN401 — a Pydantic FieldInfo, deliberately untyped
+    return Field(
+        default=None,
+        description="Everyone the moment was with. Wins over contact_id; [] clears the roster.",
+    )
+
+
 class InteractionCreate(BaseModel):
     """A manually logged touchpoint — meetings, calls, notes. Emails only arrive via gmail."""
 
@@ -123,6 +161,7 @@ class InteractionCreate(BaseModel):
     project_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
     contact_id: uuid.UUID | None = None
+    contact_ids: list[uuid.UUID] | None = _contact_ids_field()
     participants: list[Participant] = Field(default_factory=list)
     #: Optional: also log this touchpoint on my timesheet (#175).
     log_time: InteractionLogTime | None = None
@@ -138,6 +177,7 @@ class InteractionUpdate(BaseModel):
     project_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
     contact_id: uuid.UUID | None = None
+    contact_ids: list[uuid.UUID] | None = _contact_ids_field()
     participants: list[Participant] | None = None
 
 
@@ -148,6 +188,7 @@ class InteractionRemap(BaseModel):
     project_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
     contact_id: uuid.UUID | None = None
+    contact_ids: list[uuid.UUID] | None = _contact_ids_field()
 
 
 class InteractionApprove(BaseModel):
@@ -159,11 +200,83 @@ class InteractionApprove(BaseModel):
     project_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
     contact_id: uuid.UUID | None = None
+    contact_ids: list[uuid.UUID] | None = _contact_ids_field()
 
 
 class InteractionReject(BaseModel):
     #: Also suppress the whole Gmail thread, so follow-ups never get logged either.
     suppress_thread: bool = False
+
+
+#: The most rows one bulk call may touch. The list pages at 50 and selection is per page
+#: (the bulk bar says so), so this is already twice what the screen can offer — it exists to
+#: bound the per-row work the batch fans out into, not to ration the feature.
+MAX_BULK_IDS = 100
+
+
+class InteractionBulkIds(BaseModel):
+    """The selection every bulk action carries. Duplicates are collapsed by the service, so a
+    double-checked row is approved once, not twice."""
+
+    ids: list[uuid.UUID] = Field(..., min_length=1, max_length=MAX_BULK_IDS)
+
+
+class InteractionBulkLinks(InteractionBulkIds):
+    """A selection plus optional shared links, with **``InteractionApprove``'s semantics, not
+    the move dialog's**: an absent field leaves every row's own link untouched, a sent value
+    sets it on all of them.
+
+    The difference matters here in a way it does not for one row. A single move dialog is
+    prefilled with the row's current links, so an emptied picker means "clear this". A bulk
+    dialog starts blank over rows that disagree with each other, so the same gesture would
+    wipe the very auto-matched client/project the gmail feed had already worked out on every
+    row the user did not look at. Absent therefore means *leave alone*, and only an explicit
+    ``null`` clears.
+    """
+
+    company_id: uuid.UUID | None = None
+    project_id: uuid.UUID | None = None
+    task_id: uuid.UUID | None = None
+    contact_id: uuid.UUID | None = None
+    contact_ids: list[uuid.UUID] | None = _contact_ids_field()
+
+
+class InteractionBulkApprove(InteractionBulkLinks):
+    """Approve a selection, optionally filing all of it in the same step (the batch form of
+    #183). Sending no link fields at all is the plain "approve as matched": every row keeps
+    whatever the gmail matcher derived for it, and the batch is a pure status change."""
+
+
+class InteractionBulkAssign(InteractionBulkLinks):
+    """File a selection without approving it — triage now, read and approve later. The batch
+    form of ``remap``, so it works on logged rows too (re-filing a mis-matched run of emails)."""
+
+
+class InteractionBulkReject(InteractionBulkIds):
+    #: Also suppress each row's whole Gmail thread, so follow-ups never get logged either.
+    suppress_thread: bool = False
+
+
+class InteractionBulkFailure(BaseModel):
+    """One row the batch could not do, and why — an i18n key from the same vocabulary the
+    single-row endpoints raise."""
+
+    id: uuid.UUID
+    error: str
+
+
+class InteractionBulkResult(BaseModel):
+    """What a bulk call actually did.
+
+    Rows are independent: a stale or ineligible one is **reported, never raised**. Raising
+    mid-batch would roll the whole request back (``require_context`` rolls back on any
+    exception), so one row someone else already reviewed in another tab would silently undo
+    the forty-nine that worked. A payload-level problem — a ``company_id`` that does not
+    exist — is still a 422 for the whole call, because it is the caller's, not a row's.
+    """
+
+    succeeded: int
+    failed: list[InteractionBulkFailure] = Field(default_factory=list)
 
 
 class InteractionAddToConversation(BaseModel):

@@ -81,6 +81,12 @@ async def _advance_org(org: Org, session: AsyncSession) -> None:
                 "subscription_id": sub.id,
                 "company_id": sub.company_id,
                 "name": sub.name,
+                # This agreement's override of how far the consumer takes the invoice, or
+                # None to inherit the org's default. Carried rather than resolved here: the
+                # vocabulary and the org setting both belong to `invoicing` (§6). Note the
+                # cycle advances either way — a period nobody drafted stays outstanding and
+                # is offered in the editor's picker, which is exactly the manual path.
+                "auto_invoice_mode": sub.auto_invoice_mode,
                 "amount": str(amount) if amount is not None else None,
                 "currency": sub.currency,
                 "period_start": add_months(invoice_date, -months).isoformat(),

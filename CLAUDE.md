@@ -42,12 +42,13 @@ other identifiers; the dot appears solely when the official product name is disp
 | Web app       | SvelteKit (SSR) + `@vite-pwa/sveltekit` · TailwindCSS · Bits UI / shadcn-svelte |
 | i18n (web)    | Paraglide JS (inlang) — flat JSON message catalogs, type-safe, tree-shaken |
 | API           | FastAPI · Pydantic v2 · SQLAlchemy 2.0 · Alembic → auto OpenAPI |
+| Documents     | Jinja → HTML → **WeasyPrint** (`invoicing/render/`): the page the browser previews *is* the page the PDF prints, and a tenant may bring their own design (sandboxed Jinja, no network) — `docs/INVOICING.md` |
 | Typed client  | `openapi-typescript` client generated from the API's OpenAPI spec |
 | Database      | PostgreSQL (with Row-Level Security) |
 | Jobs & cache  | Redis + ARQ |
 | Auth          | App-native at the API: FastAPI Users (local username/password, verification, reset) + 2FA on local login (TOTP + backup codes, optional SMS via instance gateway; org-admin reset — docs/TWOFACTOR.md) + Authlib (OIDC relying-party, configured **per org in the DB** — Instellingen → SSO, #76; encrypted secret, runtime toggles, `SCHAKL_FORCE_LOCAL_LOGIN` break-glass) · Google OAuth for Workspace scopes |
 | Infra         | Docker Compose · Traefik · deployed on Hetzner · Cloudflare Zero Trust |
-| MCP / AI       | MCP server over Streamable HTTP (OAuth 2.1 resource server) via the official Python MCP SDK / FastMCP; mounted on the API app; tools contributed per module, read-first |
+| MCP / AI       | MCP server over Streamable HTTP (OAuth 2.1 resource server) via the official Python MCP SDK / FastMCP; mounted on the API app; tools contributed per module, read-first · every AI feature goes through one core (`app/core/ai/`, `docs/AI.md`): per-tenant provider + encrypted key, and **every in-request model call wrapped in `ctx.release_db()`** — §11's pool-drain is worst here, because a tool loop holds the connection for tens of seconds. Speech-to-text is its own credential (`docs/VOICE.md`): Anthropic has no transcription endpoint and is the default provider, so "reuse the chat provider" configures nothing |
 
 Ship these as separate containers in one Compose file: `web`, `api`, `worker`, `db`, `redis`, `traefik`.
 
@@ -107,6 +108,22 @@ stay bring-your-own per org.
 
 - **Hostname resolution is strict**: a verified custom domain (`orgs.custom_domain`) or
   `<slug>.<base_domain>` — an unknown host is an explicit error, never "the only org".
+- **A session belongs to one org, and the token says which** (`app/core/auth/backend.py`).
+  `users` is instance-level and the password check is tenant-blind, so "the credentials are
+  right" and "the credentials are right *here*" were the same sentence only because a
+  self-hosted box has one org. On any multi-org instance the login route on org A's hostname
+  minted a real session for a member of org B. Both ends now agree: the **account lookup** is
+  narrowed to the request's org (`UserManager.get_by_email`, so login, password-reset and
+  request-verify all answer as if the address did not exist — no cross-tenant enumeration),
+  every **mint site** stamps the resolved org into the JWT (`/auth/login`, the 2FA challenge
+  *and* its redemption, the OIDC callback, the impersonation handoff), and `require_context`
+  refuses anything whose claim is not this org — **401, not 403**: it is an authentication
+  answer, and the membership check is a different question that passing would not fix. A host
+  that resolves to no org (the cloud console's apex) mints an org-less session on purpose: it
+  reaches the instance surface and no tenant data at all, which is the same rule, not an
+  exception to it. A missing claim therefore always fails closed, which includes tokens
+  predating the claim — a session-format change costs one re-login and is worth stating in the
+  release notes.
 - **Org lifecycle & instance administration** (issue #26) live in `app/core/instance/`:
   the one sanctioned unscoped crossing (`repo.py`, for global slug/domain uniqueness), the
   audit trail, org lifecycle, export/import, and time-boxed impersonation. Disabled by default
@@ -208,6 +225,18 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   `app.core.timezone.org_zoneinfo`. Stored instants stay `TIMESTAMPTZ`/UTC; date-only values stay
   wall-clock UTC; leave `TIME` stays naive (§14). No per-user override yet — the resolution seam
   is in place for one.
+- **No module keeps its own clock.** `ZoneInfo("Europe/Amsterdam")` anywhere but
+  `config.default_timezone` is a build break in spirit: three modules each grew a private `_TZ`
+  and quietly handed every tenant Amsterdam's midnight — project budget periods rolled over on
+  the wrong day, task recurrence and reminders called the wrong day "today", and digests fired an
+  hour early in Lisbon and an hour late in Warsaw. A function that reasons about a wall clock
+  **takes the zone (or the local day) as an argument**; whoever has the org resolves it once via
+  `org_zoneinfo` / `org_today`. The instance default is read through `resolve_zoneinfo(None)`, per
+  call rather than at import, so configuration is never frozen into a module constant. The same
+  rule binds the tests: `tests/conftest.org_today()` is the one "today" an expectation may use —
+  a test computing it from `date.today()` or UTC agrees with the app only on a developer's
+  machine and fails on CI, which runs in UTC. A test may still *name* a zone when the zone is its
+  subject (a DST boundary); that is an input, not an assumption.
 
 ## 9. Conventions
 
@@ -245,6 +274,61 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   reports, and the **MCP server** (read-first tools per module, starting with `companies`).
 - **Attachable assets** (`websites`, `hosting`) slot in as modules — target P2, but the
   module + company-panel pattern must be proven in P0.
+- **`cloudflare`** (epic #278, `docs/CLOUDFLARE.md`) is what finally puts a mechanism behind
+  `Domain.status = redirect`: a Redirect Rule schakl owns on the client's own Cloudflare zone,
+  plus DNS view/export and Pages linking. Two rules generalise beyond it. The credential is a
+  **row, not a per-org setting** — an agency holds its own account and its clients bring theirs,
+  and the same apex can legally exist in two of them, so nothing ever picks an account for you.
+  And an integration that mirrors outside state stores **what it decided** and **what it last
+  observed** in separate columns, so "somebody changed this in the provider's dashboard" is
+  expressible at all: a reconcile reports drift instead of silently overwriting it. The
+  registrar half is now **`oxxa`** (#296, `docs/OXXA.md`): the register sync, the nameserver
+  write-back that finishes "Connect to Cloudflare", and the `app/core/registrar/` seam a second
+  registrar plugs into. Written from OXXA's official API documentation — §11 bans writing an
+  integration *from memory*, not from a document — but **never exercised against a live
+  credential**, so `docs/OXXA.md` §1 carries the checklist to run the day one arrives, and every
+  parse there is defensive until it has.
+- **What the registers are actually *for* is deciding who pays** (#298, `docs/INVOICING.md`). An
+  agency's domain list mixes names it renews for the client with names the client registered
+  themselves and merely asked us to point somewhere, and only a register can tell them apart —
+  a zone cannot: Cloudflare answers DNS for plenty of domains it does not hold. So
+  `Domain.invoiceable` is three-state and never read alone: `TRUE`/`FALSE` are somebody's
+  decision, `NULL` is *follow the register*. Three rules hold it up. **A credential is not an
+  authority** — only a register that has actually *answered* (`registrar_synced_at`, not a stored
+  token, and not the zone sync) may narrow what gets invoiced, which is also what makes this safe
+  to ship into an instance already invoicing domains: with nothing read, every undecided domain
+  bills exactly as it did. **`domains` may not name the registers** (§6), so each contributes its
+  own two SQL clauses through `app/core/registrar/presence.py` and core only composes them — the
+  `app/core/directory.py` seam pattern, applied to a predicate instead of a row. And **the
+  resolution is one clause**, taken by the renewal cron, the list filter, the outstanding picker
+  and the per-row read alike, so a screen and the cron can never disagree about which domains
+  bill. Reported wherever it changes an answer, never silently applied.
+- **The client portal is a module, and what it sells is not what it enforces** (#193/#296,
+  `docs/PORTAL.md`). Everything the portal does happens on a *contact's* page, which is why it
+  started life inside `contacts` and why that was wrong: it is a product the agency buys
+  (`sku="portal"`), it has its own lifecycle, and its subject need not be a contact at all. So
+  `app/modules/portal/` owns the invite, the disable, the impersonation and the screen, and
+  reaches the person through a third seam on `app/core/portal.py` — a `PortalSubjectProvider`
+  registered by whoever owns that row, carrying only `(entity_type, id, email, name, user_id)`.
+  Two consequences are load-bearing. **The horizon and the "is this a client login?" resolver
+  stayed in `contacts` on purpose**: they must answer whether or not this module is enabled or
+  licensed, because an entitlement decides whether you may invite someone *new* and may never
+  decide whether an existing client session stays contained — a lapsed licence that un-scoped
+  live logins would be a security incident wearing a billing event's clothes. And **a whole-router
+  write gate needs exactly one exemption** (`license_exempt`): ending your own impersonation. It
+  mutates no licensed data, and gating the way out would strand whoever was inside a client's
+  session the moment a key expired.
+- **A missing permission hides a control; a missing entitlement locks it** (#137, `docs/UX.md`).
+  Both refuse, so it is tempting to render them the same way — but only one of them is something
+  the org can *change*. A padlock a colleague can never open is a worse screen than no control at
+  all, while a paid module the agency has simply not bought is how anyone learns it exists. Hence
+  `LockedButton` → `UpgradeModal`, generic and stated once: `deployment` decides what an upgrade
+  *means* (a licence key on self-host, where Instellingen → Licentie is a real destination for the
+  instance owner and nobody else; a plan change on cloud, where in-app billing does not exist yet
+  and so the dialog explains rather than offering a button that goes nowhere — #253's "a link that
+  always refuses is a broken control"). The lists it reads (`licensed_modules`, `entitled_modules`,
+  `deployment`) ride `/meta/tenant`, which the app layout already loads, and come from the same
+  helper `/meta/modules` uses so a locked control and Instellingen → Modules can never disagree.
 
 ## 11. Working agreement (for Claude Code)
 
@@ -547,6 +631,26 @@ It is a **core, cross-cutting capability**, like custom fields (§13) — not pe
   own admin-only manage permission, which is what keeps a member from editing it.
   `tests/test_company_groups.py` closes with a sweep over every parameterless `GET /api/v1`
   plus a control run as the owner, so "nothing leaked" cannot quietly mean "nothing matched".
+- **A reference into another module's rows crosses at a seam, never at a bare table read**
+  (`app/core/directory.py`). §6 forbids importing another module's internals, so every borrower
+  grew its own `SELECT … WHERE org_id = :oid` — which is failure mode **(1)** one layer out: an
+  interaction's participant chips and a note's @mentions resolve *contacts*, whose client lives
+  in `company_contacts` and in no column the borrower is allowed to know about, so the read was
+  tenant-correct and horizon-blind. `visible_ids` / `ids_by_email` answer through the target
+  model's own repository (`horizon_condition()`), keyed by the `__entity_type__` registry core
+  already holds, so the rule stays where it was declared and there is exactly one copy of it —
+  including the **stricter client rule**, which a model states as `__portal_horizon_clause__`
+  and the seam prefers for an `is_portal` caller (restricted staff still see an unattached
+  contact; a client never does). Reach for the seam whenever a module must *name* rows it does
+  not own; teaching the borrower the join is the mistake this exists to prevent.
+  **`entity_visible` prefers the same clause** (#266). It is the *other* seam onto the same
+  question, and it was answering with the staff rule — so `GET /files`, which takes
+  `(entity_type, entity_id)` from the caller and declares `no_permission_required` ("any
+  signed-in member", a portal login included), let a client enumerate the documents attached
+  to a **draft invoice** the service otherwise 404s them off. The activity trail never was
+  exposed the same way — its router returns `[]` for any portal caller first — and that is the
+  point: one of the two callers remembered and one did not, which is what a shared predicate is
+  for. `PORTAL_CLAUSE_ATTR` lives in `core/scope.py` because `directory.py` imports it.
 - **Deny-by-default.** An `/api/v1` route with neither `require_permission(...)` nor an explicit
   `no_permission_required("reason")` is a build break. Two tests enforce it: an introspection
   lint and a behavioural sweep that calls every operation as a member holding nothing.
@@ -584,9 +688,56 @@ It is a **core, cross-cutting capability**, like custom fields (§13) — not pe
   account, not our rows, and leaks nothing), and Instellingen → Gebruikers badges the account
   (`MemberRead.company_scope_empty`). Writes that would land outside a client's horizon are refused
   *before* the row is written, never after.
+- **Signing in as someone else is one mechanism with two kinds** (`docs/IMPERSONATION.md`). The
+  instance owner's cross-tenant impersonation (#26) and an agency staff member signing in as a
+  client's contact person (#296) share the grant: a short-lived JWT in its own cookie *beside* the
+  real session, with permissions resolving for the **target**, so an impersonated session is never
+  more powerful than the account it entered. The tenant-level kind carries what an untrusted-by-
+  default caller needs: its own permission (`portal.login.impersonate`, never implied by
+  managing the login), a target that can only be a subject-linked portal login, and — since #266
+  — a session **capped to the intersection** of target and impersonator: permissions
+  (`PermissionSet.narrowed_to`) *and* company horizon alike. A subset cannot escalate, so the
+  invariant holds by construction rather than by a gate, and a scope degrades (`:any` against a
+  caller's `:own` keeps `:own`) rather than dropping a screen they can open anyway. Only
+  `is_superuser` still refuses outright (`errors.impersonation_escalation`): a different axis
+  (§5), not a permission, so no intersection bounds it. The cap is `portal`-only — an instance
+  owner holds no membership in the tenant, so capping would leave them nothing.
+  It replaced a `covers` **refusal**, and the reason generalises: the refusal stated the
+  invariant indirectly and **coupled two things that should not be coupled** — every grant to the
+  tenant-editable `client` role shrank the set of staff who could impersonate at all, and #266's
+  invoice read locked out every `member` overnight with *"impersonation stopped working and we
+  changed nothing"*. Prefer narrowing a session to refusing one wherever the security property
+  survives it. The horizon half was never guarded at all: `covers` compared permissions, so a
+  member scoped to one company group could read a second client through a client's session.
+  **A capped session must say so** (`/meta/me`'s `impersonation_narrowed`, on the banner): the
+  point of the feature is seeing what the client sees, and an unlabelled partial view is a
+  screen that lies about someone else's account.
+  **Stopping declares no permission on purpose**: it runs as the impersonated account, and gating
+  the way out behind a permission that account cannot hold would trap someone inside the session.
+- **Scope is what lets one key serve a client and the agency at once** (#266, `docs/INVOICING.md`).
+  Before you grant an existing permission to `client`, list every route that declares it: reads
+  cluster, and `invoicing.invoice.read` gated seven endpoints of which only three were documents —
+  the rest were the seller's bank details, the price list, the template library and the org-wide
+  unbilled backlog with every employee's hourly rate on it. None of those is a row a company
+  horizon could narrow (there is no client whose price list this is), so the **scope** is the only
+  thing that can fence them: `:any` on the module's own surfaces, `:own` for the documents, and the
+  horizon still decides *whose*. **Externality is a separate axis from breadth** — "a client never
+  sees a draft" follows `ctx.is_portal` (#274), not the scope, because restricted staff must keep
+  seeing the drafts they write; it belongs on the model as `__portal_horizon_clause__` and reaches
+  every path through the service's portal repository, never per read method (#285). And the web
+  mirrors the **key and the scope**, never `!isPortal`, on every control *and* on the nav item
+  (`NavItem.requiresScope`).
 - **A module that ships later** brings its own permissions; a startup reconciler grants them to
   each org's system roles exactly once, tracked in `org_settings.applied_permission_defaults`.
-  A migration must never import the catalog (`docs/WORKFLOW.md`).
+  A migration must never import the catalog (`docs/WORKFLOW.md`). **Widening an existing key's
+  defaults is invisible to that diff** — it is keyed on `spec.key`, which is already applied, and
+  no per-role diff can tell *never offered* from *offered and unticked*. So a widening is a
+  `DefaultsRevision` in `reconcile.py`: an append-only entry with its own `@rev:` marker in the
+  same array, granting the new default and — where a key became scoped — rewriting the bare stored
+  string to `:any` everywhere it lives, roles and API-key scopes alike. That rewrite grants nothing
+  (`PermissionSet.has` already read a bare key as the broadest); it is what stops
+  `validate_permissions`, which refuses to *store* a scoped permission bare, from 422-ing the
+  tenant's next save of a role that was working fine.
 
 ## 16. Activity trail / audit log (core capability)
 
@@ -603,6 +754,12 @@ This is a **core, cross-cutting capability** (issue #67), like custom fields (§
   attribute `CustomizableMixin` reads); that registers it as auditable. A core-contributed panel then
   renders the trail on its detail page — the company hub via an API `PanelSpec`, a project/contact via
   a typed `EntityPanelSpec`, both reading `GET /api/v1/activity`.
+- **A write made while impersonating names the impersonator** (#296). An impersonated request runs
+  as the target — its permissions, its horizon, its writes — so a trail carrying only the actor
+  would say the *client* did it, and the single fact worth auditing (someone acted through that
+  account) is the one missing. `activity_log` and the tasks module's own `task_activities` both
+  carry `impersonator_user_id` + `impersonator_name`, written by whichever service records the
+  change and snapshotted for the same reason the actor is.
 - **The actor is snapshotted, never joined live** (§14's #64 rule, generalised). `actor_name` is
   written at record time; the live account wins while it exists, a departed one reads
   "Naam (verwijderd)", and a genuinely absent actor is the system. An audit trail whose actor
@@ -661,8 +818,41 @@ its shape**, exactly as it does for custom fields (§13) and panels (§6).
   byte cap before decoding, the zip's declared sizes before decompressing, the column cap while
   reading); and over any limit is an error, never a truncation — silently importing the first
   2000 rows of a 2500-row list is the worst outcome available, because it looks like it worked.
-- **Bulk is its own capability.** `impex.export` / `impex.import` are staff-only and sit *on top
-  of* each entity's own read/write permission: a client-portal login holds `companies.company.read`
-  for its own company and must never be able to download the client list.
+- **A reference is whatever the resolver says it is.** `fk_resolvers` batch-resolve a column's
+  raw cells once per file, and the contract is one line: **a `str` return is an error key, and
+  anything else is the resolved value.** That is what lets `party` exist without core learning
+  its shape — the cell is a token (`agency`, `company`, `company:Acme`, `employee:jan@bureau.nl`,
+  `contact:info@klant.nl`, `app/core/impex/party.py`) and what lands in the values dict is a
+  `PartyRef` the owning service validates exactly as it would one from the form. An unprefixed
+  cell is *refused*, never guessed: one e-mail address is an equally plausible colleague and
+  client contact, and picking one writes the wrong kind of party with every row valid.
+  `provider_resolver(kind)` exists for the same reason in miniature — a tenant with a
+  "Cloudflare" registrar *and* a "Cloudflare" DNS row makes the generic name resolver useless.
+- **`clearable` governs references too, and a reference may be the upsert key.** Whether an
+  emptied cell detaches is a property of the link, not of it being a link: hosting with no
+  client is shared infrastructure (a real state the file must express), a domain with no client
+  is nonsense. And a website has no name of its own, so `natural_keys=("domain",)` matches on
+  the raw cells `find_existing` is handed — matching and resolution are independent lookups and
+  neither waits on the other. Without it, re-importing an export hits the unique index on every
+  row: the worst answer available to "I edited two cells and imported it again".
+- **A pre-check must normalise the way the write does.** `find_existing` matches domains on the
+  *normalised* name because `DomainCreate` normalises too — matching the raw text finds nothing,
+  decides the row is a create, and then 409s on a name that was already there. Same failure
+  shape as #289's, one layer up: the check the report can name has to model the write.
+- **Bulk is its own capability, and it is not an employee's by default.** `impex.export` /
+  `impex.import` are staff-only and sit *on top of* each entity's own read/write permission: a
+  client-portal login holds `companies.company.read` for its own company and must never be able
+  to download the client list. They default to **admin only** (owner call): taking the client
+  list or the domain register out of the building in one file is a different act from opening a
+  record, and one an agency decides per person. The pair is one capability across every entity,
+  so that decision is made once rather than per screen — granting `impex.export` opens exactly
+  the entities the role can already read.
+- **One entry point, everywhere.** Every list that can travel by spreadsheet renders the same
+  `ImpexBar` (`$lib/core/impex/ImpexBar.svelte`) beside its column picker — Export carrying the
+  list's current filters, Import opening the shared wizard — and every download goes through the
+  one proxy at `/impex/[entity]/export`. Both gates are mirrored client-side (bulk *and* the
+  entity's own), so a control that would 403 is never drawn. Instellingen → Import & export is
+  the overview of what can travel at all and exports the whole unfiltered set; it is not where a
+  user with a spreadsheet of domains should have to look.
 - Large imports as a background job are still deferred (issue #77); `MAX_IMPORT_ROWS` is what
   keeps the synchronous path honest until that lands.

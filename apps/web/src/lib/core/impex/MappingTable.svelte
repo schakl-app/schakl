@@ -16,6 +16,8 @@
   import { t } from "$lib/core/i18n";
   import Combobox from "$lib/core/ui/Combobox.svelte";
 
+  import { columnLabel } from "./labels";
+
   import type { ImpexColumn, InspectReport } from "./actions.server";
 
   let {
@@ -34,16 +36,7 @@
     matchKey?: string;
   } = $props();
 
-  function label(column: ImpexColumn): string {
-    // A tenant's own custom field carries tenant labels (§13 data, resolved here — the API
-    // never picks a locale for tenant content); everything else has an i18n key. `t` returns
-    // the key itself when a message is missing, so an unlabelled column is still mappable.
-    const labels = (column.label_i18n ?? {}) as Record<string, string>;
-    if (column.label_i18n) {
-      return labels[locale] || labels.nl || labels.en || column.key;
-    }
-    return column.label_key ? t(column.label_key) : column.key;
-  }
+  const label = (column: ImpexColumn) => columnLabel(column, locale);
 
   const groups = $derived.by(() => {
     const byId = new Map<string, { title: string; items: ImpexColumn[] }>();

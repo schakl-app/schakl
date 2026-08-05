@@ -8,8 +8,8 @@ from sqlalchemy import select
 
 from app.db import async_session_maker, set_current_org
 from app.modules.tasks.models import Task
-from app.modules.tasks.recurrence import advance, spawn_scheduled_recurrences, today_local
-from tests.conftest import auth_cookie, make_tenant
+from app.modules.tasks.recurrence import advance, spawn_scheduled_recurrences
+from tests.conftest import auth_cookie, make_tenant, org_today
 
 
 def test_advance_month_end_clamps() -> None:
@@ -24,7 +24,7 @@ def test_advance_month_end_clamps() -> None:
 async def test_after_completion_spawns_next_occurrence(client_for) -> None:
     t = await make_tenant("rec-done")
     headers = await auth_cookie(t.user)
-    yesterday = (today_local() - timedelta(days=1)).isoformat()
+    yesterday = (org_today() - timedelta(days=1)).isoformat()
 
     async with client_for(t.host) as c:
         task = (
@@ -74,7 +74,7 @@ async def test_after_completion_spawns_next_occurrence(client_for) -> None:
         clone = next(row for row in listed if row["id"] != task["id"])
         assert clone["status"] == "open"
         assert clone["recurrence"]["mode"] == "after_completion"
-        assert date.fromisoformat(clone["due_date"]) > today_local()
+        assert date.fromisoformat(clone["due_date"]) > org_today()
         # Checklist copied with items reset to not-done.
         assert (clone["checklist_done"], clone["checklist_total"]) == (0, 1)
 
@@ -108,7 +108,7 @@ async def test_scheduled_cron_spawns_per_org_isolated(client_for) -> None:
     async with async_session_maker() as session:
         await set_current_org(session, a.org.id)
         carrier = await session.scalar(select(Task).where(Task.org_id == a.org.id))
-        carrier.recurrence_next_run = today_local() - timedelta(days=1)
+        carrier.recurrence_next_run = org_today() - timedelta(days=1)
         await session.commit()
 
     spawned = await spawn_scheduled_recurrences({})

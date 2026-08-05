@@ -54,13 +54,20 @@
                 <a
                   href={event.href ?? "#"}
                   {...eventLinkAttrs(event.href)}
-                  class="flex items-center gap-2 text-sm text-text {event.tentative
-                    ? 'opacity-60'
-                    : ''}"
+                  class="flex items-center gap-2 text-sm text-text {event.cancelled
+                    ? 'opacity-50'
+                    : event.tentative
+                      ? 'opacity-60'
+                      : ''}"
                 >
                   <span class="h-2 w-2 shrink-0 rounded-full {dot.class}" style={dot.style}></span>
-                  <span class="truncate">{event.title}</span>
-                  {#if event.tentative}
+                  <span class="truncate {event.cancelled ? 'line-through' : ''}">{event.title}</span
+                  >
+                  {#if event.cancelled}
+                    <!-- The list has room for the word, so it says it rather than leaning on a
+                         strikethrough nobody hears read aloud. -->
+                    <span class="shrink-0 text-xs text-text-muted">{t("calendar.cancelled")}</span>
+                  {:else if event.tentative}
                     <span class="text-xs text-text-muted">{t("calendar.tentative")}</span>
                   {/if}
                 </a>

@@ -7,19 +7,27 @@ seam every feature goes through — so these tests exercise the platform's own b
 
 from __future__ import annotations
 
+import base64
+import uuid
 from collections.abc import AsyncIterator
 
 import pytest
+from pwdlib import PasswordHash
+from sqlalchemy import select, text
 
+from app.core.ai.audio import MAX_ENCODED_CHARS
 from app.core.ai.models import AIUsage
 from app.core.ai.providers import AIEvent, ToolCall
 from app.core.ai.service import invalidate_features_cache
 from app.core.ai.tools import available_tools, get_tool, run_tool
+from app.core.auth.models import User
 from app.core.permissions.permset import PermissionSet
 from app.core.tenancy import RequestContext
 from app.db import async_session_maker, set_current_org
 from app.modules.companies.models import Company
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import add_membership, auth_cookie, make_tenant
+
+_password_hash = PasswordHash.recommended()
 
 SETTINGS_BODY = {
     "provider": "anthropic",
@@ -254,6 +262,403 @@ async def test_time_parse_drops_ungrounded_ids(client_for, monkeypatch) -> None:
         assert body["start"] == "14:00" and body["end"] == "16:30"
         assert body["company_id"] is None
         assert body["description"] == "homepage overleg"
+
+
+def _submit(**fields) -> list[AIEvent]:
+    """One forced `submit_time_entry` call — the shape the parse loop now expects in a single
+    round (#246)."""
+    return [
+        AIEvent(
+            kind="tool_call",
+            tool_call=ToolCall(id="c1", name="submit_time_entry", input=dict(fields)),
+        ),
+        AIEvent(kind="done", stop_reason="tool_use", tokens_in=3, tokens_out=3),
+    ]
+
+
+async def test_time_parse_grounds_on_the_prefetched_shortlist(client_for, monkeypatch) -> None:
+    """#246: a client resolved from the candidate shortlist survives, because the shortlist is
+    evidence exactly as a tool result is.
+
+    This is the counterpart of ``test_time_parse_drops_ungrounded_ids`` above and the reason it
+    still passes: grounding was *widened*, never relaxed. Miss this union and every correctly
+    chosen id comes back null — a 200 that looks like the model has no tools at all.
+    """
+    t = await make_tenant("ai-parse-shortlist")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        created = await c.post("/api/v1/companies", json={"name": "Jansen"}, headers=headers)
+        assert created.status_code == 201, created.text
+        company_id = created.json()["id"]
+
+        # The model is never given a tool result — only the shortlist the server prefetched.
+        monkeypatch.setattr(
+            "app.core.ai.providers.stream_chat",
+            _fake_stream(_submit(company_id=company_id, description="homepage review")),
+        )
+        parsed = await c.post(
+            "/api/v1/ai/time/parse",
+            json={"text": "2 uur Jansen, homepage review"},
+            headers=headers,
+        )
+        assert parsed.status_code == 200, parsed.text
+        assert parsed.json()["company_id"] == company_id
+
+
+async def test_time_parse_fills_type_billable_and_break(client_for, monkeypatch) -> None:
+    """#246: the three fields the output tool could not express before."""
+    t = await make_tenant("ai-parse-fields")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        # Seeds the org's default entry types (`work`, `email`) — the vocabulary the parse
+        # validates against.
+        types = await c.get("/api/v1/time/entry-types", headers=headers)
+        assert types.status_code == 200, types.text
+        assert "work" in {row["key"] for row in types.json()}
+
+        monkeypatch.setattr(
+            "app.core.ai.providers.stream_chat",
+            _fake_stream(
+                _submit(
+                    start="09:00",
+                    end="17:00",
+                    entry_type_key="work",
+                    billable=False,
+                    break_minutes=30,
+                )
+            ),
+        )
+        parsed = await c.post(
+            "/api/v1/ai/time/parse",
+            json={"text": "9-17 niet declarabel, half uur pauze"},
+            headers=headers,
+        )
+        assert parsed.status_code == 200, parsed.text
+        body = parsed.json()
+        assert body["entry_type_key"] == "work"
+        assert body["billable"] is False
+        assert body["break_minutes"] == 30
+
+
+async def test_time_parse_leaves_unstated_fields_null(client_for, monkeypatch) -> None:
+    """#246 + #284: silence is not `false`.
+
+    ``billable`` is tri-state on purpose — the form reads a non-null value as "the user decided"
+    and stops applying the project's own default. A parse that always answered would quietly
+    make every AI-drafted entry billable.
+    """
+    t = await make_tenant("ai-parse-tristate")
+    headers = await auth_cookie(t.user)
+    monkeypatch.setattr(
+        "app.core.ai.providers.stream_chat",
+        _fake_stream(_submit(start="09:00", end="10:00", description="werk")),
+    )
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        parsed = await c.post(
+            "/api/v1/ai/time/parse", json={"text": "9-10 werk"}, headers=headers
+        )
+        assert parsed.status_code == 200, parsed.text
+        body = parsed.json()
+        assert body["billable"] is None
+        assert body["break_minutes"] is None
+        assert body["entry_type_key"] is None
+
+
+async def test_time_parse_drops_unknown_entry_type(client_for, monkeypatch) -> None:
+    """An entry type is a tenant-defined slug, so membership in the org's own keys is its
+    grounding. An invented key is dropped here rather than 422'd at the write."""
+    t = await make_tenant("ai-parse-type")
+    headers = await auth_cookie(t.user)
+    monkeypatch.setattr(
+        "app.core.ai.providers.stream_chat",
+        _fake_stream(_submit(start="09:00", end="10:00", entry_type_key="niet_bestaand")),
+    )
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        parsed = await c.post(
+            "/api/v1/ai/time/parse", json={"text": "9-10 iets"}, headers=headers
+        )
+        assert parsed.status_code == 200, parsed.text
+        assert parsed.json()["entry_type_key"] is None
+
+
+async def test_time_parse_honours_the_caller_s_today(client_for, monkeypatch) -> None:
+    """The day the user is looking at is the day relative dates resolve against (#246).
+
+    Without it the server answers with its own today, and the client then navigates the user
+    off the day they were working on.
+    """
+    t = await make_tenant("ai-parse-today")
+    headers = await auth_cookie(t.user)
+    seen: dict[str, str] = {}
+
+    async def capture(config, **kwargs):  # noqa: ANN001, ANN003
+        seen["system"] = kwargs["system"]
+        for event in _submit(start="14:00", end="16:00"):
+            yield event
+
+    monkeypatch.setattr("app.core.ai.providers.stream_chat", capture)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        parsed = await c.post(
+            "/api/v1/ai/time/parse",
+            json={"text": "vanmiddag 14:00-16:00", "today": "2026-03-17"},
+            headers=headers,
+        )
+        assert parsed.status_code == 200, parsed.text
+    assert "2026-03-17" in seen["system"]
+
+
+async def test_time_parse_query_budget(client_for, monkeypatch, count_queries) -> None:
+    """The parse is a fixed number of statements, and adding clients does not move it (#246).
+
+    The shape this pins is invisible in the JSON: the old loop re-read the settings row and
+    re-summed the month's usage on *every* model round, so the cost scaled with how many tool
+    round trips the model happened to take. Both versions return the same body.
+    """
+    t = await make_tenant("ai-parse-budget")
+    headers = await auth_cookie(t.user)
+    monkeypatch.setattr(
+        "app.core.ai.providers.stream_chat",
+        _fake_stream(_submit(start="09:00", end="10:00")),
+    )
+    async with client_for(t.host) as c:
+        # A budget is set on purpose: without one `ensure_budget` short-circuits before its
+        # month-wide SUM, and the per-round re-gating this pins would cost nothing to measure.
+        await c.put(
+            "/api/v1/ai/settings",
+            json={**SETTINGS_BODY, "monthly_token_budget": 1_000_000},
+            headers=headers,
+        )
+        for name in ("Alpha", "Beta", "Gamma"):
+            await c.post("/api/v1/companies", json={"name": name}, headers=headers)
+
+        # One warm-up: the first typed read of the org seeds its default entry types (#176),
+        # a one-time write that is not part of the steady-state shape being pinned here.
+        warm = await c.post(
+            "/api/v1/ai/time/parse", json={"text": "9-10 Alpha"}, headers=headers
+        )
+        assert warm.status_code == 200, warm.text
+
+        with count_queries() as first:
+            res = await c.post(
+                "/api/v1/ai/time/parse", json={"text": "9-10 Alpha"}, headers=headers
+            )
+            assert res.status_code == 200, res.text
+
+        for name in ("Delta", "Epsilon", "Zeta", "Eta"):
+            await c.post("/api/v1/companies", json={"name": name}, headers=headers)
+
+        with count_queries() as second:
+            res = await c.post(
+                "/api/v1/ai/time/parse", json={"text": "9-10 Alpha"}, headers=headers
+            )
+            assert res.status_code == 200, res.text
+
+    # Flat in the number of clients — the shortlist is one capped query, not one per row.
+    assert len(second.statements) == len(first.statements), (
+        f"parse scales with row count: {len(first.statements)} → {len(second.statements)}"
+    )
+    # And bounded in absolute terms (15 today), so re-introducing the per-round settings read
+    # and month-sum — three statements per extra round — trips this rather than going unnoticed.
+    assert len(first.statements) <= 16, (
+        f"parse issues {len(first.statements)} statements:\n"
+        + "\n".join(first.statements)
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Speech to text (#246)
+# --------------------------------------------------------------------------- #
+#: A minimal clip whose first bytes are a real WebM/EBML header — the format is sniffed from
+#: content, so a plausible header is all the validator needs.
+WEBM = base64.b64encode(b"\x1a\x45\xdf\xa3" + b"\x00" * 64).decode()
+
+SPEECH_BODY = {
+    **SETTINGS_BODY,
+    "speech_provider": "openai",
+    "speech_api_key": "sk-speech-secret-456",
+    "speech_model": "whisper-1",
+}
+
+
+def _fake_transcript(text: str, seconds: int = 12):
+    async def fake(config, clip, *, language):  # noqa: ANN001, ANN003
+        from app.core.ai.transcribe import Transcript
+
+        return Transcript(text=text, seconds=seconds)
+
+    return fake
+
+
+async def test_transcribe_needs_its_own_speech_provider(client_for) -> None:
+    """Anthropic has no speech endpoint and is the default provider, so "reuse the chat
+    credential" resolves to nothing for the typical tenant (#246).
+
+    The answer is the ordinary 409, not a 500 — and `speech_available` is false, which is what
+    keeps the web app from drawing a microphone it would then have to apologise for.
+    """
+    t = await make_tenant("ai-speech-off")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        saved = await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["speech_available"] is False
+
+        refused = await c.post(
+            "/api/v1/ai/time/transcribe", json={"audio": WEBM}, headers=headers
+        )
+        assert refused.status_code == 409
+        assert refused.json()["error"]["code"] == "ai_speech_not_configured"
+
+
+async def test_speech_capability_is_reported_only_when_it_can_work(client_for) -> None:
+    """"Off means invisible" (#126) applied to dictation.
+
+    `/meta/me` carries the AI capability list the web app gates on. Without `speech` in it, an
+    Anthropic-configured org — the default — would be drawn a microphone that 409s on the first
+    click, which is exactly the shape this rule exists to prevent.
+    """
+    t = await make_tenant("ai-speech-flag")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        invalidate_features_cache(t.org.id)
+        me = await c.get("/api/v1/meta/me", headers=headers)
+        assert me.status_code == 200, me.text
+        assert "time_assist" in me.json()["ai_features"]
+        assert "speech" not in me.json()["ai_features"]
+
+        await c.put("/api/v1/ai/settings", json=SPEECH_BODY, headers=headers)
+        invalidate_features_cache(t.org.id)
+        me = await c.get("/api/v1/meta/me", headers=headers)
+        assert "speech" in me.json()["ai_features"]
+
+        # Turning time assist off takes dictation with it — it has no separate toggle.
+        await c.put(
+            "/api/v1/ai/settings",
+            json={**SPEECH_BODY, "features": {"time_assist": {"enabled": False}}},
+            headers=headers,
+        )
+        invalidate_features_cache(t.org.id)
+        assert "speech" not in (await c.get("/api/v1/meta/me", headers=headers)).json()[
+            "ai_features"
+        ]
+
+
+async def test_transcribe_roundtrip_and_meters_seconds(client_for, monkeypatch) -> None:
+    """The transcript comes back as text and the cost is metered in seconds (#246).
+
+    Seconds are their own column: folding them into `tokens_out` would inflate the number the
+    monthly *token* budget is enforced against.
+    """
+    t = await make_tenant("ai-speech-on")
+    headers = await auth_cookie(t.user)
+    monkeypatch.setattr(
+        "app.core.ai.features.provider_transcribe", _fake_transcript("twee uur Jansen", 14)
+    )
+    async with client_for(t.host) as c:
+        saved = await c.put("/api/v1/ai/settings", json=SPEECH_BODY, headers=headers)
+        assert saved.status_code == 200, saved.text
+        body = saved.json()
+        assert body["speech_available"] is True
+        assert body["has_speech_key"] is True
+        # Write-only, exactly like the chat key (#126).
+        assert "sk-speech-secret-456" not in saved.text
+
+        res = await c.post(
+            "/api/v1/ai/time/transcribe",
+            json={"audio": WEBM, "language": "nl-NL"},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        assert res.json()["text"] == "twee uur Jansen"
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        rows = (await session.execute(select(AIUsage).where(AIUsage.org_id == t.org.id))).scalars()
+        audio_rows = [r for r in rows if r.audio_seconds]
+        assert len(audio_rows) == 1
+        assert audio_rows[0].audio_seconds == 14
+        assert audio_rows[0].tokens_in == 0 and audio_rows[0].tokens_out == 0
+
+
+async def test_transcribe_requires_writing_time_entries(client_for, monkeypatch) -> None:
+    """A transcript exists to become a time entry, so holding `ai.use` alone is not enough.
+
+    The route's declared permission is what makes the surface enumerable (§15); this is the
+    second half of the same rule, and it is the half a read-only member hits.
+    """
+    t = await make_tenant("ai-speech-perm")
+    owner_headers = await auth_cookie(t.user)
+    monkeypatch.setattr(
+        "app.core.ai.features.provider_transcribe", _fake_transcript("iets")
+    )
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SPEECH_BODY, headers=owner_headers)
+
+    # A member holds `ai.use` *and* `time.entry.write:own` by default, so take the write away
+    # to isolate the rule under test: AI access alone must not reach this. (The owner holds
+    # `*` and is deliberately not the subject here — a wildcard would mask the check.)
+    async with async_session_maker() as session:
+        user = User(
+            id=uuid.uuid4(),
+            email="ai-speech-reader@example.com",
+            hashed_password=_password_hash.hash("secret1234"),
+            is_active=True,
+            is_verified=True,
+        )
+        session.add(user)
+        await session.flush()
+        await set_current_org(session, t.org.id)
+        await add_membership(session, t.org.id, user.id, "member")
+        await session.execute(
+            text(
+                "DELETE FROM role_permissions WHERE org_id = :org "
+                "AND permission LIKE 'time.entry.write%'"
+            ),
+            {"org": t.org.id},
+        )
+        await session.commit()
+        member = User(id=user.id, email=user.email, hashed_password="", is_active=True)
+
+    member_headers = await auth_cookie(member)
+    async with client_for(t.host) as c:
+        refused = await c.post(
+            "/api/v1/ai/time/transcribe", json={"audio": WEBM}, headers=member_headers
+        )
+        assert refused.status_code == 403, refused.text
+
+
+async def test_transcribe_rejects_oversized_and_unknown_audio(client_for) -> None:
+    """Every cap is checked before the work it bounds, and over a limit is an error rather
+    than a truncation — silently transcribing the first seconds of a clip looks like it
+    worked (the `impex/parsing.py` stance, applied to audio)."""
+    t = await make_tenant("ai-speech-bytes")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SPEECH_BODY, headers=headers)
+
+        # Not a container we recognise — the format comes from the content, never a
+        # client-supplied name.
+        bad = await c.post(
+            "/api/v1/ai/time/transcribe",
+            json={"audio": base64.b64encode(b"not audio at all").decode()},
+            headers=headers,
+        )
+        assert bad.status_code == 422
+        assert bad.json()["error"]["fields"]["audio"] == "errors.ai_audio_unsupported"
+
+        huge = await c.post(
+            "/api/v1/ai/time/transcribe",
+            json={"audio": "A" * (MAX_ENCODED_CHARS + 4)},
+            headers=headers,
+        )
+        assert huge.status_code == 413
+        assert huge.json()["error"]["message"] == "errors.ai_audio_too_large"
 
 
 async def test_tool_layer_tenant_isolation() -> None:

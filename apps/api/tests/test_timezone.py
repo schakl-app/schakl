@@ -53,6 +53,43 @@ def test_previous_week_start_honours_an_explicit_day() -> None:
     assert previous_week_start(date(2026, 7, 10), ZoneInfo("Pacific/Auckland")) == date(2026, 6, 29)
 
 
+def test_no_module_keeps_its_own_clock() -> None:
+    """A zone literal anywhere under ``app/`` is a build break (CLAUDE.md §8).
+
+    This is the lint that keeps the fix from rotting, in the shape §15 uses for deny-by-default:
+    the failure is *invisible* otherwise, because a hardcoded ``Europe/Amsterdam`` is correct on
+    the box it was written on and on every test that runs there. Three modules each grew a
+    private ``_TZ`` exactly that way, and every tenant on another zone silently got Amsterdam's
+    midnight — budget periods rolling over on the wrong day, "due today" naming the wrong day,
+    digests firing an hour early or late.
+
+    ``config.py`` is the one legitimate home for the default, and ``timezone.py`` is where it is
+    resolved; everything else asks them. A test may still name a zone — the zone is its subject
+    there — which is why this walks ``app/`` and not ``tests/``.
+    """
+    import re
+    from pathlib import Path
+
+    app_dir = Path(__file__).resolve().parents[1] / "app"
+    allowed = {app_dir / "config.py", app_dir / "core" / "timezone.py"}
+    # A zone name in a string, e.g. "Europe/Amsterdam" or "America/New_York".
+    pattern = re.compile(r"""["'][A-Za-z]+/[A-Za-z_]+["']""")
+
+    offenders: list[str] = []
+    for path in sorted(app_dir.rglob("*.py")):
+        if path in allowed:
+            continue
+        for lineno, line in enumerate(path.read_text().splitlines(), start=1):
+            code = line.split("#", 1)[0]
+            if "ZoneInfo(" in code and pattern.search(code):
+                offenders.append(f"{path.relative_to(app_dir.parent)}:{lineno}: {line.strip()}")
+
+    assert not offenders, (
+        "Hardcoded timezone(s) — resolve the org's zone with `org_zoneinfo`/`org_today`, or the "
+        "configured instance default with `resolve_zoneinfo(None)`:\n" + "\n".join(offenders)
+    )
+
+
 async def test_tenant_meta_exposes_and_updates_timezone(client_for) -> None:
     t = await make_tenant("tz-meta")
     owner_headers = await auth_cookie(t.user)

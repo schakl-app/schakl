@@ -17,12 +17,12 @@ from __future__ import annotations
 
 import calendar
 import uuid
-from datetime import date, datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import date, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timezone import org_today
 from app.modules.tasks.models import (
     RecurrenceFreq,
     RecurrenceMode,
@@ -34,12 +34,10 @@ from app.modules.tasks.models import (
 )
 from app.modules.tasks.statuses import default_key, load_statuses
 
-_TZ = ZoneInfo("Europe/Amsterdam")
-
-
-def today_local() -> date:
-    """Today in the platform's default timezone (cron fires in UTC)."""
-    return datetime.now(_TZ).date()
+# No module-level zone: "today" is a question about *whose* calendar, and the answer is the
+# org's `org_settings.timezone` (CLAUDE.md §8). Every entry point below therefore takes the day
+# it should reason about, resolved by its caller through `app.core.timezone.org_today` — a
+# hardcoded city silently gave a tenant in Lisbon or Warsaw somebody else's midnight.
 
 
 def advance(d: date, freq: str, interval: int) -> date:
@@ -61,19 +59,24 @@ def advance(d: date, freq: str, interval: int) -> date:
     return date(year, month, day)
 
 
-def next_due(due_date: date | None, rec: dict) -> date:
-    """The next occurrence's date: keeps the cadence anchor, but is never in the past."""
+def next_due(due_date: date | None, rec: dict, *, today: date) -> date:
+    """The next occurrence's date: keeps the cadence anchor, but is never in the past.
+
+    ``today`` is the org's local day (`app.core.timezone.org_today`), passed in rather than read
+    here: "not in the past" is a local-calendar claim, and a task due today must not be advanced
+    a week because the server's UTC clock has already rolled over.
+    """
     freq, interval = rec["freq"], rec.get("interval", 1)
-    due = advance(due_date or today_local(), freq, interval)
-    while due <= today_local():
+    due = advance(due_date or today, freq, interval)
+    while due <= today:
         due = advance(due, freq, interval)
     return due
 
 
-def compute_next_run(rec: dict | None, due_date: date | None) -> date | None:
+def compute_next_run(rec: dict | None, due_date: date | None, *, today: date) -> date | None:
     """When the daily cron should next materialize an occurrence (schedule mode only)."""
     if rec and rec.get("mode") == RecurrenceMode.SCHEDULE.value:
-        return next_due(due_date, rec)
+        return next_due(due_date, rec, today=today)
     return None
 
 
@@ -91,6 +94,7 @@ async def spawn_next(
     *,
     actor_user_id: uuid.UUID | None,
     actor_name: str | None = None,
+    today: date | None = None,
 ) -> Task:
     """Clone the carrier into the next occurrence and hand it the recurrence.
 
@@ -102,7 +106,11 @@ async def spawn_next(
     genuinely the system — that is the distinction the snapshot exists to preserve (issue #64).
     """
     rec = dict(task.recurrence or {})
-    due = next_due(task.due_date, rec)
+    # The org's local day, resolved by the caller when there is a batch of these — the cron
+    # spawns many in one sweep and one lookup per task would be an N+1 (docs/PERFORMANCE.md).
+    due = next_due(
+        task.due_date, rec, today=today if today is not None else await org_today(session, org_id)
+    )
 
     # A fresh occurrence starts in the org's default status (issue #62), not a hardcoded "open".
     default_status = default_key(await load_statuses(session, org_id))
@@ -193,12 +201,15 @@ async def spawn_next(
 
 async def spawn_due_for_org(session: AsyncSession, org_id: uuid.UUID) -> int:
     """Spawn every schedule-mode occurrence whose ``next_run`` has arrived. Returns count."""
+    # One lookup for the whole sweep: it bounds the query *and* prices every occurrence below,
+    # and asking per task would be an N+1 the JSON could never show (docs/PERFORMANCE.md).
+    today = await org_today(session, org_id)
     tasks = (
         await session.execute(
             select(Task).where(
                 Task.org_id == org_id,
                 Task.recurrence_next_run.is_not(None),
-                Task.recurrence_next_run <= today_local(),
+                Task.recurrence_next_run <= today,
             )
         )
     ).scalars().all()
@@ -207,7 +218,7 @@ async def spawn_due_for_org(session: AsyncSession, org_id: uuid.UUID) -> int:
         rec = task.recurrence or {}
         if rec.get("mode") != RecurrenceMode.SCHEDULE.value:
             continue
-        await spawn_next(session, org_id, task, actor_user_id=None)
+        await spawn_next(session, org_id, task, actor_user_id=None, today=today)
         spawned += 1
     return spawned
 

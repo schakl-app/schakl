@@ -38,6 +38,7 @@ from sqlalchemy import exists, func, select, update
 from app.core.auth.models import User
 from app.core.events import EmitContext
 from app.core.models import Membership
+from app.core.timezone import org_zoneinfo
 from app.errors import AppError
 from app.modules.notifications.events import (
     DEDUP_KEY,
@@ -273,6 +274,9 @@ class NotificationService:
             self.session, self.org_id, event_type, sorted(recipients)
         )
         days_left = data.get("days_left")
+        # A digest slot is a wall-clock promise on this org's calendar (CLAUDE.md §8) — one
+        # lookup for the whole recipient list, never one per person.
+        tz = await org_zoneinfo(self.ctx.session, self.ctx.org.id)
         delivery: list[tuple[uuid.UUID, datetime]] = []
         for user_id in sorted(recipients):
             pref = resolved[user_id]
@@ -281,7 +285,7 @@ class NotificationService:
             # "Due soon" is per-person: the cron offers the candidate, the threshold decides.
             if event_type == TASK_DUE_SOON and pref.due_soon_days != days_left:
                 continue
-            delivery.append((user_id, compute_visible_at(pref, now)))
+            delivery.append((user_id, compute_visible_at(pref, now, tz=tz)))
         return delivery
 
     async def _deliver(

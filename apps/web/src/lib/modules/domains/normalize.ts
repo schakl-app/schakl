@@ -22,6 +22,21 @@ export function normalizeDomainName(value: string): string {
   }
 }
 
+/**
+ * Read the #298 billing decision a form posted, in the API's own three states.
+ *
+ * `""` is the *follow the register* choice and becomes `null` — a third state, not a "no".
+ * An unrecognised value follows the register too rather than guessing: a tampered form should
+ * fall back to the derived answer, never to a decision nobody made. (The same rule
+ * `readAutoInvoiceMode` states for the automation level.)
+ */
+export function readInvoiceable(value: FormDataEntryValue | null): boolean | null {
+  const raw = String(value ?? "").trim();
+  if (raw === "yes") return true;
+  if (raw === "no") return false;
+  return null;
+}
+
 /** Mirror of the API's `tld_of` (domains/schemas.py): everything after the first label of a
  * normalized name ("example.co.uk" → "co.uk"), or null for a dotless name. Only used to show
  * the matching TLD price while typing — the API stamps the stored value. */

@@ -26,6 +26,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.auth.backend import session_org
 from app.core.auth.models import User
 from app.core.auth.users import current_active_user_optional
 from app.core.models import Membership, Org, OrgStatus
@@ -80,6 +81,31 @@ async def resolve_org(session: AsyncSession, host: str) -> Org | None:
     return org
 
 
+#: Where :func:`request_org_id` parks its answer. Not an optimisation for the request path —
+#: ``require_context`` resolves the org on its own session and never reads this — but for the
+#: **pre-auth** flows, where the same host is resolved by a guard, by the account lookup and by
+#: the route that mints the session, each on its own throwaway session (``manager.py``).
+_ORG_ID_STATE = "schakl_request_org_id"
+_UNRESOLVED = object()
+
+
+async def request_org_id(request: Request) -> uuid.UUID | None:
+    """The org this request's hostname resolves to, or ``None`` for a host that names no tenant.
+
+    ``None`` is a real answer, not a failure: the cloud console runs on the apex, where no org
+    resolves (docs/CLOUD.md). Callers decide what that means for them — the pre-auth ones treat
+    it as "nothing to narrow", ``require_context`` never sees it (it 404s the unknown host).
+    """
+    cached = getattr(request.state, _ORG_ID_STATE, _UNRESOLVED)
+    if cached is not _UNRESOLVED:
+        return cached  # type: ignore[return-value]
+    async with async_session_maker() as session:
+        org = await resolve_org(session, request_hostname(request))
+    org_id = org.id if org is not None else None
+    setattr(request.state, _ORG_ID_STATE, org_id)
+    return org_id
+
+
 # --------------------------------------------------------------------------- #
 # Request context
 # --------------------------------------------------------------------------- #
@@ -105,10 +131,22 @@ class RequestContext:
     #: that "the client role marks a login as external", and gating these narrowings on the
     #: contact link alone left a directly-invited client reading the whole address book.
     is_portal: bool = False
-    # Set only during an instance-admin impersonation (issue #26): ``user`` is then the
-    # impersonated member and ``impersonated_by`` the real, authenticated instance owner.
+    # Set only during an impersonation: ``user`` is then the impersonated member and
+    # ``impersonated_by`` the real, authenticated principal behind them — an instance owner
+    # (issue #26) or an agency staff member signed in as a client's contact (#296).
+    # ``impersonation_kind`` says which (``app/core/impersonation.py``), because ending it and
+    # recording it differ per kind. Every write made in this request carries the impersonator
+    # onto the activity trail (§16), so a change is never attributed to the client alone.
     impersonated_by: User | None = None
     impersonation_expires_at: Any | None = None
+    impersonation_kind: str | None = None
+    #: True when a **portal** impersonation is running as *less* than the client actually holds,
+    #: because the impersonator does not hold it either (#266). It is the one thing the banner
+    #: must say out loud: the whole point of signing in as a client is to see what they see, so a
+    #: silently narrowed view is a screen that lies — staff would report "the invoices aren't
+    #: there" about a client who can see them perfectly well. ``False`` for an unnarrowed
+    #: session, and always ``False`` for the instance kind, which never caps.
+    impersonation_narrowed: bool = False
 
     def repo(self, model: type[ModelT]) -> TenantScopedRepository[ModelT]:
         return TenantScopedRepository(
@@ -189,18 +227,33 @@ async def require_context(
         if user is None:
             raise AppError("unauthorized", "errors.unauthorized", status_code=401)
 
-        # Instance-admin impersonation (issue #26): a valid, time-boxed grant swaps the
-        # effective user; authentication above stays the real (superuser) principal.
-        from app.core.instance.impersonation import read_impersonation
+        # …and it must be a session **for this org** (``core/auth/backend.py``). The account
+        # table is instance-level and the password check is tenant-blind, so "a valid session"
+        # and "a session belonging here" were the same sentence only because a self-hosted box
+        # has one org. Anything else — no claim at all (an instance session from the console's
+        # apex, or a token minted before the claim existed) or a claim naming another org — is
+        # not a session here, and says so with the same 401 as no session at all: it is an
+        # authentication answer, and the browser's job is identical either way (log in). The
+        # membership check below is a *different* question and stays where it is; passing it
+        # would not make someone else's session ours.
+        if session_org(request) != org.id:
+            raise AppError("unauthorized", "errors.unauthorized", status_code=401)
+
+        # Impersonation (issues #26, #296): a valid, time-boxed grant swaps the effective user;
+        # authentication above stays the real principal. The grant names the org it was issued
+        # for, so one can never be carried onto another tenant's hostname.
+        from app.core.impersonation import KIND_PORTAL, read_impersonation
 
         impersonator: User | None = None
         expires_at = None
+        impersonation_kind: str | None = None
         claims = read_impersonation(request, user)
         if claims is not None and claims.org_id == org.id:
             target = await session.get(User, claims.target_user_id)
             if target is not None and target.is_active:
                 impersonator, user = user, target
                 expires_at = claims.expires_at
+                impersonation_kind = claims.kind
 
         # Verify membership *through* RLS. The permission fetch rides along on the same statement
         # — one round-trip, whatever the role count. It must stay *below* the impersonation swap
@@ -237,6 +290,48 @@ async def require_context(
         membership, granted, holds_client = row
         permissions = PermissionSet.of(granted)
 
+        # A **portal** impersonation runs as the target *capped by the impersonator* (#266).
+        # Staff signing in as their client see the client's screens, minus anything they could
+        # not open on their own account — the invoices a member without an invoice read must not
+        # reach through a client session. This replaces the `covers` refusal at the issue site:
+        # it states the same invariant directly (the result is a subset of the caller's set by
+        # construction) instead of forbidding the whole session, and it decouples the two, so
+        # granting the `client` role a permission no longer silently narrows who may impersonate.
+        #
+        # Deliberately **not** the instance kind: an instance owner is trusted with everything by
+        # definition (#26) and holds no membership in the tenant at all, so capping would resolve
+        # to nothing and break cross-tenant support entirely.
+        narrowed_by: PermissionSet | None = None
+        ceiling_membership_id: uuid.UUID | None = None
+        if impersonator is not None and impersonation_kind == KIND_PORTAL:
+            ceiling_row = (
+                await session.execute(
+                    select(
+                        Membership.id,
+                        func.array_agg(RolePermission.permission).filter(
+                            RolePermission.permission.is_not(None)
+                        ),
+                    )
+                    .outerjoin(MembershipRole, MembershipRole.membership_id == Membership.id)
+                    .outerjoin(
+                        RolePermission, RolePermission.role_id == MembershipRole.role_id
+                    )
+                    .where(
+                        Membership.user_id == impersonator.id,
+                        Membership.org_id == org.id,
+                    )
+                    .group_by(Membership.id)
+                )
+            ).first()
+            # No membership for the impersonator in this org means the grant outlived it. Cap to
+            # nothing rather than trusting the target's set — fail closed, the session is theirs.
+            ceiling = PermissionSet.of(ceiling_row[1] if ceiling_row else ())
+            capped = permissions.narrowed_to(ceiling)
+            if capped.granted != permissions.granted:
+                narrowed_by = permissions
+            permissions = capped
+            ceiling_membership_id = ceiling_row[0] if ceiling_row else None
+
         # Company data horizon (issue #191): one indexed query over the assignment tables,
         # via the resolver seam (the tables belong to the companies module). A wildcard
         # holder (owner) is never restricted, whatever rows exist — never lock the tenant
@@ -263,6 +358,22 @@ async def require_context(
             # link — a client with no contact link is external too.
             is_portal = bool(holds_client) or SCOPE_SOURCE_PORTAL in resolution.sources
 
+        # The horizon caps the same way, and for the same reason (#266). A contact may be linked
+        # to more companies than the staff member impersonating them can see: the impersonate
+        # endpoint loads the *contact* through the caller's repository, so it never reaches one
+        # outside their horizon, but nothing bounded the companies behind it. Capping permissions
+        # while leaving the horizon wide would trade one escalation for another.
+        # ``None`` is "unrestricted" and acts as the identity, so an unrestricted impersonator
+        # leaves the client's own horizon exactly as it was.
+        if ceiling_membership_id is not None and company_scope != frozenset():
+            ceiling_scope = (
+                await resolve_company_scope_details(session, org.id, ceiling_membership_id)
+            ).scope
+            if ceiling_scope is not None:
+                company_scope = (
+                    ceiling_scope if company_scope is None else company_scope & ceiling_scope
+                )
+
         ctx = RequestContext(
             user=user,
             org=org,
@@ -273,6 +384,8 @@ async def require_context(
             is_portal=is_portal,
             impersonated_by=impersonator,
             impersonation_expires_at=expires_at,
+            impersonation_kind=impersonation_kind,
+            impersonation_narrowed=narrowed_by is not None,
         )
         try:
             yield ctx

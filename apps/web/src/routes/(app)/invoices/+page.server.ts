@@ -51,6 +51,16 @@ export const load: PageServerLoad = async (event) => {
     q: q ?? "",
     canWrite: can(event.locals.user, "invoicing.invoice.write"),
     canQuotes: can(event.locals.user, "invoicing.quote.read"),
+    /**
+     * Does this viewer read the invoice *register*, or only their own documents (#266)?
+     *
+     * `:any` is the agency's view of the section — the draft tile and its filter chip, the
+     * client picker, the column picker. An `:own` holder (a client portal login) gets the
+     * same route drawing only what its API answers: their issued invoices. The gate is the
+     * API's own key and scope, never `!isPortal` — which mirrors the API less precisely and
+     * would still show all of it to a restricted staff member (docs/UX.md).
+     */
+    canReadRegister: can(event.locals.user, "invoicing.invoice.read", "any"),
     locale: event.locals.locale,
   };
 };

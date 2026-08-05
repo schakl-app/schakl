@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -86,6 +86,16 @@ def get_tool(ctx: RequestContext, name: str) -> AIToolSpec | None:
         if spec.name == name:
             return spec
     return None
+
+
+def get_tools(ctx: RequestContext, names: Sequence[str]) -> list[AIToolSpec]:
+    """Several tools by name, in the order asked, from **one** catalog walk.
+
+    ``get_tool`` rebuilds the whole catalog per call — cheap in isolation, but a caller wanting
+    three named tools walked every enabled module three times over.
+    """
+    by_name = {spec.name: spec for spec in available_tools(ctx)}
+    return [spec for name in names if (spec := by_name.get(name)) is not None]
 
 
 async def run_tool(ctx: RequestContext, spec: AIToolSpec, args: dict[str, Any]) -> ToolResult:

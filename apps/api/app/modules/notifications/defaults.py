@@ -6,7 +6,7 @@ still gets sane routing. Managers override per org, users override per user; a d
 override falls back here.
 
 Cadence per the issue: a short list of events are **immediate** (you need them now); the rest
-land in the **daily digest at 08:00** (Europe/Amsterdam). Leave events are treated as immediate
+land in the **daily digest at 08:00** on the org's own clock. Leave events are treated as immediate
 too — an approval flow buried in tomorrow's digest is broken (flagged deviation from the
 issue's "everything else daily"; three lines to revert if unwanted).
 """
@@ -34,7 +34,7 @@ from app.modules.notifications.events import (
     TASK_SCHEDULED,
 )
 
-#: Daily digest lands here in Europe/Amsterdam local time.
+#: Daily digest lands at this wall-clock time on the org's own calendar (CLAUDE.md §8).
 DEFAULT_DIGEST_TIME = time(8, 0)
 #: A task counts as "due soon" this many days before its due date, unless overridden.
 DEFAULT_DUE_SOON_DAYS = 3

@@ -328,16 +328,28 @@ async def test_impersonation_is_time_boxed_audited_and_visible(
         assert me.json()["impersonation_expires_at"] is not None
         assert me.json()["is_instance_admin"] is False  # effective user, not the admin
 
-    # Without the grant cookie the admin is still not a member of the target org.
+    # Without the grant cookie the admin has nothing here. Their *console* session is not a
+    # session on this host at all (a session names its org — CLAUDE.md §5), which is why the
+    # handoff has to mint a second one; that 401 is what makes the grant load-bearing.
     async with client_for(target.host) as client:
-        assert (await client.get("/api/v1/meta/me", headers=admin_headers)).status_code == 403
+        assert (await client.get("/api/v1/meta/me", headers=admin_headers)).status_code == 401
 
-    # A non-superuser session cannot activate the grant.
+    # A session belonging to someone else cannot activate the grant. Deliberately someone with
+    # a *valid* session on this very host — a colleague in the target org — so the refusal is
+    # the grant's own "names another admin" rule, not the host boundary standing in for it.
     other = await make_tenant("imp-bystander")
-    other_cookie = await auth_cookie(other.user)
+    async with async_session_maker() as session:
+        await set_current_org(session, target.org.id)
+        await add_membership(session, target.org.id, other.user.id, role="member")
+        await session.commit()
+    other_cookie = await auth_cookie(other.user, org_id=target.org.id)
     hijack = {"Cookie": f"{other_cookie['Cookie']}; schakl_impersonate={token}"}
     async with client_for(target.host) as client:
-        assert (await client.get("/api/v1/meta/me", headers=hijack)).status_code == 403
+        stolen = await client.get("/api/v1/meta/me", headers=hijack)
+        assert stolen.status_code == 200
+        # Still themselves: the grant is ignored, never applied to whoever presents it.
+        assert stolen.json()["email"] == other.user.email
+        assert stolen.json()["impersonated_by"] is None
 
     # …and neither does the grant on its own: it authenticates nobody (#288's promise that a
     # stolen grant stays insufficient).
@@ -598,9 +610,12 @@ async def test_export_import_roundtrip(client_for, instance_admin_enabled) -> No
         )
         assert dup.status_code == 409
 
-    # The exported owner (matched by email) can use the imported org; FKs were remapped.
+    # The exported owner (matched by email) can use the imported org; FKs were remapped. Their
+    # session there is its own: a session names the org it was minted for (CLAUDE.md §5), and an
+    # import creates a *new* org that no existing session can already belong to.
+    copy_headers = await auth_cookie(source.user, org_id=uuid.UUID(body["org"]["id"]))
     async with client_for("port-copy.localhost") as client:
-        companies = await client.get("/api/v1/companies", headers=source_headers)
+        companies = await client.get("/api/v1/companies", headers=copy_headers)
         assert companies.status_code == 200
         assert companies.json()["total"] == 1
         copied = companies.json()["items"][0]
@@ -608,7 +623,7 @@ async def test_export_import_roundtrip(client_for, instance_admin_enabled) -> No
         assert copied["id"] != company_id  # fresh primary keys
 
         contacts = await client.get(
-            "/api/v1/contacts", params={"company_id": copied["id"]}, headers=source_headers
+            "/api/v1/contacts", params={"company_id": copied["id"]}, headers=copy_headers
         )
         assert contacts.status_code == 200
         assert contacts.json()["total"] == 1

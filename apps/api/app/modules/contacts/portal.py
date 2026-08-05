@@ -1,55 +1,37 @@
-"""Client portal (issue #193): a contact gets a login and sees their companies' dashboards.
+"""What contacts contributes to the client portal (issue #193) — and only that.
 
-The pieces were already here — the seeded ``client`` system role, contacts with email,
-``company_contacts``, FastAPI Users' invite machinery, per-tenant branding — this file wires
-them together:
+The portal *itself* is its own module now (``app/modules/portal/``): inviting a client,
+disabling the login, signing in as them. What stays here is the half that is genuinely
+contacts' own knowledge, published through the three core seams:
 
-* **The link** is ``contacts.user_id``: it is what makes a membership a *portal* membership.
-* **The horizon** (#191's third axis) comes from a second scope resolver registered here: a
-  contact-linked membership sees exactly the companies the contact is linked to via
-  ``company_contacts`` — live, so linking/unlinking widens/narrows the portal the same
-  moment, and **never** ``None``: a portal login is never unrestricted.
-* **The invite flow** mirrors the staff invite (``/members/invite``): create or re-activate
-  the user, a ``client``-role membership, and a tenant-branded set-password mail riding the
-  reset-token flow. An email collision with an existing account is a hard, explained error —
-  never silently attach the client role to a staff login.
-* Enable/disable is reversible: off refuses login (``is_active``) but keeps the contact, the
-  history and the user row; re-enabling reuses them.
+* **The horizon** (#191's third axis): a contact-linked membership sees exactly the companies
+  the contact is linked to via ``company_contacts`` — live, so linking/unlinking widens or
+  narrows the portal the same moment, and **never** ``None``: a portal login is never
+  unrestricted.
+* **Who is a portal login** (``app/core/portal.py``), so notification fan-out can keep staff
+  events out of client inboxes without importing this module.
+* **The subject provider**, the read/write handle the portal module works through:
+  ``contacts.user_id`` is the link that makes a membership a portal membership, and this file
+  stays the only place that knows it.
 
-Everything is gated on ``members.member.write`` — managing logins is member management —
-and every flip lands on the contact's activity trail (§16).
+The first two deliberately live *here* rather than in the portal module, and it is not a
+leftover: they must answer even when the portal module is disabled or unlicensed. A client
+whose login already exists must stay scoped to their own companies whatever the instance's
+licence says — an entitlement governs whether you may invite someone new, never whether an
+existing session is contained.
 """
 
 from __future__ import annotations
 
-import logging
-import secrets
 import uuid
-from typing import Literal
 
-from fastapi import APIRouter, Depends, Request
-from pwdlib import PasswordHash
-from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.activity import ActivityService
-from app.core.auth.models import User
-from app.core.auth.users import get_user_manager
-from app.core.email.service import get_row as email_settings_row
 from app.core.models import Membership
-from app.core.permissions import ROLE_CLIENT
-from app.core.permissions.deps import require_permission
-from app.core.permissions.service import create_membership
-from app.core.tenancy import RequestContext, require_context
-from app.errors import AppError
+from app.core.portal import PortalSubject
+from app.core.tenancy import RequestContext
 from app.modules.contacts.models import CompanyContact, Contact
-
-logger = logging.getLogger("schakl.portal")
-
-_password_hash = PasswordHash.recommended()
-
-PortalStatus = Literal["none", "invited", "active", "disabled"]
 
 
 # --------------------------------------------------------------------------- #
@@ -95,199 +77,48 @@ async def resolve_portal_users(
 
 
 # --------------------------------------------------------------------------- #
-# Schemas
+# Subject provider (``app/core/portal.py`` seam): a contact can carry a login
 # --------------------------------------------------------------------------- #
-class PortalState(BaseModel):
-    status: PortalStatus = "none"
-    email: str | None = None
-    invite_email_sent: bool | None = None
-    invite_email_error: str | None = None
+class ContactPortalSubjectProvider:
+    """Contacts as portal subjects. Registered once by the module's package ``__init__``."""
 
-
-# --------------------------------------------------------------------------- #
-# Service
-# --------------------------------------------------------------------------- #
-class PortalService:
-    def __init__(self, ctx: RequestContext) -> None:
-        self.ctx = ctx
-
-    async def _contact_or_404(self, contact_id: uuid.UUID) -> Contact:
-        return await self.ctx.repo(Contact).get_or_404(contact_id)
-
-    async def _linked_user(self, contact: Contact) -> User | None:
-        if contact.user_id is None:
-            return None
-        return await self.ctx.session.get(User, contact.user_id)
+    entity_type = "contact"
 
     @staticmethod
-    def _status(user: User | None) -> PortalStatus:
-        if user is None:
-            return "none"
-        if not user.is_active:
-            return "disabled"
-        # Setting the password through the emailed link verifies the mailbox (UserManager
-        # marks it); until then the invite is out but the account was never used.
-        return "active" if user.is_verified else "invited"
-
-    async def state(self, contact_id: uuid.UUID) -> PortalState:
-        contact = await self._contact_or_404(contact_id)
-        user = await self._linked_user(contact)
-        return PortalState(status=self._status(user), email=user.email if user else None)
-
-    async def enable(self, contact_id: uuid.UUID, request: Request, user_manager) -> PortalState:  # noqa: ANN001
-        contact = await self._contact_or_404(contact_id)
-        user = await self._linked_user(contact)
-        if user is not None:
-            # Re-enable: the account, membership and history are all still there.
-            if not user.is_active:
-                user.is_active = True
-                await self.ctx.session.flush()
-                await ActivityService(self.ctx).record(
-                    "contact", contact.id, "portal_enabled", {"email": user.email}
-                )
-            return PortalState(status=self._status(user), email=user.email)
-
-        email = (contact.email or "").strip().lower()
-        if not email:
-            raise AppError(
-                "validation",
-                "errors.validation",
-                status_code=422,
-                fields={"email": "errors.portal_email_required"},
-            )
-        existing = await self.ctx.session.scalar(
-            select(User).where(func.lower(User.email) == email)
-        )
-        if existing is not None:
-            # The address already belongs to an account (a staff member's, or another org's).
-            # Never silently attach the client role to it — a hard, explained error (#193).
-            raise AppError("conflict", "errors.portal_email_in_use", status_code=409)
-
+    def _subject(contact: Contact) -> PortalSubject:
         display_name = f"{contact.first_name} {contact.last_name or ''}".strip()
-        user = User(
-            id=uuid.uuid4(),
-            email=email,
-            full_name=display_name or None,
-            hashed_password=_password_hash.hash(secrets.token_urlsafe(24)),
-            is_active=True,
-            is_verified=False,
+        return PortalSubject(
+            entity_type="contact",
+            id=contact.id,
+            email=(contact.email or "").strip().lower() or None,
+            display_name=display_name or None,
+            user_id=contact.user_id,
         )
-        self.ctx.session.add(user)
-        await self.ctx.session.flush()
-        await create_membership(self.ctx.session, self.ctx.org.id, user.id, ROLE_CLIENT)
-        contact.user_id = user.id
-        await self.ctx.session.flush()
-        await ActivityService(self.ctx).record(
-            "contact", contact.id, "portal_enabled", {"email": email}
-        )
-        state = PortalState(status="invited", email=email)
-        await self._send_invite(user, request, user_manager, state)
-        return state
 
-    async def resend(self, contact_id: uuid.UUID, request: Request, user_manager) -> PortalState:  # noqa: ANN001
-        contact = await self._contact_or_404(contact_id)
-        user = await self._linked_user(contact)
-        if user is None or not user.is_active:
-            raise AppError("not_found", "errors.not_found", status_code=404)
-        state = PortalState(status=self._status(user), email=user.email)
-        await self._send_invite(user, request, user_manager, state)
-        await ActivityService(self.ctx).record(
-            "contact", contact.id, "portal_invite_resent", {"email": user.email}
-        )
-        return state
+    async def load(
+        self, ctx: RequestContext, subject_id: uuid.UUID
+    ) -> PortalSubject | None:
+        """Through the tenant repository, so the company horizon applies: a membership scoped
+        to one company group can only ever invite the contacts of its own clients."""
+        contact = await ctx.repo(Contact).get(subject_id)
+        return self._subject(contact) if contact is not None else None
 
-    async def disable(self, contact_id: uuid.UUID) -> PortalState:
-        contact = await self._contact_or_404(contact_id)
-        user = await self._linked_user(contact)
-        if user is None:
-            raise AppError("not_found", "errors.not_found", status_code=404)
-        if user.is_active:
-            user.is_active = False
-            await self.ctx.session.flush()
-            await ActivityService(self.ctx).record(
-                "contact", contact.id, "portal_disabled", {"email": user.email}
+    async def for_user(
+        self, ctx: RequestContext, user_id: uuid.UUID
+    ) -> PortalSubject | None:
+        # Deliberately not through the repository — see the protocol's docstring: the one
+        # caller is a portal session ending its own impersonation, and that row *is* the
+        # caller, who may have an empty horizon and so would not find itself.
+        contact = await ctx.session.scalar(
+            select(Contact).where(
+                Contact.org_id == ctx.org.id, Contact.user_id == user_id
             )
-        return PortalState(status="disabled", email=user.email)
+        )
+        return self._subject(contact) if contact is not None else None
 
-    async def _send_invite(
-        self,
-        user: User,
-        request: Request,
-        user_manager,  # noqa: ANN001 — FastAPI Users' provider
-        state: PortalState,
+    async def attach(
+        self, ctx: RequestContext, subject_id: uuid.UUID, user_id: uuid.UUID
     ) -> None:
-        """The tenant-branded set-password mail, riding the reset-token flow like the staff
-        invite (#161). A missing transport is reported, never silently swallowed."""
-        if await email_settings_row(self.ctx.session, self.ctx.org.id) is None:
-            state.invite_email_sent = False
-            state.invite_email_error = "errors.email_not_configured"
-            return
-        request.state.password_email_kind = "invite"
-        try:
-            await user_manager.forgot_password(user, request)
-            sent, send_error = getattr(
-                request.state, "password_email_result", (True, None)
-            )
-            state.invite_email_sent = sent
-            state.invite_email_error = send_error
-        except Exception:  # noqa: BLE001 — the enable itself must stand
-            logger.exception("Portal invite email for %s failed", user.email)
-            state.invite_email_sent = False
-
-
-# --------------------------------------------------------------------------- #
-# Router — nested under /contacts/{contact_id}/portal
-# --------------------------------------------------------------------------- #
-portal_router = APIRouter(tags=["contacts-portal"])
-
-_MANAGE = "members.member.write"
-
-
-@portal_router.get(
-    "/{contact_id}/portal",
-    response_model=PortalState,
-    dependencies=[require_permission(_MANAGE)],
-)
-async def portal_state(
-    contact_id: uuid.UUID, ctx: RequestContext = Depends(require_context)
-) -> PortalState:
-    return await PortalService(ctx).state(contact_id)
-
-
-@portal_router.post(
-    "/{contact_id}/portal",
-    response_model=PortalState,
-    dependencies=[require_permission(_MANAGE)],
-)
-async def enable_portal(
-    contact_id: uuid.UUID,
-    request: Request,
-    ctx: RequestContext = Depends(require_context),
-    user_manager=Depends(get_user_manager),  # noqa: ANN001 — FastAPI Users' provider
-) -> PortalState:
-    return await PortalService(ctx).enable(contact_id, request, user_manager)
-
-
-@portal_router.post(
-    "/{contact_id}/portal/resend",
-    response_model=PortalState,
-    dependencies=[require_permission(_MANAGE)],
-)
-async def resend_portal_invite(
-    contact_id: uuid.UUID,
-    request: Request,
-    ctx: RequestContext = Depends(require_context),
-    user_manager=Depends(get_user_manager),  # noqa: ANN001
-) -> PortalState:
-    return await PortalService(ctx).resend(contact_id, request, user_manager)
-
-
-@portal_router.delete(
-    "/{contact_id}/portal",
-    response_model=PortalState,
-    dependencies=[require_permission(_MANAGE)],
-)
-async def disable_portal(
-    contact_id: uuid.UUID, ctx: RequestContext = Depends(require_context)
-) -> PortalState:
-    return await PortalService(ctx).disable(contact_id)
+        contact = await ctx.repo(Contact).get_or_404(subject_id)
+        contact.user_id = user_id
+        await ctx.session.flush()

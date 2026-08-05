@@ -28,6 +28,22 @@ export interface OrgTheme {
   /** Tab-title template with {page}/{brand} tokens (#97); null = the built-in format. */
   tabTitleTemplate: string | null;
   enabledModules: string[];
+  /**
+   * Licensing (issue #137) — the other half of `enabledModules`. *Enabled* is what this
+   * workspace runs; *entitled* is what it may still write to. A control whose module is enabled
+   * but not entitled renders locked (`LockedButton`) rather than as a button that 402s.
+   *
+   * It rides the tenant payload the layout already loads, so gating an affordance costs no
+   * extra call (docs/PERFORMANCE.md). `licensedModules` is which modules are paid at all —
+   * needed to tell "not bought" apart from "not a paid module".
+   */
+  licensedModules: string[];
+  entitledModules: string[];
+  /**
+   * Instance posture: "self_hosted" or "cloud". What an *upgrade* means differs — a plan change
+   * on cloud, a licence key on a self-hosted box — so any screen offering one has to know.
+   */
+  deployment: string;
   /** Public demo mode (#141): a persistent "this is a demo, data resets" banner + role logins. */
   demoMode: boolean;
   /** How often the demo resets, minutes — shown in the banner. */
@@ -68,6 +84,11 @@ export const DEFAULT_THEME: OrgTheme = {
   defaultCountry: "NL",
   tabTitleTemplate: null,
   enabledModules: ["companies"],
+  // Nothing is claimed as licensed or entitled before an org resolves — a locked control is a
+  // statement about a real workspace, and this fallback describes none.
+  licensedModules: [],
+  entitledModules: [],
+  deployment: "self_hosted",
   demoMode: false,
   demoResetMinutes: 60,
   resolved: false,

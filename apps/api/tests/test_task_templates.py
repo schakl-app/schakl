@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from app.modules.tasks.recurrence import today_local
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import auth_cookie, make_tenant, org_today
 from tests.test_task_subresources import add_member
 
 _TEMPLATE = {
@@ -83,7 +82,7 @@ async def test_company_created_with_trigger_status_instantiates(client_for) -> N
         assert {row["title"] for row in tasks} == {"Kick-off call", "Set up analytics"}
 
         kickoff = next(row for row in tasks if row["title"] == "Kick-off call")
-        assert date.fromisoformat(kickoff["due_date"]) == today_local() + timedelta(days=2)
+        assert date.fromisoformat(kickoff["due_date"]) == org_today() + timedelta(days=2)
         assert kickoff["checklist_total"] == 2
 
         detail = (await c.get(f"/api/v1/tasks/{kickoff['id']}", headers=headers)).json()

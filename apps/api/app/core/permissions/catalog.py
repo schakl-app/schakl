@@ -139,18 +139,16 @@ CORE_PERMISSIONS: tuple[PermissionSpec, ...] = (
     # `/impex/company/export` would hand them the agency's entire client list in one CSV.
     # Staff-only, so the portal can never bulk-extract, while each entity's own permission
     # still decides *which* entities a staff member may take out or bring in.
-    PermissionSpec(
-        "impex.export",
-        group="impex",
-        position=10,
-        default_roles=(ROLE_ADMIN, ROLE_MEMBER),
-    ),
-    PermissionSpec(
-        "impex.import",
-        group="impex",
-        position=20,
-        default_roles=(ROLE_ADMIN, ROLE_MEMBER),
-    ),
+    #
+    # **Admins by default, not members** (owner call): the whole point of the second gate is
+    # that taking the client list, the domain register or the rate card out of the building in
+    # one file is a different act from opening a record — and one an agency wants to decide
+    # deliberately, per person. An employee who needs it is granted it in Instellingen → Rollen;
+    # the pair is one capability across every entity, so that decision is made once rather than
+    # per screen. Existing orgs keep whatever they were already granted — the reconciler only
+    # ever adds new keys (see reconcile.py), so this changes what a *new* org starts with.
+    PermissionSpec("impex.export", group="impex", position=10),
+    PermissionSpec("impex.import", group="impex", position=20),
     # --- file storage (issue #123) ----------------------------------------- #
     # Uploading is a staff act (avatars, attachments, logos); reading is any member — the
     # serve route is RLS-scoped and declares no permission on purpose.

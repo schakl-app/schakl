@@ -4,10 +4,11 @@ import { error, fail, redirect } from "@sveltejs/kit";
 
 import { parseAssignees } from "$lib/core/assignees";
 import { apiErrorKey } from "$lib/core/errors";
-import { can } from "$lib/core/permissions";
 import { entityPanelsFor } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
 import { interactionActions } from "$lib/modules/interactions/actions.server";
+import { portalActions } from "$lib/modules/portal/actions.server";
+import { loadPortalCard } from "$lib/modules/portal/load.server";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -21,8 +22,6 @@ export const load: PageServerLoad = async (event) => {
   const enabled = event.locals.theme?.enabledModules ?? [];
   const panels = entityPanelsFor(enabled, "contact");
 
-  // Portal state (#193): manager-only (managing logins is member management), one call.
-  const canPortal = can(event.locals.user, "members.member.write");
   // The contact custom fields, the company ones and the client picker all come from the section
   // layout now (#290) — they do not change between contacts, so refetching them per row click
   // was three round-trips per navigation for identical answers. The member lookup stays: the
@@ -31,17 +30,21 @@ export const load: PageServerLoad = async (event) => {
   const [contact, members, portal, ...panelData] = await Promise.all([
     api.GET("/api/v1/contacts/{contact_id}", { params: { path: { contact_id } } }),
     api.GET("/api/v1/members/lookup"),
-    canPortal
-      ? api.GET("/api/v1/contacts/{contact_id}/portal", { params: { path: { contact_id } } })
-      : Promise.resolve({ data: null }),
+    // The client portal is its own module now (#193): it decides its own permission, its own
+    // entitlement and whether the state call is worth making at all.
+    loadPortalCard(api, {
+      entityType: "contact",
+      subjectId: contact_id,
+      user: event.locals.user,
+      theme: event.locals.theme,
+    }),
     ...panels.map((panel) => panel.load(api, context)),
   ]);
   if (!contact.data) throw error(404, { code: "not_found", message: "errors.not_found" });
   return {
     contact: contact.data,
     members: members.data ?? [],
-    portal: portal.data ?? null,
-    canPortal,
+    portal,
     context,
     panels: panels.map((panel, index) => ({
       key: panel.key,
@@ -154,33 +157,16 @@ export const actions: Actions = {
     throw redirect(303, "/contacts");
   },
 
-  // Client portal (#193): enable (invite), resend, disable — the API is the boundary.
-  portalEnable: async (event) => {
-    const { data, error: err } = await apiFor(event).POST(
-      "/api/v1/contacts/{contact_id}/portal",
-      { params: { path: { contact_id: event.params.id } } },
-    );
-    if (err) return fail(400, { portalError: apiErrorKey(err).fields?.email ?? apiErrorKey(err).key });
-    return { portalSaved: true, portalEmail: data?.invite_email_sent ?? null };
-  },
-
-  portalResend: async (event) => {
-    const { data, error: err } = await apiFor(event).POST(
-      "/api/v1/contacts/{contact_id}/portal/resend",
-      { params: { path: { contact_id: event.params.id } } },
-    );
-    if (err) return fail(400, { portalError: apiErrorKey(err).key });
-    return { portalSaved: true, portalEmail: data?.invite_email_sent ?? null };
-  },
-
-  portalDisable: async (event) => {
-    const { error: err } = await apiFor(event).DELETE(
-      "/api/v1/contacts/{contact_id}/portal",
-      { params: { path: { contact_id: event.params.id } } },
-    );
-    if (err) return fail(400, { portalError: apiErrorKey(err).key });
-    return { portalSaved: true };
-  },
+  // Client portal (#193, #296): enable, resend, disable, sign in as. Contributed by the
+  // portal module the way the contactmomenten actions below are — this page hosts them, it
+  // does not own them.
+  ...portalActions({
+    entityType: "contact",
+    // `String(...)` because the contributed actions are typed against a generic
+    // `RequestEvent`, whose params are all optional; on this route `[id]` always matches.
+    subjectId: (event) => String(event.params.id),
+    returnPath: (event) => `/contacts/${event.params.id}`,
+  }),
 
   // Contactmomenten panel contract (lib/modules/interactions).
   ...interactionActions,

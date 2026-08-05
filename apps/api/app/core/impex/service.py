@@ -64,6 +64,12 @@ MULTI_VALUE_SEPARATOR = "|"
 #: written — three from the first ten rows is enough to see, and cheap enough to always show.
 SAMPLE_ROWS = 10
 SAMPLE_VALUES = 3
+#: Data types whose cell is a *reference* — resolved once per file by the descriptor's resolver
+#: rather than coerced in place, because resolution costs a query. ``fk`` yields an id;
+#: ``party`` yields a whole :class:`~app.core.party.schemas.PartyRef`. They share the machinery
+#: because the batching, the row-level error and the "never a silent orphan" rule are identical;
+#: they differ only in what the resolver hands back, which is the resolver's business.
+_REFERENCE_TYPES = ("fk", "party")
 
 
 def _fingerprint(raw: bytes) -> str:
@@ -676,10 +682,16 @@ class ImpexService:
             if cell == "":
                 if column.required:
                     row.errors.append((column.key, "errors.required"))
-                elif column.clearable and column.data_type != "fk":
+                elif column.clearable:
                     values[column.target] = None
-                # else: not clearable — leave the field (or the links) untouched.
-            elif column.data_type == "fk":
+                # else: not clearable — leave the field (or the link) untouched.
+                #
+                # ``clearable`` decides this for **every** type including ``fk``: whether an
+                # emptied cell detaches is a property of the link, not of it being a link. A
+                # hosting record with no client is shared infrastructure — a real state the
+                # file must be able to express — while a domain with no client is nonsense,
+                # and each says so with one flag rather than one blanket rule.
+            elif column.data_type in _REFERENCE_TYPES:
                 row.fk[column.key] = (column, cell)
             elif column.data_type == "email":
                 try:
@@ -734,12 +746,19 @@ class ImpexService:
         overwrite what the first just imported. Counted **per key**, since a klantnummer and a
         name are different namespaces; the *same company* reached through two different keys is
         caught later, once the rows have resolved to entities (:meth:`_mark_duplicate_targets`).
+
+        A **reference** column may be the key too — a website has no name of its own and is
+        identified by its domain. The raw cell is what ``find_existing`` gets in that case (the
+        domain name the file carries, not the id it resolves to), because matching runs before
+        resolution: the two are independent lookups and neither should wait on the other.
         """
         seen: dict[str, set[str]] = {}
         for row in rows:
             for key in natural_keys:
                 target = by_key[key].column
                 value = row.values.get(target.target if target else key)
+                if value is None and key in row.fk:
+                    value = row.fk[key][1]
                 if isinstance(value, str) and value.strip():
                     row.nk_key, row.nk = key, value
                     break
@@ -811,12 +830,16 @@ class ImpexService:
         """Resolve FKs and the upsert target; returns the entity to update, or None to create."""
         for key, (column, ref) in row.fk.items():
             outcome = fk_resolved.get(key, {}).get(ref)
-            if isinstance(outcome, uuid.UUID):
-                row.values[column.target] = outcome
-            else:
+            # A resolver reports failure as an i18n **key** and success as a resolved *object*
+            # — an id, or a whole ``PartyRef``. Testing for "is a string" rather than "is a
+            # UUID" is what lets a resolver return something richer than an id without core
+            # learning its shape; every error key is a str and no resolved value ever is.
+            if outcome is None or isinstance(outcome, str):
                 row.errors.append(
                     (column.key, outcome or "impex.errors.unresolved_reference")
                 )
+            else:
+                row.values[column.target] = outcome
         if row.nk is None or row.nk_duplicate:
             return None
         matches = existing.get(row.nk_key or "", {}).get(row.nk, [])

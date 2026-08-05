@@ -12,12 +12,14 @@
   import { Check, Pencil } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
 
   import MarketingSourceSection from "./MarketingSourceSection.svelte";
   import {
     ALL_METRICS,
     DRILLDOWNS,
+    connectHref,
     type CompanyMarketing,
     type MarketingSource,
     type SourceEditState,
@@ -243,6 +245,14 @@
   >
     {#if metrics.can_manage}
       <p>{t("marketing.empty.needs_connection")}</p>
+      <!-- One consent for GA4 + Search Console + Ads, returning to this dashboard. -->
+      <a
+        href={connectHref(page.url.pathname + page.url.search)}
+        data-sveltekit-preload-data="off"
+        class="mt-2 inline-block font-medium text-brand hover:underline"
+      >
+        {t("marketing.connect_cta")}
+      </a>
     {:else}
       <p>{t("marketing.empty.ask_admin")}</p>
     {/if}

@@ -11,23 +11,32 @@ import type { LineKind, TaxRate } from "./types";
 
 export interface EditableLine {
   description: string;
-  /** Hours / subscription / product — drives how the document groups this line. */
+  /** Hours / subscription / product — which section this line lives in, and how the
+   *  document groups it. Decided by the section it was created in, not by a per-row picker. */
   line_kind: LineKind;
   quantity: string;
   unit: string;
   unit_price: string;
   tax_rate_id: string;
-  /** The unbilled time entry this line was prefilled from (new-invoice form). Posted so the
-   *  API bills that entry; absent on hand-typed lines. */
-  time_entry_id?: string;
-  /** The agreement and period a subscription line bills. Posted so the API claims that
-   *  period and the cycle cron never invoices it a second time. */
+  /** The unbilled time entries this line bills. A **list**: a line picked per entry carries
+   *  one, a line built by `from-time` grouping carries the whole project's worth. Posted and
+   *  echoed back on read, so re-saving a draft cannot make it forget what it billed. */
+  time_entry_ids?: string[];
+  /** The agreement (or domain) and the period a recurring line bills. Posted so the API
+   *  claims that period and the cron never invoices it a second time — and read back for the
+   *  same reason: a save that dropped the claim handed the month straight back to the cron. */
   subscription_id?: string;
+  domain_id?: string;
   period_start?: string;
   period_end?: string;
-  /** Client-only: this line was auto-added from unbilled time, so a client change may replace
-   *  it — hand-typed lines (falsy) are never clobbered. Never serialized to the API. */
-  auto?: boolean;
+  /** Client-only: a stable key for the `{#each}`. Keying by array index breaks reordering and
+   *  makes every row below a deletion re-render with the wrong state. Never sent. */
+  key?: string;
+}
+
+/** A fresh client-side key for a line. Nothing about it reaches the API. */
+export function lineKey(): string {
+  return `l${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export interface PreviewGroup {

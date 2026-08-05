@@ -93,15 +93,13 @@ SORTABLE = {
 def _linked_in_scope(scope: frozenset[uuid.UUID] | None):  # noqa: ANN202 — SQLA condition
     """A contact is inside the horizon when a ``company_contacts`` link points at a company
     the membership may see — and *only* then. This is the client-login rule; restricted staff
-    additionally keep unattached contacts (``Contact.__company_horizon_clause__``)."""
-    return (
-        select(CompanyContact.id)
-        .where(
-            CompanyContact.contact_id == Contact.id,
-            CompanyContact.company_id.in_(scope or frozenset()),
-        )
-        .exists()
-    )
+    additionally keep unattached contacts (``Contact.__company_horizon_clause__``).
+
+    Defined on the model (``Contact.__portal_horizon_clause__``) so the repository here and the
+    cross-module reference seam give a client the same answer by construction, not by two
+    predicates happening to agree.
+    """
+    return Contact.__portal_horizon_clause__(scope)
 
 
 class ContactService:
@@ -117,8 +115,8 @@ class ContactService:
 
         It overrides ``horizon_condition``, not ``_scoped``: the predicate is then the *one*
         answer every path takes — ``get_or_404``, the list, ``scoped_count_select`` and the
-        service's hand-built ``COUNT(DISTINCT …)`` alike. Overriding ``_scoped`` left the
-        others reading the looser staff rule (#285).
+        service's hand-built ``COUNT(*)`` alike. Overriding ``_scoped`` left the others
+        reading the looser staff rule (#285).
         """
 
         def horizon_condition(self):  # noqa: ANN202 — mirrors the base signature
@@ -175,7 +173,7 @@ class ContactService:
 
         stmt = self.repo.scoped_select().where(*conditions)
         count_stmt = (
-            select(func.count(func.distinct(Contact.id)))
+            select(func.count())
             .select_from(Contact)
             .where(Contact.org_id == self._org_id, *conditions)
         )
@@ -186,16 +184,31 @@ class ContactService:
         if horizon is not None:
             count_stmt = count_stmt.where(horizon)
         # A type filter matches a person who holds that type at *any* company (the type lives on
-        # the link, §91), so it joins ``company_contacts`` and de-duplicates like the company one.
+        # the link, §91); with both filters set it is one link carrying both, which is why they
+        # share a single condition list rather than getting an ``EXISTS`` each.
+        #
+        # **A link filter is an ``EXISTS``, never a join + ``DISTINCT``** (#301). The join
+        # multiplies a contact by its matching links and the ``DISTINCT`` folds them back, which
+        # reads as harmless and is not: ``SELECT DISTINCT`` requires every ``ORDER BY`` expression
+        # to appear in the select list, and four of the sortable columns are ``func.lower(...)``
+        # expressions — names sort case-insensitively. So the *filtered* list 500'd on exactly the
+        # sorts the unfiltered list handles fine, which is why it survived so long: it needs a
+        # company/type filter **and** a name sort. Every scoped contact picker sends that pair,
+        # and ``contactsForScope`` swallows the failure, so it read as "this client has no
+        # contacts" rather than as an error. ``EXISTS`` cannot multiply a row, so nothing needs
+        # de-duplicating and the count is a plain ``COUNT(*)`` again.
         if company_id is not None or contact_type_id is not None:
-            join_on = CompanyContact.contact_id == Contact.id
-            link_where = [CompanyContact.org_id == self._org_id]
+            link_where = [
+                CompanyContact.contact_id == Contact.id,
+                CompanyContact.org_id == self._org_id,
+            ]
             if company_id is not None:
                 link_where.append(CompanyContact.company_id == company_id)
             if contact_type_id is not None:
                 link_where.append(CompanyContact.contact_type_id == contact_type_id)
-            stmt = stmt.join(CompanyContact, join_on).where(*link_where).distinct()
-            count_stmt = count_stmt.join(CompanyContact, join_on).where(*link_where)
+            linked = select(1).where(*link_where).exists()
+            stmt = stmt.where(linked)
+            count_stmt = count_stmt.where(linked)
 
         stmt = apply_sort(stmt, sort, SORTABLE, default=Contact.created_at.desc())
         stmt = stmt.limit(limit).offset(offset)

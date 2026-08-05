@@ -41,13 +41,17 @@ def _file_id(logo_url: str | None) -> uuid.UUID | None:
         return None
 
 
-async def load_brand_logo(ctx, org_settings) -> tuple[bytes | None, str | None]:  # noqa: ANN001
-    """``(bytes, content_type)`` of the org's logo, or ``(None, None)``.
+async def load_org_image(ctx, file_id, *, what: str = "image") -> tuple[bytes | None, str | None]:  # noqa: ANN001
+    """``(bytes, content_type)`` of one of *this org's* stored files, or ``(None, None)``.
 
-    Reads through the tenant-scoped repository like any other row, so a logo id belonging to
-    another org resolves to nothing rather than to their artwork.
+    The tenant scope is on the statement, so a file id belonging to another org resolves to
+    nothing rather than to their artwork — an id is caller-supplied wherever this is used
+    (a template's background is a config value), and §5's rule holds: never a raw id lookup
+    that is not tenant-scoped.
+
+    Every failure degrades rather than raises. A missing or unreadable image must cost a
+    logo, never the invoice a client is waiting for.
     """
-    file_id = _file_id(getattr(org_settings, "logo_url", None))
     if file_id is None:
         return None, None
     stored = await ctx.session.scalar(
@@ -60,6 +64,13 @@ async def load_brand_logo(ctx, org_settings) -> tuple[bytes | None, str | None]:
         # Blocking storage IO off the event loop, the rule the file routes follow (#190).
         data = await asyncio.to_thread(lambda: backend.open(f"{stored.org_id}/{stored.id}").read())
     except (StorageUnavailableError, OSError):
-        logger.warning("brand logo %s could not be read; rendering without it", file_id)
+        logger.warning("%s %s could not be read; rendering without it", what, file_id)
         return None, None
     return data, stored.content_type
+
+
+async def load_brand_logo(ctx, org_settings) -> tuple[bytes | None, str | None]:  # noqa: ANN001
+    """``(bytes, content_type)`` of the org's logo, or ``(None, None)``."""
+    return await load_org_image(
+        ctx, _file_id(getattr(org_settings, "logo_url", None)), what="brand logo"
+    )

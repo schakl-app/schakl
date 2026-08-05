@@ -30,35 +30,70 @@ export type ImpexColumn = components["schemas"]["ImpexColumnInfo"];
 /** Entity slugs with an import route — read off the generated client, never re-typed. */
 type EntityOf<T> = T extends `/api/v1/impex/${infer E}/import` ? E : never;
 export type ImportEntity = EntityOf<keyof paths>;
+type ExportEntityOf<T> = T extends `/api/v1/impex/${infer E}/export` ? E : never;
+/** Every entity with a CSV surface. Today import and export always come together. */
+export type ImpexEntity = ExportEntityOf<keyof paths>;
 
 type ImportPath = `/api/v1/impex/${ImportEntity}/import`;
 type InspectPath = `/api/v1/impex/${ImportEntity}/inspect`;
 type ColumnsPath = `/api/v1/impex/${ImportEntity}/columns`;
 
-/** The entity slugs the settings hub may import. */
-export const IMPORTABLE_ENTITIES = [
+/**
+ * Every entity slug the app knows how to import or export.
+ *
+ * The list is spelled out rather than derived so it can be *iterated* (the settings hub, the
+ * export proxy's guard) — and the two conditional types below make the spelling out safe in
+ * both directions: `satisfies` catches a slug the API does not have, `NoneMissing` catches an
+ * entity the API gained that nothing here offers. A new descriptor is therefore a compile
+ * error naming the slug, never a screen that silently lacks a button.
+ */
+export const IMPEX_ENTITIES = [
   "company",
   "contact",
   "project",
   "task",
   "time_entry",
   "subscription",
-] as const satisfies readonly ImportEntity[];
+  "subscription_type",
+  "subscription_template",
+  "domain",
+  "domain_tld_price",
+  "website",
+  "hosting",
+] as const satisfies readonly ImpexEntity[];
 
-/**
- * Compile-time drift guard, the direction `satisfies` cannot cover: adding an importable
- * entity to the API without listing it here stops being a silently missing button and becomes
- * a type error naming the slug.
- */
 type NoneMissing =
-  Exclude<ImportEntity, (typeof IMPORTABLE_ENTITIES)[number]> extends never
+  Exclude<ImpexEntity, (typeof IMPEX_ENTITIES)[number]> extends never
     ? true
-    : "impex: an importable entity is missing from IMPORTABLE_ENTITIES";
+    : "impex: an entity with a CSV route is missing from IMPEX_ENTITIES";
 const _noneMissing: NoneMissing = true;
 void _noneMissing;
 
+/**
+ * The filter vocabulary an export accepts, mirroring the API's `FILTER_PARAMS`.
+ *
+ * Which of these a given entity actually honours is the descriptor's business (its
+ * `filters` tuple), and the API's generated signature rejects the rest — so the proxy
+ * forwards from one list rather than keeping a second per-entity copy in sync.
+ */
+export const EXPORT_FILTERS = [
+  "q",
+  "status",
+  "mine",
+  "company_id",
+  "project_id",
+  "user_id",
+  "date_from",
+  "date_to",
+  "sort",
+] as const;
+
+export function isExportable(entity: string): entity is ImpexEntity {
+  return (IMPEX_ENTITIES as readonly string[]).includes(entity);
+}
+
 function isImportable(entity: string): entity is ImportEntity {
-  return (IMPORTABLE_ENTITIES as readonly string[]).includes(entity);
+  return (IMPEX_ENTITIES as readonly string[]).includes(entity as ImportEntity);
 }
 
 /**
@@ -84,7 +119,10 @@ function sourceBody(form: FormData): FormData | null {
   // The checkbox is posted as a hidden "false" followed by the box's own "true", because an
   // unchecked box posts nothing at all and "nothing" would read as the default. Last wins.
   const header = form.getAll("has_header");
-  body.append("has_header", String(header[header.length - 1] ?? "true") === "true" ? "true" : "false");
+  body.append(
+    "has_header",
+    String(header[header.length - 1] ?? "true") === "true" ? "true" : "false",
+  );
   return body;
 }
 

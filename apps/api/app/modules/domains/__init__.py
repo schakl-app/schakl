@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from arq import cron
 
+from app.modules.domains.impex import DOMAIN_IMPEX, TLD_PRICE_IMPEX
 from app.modules.domains.jobs import (
     advance_domain_renewals,
     refresh_all_domains,
@@ -27,6 +28,7 @@ module = ModuleDescriptor(
     sku="domains",
     panels=[domains_company_panel],
     permissions=DOMAIN_PERMISSIONS,
+    impex=[DOMAIN_IMPEX, TLD_PRICE_IMPEX],
     # Refresh every domain's nameservers + DNSSEC + MX daily, off-peak and offset from other
     # jobs (#92, #125). The renewal cycle (#250) fires after the subscriptions cycle (05:30)
     # and before invoicing's daily (06:15), so drafts exist when reminders/summaries look.

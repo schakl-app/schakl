@@ -94,6 +94,34 @@
     </form>
   </section>
 
+  <!-- Included e-mail (epic #199): may this org fall back to the instance's own transport? -->
+  <section class={sectionClass}>
+    <h2 class={sectionTitle}>{t("cloud.email_included.label")}</h2>
+    <p class="mt-1 text-xs text-text-muted">{t("cloud.email_included.hint")}</p>
+    <form
+      method="POST"
+      action="?/emailIncluded"
+      use:enhance={busy.keep("emailIncluded")}
+      class="mt-4 space-y-3"
+    >
+      <label class="flex items-center gap-2 text-sm text-text">
+        <input
+          type="checkbox"
+          name="email_included"
+          checked={org.email_included ?? true}
+          class="h-4 w-4 rounded border-border text-brand focus:ring-brand"
+        />
+        {t("cloud.email_included.enabled")}
+      </label>
+      <Button loading={busy.is("emailIncluded")} disabled={busy.active}>
+        {t("common.save")}
+      </Button>
+      {#if form?.emailSaved}<span class="ml-3 text-sm text-text-muted"
+          >{t("cloud.email_included.saved")}</span
+        >{/if}
+    </form>
+  </section>
+
   <!-- Modules -->
   <section class={sectionClass}>
     <h2 class={sectionTitle}>{t("settings.modules.title")}</h2>

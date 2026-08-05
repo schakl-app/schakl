@@ -1,0 +1,146 @@
+  {#
+    Two columns down the whole upper half, and they flow independently: the wordmark, the
+    heading and the addressee on the left; the sender's identity on the right. That is what
+    lets the heading sit *beside* the sender block rather than below it — the shape a Dutch
+    agency letterhead actually has, and the reason this design gives the sender a column
+    instead of a corner.
+  #}
+  <header class="head">
+    <div class="head-left">
+      {% if logo %}
+        <img class="logo" src="{{ logo }}" alt="{{ brand_name }}" />
+      {% else %}
+        <p class="brand-word">{{ brand_name }}</p>
+      {% endif %}
+      <h1>{{ heading }}</h1>
+      <div class="bill-to">
+        {% for entry in customer if entry.key != 'label' %}
+          <p class="{{ 'name' if entry.key == 'name' }}">
+            {% if entry.label %}{{ entry.label }} {% endif %}{{ entry.value | nl2br }}
+          </p>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="head-right">
+      <div class="sender">
+        {#
+          The ways to reach the sender are marked rather than labelled — `t` / `e` / `i`
+          against the value, not "Telefoon" spelled out. It is what keeps the block a
+          letterhead instead of a form, and the marks are message keys like everything else,
+          because the letter that stands for "website" is not the same one in every language.
+
+          A mark answers *our* label, never the tenant's: a template that reworded the field
+          keeps its own word (`entry.relabelled`), or the box they typed it in did nothing.
+        #}
+        {% set marks = {
+          'phone': t('invoicing.doc.phone_mark'),
+          'email': t('invoicing.doc.email_mark'),
+          'website': t('invoicing.doc.website_mark'),
+        } %}
+        {#
+          The identity rows (IBAN, BIC, Btw-nr, KvK) read as a second group, set off by a gap.
+          Which row *starts* it cannot be pinned to one key: any of them can be switched off,
+          and a break attached to a field that is not printing is no break at all. So the gap
+          goes on the first of the group that actually survived the layout.
+        #}
+        {% set identity = ['iban', 'bic', 'vat_number', 'coc_number'] %}
+        {% set labelled = seller | selectattr('label') | list %}
+        {% set sender = namespace(grouped=false) %}
+        {% for entry in seller if not entry.label %}
+          <p class="{{ 'name' if entry.key == 'name' }}">{{ entry.value | nl2br }}</p>
+        {% endfor %}
+        {% if labelled %}
+          <table class="sender-grid">
+            {% for entry in labelled %}
+              {% set starts_group = entry.key in identity and not sender.grouped %}
+              {% if entry.key in identity %}{% set sender.grouped = true %}{% endif %}
+              <tr class="{{ 'group-start' if starts_group }}">
+                <td class="k">
+                  {{ entry.label if entry.relabelled else (marks.get(entry.key) or entry.label) }}
+                </td>
+                <td>{{ entry.value }}</td>
+              </tr>
+            {% endfor %}
+          </table>
+        {% endif %}
+      </div>
+    </div>
+  </header>
+
+  {#
+    The document's own particulars, in the same two columns and deliberately aligned at the
+    top: what is owed and where it goes on the left, the numbers that identify the invoice on
+    the right. Letting them simply follow their columns would align them by accident — a
+    sole trader with four sender fields would get a card floating a long way below its
+    numbers.
+  #}
+  <div class="details">
+    <div class="details-left">
+      {% if payment_box %}
+        {{ blocks.payment_card(payment_box, t('invoicing.doc.payment_details')) }}
+      {% endif %}
+    </div>
+    <div class="details-right">
+      {# Same rule as the sender's identity group: the client's own references sit apart from
+         the invoice's numbers, and the gap belongs to whichever of them is first still
+         printing. #}
+      {% set references = ['client_number', 'delivery_date'] %}
+      {% set doc_meta = namespace(grouped=false) %}
+      <table class="meta">
+        {% for entry in meta %}
+          {% set starts_group = entry.key in references and not doc_meta.grouped %}
+          {% if entry.key in references %}{% set doc_meta.grouped = true %}{% endif %}
+          <tr class="{{ 'group-start' if starts_group }}">
+            <td class="meta-label">{{ entry.label }}</td>
+            <td class="meta-value">{{ entry.value }}</td>
+          </tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+
+  {#
+    The body stack, split around the closing band.
+
+    Four blocks are drawn by hand here rather than from the loop — the payment card above;
+    the lines, because this design gives each kind its own headed table rather than banding
+    one grid; and the VAT breakdown and totals below, which it sets side by side on one washed
+    band at the foot of the document instead of stacking them. `_blocks.html` sanctions
+    exactly this: omit the key from the loop and place it yourself. Everything else keeps its
+    configured order, and the band lands where `totals` was ordered, so "notes below the
+    total" still means what it says.
+
+    `.flow` carries a floor rather than the closing band carrying a ceiling: a short invoice
+    then leaves the open middle this design is built around, and a long one simply grows past
+    it. Pinning the band to the bottom of the sheet instead would need the page's height,
+    which no block in normal flow can ask for without risking a page break of its own.
+  #}
+  {% set drawn_by_hand = ['payment_box', 'lines', 'tax_summary', 'totals'] %}
+  {% set closing_at = body_order.index('totals') if 'totals' in body_order else body_order | length %}
+
+  <div class="flow">
+    {% for key in body_order[:closing_at] %}
+      {% if key == 'lines' %}
+        {{ blocks.sectioned(columns, sections, grouped) }}
+      {% elif key not in drawn_by_hand %}
+        {{ blocks.block(key, ctx) }}
+      {% endif %}
+    {% endfor %}
+  </div>
+
+  {# The left cell is drawn whether or not the breakdown is switched on: it is what holds the
+     totals to their own column instead of letting them stretch across the band. #}
+  <div class="closing avoid-break">
+    <div class="closing-row">
+      <div class="closing-left">
+        {% if layout.enabled('tax_summary') %}
+          {{ blocks.tax_summary(ctx.tax_summary, tax_summary_labels) }}
+        {% endif %}
+      </div>
+      {{ blocks.totals_card(totals) }}
+    </div>
+  </div>
+
+  {% for key in body_order[closing_at + 1:] if key not in drawn_by_hand %}
+    {{ blocks.block(key, ctx) }}
+  {% endfor %}

@@ -86,6 +86,7 @@ def scopes_for(
     row: GoogleSettings | None,
     *,
     include_gmail: bool,
+    include_marketing: bool = False,
     include_analytics: bool = False,
     include_search_console: bool = False,
     include_ads: bool = False,
@@ -95,11 +96,16 @@ def scopes_for(
     Gmail additionally needs the *user's* opt-in (per-user and privacy-sensitive), so it only
     rides along when they ticked the box — reconnecting later adds it incrementally.
 
-    The marketing scopes (``include_analytics`` / ``include_search_console`` / ``include_ads``)
-    are requested only when the caller asks — the ``marketing`` module's connect deep-link sets
-    the flags for the sources being linked. They are not gated on a ``google_settings`` toggle:
-    marketing enablement is a separate module (``org_settings.enabled_modules``), and requesting
-    a scope the connection already holds is a no-op thanks to ``include_granted_scopes``.
+    ``include_marketing`` asks for **every** marketing scope at once, and is what the marketing
+    module's connect link uses. The per-source flags (``include_analytics`` /
+    ``include_search_console`` / ``include_ads``) still work and stay for API callers who really
+    do want one — but a UI that asks per source makes the user walk Google's consent screen once
+    per source, three times over, for one module they enabled once. Incremental authorization
+    does not *save* a round-trip there; it only makes the second and third ones look necessary.
+
+    None of them is gated on a ``google_settings`` toggle: marketing enablement is a separate
+    module (``org_settings.enabled_modules``), and requesting a scope the connection already
+    holds is a no-op thanks to ``include_granted_scopes``.
     """
     scopes = list(SCOPE_IDENTITY)
     if row is not None and row.calendar_enabled:
@@ -108,13 +114,33 @@ def scopes_for(
         scopes.append(SCOPE_DRIVE)
     if include_gmail and row is not None and row.gmail_enabled:
         scopes.append(SCOPE_GMAIL)
-    if include_analytics:
+    if include_marketing or include_analytics:
         scopes.append(SCOPE_ANALYTICS)
-    if include_search_console:
+    if include_marketing or include_search_console:
         scopes.append(SCOPE_SEARCH_CONSOLE)
-    if include_ads:
+    if include_marketing or include_ads:
         scopes.append(SCOPE_ADS)
     return scopes
+
+
+def safe_return_path(raw: str | None, fallback: str) -> str:
+    """A caller-supplied "send me back here" path, or ``fallback`` if it isn't one.
+
+    The connect link carries where the user was — a client's marketing tab, not always the
+    account page — and that value comes off a URL, so it is attacker-controlled by definition.
+    Only a *site-relative* path is ever honoured: one leading slash, no scheme, no authority.
+    ``//evil.example`` and ``/\\evil.example`` are protocol-relative URLs that browsers navigate
+    off-site, and a backslash is folded to a slash by every major browser — so both leading
+    characters are checked, not just the first.
+    """
+    path = (raw or "").strip()
+    if not path.startswith("/"):
+        return fallback
+    if len(path) > 1 and path[1] in "/\\":
+        return fallback
+    if "\n" in path or "\r" in path:  # header splitting, belt to Starlette's braces
+        return fallback
+    return path
 
 
 # --------------------------------------------------------------------------- #

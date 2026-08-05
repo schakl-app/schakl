@@ -4,7 +4,7 @@ Loads the enabled modules (same discovery as ``main.py``) and collects the cron 
 module contributes via its :class:`ModuleDescriptor`, plus the core jobs below.
 
 Note: ARQ cron schedules fire in UTC; jobs that reason about "today" must compute the date
-in the tenant-relevant timezone (``Europe/Amsterdam``) themselves.
+in the tenant's own timezone (``org_settings.timezone``, CLAUDE.md §8) themselves.
 """
 
 from __future__ import annotations

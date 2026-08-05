@@ -30,7 +30,7 @@ from app.core.email.templates import (
     is_supported_locale,
     sanitize_email_html,
 )
-from app.core.models import OrgSettings
+from app.core.models import Org, OrgSettings
 from app.core.tenancy import RequestContext
 from app.errors import AppError
 from app.i18n import available_locales, resolve_locale, translate
@@ -105,10 +105,36 @@ async def _send_instance_email(
     return await send_email(provider, config, sender, message)
 
 
+def instance_email_allowed_for(org: Org) -> bool:
+    """May *this org* send through the operator's transport (epic #199)?
+
+    Two facts, and both must hold: the instance has a transport configured at all
+    (``SCHAKL_INSTANCE_EMAIL_*``), and the org is entitled to it (``orgs.email_included``,
+    the operator's per-org choice — true unless they said otherwise). Takes the org row
+    because a request context already holds one; the send seam has only an id and uses the
+    async twin below.
+    """
+    return settings.instance_email_available and org.email_included
+
+
+async def instance_email_allowed(session: AsyncSession, org_id) -> bool:  # noqa: ANN001
+    """:func:`instance_email_allowed_for` from an org id — the send seam's shape.
+
+    The instance check runs first so the common self-hosted case answers without a query;
+    ``orgs`` carries no RLS (CLAUDE.md §5), so the read is safe from any session.
+    """
+    if not settings.instance_email_available:
+        return False
+    included = await session.scalar(select(Org.email_included).where(Org.id == org_id))
+    # A row that has gone missing is not an entitlement — but nor is it this seam's business
+    # to fail loudly about; treat only an explicit False as "not included".
+    return included is not False
+
+
 async def email_configured(session: AsyncSession, org_id) -> bool:  # noqa: ANN001
     """Whether a send for this org can go *somewhere* — its own transport, or the
     instance-provided fallback (the cloud "included e-mail", epic #199)."""
-    if settings.instance_email_available:
+    if await instance_email_allowed(session, org_id):
         return True
     return await get_row(session, org_id) is not None
 
@@ -123,13 +149,19 @@ async def send_org_email(
     """Send through the org's configured transport; ``(False, key)`` when none is configured.
 
     Resolution order (epic #199): an org's own row wins; a row with ``provider="instance"``
-    — or no row at all while the instance transport is configured — goes through the
-    operator-provided transport. The error string for a missing configuration is an i18n
-    key (CLAUDE.md §9) so callers can surface it directly; provider failures carry the
-    provider's own text.
+    — or no row at all while the instance transport is available *to this org* — goes
+    through the operator-provided transport. The error string for a missing configuration is
+    an i18n key (CLAUDE.md §9) so callers can surface it directly; provider failures carry
+    the provider's own text.
     """
     row = await get_row(session, org_id)
-    if row is None and not settings.instance_email_available:
+    # Only the two instance-transport paths need the entitlement, and it costs a query — so
+    # it is resolved here rather than on every send that already has its own provider. A
+    # stored "instance" choice the org is no longer entitled to (the operator turned the
+    # transport off, or took this org off included e-mail) sends nowhere, never elsewhere.
+    if (row is None or row.provider == "instance") and not await instance_email_allowed(
+        session, org_id
+    ):
         return False, "errors.email_not_configured"
     # The org-wide signature rides the one send seam (owner request): every outgoing mail —
     # auth, notification, invoice — carries it automatically, with no per-caller code.
@@ -144,8 +176,6 @@ async def send_org_email(
     if row is None:
         return await _send_instance_email(session, org_id, message)
     if row.provider == "instance":
-        if not settings.instance_email_available:
-            return False, "errors.email_not_configured"
         return await _send_instance_email(
             session, org_id, message, from_name=row.from_name, reply_to=row.reply_to
         )
@@ -167,7 +197,7 @@ class EmailSettingsService:
     def __init__(self, ctx: RequestContext) -> None:
         self.ctx = ctx
 
-    def _read(self, row: EmailSettings) -> EmailSettingsRead:
+    def _stored(self, row: EmailSettings) -> EmailSettingsRead:
         if row.provider == "instance":
             # No credentials of its own — the transport lives in instance config (#199).
             return EmailSettingsRead(
@@ -190,18 +220,52 @@ class EmailSettingsService:
             **public,
         )
 
-    async def get(self) -> EmailSettingsRead | None:
+    async def _resolved(self, row: EmailSettings | None) -> EmailSettingsRead:
+        """The stored configuration plus **what would actually send right now**.
+
+        The two are not the same thing, and the screen that only knew the first one lied by
+        omission: an org on cloud's included e-mail (epic #199) stores nothing, so the page
+        read "not configured" and offered a blank SMTP form while every mail was leaving
+        happily through the operator's transport. So the read states the active transport —
+        and, because the org never entered them, the address and name it sends as.
+        """
+        read = self._stored(row) if row is not None else EmailSettingsRead()
+        # The org row is already in hand (``require_context`` loaded it), so this settings
+        # surface costs no extra query for the entitlement.
+        read.instance_email_available = instance_email_allowed_for(self.ctx.org)
+        if row is not None and row.provider != "instance":
+            read.active_provider = row.provider  # type: ignore[assignment]
+            read.active_from_email = row.from_email
+            read.active_from_name = row.from_name
+            return read
+        # Either the explicit "included e-mail" choice or no row at all — both send through
+        # the operator's transport, and both stop sending the moment it is withdrawn.
+        if not read.instance_email_available:
+            return read
+        read.active_provider = "instance"
+        read.active_from_email = settings.instance_email_from or None
+        read.active_from_name = (
+            row.from_name
+            if row is not None
+            else (
+                await _org_brand(self.ctx.session, self.ctx.org.id)
+                or settings.instance_email_from_name
+                or None
+            )
+        )
+        return read
+
+    async def get(self) -> EmailSettingsRead:
         self.ctx.require("settings.email.manage")
-        row = await get_row(self.ctx.session, self.ctx.org.id)
-        return self._read(row) if row else None
+        return await self._resolved(await get_row(self.ctx.session, self.ctx.org.id))
 
     async def save(self, data: EmailSettingsWrite) -> EmailSettingsRead:
         self.ctx.require("settings.email.manage")
         row = await get_row(self.ctx.session, self.ctx.org.id)
         if data.provider == "instance":
             # The explicit "included e-mail" choice: only offerable while the operator's
-            # transport is actually configured; stores no credentials.
-            if not settings.instance_email_available:
+            # transport is configured *and* this org is entitled to it; stores no credentials.
+            if not instance_email_allowed_for(self.ctx.org):
                 raise AppError(
                     "conflict", "errors.instance_email_unavailable", status_code=409
                 )
@@ -220,7 +284,7 @@ class EmailSettingsService:
                 for key, value in values.items():
                     setattr(row, key, value)
             await self.ctx.session.flush()
-            return self._read(row)
+            return await self._resolved(row)
         if data.from_email is None:
             raise AppError(
                 "validation",
@@ -266,7 +330,7 @@ class EmailSettingsService:
             for key, value in values.items():
                 setattr(row, key, value)
         await self.ctx.session.flush()
-        return self._read(row)
+        return await self._resolved(row)
 
     async def delete(self) -> None:
         """Remove the configuration — e-mail is simply off again."""

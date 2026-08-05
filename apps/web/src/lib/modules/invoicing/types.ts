@@ -12,12 +12,72 @@ export type InvoicingSettings = components["schemas"]["InvoicingSettingsRead"];
 export type SellerDetails = components["schemas"]["SellerDetails"];
 export type LineKind = components["schemas"]["LineKind"];
 export type BillableSubscription = components["schemas"]["BillableSubscription"];
+export type BillableDomain = components["schemas"]["BillableDomain"];
+export type PeriodOffer = components["schemas"]["PeriodOffer"];
+export type Outstanding = components["schemas"]["OutstandingRead"];
+export type UnbilledEntry = components["schemas"]["UnbilledEntry"];
+export type AutoInvoiceMode = components["schemas"]["AutoInvoiceMode"];
 
-/** The order the three kinds appear in: what was worked, what recurs, what was sold. */
-export const LINE_KINDS = ["hours", "subscription", "product"] as const satisfies LineKind[];
+/**
+ * The order the four kinds appear in: what was worked, what recurs, what renews, what was
+ * sold. **Keep in step with `SECTION_ORDER`** in `apps/api/.../render/context.py` — the editor
+ * and the printed document must lay a mixed invoice out the same way, or saving one reorders
+ * the other.
+ */
+export const LINE_KINDS = [
+  "hours",
+  "subscription",
+  "domain",
+  "product",
+] as const satisfies LineKind[];
+
+/** The automation levels, weakest first — each contains the one before it. */
+export const AUTO_INVOICE_MODES = [
+  "off",
+  "draft",
+  "issue",
+  "send",
+] as const satisfies AutoInvoiceMode[];
+
+/**
+ * Read the automation level a form posted, as the API's own vocabulary.
+ *
+ * `""` is the *inherit* choice and becomes `null` — a third state meaning "follow the org",
+ * which is not the same as any level and must reach the API as an explicit null. An
+ * unrecognised value is also `null` rather than a guess: a tampered form should fall back to
+ * inheriting, never to a level nobody chose.
+ */
+export function readAutoInvoiceMode(value: FormDataEntryValue | null): AutoInvoiceMode | null {
+  const raw = String(value ?? "").trim();
+  return (AUTO_INVOICE_MODES as readonly string[]).includes(raw) ? (raw as AutoInvoiceMode) : null;
+}
 
 export function lineKindLabel(kind: LineKind): string {
   return t(`invoicing.line.kind.${kind}`);
+}
+
+/**
+ * The **document's** unit for a line of this kind, or "" when the line names its own.
+ *
+ * Hours are hours: asking the user to type "uur" into every hours line was a field that could
+ * only ever be filled in one way, or wrong. A recurring line's quantity is the agreement's
+ * own (1 × the monthly fee) and a renewal's is one year, so neither needs a unit. Only a
+ * service line sells things measured in something — stuks, dagen, woorden — and there the
+ * field stays.
+ */
+export function unitFor(kind: LineKind): string {
+  return kind === "hours" ? t("invoicing.unit.hour") : "";
+}
+
+/** Which kinds are picked from what is actually outstanding rather than typed by hand.
+ *  A product is the only thing the agency invents on the spot. */
+export const PICKED_KINDS = ["hours", "subscription", "domain"] as const;
+
+/** dd-mm-jjjj for text that gets **stored on the document** — European and locale-independent
+ *  (docs/UX.md), never the viewer's format: it becomes the line the client reads. */
+export function periodText(start: string | null | undefined, end: string): string {
+  const dmy = (iso: string) => iso.split("-").reverse().join("-");
+  return start ? `${dmy(start)} – ${dmy(end)}` : dmy(end);
 }
 
 /**
@@ -130,4 +190,41 @@ export function docMoney(
     style: "currency",
     currency: currency || "EUR",
   }).format(Number(value));
+}
+
+/** What a document's state reads as, now that credit notes reach the balance.
+ *
+ * `status` stopped being the whole answer when crediting stopped being paperwork-only. An
+ * invoice a credit note wrote off stays `open` — nobody paid it, and flipping it to `paid`
+ * would book it as revenue — so "gecrediteerd" is derived from `credited_total`, exactly as
+ * "vervallen" is derived from the due date. And a credit note that reaches `paid` was
+ * *settled*: either its source absorbed it, or the money genuinely went back. Telling those
+ * two apart is what `paid_total` answers.
+ *
+ * Derived in one place so the list badge and the detail header can never disagree.
+ */
+export function docStatus(invoice: {
+  kind: string;
+  status: string;
+  overdue?: boolean;
+  credited?: boolean;
+  fully_credited?: boolean;
+  paid_total?: string | number;
+}): { key: string; tone: "danger" | "muted" } {
+  if (invoice.kind === "credit_note") {
+    if (invoice.status === "paid") {
+      return {
+        key:
+          Number(invoice.paid_total ?? 0) !== 0
+            ? "invoicing.status.refunded"
+            : "invoicing.status.settled",
+        tone: "muted",
+      };
+    }
+    return { key: `invoicing.status.${invoice.status}`, tone: "muted" };
+  }
+  if (invoice.overdue) return { key: "invoicing.status.overdue", tone: "danger" };
+  if (invoice.fully_credited) return { key: "invoicing.status.credited", tone: "muted" };
+  if (invoice.credited) return { key: "invoicing.status.partly_credited", tone: "muted" };
+  return { key: `invoicing.status.${invoice.status}`, tone: "muted" };
 }

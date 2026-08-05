@@ -1,7 +1,13 @@
 # schakl web (SvelteKit SSR via adapter-node). Build context is the REPO ROOT
 # (needs project.inlang + shared messages/ for the Paraglide compile).
 # Published to ghcr.io/schakl-app/schakl-web.
-FROM node:22-slim AS builder
+#
+# The builder is pinned to $BUILDPLATFORM — it always runs natively, never emulated, and
+# runs ONCE no matter how many platforms we publish. adapter-node emits a self-contained
+# bundle of pure JavaScript (no .node/.so, and no node_modules in the runtime stage), so
+# the artefact is identical whichever CPU produced it. Building it a second time under
+# QEMU cost 14.5 minutes per release to arrive at the same bytes.
+FROM --platform=$BUILDPLATFORM node:22-slim AS builder
 
 RUN corepack enable
 WORKDIR /repo

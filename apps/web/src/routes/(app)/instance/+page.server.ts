@@ -29,12 +29,16 @@ export const actions: Actions = {
     const customDomain = String(form.get("custom_domain") ?? "")
       .trim()
       .toLowerCase();
+    // Included e-mail (epic #199): ticked by default, so an admin who never thinks about it
+    // provisions what every org gets today. An unchecked box submits nothing.
+    const emailIncluded = form.get("email_included") !== null;
     if (!name || !slug) return fail(400, { error: "errors.required" });
     const { error } = await apiFor(event).POST("/api/v1/instance/orgs", {
       body: {
         name,
         slug,
         owner_email: ownerEmail || null,
+        email_included: emailIncluded,
         custom_domain: customDomain || null,
         custom_domain_mode: "activate",
       },

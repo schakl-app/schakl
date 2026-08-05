@@ -11,6 +11,33 @@ import { apiFor } from "$lib/core/session";
 
 const LINK_FIELDS = ["company_id", "project_id", "task_id", "contact_id"] as const;
 
+/**
+ * The contact roster the form posted (#300): `ContactChips` serialises its chips into one
+ * comma-separated hidden field, in chip order, because an edit surface has one save button.
+ *
+ * `null` when the form carried no such field at all — the API reads that as "leave the roster
+ * alone", which is what keeps a form that never rendered the picker (there isn't one today, but
+ * there was a contact-only one yesterday) from clearing what it never showed.
+ */
+function contactIds(form: FormData): string[] | null {
+  if (!form.has("contact_ids")) return null;
+  return String(form.get("contact_ids") ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
+/** The link fields plus the roster, as every write path sends them. */
+function linkBody(form: FormData): Record<string, string | string[] | null> {
+  const roster = contactIds(form);
+  return {
+    ...Object.fromEntries(
+      LINK_FIELDS.map((field) => [field, String(form.get(field) ?? "").trim() || null]),
+    ),
+    ...(roster ? { contact_ids: roster } : {}),
+  };
+}
+
 /** "2026-07-10" + "14:30" → the tenant's wall clock, naive; the API attaches the org zone. */
 function occurredAt(form: FormData): string | null {
   const date = String(form.get("occurred_date") ?? "").trim();
@@ -27,13 +54,65 @@ function parseCustom(raw: FormDataEntryValue | null): Record<string, unknown> {
   }
 }
 
-function links(form: FormData): Record<string, string> {
-  const out: Record<string, string> = {};
+function links(form: FormData): Record<string, string | string[]> {
+  const out: Record<string, string | string[]> = {};
   for (const field of LINK_FIELDS) {
     const value = String(form.get(field) ?? "").trim();
     if (value) out[field] = value;
   }
+  const roster = contactIds(form);
+  if (roster) out.contact_ids = roster;
   return out;
+}
+
+/**
+ * The three bulk review actions, which differ only in endpoint and payload (#299).
+ *
+ * `ids` arrives as the comma-joined selection the bulk bar posted. Only link fields the user
+ * actually filled are forwarded — see `bulkApproveInteractions` for why an unfilled one must
+ * be *absent* rather than `null` here.
+ *
+ * An approve may carry `approve_ids` instead: the file-and-approve button in the bulk assign
+ * dialog shares that form with plain "file", and the two act on genuinely different sets —
+ * every reviewable row can be re-filed, only a pending one can be approved. One form cannot
+ * hold two `ids` fields, so the narrower set travels under its own name.
+ */
+async function bulkReview(event: RequestEvent, kind: "approve" | "assign" | "reject") {
+  const form = await event.request.formData();
+  const raw = (kind === "approve" && form.get("approve_ids")) || form.get("ids");
+  const ids = String(raw ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (ids.length === 0) return fail(400, { error: "errors.required" });
+
+  const body: Record<string, unknown> = { ids };
+  if (kind === "reject") {
+    body.suppress_thread = form.get("suppress_thread") === "1";
+  } else {
+    for (const field of LINK_FIELDS) {
+      const value = String(form.get(field) ?? "").trim();
+      if (value) body[field] = value;
+    }
+  }
+  const { data, error } = await apiFor(event).POST(`/api/v1/interactions/bulk/${kind}` as const, {
+    body: body as never,
+  });
+  if (error || !data) return fail(400, { error: apiErrorKey(error).key });
+  // `failed` carries a server-side default, so the generated client types it optional even
+  // though the response always has it.
+  const failed = data.failed ?? [];
+  return {
+    ok: true,
+    bulkResult: {
+      kind,
+      succeeded: data.succeeded,
+      // The distinct reasons, so the bar can say *why* rows were skipped rather than only
+      // how many — "already reviewed" and "someone else's mailbox" need different answers.
+      failed: failed.length,
+      reasons: [...new Set(failed.map((f) => f.error))],
+    },
+  };
 }
 
 export const interactionActions = {
@@ -95,7 +174,12 @@ export const interactionActions = {
       return fail(400, { error: "errors.required" });
     const body = new FormData();
     body.append("file", upload, upload.name);
-    for (const [field, value] of Object.entries(links(form))) body.append(field, value);
+    for (const [field, value] of Object.entries(links(form))) {
+      // A roster is a repeated field, never a joined string: FastAPI reads `list[UUID]` from
+      // `contact_ids=…&contact_ids=…`, and one comma-joined value parses as no UUID at all.
+      if (Array.isArray(value)) for (const id of value) body.append(field, id);
+      else body.append(field, value);
+    }
     if (form.get("allow_duplicate") === "1") body.append("allow_duplicate", "true");
     const res = await event.fetch(`${apiBaseUrl()}/api/v1/interactions/upload-eml`, {
       method: "POST",
@@ -150,10 +234,9 @@ export const interactionActions = {
         // an edit may set, repoint or clear any of them, the same explicit-null contract the
         // move dialog's PATCH uses. The client rides along as the value the form derived from
         // the project/task — `_resolve_links(partial=True)` does not derive over an explicit
-        // key, so posting a bare null here would drop the client the picker just showed.
-        ...Object.fromEntries(
-          LINK_FIELDS.map((field) => [field, String(form.get(field) ?? "").trim() || null]),
-        ),
+        // key, so posting a bare null here would drop the client the picker just showed. The
+        // roster overrules the (now unrendered) `contact_id` at the API, by contract (#300).
+        ...linkBody(form),
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
@@ -177,12 +260,7 @@ export const interactionActions = {
     if (!id) return fail(400, { error: "errors.required" });
     // Assign links in the same step (#183) only when the approve came from the review dialog
     // (`assign=1`); the one-click inline approve sends no links and touches none.
-    const body =
-      form.get("assign") === "1"
-        ? Object.fromEntries(
-            LINK_FIELDS.map((field) => [field, String(form.get(field) ?? "").trim() || null]),
-          )
-        : undefined;
+    const body = form.get("assign") === "1" ? linkBody(form) : undefined;
     const api = apiFor(event);
     const { error } = await api.POST("/api/v1/interactions/{interaction_id}/approve", {
       params: { path: { interaction_id: id } },
@@ -214,11 +292,7 @@ export const interactionActions = {
     const form = await event.request.formData();
     const id = String(form.get("id") ?? "");
     if (!id) return fail(400, { error: "errors.required" });
-    const body: Record<string, string | null> = {};
-    for (const field of LINK_FIELDS) {
-      const value = String(form.get(field) ?? "").trim();
-      body[field] = value || null;
-    }
+    const body = linkBody(form);
     const api = apiFor(event);
     const { error } =
       String(form.get("source") ?? "") === "gmail"
@@ -285,7 +359,44 @@ export const interactionActions = {
     });
     if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });
     return {
-      inlineCreated: { slot: String(form.get("slot") ?? "") || "interaction_contact", id: data.id },
+      inlineCreated: {
+        slot: String(form.get("slot") ?? "") || "interaction_contact",
+        id: data.id,
+        // The picker labels the new option from this, not from what was typed into it: the
+        // draft is a first name at best, and the dialog is where the surname was filled in.
+        name: `${data.first_name} ${data.last_name ?? ""}`.trim(),
+      },
+    };
+  },
+
+  /**
+   * Inline-create behind the client picker on every contactmoment surface (docs/UX.md — per-
+   * picker definition of done). It used to live on the host *page*: the form passed what was
+   * typed outwards and `/interactions` owned the dialog, so the ＋ existed on exactly one screen
+   * and nowhere else — not on the edit form beside it, and on no company/project/contact/task
+   * page, where a timeline renders through the very same component. Filing a moment for a client
+   * nobody had entered yet meant leaving the form. Riding in `interactionActions` puts it
+   * wherever the panel already posts.
+   */
+  createInteractionCompany: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const name = String(form.get("name") ?? "").trim();
+    if (!name) return fail(400, { qcError: "errors.required" });
+    const { data, error } = await apiFor(event).POST("/api/v1/companies", {
+      body: {
+        name,
+        website: String(form.get("website") ?? "").trim() || null,
+        status: String(form.get("status") ?? "active") as "active",
+        custom: parseCustom(form.get("custom")),
+      },
+    });
+    if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });
+    return {
+      inlineCreated: {
+        slot: String(form.get("slot") ?? "") || "interaction_company",
+        id: data.id,
+        name: data.name,
+      },
     };
   },
 
@@ -326,6 +437,43 @@ export const interactionActions = {
   },
 
   /**
+   * Inline-create behind the review dialog's project picker (docs/UX.md — per-picker definition
+   * of done): creates the project immediately and answers with `inlineCreated` so the picker
+   * auto-selects it, which is what puts it on the row the approve is about to assign. Until now
+   * an email that turned out to be the start of new work could only be approved onto a project
+   * that already existed — filing it meant leaving the review, creating the project elsewhere,
+   * and finding the message again.
+   *
+   * The dialog's current client rides along (#247), so the new project lands on the client the
+   * email is being filed to; `company_id` comes back so the picker's cascade can backfill it.
+   */
+  createInteractionProject: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const name = String(form.get("name") ?? "").trim();
+    if (!name) return fail(400, { qcError: "errors.required" });
+    const { data, error } = await apiFor(event).POST("/api/v1/projects", {
+      body: {
+        name,
+        company_id: String(form.get("company_id") ?? "").trim() || null,
+        status: "active",
+        budget_period: "total",
+        currency: event.locals.theme.currency,
+        billable_default: form.get("billable_default") !== null,
+        custom: parseCustom(form.get("custom")),
+      },
+    });
+    if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });
+    return {
+      inlineCreated: {
+        slot: String(form.get("slot") ?? "") || "move_project",
+        id: data.id,
+        name: data.name,
+        company_id: data.company_id ?? null,
+      },
+    };
+  },
+
+  /**
    * Close the linked task with this contact moment (#157): sets the picked terminal status
    * and designates the interaction as the close's justification. The API validates linkage
    * and the per-status requires_interaction policy.
@@ -355,6 +503,23 @@ export const interactionActions = {
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { ok: true };
   },
+
+  /**
+   * Bulk review (#299): approve / file / reject a whole selection.
+   *
+   * All three answer `bulkResult` rather than a bare `ok`, because a batch's honest answer is
+   * "37 done, 3 skipped" — the API reports ineligible rows instead of rolling the good ones
+   * back, and a UI that swallowed that would be claiming work it did not do.
+   *
+   * The link fields are only forwarded when the user actually picked one. That is the whole
+   * contract difference from the single move dialog (which is prefilled, so an empty picker
+   * there means "clear"): here a blank picker over a heterogeneous selection means "leave
+   * every row's own link alone", and posting a bare `null` would wipe what the gmail matcher
+   * already worked out on every row.
+   */
+  bulkApproveInteractions: (event: RequestEvent) => bulkReview(event, "approve"),
+  bulkAssignInteractions: (event: RequestEvent) => bulkReview(event, "assign"),
+  bulkRejectInteractions: (event: RequestEvent) => bulkReview(event, "reject"),
 
   /**
    * Manually glue this email onto another's conversation (#272): a reply Gmail didn't thread

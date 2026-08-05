@@ -5,6 +5,7 @@
   import { page } from "$app/state";
   import { fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
   import { customFieldColumns } from "$lib/core/table/columns";
@@ -91,6 +92,7 @@
       email_enabled: emailCell,
       next_invoice: renewalCell,
       price: priceCell,
+      invoiceable: invoiceableCell,
       created_at: createdCell,
     }),
   });
@@ -143,6 +145,19 @@
   <!-- Override → TLD list price → an honest dash, never a reassuring zero (docs/UX.md). -->
   <span class="tabular-nums text-text-muted">
     {domain.resolved_price != null ? fmtMoney(Number(domain.resolved_price)) : "—"}
+  </span>
+{/snippet}
+
+{#snippet invoiceableCell(domain: Domain)}
+  <!-- The resolved answer (#298). "Volgt register" is the interesting one: it says the
+       decision is the register's, so the row changes when the register does. -->
+  <span class="text-text-muted">
+    {domain.invoiceable_effective ? t("common.yes") : t("common.no")}
+    {#if domain.invoiceable == null}
+      <span class="ml-1 rounded-md bg-surface px-1.5 py-0.5 text-xs">
+        {t("domains.invoiceable.from_register")}
+      </span>
+    {/if}
   </span>
 {/snippet}
 
@@ -203,7 +218,18 @@
 </div>
 
 <!-- The personal column picker: every sort is reachable from here too (docs/UX.md). -->
-<div class="mb-4 flex items-center justify-end">
+<div class="mb-4 flex flex-wrap items-center justify-end gap-2">
+  <ImpexBar
+    entity="domain"
+    readPermission="domains.domain.read"
+    writePermission="domains.domain.write"
+    filters={{
+      q: page.url.searchParams.get("q"),
+      sort: data.table.sort,
+    }}
+    locale={data.locale}
+    {form}
+  />
   <ColumnPicker
     all={table.pickerColumns}
     visible={table.visibleKeys}

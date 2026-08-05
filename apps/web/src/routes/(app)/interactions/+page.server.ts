@@ -1,8 +1,6 @@
-import { fail, redirect } from "@sveltejs/kit";
+import { redirect } from "@sveltejs/kit";
 
-import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
-import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
@@ -105,37 +103,10 @@ export const actions: Actions = {
     return { tableSaved: true };
   },
 
-  /** Inline company create behind the form's client picker (#115, docs/UX.md). */
-  createCompany: createCompanyAction,
-
-  /** Inline project create behind the form's project picker (docs/UX.md — per-picker
-   *  definition of done). Answers `inlineCreated` so the picker that asked auto-selects it;
-   *  `name`/`company_id` ride along so the form can label the option and run its cascade. */
-  createProject: async (event) => {
-    const form = await event.request.formData();
-    const name = String(form.get("name") ?? "").trim();
-    if (!name) return fail(400, { qcError: "errors.required" });
-    const { data, error } = await apiFor(event).POST("/api/v1/projects", {
-      body: {
-        name,
-        company_id: String(form.get("company_id") ?? "").trim() || null,
-        status: "active",
-        budget_period: "total",
-        currency: event.locals.theme.currency,
-        billable_default: true,
-        custom: {},
-      },
-    });
-    if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });
-    return {
-      inlineCreated: {
-        slot: "interaction_project",
-        id: data.id,
-        name: data.name,
-        company_id: data.company_id ?? null,
-      },
-    };
-  },
-
+  // The page's own `createCompany` / `createProject` are gone: both now ride in
+  // `interactionActions` as `createInteractionCompany` / `createInteractionProject`, so every
+  // host that spreads them has the ＋, not just this page. The project one here also wrote a
+  // name-and-client stub with no billable flag and none of the tenant's project custom fields,
+  // which docs/UX.md rules out.
   ...interactionActions,
 };

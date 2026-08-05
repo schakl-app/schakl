@@ -11,13 +11,26 @@
   import { Pencil, Check, ExternalLink, X } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Sparkline from "$lib/core/ui/charts/Sparkline.svelte";
 
   import MarketingAccountPicker from "./MarketingAccountPicker.svelte";
-  import { deltaClass, deltaView, fmtMetric, healthClass, metricLabel, sourceLabel } from "./format";
-  import { HEADLINE_METRICS, connectHref, type CompanyMarketing, type MarketingSource } from "./types";
+  import {
+    deltaClass,
+    deltaView,
+    fmtMetric,
+    healthClass,
+    metricLabel,
+    sourceLabel,
+  } from "./format";
+  import {
+    HEADLINE_METRICS,
+    connectHref,
+    type CompanyMarketing,
+    type MarketingSource,
+  } from "./types";
 
   let { companyId, data }: { companyId: string; data: Record<string, unknown> } = $props();
   const m = $derived(data as unknown as CompanyMarketing);
@@ -28,6 +41,12 @@
 
   let editing = $state(false);
   const tabHref = $derived(`/companies/${companyId}/marketing`);
+  // One consent for GA4 + Search Console + Ads together, landing back on this client's page.
+  const connect = $derived(connectHref(page.url.pathname + page.url.search));
+  // Who a linked source syncs through: "via jou" for your own grant, the colleague's name
+  // otherwise. Nobody should have to guess whose account is keeping a client's numbers alive.
+  const via = (owner: { name: string; email: string; is_me: boolean } | null | undefined) =>
+    owner ? t("marketing.via", { who: owner.is_me ? t("marketing.via_me") : owner.name }) : "";
 
   // Per-website linking: new links attach to the chosen site ("" = client-level). A client
   // with exactly one website gets it preselected — that is where the property belongs.
@@ -77,7 +96,8 @@
       {#if canManage}
         <p>{t("marketing.empty.needs_connection")}</p>
         <a
-          href={connectHref(["ga4", "gsc", "gads"])}
+          href={connect}
+          data-sveltekit-preload-data="off"
           class="mt-2 inline-block font-medium text-brand hover:underline"
         >
           {t("marketing.connect_cta")}
@@ -99,6 +119,11 @@
               <span class="text-text">{src.display_name}</span>
               {#if src.website_name}
                 <span class="text-xs text-text-muted">· {src.website_name}</span>
+              {/if}
+              {#if src.connection_owner}
+                <span class="text-xs text-text-muted" title={src.connection_owner.email}>
+                  · {via(src.connection_owner)}
+                </span>
               {/if}
               <form method="POST" action="?/marketingUnlink" use:enhance class="flex">
                 <input type="hidden" name="link_id" value={src.link_id} />
@@ -135,7 +160,11 @@
       {/if}
       <div class="grid gap-4 sm:grid-cols-3">
         {#each SOURCE_ORDER as s (s)}
-          <MarketingAccountPicker source={s} linkedIds={linkedIdsBySource[s]} websiteId={linkWebsiteId} />
+          <MarketingAccountPicker
+            source={s}
+            linkedIds={linkedIdsBySource[s]}
+            websiteId={linkWebsiteId}
+          />
         {/each}
       </div>
       {#if hasGa4}
@@ -196,6 +225,11 @@
               >
                 {t(`marketing.health.${src.health}`)}
               </span>
+              {#if src.connection_owner}
+                <span class="text-xs text-text-muted" title={src.connection_owner.email}>
+                  {via(src.connection_owner)}
+                </span>
+              {/if}
             </div>
             {#if src.deep_link}
               <a
@@ -223,7 +257,9 @@
                     {@const delta = deltaView(kpi.delta_pct, kpi.lower_is_better)}
                     <a href={tabHref} class="group block">
                       <p class="text-xs text-text-muted">{metricLabel(key)}</p>
-                      <p class="text-lg font-semibold tabular-nums text-text group-hover:text-brand">
+                      <p
+                        class="text-lg font-semibold tabular-nums text-text group-hover:text-brand"
+                      >
                         {fmtMetric(key, kpi.current, src.currency)}
                       </p>
                       {#if delta}

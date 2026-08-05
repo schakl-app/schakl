@@ -11,6 +11,7 @@
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
@@ -134,6 +135,13 @@
       {t("tasks.filter.clear")}
     </button>
   {/if}
+  <ImpexBar
+    entity="subscription_type"
+    readPermission="subscriptions.subscription.read"
+    writePermission="subscriptions.type.manage"
+    locale={data.locale}
+    {form}
+  />
   <ColumnPicker
     all={table.pickerColumns}
     visible={table.visibleKeys}

@@ -13,6 +13,12 @@ Shape decisions, agreed with the user on the issue:
   a deleted project must not erase the record that a call happened. When a project/task link
   is set, ``company_id`` is derived from it (when unambiguous) so the client timeline stays
   complete without query-time roll-ups.
+- **Except the contact link, which is a roster** (#300): a meeting is with the people who were
+  in it, and a call that reached two of them was recorded as one. ``interaction_contacts`` is
+  the authority; ``Interaction.contact_id`` survives as the **lead** — the first chip, kept in
+  sync on every write — because it is what the ``contact`` sort column orders by, what the
+  gmail thread-inheritance copies forward, and what a rolled-back release still reads
+  (``docs/WORKFLOW.md``, expand/contract). Never write one without the other.
 - **Emails arrive ``pending``** (per-org configurable): the team sees metadata (participants,
   subject, snippet); the body is only fetched — and visible — after the mailbox owner
   approves. Rejection deletes the row and suppresses the message, so a re-poll never
@@ -266,3 +272,41 @@ class Interaction(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Auditable
     #: The global RFC 5322 ``Message-ID`` header — dedup key across connected mailboxes.
     rfc822_message_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
     deep_link: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+class InteractionContact(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """One person on a contactmoment's roster (#300) — the ``company_contacts`` shape.
+
+    A join row rather than a JSONB array because the two things this has to do are a join's
+    job: ``?contact_id=`` filters the timeline on it (an ``EXISTS`` over an index, at any
+    roster size), and deleting a contact must take their chip with them rather than leave a
+    dangling id in a blob. ``CASCADE`` on both sides for exactly that reason — the moment
+    itself never dies with either, which is what ``ON DELETE SET NULL`` bought on the lead
+    column and is bought here by the link row being the only thing that goes.
+
+    ``position`` is the order the chips were picked, and position ``0`` is the lead mirrored
+    onto ``Interaction.contact_id``.
+    """
+
+    __tablename__ = "interaction_contacts"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id", "interaction_id", "contact_id", name="uq_interaction_contacts_link"
+        ),
+        # The roster of a page of interactions, and one contact's whole timeline: both reads
+        # are a bare index lookup rather than a scan (docs/PERFORMANCE.md).
+        Index("ix_interaction_contacts_org_interaction", "org_id", "interaction_id"),
+        Index("ix_interaction_contacts_org_contact", "org_id", "contact_id"),
+    )
+
+    interaction_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("interactions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    contact_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("contacts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

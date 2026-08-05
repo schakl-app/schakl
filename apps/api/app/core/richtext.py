@@ -88,9 +88,10 @@ def sanitize_markdown(value: str | None) -> str | None:
 
 # Applied in order to collapse the common inline/block markdown constructs to their text. This is
 # deliberately a small regex pass, not a full parser: the goal is a *readable* excerpt, not a
-# faithful render, and pulling a markdown dependency into the API just to shorten a notification
-# would be the wrong trade (docs/PERFORMANCE.md). Links resolve to their text before any length
-# cap runs, so truncation can never sever ``[label](url)`` mid-syntax (issue #66).
+# faithful render — a notification bell does not want a bullet list, it wants one line of words.
+# (The API does now carry a real markdown parser, for :func:`markdown_to_html`; this pass stays
+# because flattening and rendering are different jobs.) Links resolve to their text before any
+# length cap runs, so truncation can never sever ``[label](url)`` mid-syntax (issue #66).
 _MD_STRIP: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"!\[([^\]]*)\]\([^)]*\)"), r"\1"),          # image -> alt text
     (re.compile(r"\[([^\]]*)\]\([^)]*\)"), r"\1"),           # link -> link text
@@ -110,3 +111,33 @@ def markdown_to_plaintext(value: str) -> str:
     for pattern, repl in _MD_STRIP:
         text = pattern.sub(repl, text)
     return text
+
+
+#: What rendered markdown may contain on a document. No ``img`` and no ``iframe``: the
+#: document renderer inlines the images *it* chose as data URIs and refuses every other
+#: fetch, so an ``<img>`` here could only ever be a request we do not want to make.
+_RENDER_TAGS = frozenset(
+    {
+        "p", "br", "strong", "em", "del", "code", "pre", "blockquote",
+        "ul", "ol", "li", "h1", "h2", "h3", "h4", "h5", "h6", "hr",
+        "a", "table", "thead", "tbody", "tr", "th", "td",
+    }
+)
+_RENDER_ATTRS = {"a": {"href", "title"}}
+
+
+def markdown_to_html(value: str | None) -> str:
+    """Render stored markdown to sanitized HTML, for the consumers that draw markup.
+
+    The document renderer is the caller: an invoice's notes are authored as markdown (#66),
+    and a PDF that prints literal ``**`` has not rendered them. Sanitizing here as well as on
+    write is deliberate — :func:`sanitize_markdown` guards what we store, this guards what we
+    emit, and a row written before that guard existed still cannot inject markup into a
+    document. Links keep only ``href``/``title``, and nh3 rewrites unsafe schemes.
+    """
+    if not value or not value.strip():
+        return ""
+    from markdown_it import MarkdownIt
+
+    rendered = MarkdownIt("commonmark").enable("table").render(value)
+    return nh3.clean(rendered, tags=set(_RENDER_TAGS), attributes=dict(_RENDER_ATTRS))

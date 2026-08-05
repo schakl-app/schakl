@@ -10,7 +10,6 @@ caller's role or tenant.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
 from typing import Any
 
 from app.core.ai import prompts
@@ -18,6 +17,7 @@ from app.core.ai.providers import ChatMessage
 from app.core.ai.schemas import AssistantRequest
 from app.core.ai.service import AIService
 from app.core.ai.tools import available_tools, result_text, run_tool, tool_defs
+from app.core.timezone import org_today
 
 #: A typical answer costs 1–3 tool invocations (#127); the ceiling is a runaway guard.
 MAX_TOOL_ROUNDS = 5
@@ -46,7 +46,7 @@ async def run_assistant(
     system = prompts.assistant_system(
         locale=service.locale(),
         brand=ctx.org.name,
-        today=datetime.now(UTC).date(),
+        today=await org_today(ctx.session, ctx.org.id),
         context_line=context_line,
     )
 

@@ -8,7 +8,14 @@ import {
   createProviderAction,
 } from "$lib/core/quickcreate.server";
 import { entityPanelsFor } from "$lib/core/registry";
+import { readAutoInvoiceMode } from "$lib/modules/invoicing/types";
 import { apiFor } from "$lib/core/session";
+// The Cloudflare panel edits through this page's actions, the way the Drive panels do — a panel
+// cannot own form actions, so the host spreads them in (CLAUDE.md §6: one import, no internals).
+import { cloudflareActions } from "$lib/modules/cloudflare/cloudflare-actions.server";
+import { readInvoiceable } from "$lib/modules/domains/normalize";
+// The registrar panel edits through this page too (#296) — same contract, one import.
+import { oxxaActions } from "$lib/modules/oxxa/oxxa-actions.server";
 import "$lib/modules";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -71,6 +78,9 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
+  ...cloudflareActions,
+  ...oxxaActions,
+
   update: async (event) => {
     const form = await event.request.formData();
     const email_enabled = form.get("email_enabled") !== null;
@@ -84,6 +94,10 @@ export const actions: Actions = {
         start_date: String(form.get("start_date") ?? "").trim() || undefined,
         // Empty clears the override: the TLD list price applies again.
         price_override: String(form.get("price_override") ?? "").trim() || null,
+        // Three-state (#298): "" clears the decision back to *follow the register*.
+        invoiceable: readInvoiceable(form.get("invoiceable")),
+        // "" is the inherit choice; it must reach the API as an explicit null.
+        auto_invoice_mode: readAutoInvoiceMode(form.get("auto_invoice_mode")),
         registrar_provider_id: String(form.get("registrar_provider_id") ?? "") || null,
         dns_provider_id: String(form.get("dns_provider_id") ?? "") || null,
         registry_contact: parseParty(form.get("registry_contact")),

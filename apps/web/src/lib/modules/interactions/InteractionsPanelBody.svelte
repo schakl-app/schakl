@@ -41,7 +41,7 @@
 
   import CloseTaskDialog from "./CloseTaskDialog.svelte";
   import EmlUploadForm from "./EmlUploadForm.svelte";
-  import { type InteractionItem, isGmailRow, kindIcon, withBody } from "./format";
+  import { contactChips, type InteractionItem, isGmailRow, kindIcon, withBody } from "./format";
   import { snippetPreview } from "./snippet";
   import InteractionConversationDialog from "./InteractionConversationDialog.svelte";
   import InteractionDetailModal from "./InteractionDetailModal.svelte";
@@ -126,8 +126,12 @@
       chips.push({ href: `/projects/${item.project_id}`, label: item.project_name });
     if (item.task_id && item.task_title && !host.has("task_id"))
       chips.push({ href: `/tasks/${item.task_id}`, label: item.task_title });
-    if (item.contact_id && item.contact_name && !host.has("contact_id"))
-      chips.push({ href: `/contacts/${item.contact_id}`, label: item.contact_name });
+    // Every person the moment names (#300), not only the lead. On a contact's own page only
+    // *that* person's chip is dropped — a link back to the page you are on says nothing, but
+    // the people they were in the meeting *with* are the whole point of a roster, and
+    // suppressing the set wholesale is what the single-contact version could get away with.
+    const self = prefill.contact_id;
+    chips.push(...contactChips(item).filter((chip) => !self || !chip.href.endsWith(`/${self}`)));
     return chips;
   }
 

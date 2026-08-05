@@ -1,0 +1,59 @@
+.head { display: flex; justify-content: space-between; gap: 24px; margin-bottom: 18px; }
+  .head-left { min-width: 0; }
+  .head-right { text-align: right; font-size: 8.5pt; line-height: 1.5; color: var(--muted); }
+  .head-right .strong { color: var(--ink); font-size: 9pt; }
+  .logo { max-height: 15mm; max-width: 52mm; margin-bottom: 5mm; }
+  h1 { margin: 0; font-size: 21pt; letter-spacing: -0.01em; color: var(--accent); }
+  .doc-number { margin-top: 2px; font-size: 10pt; color: var(--muted); }
+  .keel { border: 0; border-top: 2px solid var(--accent); margin: 0 0 18px; }
+
+  .parties { display: flex; justify-content: space-between; gap: 24px; margin-bottom: 20px; }
+  .bill-to { max-width: 55%; }
+  .bill-to .name { font-weight: 600; }
+  .bill-to .muted { line-height: 1.5; }
+  .meta { border-collapse: collapse; width: auto; }
+  .meta td { padding: 1px 0; font-size: 9pt; }
+  .meta .meta-label { color: var(--muted); padding-right: 24px; }
+  .meta .meta-value { text-align: right; font-weight: 600; }
+
+  .intro { margin-bottom: 16px; }
+
+  .lines { margin-bottom: 4px; }
+  .lines th { padding: 0 8px 5px 0; border-bottom: 2px solid var(--accent); }
+  .lines th:last-child, .lines td:last-child { padding-right: 0; }
+  .lines td { padding: 7px 8px 7px 0; border-bottom: 1px solid var(--rule); }
+  .lines .section td {
+    padding: 4px 8px; border-bottom: 0; background: var(--accent-wash); border-radius: 3px;
+  }
+  .lines .section-total td { border-bottom: 0; padding-top: 5px; font-size: 8.5pt; }
+  .col-quantity { width: 16mm; }
+  .col-unit { width: 16mm; }
+  .col-unit_price { width: 25mm; }
+  .col-tax { width: 22mm; }
+  .col-amount { width: 27mm; }
+
+  .totals { margin: 14px 0 0 auto; width: 78mm; background: var(--wash); border-radius: 4px;
+            padding: 10px 12px; }
+  .totals td { padding: 2px 0; font-size: 9pt; }
+  .totals .strong-row td { padding-top: 6px; border-top: 1px solid var(--rule);
+                           font-size: 10pt; font-weight: 600; }
+
+  .tax-summary { margin-top: 14px; width: 78mm; }
+  .tax-summary th { padding-bottom: 3px; border-bottom: 1px solid var(--rule); }
+  .tax-summary td { padding: 2px 0; font-size: 8.5pt; }
+
+  .payment-card { margin: 14px 0; border: 1px solid var(--rule); border-radius: 4px;
+                  padding: 10px 12px; width: 92mm; }
+  .payment-card-title { margin-bottom: 5px; }
+  .payment-card td { padding: 1px 0; font-size: 9pt; }
+  .payment-card td:first-child { padding-right: 16px; }
+
+  .reverse-charge { margin-top: 14px; font-size: 8.5pt; }
+  .notes { margin-top: 16px; }
+  .notes :first-child { margin-top: 0; }
+  .notes p, .notes ul, .notes ol { margin: 0 0 8px; }
+  .notes ul, .notes ol { padding-left: 18px; }
+  /* The accent keel — how the app marks the one line on a card that must be read. */
+  .payment-note { margin-top: 16px; padding-left: 10px; border-left: 3px solid var(--accent); }
+  .doc-footer { margin-top: 22px; padding-top: 8px; border-top: 1px solid var(--rule);
+                font-size: 8pt; }

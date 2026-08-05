@@ -21,5 +21,8 @@ class ActivityItem(BaseModel):
     actor_name: str | None = None
     #: True when the actor's account was deleted — the name is a snapshot (issue #64).
     actor_deleted: bool = False
+    #: Set when someone was signed in *as* the actor at the time (#296) — the line then reads
+    #: "the client (via Jan)". ``None`` on every ordinary row.
+    impersonator_name: str | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime

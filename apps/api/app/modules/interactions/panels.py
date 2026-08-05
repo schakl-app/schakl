@@ -41,6 +41,11 @@ async def _interactions_provider(ctx: RequestContext, company_id: uuid.UUID) -> 
                 "project_id": str(i["project_id"]) if i["project_id"] else None,
                 "task_id": str(i["task_id"]) if i["task_id"] else None,
                 "contact_id": str(i["contact_id"]) if i["contact_id"] else None,
+                # Everyone the moment was with (#300) — the panel draws a chip per person and
+                # the edit/move dialogs prefill the roster from these.
+                "contacts": [
+                    {"id": str(c["id"]), "name": c["name"]} for c in i["contacts"]
+                ],
                 "company_name": i["company_name"],
                 "project_name": i["project_name"],
                 "task_title": i["task_title"],

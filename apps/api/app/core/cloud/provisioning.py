@@ -121,6 +121,9 @@ class ProvisionedOrg(BaseModel):
     custom_domain_active: bool = False
     pending_domain: str | None = None
     dns_records: list[domainflow.DnsRecordCard] = []
+    # Whether this org may send through the operator's own transport (the "included e-mail"
+    # of epic #199) — the billing system's own record of what it sold.
+    email_included: bool = True
 
 
 class ProvisionOrgRequest(BaseModel):
@@ -138,6 +141,10 @@ class ProvisionOrgRequest(BaseModel):
     # no expiration at all.
     plan: str = Field(default="trial")
     trial_days: int | None = Field(default=None, ge=1, le=365)
+    # Included e-mail (epic #199): on unless the caller says otherwise. Default true because
+    # that is what every org already gets when the instance has a transport — a checkout that
+    # does not know about this field must not silently provision orgs that cannot mail.
+    email_included: bool = True
     # Configure a custom domain in the same call (#292). ``activate`` = operator-asserted
     # ownership: the TXT challenge is skipped (audited as such), the edge hostname is
     # provisioned fail-closed, and the response's ``dns_records`` say what the customer's
@@ -178,6 +185,7 @@ def _provisioned(org: Org, owner_email: str | None = None) -> ProvisionedOrg:
         custom_domain_active=org.custom_domain_verified_at is not None,
         pending_domain=org.pending_domain,
         dns_records=domainflow.record_cards(org),
+        email_included=org.email_included,
     )
 
 
@@ -212,6 +220,7 @@ async def provision_org(
         locale=payload.locale,
         enabled_modules=payload.enabled_modules,
         owner_email=str(payload.owner_email),
+        email_included=payload.email_included,
     )
     await set_plan(
         ctx.session, ctx.actor, org, plan=payload.plan, trial_days=payload.trial_days

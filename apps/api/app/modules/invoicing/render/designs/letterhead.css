@@ -1,0 +1,172 @@
+/* The paper is ruled in the tenant's colour, not in grey: `--accent-line` under the column
+     headings and over the amount owed, `--accent-hairline` for the quieter separations. Both
+     are *tints* of the accent, because a solid brand colour under every heading competes with
+     the words above it — and `document_accent` darkened the hue to carry text, not lines. It
+     is also what lets the type stay black: the colour is in the ruling, so the heading and the
+     amount owed do not have to shout it. */
+
+  /* A `th` centres itself by default, and nothing else on this sheet is centred: a column
+     heading starts where its column starts, or *Omschrijving* floats in the middle of the
+     descriptions it heads and *Btw %* in the middle of the rates. `.right` is a class and
+     this is an element, so it still outranks this and turns the amounts back around. */
+  th { text-align: left; }
+
+  /* --- the letterhead ---------------------------------------------------------------- */
+  .head { display: flex; justify-content: space-between; gap: 12mm; }
+  .head-left { flex: 1; min-width: 0; }
+  .head-right { width: 70mm; flex: none; }
+
+  .logo { max-height: 18mm; max-width: 66mm; }
+  .brand-word { font-size: 20pt; font-weight: 800; letter-spacing: -0.02em; }
+
+  .sender { font-size: 9pt; line-height: 1.55; }
+  .sender .name { font-weight: 700; }
+  .sender-grid { border-collapse: collapse; margin-top: 3mm; }
+  .sender-grid td { padding: 0; font-size: 9pt; }
+  .sender-grid .k { font-weight: 700; padding-right: 4mm; white-space: nowrap; }
+  /* The identity rows (IBAN, Btw-nr, KvK) read as a second group, not a continuation. */
+  .sender-grid tr.group-start td { padding-top: 4mm; }
+
+  /* Black, and in the case a letter is written in — never the shout `classic` opens with.
+     The message itself is set in capitals for that design, so the case is corrected here
+     rather than in the catalog: one design's typography is not the other's content. */
+  h1 {
+    margin: 11mm 0 4mm;
+    font-size: 18pt;
+    font-weight: 700;
+    color: var(--ink);
+    text-transform: lowercase;
+  }
+  h1::first-letter { text-transform: uppercase; }
+
+  .bill-to { font-size: 9.5pt; line-height: 1.55; }
+  .bill-to .name { font-weight: 700; }
+
+  /* --- what is owed, and what identifies the document -------------------------------- */
+  .details { display: flex; justify-content: space-between; gap: 12mm; margin-top: 8mm; }
+  .details-left { flex: 1; min-width: 0; }
+  .details-right { width: 70mm; flex: none; }
+
+  .payment-card {
+    max-width: 92mm; position: relative; padding: 4.5mm 6mm 4mm;
+    background: var(--accent-soft); border: 1px solid var(--accent-hairline);
+    border-radius: 2px;
+  }
+  /* The title sits *on* the border, the way a fieldset legend does — which is what tells the
+     reader the box is one thing and not four more rows of the invoice. */
+  .payment-card-title {
+    position: absolute; top: -3.2mm; left: 5mm; padding: 0.5mm 2.5mm;
+    background: #fff; border: 1px solid var(--accent-hairline); border-radius: 2px;
+    font-size: 9pt; font-weight: 700; color: var(--ink);
+    letter-spacing: 0; text-transform: none;
+  }
+  .payment-card td { padding: 0.7mm 0; font-size: 9.5pt; }
+  .payment-card td:first-child { padding-right: 8mm; white-space: nowrap; color: var(--ink); }
+  /* The deadline is an aside on the amount, not a second value. */
+  .payment-card .note { font-weight: 400; font-style: italic; padding-left: 3mm; }
+
+  .meta { width: 100%; }
+  .meta td { padding: 0.5mm 0; font-size: 9.5pt; }
+  .meta .meta-label { color: var(--ink); padding-right: 6mm; white-space: nowrap; }
+  .meta .meta-value { font-weight: 700; text-align: left; }
+  /* Klantnummer / Leverdatum sit apart from the invoice's own numbers, as on paper. */
+  .meta tr.group-start td { padding-top: 4.5mm; }
+
+  .intro { margin-bottom: 6mm; font-size: 9.5pt; }
+
+  /* --- the lines ---------------------------------------------------------------------- */
+  /* A floor, not a fixed height: the open middle this design is built around on a short
+     invoice, and no forced break on a long one. */
+  .flow { min-height: 84mm; margin-top: 3mm; }
+
+  .lines { margin-bottom: 0; }
+  /* Headings a reader can find without being shouted at: the words themselves, ruled above
+     and below. No fill — the band is what made the old table look like a spreadsheet. */
+  .lines th {
+    padding: 2.2mm 3mm; background: none;
+    border-top: 1px solid var(--accent-line); border-bottom: 1px solid var(--accent-line);
+    font-size: 9.5pt; font-weight: 700; color: var(--ink);
+    letter-spacing: 0; text-transform: none;
+  }
+  .lines th:first-child, .lines td:first-child { padding-left: 0; }
+  .lines th:last-child, .lines td:last-child { padding-right: 0; }
+  .lines td { padding: 2mm 3mm; border-bottom: 0; font-size: 9.5pt; }
+
+  /* A kind is its own small table, headings and all (`blocks.sectioned`). One grid banded
+     three times made *Aantal* mean hours at the top and licences in the middle, with the
+     heading that said so eighteen rows up; a table of its own answers where the reader is
+     looking. The name is set like the rest of the letter: black, sentence case, one weight
+     up from the text under it. It is a heading in a letter, not a label on a dashboard, and
+     it does not need colour or capitals to be found — the ruling under it already says where
+     the table begins, and it is the only thing at that size for centimetres. */
+  .line-group + .line-group { margin-top: 7mm; }
+  /* Repeated column names have to be quieter than a single set, or three of them read as
+     three invoices: the kind is the loud thing, its column names a legend beside it. */
+  .line-group .lines th {
+    padding: 1.6mm 3mm 1.4mm; border-top: 0; border-bottom: 1px solid var(--accent-line);
+    vertical-align: bottom;
+    font-size: 7pt; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted);
+  }
+  /* The shorthand above reinstates the padding the table's own edge rule removed, and the
+     kind then sits 3 mm right of the descriptions it heads. */
+  .line-group .lines th:first-child { padding-left: 0; }
+  .line-group .lines th:last-child { padding-right: 0; }
+  .line-group .lines th.group-name {
+    font-size: 10pt; font-weight: 600; letter-spacing: 0; text-transform: none;
+    color: var(--ink);
+  }
+  .line-group .lines .section-total td {
+    padding: 1.6mm 3mm 0; border-top: 1px solid var(--accent-hairline); font-size: 8.5pt;
+  }
+  .line-group .lines .line:first-child td { padding-top: 2.4mm; }
+
+  .col-quantity { width: 22mm; }
+  .col-unit { width: 16mm; }
+  .col-unit_price { width: 26mm; }
+  .col-tax { width: 24mm; }
+  .col-amount { width: 28mm; }
+
+  /* --- the closing band ---------------------------------------------------------------- */
+  /* One washed band closes the document: the VAT breakdown left, what is owed right, and the
+     two settled onto the same baseline rather than the same top — the last row of the
+     breakdown reads across to the amount due, which is the comparison the band is for.
+     The wash bleeds a couple of millimetres past the text on both sides, so the band reads
+     as a band while its columns still line up with the amounts in the table above it.
+     A table and not flex, and not by preference: WeasyPrint fragments a flex container by
+     leaving its children behind, so an invoice that ended near the foot of a page printed
+     the band as an empty grey rectangle with its numbers alone overleaf. */
+  .closing { margin: 8mm -2mm 0; padding: 4mm 2mm; background: var(--accent-soft); }
+  .closing-row { display: table; width: 100%; table-layout: fixed; }
+  .closing-left { display: table-cell; vertical-align: bottom; }
+  .closing .totals { display: table-cell; vertical-align: bottom; float: none; margin: 0; }
+
+  .tax-summary { width: 66mm; }
+  .tax-summary th {
+    padding: 0 4mm 1.2mm 0; border-bottom: 1px solid var(--accent-line);
+    font-size: 8.5pt; font-weight: 400; color: var(--ink);
+    letter-spacing: 0; text-transform: none;
+  }
+  .tax-summary th:last-child, .tax-summary td:last-child { padding-right: 0; }
+  .tax-summary td { padding: 1.4mm 4mm 0 0; font-size: 8.5pt; }
+
+  .totals { width: 78mm; }
+  .totals td { padding: 0.8mm 0; font-size: 9.5pt; }
+  /* Every line of the closing sum is black: the labels are the reader's, not asides. */
+  .totals td:first-child, .totals td.muted { color: var(--ink); }
+  .totals .strong-row td {
+    padding-top: 2mm; border-top: 1px solid var(--accent-line); font-weight: 700;
+  }
+  /* The amount owed carries its weight in bold, not in colour — this design spends the
+     tenant's colour on the ruling and the wash, never on type, and a coloured total on a
+     washed band reads as a warning. */
+  .totals .strong-row td.accent { color: var(--ink); }
+
+  /* --- after the sum ------------------------------------------------------------------- */
+  .reverse-charge { padding-top: 7mm; font-size: 8.5pt; }
+  .notes { padding-top: 7mm; font-size: 9.5pt; }
+  .notes :first-child { margin-top: 0; }
+  .notes p, .notes ul, .notes ol { margin: 0 0 3mm; }
+  .notes ul, .notes ol { padding-left: 6mm; }
+  .payment-note { padding-top: 6mm; font-size: 9.5pt; }
+  .doc-footer { padding-top: 6mm; font-size: 9pt; color: var(--ink); }

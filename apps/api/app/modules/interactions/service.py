@@ -23,6 +23,7 @@ from app.config import settings
 from app.core.activity import ActivityService
 from app.core.activity.service import snapshot
 from app.core.auth.models import User
+from app.core.directory import ids_by_email, visible_ids
 from app.core.events import emit
 from app.core.models import Membership
 from app.core.richtext import extract_contact_mention_ids, extract_mention_ids, sanitize_markdown
@@ -38,6 +39,7 @@ from app.modules.interactions.models import (
     HOST_ENTITY,
     PROTECTED_KIND,
     Interaction,
+    InteractionContact,
     InteractionDirection,
     InteractionKindDef,
     InteractionSource,
@@ -45,6 +47,10 @@ from app.modules.interactions.models import (
 )
 from app.modules.interactions.schemas import (
     InteractionApprove,
+    InteractionBulkApprove,
+    InteractionBulkAssign,
+    InteractionBulkLinks,
+    InteractionBulkReject,
     InteractionCreate,
     InteractionKindDefCreate,
     InteractionKindDefUpdate,
@@ -59,6 +65,9 @@ from app.modules.interactions.system import (
 logger = logging.getLogger("schakl.interactions")
 
 #: Fields whose edits land in the activity trail (§16) — the record's own definition, not body.
+#: The contact roster is audited too, as a ``contact_ids`` list each write path merges into the
+#: before/after snapshots: it is not a column, so ``snapshot()`` cannot reach it, and leaving it
+#: out would make "we added the technical contact" an untracked edit.
 _AUDITED_FIELDS = (
     "kind",
     "occurred_at",
@@ -92,14 +101,23 @@ _contacts = sa_table(
 )
 
 
-def _contact_sort_name() -> Any:
-    """Order by the contact's display name — the label the chip prints (docs/UX.md: a column
-    sorts by what it prints, never by the FK). Correlated, so a row is never multiplied."""
-    full_name = func.trim(
+def _contact_display_name() -> Any:
+    """A contact's display name, built from the bare table ref above — the label a chip prints."""
+    return func.trim(
         func.concat(_contacts.c.first_name, " ", func.coalesce(_contacts.c.last_name, ""))
     )
+
+
+def _contact_sort_name() -> Any:
+    """Order by the contact's display name — the label the chip prints (docs/UX.md: a column
+    sorts by what it prints, never by the FK). Correlated, so a row is never multiplied.
+
+    The **lead** contact's name, deliberately: a roster (#300) has no single name to sort by,
+    and folding several into one sort key would order the list by a string no column shows.
+    The lead is what the collapsed cell prints, so the column still sorts by what it prints.
+    """
     return (
-        select(func.lower(full_name))
+        select(func.lower(_contact_display_name()))
         .where(_contacts.c.org_id == Interaction.org_id, _contacts.c.id == Interaction.contact_id)
         .scalar_subquery()
     )
@@ -233,7 +251,19 @@ class InteractionService:
         if task_id is not None:
             conditions.append(Interaction.task_id == task_id)
         if contact_id is not None:
-            conditions.append(Interaction.contact_id == contact_id)
+            # Anyone on the roster, not only the lead (#300): a meeting this person attended
+            # second is still their meeting, and their panel would otherwise omit it. An
+            # ``EXISTS`` over ``(org_id, contact_id)`` — one index probe, whatever the roster
+            # size — rather than a join, which would multiply the folded feed's rows.
+            conditions.append(
+                select(InteractionContact.id)
+                .where(
+                    InteractionContact.org_id == Interaction.org_id,
+                    InteractionContact.interaction_id == Interaction.id,
+                    InteractionContact.contact_id == contact_id,
+                )
+                .exists()
+            )
         if kind:
             conditions.append(Interaction.kind == kind)
         if status:
@@ -310,6 +340,7 @@ class InteractionService:
         )
         plain_rows = [row for row, _, _ in rows]
         names = await self._link_names(plain_rows)
+        rosters = await self._contact_rosters(plain_rows)
         contacts_by_email = await self._participant_contacts(plain_rows)
         members_by_email = await self._participant_members(plain_rows)
         closing_ids = await self._closing_task_ids(plain_rows)
@@ -330,6 +361,7 @@ class InteractionService:
                 closing_ids,
                 conversation_count=conv_counts.get(row.conversation_id, 1),
                 with_body=with_body,
+                rosters=rosters,
             )
             for row, full_name, email in rows
         ], total
@@ -391,6 +423,7 @@ class InteractionService:
         rows = (await self.ctx.session.execute(stmt)).all()
         plain_rows = [row for row, _, _ in rows]
         names = await self._link_names(plain_rows)
+        rosters = await self._contact_rosters(plain_rows)
         contacts_by_email = await self._participant_contacts(plain_rows)
         members_by_email = await self._participant_members(plain_rows)
         closing_ids = await self._closing_task_ids(plain_rows)
@@ -405,6 +438,7 @@ class InteractionService:
                 members_by_email,
                 closing_ids,
                 conversation_count=count,
+                rosters=rosters,
             )
             for row, full_name, email in rows
         ]
@@ -413,12 +447,16 @@ class InteractionService:
     async def create(self, data: InteractionCreate) -> dict[str, Any]:
         self.ctx.require("interactions.interaction.write")
         await self._require_manual_kind(data.kind)
+        # The roster is resolved *before* the row exists, so an unseeable contact fails the
+        # write instead of leaving a logged moment behind with half a roster on it.
+        roster = await self._requested_roster(data.model_dump(exclude_unset=True)) or []
         links = await self._resolve_links(
             {
                 "company_id": data.company_id,
                 "project_id": data.project_id,
                 "task_id": data.task_id,
-                "contact_id": data.contact_id,
+                # The lead is chip 0, never the field the caller happened to send (schemas.py).
+                "contact_id": roster[0] if roster else None,
             }
         )
         user = self.ctx.user
@@ -440,8 +478,9 @@ class InteractionService:
             source=InteractionSource.MANUAL.value,
             **links,
         )
+        await self._set_contacts(row, roster)
         await ActivityService(self.ctx).record_created(ENTITY_TYPE, row.id)
-        await self._record_on_hosts(row, "interaction.logged")
+        await self._record_on_hosts(row, "interaction.logged", contact_ids=roster)
         await self._notify_mentions(row, mentioned)
         if data.log_time is not None:
             await self._log_time(row, data.log_time)
@@ -484,7 +523,7 @@ class InteractionService:
         data: bytes,
         filename: str,
         content_type: str | None,
-        links: dict[str, uuid.UUID | None],
+        links: dict[str, Any],
         allow_duplicate: bool = False,
     ) -> tuple[dict[str, Any], int, int]:
         """Log an uploaded ``.eml`` as a ``kind="email"`` interaction (#262).
@@ -542,7 +581,14 @@ class InteractionService:
                 raise AppError(
                     "conflict", "errors.interactions_eml_duplicate", status_code=409
                 )
-        resolved = await self._resolve_links(links)
+        roster = await self._requested_roster(links) or []
+        resolved = await self._resolve_links(
+            {
+                field: links.get(field)
+                for field in ("company_id", "project_id", "task_id")
+            }
+            | {"contact_id": roster[0] if roster else None}
+        )
         user = self.ctx.user
         # Conversation grouping by RFC 5322 headers (#272): the thread root is the oldest id in
         # the References/In-Reply-To chain, or the message's own id when it starts a thread. The
@@ -577,8 +623,9 @@ class InteractionService:
             thread_root_id=thread_root_id,
             **resolved,
         )
+        await self._set_contacts(row, roster)
         await ActivityService(self.ctx).record_created(ENTITY_TYPE, row.id, {"source": "eml"})
-        await self._record_on_hosts(row, "interaction.logged")
+        await self._record_on_hosts(row, "interaction.logged", contact_ids=roster)
         stored, skipped = await self._store_eml_attachments(row.id, parsed.attachments)
         return await self._present_one(row), stored, skipped
 
@@ -639,7 +686,8 @@ class InteractionService:
     async def update(self, interaction_id: uuid.UUID, data: InteractionUpdate) -> dict[str, Any]:
         row = await self._writable_or_404(interaction_id, "interactions.interaction.write")
         self._reviewless_only(row)
-        before = snapshot(row, _AUDITED_FIELDS)
+        old_contacts = await self._contact_ids_of(row.id)
+        before = snapshot(row, _AUDITED_FIELDS) | {"contact_ids": [str(c) for c in old_contacts]}
         sent = data.model_dump(exclude_unset=True)
         # Keeping the row's own kind is always allowed — a deactivated kind must not brick
         # editing the rows that already carry it (#174).
@@ -654,9 +702,12 @@ class InteractionService:
                     fields={"kind": "errors.interactions_kind_not_manual"},
                 )
             await self._require_manual_kind(sent["kind"])
-        link_updates = {k: sent[k] for k in _LINK_TABLES if k in sent}
+        # The contact link is applied as a roster below, not as a column here (#300).
+        link_updates = {k: sent[k] for k in _LINK_TABLES if k in sent and k != "contact_id"}
         values: dict[str, Any] = {
-            k: v for k, v in sent.items() if k not in _LINK_TABLES and k != "participants"
+            k: v
+            for k, v in sent.items()
+            if k not in _LINK_TABLES and k not in ("participants", "contact_ids")
         }
         if values.get("direction") is not None:
             values["direction"] = values["direction"].value
@@ -683,9 +734,13 @@ class InteractionService:
         values.update(await self._resolve_links(link_updates, partial=True))
         old_links = {field: getattr(row, field) for field in HOST_ENTITY}
         row = await self.repo.update(row, **values)
-        await ActivityService(self.ctx).record_update(
-            ENTITY_TYPE, row.id, before, snapshot(row, _AUDITED_FIELDS)
-        )
+        # Before the "after" snapshot, so a roster change is a diff on the trail and not a
+        # silent edit — and before the host bookkeeping, which reads the roster it left.
+        await self._apply_roster(row, await self._requested_roster(sent), old=old_contacts)
+        after = snapshot(row, _AUDITED_FIELDS) | {
+            "contact_ids": [str(c) for c in await self._contact_ids_of(row.id)]
+        }
+        await ActivityService(self.ctx).record_update(ENTITY_TYPE, row.id, before, after)
         await self._record_link_moves(row, old_links)
         await self._notify_mentions(row, newly_mentioned)
         return await self._present_one(row)
@@ -700,18 +755,42 @@ class InteractionService:
         self, interaction_id: uuid.UUID, data: InteractionApprove | None = None
     ) -> dict[str, Any]:
         row = await self._owned_gmail_or_404(interaction_id)
-        if row.status != InteractionStatus.PENDING.value:
-            raise AppError("invalid_state", "errors.interactions_not_pending", status_code=409)
+        self._pending_only(row)
+        link_values: dict[str, Any] = {}
+        roster: list[uuid.UUID] | None = None
+        if data is not None:
+            sent = data.model_dump(exclude_unset=True)
+            if sent:
+                link_values = await self._resolve_links(
+                    {k: v for k, v in sent.items() if k in _LINK_TABLES and k != "contact_id"},
+                    partial=True,
+                )
+                roster = await self._requested_roster(sent)
+        row = await self._approve_row(row, link_values, roster)
+        return await self._present_one(row)
+
+    async def _approve_row(
+        self, row: Interaction, link_values: dict[str, Any], roster: list[uuid.UUID] | None
+    ) -> Interaction:
+        """Approve one already-loaded, already-eligible row.
+
+        The single endpoint and the bulk one both land here, so a batch of fifty does exactly
+        what fifty clicks do — same trail, same host mirrors, same conversation folding, same
+        bus emit. A second implementation of this is the one way bulk review could quietly
+        stop meaning what review means.
+
+        ``roster`` is the batch's contact roster **already resolved** (#300), or ``None`` for
+        "leave each row's own alone" — the same shape ``link_values`` has, and for the same
+        reason: a bad id is the payload being wrong, so it is validated once for the call
+        rather than per row.
+        """
         # Optionally assign links in the same step as approval (#183) — no need to approve
         # then reopen and move. Applied before the row goes team-visible, so the "moved"
         # bookkeeping (unlink from an old host nobody saw) doesn't apply; the host announce
         # below fires on the *final* links.
-        before = snapshot(row, _AUDITED_FIELDS)
-        link_values: dict[str, Any] = {}
-        if data is not None:
-            sent = data.model_dump(exclude_unset=True)
-            if sent:
-                link_values = await self._resolve_links(sent, partial=True)
+        before = snapshot(row, _AUDITED_FIELDS) | {
+            "contact_ids": [str(c) for c in await self._contact_ids_of(row.id)]
+        }
         # A pending row becoming logged is the other moment it can join a conversation (#272):
         # inherit the newest logged sibling's id in this gmail thread, minting one if that
         # sibling has none yet, so the two fold together the instant this one lands.
@@ -724,14 +803,19 @@ class InteractionService:
             conversation_id=conversation_id,
             **link_values,
         )
+        # No ``old=`` here on purpose: the row was pending, so nobody had been told it existed
+        # yet — the host announce below fires on the *final* roster, once, like every link.
+        await self._apply_roster(row, roster)
+        final_roster = await self._contact_ids_of(row.id)
         await ActivityService(self.ctx).record(ENTITY_TYPE, row.id, "approved")
-        if link_values:
-            await ActivityService(self.ctx).record_update(
-                ENTITY_TYPE, row.id, before, snapshot(row, _AUDITED_FIELDS)
-            )
+        if link_values or roster is not None:
+            after = snapshot(row, _AUDITED_FIELDS) | {
+                "contact_ids": [str(c) for c in final_roster]
+            }
+            await ActivityService(self.ctx).record_update(ENTITY_TYPE, row.id, before, after)
         # Approval is the moment the email becomes team-visible — that is when the host
         # records hear about it (#152); a pending row must not announce itself.
-        await self._record_on_hosts(row, "interaction.logged")
+        await self._record_on_hosts(row, "interaction.logged", contact_ids=final_roster)
         # The google module fetches the body asynchronously — never inside this transaction.
         await emit(
             "interaction.approved",
@@ -742,11 +826,17 @@ class InteractionService:
                 "gmail_message_id": row.gmail_message_id,
             },
         )
-        return await self._present_one(row)
+        return row
 
     async def reject(self, interaction_id: uuid.UUID, *, suppress_thread: bool = False) -> None:
         """The owner keeps this email out of the CRM: metadata removed, message suppressed."""
         row = await self._owned_gmail_or_404(interaction_id)
+        await self._reject_row(row, suppress_thread=suppress_thread)
+
+    async def _reject_row(self, row: Interaction, *, suppress_thread: bool) -> None:
+        """Reject one already-loaded, already-eligible row — the shared path (see
+        ``_approve_row``). The bus emit is what writes the Gmail suppression, in this same
+        transaction, so the rejection and its "never again" still commit together in a batch."""
         await emit(
             "interaction.rejected",
             self.ctx,
@@ -762,16 +852,30 @@ class InteractionService:
 
     async def remap(self, interaction_id: uuid.UUID, data: InteractionRemap) -> dict[str, Any]:
         row = await self._owned_gmail_or_404(interaction_id)
-        before = snapshot(row, _AUDITED_FIELDS)
         sent = data.model_dump(exclude_unset=True)
         if not sent:
             return await self._present_one(row)
-        values = await self._resolve_links(sent, partial=True)
+        values = await self._resolve_links(
+            {k: v for k, v in sent.items() if k in _LINK_TABLES and k != "contact_id"},
+            partial=True,
+        )
+        roster = await self._requested_roster(sent)
+        return await self._present_one(await self._remap_row(row, values, roster))
+
+    async def _remap_row(
+        self, row: Interaction, values: dict[str, Any], roster: list[uuid.UUID] | None
+    ) -> Interaction:
+        """Re-file one already-loaded, already-eligible row — the shared path (see
+        ``_approve_row``, whose ``roster`` contract this shares)."""
+        old_contacts = await self._contact_ids_of(row.id)
+        before = snapshot(row, _AUDITED_FIELDS) | {"contact_ids": [str(c) for c in old_contacts]}
         old_links = {field: getattr(row, field) for field in HOST_ENTITY}
         row = await self.repo.update(row, **values)
-        await ActivityService(self.ctx).record_update(
-            ENTITY_TYPE, row.id, before, snapshot(row, _AUDITED_FIELDS)
-        )
+        await self._apply_roster(row, roster, old=old_contacts)
+        after = snapshot(row, _AUDITED_FIELDS) | {
+            "contact_ids": [str(c) for c in await self._contact_ids_of(row.id)]
+        }
+        await ActivityService(self.ctx).record_update(ENTITY_TYPE, row.id, before, after)
         await self._record_link_moves(row, old_links)
         # Remapping is the owner engaging with the row — enough to retire the "waiting on
         # your review" notification about it (#170). Bus-only, like approve/reject.
@@ -780,7 +884,115 @@ class InteractionService:
             self.ctx,
             {"interaction_id": row.id, "owner_user_id": row.owner_user_id},
         )
-        return await self._present_one(row)
+        return row
+
+    # --- bulk review (#299) ----------------------------------------------------- #
+    # A queue of forty auto-matched emails is reviewed a screenful at a time or not at all, so
+    # the review flow gets a batch form. Three things make that safe rather than reckless, and
+    # they are worth stating because the obvious worry — "bulk approve skips the step where I
+    # connect the email to a client/project/task" — turns out to be the wrong one:
+    #
+    # 1. **Approving does not decide the links.** ``InteractionApprove`` already treats an
+    #    absent field as "leave this row's own link alone", so a bulk approve that sends none
+    #    is a pure status change: every row keeps exactly what the gmail matcher derived for
+    #    it. It never blanket-overwrites forty rows with one client.
+    # 2. **Approving does not close the connect step either.** ``remap`` has no status check —
+    #    a *logged* gmail row is still re-filable by its owner, forever. "Approve now, file
+    #    later" is a real workflow, which is what makes approving in bulk a cheap decision.
+    #    ``bulk_assign`` is the other order: file the batch first, read and approve after.
+    # 3. **The irreversible one is reject**, not approve: it deletes the row *and* suppresses
+    #    the message so a re-poll never brings it back. So the batch that needs the loud
+    #    confirmation is bulk deny — the inverse of where the caution instinctively goes.
+    async def bulk_approve(self, data: InteractionBulkApprove) -> dict[str, Any]:
+        link_values = await self._bulk_links(data)
+        roster = await self._bulk_roster(data)
+        rows, failed = await self._bulk_eligible(data.ids, pending_only=True)
+        for row in rows:
+            await self._approve_row(row, dict(link_values), roster)
+        return {"succeeded": len(rows), "failed": failed}
+
+    async def bulk_assign(self, data: InteractionBulkAssign) -> dict[str, Any]:
+        """File a selection without approving it. Unlike approve, a *logged* row is fair game —
+        this is the batch form of ``remap``, so it also re-files a mis-matched run of emails."""
+        link_values = await self._bulk_links(data)
+        roster = await self._bulk_roster(data)
+        rows, failed = await self._bulk_eligible(data.ids, pending_only=False)
+        # A batch that names a roster and no links is still a real assignment (#300), so
+        # "nothing to do" has to ask about both — testing links alone would silently drop
+        # "put these six emails on Jan and Piet".
+        if not link_values and roster is None:
+            return {"succeeded": 0, "failed": failed}
+        for row in rows:
+            await self._remap_row(row, dict(link_values), roster)
+        return {"succeeded": len(rows), "failed": failed}
+
+    async def bulk_reject(self, data: InteractionBulkReject) -> dict[str, Any]:
+        """Permanent, per row: the metadata goes and the message is suppressed, so a re-poll
+        never resurrects it. The ``interaction.rejected`` subscriber writes each suppression in
+        this transaction — one small indexed lookup per row, which is why ``MAX_BULK_IDS``
+        bounds the batch rather than leaving it open-ended."""
+        rows, failed = await self._bulk_eligible(data.ids, pending_only=True)
+        for row in rows:
+            await self._reject_row(row, suppress_thread=data.suppress_thread)
+        return {"succeeded": len(rows), "failed": failed}
+
+    async def _bulk_links(self, data: InteractionBulkLinks) -> dict[str, Any]:
+        """Resolve the batch's shared links **once**, before any row is touched.
+
+        A ``company_id`` that does not exist is the caller's payload being wrong, not any one
+        row's problem — every row would fail on it identically. So this raises 422 for the
+        whole call, while row-level trouble is reported instead (``InteractionBulkResult``).
+        """
+        sent = data.model_dump(
+            exclude_unset=True, exclude={"ids", "contact_id", "contact_ids"}
+        )
+        return await self._resolve_links(sent, partial=True) if sent else {}
+
+    async def _bulk_roster(self, data: InteractionBulkLinks) -> list[uuid.UUID] | None:
+        """The batch's shared roster, resolved once (see ``_bulk_links``) — ``None`` for
+        "leave every row's own alone", which is what an absent field means here (#300)."""
+        return await self._requested_roster(
+            data.model_dump(exclude_unset=True, exclude={"ids"})
+        )
+
+    async def _bulk_eligible(
+        self, ids: list[uuid.UUID], *, pending_only: bool
+    ) -> tuple[list[Interaction], list[dict[str, Any]]]:
+        """Load the selection in one query and split it into "can" and "cannot, because".
+
+        One ``IN`` rather than a ``get_or_404`` per id (docs/PERFORMANCE.md): the batch is the
+        whole point, and a per-row load would make the cheap half of the work the expensive
+        half. The read rides ``scoped_select()``, so tenant isolation and the company horizon
+        both come along — a bulk call can no more name a row across the horizon than a list can.
+        """
+        unique = list(dict.fromkeys(ids))  # a double-checked row is approved once, not twice
+        found = {
+            row.id: row
+            for row in (
+                await self.ctx.session.execute(
+                    self.repo.scoped_select().where(Interaction.id.in_(unique))
+                )
+            )
+            .scalars()
+            .all()
+        }
+        rows: list[Interaction] = []
+        failed: list[dict[str, Any]] = []
+        for interaction_id in unique:
+            row = found.get(interaction_id)
+            if row is None:
+                # Outside the tenant, outside the horizon, or already gone — one answer for
+                # all three (§15): an id you cannot act on must not read as an id that exists.
+                failed.append({"id": interaction_id, "error": "errors.not_found"})
+                continue
+            reason = self._review_ineligible(row)
+            if reason is None and pending_only and row.status != InteractionStatus.PENDING.value:
+                reason = ("invalid_state", "errors.interactions_not_pending", 409)
+            if reason is not None:
+                failed.append({"id": interaction_id, "error": reason[1]})
+                continue
+            rows.append(row)
+        return rows, failed
 
     async def add_to_conversation(
         self, interaction_id: uuid.UUID, target_interaction_id: uuid.UUID
@@ -824,28 +1036,208 @@ class InteractionService:
         )
         return await self._present_one(row)
 
+    # --- the contact roster (#300) ----------------------------------------------- #
+    @staticmethod
+    def _roster_intent(sent: dict[str, Any]) -> list[uuid.UUID] | None:
+        """What this payload asks the roster to become, or ``None`` for "leave it alone".
+
+        The one place the two-field contract in ``schemas.py`` is interpreted: ``contact_ids``
+        wins where it was sent, a bare ``contact_id`` still means a one-person roster (which is
+        what keeps every pre-#300 caller writing exactly what it wrote before), and neither
+        touching the payload leaves the stored roster untouched. ``sent`` is an
+        ``exclude_unset`` dump, so "absent" and "explicitly null" are genuinely distinguishable
+        here — on a partial write that distinction is the whole difference between *keep* and
+        *clear*.
+        """
+        if sent.get("contact_ids") is not None:
+            return list(sent["contact_ids"])
+        if "contact_id" in sent:
+            return [sent["contact_id"]] if sent["contact_id"] is not None else []
+        return None
+
+    async def _resolve_contact_ids(self, ids: list[uuid.UUID]) -> list[uuid.UUID]:
+        """Validate a requested roster: deduplicated, order kept, nobody invisible.
+
+        Through the reference seam (``core/directory.py``) rather than the bare
+        ``SELECT … WHERE org_id`` the other three links use, for the reason §15 spells out: a
+        contact's client lives in ``company_contacts`` and in no column this module may know
+        about, so "belongs to this org" would let a company-group-scoped member file a moment
+        against a person at a client they cannot see — and every screen afterwards renders that
+        as perfectly ordinary.
+        """
+        wanted = list(dict.fromkeys(ids))
+        if not wanted:
+            return []
+        visible = await visible_ids(self.ctx, "contact", wanted)
+        if any(cid not in visible for cid in wanted):
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"contact_ids": "errors.not_found"},
+            )
+        return wanted
+
+    async def _contact_ids_of(self, interaction_id: uuid.UUID) -> list[uuid.UUID]:
+        """The stored roster, in chip order."""
+        stmt = (
+            select(InteractionContact.contact_id)
+            .where(
+                InteractionContact.org_id == self._org_id,
+                InteractionContact.interaction_id == interaction_id,
+            )
+            .order_by(InteractionContact.position, InteractionContact.created_at)
+        )
+        return list((await self.ctx.session.execute(stmt)).scalars())
+
+    async def _set_contacts(self, row: Interaction, ids: list[uuid.UUID]) -> None:
+        """Make the roster exactly ``ids`` and re-stamp the lead column, in this transaction.
+
+        Reconciled rather than delete-and-reinsert: an unchanged chip keeps its link row (and
+        its ``created_at``), so "since when has this person been on this moment" survives an
+        edit that only added someone else. ``row.contact_id`` is rewritten on every call — the
+        column is a mirror of chip 0 and the two must never be written apart (models.py).
+        """
+        links = self.ctx.repo(InteractionContact)
+        existing = list(
+            (
+                await self.ctx.session.execute(
+                    links.scoped_select().where(InteractionContact.interaction_id == row.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        by_contact = {link.contact_id: link for link in existing}
+        for position, contact_id in enumerate(ids):
+            link = by_contact.pop(contact_id, None)
+            if link is None:
+                await links.create(
+                    interaction_id=row.id, contact_id=contact_id, position=position
+                )
+            elif link.position != position:
+                link.position = position
+        for orphan in by_contact.values():
+            await links.delete(orphan)
+        row.contact_id = ids[0] if ids else None
+        await self.ctx.session.flush()
+
+    async def _requested_roster(self, sent: dict[str, Any]) -> list[uuid.UUID] | None:
+        """This payload's roster, validated — or ``None`` for "leave the stored one alone".
+
+        Split from applying it so a **batch resolves once** (``_bulk_roster``): a contact the
+        caller cannot see is the payload being wrong, which every row in the selection would
+        fail on identically, so it is the call that gets the 422 rather than fifty rows.
+        """
+        requested = self._roster_intent(sent)
+        return None if requested is None else await self._resolve_contact_ids(requested)
+
+    async def _apply_roster(
+        self,
+        row: Interaction,
+        resolved: list[uuid.UUID] | None,
+        *,
+        old: list[uuid.UUID] | None = None,
+    ) -> None:
+        """Write an already-resolved roster onto a stored row, and tell the people it moved.
+
+        ``None`` leaves the stored roster untouched. ``old`` is the roster as it stood before
+        the write (the caller reads it once, before touching anything); a create passes none
+        because there is nothing to have left.
+        """
+        if resolved is None:
+            return
+        await self._set_contacts(row, resolved)
+        if old is not None:
+            await self._record_contact_moves(row, old, resolved)
+
+    async def _contact_rosters(
+        self, rows: list[Interaction]
+    ) -> dict[uuid.UUID, list[dict[str, Any]]]:
+        """Every row's roster on this page, labelled, in **one** query (docs/PERFORMANCE.md).
+
+        Joined to ``contacts`` rather than resolved per row: this is the read that would
+        otherwise be one lookup per chip per row, which is invisible at three rows and is the
+        whole response at three hundred.
+
+        A page where nothing names anybody costs **no** query at all, which is what keeps the
+        company detail page on the budget it had before rosters existed: a non-empty roster
+        always mirrors chip 0 onto ``contact_id`` (models.py), so an all-``NULL`` page provably
+        has no links to fetch. That invariant is the same one the lead column exists for.
+        """
+        ids = [row.id for row in rows if row.contact_id is not None]
+        if not ids:
+            return {}
+        stmt = (
+            select(
+                InteractionContact.interaction_id,
+                InteractionContact.contact_id,
+                _contact_display_name(),
+            )
+            .join(
+                _contacts,
+                (_contacts.c.id == InteractionContact.contact_id)
+                & (_contacts.c.org_id == InteractionContact.org_id),
+            )
+            .where(
+                InteractionContact.org_id == self._org_id,
+                InteractionContact.interaction_id.in_(ids),
+            )
+            .order_by(
+                InteractionContact.interaction_id,
+                InteractionContact.position,
+                InteractionContact.created_at,
+            )
+        )
+        rosters: dict[uuid.UUID, list[dict[str, Any]]] = {}
+        for interaction_id, contact_id, name in (await self.ctx.session.execute(stmt)).all():
+            rosters.setdefault(interaction_id, []).append({"id": contact_id, "name": name})
+        return rosters
+
     # --- helpers ---------------------------------------------------------------- #
-    async def _record_on_hosts(self, row: Interaction, action: str) -> None:
+    def _host_payload(self, row: Interaction) -> dict[str, Any]:
+        return {"interaction_id": str(row.id), "kind": row.kind, "subject": row.subject}
+
+    async def _record_on_hosts(
+        self, row: Interaction, action: str, *, contact_ids: list[uuid.UUID] | None = None
+    ) -> None:
         """Mirror a milestone onto every linked host record's trail (#152), in the same
         transaction. A mirror *event* carrying a pointer — the field-level diff stays on the
-        interaction's own trail, so nothing is audited twice."""
+        interaction's own trail, so nothing is audited twice.
+
+        **Every** person on the roster hears about it (#300), not only the lead: a call with
+        two people is on both their records, or the second one's page quietly omits the moment
+        they were in. ``contact_ids`` is passed by callers that just wrote the roster and
+        already hold it; anyone else pays one indexed read.
+        """
         activity = ActivityService(self.ctx)
-        payload = {"interaction_id": str(row.id), "kind": row.kind, "subject": row.subject}
+        payload = self._host_payload(row)
         for field, entity_type in HOST_ENTITY.items():
+            if field == "contact_id":
+                continue  # the roster below is the authority, and the column is only its lead
             target_id = getattr(row, field)
             if target_id is not None:
                 await activity.record(entity_type, target_id, action, payload)
+        roster = contact_ids if contact_ids is not None else await self._contact_ids_of(row.id)
+        for contact_id in roster:
+            await activity.record(HOST_ENTITY["contact_id"], contact_id, action, payload)
 
     async def _record_link_moves(
         self, row: Interaction, old_links: dict[str, uuid.UUID | None]
     ) -> None:
         """A moved contactmoment tells both sides (#152): the host it left and the one it
-        joined. Only team-visible (logged) rows announce themselves."""
+        joined. Only team-visible (logged) rows announce themselves.
+
+        The contact link is not read here: it is a roster now, and its own moves are recorded
+        by :meth:`_record_contact_moves` from the before/after lists the write already has.
+        """
         if row.status != InteractionStatus.LOGGED.value:
             return
         activity = ActivityService(self.ctx)
-        payload = {"interaction_id": str(row.id), "kind": row.kind, "subject": row.subject}
+        payload = self._host_payload(row)
         for field, entity_type in HOST_ENTITY.items():
+            if field == "contact_id":
+                continue
             old, new = old_links[field], getattr(row, field)
             if old == new:
                 continue
@@ -853,6 +1245,24 @@ class InteractionService:
                 await activity.record(entity_type, old, "interaction.unlinked", payload)
             if new is not None:
                 await activity.record(entity_type, new, "interaction.linked", payload)
+
+    async def _record_contact_moves(
+        self, row: Interaction, old: list[uuid.UUID], new: list[uuid.UUID]
+    ) -> None:
+        """The roster's half of the same bookkeeping (#300): whoever left the moment and
+        whoever joined it hears about it on their own trail. Reordering is not a move."""
+        if row.status != InteractionStatus.LOGGED.value:
+            return
+        activity = ActivityService(self.ctx)
+        payload = self._host_payload(row)
+        entity_type = HOST_ENTITY["contact_id"]
+        before, after = set(old), set(new)
+        for contact_id in old:
+            if contact_id not in after:
+                await activity.record(entity_type, contact_id, "interaction.unlinked", payload)
+        for contact_id in new:
+            if contact_id not in before:
+                await activity.record(entity_type, contact_id, "interaction.linked", payload)
 
     async def _valid_mentions(self, ids: list[uuid.UUID]) -> list[uuid.UUID]:
         """Keep only the mentioned ids that are members of this org (#151, like #63)."""
@@ -870,18 +1280,16 @@ class InteractionService:
         return [uid for uid in ids if uid in members]
 
     async def _valid_contact_mentions(self, ids: list[uuid.UUID]) -> list[uuid.UUID]:
-        """Keep only the mentioned contact ids that belong to this org (#165) — a reference
-        into the CRM, never a notification: contacts have no inbox here."""
+        """Keep only the mentioned contact ids **this caller can see** (#165) — a reference
+        into the CRM, never a notification: contacts have no inbox here.
+
+        Through the reference seam for the same reason as ``_participant_contacts``: "belongs
+        to this org" was the whole test, so a company-group-scoped member could paste any
+        contact id in the tenant into a note and have it render as that person's name.
+        """
         if not ids:
             return []
-        stmt = text("SELECT id FROM contacts WHERE org_id = :oid AND id IN :ids").bindparams(
-            bindparam("ids", expanding=True)
-        )
-        found = set(
-            (
-                await self.ctx.session.execute(stmt, {"oid": self._org_id, "ids": list(ids)})
-            ).scalars()
-        )
+        found = await visible_ids(self.ctx, "contact", ids)
         return [cid for cid in ids if cid in found]
 
     async def _notify_mentions(self, row: Interaction, mentioned: list[uuid.UUID]) -> None:
@@ -950,11 +1358,27 @@ class InteractionService:
     async def _owned_gmail_or_404(self, interaction_id: uuid.UUID) -> Interaction:
         """Review actions: gmail-sourced and strictly the caller's own mailbox — no override."""
         row = await self.repo.get_or_404(interaction_id)
-        if row.source != InteractionSource.GMAIL.value:
-            raise AppError("invalid_state", "errors.interactions_manual_no_review", status_code=409)
-        if row.owner_user_id != self.ctx.user.id:
-            raise AppError("forbidden", "errors.interactions_owner_only", status_code=403)
+        reason = self._review_ineligible(row)
+        if reason is not None:
+            raise AppError(*reason[:2], status_code=reason[2])
         return row
+
+    def _review_ineligible(self, row: Interaction) -> tuple[str, str, int] | None:
+        """Why this row is out of the review flow, or ``None`` when it is in it.
+
+        One statement of the rule, asked two ways: ``_owned_gmail_or_404`` raises it for a
+        single row, the bulk loader reports it per row. Splitting them is how a batch would
+        end up quietly reviewing a colleague's mailbox.
+        """
+        if row.source != InteractionSource.GMAIL.value:
+            return ("invalid_state", "errors.interactions_manual_no_review", 409)
+        if row.owner_user_id != self.ctx.user.id:
+            return ("forbidden", "errors.interactions_owner_only", 403)
+        return None
+
+    def _pending_only(self, row: Interaction) -> None:
+        if row.status != InteractionStatus.PENDING.value:
+            raise AppError("invalid_state", "errors.interactions_not_pending", status_code=409)
 
     async def _resolve_links(
         self, links: dict[str, uuid.UUID | None], *, partial: bool = False
@@ -967,7 +1391,11 @@ class InteractionService:
         """
         values: dict[str, uuid.UUID | None] = {}
         for field_name, target_id in links.items():
-            if target_id is not None:
+            # ``contact_id`` is never the caller's to place any more (#300): it is chip 0 of a
+            # roster ``_resolve_contact_ids`` has already validated through the reference seam,
+            # which is *stricter* than this bare-table check — re-asking here would buy a query
+            # and no safety.
+            if target_id is not None and field_name != "contact_id":
                 await self._ensure_exists(_LINK_TABLES[field_name], field_name, target_id)
             values[field_name] = target_id
         derived = await self._derived_company(values)
@@ -1003,20 +1431,22 @@ class InteractionService:
             )
 
     #: What each linked table calls its label — the batched name lookup below reads these.
+    #: No ``contact_id`` entry: the roster query (``_contact_rosters``) already labels every
+    #: chip, and the lead's name is chip 0's. Asking the contacts table twice per page would be
+    #: the same lookup, priced twice (docs/PERFORMANCE.md).
     _LINK_LABELS = {
         "company_id": ("companies", "name"),
         "project_id": ("projects", "name"),
         "task_id": ("tasks", "title"),
-        "contact_id": ("contacts", "trim(concat(first_name, ' ', coalesce(last_name, '')))"),
     }
 
     async def _link_names(self, rows: list[Interaction]) -> dict[tuple[str, uuid.UUID], str]:
         """Labels for the linked records (#147) — one batched query per referenced table for
         the whole page, never a per-row lookup (docs/PERFORMANCE.md). Raw ids are worse than
         saying nothing, and the web should not need four lookup fetches to draw a chip."""
-        wanted: dict[str, set[uuid.UUID]] = {field: set() for field in _LINK_TABLES}
+        wanted: dict[str, set[uuid.UUID]] = {field: set() for field in self._LINK_LABELS}
         for row in rows:
-            for field in _LINK_TABLES:
+            for field in self._LINK_LABELS:
                 value = getattr(row, field)
                 if value is not None:
                     wanted[field].add(value)
@@ -1058,6 +1488,7 @@ class InteractionService:
             else None
         )
         names = await self._link_names([row])
+        rosters = await self._contact_rosters([row])
         contacts_by_email = await self._participant_contacts([row])
         members_by_email = await self._participant_members([row])
         closing_ids = await self._closing_task_ids([row])
@@ -1089,25 +1520,26 @@ class InteractionService:
             members_by_email,
             closing_ids,
             conversation_count=conversation_count,
+            rosters=rosters,
         )
 
     async def _participant_contacts(self, rows: list[Interaction]) -> dict[str, uuid.UUID]:
-        """Which participant addresses exist as org contacts (#160) — one batched,
-        org-scoped query over the page's distinct emails, matched at read time so a contact
-        created after the email was logged still links up. Display data, never authz."""
+        """Which participant addresses exist as contacts **this caller may see** (#160).
+
+        One batched query over the page's distinct emails, matched at read time so a contact
+        created after the email was logged still links up. Display data, never authz — but it
+        goes through the cross-module reference seam (``core/directory.py``) rather than a bare
+        ``WHERE org_id`` read, because a contact's client lives in ``company_contacts`` and not
+        in a column here: org-scoped alone, this chipped every other client's people onto a
+        thread a company-group-scoped member could legitimately open.
+        """
         emails: set[str] = set()
         for row in rows:
             for participant in row.participants or []:
                 email = (participant.get("email") or "").lower()
                 if email:
                     emails.add(email)
-        if not emails:
-            return {}
-        stmt = text(
-            "SELECT lower(email), id FROM contacts WHERE org_id = :oid AND lower(email) IN :emails"
-        ).bindparams(bindparam("emails", expanding=True))
-        result = await self.ctx.session.execute(stmt, {"oid": self._org_id, "emails": list(emails)})
-        return dict(result.all())
+        return await ids_by_email(self.ctx, "contact", emails)
 
     async def _participant_members(self, rows: list[Interaction]) -> dict[str, uuid.UUID]:
         """Which participant addresses belong to org employees (#167) — the same batched,
@@ -1140,6 +1572,7 @@ class InteractionService:
         closing_ids: set[uuid.UUID] | None = None,
         conversation_count: int = 1,
         with_body: bool = True,
+        rosters: dict[uuid.UUID, list[dict[str, Any]]] | None = None,
     ) -> dict[str, Any]:
         """Owner resolved like the activity trail (issue #64): live account wins, snapshot after.
 
@@ -1154,6 +1587,10 @@ class InteractionService:
             owner_name = row.owner_name
             owner_deleted = row.owner_name is not None
         names = names or {}
+        # The roster is the authority; the two singular keys are chip 0 (models.py). Derived
+        # here rather than read off the column so a read can never disagree with itself.
+        roster = (rosters or {}).get(row.id, [])
+        lead = roster[0] if roster else None
         return {
             "id": row.id,
             "kind": row.kind,
@@ -1166,11 +1603,12 @@ class InteractionService:
             "company_id": row.company_id,
             "project_id": row.project_id,
             "task_id": row.task_id,
-            "contact_id": row.contact_id,
+            "contact_id": lead["id"] if lead else None,
+            "contacts": roster,
             "company_name": names.get(("company_id", row.company_id)),
             "project_name": names.get(("project_id", row.project_id)),
             "task_title": names.get(("task_id", row.task_id)),
-            "contact_name": names.get(("contact_id", row.contact_id)),
+            "contact_name": lead["name"] if lead else None,
             "closes_task": row.id in (closing_ids or set()),
             "owner_user_id": row.owner_user_id,
             "owner_name": owner_name,
@@ -1296,13 +1734,29 @@ class InteractionKindService:
 
 
 async def count_for_entity(ctx: RequestContext, entity_field: str, entity_id: uuid.UUID) -> int:
-    """How many interactions attach to one host entity — the panel's truncation counter."""
-    column = getattr(Interaction, entity_field)
+    """How many interactions attach to one host entity — the panel's truncation counter.
+
+    A contact is counted off the roster, not the lead column (#300), so this answers the same
+    question ``?contact_id=`` does — a counter and its list disagreeing is the shape §15 calls
+    "a hand-built count".
+    """
+    if entity_field == "contact_id":
+        condition = (
+            select(InteractionContact.id)
+            .where(
+                InteractionContact.org_id == Interaction.org_id,
+                InteractionContact.interaction_id == Interaction.id,
+                InteractionContact.contact_id == entity_id,
+            )
+            .exists()
+        )
+    else:
+        condition = getattr(Interaction, entity_field) == entity_id
     return int(
         await ctx.session.scalar(
             select(func.count())
             .select_from(Interaction)
-            .where(Interaction.org_id == ctx.org.id, column == entity_id)
+            .where(Interaction.org_id == ctx.org.id, condition)
         )
         or 0
     )

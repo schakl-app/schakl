@@ -7,6 +7,7 @@ before ``/{invoice_id}`` so "settings"/"summary" never match an id path param.
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 from fastapi import APIRouter, Depends, Query, Response
 
@@ -15,8 +16,10 @@ from app.core.tenancy import RequestContext, require_context
 from app.errors import AppError
 from app.modules.invoicing import accounting
 from app.modules.invoicing.models import InvoiceStatus
+from app.modules.invoicing.render import BUILTIN_DESIGNS, builtin_source, catalog_payload
 from app.modules.invoicing.schemas import (
-    BillableSubscription,
+    BacklogGroupBy,
+    BacklogSourceFilter,
     DocumentSend,
     ExternalRefRead,
     InvoiceCreate,
@@ -27,6 +30,7 @@ from app.modules.invoicing.schemas import (
     InvoicingSettingsRead,
     InvoicingSettingsWrite,
     InvoicingSummary,
+    OutstandingRead,
     PaymentWrite,
     ProductCreate,
     ProductRead,
@@ -35,11 +39,15 @@ from app.modules.invoicing.schemas import (
     QuoteDecision,
     QuoteRead,
     QuoteUpdate,
+    RecurringBacklogReport,
     TaxRateCreate,
     TaxRateRead,
     TaxRateUpdate,
+    TemplateCatalog,
     TemplateCreate,
+    TemplatePreview,
     TemplateRead,
+    TemplateSource,
     TemplateUpdate,
     UnbilledRead,
     UninvoicedGroupBy,
@@ -60,12 +68,25 @@ from app.schemas import Page
 
 router = APIRouter(prefix="/invoicing", tags=["invoicing"])
 
+#: A document read. Scoped since #266, so this is the *floor*: an ``:own`` holder — the
+#: ``client`` role — passes here, and the company horizon plus ``InvoiceService`` decide
+#: which documents that actually means.
+_READ = "invoicing.invoice.read"
+#: The invoicing **module**, as opposed to a document (#266). Every org-wide surface under
+#: ``_READ`` — the seller identity and bank details, the price list, the template library,
+#: the unbilled-hours backlog, the accounting sync's bookkeeping — declares ``:any``, so an
+#: ``:own`` holder cannot reach it. These are not rows a company horizon could narrow: there
+#: is no client whose price list this is, so the scope is the only thing that can fence them.
+#: Staff are unaffected — a legacy bare grant and ``:any`` both satisfy it; only ``:own``
+#: alone does not.
+_MODULE = "any"
+
 
 # --- settings ----------------------------------------------------------------- #
 @router.get(
     "/settings",
     response_model=InvoicingSettingsRead,
-    dependencies=[require_permission("invoicing.invoice.read")],
+    dependencies=[require_permission(_READ, _MODULE)],
 )
 async def get_settings(ctx: RequestContext = Depends(require_context)) -> InvoicingSettingsRead:
     """Read by the editor too (defaults, numbering preview) — not only by admins."""
@@ -90,7 +111,7 @@ async def save_settings(
 @router.get(
     "/tax-rates",
     response_model=list[TaxRateRead],
-    dependencies=[require_permission("invoicing.invoice.read")],
+    dependencies=[require_permission(_READ, _MODULE)],
 )
 async def list_tax_rates(
     include_inactive: bool = Query(False),
@@ -142,7 +163,7 @@ async def delete_tax_rate(
 @router.get(
     "/products",
     response_model=list[ProductRead],
-    dependencies=[require_permission("invoicing.invoice.read")],
+    dependencies=[require_permission(_READ, _MODULE)],
 )
 async def list_products(
     include_inactive: bool = Query(False),
@@ -190,11 +211,24 @@ async def delete_product(
     await ProductService(ctx).delete(product_id)
 
 
+#: A rendered document is a standalone page: no scripts of its own to allow, no fetches to
+#: make (its images are inlined as data URIs), and framable only by the app that renders it.
+#: The web proxy re-states the same policy on its side, because a browser reads the header on
+#: the response it actually loaded — and that is the proxy's, not ours.
+_PREVIEW_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'none'; img-src data:; style-src 'unsafe-inline'; frame-ancestors 'self'"
+    ),
+    "X-Frame-Options": "SAMEORIGIN",
+    "Cache-Control": "no-store",
+}
+
+
 # --- templates ------------------------------------------------------------------ #
 @router.get(
     "/templates",
     response_model=list[TemplateRead],
-    dependencies=[require_permission("invoicing.invoice.read")],
+    dependencies=[require_permission(_READ, _MODULE)],
 )
 async def list_templates(
     include_inactive: bool = Query(False),
@@ -242,6 +276,66 @@ async def delete_template(
     await TemplateService(ctx).delete(template_id)
 
 
+@router.get(
+    "/template-blocks",
+    response_model=TemplateCatalog,
+    dependencies=[require_permission("invoicing.settings.manage")],
+)
+async def template_blocks(ctx: RequestContext = Depends(require_context)) -> TemplateCatalog:
+    """What a template may rearrange: the block/field catalog plus the shipped designs.
+
+    Keys only — the editor resolves `invoicing.block.*` / `invoicing.field.*` in the
+    *viewer's* locale, because the API does not pick a locale for someone else's screen
+    (§17's rule). ``can_author`` is here so the editor can hide the HTML/CSS tab rather than
+    offer a control whose save will 403; the API is still the boundary (§15).
+    """
+    return TemplateCatalog(
+        blocks=catalog_payload(),
+        designs=list(BUILTIN_DESIGNS),
+        can_author=ctx.can("invoicing.template.author"),
+    )
+
+
+@router.get(
+    "/template-blocks/{design}/source",
+    response_model=TemplateSource,
+    dependencies=[require_permission("invoicing.template.author")],
+)
+async def template_source(design: str) -> TemplateSource:
+    """A shipped design's own HTML and CSS, to start a custom template from.
+
+    Writing one from a blank page means knowing the whole render context by heart; branching
+    from the design they already like means changing the two things they want changed. These
+    are the same files the shipped design renders from, so what they get is what they saw.
+    """
+    html, css = builtin_source(design)
+    return TemplateSource(html=html, css=css)
+
+
+@router.post(
+    "/templates/preview",
+    response_class=Response,
+    dependencies=[require_permission("invoicing.settings.manage")],
+)
+async def preview_template(
+    payload: TemplatePreview,
+    ctx: RequestContext = Depends(require_context),
+) -> Response:
+    """Render a **sample** document with an unsaved config — the editor's live preview.
+
+    Against a sample rather than a real invoice on purpose: the editor is reached from
+    Settings, where no document is in hand, and a design must be judged on one that exercises
+    every block (two line kinds, a paid amount, a VAT split) rather than on whichever invoice
+    happened to be first. It renders the tenant's real seller identity and branding, because
+    those are what the design has to sit around.
+    """
+    return Response(
+        content=await TemplateService(ctx).preview(payload.config, payload.template_id),
+        media_type="text/html; charset=utf-8",
+        headers=_PREVIEW_HEADERS,
+    )
+
+
 # --- accounting seam -------------------------------------------------------------- #
 @router.get(
     "/providers",
@@ -257,7 +351,7 @@ async def list_providers(ctx: RequestContext = Depends(require_context)) -> list
 @router.get(
     "/summary",
     response_model=InvoicingSummary,
-    dependencies=[require_permission("invoicing.invoice.read")],
+    dependencies=[require_permission(_READ)],
 )
 async def summary(ctx: RequestContext = Depends(require_context)) -> InvoicingSummary:
     return InvoicingSummary.model_validate(await InvoiceService(ctx).summary())
@@ -272,38 +366,38 @@ async def summary(ctx: RequestContext = Depends(require_context)) -> InvoicingSu
 async def unbilled(
     company_id: uuid.UUID = Query(...),
     project_id: uuid.UUID | None = Query(None),
-    until: str | None = Query(None, description="org-local date (YYYY-MM-DD), inclusive"),
+    # Typed, not parsed by hand: a malformed date was a 500 out of `date.fromisoformat`
+    # rather than the 422 every other bad query param gets.
+    until: date | None = Query(None, description="org-local date (YYYY-MM-DD), inclusive"),
     ctx: RequestContext = Depends(require_context),
 ) -> UnbilledRead:
-    from datetime import date as date_type
-
-    parsed = date_type.fromisoformat(until) if until else None
-    data = await InvoiceService(ctx).unbilled(company_id, project_id=project_id, until=parsed)
+    data = await InvoiceService(ctx).unbilled(company_id, project_id=project_id, until=until)
     return UnbilledRead.model_validate(data)
 
 
 @router.get(
-    "/billable-subscriptions",
-    response_model=list[BillableSubscription],
+    "/outstanding",
+    response_model=OutstandingRead,
     dependencies=[require_permission("invoicing.invoice.write")],
 )
-async def billable_subscriptions(
+async def outstanding(
     company_id: uuid.UUID = Query(...),
     ctx: RequestContext = Depends(require_context),
-) -> list[BillableSubscription]:
-    """A client's active agreements as ready-made invoice lines (the "＋ abonnement" pick).
+) -> OutstandingRead:
+    """Everything a client still has to be invoiced for: hours, agreement periods, renewals.
 
-    ``already_billed`` marks a period a document already claims: shown rather than hidden,
-    so the answer to "did I invoice March yet?" is on the picker instead of on a duplicate.
+    The source the editor's three sections pick from, in one round trip. Periods a document
+    already claims are marked ``already_billed`` rather than omitted, so "did I invoice March
+    yet?" is answered on the picker instead of by a duplicate a week later. On
+    ``invoice.write`` and not ``.read``: this is a build-an-invoice surface, not a report.
     """
-    rows = await InvoiceService(ctx).billable_subscriptions(company_id)
-    return [BillableSubscription.model_validate(row) for row in rows]
+    return OutstandingRead.model_validate(await InvoiceService(ctx).outstanding(company_id))
 
 
 @router.get(
     "/uninvoiced",
     response_model=UninvoicedReport,
-    dependencies=[require_permission("invoicing.invoice.read")],
+    dependencies=[require_permission(_READ, _MODULE)],
 )
 async def uninvoiced(
     group: UninvoicedGroupBy = Query(
@@ -320,11 +414,34 @@ async def uninvoiced(
     )
 
 
+@router.get(
+    "/recurring-backlog",
+    response_model=RecurringBacklogReport,
+    dependencies=[require_permission(_READ, _MODULE)],
+)
+async def recurring_backlog(
+    group: BacklogGroupBy = Query("company", description="company | month | source"),
+    source: BacklogSourceFilter = Query("all", description="all | subscription | domain"),
+    limit: int = Query(500, ge=1, le=1000, description="cap on the item detail, not the totals"),
+    ctx: RequestContext = Depends(require_context),
+) -> RecurringBacklogReport:
+    """Org-wide recurring work still to invoice (#302): agreement periods and domain renewals
+    that no document claims yet.
+
+    The other half of "nog te factureren" — ``/uninvoiced`` answers it for hours. Read-only
+    and on ``.read`` for the same reason that one is: browsing the backlog is a view, and
+    building the invoice stays a ``.write`` act in the editor.
+    """
+    return RecurringBacklogReport.model_validate(
+        await InvoiceService(ctx).recurring_backlog(group=group, source=source, limit=limit)
+    )
+
+
 # --- invoices ------------------------------------------------------------------------ #
 @router.get(
     "/invoices",
     response_model=Page[InvoiceRead],
-    dependencies=[require_permission("invoicing.invoice.read")],
+    dependencies=[require_permission(_READ)],
 )
 async def list_invoices(
     limit: int = Query(100, ge=1, le=200),
@@ -383,7 +500,7 @@ async def invoice_from_time(
 @router.get(
     "/invoices/{invoice_id}",
     response_model=InvoiceRead,
-    dependencies=[require_permission("invoicing.invoice.read")],
+    dependencies=[require_permission(_READ)],
 )
 async def get_invoice(
     invoice_id: uuid.UUID,
@@ -513,7 +630,7 @@ async def delete_payment(
 
 @router.get(
     "/invoices/{invoice_id}/pdf",
-    dependencies=[require_permission("invoicing.invoice.read")],
+    dependencies=[require_permission(_READ)],
 )
 async def download_invoice_pdf(
     invoice_id: uuid.UUID,
@@ -549,8 +666,51 @@ async def download_quote_pdf(
 
 
 @router.get(
+    "/invoices/{invoice_id}/preview",
+    response_class=Response,
+    dependencies=[require_permission(_READ)],
+)
+async def preview_invoice(
+    invoice_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> Response:
+    """The invoice as HTML — **the same artefact** ``/pdf`` prints.
+
+    The detail page and the print route render this in a frame rather than drawing the
+    document a second time in Svelte. That is what makes "the preview and the PDF disagree"
+    unrepresentable, and it is the only way a tenant's own HTML template can be previewed at
+    all: a Svelte component cannot render someone else's Jinja.
+    """
+    service = InvoiceService(ctx)
+    invoice = await service.get(invoice_id)
+    return Response(
+        content=await service.document_html(invoice, "invoice"),
+        media_type="text/html; charset=utf-8",
+        headers=_PREVIEW_HEADERS,
+    )
+
+
+@router.get(
+    "/quotes/{quote_id}/preview",
+    response_class=Response,
+    dependencies=[require_permission("invoicing.quote.read")],
+)
+async def preview_quote(
+    quote_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> Response:
+    service = QuoteService(ctx)
+    quote = await service.get(quote_id)
+    return Response(
+        content=await service.document_html(quote, "quote"),
+        media_type="text/html; charset=utf-8",
+        headers=_PREVIEW_HEADERS,
+    )
+
+
+@router.get(
     "/invoices/{invoice_id}/ubl",
-    dependencies=[require_permission("invoicing.invoice.read")],
+    dependencies=[require_permission(_READ)],
 )
 async def download_ubl(
     invoice_id: uuid.UUID,
@@ -576,7 +736,7 @@ async def download_ubl(
 @router.get(
     "/invoices/{invoice_id}/refs",
     response_model=list[ExternalRefRead],
-    dependencies=[require_permission("invoicing.invoice.read")],
+    dependencies=[require_permission(_READ, _MODULE)],
 )
 async def invoice_refs(
     invoice_id: uuid.UUID,

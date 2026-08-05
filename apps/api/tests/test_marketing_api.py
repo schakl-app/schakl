@@ -11,26 +11,41 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, date, datetime, timedelta
 
+import httpx
 import pytest
 from pwdlib import PasswordHash
 from sqlalchemy import select
 
 from app.core.activity.models import ActivityLog
 from app.core.auth.models import User
-from app.core.crypto import decrypt
+from app.core.crypto import decrypt, encrypt
 from app.db import async_session_maker, set_current_org
+from app.modules.google.client import describe_api_error
+from app.modules.google.models import GoogleConnection, GoogleSettings
+from app.modules.google.oauth import SCOPE_ANALYTICS
 from app.modules.marketing.layout import SourceLayout, resolve_event_label
 from app.modules.marketing.models import (
     MarketingLink,
     MarketingMetricDaily,
     MarketingSettings,
 )
-from app.modules.marketing.service import resolve_ads_developer_token
+from app.modules.marketing.service import _failure_key, resolve_ads_developer_token
 from app.modules.marketing.sources import gads
 from app.modules.marketing.sources.ga4 import GA4Adapter
 from tests.conftest import add_membership, auth_cookie, make_tenant
 
 _ph = PasswordHash.recommended()
+
+
+class _FakeRedis:
+    def __init__(self) -> None:
+        self.store: dict[str, str] = {}
+
+    async def get(self, key: str):
+        return self.store.get(key)
+
+    async def set(self, key: str, value: str, ex: int | None = None) -> None:  # noqa: ARG002
+        self.store[key] = value
 
 
 async def _add_member(org_id, email: str, role: str = "member") -> User:
@@ -1227,7 +1242,7 @@ async def test_summary_is_horizon_scoped_for_portal_logins(client_for) -> None:
             )
         ).json()
         assert (
-            await c.post(f"/api/v1/contacts/{contact['id']}/portal", headers=headers)
+            await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
         ).status_code == 200
         async with async_session_maker() as session:
             portal_user = await session.scalar(
@@ -1250,3 +1265,479 @@ async def test_summary_is_horizon_scoped_for_portal_logins(client_for) -> None:
         empty = (await co.get("/api/v1/marketing/summary", headers=o_headers)).json()
         assert empty["linked_total"] == 0
         assert empty["rows"] == []
+
+
+# --- what Google actually said (a 403 is not one failure) ------------------------------------ #
+def _http_403(body: dict) -> httpx.HTTPStatusError:
+    request = httpx.Request("GET", "https://analyticsadmin.googleapis.com/v1beta/accountSummaries")
+    response = httpx.Response(403, json=body, request=request)
+    return httpx.HTTPStatusError("Client error '403 Forbidden'", request=request, response=response)
+
+
+_SERVICE_DISABLED = {
+    "error": {
+        "code": 403,
+        "status": "PERMISSION_DENIED",
+        "message": (
+            "Google Analytics Admin API has not been used in project 123456789012 before or "
+            "it is disabled."
+        ),
+        "details": [
+            {"@type": "type.googleapis.com/google.rpc.ErrorInfo", "reason": "SERVICE_DISABLED"}
+        ],
+    }
+}
+
+
+def test_describe_api_error_reads_googles_own_reason() -> None:
+    """``str(exc)`` is the status line and the URL; the diagnosis is in the body."""
+    disabled = describe_api_error(_http_403(_SERVICE_DISABLED))
+    assert disabled is not None
+    assert disabled.api_disabled and not disabled.scope_insufficient
+    assert disabled.status == "PERMISSION_DENIED"
+    assert "123456789012" in str(disabled)  # the Cloud project, the whole point of logging it
+
+    scoped = describe_api_error(
+        _http_403(
+            {
+                "error": {
+                    "code": 403,
+                    "message": "Request had insufficient authentication scopes.",
+                    "details": [{"reason": "ACCESS_TOKEN_SCOPE_INSUFFICIENT"}],
+                }
+            }
+        )
+    )
+    assert scoped is not None and scoped.scope_insufficient and not scoped.api_disabled
+
+    # The older Google JSON shape, and a plain 403 that explains nothing.
+    legacy = describe_api_error(
+        _http_403({"error": {"code": 403, "errors": [{"reason": "accessNotConfigured"}]}})
+    )
+    assert legacy is not None and legacy.api_disabled
+    bare = describe_api_error(_http_403({"error": {"code": 403, "message": "Forbidden"}}))
+    assert bare is not None and not bare.api_disabled and not bare.scope_insufficient
+    assert describe_api_error(RuntimeError("not http at all")) is None
+
+
+def test_failure_key_routes_each_403_to_its_own_cure() -> None:
+    """The three failure paths share one classifier, so the nightly sync and the picker can
+    never disagree about what a given 403 means."""
+    disabled = describe_api_error(_http_403(_SERVICE_DISABLED))
+    scoped = describe_api_error(
+        _http_403(
+            {
+                "error": {
+                    "code": 403,
+                    "message": "Request had insufficient authentication scopes.",
+                    "details": [{"reason": "ACCESS_TOKEN_SCOPE_INSUFFICIENT"}],
+                }
+            }
+        )
+    )
+    assert _failure_key(disabled, "fallback") == "marketing.api_not_enabled"
+    assert _failure_key(scoped, "fallback") == "marketing.scope_insufficient"
+    # A cause Google did not name keeps the caller's fallback — for the sync that is Google's
+    # own sentence, which beats the status line it used to store.
+    bare = describe_api_error(_http_403({"error": {"code": 403, "message": "Forbidden"}}))
+    assert _failure_key(bare, "403 : Forbidden") == "403 : Forbidden"
+    assert _failure_key(None, "marketing.accounts_error") == "marketing.accounts_error"
+
+
+async def _seed_google(tenant, user_id: uuid.UUID) -> None:
+    """An org OAuth client plus an active connection carrying the GA4 scope."""
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        session.add(
+            GoogleSettings(
+                org_id=tenant.org.id,
+                client_id="123456789012-abc.apps.googleusercontent.com",
+                client_secret_encrypted=encrypt("client-secret"),
+            )
+        )
+        session.add(
+            GoogleConnection(
+                org_id=tenant.org.id,
+                user_id=user_id,
+                google_sub="sub-mktg",
+                email="marketeer@agency.nl",
+                scopes=["openid", "email", SCOPE_ANALYTICS],
+                refresh_token_encrypted=encrypt("refresh-token-plain"),
+            )
+        )
+        await session.commit()
+
+
+_SCOPE_INSUFFICIENT = {
+    "error": {
+        "code": 403,
+        "message": "Request had insufficient authentication scopes.",
+        "details": [{"reason": "ACCESS_TOKEN_SCOPE_INSUFFICIENT"}],
+    }
+}
+
+
+@pytest.mark.parametrize(
+    ("body", "expected", "has_scope"),
+    [
+        (_SERVICE_DISABLED, "marketing.api_not_enabled", True),
+        # Google saying the token lacks the scope is exactly what ``has_scope=False`` means.
+        (_SCOPE_INSUFFICIENT, "marketing.scope_insufficient", False),
+        ({"error": {"code": 403, "message": "Forbidden"}}, "marketing.accounts_error", True),
+    ],
+)
+async def test_accounts_picker_separates_a_disabled_api_from_a_bad_token(
+    client_for,
+    monkeypatch: pytest.MonkeyPatch,
+    body: dict,
+    expected: str,
+    has_scope: bool,
+) -> None:
+    """A disabled Cloud API and a dead grant both 403; only one is cured by reconnecting, so
+    the picker must not answer "try reconnecting" to both (the GA4 symptom this came from)."""
+    t = await make_tenant("mktg-accounts-403")
+    headers = await auth_cookie(t.user)
+    await _seed_google(t, t.user.id)
+
+    fake_redis = _FakeRedis()
+    monkeypatch.setattr("app.modules.marketing.service.get_redis", lambda: fake_redis)
+
+    async def _boom(self, client):  # noqa: ANN001, ARG001
+        raise _http_403(body)
+
+    monkeypatch.setattr(GA4Adapter, "list_accounts", _boom)
+
+    async with client_for(t.host) as c:
+        res = await c.get("/api/v1/marketing/accounts?source=ga4", headers=headers)
+    assert res.status_code == 200
+    payload = res.json()
+    assert payload["connected"] is True and payload["has_scope"] is has_scope
+    assert payload["error"] == expected
+    assert payload["accounts"] == []
+    assert fake_redis.store == {}  # a failure is never cached as "this account list is empty"
+
+
+async def test_link_names_whose_google_connection_syncs_it(client_for) -> None:
+    """Every marketing surface says *through whom* a client's numbers arrive.
+
+    A link rides one colleague's grant. Without the owner on the payload a second employee sees
+    a working link with no hint that it is not theirs — so they connect Google again for data
+    that is already flowing, and nobody learns that the link dies when that person leaves.
+    """
+    t = await make_tenant("mktg-owner")
+    headers = await auth_cookie(t.user)
+    await _seed_google(t, t.user.id)
+    colleague = await _add_member(t.org.id, "collega@agency.nl", role="admin")
+    colleague_headers = await auth_cookie(colleague)
+
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Acme BV"}, headers=headers)
+        ).json()
+        created = await c.post(
+            "/api/v1/marketing/links",
+            json={
+                "company_id": company["id"],
+                "source": "ga4",
+                "external_id": "properties/1",
+                "display_name": "Acme GA4",
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        # The creator sees their own grant named as theirs, straight off the create.
+        mine = created.json()["connection_owner"]
+        assert mine["email"] == "marketeer@agency.nl" and mine["is_me"] is True
+
+        # The colleague sees the same link attributed to the person who connected it.
+        listed = await c.get(
+            f"/api/v1/marketing/links?company_id={company['id']}", headers=colleague_headers
+        )
+        owner = listed.json()[0]["connection_owner"]
+        assert owner["is_me"] is False
+        assert owner["email"] == "marketeer@agency.nl"  # the Google account
+        assert owner["name"] == t.user.email  # the colleague, named (no full_name set)
+        assert owner["user_id"] == str(t.user.id)
+
+        # …and the panel/tab payload carries it too, so it shows without a second call.
+        metrics = await c.get(
+            f"/api/v1/marketing/companies/{company['id']}/metrics",
+            headers=colleague_headers,
+        )
+        assert metrics.json()["sources"][0]["connection_owner"]["is_me"] is False
+
+
+async def test_picker_tells_a_colleague_who_already_connected(client_for) -> None:
+    """The picker only ever saw the *caller's* grant, so the second person in the agency was
+    told "not connected" about accounts their colleague had linked minutes earlier."""
+    t = await make_tenant("mktg-connected-via")
+    await _seed_google(t, t.user.id)
+    colleague = await _add_member(t.org.id, "tweede@agency.nl", role="admin")
+    colleague_headers = await auth_cookie(colleague)
+
+    async with client_for(t.host) as c:
+        res = await c.get("/api/v1/marketing/accounts?source=ga4", headers=colleague_headers)
+    assert res.status_code == 200
+    payload = res.json()
+    assert payload["connected"] is False  # they still need their own to pick accounts
+    assert [o["email"] for o in payload["connected_via"]] == ["marketeer@agency.nl"]
+    assert payload["connected_via"][0]["is_me"] is False
+
+    # Search Console is not on that connection, so nobody is offered for it.
+    async with client_for(t.host) as c:
+        gsc = await c.get("/api/v1/marketing/accounts?source=gsc", headers=colleague_headers)
+    assert gsc.json()["connected_via"] == []
+
+
+async def test_own_connection_is_never_listed_as_a_colleague(client_for) -> None:
+    t = await make_tenant("mktg-connected-self")
+    headers = await auth_cookie(t.user)
+    await _seed_google(t, t.user.id)
+    async with client_for(t.host) as c:
+        # The GA4 scope is on this connection but Search Console is not: the caller's own grant
+        # must never come back as "someone else already connected".
+        res = await c.get("/api/v1/marketing/accounts?source=gsc", headers=headers)
+    assert res.json()["connected_via"] == []
+
+
+def test_ads_api_version_is_not_a_sunset_one(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Google sunsets an Ads API version about a year after release and then 404s every path
+    under it — which no picker state describes, so the module just looks broken. The version is
+    a setting for exactly that reason; this pins that it is honoured, and that we never ship
+    one already known dead."""
+    from app.config import settings as app_settings
+
+    assert gads.api_base() == f"{gads.API_HOST}/{gads.DEFAULT_API_VERSION}"
+    # v18 sunset on 2025-08-20; anything at or below it is a guaranteed 404.
+    assert int(gads.DEFAULT_API_VERSION.lstrip("v")) > 18
+
+    monkeypatch.setattr(app_settings, "google_ads_api_version", "v26")
+    assert gads.api_base().endswith("/v26")
+    monkeypatch.setattr(app_settings, "google_ads_api_version", "")
+    assert gads.api_base().endswith(f"/{gads.DEFAULT_API_VERSION}")
+
+
+async def test_link_owner_lookup_does_not_scale_with_the_links(client_for, count_queries) -> None:
+    """Naming the connection's owner stays one joined read, whatever a client has linked.
+
+    The obvious implementation — resolve the user per link — is invisible in the JSON: three
+    links and thirty return the same payload, and only the statement count tells them apart
+    (docs/PERFORMANCE.md). So the count is what this pins, not the names.
+    """
+    t = await make_tenant("mktg-owner-budget")
+    headers = await auth_cookie(t.user)
+    await _seed_google(t, t.user.id)
+
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Acme BV"}, headers=headers)
+        ).json()
+        for source, external in (("ga4", "properties/1"), ("gsc", "sc-domain:a.nl")):
+            created = await c.post(
+                "/api/v1/marketing/links",
+                json={
+                    "company_id": company["id"],
+                    "source": source,
+                    "external_id": external,
+                    "display_name": external,
+                },
+                headers=headers,
+            )
+            assert created.status_code == 201, created.text
+
+        with count_queries() as counter:
+            listed = await c.get(
+                f"/api/v1/marketing/links?company_id={company['id']}", headers=headers
+            )
+        assert listed.status_code == 200, listed.text
+        assert len(listed.json()) == 2
+        assert all(row["connection_owner"]["is_me"] for row in listed.json())
+        # One read of the connections + their owners, not one per link — and `users` is only
+        # ever touched by that join.
+        assert len(counter.matching("from google_connections")) == 1
+        assert len(counter.matching(" join users")) == 1
+
+
+def test_a_sunset_ads_api_version_is_named_not_shrugged_at() -> None:
+    """A dead Ads API version 404s every call with a perfectly good token — the exact failure
+    that had to be diagnosed from a container log. Ads gets its own message; the other sources
+    keep theirs, because a 404 there means the property is gone, not the API."""
+    from app.modules.marketing.models import MarketingSource
+
+    request = httpx.Request(
+        "GET", "https://googleads.googleapis.com/v18/customers:listAccessibleCustomers"
+    )
+    response = httpx.Response(
+        404, json={"error": {"code": 404, "status": "NOT_FOUND", "message": "Not found."}},
+        request=request,
+    )
+    gone = describe_api_error(
+        httpx.HTTPStatusError("Client error '404 Not Found'", request=request, response=response)
+    )
+    assert (
+        _failure_key(gone, "marketing.accounts_error", source=MarketingSource.GADS.value)
+        == "marketing.ads_api_version"
+    )
+    assert (
+        _failure_key(gone, "marketing.accounts_error", source=MarketingSource.GA4.value)
+        == "marketing.accounts_error"
+    )
+    # And a 403 keeps its own classification whichever source it came from.
+    disabled = describe_api_error(_http_403(_SERVICE_DISABLED))
+    assert (
+        _failure_key(disabled, "fallback", source=MarketingSource.GADS.value)
+        == "marketing.api_not_enabled"
+    )
+
+
+class _FakeAdsClient:
+    """A stand-in for the Ads REST client that records what was asked, and with which headers.
+
+    The headers are the point: ``login-customer-id`` is the whole of MCC support, and it is
+    invisible in every response body.
+    """
+
+    def __init__(self, responses: dict[str, dict]) -> None:
+        self._responses = responses
+        self.calls: list[tuple[str, dict, dict]] = []
+
+    def _answer(self, url: str, headers: dict, body: dict | None = None):
+        self.calls.append((url, dict(headers), dict(body or {})))
+        for needle, payload in self._responses.items():
+            if needle in url and (
+                not isinstance(payload, dict)
+                or "_query" not in payload
+                or payload["_query"] in str((body or {}).get("query", ""))
+            ):
+                return httpx.Response(
+                    200,
+                    json={k: v for k, v in payload.items() if k != "_query"},
+                    request=httpx.Request("GET", url),
+                )
+        return httpx.Response(200, json={}, request=httpx.Request("GET", url))
+
+    async def get(self, url: str, headers: dict | None = None):
+        return self._answer(url, headers or {})
+
+    async def post(self, url: str, headers: dict | None = None, json: dict | None = None):
+        return self._answer(url, headers or {}, json)
+
+
+async def test_manager_accounts_expand_into_their_clients() -> None:
+    """An agency's Google user is granted the **manager**, not the clients under it.
+
+    ``listAccessibleCustomers`` answers direct grants only, so the raw list is one MCC id and a
+    picker built on it offers nothing an agency actually runs. Each child must come back tagged
+    with the manager to reach it through, or every later call is made by a user with no grant
+    on that account.
+    """
+    client = _FakeAdsClient(
+        {
+            "customers:listAccessibleCustomers": {"resourceNames": ["customers/1112223333"]},
+            "customers/1112223333/googleAds:search": {
+                "_query": "FROM customer\b",
+            },
+        }
+    )
+    # Two answers off the same URL: "is this a manager?" and "list its children".
+    manager_meta = {
+        "results": [
+            {
+                "customer": {
+                    "descriptiveName": "Bureau MCC",
+                    "currencyCode": "EUR",
+                    "manager": True,
+                }
+            }
+        ]
+    }
+    children = {
+        "results": [
+            {
+                "customerClient": {
+                    "id": "4445556666",
+                    "descriptiveName": "Acme BV",
+                    "currencyCode": "EUR",
+                    "level": "1",
+                }
+            },
+            {
+                "customerClient": {
+                    "id": "7778889999",
+                    "descriptiveName": "Bakkerij Jansen",
+                    "currencyCode": "EUR",
+                    "level": "2",
+                }
+            },
+        ]
+    }
+
+    calls: list[dict] = []
+
+    async def _post(url: str, headers: dict | None = None, json: dict | None = None):  # noqa: A002
+        query = str((json or {}).get("query", ""))
+        calls.append({"url": url, "headers": dict(headers or {}), "query": query})
+        body = children if "customer_client" in query else manager_meta
+        return httpx.Response(200, json=body, request=httpx.Request("POST", url))
+
+    client.post = _post  # type: ignore[method-assign]
+
+    with gads.developer_token_scope("dev-token"):
+        options = await gads.GAdsAdapter().list_accounts(client)  # type: ignore[arg-type]
+
+    assert [o.external_id for o in options] == ["4445556666", "7778889999"]
+    assert [o.display_name for o in options] == ["Acme BV", "Bakkerij Jansen"]
+    # The manager itself is never offered — Google refuses metric queries against one, so a link
+    # to it would error forever rather than roll its clients up.
+    assert all(o.external_id != "1112223333" for o in options)
+    # Every child carries the manager it must be reached through, and the hint names it.
+    assert all(o.config["manager_id"] == "1112223333" for o in options)
+    assert options[0].account_hint == "4445556666 · Bureau MCC"
+    # The hierarchy query is one call for the whole tree — not one per level, not one per child.
+    hierarchy = [c for c in calls if "customer_client" in c["query"]]
+    assert len(hierarchy) == 1
+    assert hierarchy[0]["headers"]["login-customer-id"] == "1112223333"
+
+
+async def test_a_plain_advertiser_account_is_still_offered_untagged() -> None:
+    """Not every install has an MCC; a directly-granted account must not grow a manager id."""
+    client = _FakeAdsClient(
+        {"customers:listAccessibleCustomers": {"resourceNames": ["customers/5550001111"]}}
+    )
+
+    async def _post(url: str, headers: dict | None = None, json: dict | None = None):  # noqa: A002, ARG001
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "customer": {
+                            "descriptiveName": "Directe klant",
+                            "currencyCode": "EUR",
+                            "manager": False,
+                        }
+                    }
+                ]
+            },
+            request=httpx.Request("POST", url),
+        )
+
+    client.post = _post  # type: ignore[method-assign]
+    with gads.developer_token_scope("dev-token"):
+        options = await gads.GAdsAdapter().list_accounts(client)  # type: ignore[arg-type]
+
+    assert [o.external_id for o in options] == ["5550001111"]
+    assert "manager_id" not in options[0].config
+
+
+def test_a_linked_child_sends_the_manager_on_every_call() -> None:
+    """The tag is only worth storing if the header is actually built from it."""
+    with gads.developer_token_scope("dev-token"):
+        headers = gads._headers({"manager_id": "111-222-3333", "currency": "EUR"})
+    # Google wants the id without dashes.
+    assert headers["login-customer-id"] == "1112223333"
+    assert headers["developer-token"] == "dev-token"
+
+    with gads.developer_token_scope("dev-token"):
+        plain = gads._headers({"currency": "EUR"})
+    assert "login-customer-id" not in plain

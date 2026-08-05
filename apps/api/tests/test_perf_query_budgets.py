@@ -16,6 +16,7 @@ from datetime import UTC, datetime, timedelta
 
 from app.db import async_session_maker, set_current_org
 from tests.conftest import add_membership, auth_cookie, make_tenant
+from tests.test_invoicing_api import _setup_org as _invoicing_setup_org
 
 
 def _iso(dt: datetime) -> str:
@@ -162,7 +163,8 @@ async def _member_of(t, slug: str, *, role: str = "member"):
         await set_current_org(session, t.org.id)
         await add_membership(session, t.org.id, other.user.id, role=role)
         await session.commit()
-    return await auth_cookie(other.user)
+    # They hold two memberships (their own tenant and ``t``); the session under test is ``t``.
+    return await auth_cookie(other.user, org_id=t.org.id)
 
 
 #: Statements an ordinary member's ``GET /meta/me`` issues, end to end: the auth user, the two
@@ -292,6 +294,61 @@ async def test_interaction_count_can_be_skipped(client_for, count_queries) -> No
         assert counter.matching("count(distinct") == []
         # `total` degrades to the page length, the same contract every other list uses.
         assert skipped["total"] == len(skipped["items"]) == 2
+
+
+async def test_interaction_rosters_cost_one_query_per_page(client_for, count_queries) -> None:
+    """#300: the roster is one batched read for the page, and none when nobody is named.
+
+    A chip per person per row is exactly the shape that is invisible at three rows: the JSON is
+    identical either way, and the version that reads ``contacts`` per interaction only shows up
+    when a client's timeline is long enough to matter. So the statement count is pinned twice —
+    once for the batching, once for the claim ``_contact_rosters`` makes in its own docstring,
+    that an all-``NULL`` page provably has no links to fetch.
+    """
+    t = await make_tenant("perf-inter-roster")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers)
+
+        # Nobody named: the lead column is NULL on every row, so there is nothing to look up.
+        for i in range(3):
+            await _interaction(c, headers, company_id=company, subject=f"S{i}", body="x")
+        with count_queries() as counter:
+            listed = (await c.get("/api/v1/interactions", headers=headers)).json()["items"]
+        assert [row["contacts"] for row in listed] == [[], [], []]
+        assert counter.matching("from interaction_contacts") == []
+
+        people = []
+        for i in range(3):
+            res = await c.post(
+                "/api/v1/contacts",
+                json={"first_name": f"P{i}", "company_ids": [company]},
+                headers=headers,
+            )
+            assert res.status_code == 201, res.text
+            people.append(res.json()["id"])
+
+        # Three moments, each naming everybody: nine chips, still one query for the page.
+        for i in range(3):
+            res = await c.post(
+                "/api/v1/interactions",
+                json={
+                    "kind": "note",
+                    "subject": f"M{i}",
+                    "company_id": company,
+                    "contact_ids": people,
+                    "occurred_at": datetime(2026, 3, 3, 9, 0, tzinfo=UTC).isoformat(),
+                },
+                headers=headers,
+            )
+            assert res.status_code == 201, res.text
+
+        with count_queries() as counter:
+            rows = (await c.get("/api/v1/interactions", headers=headers)).json()["items"]
+        named = [row for row in rows if row["contacts"]]
+        assert len(named) == 3
+        assert all(len(row["contacts"]) == 3 for row in named)
+        assert len(counter.matching("from interaction_contacts")) == 1
 
 
 async def test_invoice_rows_carry_no_lines_until_asked(client_for, count_queries) -> None:
@@ -472,3 +529,86 @@ async def test_company_panels_have_a_query_budget(client_for, count_queries) -> 
             f"{len(counter)} statements, budget {_PANELS_BUDGET}:\n"
             + "\n".join(counter.statements)
         )
+
+
+async def test_credit_links_are_batched_and_the_list_never_pays_for_them(
+    client_for, count_queries
+) -> None:
+    """The two halves of a correction link to each other without going per row.
+
+    The FK points one way only, so naming the credit notes that corrected an invoice needs a
+    reverse read. It is a *detail* concern: the index draws the `credited` flag, which is a
+    column. So the list must not run it at all, and the detail must run it once however many
+    credit notes point home — the shape that is invisible in the JSON and only shows up at
+    three hundred rows.
+    """
+    t = await make_tenant("perf-credit-links")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        await _invoicing_setup_org(c, headers)
+        company = await _company(c, headers)
+
+        async def issued(price: str) -> dict:
+            inv = (
+                await c.post(
+                    "/api/v1/invoicing/invoices",
+                    json={
+                        "company_id": company,
+                        "lines": [
+                            {"description": "W", "quantity": "1", "unit_price": price}
+                        ],
+                    },
+                    headers=headers,
+                )
+            ).json()
+            return (
+                await c.post(
+                    f"/api/v1/invoicing/invoices/{inv['id']}/issue",
+                    json={},
+                    headers=headers,
+                )
+            ).json()
+
+        # One invoice corrected by two partial credit notes, plus two unrelated invoices so
+        # a per-row read would be visible as more than one statement.
+        invoice = await issued("500")
+        for _ in range(2):
+            note = (
+                await c.post(
+                    f"/api/v1/invoicing/invoices/{invoice['id']}/credit", headers=headers
+                )
+            ).json()
+            await c.patch(
+                f"/api/v1/invoicing/invoices/{note['id']}",
+                json={
+                    "lines": [
+                        {"description": "W", "quantity": "1", "unit_price": "-100"}
+                    ]
+                },
+                headers=headers,
+            )
+            await c.post(
+                f"/api/v1/invoicing/invoices/{note['id']}/issue", json={}, headers=headers
+            )
+        await issued("300")
+        await issued("200")
+
+        with count_queries() as counter:
+            rows = (await c.get("/api/v1/invoicing/invoices", headers=headers)).json()[
+                "items"
+            ]
+        assert counter.matching("credit_for_id in") == [], "the list draws a column, not a join"
+        credited_row = next(r for r in rows if r["id"] == invoice["id"])
+        assert credited_row["credited"] is True
+        assert credited_row["credited_total"] == "242.00"
+        assert credited_row["outstanding"] == "363.00"  # 605 − 242
+        assert credited_row["credit_notes"] == [], "links are a detail concern"
+
+        with count_queries() as counter:
+            detail = (
+                await c.get(
+                    f"/api/v1/invoicing/invoices/{invoice['id']}", headers=headers
+                )
+            ).json()
+        assert len(detail["credit_notes"]) == 2
+        assert len(counter.matching("credit_for_id in")) == 1, "one grouped read, never per note"

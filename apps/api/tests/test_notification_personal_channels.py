@@ -295,10 +295,11 @@ async def test_channel_schedule_places_the_digest(client_for) -> None:
 
     rows = await _deliveries(t.org.id)
     assert len(rows) == 1
-    # 23:30 Europe/Amsterdam — whatever the offset, never the default 08:00 slot.
-    from app.modules.notifications.prefs import AMSTERDAM
+    # 23:30 on **this org's** clock — whatever the offset, never the default 08:00 slot. The
+    # zone comes from the same resolver the API used, not a constant this file picks.
+    from app.core.timezone import resolve_zoneinfo
 
-    local = rows[0].deliver_after.astimezone(AMSTERDAM)
+    local = rows[0].deliver_after.astimezone(resolve_zoneinfo(None))
     assert (local.hour, local.minute) == (23, 30)
 
 

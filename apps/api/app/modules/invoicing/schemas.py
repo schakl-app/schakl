@@ -17,12 +17,14 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, mo
 from app.core.currency import is_valid_currency
 from app.core.numbering import format_valid
 from app.modules.invoicing.models import (
+    AutoInvoiceMode,
     InvoiceKind,
     InvoiceStatus,
     LineKind,
     QuoteStatus,
     TaxCategory,
 )
+from app.modules.invoicing.render.engine import MAX_CUSTOM_CSS, MAX_CUSTOM_HTML
 
 
 def _blank_to_none(value: Any) -> Any:
@@ -56,6 +58,10 @@ class SellerDetails(BaseModel):
     vat_number: str | None = Field(default=None, max_length=32)
     coc_number: str | None = Field(default=None, max_length=32)
     iban: str | None = Field(default=None, max_length=42)
+    #: Only a document that prints it needs it — a SEPA invoice does not, an international
+    #: one often does. Off by default in the block catalog for the same reason.
+    bic: str | None = Field(default=None, max_length=16)
+    website: str | None = Field(default=None, max_length=255)
     email: EmailStr | None = None
     phone: str | None = Field(default=None, max_length=40)
 
@@ -78,6 +84,7 @@ class InvoicingSettingsWrite(BaseModel):
     invoice_next_seq: int | None = Field(default=None, ge=1)
     quote_next_seq: int | None = Field(default=None, ge=1)
     number_reset_yearly: bool | None = None
+    auto_invoice_mode: AutoInvoiceMode | None = None
     reminders_enabled: bool | None = None
     reminder_days: list[int] | None = None
 
@@ -114,6 +121,7 @@ class InvoicingSettingsRead(BaseModel):
     invoice_next_seq: int
     quote_next_seq: int
     number_reset_yearly: bool
+    auto_invoice_mode: AutoInvoiceMode
     reminders_enabled: bool
     reminder_days: list[int]
 
@@ -204,7 +212,14 @@ class ProductRead(ProductBase):
 # Templates
 # --------------------------------------------------------------------------- #
 class TemplateColumns(BaseModel):
-    """Which line columns the rendered document shows."""
+    """Which line columns the rendered document shows.
+
+    **Superseded by** ``TemplateConfig.layout``'s ``lines`` block, which orders the columns as
+    well as toggling them. Kept because every template stored before layouts existed carries
+    one, and it is still the input while a template has no layout of its own — upgrading a
+    release must not redesign a document a tenant has already approved. The service writes it
+    back from the layout on save, so the two can never disagree.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -214,6 +229,70 @@ class TemplateColumns(BaseModel):
     tax: bool = True
 
 
+class TemplateField(BaseModel):
+    """One field inside a block. Position in the list is its print order."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = Field(min_length=1, max_length=40)
+    enabled: bool = True
+    #: The tenant's own wording for this field's label, per locale — "t" where the catalog
+    #: says "Telefoon". Empty (or a field that prints no label at all) keeps the catalog's.
+    #: Bounded because a layout may hold forty of these and it lives in a JSONB column every
+    #: document read touches.
+    label_i18n: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("label_i18n")
+    @classmethod
+    def _bounded_labels(cls, value: dict[str, str]) -> dict[str, str]:
+        if len(value) > 12:
+            raise ValueError("errors.invoicing.template_too_large")
+        for locale, text in value.items():
+            if len(locale) > 12 or len(text) > 60:
+                raise ValueError("errors.invoicing.template_too_large")
+        return {locale: text.strip() for locale, text in value.items() if text.strip()}
+
+
+class TemplateBlock(BaseModel):
+    """One block of the document. Position in ``layout`` is its print order.
+
+    Both this and its fields are a **partial** statement: keys the catalog knows and this
+    layout does not are resolved at their catalog position with their catalog default
+    (``render.blocks.resolve_layout``). That is what lets a field added by a later release
+    appear on documents whose layout was written before it existed.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = Field(min_length=1, max_length=40)
+    enabled: bool = True
+    fields: list[TemplateField] = Field(default_factory=list, max_length=40)
+
+
+class TemplateBackground(BaseModel):
+    """The mark printed behind the page — a letterhead, not a watermark.
+
+    ``file_id`` is a tenant file (the same store the logo lives in); absent, the tenant's own
+    logo is used, which is what makes the letterhead design work the moment it is picked. The
+    numbers are percentages of the page, and every one of them is re-clamped at render time:
+    this is tenant-writable config, and an opacity of 40 would black out the text.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    file_id: uuid.UUID | None = None
+    #: Fall back to the org logo when no file of its own is set.
+    use_logo: bool = True
+    opacity: float = Field(default=0.04, ge=0, le=1)
+    #: Width as a percentage of the page.
+    scale: float = Field(default=78, ge=5, le=200)
+    x: float = Field(default=50, ge=-50, le=150)
+    y: float = Field(default=50, ge=-50, le=150)
+    rotate: float = Field(default=0, ge=-180, le=180)
+    repeat: bool = False
+
+
 class TemplateConfig(BaseModel):
     """The design knobs. ``None`` accent color = the tenant's brand color at render time
     (branding is runtime, Golden Rule 4). Text blocks are per-locale dicts, so a document
@@ -221,15 +300,32 @@ class TemplateConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    #: Which shipped design draws the document, or ``custom`` for the tenant's own ``html``.
+    design: Literal["classic", "letterhead", "custom"] = "classic"
     accent_color: str | None = Field(default=None, max_length=32)
     show_logo: bool = True
     columns: TemplateColumns = Field(default_factory=TemplateColumns)
+    #: Which blocks print, in which order, with which fields. Empty = the design's defaults.
+    layout: list[TemplateBlock] = Field(default_factory=list, max_length=40)
+    background: TemplateBackground = Field(default_factory=TemplateBackground)
+    #: A tenant-authored design (``design == "custom"``): sandboxed Jinja, rendered against
+    #: the same context the shipped designs get. Authoring is gated on its own permission.
+    html: str | None = Field(default=None, max_length=MAX_CUSTOM_HTML)
+    #: Extra CSS. On a shipped design it layers on top; on a custom one it *is* the design.
+    css: str | None = Field(default=None, max_length=MAX_CUSTOM_CSS)
     #: Per-locale text blocks: {"nl": "...", "en": "..."} — shown above the lines.
     intro_i18n: dict[str, str] = Field(default_factory=dict)
     #: Below the totals: payment instructions ("Gelieve te betalen binnen {days} dagen …").
     payment_i18n: dict[str, str] = Field(default_factory=dict)
     #: Small print at the very bottom (registrations, legal footer).
     footer_i18n: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _custom_needs_a_body(self) -> TemplateConfig:
+        # A custom design with nothing in it renders a blank page, which reads as data loss.
+        if self.design == "custom" and not (self.html or "").strip():
+            raise ValueError("errors.invoicing.template_body_required")
+        return self
 
 
 class TemplateBase(BaseModel):
@@ -261,6 +357,32 @@ class TemplateRead(TemplateBase):
     updated_at: datetime
 
 
+class TemplateCatalog(BaseModel):
+    """What the template editor needs to draw itself. Keys only — the client owns labels."""
+
+    blocks: list[dict[str, Any]]
+    designs: list[str]
+    #: Whether this caller may write ``html``/``css`` — hides the tab, never the boundary.
+    can_author: bool
+
+
+class TemplateSource(BaseModel):
+    """A shipped design's own source, for branching a custom template off it."""
+
+    html: str
+    css: str
+
+
+class TemplatePreview(BaseModel):
+    """Render a sample document with a config that has not been saved."""
+
+    config: TemplateConfig
+    #: The template being edited, when there is one. It supplies the *stored* source as the
+    #: baseline for the authoring check, so redrawing a saved custom template needs no
+    #: `invoicing.template.author` — only changing its code does.
+    template_id: uuid.UUID | None = None
+
+
 # --------------------------------------------------------------------------- #
 # Lines & shared document pieces
 # --------------------------------------------------------------------------- #
@@ -273,28 +395,41 @@ class LineWrite(BaseModel):
     #: May be negative: a discount line is an ordinary line with a negative price.
     unit_price: Decimal = Field(default=Decimal(0))
     tax_rate_id: uuid.UUID | None = None
-    #: When a line was prefilled from an unbilled time entry (the new-invoice form), the
-    #: entry it came from — so ``InvoiceService.create`` bills exactly that entry and stamps
-    #: it invoiced. Validated server-side; a stale/foreign id is silently skipped. Ignored by
-    #: quotes and by line snapshotting (it is not a document-line column).
+    #: The unbilled time entries this line bills — so the invoice stamps exactly them and
+    #: releases exactly them when the line goes. A **list**, because a grouped line ("24 uur,
+    #: Project X") covers many entries; ``time_entry_id`` stays accepted as the one-entry
+    #: spelling and folds into it. Validated server-side; a stale, foreign or already-billed
+    #: id is silently skipped. Ignored by quotes.
+    time_entry_ids: list[uuid.UUID] = Field(default_factory=list)
+    #: The one-entry spelling of ``time_entry_ids``, kept so an existing caller keeps working.
     time_entry_id: uuid.UUID | None = None
     #: When a line bills a subscription period, the agreement and the period it covers — so
     #: the invoice **claims** that period and the cycle cron never bills it again (owner:
-    #: "the cron should know it is already paid"). Same handling as ``time_entry_id``:
-    #: validated server-side, silently skipped when stale, not a document-line column.
+    #: "the cron should know it is already paid"). Same handling as ``time_entry_ids``:
+    #: validated server-side, silently skipped when stale.
     subscription_id: uuid.UUID | None = None
+    #: The same claim for a domain renewal period (#250) — a client's year-end invoice
+    #: carries eleven of these next to some hours, and each one has to stop its own cron.
+    domain_id: uuid.UUID | None = None
     period_start: date | None = None
     period_end: date | None = None
 
     _blank_unit = field_validator("unit", mode="before")(_blank_to_none)
 
     @model_validator(mode="after")
-    def _period_needs_subscription(self) -> LineWrite:
-        # A period without an agreement claims nothing; an agreement without a period would
-        # claim *every* period. Refuse both rather than store a half-claim.
-        if self.subscription_id is not None and self.period_end is None:
+    def _claims_are_whole(self) -> LineWrite:
+        # A period without a source claims nothing; a source without a period would claim
+        # *every* period. Refuse both rather than store a half-claim.
+        if self.time_entry_id is not None and self.time_entry_id not in self.time_entry_ids:
+            self.time_entry_ids = [*self.time_entry_ids, self.time_entry_id]
+        if self.subscription_id is not None and self.domain_id is not None:
+            # One line, one agreement: a claim that is both would retire two periods on a
+            # single description and no reader could tell which.
+            raise ValueError("errors.invoicing.one_claim_per_line")
+        source = self.subscription_id or self.domain_id
+        if source is not None and self.period_end is None:
             raise ValueError("errors.invoicing.subscription_period_required")
-        if self.period_end is not None and self.subscription_id is None:
+        if self.period_end is not None and source is None:
             raise ValueError("errors.invoicing.subscription_required")
         return self
 
@@ -314,6 +449,15 @@ class LineRead(BaseModel):
     tax_name: str
     tax_category: TaxCategory
     amount: Decimal
+    #: What this line bills. Echoed so the editor can **re-post** it: the lines are replaced
+    #: wholesale on every save, so a read that dropped the claim produced a write that
+    #: released it, and the cron then billed the period a second time. Always empty on a
+    #: quote, which claims nothing.
+    time_entry_ids: list[uuid.UUID] = Field(default_factory=list)
+    subscription_id: uuid.UUID | None = None
+    domain_id: uuid.UUID | None = None
+    period_start: date | None = None
+    period_end: date | None = None
 
 
 class TaxGroupRead(BaseModel):
@@ -338,6 +482,10 @@ class CustomerRead(BaseModel):
     vat_number: str | None = None
     coc_number: str | None = None
     email: str | None = None
+    #: The contact the document was addressed to (*t.a.v.*), frozen with the rest.
+    attn: str | None = None
+    #: The client's own number in the tenant's books, so a template can print *Klantnummer*.
+    client_number: str | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -356,6 +504,8 @@ class InvoiceCreate(BaseModel):
     template_id: uuid.UUID | None = None
     issue_date: date | None = None
     due_date: date | None = None
+    #: Only stated when it differs from the invoice date; printed by a template that asks.
+    delivery_date: date | None = None
     prices_include_tax: bool | None = None
     lines: list[LineWrite] = Field(default_factory=list, max_length=200)
     custom: dict[str, Any] = Field(default_factory=dict)
@@ -380,6 +530,7 @@ class InvoiceUpdate(BaseModel):
     template_id: uuid.UUID | None = None
     issue_date: date | None = None
     due_date: date | None = None
+    delivery_date: date | None = None
     prices_include_tax: bool | None = None
     reminders_paused: bool | None = None
     lines: list[LineWrite] | None = Field(default=None, max_length=200)
@@ -418,6 +569,19 @@ class PaymentRead(BaseModel):
     created_at: datetime
 
 
+class CreditNoteRef(BaseModel):
+    """A credit note as seen from the invoice it corrects — enough to link to it and say
+    how much of it that invoice absorbed."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    number: str | None = None
+    status: InvoiceStatus
+    total: Decimal
+    applied_total: Decimal
+
+
 class InvoiceRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -435,6 +599,7 @@ class InvoiceRead(BaseModel):
     overdue: bool = False
     issue_date: date | None
     due_date: date | None
+    delivery_date: date | None = None
     currency: str
     exchange_rate: Decimal | None
     locale: str
@@ -452,6 +617,14 @@ class InvoiceRead(BaseModel):
     tax_total: Decimal
     total: Decimal
     paid_total: Decimal
+    #: Written off by issued credit notes (on the invoice) / absorbed by the invoice it
+    #: corrects (on the credit note). What a credit note has left over is the refund.
+    credited_total: Decimal = Decimal(0)
+    applied_total: Decimal = Decimal(0)
+    #: Derived, never stored — like ``overdue``. Payments and credit notes both take a
+    #: document down; ``outstanding`` is what is left whichever way it got there.
+    credited: bool = False
+    fully_credited: bool = False
     outstanding: Decimal = Decimal(0)
     sent_at: datetime | None
     paid_at: datetime | None
@@ -463,6 +636,10 @@ class InvoiceRead(BaseModel):
     lines: list[LineRead] = Field(default_factory=list)
     tax_groups: list[TaxGroupRead] = Field(default_factory=list)
     payments: list[PaymentRead] = Field(default_factory=list)
+    #: Both halves of a correction, resolved on the detail read so either document can link
+    #: to the other. Empty on a list, which draws the ``credited`` flag instead.
+    credit_notes: list[CreditNoteRef] = Field(default_factory=list)
+    credit_for_number: str = ""
     created_at: datetime
     updated_at: datetime
 
@@ -500,24 +677,66 @@ class SubscriptionLineOffer(BaseModel):
     unit_price: Decimal
 
 
-class BillableSubscription(BaseModel):
-    """One of a client's agreements, offered to the line editor as a ready-made line.
+class PeriodOffer(BaseModel):
+    """One outstanding billing period of one agreement — the unit the picker selects.
 
-    ``already_billed`` is the honest half of the answer: the period is *shown* with the claim
-    that holds it, rather than hidden, so a user who wonders "did I already invoice March?"
-    reads it here instead of finding out from a duplicate.
+    A period, not an agreement: an agreement that has been paused, whose automation was off,
+    or that was simply never billed owes *several*, and offering only the next one is the
+    reason a user reaches for a hand-typed line. ``already_billed`` is shown rather than
+    hidden, so "did I invoice March?" is answered on the picker instead of by a duplicate.
     """
+
+    period_start: date | None
+    period_end: date
+    amount: Decimal
+    #: The agreement's own lines, priced at *this* period's boundary; a single priced line
+    #: otherwise — exactly what the cron would have raised, so both paths bill the same money.
+    lines: list[SubscriptionLineOffer] = Field(default_factory=list)
+    already_billed: bool = False
+    #: The period has not ended yet: billing it is billing in advance, which is a choice
+    #: rather than a mistake, so it is offered and labelled instead of withheld.
+    future: bool = False
+
+
+class BillableSubscription(BaseModel):
+    """One of a client's agreements and every period of it still outstanding."""
+
+    id: uuid.UUID
+    name: str
+    currency: str
+    #: The agreement's current price — the header figure. Each period carries its own,
+    #: resolved at that period's boundary, because history never reprices itself.
+    amount: Decimal
+    interval: str = ""
+    periods: list[PeriodOffer] = Field(default_factory=list)
+    #: More outstanding periods exist than the cap returned. Reported, never silent.
+    truncated: bool = False
+    #: The agreement has no billing cycle (``next_invoice_date IS NULL``), so no period can be
+    #: named and none can be claimed. Surfaced as a warning rather than dropped: a paused or
+    #: mis-set agreement is exactly what the user is looking for when they open the picker.
+    no_cycle: bool = False
+
+
+class BillableDomain(BaseModel):
+    """A domain and every renewal period of it still outstanding (#250) — the subscription
+    shape, one entity over. Renewals already print in a document's subscription section; a
+    picker that claimed to show everything outstanding and omitted them would be lying."""
 
     id: uuid.UUID
     name: str
     currency: str
     amount: Decimal
-    period_start: date | None
-    period_end: date | None
-    #: The subscription's own lines when it has them; a single priced line otherwise —
-    #: exactly what the cycle cron would raise, so both paths bill the same document.
-    lines: list[SubscriptionLineOffer] = Field(default_factory=list)
-    already_billed: bool = False
+    periods: list[PeriodOffer] = Field(default_factory=list)
+    truncated: bool = False
+    no_cycle: bool = False
+    #: No price could be resolved for this domain at all (no override, no TLD price valid at
+    #: the boundary). It cannot be offered as a priced line, and saying so beats a silent 0.
+    no_price: bool = False
+    #: This domain is not invoiced (#298): a registrar register says the agency does not hold
+    #: its registration, or somebody set the flag. **Its periods are still listed**, because
+    #: automation skipping a renewal and a human being forbidden to bill one are different
+    #: things — the picker labels it and stays out of the way.
+    invoiceable: bool = True
 
 
 class UnbilledEntry(BaseModel):
@@ -538,6 +757,26 @@ class UnbilledRead(BaseModel):
     entries: list[UnbilledEntry]
     total_minutes: int
     hourly_rate: Decimal | None
+    #: How many entries are outstanding in total, which is **not** ``len(entries)`` once the
+    #: cap bites. The count and the money are exact whatever the cap; only the detail is cut.
+    total_count: int = 0
+    total_amount: Decimal = Decimal(0)
+    #: The detail list was capped. Over a limit is an error or a flag, never a silent
+    #: truncation that reads as "this is everything" (§17's parsing rule, applied to a read).
+    truncated: bool = False
+
+
+class OutstandingRead(BaseModel):
+    """Everything a client still has to be invoiced for, in one round trip.
+
+    Three buckets because the editor has three sections, and one call because the picker
+    opens on all three at once: three browser fetches for one dialog is the shape
+    ``docs/PERFORMANCE.md`` exists to prevent.
+    """
+
+    hours: UnbilledRead
+    subscriptions: list[BillableSubscription] = Field(default_factory=list)
+    domains: list[BillableDomain] = Field(default_factory=list)
 
 
 #: The uninvoiced report's closed grouping vocabulary (#277) — what the data model has:
@@ -590,6 +829,80 @@ class UninvoicedReport(BaseModel):
     total_minutes: int
     total_amount: Decimal
     total_count: int
+    truncated: bool
+
+
+#: What a recurring backlog row is owed for (#302). Named for the line kind it will become,
+#: because that is what the reader is choosing between on the page and on the document.
+BacklogSource = Literal["subscription", "domain"]
+#: ``all`` is not a source — it is the absence of a filter, and it is the default.
+BacklogSourceFilter = Literal["all", "subscription", "domain"]
+#: What the data model actually has to bucket by: whose it is, when it falls due, what kind
+#: it is. Deliberately not the hours report's day/week/year — a period is not an event.
+BacklogGroupBy = Literal["company", "month", "source"]
+
+
+class RecurringBacklogItem(BaseModel):
+    """One outstanding period: an agreement's month or a domain's renewal year (#302)."""
+
+    #: ``<source>:<source_id>:<period_end>`` — the row's identity, because a period is not a
+    #: record and has no id of its own. It is the *pair* that is unique (one agreement owes
+    #: several months, and the claim tables are keyed the same way), so neither half alone can
+    #: key a list. Deliberately the encoding ``OutstandingPicker`` already uses for its ticks.
+    id: str
+    source: BacklogSource
+    #: The subscription's or domain's id — what the invoice line will carry as provenance.
+    source_id: uuid.UUID
+    name: str
+    company_id: uuid.UUID | None
+    company_name: str = ""
+    currency: str
+    period_start: date | None
+    period_end: date
+    amount: Decimal
+    #: The period has not ended yet: billing it bills in advance, which is ordinary for a
+    #: retainer and worth flagging rather than hiding.
+    future: bool = False
+    #: The level this agreement's cron runs at, already resolved against the org default —
+    #: what it will do at its **next** boundary, never a claim about this row. Every period
+    #: here has been passed by the cycle already, so none of them will bill themselves.
+    auto_mode: AutoInvoiceMode
+
+
+class RecurringBacklogGroup(BaseModel):
+    key: str
+    #: Empty for month and source buckets: the client renders those from the key in its own
+    #: locale, the way the uninvoiced report's date buckets already work.
+    label: str = ""
+    count: int
+    amount: Decimal
+
+
+class BacklogSourceTotal(BaseModel):
+    count: int
+    amount: Decimal
+
+
+class RecurringBacklogReport(BaseModel):
+    """Org-wide recurring work still to invoice (#302) — the other half of "nog te
+    factureren", beside :class:`UninvoicedReport`'s hours."""
+
+    group: BacklogGroupBy
+    source: BacklogSourceFilter
+    #: The org's own default level, so the page can say what "follow the organisation" means
+    #: without a second call to the settings endpoint.
+    org_auto_invoice_mode: AutoInvoiceMode | None = None
+    #: Bucketed over the filtered set and **before** the cap, so a narrowed view's subtotals
+    #: are exact however long the list is.
+    groups: list[RecurringBacklogGroup]
+    #: Capped at the request's ``limit``; every total here is over the whole set.
+    items: list[RecurringBacklogItem]
+    total_count: int
+    total_amount: Decimal
+    #: Each source's whole-set figures, **ignoring** ``source`` — what the page's tiles are.
+    #: A tile that only counted the source already selected would summarise nothing, so these
+    #: are computed over everything even when the list beside them is narrowed to one.
+    totals_by_source: dict[str, BacklogSourceTotal] = Field(default_factory=dict)
     truncated: bool
 
 

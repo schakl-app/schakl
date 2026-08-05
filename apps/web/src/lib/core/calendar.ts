@@ -2,6 +2,7 @@
  * Date-only grid math for the shared calendar (`/calendar`). Pure ISO-string helpers (UTC,
  * like `core/format.ts`) shared by the page load (fetch range) and the view components.
  */
+import { t } from "./i18n";
 import type { CalendarEvent } from "./registry";
 import { labelChipParts, type ColorParts } from "./ui/colors";
 
@@ -126,14 +127,15 @@ export interface CalendarDayAggregate {
  * full event bodies — are sent to the client (docs/PERFORMANCE.md).
  *
  * Holidays are excluded: the year heatmap answers "how much is happening", and a public holiday
- * is the opposite of something happening.
+ * is the opposite of something happening. A cancelled meeting is excluded for the same reason —
+ * it is a slot that was given back, so counting it would shade a freed-up day as a busy one.
  */
 export function aggregateEventsByDay(
   events: CalendarEvent[],
 ): Record<string, CalendarDayAggregate> {
   const byDay: Record<string, { count: number; allTentative: boolean }> = {};
   for (const event of events) {
-    if (event.kind === "holiday") continue;
+    if (event.kind === "holiday" || event.cancelled) continue;
     for (let d = event.start; d <= event.end; d = isoAddDays(d, 1)) {
       const entry = byDay[d] ?? { count: 0, allTentative: true };
       entry.count += 1;
@@ -176,5 +178,17 @@ export function eventChipParts(event: CalendarEvent): ColorParts {
     return { class: "border border-dashed border-border bg-surface text-text-muted", style: "" };
   }
   const parts = labelChipParts(event.color);
-  return { class: `${parts.class} ${event.tentative ? "opacity-60" : ""}`, style: parts.style };
+  // Cancelled keeps the source's colour and is struck through rather than recoloured grey: the
+  // chip still has to be findable as "that meeting" in the row it always sat in.
+  const state = event.cancelled ? "line-through opacity-50" : event.tentative ? "opacity-60" : "";
+  return { class: `${parts.class} ${state}`, style: parts.style };
+}
+
+/**
+ * The hover title for an event, which is where a cancellation has to be spelled out in words —
+ * a strikethrough is the only thing carrying it visually, and that is not available to a screen
+ * reader or to anyone reading a one-line chip at a glance.
+ */
+export function eventTitleAttr(event: CalendarEvent): string {
+  return event.cancelled ? `${t("calendar.cancelled")}: ${event.title}` : event.title;
 }

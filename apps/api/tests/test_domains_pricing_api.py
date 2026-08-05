@@ -9,7 +9,7 @@ consumer's idempotency — plus the tenant-isolation test every module owes (CLA
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 from sqlalchemy import select
 
@@ -19,11 +19,11 @@ from app.db import async_session_maker, set_current_org
 from app.modules.domains.models import Domain
 from app.modules.domains.service import add_months, first_future_anniversary
 from app.modules.invoicing.events import on_domain_due
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import auth_cookie, make_tenant, org_today
 
-
-def _today():
-    return datetime.now(UTC).date()
+#: The API derives every date here on the **org's** calendar, so the expectations must too —
+#: see ``conftest.org_today``. This file used UTC and failed nightly on CI for it.
+_today = org_today
 
 
 def _iso(day) -> str:

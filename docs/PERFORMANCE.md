@@ -257,6 +257,28 @@ plain btree on `name` does nothing for `ORDER BY lower(name)` — an index the p
 choose is write cost with no read benefit. That last check removed two of the eight indexes
 #290 originally proposed.
 
+## The web build's heap is declared, because the module graph outgrew Node's default
+
+`apps/web` builds ~8,700 modules, and the count is dominated by two things that are each
+correct on their own: Paraglide compiles **one module per message** (4,159 keys × the locales,
+§8) and `@lucide/svelte` ships **1,746 icon components** behind the barrel that 112 files
+import from. Rollup holds that whole graph in memory, so the client build's live set passed
+Node 22's default old-space cap (~4.3 GB on a 16 GB machine) and every `vite build` died with
+`Ineffective mark-compacts near heap limit` — exit **134**, not a lint or a type error.
+
+So `apps/web`'s `build` script states its own ceiling
+(`NODE_OPTIONS=--max-old-space-size=6144`). It lives in `package.json` rather than in the CI
+workflow because **three** places run this build and only one of them is CI: the `web` job, the
+release image's builder stage (`apps/web/Dockerfile`), and a developer's own machine. A flag set
+in the workflow fixes the red check and still ships a release that cannot build.
+
+Two things follow. The SSR pass is *not* where it fails — that one completes at ~4 GB and the
+client pass dies right after it, so a log that ends just past `✓ 8702 modules transformed` is
+this and not a code error. And the ceiling is a symptom worth watching: when it needs raising
+again, prefer spending the graph down first — deep icon imports (`@lucide/svelte/icons/<name>`)
+retire ~1,700 modules for a mechanical change, which is the cheaper fix and the one that also
+makes every dev server start faster.
+
 ## Checklist for any new screen or endpoint
 
 - [ ] Counted the calls/queries; each one is necessary.

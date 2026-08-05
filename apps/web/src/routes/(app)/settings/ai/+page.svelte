@@ -22,6 +22,9 @@
   let provider = $state(data.ai?.provider ?? "anthropic");
   let apiKey = $state("");
   let baseUrl = $state(data.ai?.base_url ?? "");
+  // "" is off. Anthropic is absent from the list on purpose: it has no transcription API, so
+  // offering it would only produce a saved setting that never works.
+  let speechProvider = $state(data.ai?.speech_provider ?? "");
   let confirmRemove = $state(false);
   const busy = new InFlight();
 
@@ -230,6 +233,84 @@
       />
       <p class="mt-1 text-xs text-text-muted">{t("settings.ai.budget_hint")}</p>
     </div>
+
+    <!-- Speech to text (#246). Its own credential because the chat provider usually cannot
+         transcribe: Anthropic has no speech endpoint at all. -->
+    <fieldset class="border-t border-border pt-4">
+      <legend class="mb-1 text-sm font-medium text-text">{t("settings.ai.speech")}</legend>
+      <p class="mb-3 text-xs text-text-muted">{t("settings.ai.speech_hint")}</p>
+
+      <div class="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label for="ai-speech-provider" class="mb-1 block text-sm text-text"
+            >{t("settings.ai.speech_provider")}</label
+          >
+          <select
+            id="ai-speech-provider"
+            name="speech_provider"
+            class={inputClass}
+            bind:value={speechProvider}
+          >
+            <option value="">{t("settings.ai.speech_off")}</option>
+            <option value="openai">OpenAI</option>
+            <option value="openai_compatible">{t("settings.ai.provider_compatible")}</option>
+          </select>
+        </div>
+        {#if speechProvider}
+          <div>
+            <label for="ai-speech-key" class="mb-1 block text-sm text-text"
+              >{t("settings.ai.speech_key")}</label
+            >
+            <input
+              id="ai-speech-key"
+              name="speech_api_key"
+              type="password"
+              autocomplete="off"
+              class={inputClass}
+              placeholder={ai?.has_speech_key ? t("settings.ai.key_stored") : ""}
+            />
+          </div>
+          {#if speechProvider === "openai_compatible"}
+            <div>
+              <label for="ai-speech-base" class="mb-1 block text-sm text-text"
+                >{t("settings.ai.base_url")}</label
+              >
+              <input
+                id="ai-speech-base"
+                name="speech_base_url"
+                class={inputClass}
+                value={ai?.speech_base_url ?? ""}
+              />
+            </div>
+          {/if}
+          <div>
+            <label for="ai-speech-model" class="mb-1 block text-sm text-text"
+              >{t("settings.ai.speech_model")}</label
+            >
+            <input
+              id="ai-speech-model"
+              name="speech_model"
+              class={inputClass}
+              value={ai?.speech_model ?? ""}
+              placeholder="whisper-1"
+            />
+          </div>
+          <div>
+            <label for="ai-audio-budget" class="mb-1 block text-sm text-text"
+              >{t("settings.ai.audio_budget")}</label
+            >
+            <input
+              id="ai-audio-budget"
+              name="monthly_audio_seconds_budget"
+              type="number"
+              min="1"
+              value={ai?.monthly_audio_seconds_budget ?? ""}
+              class={inputClass}
+            />
+          </div>
+        {/if}
+      </div>
+    </fieldset>
 
     {#if form?.error}<p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
     {#if form?.fields}

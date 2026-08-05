@@ -27,12 +27,17 @@ router = APIRouter(prefix="/settings/email", tags=["email-settings"])
 
 @router.get(
     "",
-    response_model=EmailSettingsRead | None,
+    response_model=EmailSettingsRead,
     dependencies=[require_permission("settings.email.manage")],
 )
 async def get_email_settings(
     ctx: RequestContext = Depends(require_context),
-) -> EmailSettingsRead | None:
+) -> EmailSettingsRead:
+    """The org's stored transport *and* the one actually sending (epic #199).
+
+    Always an object, never ``null``: "nothing stored" and "nothing sending" are different
+    answers on cloud, and a null body could only ever say the first.
+    """
     return await EmailSettingsService(ctx).get()
 
 

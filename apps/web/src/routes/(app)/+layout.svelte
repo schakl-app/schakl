@@ -384,6 +384,11 @@
               actor: user.impersonatedBy,
               target: user.full_name || user.email,
             })}
+            <!-- A capped session shows less than the client really sees (#266). Say it here or
+                 the screen quietly lies about someone else's account. -->
+            {#if user.impersonationNarrowed}
+              · {t("instance.impersonation_narrowed")}
+            {/if}
           </span>
         </span>
         <form method="POST" action="/impersonation/stop">

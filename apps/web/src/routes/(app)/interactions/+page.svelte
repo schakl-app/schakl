@@ -22,16 +22,15 @@
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
-  import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
-  import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import { INTERACTION_COLUMNS } from "$lib/modules/interactions/columns";
   import EmlUploadForm from "$lib/modules/interactions/EmlUploadForm.svelte";
   import {
+    contactChips,
     dayLabel,
     type InteractionItem,
     type InteractionKindDef,
@@ -42,6 +41,7 @@
     withBody,
   } from "$lib/modules/interactions/format";
   import { snippetPreview } from "$lib/modules/interactions/snippet";
+  import InteractionBulkAssignDialog from "$lib/modules/interactions/InteractionBulkAssignDialog.svelte";
   import InteractionConversationDialog from "$lib/modules/interactions/InteractionConversationDialog.svelte";
   import InteractionDetailModal from "$lib/modules/interactions/InteractionDetailModal.svelte";
   import InteractionForm from "$lib/modules/interactions/InteractionForm.svelte";
@@ -151,40 +151,43 @@
       : can(page.data.user, "interactions.interaction.write", "any"));
   const mayMove = (item: InteractionItem) => (isGmailRow(item) ? isOwner(item) : mayEdit(item));
 
+  /**
+   * Bulk review (#299): a queue of forty auto-matched emails is reviewed a screenful at a time
+   * or not at all, so the review flow gets a batch form.
+   *
+   * Two subsets, because the actions genuinely differ. **Re-filing** works on any of the
+   * caller's own Gmail rows — `remap` has no status check, so "approve now, file later" is a
+   * real workflow. **Approving and rejecting** need a still-pending row. Each button therefore
+   * acts on its own subset and says how many rows that is whenever it is not the whole
+   * selection; the API reports the rest rather than refusing the batch, but a button that
+   * silently did less than it said would still be lying.
+   */
+  const canReview = $derived(can(page.data.user, "interactions.interaction.review"));
+  let bulkSelected = $state<string[]>([]);
+  const selectedItems = $derived(items.filter((item) => bulkSelected.includes(item.id)));
+  const bulkFilableIds = $derived(
+    selectedItems.filter((item) => isGmailRow(item) && isOwner(item)).map((item) => item.id),
+  );
+  const bulkPendingIds = $derived(
+    selectedItems
+      .filter((item) => isGmailRow(item) && isOwner(item) && item.status === "pending")
+      .map((item) => item.id),
+  );
+  let showBulkAssign = $state(false);
+  let showBulkReject = $state(false);
+  /** Count on a button only when it is doing less than the selection suggests. */
+  const partial = (eligible: number) => (eligible < bulkSelected.length ? ` (${eligible})` : "");
+
   let showCreate = $state(false);
   let showUpload = $state(false);
   let showEdit = $state(false);
   let editing = $state<InteractionItem | null>(null);
   const busy = new InFlight();
 
-  // Inline company / project create from the form's pickers (#115, docs/UX.md — per-picker
-  // definition of done). The form passes what was typed out; the dialogs live here and answer
-  // through `inlineCreated` (slots interaction_company / interaction_project) so the form
-  // auto-selects the new row.
-  let qcCompanyOpen = $state(false);
-  let qcCompanyName = $state("");
-  let qcProjectOpen = $state(false);
-  let qcProjectName = $state("");
-  // The form's already-picked client (#247): the project dialog opens with it preselected.
-  let qcProjectCompany = $state("");
-  // The project dialog's own client picker: fetched on first open, never on page load
-  // (docs/PERFORMANCE.md — a rarely opened dialog must not tax every load).
-  let qcCompanyItems = $state<{ value: string; label: string }[]>([]);
-  let qcCompaniesLoaded = false;
-  async function openProjectQuickCreate(name: string, companyId = "") {
-    qcProjectName = name;
-    qcProjectCompany = companyId;
-    qcProjectOpen = true;
-    if (qcCompaniesLoaded) return;
-    qcCompaniesLoaded = true;
-    const response = await fetch("/api/v1/companies?limit=200&count=false&sort=name", {
-      headers: { accept: "application/json" },
-    });
-    const items: { id: string; name: string }[] = response.ok
-      ? ((await response.json()).items ?? [])
-      : [];
-    qcCompanyItems = items.map((c) => ({ value: c.id, label: c.name }));
-  }
+  // The inline client / project create used to live here and be handed to the form as
+  // `oncreatecompany` / `oncreateproject`. Both dialogs now sit inside the form itself, which is
+  // what puts them on every host that renders it — the edit modal below included, which this
+  // page never wired and which therefore had no ＋ at all.
   let showMove = $state(false);
   let moving = $state<InteractionItem | null>(null);
   let showConversation = $state(false);
@@ -276,7 +279,12 @@
    * broke the day-grouped timeline's single-line rhythm, so a row shows only the **most
    * specific** organisational link — a task or a project already implies its client — plus the
    * person, and counts the rest into a "+N" the detail modal opens in full.
+   *
+   * A roster (#300) is capped the same way and for the same reason: a meeting with five people
+   * would otherwise re-break the rhythm this cap exists to protect. The lead shows — it is what
+   * the Contactpersoon column sorts by — and the rest join the "+N".
    */
+  const CONTACT_CHIPS = 1;
   interface LinkChip {
     href: string;
     label: string;
@@ -289,11 +297,11 @@
       org.push({ href: `/projects/${item.project_id}`, label: item.project_name });
     if (item.company_id && item.company_name)
       org.push({ href: `/companies/${item.company_id}`, label: item.company_name });
-    const contact: LinkChip[] =
-      item.contact_id && item.contact_name
-        ? [{ href: `/contacts/${item.contact_id}`, label: item.contact_name }]
-        : [];
-    return { visible: [...org.slice(0, 1), ...contact], hidden: org.slice(1) };
+    const people = contactChips(item);
+    return {
+      visible: [...org.slice(0, 1), ...people.slice(0, CONTACT_CHIPS)],
+      hidden: [...org.slice(1), ...people.slice(CONTACT_CHIPS)],
+    };
   }
 
   function kindText(key: string): string {
@@ -600,6 +608,73 @@
   </p>
 {/snippet}
 
+{#if form?.bulkResult}
+  <!-- A batch's honest answer is "37 done, 3 skipped, and here is why" — the API reports the
+       rows it could not do instead of rolling the good ones back, so the banner says both. -->
+  <div
+    class="mb-4 rounded-lg border border-border bg-surface-raised px-4 py-3 text-sm"
+    role="status"
+  >
+    <p class="font-medium text-text">
+      {t(`interactions.bulk.done_${form.bulkResult.kind}`, { count: form.bulkResult.succeeded })}
+      {#if form.bulkResult.failed > 0}
+        <span class="font-normal text-text-muted"
+          >· {t("interactions.bulk.skipped", { count: form.bulkResult.failed })}</span
+        >
+      {/if}
+    </p>
+    {#if form.bulkResult.reasons.length > 0}
+      <ul class="mt-1 space-y-0.5 text-xs text-text-muted">
+        {#each form.bulkResult.reasons as reason (reason)}
+          <li>{t(reason)}</li>
+        {/each}
+      </ul>
+    {/if}
+  </div>
+{/if}
+
+{#snippet bulkBar(ids: string[])}
+  <span class="text-xs font-medium text-text">{t("table.selected", { count: ids.length })}</span>
+  <!-- Approve as matched: the headline case, and a pure status change — every row keeps the
+       client/project the Gmail matcher derived for it, so no dialog stands in the way. -->
+  <form
+    method="POST"
+    action="?/bulkApproveInteractions"
+    class="contents"
+    use:enhance={busy.keep("bulk-approve")}
+  >
+    <input type="hidden" name="ids" value={bulkPendingIds.join(",")} />
+    <Button
+      type="submit"
+      size="sm"
+      variant="secondary"
+      class="py-1.5 text-xs"
+      loading={busy.is("bulk-approve")}
+      disabled={bulkPendingIds.length === 0 || busy.active}
+    >
+      {t("interactions.approve")}{partial(bulkPendingIds.length)}
+    </Button>
+  </form>
+  <button
+    type="button"
+    disabled={bulkFilableIds.length === 0}
+    class="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text hover:border-brand hover:text-brand disabled:cursor-not-allowed disabled:opacity-40"
+    onclick={() => (showBulkAssign = true)}
+  >
+    <ArrowRightLeft size={13} />
+    {t("interactions.assign")}{partial(bulkFilableIds.length)}
+  </button>
+  <button
+    type="button"
+    disabled={bulkPendingIds.length === 0}
+    class="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-text hover:border-red-400 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:border-red-500 dark:hover:text-red-400"
+    onclick={() => (showBulkReject = true)}
+  >
+    <X size={13} />
+    {t("interactions.reject")}{partial(bulkPendingIds.length)}
+  </button>
+{/snippet}
+
 <DataTable
   rows={items}
   columns={table.columns}
@@ -612,6 +687,9 @@
   {empty}
   {groups}
   groupBy={timelineOrder ? (item) => localDay(item.occurred_at) : undefined}
+  selectable={canReview}
+  bind:selected={bulkSelected}
+  selection={bulkBar}
   onsort={table.onSort}
   onresize={table.onResize}
 />
@@ -647,28 +725,13 @@
 {/if}
 
 <Modal bind:open={showCreate} title={t("interactions.add")}>
-  <InteractionForm
-    mentions={mentionCandidates}
-    onsaved={() => (showCreate = false)}
-    oncreatecompany={(name) => {
-      qcCompanyName = name;
-      qcCompanyOpen = true;
-    }}
-    oncreateproject={(name, companyId) => void openProjectQuickCreate(name, companyId)}
-  />
+  <InteractionForm mentions={mentionCandidates} onsaved={() => (showCreate = false)} />
 </Modal>
 
 <!-- Upload an exported email (#262): the same inline-create dialogs the manual form uses. -->
 <Modal bind:open={showUpload} title={t("interactions.eml.title")}>
   {#if showUpload}
-    <EmlUploadForm
-      onsaved={() => (showUpload = false)}
-      oncreatecompany={(name) => {
-        qcCompanyName = name;
-        qcCompanyOpen = true;
-      }}
-      oncreateproject={(name, companyId) => void openProjectQuickCreate(name, companyId)}
-    />
+    <EmlUploadForm onsaved={() => (showUpload = false)} />
   {/if}
 </Modal>
 
@@ -754,69 +817,58 @@
   {/if}
 </Modal>
 
+<!-- File a whole selection (#299), optionally approving it in the same step. -->
+<Modal bind:open={showBulkAssign} title={t("interactions.bulk.assign_title")}>
+  {#key bulkFilableIds.join(",")}
+    <InteractionBulkAssignDialog
+      ids={bulkFilableIds}
+      approvableIds={bulkPendingIds}
+      onsaved={() => (showBulkAssign = false)}
+    />
+  {/key}
+</Modal>
+
+<!-- Bulk reject is the one irreversible batch: each row's metadata goes and its message is
+     suppressed, so a re-poll never resurrects it. Hence a modal rather than a bar button. -->
+<Modal bind:open={showBulkReject} title={t("interactions.bulk.reject_title")}>
+  <form
+    method="POST"
+    action="?/bulkRejectInteractions"
+    class="space-y-4"
+    use:enhance={busy.wrap("bulk-reject", () => async ({ update }) => {
+      showBulkReject = false;
+      await update();
+    })}
+  >
+    <input type="hidden" name="ids" value={bulkPendingIds.join(",")} />
+    <p class="text-sm text-text-muted">
+      {t("interactions.bulk.reject_message", { count: bulkPendingIds.length })}
+    </p>
+    <label class="flex items-center gap-2 text-sm text-text">
+      <input type="checkbox" name="suppress_thread" value="1" />
+      {t("interactions.reject_thread")}
+    </label>
+    <div class="flex justify-end gap-2">
+      <button
+        type="button"
+        class="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:bg-surface"
+        onclick={() => (showBulkReject = false)}
+      >
+        {t("common.cancel")}
+      </button>
+      <Button
+        type="submit"
+        variant="danger"
+        loading={busy.is("bulk-reject")}
+        disabled={busy.active}
+      >
+        {t("interactions.reject")}
+      </Button>
+    </div>
+  </form>
+</Modal>
+
 <!-- The full contact moment (#184): the same detail modal the per-record panels use — the email
      reads with its line breaks and no sideways scroll, and a pending gmail row is assigned +
      approved (or rejected) here instead of a bare one-click approve. -->
 <InteractionDetailModal bind:open={showDetail} item={detailItem} />
-
-<CompanyQuickCreate
-  bind:open={qcCompanyOpen}
-  name={qcCompanyName}
-  definitions={data.companyDefinitions}
-  locale={data.locale}
-  pickerSlot="interaction_company"
-  error={form?.qcError ?? null}
-/>
-
-<!-- Inline project create from the form's picker (docs/UX.md — per-picker definition of done). -->
-<Modal bind:open={qcProjectOpen} title={t("time.quick_create.project")}>
-  {#key qcProjectName + String(qcProjectOpen)}
-    <form
-      method="POST"
-      action="?/createProject"
-      use:enhance={busy.wrap("create-project", () => ({ result, update }) => {
-        if (result.type === "success") qcProjectOpen = false;
-        void update({ reset: false });
-      })}
-      class="space-y-3"
-    >
-      <div>
-        <label for="qc-int-project-name" class="mb-1 block text-sm font-medium text-text"
-          >{t("projects.field.name")}</label
-        >
-        <input
-          id="qc-int-project-name"
-          name="name"
-          value={qcProjectName}
-          required
-          class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
-        />
-      </div>
-      <div>
-        <label for="qc-int-project-company" class="mb-1 block text-sm font-medium text-text"
-          >{t("projects.field.company")}</label
-        >
-        <Combobox
-          items={qcCompanyItems}
-          name="company_id"
-          value={qcProjectCompany}
-          id="qc-int-project-company"
-          placeholder={t("projects.field.company")}
-        />
-      </div>
-      {#if form?.qcError}
-        <p class="text-sm text-red-600 dark:text-red-400">{t(form.qcError)}</p>
-      {/if}
-      <div class="flex justify-end gap-2">
-        <button
-          type="button"
-          class="rounded-lg border border-border px-4 py-2 text-sm text-text"
-          onclick={() => (qcProjectOpen = false)}>{t("common.cancel")}</button
-        >
-        <Button loading={busy.is("create-project")} disabled={busy.active}>
-          {t("common.create")}
-        </Button>
-      </div>
-    </form>
-  {/key}
-</Modal>

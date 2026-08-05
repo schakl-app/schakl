@@ -14,6 +14,17 @@ export interface SeriesData {
   metrics: Record<string, number[]>;
 }
 
+/** Whose Google grant a link syncs through — shown so a colleague sees "via Stan", not silence. */
+export interface ConnectionOwner {
+  user_id: string;
+  /** The colleague's own name (their login e-mail when they have set no name). */
+  name: string;
+  /** The connected Google account — routinely a different address from the login. */
+  email: string;
+  /** The viewer's own connection. */
+  is_me: boolean;
+}
+
 export interface SourceMetrics {
   link_id: string;
   source: MarketingSource;
@@ -25,6 +36,8 @@ export interface SourceMetrics {
   health: "ok" | "pending" | "error" | "disconnected";
   last_error: string | null;
   last_synced_at: string | null;
+  /** Whose Google connection syncs this source (`null` once that connection is gone). */
+  connection_owner: ConnectionOwner | null;
   currency: string | null;
   deep_link: string;
   primary_metric: string;
@@ -107,6 +120,9 @@ export interface AccountsResponse {
   accounts: AvailableAccount[];
   error: string | null;
   connect_flag: string;
+  /** Colleagues whose connection already reaches this source — so the empty state can say
+   *  "already connected via X" instead of a bare "not connected". */
+  connected_via: ConnectionOwner[];
 }
 
 export interface DrilldownRow {
@@ -145,7 +161,15 @@ export const HEADLINE_METRICS: Record<MarketingSource, string[]> = {
 
 /** Every metric a source carries, in display order (mirrors the API's METRICS_BY_SOURCE). */
 export const ALL_METRICS: Record<MarketingSource, string[]> = {
-  ga4: ["sessions", "totalUsers", "newUsers", "keyEvents", "conversions", "engagementRate", "totalRevenue"],
+  ga4: [
+    "sessions",
+    "totalUsers",
+    "newUsers",
+    "keyEvents",
+    "conversions",
+    "engagementRate",
+    "totalRevenue",
+  ],
   gsc: ["clicks", "impressions", "ctr", "position"],
   gads: ["cost", "clicks", "impressions", "conversions", "conversionsValue"],
 };
@@ -157,15 +181,20 @@ export const DRILLDOWNS: Record<MarketingSource, string[]> = {
   gads: ["campaigns"],
 };
 
-/** The connect-flow query flag that adds each source's scope (for the connect deep-link). */
-export const CONNECT_FLAG: Record<MarketingSource, string> = {
-  ga4: "include_analytics",
-  gsc: "include_search_console",
-  gads: "include_ads",
-};
-
-/** The deep-link that walks a connection up to the given sources' scopes (no second OAuth). */
-export function connectHref(sources: MarketingSource[]): string {
-  const flags = sources.map((s) => `${CONNECT_FLAG[s]}=1`).join("&");
-  return `/api/v1/google/oauth/connect?${flags}`;
+/**
+ * The deep-link that grants this module its Google access — **all three sources at once**.
+ *
+ * Asking per source is what made connecting Google a three-times-in-a-row chore: each picker
+ * linked its own scope, so Analytics, Search Console and Ads each cost a full trip through
+ * Google's consent screen for one module the agency enabled once. `include_marketing` unions
+ * them into a single consent, and `include_granted_scopes` still means a connection that
+ * already holds Calendar or Gmail keeps it.
+ *
+ * `next` is where to land afterwards — the page the user was actually on. The API only honours
+ * a site-relative path, so pass `page.url.pathname + page.url.search`, never an absolute URL.
+ */
+export function connectHref(next?: string): string {
+  const params = new URLSearchParams({ include_marketing: "1" });
+  if (next) params.set("next", next);
+  return `/api/v1/google/oauth/connect?${params.toString()}`;
 }

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Trash2 } from "@lucide/svelte";
+  import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import PersonChip from "$lib/core/ui/PersonChip.svelte";
 
   import { enhance } from "$app/forms";
@@ -409,7 +410,20 @@
 
 <!-- The picker stays reachable even when a filter empties the board — the sort that emptied it
      is cycled off from here. -->
-<div class="mb-2 flex justify-end">
+<div class="mb-2 flex flex-wrap items-center justify-end gap-2">
+  <ImpexBar
+    entity="task"
+    readPermission="tasks.task.read"
+    writePermission="tasks.task.write"
+    filters={{
+      q: data.filters.q,
+      company_id: data.filters.company_id,
+      project_id: data.filters.project_id,
+      sort: data.table.sort,
+    }}
+    locale={data.locale}
+    {form}
+  />
   <ColumnPicker
     all={table.pickerColumns}
     visible={table.visibleKeys}

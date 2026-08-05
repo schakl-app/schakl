@@ -10,12 +10,12 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.config import settings
-from app.core import hosts
+from app.core import domainprobe, hosts
 from app.core.ai.service import enabled_features as ai_enabled_features
 from app.core.auth import sso
 from app.core.auth.models import User
@@ -62,6 +62,21 @@ class TenantBranding(BaseModel):
     # Tab-title template (#97): free text with {page} / {brand} tokens; None = built-in format.
     tab_title_template: str | None = None
     enabled_modules: list[str]
+    # Licensing (issue #137), beside ``enabled_modules`` because it answers the other half of the
+    # same question: *enabled* is what this workspace runs, *entitled* is what it may still write
+    # to. A control whose module is enabled but not entitled renders **locked** with the upgrade
+    # path behind it (``UpgradeModal``) rather than as a button that 402s.
+    #
+    # It rides this payload rather than ``/meta/modules`` because the app layout already loads
+    # this one on every request: gating an affordance must cost no second call
+    # (docs/PERFORMANCE.md). It discloses nothing new — ``/meta/modules`` is equally public and
+    # already carries both lists — and it is module names only, never licence details.
+    licensed_modules: list[str] = Field(default_factory=list)
+    entitled_modules: list[str] = Field(default_factory=list)
+    # Instance posture (epic #199): "self_hosted" or "cloud". What an upgrade *means* differs —
+    # a plan change on cloud, a licence key on a self-hosted box — so the screen that offers one
+    # has to know which it is.
+    deployment: str = "self_hosted"
     # Public demo mode (#141): true means the app shows a persistent "this is a demo, data resets
     # every N minutes" banner and offers one-click role logins. Instance posture, not tenant data.
     demo_mode: bool = False
@@ -83,6 +98,41 @@ class TenantBranding(BaseModel):
     # (necessarily on the recovery host) sees a domain-health warning instead of guessing at
     # a generic TLS/login failure.
     domain_unhealthy: bool = False
+
+
+class DomainProbe(BaseModel):
+    """The routing proof a custom-domain check fetches over the public internet.
+
+    Deliberately three constants and nothing else: the software marker that says the answer
+    came from this application at all, the org the requested hostname resolves to, and the
+    caller's own nonce echoed back so a cached body cannot pass for a live one.
+    """
+
+    instance: str = domainprobe.INSTANCE_MARKER
+    org: str
+    nonce: str
+
+
+async def _module_entitlements() -> dict[str, list[str]]:
+    """``{licensed_modules, entitled_modules}`` — the two lists both meta payloads carry.
+
+    One helper because two endpoints must never drift into disagreeing about which modules are
+    usable: a locked control and the modules settings screen answering differently is a bug the
+    user reads as the app being broken. ``license_state()`` is cached in-process for a minute,
+    so this costs no query on the request path (docs/PERFORMANCE.md).
+    """
+    state = await license_state()
+    module_skus = {
+        name: sku
+        for name, sku in licensed_skus().items()
+        if registry.get(name) is not None
+    }
+    return {
+        "licensed_modules": sorted(module_skus),
+        "entitled_modules": sorted(
+            name for name, sku in module_skus.items() if state.writable(sku)
+        ),
+    }
 
 
 _HEX_COLOR = r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
@@ -138,8 +188,10 @@ class ModulesMeta(BaseModel):
     # Instance posture (epic #199): "self_hosted" or "cloud". The web routes the apex host
     # to the instance console (instead of a tenant) only on cloud.
     deployment: str = "self_hosted"
-    # The instance-level e-mail transport is configured (config.py): Instellingen → E-mail
-    # offers "included e-mail" and an org without its own transport falls back to it.
+    # The instance-level e-mail transport is configured (config.py) **and the resolved org is
+    # entitled to it** (``orgs.email_included``): Instellingen → E-mail offers "included
+    # e-mail" and an org without its own transport falls back to it. Instance-wide on a host
+    # where no org resolves.
     instance_email_available: bool = False
 
 
@@ -166,6 +218,15 @@ class MeInfo(BaseModel):
     is_instance_owner: bool = False
     impersonated_by: str | None = None
     impersonation_expires_at: datetime | None = None
+    #: Which impersonation this is — ``instance`` (issue #26) or ``portal`` (#296). The banner
+    #: is the same either way; the **stop** differs (a different endpoint audits it to a
+    #: different trail), so the web has to know which one it is looking at.
+    impersonation_kind: str | None = None
+    #: This portal impersonation is running as **less** than the client actually holds, because
+    #: the impersonator does not hold it either (#266). The banner has to say so: the point of
+    #: signing in as a client is to see what they see, so an unlabelled narrowed view is a screen
+    #: that lies — staff would report "their invoices are missing" about a client who has them.
+    impersonation_narrowed: bool = False
     #: AI features usable in this tenant (epic #131): empty until an admin configures a
     #: provider under Instellingen → AI — "off means invisible". Rides the payload the web
     #: already fetches per request, so gating an affordance costs no extra call.
@@ -207,6 +268,8 @@ def _me_info(
         is_instance_owner=user.is_superuser and ctx.impersonated_by is None,
         impersonated_by=ctx.impersonated_by.email if ctx.impersonated_by else None,
         impersonation_expires_at=ctx.impersonation_expires_at,
+        impersonation_kind=ctx.impersonation_kind,
+        impersonation_narrowed=ctx.impersonation_narrowed,
     )
 
 
@@ -282,6 +345,30 @@ def _ends_warning_until(org) -> datetime | None:  # noqa: ANN001 — Org, avoidi
 
 
 @router.get(
+    "/domain-probe",
+    response_model=DomainProbe,
+    dependencies=[
+        no_permission_required("routing proof: which org this hostname reaches, if any")
+    ],
+)
+async def domain_probe(request: Request, nonce: str = Query(pattern=r"^[a-f0-9]{8,64}$")) -> (
+    DomainProbe
+):
+    """Answer, to whoever can reach this hostname, that *this* instance serves *that* org.
+
+    The custom-domain check fetches this over the public internet (:mod:`app.core.domainprobe`)
+    because a DNS comparison cannot see through a proxy. It reveals nothing the equally public
+    ``/meta/tenant`` does not — a slug for a hostname — and the echoed nonce is what makes a
+    cached or replayed body distinguishable from a live answer.
+    """
+    async with async_session_maker() as session:
+        org = await resolve_org(session, request_hostname(request))
+        if org is None:
+            raise AppError("unknown_host", "errors.unknown_host", status_code=404)
+        return DomainProbe(org=org.slug, nonce=nonce)
+
+
+@router.get(
     "/tenant",
     response_model=TenantBranding,
     dependencies=[no_permission_required("public tenant branding; the login screen needs it")],
@@ -310,6 +397,8 @@ async def tenant_branding(request: Request) -> TenantBranding:
             enabled_modules=list(s.enabled_modules)
             if s and s.enabled_modules
             else list(settings.enabled_modules),
+            **(await _module_entitlements()),
+            deployment=settings.deployment,
             demo_mode=settings.demo_mode,
             demo_reset_minutes=settings.demo_reset_minutes,
             suspended=org.status == OrgStatus.SUSPENDED.value,
@@ -442,6 +531,9 @@ async def modules(request: Request) -> ModulesMeta:
     local_login_enabled = True
     oidc_enabled = False
     oidc_name: str | None = None
+    # Instance-wide until an org resolves, then narrowed to that org's entitlement (#199):
+    # an org the operator took off included e-mail must not be offered it.
+    instance_email_available = settings.instance_email_available
     async with async_session_maker() as session:
         org = await resolve_org(session, request_hostname(request))
         if org is not None:
@@ -450,10 +542,7 @@ async def modules(request: Request) -> ModulesMeta:
             oidc_enabled = sso.sso_configured(row)
             oidc_name = row.oidc_name if row is not None and oidc_enabled else None
             local_login_enabled = sso.local_login_enabled_for(row)
-    state = await license_state()
-    module_skus = {
-        name: sku for name, sku in licensed_skus().items() if registry.get(name) is not None
-    }
+            instance_email_available = instance_email_available and org.email_included
     return ModulesMeta(
         enabled_modules=[m.name for m in registry.enabled(settings.enabled_modules)],
         customizable_entity_types=customizable_entity_types(),
@@ -463,12 +552,9 @@ async def modules(request: Request) -> ModulesMeta:
         oidc_enabled=oidc_enabled,
         oidc_name=oidc_name,
         base_domain=settings.base_domain,
-        licensed_modules=sorted(module_skus),
-        entitled_modules=sorted(
-            name for name, sku in module_skus.items() if state.writable(sku)
-        ),
+        **(await _module_entitlements()),
         deployment=settings.deployment,
-        instance_email_available=settings.instance_email_available,
+        instance_email_available=instance_email_available,
     )
 
 

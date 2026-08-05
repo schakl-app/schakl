@@ -58,9 +58,12 @@ async def test_change_email_refuses_a_taken_address(client_for) -> None:
         )
         assert r.status_code == 409
         assert r.json()["error"]["code"] == "email_taken"
-        # Nothing moved for either identity.
+    # Nothing moved for either identity — checked on the other identity's **own** host, because
+    # a login is org-scoped now (`core/auth/backend.py`): their credentials are not credentials
+    # here, and answering 204 to them on this host is the hole, not the assertion.
+    async with client_for(other.host) as co:
         assert (
-            await c.post(LOGIN, data={"username": other.user.email, "password": other.password})
+            await co.post(LOGIN, data={"username": other.user.email, "password": other.password})
         ).status_code == 204
 
 

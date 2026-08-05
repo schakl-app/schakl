@@ -20,6 +20,8 @@
     id: string;
     actor_name: string | null;
     actor_deleted: boolean;
+    /** Who was signed in *as* the actor at the time (#296); null on every ordinary line. */
+    impersonator_name?: string | null;
     created_at: string;
   }
 
@@ -50,6 +52,17 @@
         <span class="min-w-0 flex-1">
           <span class="text-text">
             <span class="font-medium">{actorLabel(item)}</span>
+            <!-- Someone was signed in as them (#296). Named right beside the actor, because
+                 "the client changed this" and "one of us changed this as the client" are
+                 different facts and only the second one is true here. -->
+            {#if item.impersonator_name}
+              <span
+                class="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-300"
+                title={t("activity.impersonated_title", { actor: item.impersonator_name })}
+              >
+                {t("activity.via_impersonator", { actor: item.impersonator_name })}
+              </span>
+            {/if}
             {activityText(item)}
           </span>
           <span class="mt-0.5 block text-xs text-text-muted">{fmtDateTime(item.created_at)}</span>

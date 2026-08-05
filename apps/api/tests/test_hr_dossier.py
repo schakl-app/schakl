@@ -28,7 +28,7 @@ async def test_dossier_upload_read_and_own_scope(client_for, tmp_path, monkeypat
         await add_membership(session, t.org.id, member.user.id, role="member")
         await session.commit()
     owner_h = await auth_cookie(t.user)
-    member_h = await auth_cookie(member.user)
+    member_h = await auth_cookie(member.user, org_id=t.org.id)
 
     async with client_for(t.host) as c:
         # The employer files a contract for the member.

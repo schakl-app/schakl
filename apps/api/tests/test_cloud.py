@@ -13,7 +13,7 @@ import pytest
 from sqlalchemy import select
 
 from app.config import settings
-from app.core import domainflow
+from app.core import domainflow, domainprobe
 from app.core.auth.models import User
 from app.core.cloud import cloudflare as cf
 from app.core.cloud.ingress import render_fragment, sync_ingress, verified_domains
@@ -523,6 +523,179 @@ async def test_explicit_instance_provider_choice(
         )
         assert refused.status_code == 409
         assert refused.json()["error"]["message"] == "errors.instance_email_unavailable"
+
+
+async def test_settings_read_states_the_active_transport(client_for, instance_email) -> None:
+    """The screen's whole complaint (#199 follow-up): included e-mail was sending while the
+    settings page said "not configured" and offered a blank SMTP form. The read now says
+    which transport is live, and — because the org never entered them — as whom."""
+    tenant = await make_tenant("cl-active")
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as client:
+        # Nothing stored, yet mail leaves through the operator's transport.
+        body = (await client.get("/api/v1/settings/email", headers=headers)).json()
+        assert body["provider"] is None
+        assert body["active_provider"] == "instance"
+        assert body["active_from_email"] == "post@cloud.example"
+        assert body["active_from_name"] == "Cl-Active"  # the org's own brand
+        assert body["instance_email_available"] is True
+
+        # A stored transport of their own is what is active instead.
+        await client.put(
+            "/api/v1/settings/email",
+            headers=headers,
+            json={
+                "provider": "brevo",
+                "from_name": "Bureau X",
+                "from_email": "post@bureau.example",
+                "api_key": "secret",
+            },
+        )
+        body = (await client.get("/api/v1/settings/email", headers=headers)).json()
+        assert body["provider"] == "brevo"
+        assert body["active_provider"] == "brevo"
+        assert body["active_from_email"] == "post@bureau.example"
+
+
+async def test_settings_read_without_any_transport(client_for) -> None:
+    """No instance transport and nothing stored: an object that says nothing is sending —
+    not a ``null`` body, which could only ever mean "nothing stored"."""
+    tenant = await make_tenant("cl-inactive")
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as client:
+        body = (await client.get("/api/v1/settings/email", headers=headers)).json()
+        assert body["provider"] is None
+        assert body["active_provider"] is None
+        assert body["instance_email_available"] is False
+
+
+# --------------------------------------------------------------------------- #
+# Included e-mail is a per-org entitlement
+# --------------------------------------------------------------------------- #
+async def _set_email_included(org_id, value: bool) -> None:  # noqa: ANN001
+    async with async_session_maker() as session:
+        org = await session.get(Org, org_id)
+        org.email_included = value
+        await session.commit()
+
+
+async def test_org_without_email_included_does_not_fall_back(instance_email) -> None:
+    """The entitlement, not just the instance config, decides: an org the operator took off
+    included e-mail is exactly as unconfigured as one on a box with no transport at all."""
+    tenant = await make_tenant("cl-noincl")
+    await _set_email_included(tenant.org.id, False)
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        assert await email_configured(session, tenant.org.id) is False
+        ok, error = await send_org_email(
+            session, tenant.org.id, OutgoingEmail(to="a@b.example", subject="s", text="t")
+        )
+    assert not ok and error == "errors.email_not_configured"
+
+
+async def test_stored_instance_choice_stops_when_entitlement_is_withdrawn(
+    client_for, instance_email
+) -> None:
+    """A stored ``provider="instance"`` row outlives the entitlement, so the send seam has to
+    re-check it — sending nowhere, never through some other transport."""
+    tenant = await make_tenant("cl-inclrevoke")
+    headers = await auth_cookie(tenant.user)
+    async with client_for(tenant.host) as client:
+        assert (
+            await client.put(
+                "/api/v1/settings/email",
+                headers=headers,
+                json={"provider": "instance", "from_name": "Bureau X"},
+            )
+        ).status_code == 200
+
+    await _set_email_included(tenant.org.id, False)
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        ok, error = await send_org_email(
+            session, tenant.org.id, OutgoingEmail(to="a@b.example", subject="s", text="t")
+        )
+    assert not ok and error == "errors.email_not_configured"
+
+    # …and the choice can no longer be (re)saved, nor is it offered any more.
+    async with client_for(tenant.host) as client:
+        refused = await client.put(
+            "/api/v1/settings/email",
+            headers=headers,
+            json={"provider": "instance", "from_name": "Bureau X"},
+        )
+        assert refused.status_code == 409
+        body = (await client.get("/api/v1/settings/email", headers=headers)).json()
+        assert body["instance_email_available"] is False
+        assert body["active_provider"] is None
+        assert (await client.get("/api/v1/meta/modules")).json()[
+            "instance_email_available"
+        ] is False
+
+
+async def test_provisioning_defaults_to_included_email(client_for, cloud_mode) -> None:
+    """Default on, opt-out explicit: a checkout that never heard of the field must not
+    provision orgs that silently cannot mail."""
+    admin = await make_tenant("cl-prov-mail")
+    await make_instance_owner(admin)
+    headers = await auth_cookie(admin.user)
+    async with client_for(admin.host) as client:
+        key_headers = {"X-API-Key": await mint_instance_key(client_for, (client, headers))}
+        default = await client.post(
+            "/api/v1/instance/provisioning/orgs",
+            headers=key_headers,
+            json={"name": "Mailed", "slug": "mailed", "owner_email": "a@mailed.example"},
+        )
+        assert default.status_code == 201
+        assert default.json()["email_included"] is True
+
+        byo = await client.post(
+            "/api/v1/instance/provisioning/orgs",
+            headers=key_headers,
+            json={
+                "name": "Own Mail",
+                "slug": "own-mail",
+                "owner_email": "a@own-mail.example",
+                "email_included": False,
+            },
+        )
+        assert byo.status_code == 201
+        assert byo.json()["email_included"] is False
+        assert (
+            await client.get(
+                "/api/v1/instance/provisioning/orgs/own-mail", headers=key_headers
+            )
+        ).json()["email_included"] is False
+
+
+async def test_console_creates_and_toggles_included_email(client_for, cloud_mode) -> None:
+    """The console's own path: ticked by default at creation, and changeable afterwards
+    without touching anything else about the org."""
+    admin = await make_tenant("cl-console-mail")
+    await make_instance_owner(admin)
+    headers = await auth_cookie(admin.user)
+    async with client_for(admin.host) as client:
+        created = await client.post(
+            "/api/v1/instance/orgs",
+            headers=headers,
+            json={"name": "Console Org", "slug": "console-org"},
+        )
+        assert created.status_code == 201
+        assert created.json()["email_included"] is True
+        org_id = created.json()["id"]
+
+        off = await client.patch(
+            f"/api/v1/instance/orgs/{org_id}", headers=headers, json={"email_included": False}
+        )
+        assert off.status_code == 200
+        assert off.json()["email_included"] is False
+        # A rename leaves the entitlement alone — it is a partial update, not a wholesale PUT.
+        renamed = await client.patch(
+            f"/api/v1/instance/orgs/{org_id}", headers=headers, json={"name": "Renamed"}
+        )
+        assert renamed.json()["name"] == "Renamed"
+        assert renamed.json()["email_included"] is False
+
 
 
 # --------------------------------------------------------------------------- #
@@ -1300,17 +1473,40 @@ async def test_self_host_provisioning_touches_no_dns(monkeypatch) -> None:
 # Canonical host & custom-domain lifecycle (#291)
 # --------------------------------------------------------------------------- #
 @pytest.fixture
-def dns_points(monkeypatch) -> dict:
-    """Stand in for the DNS drift check; tests flip `value` between True/False/None."""
-    state = {"value": True}
+def probe_answers(monkeypatch) -> dict:
+    """Scriptable stand-in for the public fetch of a custom domain (:mod:`app.core.domainprobe`).
 
-    async def fake_points_at(host: str, target: str) -> bool | None:
-        return state["value"]
+    Map a hostname to the org slug this instance answers with there, or to a ready-made
+    ``httpx.Response`` to script anything else — a WAF challenge, a stranger's page. An
+    unmapped host fails to connect, exactly like a name nothing serves.
+    """
+    answers: dict[str, str | httpx.Response] = {}
 
-    from app.core import dnscheck as dnscheck_module
+    def handler(request: httpx.Request) -> httpx.Response:
+        entry = answers.get(request.url.host)
+        if entry is None:
+            raise httpx.ConnectError("nothing there", request=request)
+        if isinstance(entry, httpx.Response):
+            return entry
+        return httpx.Response(
+            200,
+            json={
+                "instance": domainprobe.INSTANCE_MARKER,
+                "org": entry,
+                "nonce": request.url.params.get("nonce", ""),
+            },
+        )
 
-    monkeypatch.setattr(dnscheck_module, "points_at", fake_points_at)
-    return state
+    monkeypatch.setattr(domainprobe, "_transport", httpx.MockTransport(handler))
+    return answers
+
+
+def _proxied(fake_dns, domain: str, target: str = "edge.localhost") -> None:
+    """Publish ``domain`` the way a Cloudflare-proxied zone does: **no CNAME survives** to be
+    compared, and the addresses are the customer's own proxy, never the edge hostname's."""
+    fake_dns.cname[domain] = []
+    fake_dns.a[domain] = ["172.67.131.94", "104.21.3.245"]
+    fake_dns.a[target] = ["188.114.96.0", "188.114.97.0"]
 
 
 async def _attached_tenant(fake_dns, slug: str, domain: str):
@@ -1381,7 +1577,7 @@ async def test_check_flips_the_canonical_host_when_all_three_are_ready(
 
 
 async def test_dns_moved_away_demotes_the_domain_and_alerts_nobody_twice(
-    client_for, cloudflare, fake_dns, dns_points, monkeypatch
+    client_for, cloudflare, fake_dns, probe_answers, monkeypatch
 ) -> None:
     """The customer re-points their DNS: the domain stops being canonical, the slug host
     carries the org, and the daily sweep mails the domain managers exactly once."""
@@ -1392,11 +1588,11 @@ async def test_dns_moved_away_demotes_the_domain_and_alerts_nobody_twice(
             await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
         ).json()["status"]["live"] is True
 
-    # The customer re-points the record. Both probes have to see it: the wizard's check
-    # resolves the name itself (so it can tell the customer *where* it went), while the
-    # unattended sweep uses the cheaper drift check — one question, two callers.
+    # The customer re-points the record at another provider, which answers on the domain.
+    # That answer — not the addresses — is what establishes the move, and the wizard's check
+    # and the unattended sweep run the very same function to reach it.
     fake_dns.cname["crm.verhuisd.test"] = ["cdn.elders.example"]
-    dns_points["value"] = False
+    probe_answers["crm.verhuisd.test"] = httpx.Response(200, html="<h1>Elders</h1>")
     async with client_for(tenant.host) as client:
         demoted = (
             await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
@@ -1422,15 +1618,24 @@ async def test_dns_moved_away_demotes_the_domain_and_alerts_nobody_twice(
         first = await domain_health.sweep_domain_health(session)
         await session.commit()
     assert first["alerted"] == 1
-    assert len(sent) == 1  # the tenant owner holds "*", so they are the domain manager
+    assert len(sent) == 1  # the tenant owner holds "*", so they are the administrator
     assert tenant.user.email == sent[0].to
+
+    # The mail carries the diagnosis, not just the verdict: the record that must exist, the
+    # value it must hold, what DNS answers instead, and who else was told.
+    for body in (sent[0].text, sent[0].html):
+        assert "crm.verhuisd.test" in body  # the record's name
+        assert "edge.localhost" in body  # what it must point at
+        assert "cdn.elders.example" in body  # what it points at now
+        assert tenant.user.email in body  # sent to the administrators, and it says so
 
     async with async_session_maker() as session:
         second = await domain_health.sweep_domain_health(session)
         await session.commit()
     assert second["alerted"] == 0 and len(sent) == 1  # same problem, no repeat mail
 
-    dns_points["value"] = True
+    fake_dns.cname["crm.verhuisd.test"] = ["edge.localhost"]
+    del probe_answers["crm.verhuisd.test"]
     async with async_session_maker() as session:
         recovered = await domain_health.sweep_domain_health(session)
         await session.commit()
@@ -1440,8 +1645,114 @@ async def test_dns_moved_away_demotes_the_domain_and_alerts_nobody_twice(
         assert org.domain_alerted_for is None  # a future problem alerts again
 
 
+async def _moved_away(fake_dns, probe_answers, domain: str) -> None:
+    """Re-point ``domain`` at somebody else, and have that somebody answer on it."""
+    fake_dns.cname[domain] = ["cdn.elders.example"]
+    probe_answers[domain] = httpx.Response(200, html="<h1>Elders</h1>")
+
+
+async def test_the_domain_alert_reaches_administrators_only(
+    client_for, cloudflare, fake_dns, probe_answers, monkeypatch
+) -> None:
+    """Only someone who can change the setting is told, and never an external login.
+
+    A colleague who cannot touch the domain gets no mail about it, and a client-role account
+    gets none even when a misconfigured role hands it ``settings.domain.write`` — an external
+    login (#274) is not an administrator of the agency's own infrastructure.
+    """
+    import uuid as uuid_module
+
+    from app.core.permissions.models import Role, RolePermission
+    from tests.conftest import add_membership
+
+    tenant, headers = await _attached_tenant(fake_dns, "cf-admins", "crm.beheer.test")
+    cloudflare.set_state("ch1", status="active", ssl_status="active")
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        for email, role in (("collega@example.com", "member"), ("klant@example.com", "client")):
+            user = User(
+                id=uuid_module.uuid4(),
+                email=email,
+                hashed_password="x",
+                is_active=True,
+                is_verified=True,
+            )
+            session.add(user)
+            await session.flush()
+            await add_membership(session, tenant.org.id, user.id, role)
+        client_role = await session.scalar(
+            select(Role).where(Role.org_id == tenant.org.id, Role.key == "client")
+        )
+        session.add(
+            RolePermission(
+                org_id=tenant.org.id, role_id=client_role.id, permission="settings.domain.write"
+            )
+        )
+        await session.commit()
+
+    await _moved_away(fake_dns, probe_answers, "crm.beheer.test")
+    from app.core.cloud import domain_health
+
+    sent: list[OutgoingEmail] = []
+
+    async def fake_send(session, org_id, mail):  # noqa: ANN001
+        sent.append(mail)
+        return True, None
+
+    monkeypatch.setattr(domain_health, "send_org_email", fake_send)
+    async with async_session_maker() as session:
+        counts = await domain_health.sweep_domain_health(session)
+        await session.commit()
+    assert counts["alerted"] == 1
+    assert [mail.to for mail in sent] == [tenant.user.email]
+
+
+async def test_an_alert_nobody_could_receive_is_not_marked_as_handled(
+    client_for, cloudflare, fake_dns, probe_answers, monkeypatch
+) -> None:
+    """No reachable administrator means the problem stays unreported, not handled.
+
+    Recording the fingerprint on a mail that went nowhere would silence the alert forever:
+    tomorrow's sweep sees the same fingerprint and says nothing.
+    """
+    tenant, headers = await _attached_tenant(fake_dns, "cf-nobody", "crm.niemand.test")
+    cloudflare.set_state("ch1", status="active", ssl_status="active")
+    async with async_session_maker() as session:
+        user = await session.get(User, tenant.user.id)
+        user.is_active = False
+        await session.commit()
+
+    await _moved_away(fake_dns, probe_answers, "crm.niemand.test")
+    from app.core.cloud import domain_health
+
+    sent: list[OutgoingEmail] = []
+
+    async def fake_send(session, org_id, mail):  # noqa: ANN001
+        sent.append(mail)
+        return True, None
+
+    monkeypatch.setattr(domain_health, "send_org_email", fake_send)
+    async with async_session_maker() as session:
+        counts = await domain_health.sweep_domain_health(session)
+        await session.commit()
+    assert counts["checked"] == 1 and counts["alerted"] == 0 and sent == []
+    async with async_session_maker() as session:
+        org = await session.get(Org, tenant.org.id)
+        assert org.domain_alerted_for is None
+
+    # The account comes back; the same problem is reported now.
+    async with async_session_maker() as session:
+        user = await session.get(User, tenant.user.id)
+        user.is_active = True
+        await session.commit()
+    async with async_session_maker() as session:
+        counts = await domain_health.sweep_domain_health(session)
+        await session.commit()
+    assert counts["alerted"] == 1 and len(sent) == 1
+
+
 async def test_sweep_warns_ahead_of_a_failing_renewal(
-    client_for, cloudflare, fake_dns, dns_points, monkeypatch
+    client_for, cloudflare, fake_dns, probe_answers, monkeypatch
 ) -> None:
     """Healthy statuses but an expiry closing in means HTTP DCV renewal is not happening —
     that is discovered here, not by browsers rejecting TLS."""
@@ -1563,6 +1874,173 @@ async def test_a_pre_291_row_is_not_demoted_by_the_upgrade() -> None:
         org.cf_hostname_status = "moved"
         assert custom_domain_live(org) is False
         assert canonical_host(org) == f"{org.slug}.{settings.base_domain}"
+
+
+# --------------------------------------------------------------------------- #
+# Domains behind the customer's own proxy (#291 follow-up)
+#
+# Orange-to-orange: the customer's zone is itself proxied by Cloudflare, so their domain
+# publishes *their* anycast addresses and no CNAME at all. Every address comparison mismatches
+# no matter how correctly the domain is set up, which is what used to demote a healthy domain
+# and mail its owner about an outage that was not happening.
+# --------------------------------------------------------------------------- #
+async def test_a_proxied_domain_is_live_because_the_fetch_says_so(
+    client_for, cloudflare, fake_dns, probe_answers, monkeypatch
+) -> None:
+    tenant, headers = await _attached_tenant(fake_dns, "cf-proxy", "crm.proxy.test")
+    cloudflare.set_state("ch1", status="active", ssl_status="active")
+    _proxied(fake_dns, "crm.proxy.test")
+    probe_answers["crm.proxy.test"] = tenant.org.slug
+
+    async with client_for(tenant.host) as client:
+        report = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
+        ).json()
+        target = next(c for c in report["checks"] if c["key"] == "dns_target")
+        assert (target["state"], target["code"]) == ("ok", "target_proxied")
+        assert report["status"]["dns_ok"] is True
+        assert report["status"]["live"] is True
+        assert report["status"]["canonical_host"] == "crm.proxy.test"
+
+    # …and the unattended sweep reaches the same verdict, so nobody is mailed.
+    from app.core.cloud import domain_health
+
+    sent: list[OutgoingEmail] = []
+
+    async def fake_send(session, org_id, mail):  # noqa: ANN001
+        sent.append(mail)
+        return True, None
+
+    monkeypatch.setattr(domain_health, "send_org_email", fake_send)
+    async with async_session_maker() as session:
+        counts = await domain_health.sweep_domain_health(session)
+        await session.commit()
+    assert (counts["alerted"], sent) == (0, [])
+
+
+async def test_a_proxy_that_blocks_the_fetch_falls_back_to_the_edge(
+    client_for, cloudflare, fake_dns, probe_answers
+) -> None:
+    """A challenge page is not an answer. The edge network reporting the hostname active is —
+    Cloudflare would not, if the customer's DNS had stopped reaching it."""
+    tenant, headers = await _attached_tenant(fake_dns, "cf-waf", "crm.waf.test")
+    cloudflare.set_state("ch1", status="active", ssl_status="active")
+    _proxied(fake_dns, "crm.waf.test")
+    probe_answers["crm.waf.test"] = httpx.Response(403, html="<h1>Checking your browser</h1>")
+
+    async with client_for(tenant.host) as client:
+        report = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
+        ).json()
+        target = next(c for c in report["checks"] if c["key"] == "dns_target")
+        assert (target["state"], target["code"]) == ("ok", "target_edge_confirmed")
+        assert report["status"]["live"] is True
+
+
+async def test_nothing_conclusive_leaves_the_domain_alone(
+    client_for, cloudflare, fake_dns, probe_answers
+) -> None:
+    """No fetch, no edge verdict, only mismatching addresses: the honest answer is "we do not
+    know", and a domain that is serving must not be demoted on that."""
+    tenant, headers = await _attached_tenant(fake_dns, "cf-unsure", "crm.onzeker.test")
+    cloudflare.set_state("ch1", status="active", ssl_status="active")
+    _proxied(fake_dns, "crm.onzeker.test")
+    async with client_for(tenant.host) as client:
+        await client.post("/api/v1/meta/tenant/domain/check", headers=headers)  # seed as live
+        cloudflare.fail_with = [500, 500]  # no edge verdict this round either
+        report = (
+            await client.post("/api/v1/meta/tenant/domain/check", headers=headers)
+        ).json()
+        target = next(c for c in report["checks"] if c["key"] == "dns_target")
+        assert (target["state"], target["code"]) == ("pending", "target_unconfirmed")
+        assert report["status"]["dns_ok"] is None
+        assert report["status"]["live"] is True
+
+    async with async_session_maker() as session:
+        org = await session.get(Org, tenant.org.id)
+        assert org.domain_dns_ok is None  # never False on the absence of an answer
+
+
+async def test_the_probe_endpoint_answers_only_for_the_host_it_serves(client_for) -> None:
+    """What the probe fetches: the org a hostname reaches, and the caller's own nonce back."""
+    tenant = await make_tenant("cf-echo")
+    async with client_for(tenant.host) as client:
+        answer = await client.get("/api/v1/meta/domain-probe?nonce=" + "ab" * 8)
+        assert answer.status_code == 200
+        assert answer.json() == {
+            "instance": "schakl",
+            "org": tenant.org.slug,
+            "nonce": "ab" * 8,
+        }
+        # Junk nonces are refused rather than reflected.
+        assert (await client.get("/api/v1/meta/domain-probe?nonce=<x>")).status_code == 422
+
+    async with client_for("niemand.test") as client:
+        unknown = await client.get("/api/v1/meta/domain-probe?nonce=" + "cd" * 8)
+        assert unknown.status_code == 404
+        assert unknown.json()["error"]["code"] == "unknown_host"
+
+
+async def test_the_probe_refuses_to_fetch_private_addresses(monkeypatch) -> None:
+    """A custom domain is customer-controlled, so its addresses are too: neither the API nor
+    the worker fetches a loopback or private address on a customer's say-so."""
+    fetched: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        fetched.append(str(request.url))
+        return httpx.Response(200, json={"instance": "schakl", "org": "x", "nonce": "n"})
+
+    monkeypatch.setattr(domainprobe, "_transport", httpx.MockTransport(handler))
+    for address in ("127.0.0.1", "10.1.2.3", "169.254.169.254"):
+        verdict = await domainprobe.probe("intern.test", "x", addresses=[address])
+        assert verdict == domainprobe.UNKNOWN
+    assert fetched == []
+
+
+async def test_the_probe_believes_only_a_live_matching_answer(monkeypatch) -> None:
+    """Every way an answer can fail to be proof, and which of them is evidence of a move."""
+    scripted: list = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        entry = scripted.pop(0)
+        return entry(request) if callable(entry) else entry
+
+    monkeypatch.setattr(domainprobe, "_transport", httpx.MockTransport(handler))
+
+    async def verdict(response) -> str:  # noqa: ANN001 — a Response, or one built per request
+        scripted.append(response)
+        return await domainprobe.probe("crm.klant.test", "klant")
+
+    # A cached or replayed body cannot echo a nonce minted for this call.
+    assert await verdict(
+        httpx.Response(200, json={"instance": "schakl", "org": "klant", "nonce": "stale"})
+    ) == domainprobe.UNKNOWN
+    # Another instance, answering live for a different org: that is a move.
+    assert await verdict(
+        lambda request: httpx.Response(
+            200,
+            json={
+                "instance": "schakl",
+                "org": "iemand",
+                "nonce": request.url.params.get("nonce", ""),
+            },
+        )
+    ) == domainprobe.OTHER
+    # Our own "I do not know that hostname" — which is also what a domain still in the wizard
+    # answers, so it can never be read as evidence.
+    assert await verdict(
+        httpx.Response(404, json={"error": {"code": "unknown_host", "message": "errors.x"}})
+    ) == domainprobe.UNKNOWN
+    # A stranger's 404, a redirect, an origin error, a page too large to be ours.
+    assert await verdict(httpx.Response(404, html="<h1>Not found</h1>")) == domainprobe.OTHER
+    assert await verdict(
+        httpx.Response(301, headers={"location": "https://elders.test/"})
+    ) == domainprobe.UNKNOWN
+    assert await verdict(httpx.Response(502, text="bad gateway")) == domainprobe.UNKNOWN
+    assert await verdict(httpx.Response(200, content=b"x" * 20_000)) == domainprobe.OTHER
+    # …but the status is read before the body, so an interstitial larger than the body cap is
+    # still a challenge and not a move. The cap must never be what demotes a domain.
+    assert await verdict(httpx.Response(503, content=b"x" * 20_000)) == domainprobe.UNKNOWN
 
 
 # --------------------------------------------------------------------------- #

@@ -1,18 +1,37 @@
-"""Portal-membership introspection seam (issue #193).
+"""Portal seams (issue #193) — what core knows about client logins, and nothing more.
 
-A portal login is an ordinary membership whose user is linked to a *contact* — a fact owned
-by the contacts module. Other modules (notification fan-out, pickers) must be able to ask
-"which of these users are portal logins?" without importing the contacts module's internals
-(CLAUDE.md §6), so the module registers the answerer here, exactly like the company-scope
-resolver seam (``app/core/scope.py``). No module registered = no portal users.
+A portal login is an ordinary membership whose user is linked to a **subject**: a row in some
+module that names a person outside the agency. Today the only subject is a *contact*, a fact
+owned by the contacts module. Two different callers need that fact and neither may import
+contacts' internals (CLAUDE.md §6), so both cross here:
+
+* :func:`portal_user_ids` — "which of these users are portal logins?", asked by notification
+  fan-out and by pickers to keep staff events out of client inboxes.
+* :class:`PortalSubjectProvider` — the read/write handle the **portal module** works through.
+  Inviting a client, disabling the login and signing in as them are all the portal module's
+  business, but the row that says *who the client is* belongs to whoever owns the subject.
+
+The second seam is what lets ``portal`` be a module at all rather than a wing of ``contacts``.
+It is deliberately the smallest surface that covers the flows: load a subject (through the
+owner's own repository, so the company horizon applies), find the subject behind a user, and
+attach a freshly created login to it. Everything else — the account, the membership, the
+invite mail, the impersonation grant, the activity trail — is core or the portal module's own.
+
+No provider registered (contacts disabled) = no portal subjects, and the portal module's
+routes answer 404. That is the honest answer: without contacts there is nobody to invite.
 """
 
 from __future__ import annotations
 
 import uuid
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:  # only for the annotations — importing tenancy here would cycle.
+    from app.core.tenancy import RequestContext
 
 PortalUserResolver = Callable[
     [AsyncSession, uuid.UUID, set[uuid.UUID]], Awaitable[set[uuid.UUID]]
@@ -35,3 +54,80 @@ async def portal_user_ids(
     if _resolver is None or not candidates:
         return set()
     return await _resolver(session, org_id, candidates)
+
+
+# --------------------------------------------------------------------------- #
+# Portal subjects — the person a client login belongs to
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class PortalSubject:
+    """One row that may carry a client login, in the only vocabulary core needs.
+
+    ``entity_type`` is the same string ``AuditableMixin`` registers (``"contact"``), so the
+    portal module records its trail against the subject's own entity without ever naming it.
+    """
+
+    entity_type: str
+    id: uuid.UUID
+    #: The address an invite goes to. ``None`` is a real state — a contact with no e-mail
+    #: cannot be invited, and the portal module reports that rather than guessing.
+    email: str | None
+    display_name: str | None
+    #: The login already attached, if any. ``None`` = no portal login for this subject yet.
+    user_id: uuid.UUID | None
+
+
+class PortalSubjectProvider(Protocol):
+    """What a module implements to offer its rows as portal subjects.
+
+    Registered once, at import time, by the owning module's package ``__init__`` — the same
+    shape as the company-scope resolver (``app/core/scope.py``) and the automation action
+    specs: modules meet at a registry, never at an import.
+    """
+
+    entity_type: str
+
+    async def load(
+        self, ctx: RequestContext, subject_id: uuid.UUID
+    ) -> PortalSubject | None:
+        """The subject, read **through the owner's own repository** — so a caller restricted to
+        a company group can only reach the clients it may see, and anything else is ``None``
+        (the portal module turns that into the same 404 every other surface gives)."""
+        ...
+
+    async def for_user(
+        self, ctx: RequestContext, user_id: uuid.UUID
+    ) -> PortalSubject | None:
+        """The subject behind a login, resolved **horizon-blind on purpose**.
+
+        Its one caller is a portal session ending its own impersonation, where the row *is* the
+        caller: a client attached to no company has an empty horizon (#193) and would not find
+        itself, which would silently drop the stop from the audit trail.
+        """
+        ...
+
+    async def attach(
+        self, ctx: RequestContext, subject_id: uuid.UUID, user_id: uuid.UUID
+    ) -> None:
+        """Link a newly created login to the subject. Called inside the portal module's own
+        transaction, after the user and membership exist."""
+        ...
+
+
+_subject_providers: dict[str, PortalSubjectProvider] = {}
+
+
+def register_portal_subject_provider(provider: PortalSubjectProvider) -> None:
+    _subject_providers[provider.entity_type] = provider
+
+
+def portal_subject_provider(entity_type: str) -> PortalSubjectProvider | None:
+    """The provider for an ``entity_type``, or ``None`` when no enabled module offers it —
+    which is also the answer for an entity type that has nothing to do with portals."""
+    return _subject_providers.get(entity_type)
+
+
+def portal_subject_types() -> list[str]:
+    """Every entity type that can carry a client login, for the surfaces that have to offer a
+    choice. One today (``contact``); the seam is why a second costs no core change."""
+    return sorted(_subject_providers)

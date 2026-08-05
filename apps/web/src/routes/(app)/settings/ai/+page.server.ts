@@ -38,6 +38,13 @@ export const actions: Actions = {
       };
     }
 
+    // Speech is a separate credential on purpose (#246): Anthropic has no transcription
+    // endpoint, so "reuse the chat provider" leaves the default tenant unable to dictate.
+    // Empty here means "off", which clears the stored speech key with it.
+    const speechProvider = text("speech_provider") as "openai" | "openai_compatible" | null;
+    const audioBudgetRaw = text("monthly_audio_seconds_budget");
+    const audioBudget = audioBudgetRaw ? Number.parseInt(audioBudgetRaw, 10) : null;
+
     const { error } = await apiFor(event).PUT("/api/v1/ai/settings", {
       body: {
         provider,
@@ -48,6 +55,12 @@ export const actions: Actions = {
         features,
         house_style: text("house_style"),
         monthly_token_budget: budget && Number.isFinite(budget) ? budget : null,
+        speech_provider: speechProvider,
+        speech_api_key: text("speech_api_key"),
+        speech_base_url: text("speech_base_url"),
+        speech_model: text("speech_model"),
+        monthly_audio_seconds_budget:
+          audioBudget && Number.isFinite(audioBudget) ? audioBudget : null,
       },
     });
     if (error) {

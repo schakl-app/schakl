@@ -14,11 +14,14 @@ policy — is the real code path.
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 
 from app.core.auth import sso
+from app.core.crypto import encrypt
 from app.main import app
 from tests.conftest import auth_cookie, make_tenant
 
@@ -330,3 +333,140 @@ async def test_an_oversized_picture_url_does_not_break_login(
         assert "schakl_auth=" in response.headers.get("set-cookie", "")
 
     assert await _avatar_of("portrait@idp-example.com") == picture
+
+
+# --------------------------------------------------------------------------- #
+# What the flow guarantees regardless of what the tenant configured
+# --------------------------------------------------------------------------- #
+def test_every_authorization_request_carries_pkce() -> None:
+    """S256 is built into the client, not a setting: an authorization code observed in a proxy
+    log or in browser history is useless without the verifier that never left the server."""
+    row = sso.OrgAuthSettings(
+        org_id=uuid.uuid4(),
+        oidc_enabled=True,
+        oidc_discovery_url="https://idp.example.com/.well-known/openid-configuration",
+        oidc_client_id="client-id",
+        oidc_client_secret_encrypted=encrypt("client-secret"),
+    )
+    client = sso.oauth_client(row)
+    assert client.client_kwargs.get("code_challenge_method") == "S256"
+    sso.invalidate_client(row.org_id)
+
+
+def _verified(email: str) -> _StubClient:
+    """A stub whose IdP vouches for the address — what a *returning* user needs, since adopting
+    an existing local account on a bare email claim is the account-takeover guard's whole
+    concern (audit C2)."""
+    return _StubClient(
+        email, id_token_claims={"email": email, "name": "JIT User", "email_verified": True}
+    )
+
+
+async def test_auto_provision_does_not_undo_an_admins_removal(
+    client_for, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The whole point of first-contact-only: sign in, get provisioned, be removed, sign in
+    again — and stay removed. "Has no membership" cannot be the test, because that is equally
+    true of someone who was just taken out of the org."""
+    tenant = await make_tenant("oidc-reprov")
+    headers = await auth_cookie(tenant.user)
+    monkeypatch.setattr(sso, "oauth_client", lambda row: _verified("leaver@idp-example.com"))
+
+    from app.core.auth.models import User
+    from app.core.models import Membership
+    from app.db import async_session_maker, set_current_org
+
+    async def _membership_id():
+        async with async_session_maker() as session:
+            user = await session.scalar(
+                select(User).where(User.email == "leaver@idp-example.com")
+            )
+            assert user is not None
+            await set_current_org(session, tenant.org.id)
+            return await session.scalar(
+                select(Membership.id).where(
+                    Membership.org_id == tenant.org.id, Membership.user_id == user.id
+                )
+            )
+
+    async with client_for(tenant.host) as client:
+        await _configure(client, headers)
+
+        first = await client.get("/api/v1/auth/oidc/callback")
+        assert first.status_code in (302, 307)
+        assert first.headers["location"] == "/"
+        membership_id = await _membership_id()
+        assert membership_id is not None
+
+        # The admin takes their access away.
+        async with async_session_maker() as session:
+            await set_current_org(session, tenant.org.id)
+            membership = await session.get(Membership, membership_id)
+            await session.delete(membership)
+            await session.commit()
+
+        # They sign in again through the same IdP, with auto-provision still on.
+        second = await client.get("/api/v1/auth/oidc/callback")
+        assert second.status_code in (302, 307)
+        # No membership handed back, and no session either: refused, and told why.
+        assert second.headers["location"] == "/login?error=oidc_no_access"
+        assert "schakl_auth=" not in second.headers.get("set-cookie", "")
+        assert await _membership_id() is None
+
+
+async def test_a_first_sign_in_at_a_second_org_still_provisions(
+    client_for, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """First contact is per **org**, not per account: the memory of one tenant's provisioning
+    must not read as "already handled" at another."""
+    one = await make_tenant("oidc-multi-a")
+    two = await make_tenant("oidc-multi-b", email="multi-b@example.com")
+    monkeypatch.setattr(sso, "oauth_client", lambda row: _verified("nomad@idp-example.com"))
+
+    from app.core.auth.models import User
+    from app.core.models import Membership
+    from app.db import async_session_maker, set_current_org
+
+    for tenant in (one, two):
+        async with client_for(tenant.host) as client:
+            await _configure(client, await auth_cookie(tenant.user))
+            response = await client.get("/api/v1/auth/oidc/callback")
+            assert response.headers["location"] == "/"
+
+    async with async_session_maker() as session:
+        user = await session.scalar(select(User).where(User.email == "nomad@idp-example.com"))
+        assert user is not None
+        for tenant in (one, two):
+            await set_current_org(session, tenant.org.id)
+            assert (
+                await session.scalar(
+                    select(Membership.id).where(
+                        Membership.org_id == tenant.org.id, Membership.user_id == user.id
+                    )
+                )
+                is not None
+            )
+
+
+async def test_the_sso_session_is_minted_for_the_callbacks_own_org(
+    client_for, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A federated login is a login: the cookie it sets is a session for this org and nowhere
+    else (CLAUDE.md §5)."""
+    tenant = await make_tenant("oidc-scoped")
+    other = await make_tenant("oidc-scoped-other", email="scoped-other@example.com")
+    monkeypatch.setattr(sso, "oauth_client", lambda row: _verified("fed@idp-example.com"))
+
+    async with client_for(tenant.host) as client:
+        await _configure(client, await auth_cookie(tenant.user))
+        response = await client.get("/api/v1/auth/oidc/callback")
+        cookie = response.headers["set-cookie"].split(";", 1)[0]
+
+    async with client_for(tenant.host) as client:
+        assert (
+            await client.get("/api/v1/meta/me", headers={"Cookie": cookie})
+        ).status_code == 200
+    async with client_for(other.host) as client:
+        assert (
+            await client.get("/api/v1/meta/me", headers={"Cookie": cookie})
+        ).status_code == 401

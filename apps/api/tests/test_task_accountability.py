@@ -4,14 +4,13 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from app.modules.tasks.recurrence import today_local
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import auth_cookie, make_tenant, org_today
 
 
 async def test_due_extension_requires_reason(client_for) -> None:
     t = await make_tenant("acct-due")
     headers = await auth_cookie(t.user)
-    today = today_local()
+    today = org_today()
     async with client_for(t.host) as c:
         task = (
             await c.post(

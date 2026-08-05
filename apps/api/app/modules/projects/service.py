@@ -14,6 +14,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 
@@ -27,6 +28,7 @@ from app.core.parent import ensure_parent_in_tenant
 from app.core.richtext import sanitize_markdown
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
+from app.core.timezone import org_zoneinfo
 from app.errors import AppError
 from app.modules.projects.budget import period_bound, period_start_date
 from app.modules.projects.models import Project, ProjectAssignee, ProjectStatus
@@ -115,6 +117,18 @@ class ProjectService:
         self.repo = ctx.repo(Project)
         self.custom_fields = CustomFieldsService(ctx)
         self.assignees = AssigneeService(ctx, ProjectAssignee, "project_id")
+        self._tz: ZoneInfo | None = None
+
+    async def _zone(self) -> ZoneInfo:
+        """This org's zone, resolved once per service instance (CLAUDE.md §8).
+
+        A budget period is a *local* calendar month, so the boundary depends on whose calendar —
+        and that is `org_settings.timezone`, never a hardcoded city. Cached because a page of
+        projects asks for the same answer once per row otherwise (docs/PERFORMANCE.md).
+        """
+        if self._tz is None:
+            self._tz = await org_zoneinfo(self.ctx.session, self.ctx.org.id)
+        return self._tz
 
     async def _attach_assignees(self, projects: Sequence[Project]) -> None:
         """One extra query for the whole page, never one per row (docs/PERFORMANCE.md)."""
@@ -161,7 +175,8 @@ class ProjectService:
         def effective_period(project: Project) -> str:
             return "monthly" if sources.get(project.id) else project.budget_period
 
-        periods = {p.id: period_bound(effective_period(p)) for p in projects}
+        tz = await self._zone()
+        periods = {p.id: period_bound(effective_period(p), tz=tz) for p in projects}
         logged = await TimeService(self.ctx).minutes_by_project(periods)
         for project in projects:
             minutes = logged.get(project.id, LoggedMinutes())
@@ -177,7 +192,7 @@ class ProjectService:
                 period=period,
                 # The local day the period began — what a client sends back as `date_from` to list
                 # the entries behind this number (#43). Never the UTC instant's `.date()`.
-                period_start=period_start_date(period),
+                period_start=period_start_date(period, tz=tz),
                 budget_hours=budget,
                 spent_hours=spent,
                 billable_hours=_hours(minutes.billable),
@@ -201,6 +216,7 @@ class ProjectService:
             Project.status == ProjectStatus.ACTIVE.value,
             Project.budget_hours.is_not(None),
         )
+        tz = await self._zone()
         grouped: dict[uuid.UUID, list[BudgetedProject]] = {cid: [] for cid in company_ids}
         for row in (await self.ctx.session.execute(stmt)).all():
             grouped[row[1]].append(
@@ -209,7 +225,7 @@ class ProjectService:
                     company_id=row[1],
                     budget_hours=float(row[2]),
                     budget_period=row[3],
-                    period_start=period_bound(row[3]),
+                    period_start=period_bound(row[3], tz=tz),
                 )
             )
         return grouped
@@ -312,7 +328,7 @@ class ProjectService:
         await self._attach_assignees([project])
         # Opt-in, exactly as on the list. The detail page asks for it because its budget bar and
         # its Uren panel must both count from the *same* period start (#43) — one the API resolves
-        # in Europe/Amsterdam (budget.py), which a browser recomputing it in UTC gets wrong twice
+        # on the org's own clock (budget.py), which a browser recomputing it in UTC gets wrong twice
         # a year.
         if hours:
             await self._attach_hours([project])

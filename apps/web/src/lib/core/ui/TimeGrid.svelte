@@ -18,7 +18,13 @@
    * its *window* is deliberately not offered — that is a different edit, with its own snapping and
    * validation, and it lives in the request form.
    */
-  import { eventChipParts, eventLinkAttrs, eventsByDayMap, isoDiffDays } from "$lib/core/calendar";
+  import {
+    eventChipParts,
+    eventLinkAttrs,
+    eventsByDayMap,
+    eventTitleAttr,
+    isoDiffDays,
+  } from "$lib/core/calendar";
   import { fmtWeekdayShort } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { getTimeZone } from "$lib/core/timezone";
@@ -168,76 +174,89 @@
 </script>
 
 <div class="overflow-hidden rounded-xl border border-border bg-surface-raised">
-  <!-- Column headers (week view); the day view's single date lives in the page toolbar. -->
-  {#if days.length > 1}
-    <div
-      class="grid border-b border-border"
-      style="grid-template-columns: 3rem repeat({days.length}, 1fr)"
-    >
-      <div></div>
-      {#each days as day (day)}
-        <p
-          class="border-l border-border p-2 text-xs font-medium {day === today
-            ? 'font-bold text-brand'
-            : 'text-text-muted'}"
+  <!--
+    Header, all-day row and the hour grid all live *inside* the scroller and the first two are
+    pinned with `sticky`, because they have to agree on column widths: as siblings of the
+    scrolling box they were laid out over the full width while the hour grid below lost the
+    scrollbar's width, so every column edge drifted a few pixels further right the further along
+    the week you looked. Sharing one scroll container makes them share one content width by
+    construction — nothing measures the scrollbar, and it also holds on platforms whose overlay
+    scrollbars have no width to measure.
+  -->
+  <div bind:this={scroller} class="max-h-[38rem] overflow-y-auto">
+    <!-- Both pinned rows move as one block, so neither needs to know the other's height. They
+         paint over the scrolling grid, so each carries its own opaque background. -->
+    <div class="sticky top-0 z-20">
+      <!-- Column headers (week view); the day view's single date lives in the page toolbar. -->
+      {#if days.length > 1}
+        <div
+          class="grid border-b border-border bg-surface-raised"
+          style="grid-template-columns: 3rem repeat({days.length}, 1fr)"
         >
-          <span class="capitalize">{fmtWeekdayShort(day)}</span>
-          {Number(day.slice(8, 10))}
-        </p>
-      {/each}
-    </div>
-  {/if}
-
-  <!-- All-day row: date-only feeds (leave, holidays) and Google's all-day events. -->
-  <div
-    class="grid border-b border-border bg-surface"
-    style="grid-template-columns: 3rem repeat({days.length}, 1fr)"
-  >
-    <p class="p-2 text-[10px] uppercase tracking-wide text-text-muted">
-      {t("calendar.all_day")}
-    </p>
-    {#each days as day (day)}
-      <!-- Mouse-only accelerator; the chip link stays the accessible path (see MonthCalendar). -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div
-        class="min-h-9 min-w-0 space-y-1 border-l border-border p-1.5"
-        ondragover={(e) => {
-          if (dragging) e.preventDefault();
-        }}
-        ondrop={(e) => {
-          e.preventDefault();
-          drop(day);
-        }}
-      >
-        {#each allDayByDay[day] ?? [] as event (event.id + day)}
-          {@const parts = chipParts(event)}
-          {#if event.href}
-            <a
-              href={event.href}
-              {...eventLinkAttrs(event.href)}
-              class="{parts.class} {event.draggable && onmove ? 'cursor-grab' : ''}"
-              style={parts.style}
-              title={event.title}
-              draggable={Boolean(event.draggable && onmove)}
-              ondragstart={(e) => dragStart(e, event, day)}
-              ondragend={() => (dragging = null)}
+          <div></div>
+          {#each days as day (day)}
+            <p
+              class="border-l border-border p-2 text-xs font-medium {day === today
+                ? 'font-bold text-brand'
+                : 'text-text-muted'}"
             >
-              {#if event.tentative}?{/if}
-              {event.title}
-            </a>
-          {:else}
-            <span class={parts.class} style={parts.style} title={event.title}>
-              {#if event.tentative}?{/if}
-              {event.title}
-            </span>
-          {/if}
+              <span class="capitalize">{fmtWeekdayShort(day)}</span>
+              {Number(day.slice(8, 10))}
+            </p>
+          {/each}
+        </div>
+      {/if}
+
+      <!-- All-day row: date-only feeds (leave, holidays) and Google's all-day events. -->
+      <div
+        class="grid border-b border-border bg-surface"
+        style="grid-template-columns: 3rem repeat({days.length}, 1fr)"
+      >
+        <p class="p-2 text-[10px] uppercase tracking-wide text-text-muted">
+          {t("calendar.all_day")}
+        </p>
+        {#each days as day (day)}
+          <!-- Mouse-only accelerator; the chip link stays the accessible path (MonthCalendar). -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="min-h-9 min-w-0 space-y-1 border-l border-border p-1.5"
+            ondragover={(e) => {
+              if (dragging) e.preventDefault();
+            }}
+            ondrop={(e) => {
+              e.preventDefault();
+              drop(day);
+            }}
+          >
+            {#each allDayByDay[day] ?? [] as event (event.id + day)}
+              {@const parts = chipParts(event)}
+              {#if event.href}
+                <a
+                  href={event.href}
+                  {...eventLinkAttrs(event.href)}
+                  class="{parts.class} {event.draggable && onmove ? 'cursor-grab' : ''}"
+                  style={parts.style}
+                  title={eventTitleAttr(event)}
+                  draggable={Boolean(event.draggable && onmove)}
+                  ondragstart={(e) => dragStart(e, event, day)}
+                  ondragend={() => (dragging = null)}
+                >
+                  {#if event.tentative}?{/if}
+                  {event.title}
+                </a>
+              {:else}
+                <span class={parts.class} style={parts.style} title={eventTitleAttr(event)}>
+                  {#if event.tentative}?{/if}
+                  {event.title}
+                </span>
+              {/if}
+            {/each}
+          </div>
         {/each}
       </div>
-    {/each}
-  </div>
+    </div>
 
-  <!-- The 24-hour grid, scrolled to the morning. -->
-  <div bind:this={scroller} class="max-h-[34rem] overflow-y-auto">
+    <!-- The 24-hour grid, scrolled to the morning. -->
     <div
       class="relative grid"
       style="grid-template-columns: 3rem repeat({days.length}, 1fr); height: {24 * HOUR_PX}px"
@@ -295,7 +314,7 @@
                 class="{parts.class} {block.event.draggable && onmove ? 'cursor-grab' : ''}"
                 style="top: {top}px; height: {height}px; left: {block.lane *
                   width}%; width: {width}%; {parts.style}"
-                title={block.event.title}
+                title={eventTitleAttr(block.event)}
                 draggable={Boolean(block.event.draggable && onmove)}
                 ondragstart={(e) => dragStart(e, block.event, day)}
                 ondragend={() => (dragging = null)}
@@ -308,7 +327,7 @@
                 class={parts.class}
                 style="top: {top}px; height: {height}px; left: {block.lane *
                   width}%; width: {width}%; {parts.style}"
-                title={block.event.title}
+                title={eventTitleAttr(block.event)}
               >
                 {#if block.event.tentative}?{/if}
                 {block.event.title}

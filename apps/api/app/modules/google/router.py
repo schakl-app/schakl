@@ -19,6 +19,7 @@ from app.modules.google.oauth import (
     SCOPE_GMAIL,
     connect_client,
     google_settings_row,
+    safe_return_path,
     scopes_for,
 )
 from app.modules.google.schemas import (
@@ -34,9 +35,26 @@ logger = logging.getLogger("schakl.google")
 
 router = APIRouter(prefix="/google", tags=["google"])
 
-#: Where the browser lands after the connect round-trip — the personal account page's card.
+#: Where the browser lands after the connect round-trip when the caller named nowhere else —
+#: the personal account page's card.
 _ACCOUNT_PAGE = "/settings/account"
 _GMAIL_OPTIN_SESSION_KEY = "google_connect_gmail"
+#: Where to send the browser back to, stashed across the round-trip. It rides the *session*, not
+#: the OAuth state or the redirect URI: Google echoes neither back to us, and the redirect URI is
+#: an exact-match allowlist entry in the Cloud console that a per-page query string would break.
+_RETURN_SESSION_KEY = "google_connect_next"
+
+
+def _finish(request: Request, marker: str) -> RedirectResponse:
+    """Land the browser back where the connect started, with the outcome in the query.
+
+    Consent is asked from wherever the gap was noticed — a client's marketing tab, a picker in
+    a company panel — and dropping the user on Instellingen → Account afterwards makes them
+    navigate back to a page they never meant to leave, hunting for the thing they just fixed.
+    """
+    target = safe_return_path(request.session.pop(_RETURN_SESSION_KEY, ""), _ACCOUNT_PAGE)
+    separator = "&" if "?" in target else "?"
+    return RedirectResponse(url=f"{target}{separator}google={marker}")
 
 
 # --- org settings (Instellingen → Google) ------------------------------------------ #
@@ -111,30 +129,37 @@ async def disconnect_my_connection(ctx: RequestContext = Depends(require_context
 async def oauth_connect(
     request: Request,
     include_gmail: bool = Query(False),
+    include_marketing: bool = Query(False),
     include_analytics: bool = Query(False),
     include_search_console: bool = Query(False),
     include_ads: bool = Query(False),
+    next: str = Query("", alias="next"),  # noqa: A002 — the web's conventional name for it
     ctx: RequestContext = Depends(require_context),
 ):
     """302 to Google's consent screen, asking exactly the enabled surfaces' scopes.
 
     ``access_type=offline`` + ``prompt=consent`` guarantee a refresh token on every connect;
     ``include_granted_scopes`` makes a later reconnect *add* scopes instead of replacing them
-    (incremental authorization — the docs/GOOGLE.md §1 bridge). The ``include_analytics`` /
-    ``include_search_console`` / ``include_ads`` flags are how the marketing module (epic #134)
-    walks a connection up to its GA4/GSC/Ads scopes over this same flow — no second OAuth.
+    (incremental authorization — the docs/GOOGLE.md §1 bridge). ``include_marketing`` is how the
+    marketing module (epic #134) walks a connection up to GA4 *and* Search Console *and* Ads in
+    **one** consent; the per-source flags remain for a caller that genuinely wants only one.
+
+    ``next`` is where to land afterwards (site-relative only, :func:`safe_return_path`) — consent
+    is asked from the page that needed it, so that is the page to come back to.
     """
     row = await google_settings_row(ctx.session, ctx.org.id)
     client = connect_client(ctx.org.id, row)
     scopes = scopes_for(
         row,
         include_gmail=include_gmail,
+        include_marketing=include_marketing,
         include_analytics=include_analytics,
         include_search_console=include_search_console,
         include_ads=include_ads,
     )
     # Whether the user opted their mailbox in — read back on the callback leg.
     request.session[_GMAIL_OPTIN_SESSION_KEY] = "1" if include_gmail else ""
+    request.session[_RETURN_SESSION_KEY] = safe_return_path(next, _ACCOUNT_PAGE)
     redirect_uri = str(request.url_for("google_oauth_callback"))
     return await client.authorize_redirect(
         request,
@@ -155,7 +180,7 @@ async def oauth_callback(
     request: Request,
     ctx: RequestContext = Depends(require_context),
 ):
-    """Store the grant and land the browser back on the account card.
+    """Store the grant and land the browser back where the connect started.
 
     A denied consent or a state mismatch is a redirect with an error marker, never a JSON
     envelope — a human is holding this request.
@@ -166,12 +191,12 @@ async def oauth_callback(
         token = await client.authorize_access_token(request)
     except OAuthError:
         logger.warning("Google connect callback failed", exc_info=True)
-        return RedirectResponse(url=f"{_ACCOUNT_PAGE}?google=error")
+        return _finish(request, "error")
 
     userinfo = dict(token.get("userinfo") or {})
     sub, email = userinfo.get("sub"), userinfo.get("email")
     if not sub or not email:
-        return RedirectResponse(url=f"{_ACCOUNT_PAGE}?google=error")
+        return _finish(request, "error")
 
     granted_scopes = [s for s in str(token.get("scope") or "").split() if s]
     expires_at = token.get("expires_at")
@@ -190,4 +215,4 @@ async def oauth_callback(
     if request.session.pop(_GMAIL_OPTIN_SESSION_KEY, "") and SCOPE_GMAIL in granted_scopes:
         connection.gmail_sync_enabled = True
         await ctx.session.flush()
-    return RedirectResponse(url=f"{_ACCOUNT_PAGE}?google=connected")
+    return _finish(request, "connected")

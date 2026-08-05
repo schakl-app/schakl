@@ -2,12 +2,12 @@
   import { applyAction, enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
-  import { Download, Pencil, Trash2, Upload } from "@lucide/svelte";
+  import { Pencil, Trash2 } from "@lucide/svelte";
 
   import { editHref } from "$lib/core/edit-intent";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
-  import ImportWizard from "$lib/core/impex/ImportWizard.svelte";
+  import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { can } from "$lib/core/permissions";
   import { formatPhone } from "$lib/core/phone";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -44,26 +44,12 @@
   let deleteId = $state("");
   let deleteName = $state("");
   let confirmDelete = $state(false);
-  let showImport = $state(false);
   const busy = new InFlight();
 
   // Row actions render only for holders of the matching permission (#253) — the API refuses
   // them anyway; this stops a client-role login seeing buttons that only 403.
   const canWrite = $derived(can(page.data.user, "companies.company.write"));
   const canDelete = $derived(can(page.data.user, "companies.company.delete"));
-
-  // The Export link carries the page's current filters, so the file holds exactly the
-  // filtered list on screen — the whole set, not just the loaded page (issue #77).
-  const exportHref = $derived.by(() => {
-    const params = new URLSearchParams();
-    const q = page.url.searchParams.get("q");
-    if (q) params.set("q", q);
-    if (data.statusFilter) params.set("status", data.statusFilter);
-    if (data.mine) params.set("mine", "1");
-    if (data.table.sort) params.set("sort", data.table.sort);
-    const query = params.toString();
-    return `/companies/export${query ? `?${query}` : ""}`;
-  });
 
   // --- columns ---------------------------------------------------------------
   // The tenant's custom fields join the built-ins as selectable columns with no code here — that
@@ -268,26 +254,21 @@
     </button>
   {/if}
   <div class="ml-auto flex flex-wrap items-center gap-2">
-    <!-- A plain link: the browser downloads through its own session (issue #77). -->
-    <a
-      href={exportHref}
-      data-sveltekit-reload
-      data-sveltekit-preload-data="off"
-      class="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:text-text"
-    >
-      <Download class="h-4 w-4" />
-      {t("impex.export")}
-    </a>
-    {#if can(page.data.user, "companies.company.write")}
-      <button
-        type="button"
-        class="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-text-muted hover:text-text"
-        onclick={() => (showImport = true)}
-      >
-        <Upload class="h-4 w-4" />
-        {t("impex.import")}
-      </button>
-    {/if}
+    <!-- The Export link carries the page's current filters, so the file holds exactly the
+         filtered list on screen — the whole set, not just the loaded page (issue #77). -->
+    <ImpexBar
+      entity="company"
+      readPermission="companies.company.read"
+      writePermission="companies.company.write"
+      filters={{
+        q: page.url.searchParams.get("q"),
+        status: data.statusFilter,
+        mine: data.mine,
+        sort: data.table.sort,
+      }}
+      locale={data.locale}
+      {form}
+    />
     <ColumnPicker
       all={table.pickerColumns}
       visible={table.visibleKeys}
@@ -297,15 +278,6 @@
     />
   </div>
 </div>
-
-<ImportWizard
-  bind:open={showImport}
-  locale={data.locale}
-  report={form?.impex ?? null}
-  inspect={form?.impexInspect ?? null}
-  columns={form?.impexColumns ?? null}
-  error={form?.impexError ?? null}
-/>
 
 {#if showCreate}
   <!-- Same field set as the edit surface (CompanyForm), plus the contact persons — which only a

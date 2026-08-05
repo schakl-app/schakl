@@ -217,6 +217,94 @@ async def test_sync_initial_incremental_and_410_reset(monkeypatch) -> None:
         assert channel.sync_token == "token-3"
 
 
+async def test_cancelled_meeting_is_mirrored_but_a_tombstone_is_dropped(
+    client_for, monkeypatch
+) -> None:
+    """Both things Google calls ``cancelled``, told apart by whether the payload has a start.
+
+    A meeting the organiser called off stays on the attendee's calendar struck through, so the
+    Agenda mirrors it; a bare tombstone is a deleted event and the local copy goes.
+    """
+    t = await make_tenant("gcal-cancel")
+    connection_id = await _seed(t)
+    stub = _StubClient(
+        [
+            (
+                "GET",
+                _StubResponse(
+                    200,
+                    {
+                        "items": [
+                            _event_item("ev-keep", "2026-07-08", summary="Standup"),
+                            _event_item("ev-gone", "2026-07-08", summary="Weg"),
+                        ],
+                        "nextSyncToken": "token-1",
+                    },
+                ),
+            ),
+        ]
+    )
+    monkeypatch.setattr("app.modules.google.calendar.service.acting_as", _stub_acting_as(stub))
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        connection = await session.get(GoogleConnection, connection_id)
+        await sync_connection(session, t.org, connection)
+        await session.commit()
+
+    stub2 = _StubClient(
+        [
+            (
+                "GET",
+                _StubResponse(
+                    200,
+                    {
+                        "items": [
+                            # Called off, still on the calendar: full body, status flipped.
+                            {
+                                **_event_item("ev-keep", "2026-07-08", summary="Standup"),
+                                "status": "cancelled",
+                            },
+                            # Deleted: Google guarantees only the id.
+                            {"id": "ev-gone", "status": "cancelled"},
+                        ],
+                        "nextSyncToken": "token-2",
+                    },
+                ),
+            ),
+        ]
+    )
+    monkeypatch.setattr("app.modules.google.calendar.service.acting_as", _stub_acting_as(stub2))
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        connection = await session.get(GoogleConnection, connection_id)
+        await sync_connection(session, t.org, connection)
+        await session.commit()
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        from sqlalchemy import select
+
+        events = (await session.execute(select(GoogleCalendarEvent))).scalars().all()
+        assert {e.google_event_id for e in events} == {"ev-keep"}
+        assert events[0].status == "cancelled"
+        # The body is still there, so the chip can still say which meeting was called off.
+        assert events[0].summary == "Standup"
+
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        feed = (
+            await c.get(
+                "/api/v1/google/calendar/events",
+                params={"date_from": "2026-07-01", "date_to": "2026-07-31"},
+                headers=headers,
+            )
+        ).json()
+    assert len(feed) == 1
+    assert feed[0]["cancelled"] is True
+    assert feed[0]["tentative"] is False
+    assert feed[0]["title"] == "11:00 Standup"
+
+
 async def test_events_feed_own_connection_only(client_for) -> None:
     t = await make_tenant("gcal-feed")
     connection_id = await _seed(t)

@@ -35,6 +35,7 @@ from app.core.ai.schemas import (
     AIUsageFeature,
     AIUsageSummary,
 )
+from app.core.ai.transcribe import DEFAULT_SPEECH_MODEL, can_transcribe
 from app.core.crypto import decrypt, encrypt
 from app.core.tenancy import RequestContext
 from app.errors import AppError
@@ -63,9 +64,21 @@ async def get_row(session: AsyncSession, org_id: uuid.UUID) -> AISettings | None
     return await session.scalar(select(AISettings).where(AISettings.org_id == org_id))
 
 
+#: Reported alongside the real feature keys when the org can actually transcribe (#246). It is
+#: deliberately *not* in ``AI_FEATURES``: there is nothing to toggle — either a speech provider
+#: is configured or there is no such capability — and adding it there would grow the settings
+#: form, the web's ``AIFeature`` union and the per-feature model override for a non-choice.
+SPEECH_CAPABILITY = "speech"
+
+
 async def enabled_features(session: AsyncSession, org_id: uuid.UUID) -> list[str]:
     """The feature keys usable for this org — no provider configured means none at all
-    ("off means invisible", #126). Cached per org; see ``_FEATURES_TTL_SECONDS``."""
+    ("off means invisible", #126). Cached per org; see ``_FEATURES_TTL_SECONDS``.
+
+    ``speech`` rides along as a capability rather than a toggle: without it the web app would
+    draw a microphone on every Anthropic-configured org and 409 on the first click, which is
+    the opposite of "off means invisible".
+    """
     now = time.monotonic()
     cached = _features_cache.get(org_id)
     if cached is not None and now - cached[0] < _FEATURES_TTL_SECONDS:
@@ -74,8 +87,19 @@ async def enabled_features(session: AsyncSession, org_id: uuid.UUID) -> list[str
     features = (
         [f for f in AI_FEATURES if _feature_config(row, f).enabled] if row is not None else []
     )
+    if row is not None and "time_assist" in features and _speech_ready(row):
+        features.append(SPEECH_CAPABILITY)
     _features_cache[org_id] = (now, features)
     return features
+
+
+def _speech_ready(row: AISettings) -> bool:
+    """Can this org transcribe at all? Its own speech credential, or a chat provider that
+    happens to have a speech endpoint — which Anthropic, the default, does not."""
+    provider = row.speech_provider or row.provider
+    if not can_transcribe(provider):
+        return False
+    return bool(row.speech_api_key_enc if row.speech_provider else row.api_key_enc)
 
 
 class AIService:
@@ -84,6 +108,21 @@ class AIService:
 
     def __init__(self, ctx: RequestContext) -> None:
         self.ctx = ctx
+        #: The org's settings row, read at most once per request. A multi-round tool loop used
+        #: to re-read it (and re-sum the month's usage) on every round, so a single parse spent
+        #: a dozen DB round trips re-answering a question whose answer cannot change mid-request.
+        self._row: AISettings | None = None
+        self._row_loaded = False
+        #: Metering accumulated across a multi-round loop, written once by ``flush_usage``.
+        self.pending_tokens_in = 0
+        self.pending_tokens_out = 0
+        self.pending_model: str | None = None
+
+    async def _settings(self) -> AISettings | None:
+        if not self._row_loaded:
+            self._row = await get_row(self.ctx.session, self.ctx.org.id)
+            self._row_loaded = True
+        return self._row
 
     # ------------------------------------------------------------------ #
     # Gating
@@ -91,7 +130,7 @@ class AIService:
     async def config_for(self, feature: str) -> ProviderConfig:
         """The provider config for one feature, or the standard errors when the tenant has
         not configured a provider / has the feature off."""
-        row = await get_row(self.ctx.session, self.ctx.org.id)
+        row = await self._settings()
         if row is None:
             raise AppError("ai_not_configured", "errors.ai_not_configured", status_code=409)
         config = _feature_config(row, feature)
@@ -112,11 +151,70 @@ class AIService:
             base_url=row.base_url,
         )
 
+    async def speech_config(self) -> ProviderConfig:
+        """The provider config for transcription (#246).
+
+        Its own credential when the tenant set one, otherwise the chat provider — which only
+        resolves for a provider that can actually transcribe. Anthropic cannot, and is the
+        default, so this raises the ordinary "not configured" 409 there rather than pretending;
+        the web surface asks ``enabled_features`` first and simply does not draw a microphone.
+        """
+        row = await self._settings()
+        if row is None:
+            raise AppError("ai_not_configured", "errors.ai_not_configured", status_code=409)
+        if not _feature_config(row, "time_assist").enabled:
+            raise AppError(
+                "ai_feature_disabled", "errors.ai_feature_disabled", status_code=409
+            )
+        provider = row.speech_provider or row.provider
+        if not can_transcribe(provider):
+            raise AppError(
+                "ai_speech_not_configured",
+                "errors.ai_speech_not_configured",
+                status_code=409,
+            )
+        encrypted = row.speech_api_key_enc if row.speech_provider else row.api_key_enc
+        try:
+            api_key = decrypt(encrypted) if encrypted else ""
+        except ValueError as exc:
+            raise AppError(
+                "ai_speech_not_configured",
+                "errors.ai_speech_not_configured",
+                status_code=409,
+            ) from exc
+        if not api_key:
+            raise AppError(
+                "ai_speech_not_configured",
+                "errors.ai_speech_not_configured",
+                status_code=409,
+            )
+        base_url = row.speech_base_url if row.speech_provider else row.base_url
+        return ProviderConfig(
+            provider=provider,
+            api_key=api_key,
+            model=row.speech_model or DEFAULT_SPEECH_MODEL,
+            base_url=base_url,
+        )
+
+    async def ensure_audio_budget(self, *, override: bool = False) -> None:
+        """The monthly transcription cap, in seconds — its own unit, its own budget."""
+        row = await self._settings()
+        if row is None or row.monthly_audio_seconds_budget is None:
+            return
+        start = datetime.now(UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        spent = await self.ctx.session.scalar(
+            select(func.coalesce(func.sum(AIUsage.audio_seconds), 0)).where(
+                AIUsage.org_id == self.ctx.org.id, AIUsage.created_at >= start
+            )
+        )
+        if int(spent or 0) >= row.monthly_audio_seconds_budget and not override:
+            raise AppError("ai_budget_reached", "errors.ai_budget_reached", status_code=409)
+
     async def ensure_budget(self, *, override: bool = False) -> None:
         """The monthly soft cap (#126): interactive use over 100 % sits behind an explicit
         acknowledgement (the "budget bereikt" notice); non-interactive callers never pass
         ``override`` and hard-stop."""
-        row = await get_row(self.ctx.session, self.ctx.org.id)
+        row = await self._settings()
         if row is None or row.monthly_token_budget is None:
             return
         spent = await self._month_tokens()
@@ -136,14 +234,19 @@ class AIService:
         return self.ctx.user.locale or "nl"
 
     async def house_style(self) -> str | None:
-        row = await get_row(self.ctx.session, self.ctx.org.id)
+        row = await self._settings()
         return row.house_style if row is not None else None
 
     # ------------------------------------------------------------------ #
     # Model calls
     # ------------------------------------------------------------------ #
     async def record_usage(
-        self, feature: str, model: str, tokens_in: int, tokens_out: int
+        self,
+        feature: str,
+        model: str,
+        tokens_in: int,
+        tokens_out: int,
+        audio_seconds: int = 0,
     ) -> None:
         """Counts and labels only — never content (#126)."""
         self.ctx.session.add(
@@ -154,6 +257,7 @@ class AIService:
                 model=model,
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
+                audio_seconds=audio_seconds,
             )
         )
         await self.ctx.session.flush()
@@ -210,24 +314,74 @@ class AIService:
         disable_tools: bool = False,
         override_budget: bool = False,
         max_tokens: int = providers.MAX_TOKENS,
+        config: ProviderConfig | None = None,
     ) -> tuple[str, list[providers.ToolCall]]:
+        """One non-streaming model turn, with the DB connection handed back while it runs.
+
+        A request is one transaction pinning one pooled connection (``app/db.py``). A model
+        call takes seconds — a multi-round tool loop, tens of seconds — and holding the
+        connection across it is the pool-drain that reads as *the whole site* freezing, not
+        just this feature (``docs/PERFORMANCE.md``). ``release_db()`` is the sanctioned seam
+        and this is the right place for it: ``complete`` drains the stream itself and runs no
+        caller code inside the block, so nothing touches the session while it is unbound. Tool
+        handlers run *between* rounds, back on a real connection.
+
+        Gating happens before the block (it needs the session), and usage is accumulated and
+        recorded by the caller after it — a write inside would commit at the block's entry.
+        ``AIService.stream`` is deliberately left alone: its callers meter per round.
+
+        ``config`` lets a caller that has already gated (the router's ``_preflight``, or an
+        earlier round of the same loop) pass the resolved config in and skip re-gating. The
+        budget is a monthly figure and a request cannot cross it mid-loop, so re-summing the
+        month per round bought nothing.
+        """
+        if config is None:
+            config = await self.config_for(feature)
+            await self.ensure_budget(override=override_budget)
         text_parts: list[str] = []
         calls: list[providers.ToolCall] = []
-        async for event in self.stream(
-            feature,
-            system=system,
-            messages=messages,
-            tools=tools,
-            force_tool=force_tool,
-            disable_tools=disable_tools,
-            override_budget=override_budget,
-            max_tokens=max_tokens,
-        ):
-            if event.kind == "text":
-                text_parts.append(event.text)
-            elif event.kind == "tool_call" and event.tool_call is not None:
-                calls.append(event.tool_call)
+        tokens_in = tokens_out = 0
+        try:
+            async with self.ctx.release_db():
+                async for event in providers.stream_chat(
+                    config,
+                    system=system,
+                    messages=messages,
+                    tools=tools,
+                    force_tool=force_tool,
+                    disable_tools=disable_tools,
+                    max_tokens=max_tokens,
+                ):
+                    if event.kind == "text":
+                        text_parts.append(event.text)
+                    elif event.kind == "tool_call" and event.tool_call is not None:
+                        calls.append(event.tool_call)
+                    elif event.kind == "done":
+                        tokens_in, tokens_out = event.tokens_in, event.tokens_out
+        except AIProviderError as exc:
+            logger.warning("AI provider error (%s/%s): %s", config.provider, feature, exc)
+            raise AppError(
+                "ai_provider_error", "errors.ai_provider_error", status_code=502
+            ) from exc
+        self.pending_tokens_in += tokens_in
+        self.pending_tokens_out += tokens_out
+        self.pending_model = config.model
         return "".join(text_parts), calls
+
+    async def flush_usage(self, feature: str) -> None:
+        """Write the accumulated metering for a multi-round feature as **one** row.
+
+        Counts are what the meter sums, so one row per request and one per round total the
+        same; the row count is not itself reported. Call from a ``finally`` — a loop that
+        failed halfway still spent the tokens it spent.
+        """
+        if self.pending_model is None:
+            return
+        await self.record_usage(
+            feature, self.pending_model, self.pending_tokens_in, self.pending_tokens_out
+        )
+        self.pending_tokens_in = self.pending_tokens_out = 0
+        self.pending_model = None
 
 
 class AISettingsService:
@@ -245,6 +399,13 @@ class AISettingsService:
             features={f: _feature_config(row, f) for f in AI_FEATURES},
             house_style=row.house_style,
             monthly_token_budget=row.monthly_token_budget,
+            speech_provider=row.speech_provider,  # type: ignore[arg-type]
+            speech_base_url=row.speech_base_url,
+            speech_model=row.speech_model,
+            has_speech_key=bool(row.speech_api_key_enc),
+            monthly_audio_seconds_budget=row.monthly_audio_seconds_budget,
+            # Resolved here so no client has to know which providers can transcribe.
+            speech_available=_speech_ready(row),
         )
 
     async def get(self) -> AISettingsRead | None:
@@ -294,6 +455,31 @@ class AISettingsService:
         features = {
             f: data.features[f].model_dump() for f in AI_FEATURES if f in data.features
         }
+        # Speech is optional and independent: no speech provider means "reuse the chat one",
+        # which resolves only for a provider that can transcribe.
+        speech_key = (data.speech_api_key or "").strip()
+        speech_base_url = (data.speech_base_url or "").strip() or None
+        if data.speech_provider is None:
+            speech_key_enc = None  # clearing the provider clears its credential with it
+        elif speech_key:
+            speech_key_enc = encrypt(speech_key)
+        else:
+            speech_key_enc = row.speech_api_key_enc if row is not None else None
+        if data.speech_provider == "openai_compatible" and not speech_base_url:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"speech_base_url": "errors.required"},
+            )
+        if data.speech_provider is not None and not speech_key_enc:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"speech_api_key": "errors.required"},
+            )
+
         values = {
             "provider": data.provider,
             "api_key_enc": api_key_enc,
@@ -302,6 +488,13 @@ class AISettingsService:
             "features": features,
             "house_style": (data.house_style or "").strip() or None,
             "monthly_token_budget": data.monthly_token_budget,
+            "speech_provider": data.speech_provider,
+            "speech_api_key_enc": speech_key_enc,
+            "speech_base_url": speech_base_url if data.speech_provider else None,
+            "speech_model": ((data.speech_model or "").strip() or None)
+            if data.speech_provider
+            else None,
+            "monthly_audio_seconds_budget": data.monthly_audio_seconds_budget,
         }
         if row is None:
             row = AISettings(org_id=self.ctx.org.id, **values)

@@ -8,6 +8,7 @@ infrastructure administered under Instellingen — the client page shows the cli
 
 from __future__ import annotations
 
+from app.modules.hosting.impex import HOSTING_IMPEX
 from app.modules.hosting.permissions import HOSTING_PERMISSIONS
 from app.modules.hosting.router import router
 from app.registry import ModuleDescriptor, registry
@@ -20,6 +21,7 @@ module = ModuleDescriptor(
     # hosting) is bundled in *license documents* (a plan lists all three skus), never in code.
     sku="hosting",
     permissions=HOSTING_PERMISSIONS,
+    impex=[HOSTING_IMPEX],
 )
 
 registry.register(module)

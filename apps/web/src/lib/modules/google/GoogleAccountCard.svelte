@@ -10,6 +10,8 @@
    * **Host contract:** the account page exposes `?/googleDisconnect` and `?/googleGmailPrefs`.
    */
   import { enhance } from "$app/forms";
+  import { page } from "$app/state";
+  import { can } from "$lib/core/permissions";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -42,19 +44,31 @@
   const busy = new InFlight();
 
   const connection = $derived(data.connection);
+  // Marketing (GA4 / Search Console / Ads) rides this same grant. Asking for it here, for
+  // someone who links client accounts, is what makes "connect Google" a *single* trip through
+  // Google's consent screen instead of one per surface discovered later on a client page.
+  const includeMarketing = $derived(
+    (page.data.theme?.enabledModules ?? []).includes("marketing") &&
+      can(page.data.user, "marketing.link.manage"),
+  );
   const surfaces = $derived(
     [
       data.calendar_enabled ? t("google.surface.calendar") : null,
       data.drive_enabled ? t("google.surface.drive") : null,
       data.gmail_enabled ? t("google.surface.gmail") : null,
+      includeMarketing ? t("google.surface.marketing") : null,
     ].filter(Boolean),
   );
 
   // Same-host navigation: Traefik routes `/api/` to the API, so the session cookie and the
   // tenant hostname ride along — exactly what the connect flow's require_context needs.
-  const connectHref = $derived(
-    `/api/v1/google/oauth/connect${includeGmail ? "?include_gmail=true" : ""}`,
-  );
+  const connectHref = $derived.by(() => {
+    const params = new URLSearchParams();
+    if (includeGmail) params.set("include_gmail", "true");
+    if (includeMarketing) params.set("include_marketing", "true");
+    const query = params.toString();
+    return `/api/v1/google/oauth/connect${query ? `?${query}` : ""}`;
+  });
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand";

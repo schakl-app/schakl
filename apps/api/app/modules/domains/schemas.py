@@ -16,6 +16,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.core.billing import AutoInvoiceMode
 from app.core.party.schemas import PartyReadRef, PartyRef
 from app.modules.domains.models import DomainStatus
 
@@ -87,6 +88,12 @@ class DomainBase(BaseModel):
     email_contact: PartyRef | None = None
     #: A per-domain price agreed outside the TLD list (#250); NULL = the TLD price applies.
     price_override: Decimal | None = Field(default=None, ge=0, le=Decimal("9999999999.99"))
+    #: Whether this domain is invoiced at all (#298). ``None`` = follow the register: bill it
+    #: when a registrar register we have read holds it, and while no register is connected.
+    invoiceable: bool | None = None
+    #: How far the renewal cron takes this domain's invoice by itself, overriding the org
+    #: default; ``None`` inherits. Only about the paper — nothing here renews a registration.
+    auto_invoice_mode: AutoInvoiceMode | None = None
     custom: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -112,6 +119,12 @@ class DomainUpdate(BaseModel):
     email_provider_id: uuid.UUID | None = None
     email_contact: PartyRef | None = None
     price_override: Decimal | None = Field(default=None, ge=0, le=Decimal("9999999999.99"))
+    #: Whether this domain is invoiced at all (#298); explicit ``null`` clears the decision back
+    #: to "follow the register". Absent leaves it alone — the ``exclude_unset`` split.
+    invoiceable: bool | None = None
+    #: How far the renewal cron takes this domain's invoice by itself, overriding the org
+    #: default; ``None`` inherits. Only about the paper — nothing here renews a registration.
+    auto_invoice_mode: AutoInvoiceMode | None = None
     custom: dict[str, Any] | None = None
 
 
@@ -139,6 +152,17 @@ class DomainRead(BaseModel):
     tld: str | None = None
     price_override: Decimal | None = None
     next_invoice_date: date | None = None
+    auto_invoice_mode: AutoInvoiceMode | None = None
+    #: The stored decision (#298): ``true``/``false`` explicit, ``null`` = follow the register.
+    invoiceable: bool | None = None
+    #: What that resolves to *now* — what the renewal cron and the outstanding picker act on.
+    invoiceable_effective: bool = True
+    #: Which rule decided: ``explicit`` (a person), ``register`` (a connected register that has
+    #: been read), ``default`` (no register connected, so it bills as it always has).
+    invoiceable_source: Literal["explicit", "register", "default"] = "default"
+    #: The register keys holding this registration (``oxxa``, ``cloudflare``) — what lets the
+    #: screen say *which* one answered instead of "the register".
+    registers: list[str] = Field(default_factory=list)
     #: The price a renewal would draft at today: ``price_override``, else the TLD's current
     #: list price, else NULL. Display-only — an invoice snapshots at draft time, never here.
     resolved_price: Decimal | None = None

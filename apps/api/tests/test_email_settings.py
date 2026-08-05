@@ -112,7 +112,11 @@ async def test_tenant_isolation(client_for) -> None:
         headers = await auth_cookie(t2.user)
         got = await c.get("/api/v1/settings/email", headers=headers)
         assert got.status_code == 200
-        assert got.json() is None  # org B never sees org A's transport
+        # Org B never sees org A's transport. The read is always an object now (it also
+        # reports what is *sending*, epic #199), so "nothing stored" is a null provider.
+        assert got.json()["provider"] is None
+        assert got.json()["active_provider"] is None
+        assert got.json()["from_email"] == ""
 
 
 async def test_delete_turns_email_off_and_test_reports_not_configured(client_for) -> None:
@@ -122,7 +126,8 @@ async def test_delete_turns_email_off_and_test_reports_not_configured(client_for
         saved = await c.put("/api/v1/settings/email", json=_BREVO, headers=headers)
         assert saved.status_code == 200
         assert (await c.delete("/api/v1/settings/email", headers=headers)).status_code == 204
-        assert (await c.get("/api/v1/settings/email", headers=headers)).json() is None
+        gone = (await c.get("/api/v1/settings/email", headers=headers)).json()
+        assert gone["provider"] is None and gone["active_provider"] is None
 
         result = await c.post("/api/v1/settings/email/test", headers=headers)
         assert result.status_code == 200

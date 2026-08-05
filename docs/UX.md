@@ -78,6 +78,46 @@
   sends that id — a pre-filled checkbox the action ignores links nothing. This is easy to
   reintroduce one field at a time, so when you add a new inline quick-create, check it forwards
   the context the parent already knows.
+  **And the auto-select must not fire on a form result it did not ask for.** A quick-create
+  answers through `page.form.inlineCreated`, which outlives the dialog that produced it: a picker
+  living in a per-record dialog (the contactmoment review, keyed on the row) is a *fresh instance*
+  the next time it opens, and one that trusts whatever is already on `page.form` will pre-select
+  the project created for the previous record — pre-filled, plausible, and filed onto the wrong
+  row the moment the user approves. Seed the "already handled" id from `page.form` at mount, so
+  only a create made by *this* instance is acted on.
+  **And the context narrows the picker, not just its ＋: a picker on a form that has a client
+  lists that client's rows, and keeps narrowing as the client changes.** The contact picker on a
+  contactmoment offered the agency's whole address book. Two shapes did it: it read only the
+  client the *host page* had pinned — so on Interacties, where nothing is pinned, it never
+  narrowed at all no matter which client the moment was being filed to — and a scoped fetch that
+  came back empty quietly widened back to the org, so a client with no linked contacts got
+  everyone. Both end the same way: a call logged against someone at another client, which reads
+  as perfectly ordinary on every screen afterwards because nothing downstream cross-checks it.
+  Scope on the form's **effective** client (pinned, picked, or backfilled from a project/task
+  pick), re-fetch when it changes, and drop a selection the new client does not know — the
+  cascade already does exactly that to a task when its project changes. Say so when you drop
+  one, rather than leaving the field to look like it blanked itself. And do not fall back to the
+  unscoped list when a client's is empty: that is a real answer, and the ＋ is what turns it into
+  one row, pre-linked to the same client.
+  **The ＋ belongs to the component that draws the picker, not to the page that happens to host
+  it.** The obvious wiring is a callback — the form raises "the user typed a name that isn't
+  there", the page owns the dialog and the action. It reads cleanly, and it silently makes the
+  affordance *per host*: the contactmoment form's client and project ＋ were passed in by
+  `/interactions` alone, so the same component rendered on a company, project, contact or task
+  page had none, and even that page's own **edit** modal — three lines below the create one —
+  was never wired. Nobody notices, because each screen looks deliberate on its own. So put the
+  quick-create dialog **inside** the component and post to an action the module exports
+  (`interactionActions`), which every host already spreads: the ＋ then arrives with the panel
+  instead of having to be remembered per screen. The host-owned shape is also what let a page
+  quietly ship a *stub* form — the one this replaced wrote a name and a client, skipping the
+  billable flag and the tenant's own project custom fields — because the real dialog and the
+  picker it serves had drifted onto different screens.
+  A self-contained dialog needs its custom-field definitions without the host's load, so it
+  fetches them on **first open** and holds "Aanmaken" until they land (`ProjectQuickCreate`,
+  `CompanyQuickCreate`). That is also the cheaper shape: the definitions used to ride every
+  single page load for a modal most visits never open.
+  **And the ＋ is a write control, so it self-gates on the API's own permission** (CLAUDE.md §15) —
+  the timeline is client-reachable, and `!isPortal` is not the gate.
 - **Quick-add where the user is**: contacts on the client page, projects/clients from the
   time entry form, checklist items on the card. The full forms still exist on their own
   pages; quick-add is an accelerator, not a replacement.
@@ -95,7 +135,8 @@
   A panel that has no page-level edit mode to ride carries its own ⋯ → Bewerken / Klaar (the
   contacts panel on a client does; the client page's own ⋯ edits the *client*, a different
   surface). The pickers used *inside* an edit surface — `AssigneePicker` for the employees on a
-  client or project, `ContactDraftField` for contacts on a not-yet-created client — are always
+  client or project, `ContactDraftField` for contacts on a not-yet-created client,
+  `ContactChips` for the people a contactmoment was with (#300) — are always
   interactive, because the surface itself is already edit mode.
   `AssigneePicker` posts the whole roster in one hidden field (an edit surface has exactly one
   save button); `LinkField` posts per chip, because there each link is its own record.
@@ -198,6 +239,26 @@
     off, and the active sort is named at the top. Headers stay clickable on desktop; they are the
     shortcut, never the only way in. Sorting by a *person* (assigned employee) orders by their
     display name — never by a user id, which is what a naive `ORDER BY` on the FK would do.
+  - **A list that can travel by spreadsheet says so on the list.** Export and Import are one
+    shared component (`core/impex/ImpexBar`) sitting beside the Kolommen popover on every such
+    screen — clients, contacts, projects, taken, urenstaat, abonnementen and their two catalogs,
+    domeinen, websites, hosting, domeintarieven. Not a per-page decision: the first round shipped
+    the pair hand-written on two screens and absent from the other ten, so someone holding a
+    spreadsheet of domains had to guess it lived in Instellingen. Export carries the list's
+    **current** filters (so the file is the list on screen, whole — not the loaded page), Import
+    opens the shared wizard, and both controls check the bulk permission *and* the entity's own
+    before they render, mirroring the two gates the API declares. Instellingen → Import & export
+    stays as the overview of what can travel at all; it is never the only way in.
+  - **A bulk action says what it will actually do, and reports what it did** (#299). A selection
+    is rarely uniform — the interacties list mixes still-pending emails with reviewed ones, and
+    someone else's mailbox with your own — so each button in the `selection` bar acts on **its
+    own eligible subset** and carries that count whenever it is smaller than the selection
+    ("Goedkeuren (2)" over eight rows). A button that silently did less than it said is the
+    failure this prevents. Afterwards the page states the honest outcome — "6 goedgekeurd · 2
+    overgeslagen", with the distinct reasons — because the API reports ineligible rows instead
+    of rolling the good ones back (raising mid-batch would undo the forty-nine that worked), and
+    a UI that swallowed that would be claiming work it did not do. The eligible-subset filter is
+    still only UX: the API re-checks every row, so the bar may narrow the batch but never widens it.
   - **A hidden column costs nothing.** An expensive column (the budget roll-up) is an opt-in
     aggregate: the page's `load` asks the API for it only when the column is visible. This is why
     column metadata is a plain module and the cell renderers are snippets — a server load can read
@@ -224,6 +285,21 @@
     the sections; so a board that groups by status declares no status column, because sorting one
     would visibly do nothing. Which sections are folded is a personal view option, saved with the
     columns.
+  - **A row may belong to several sections.** `groupBy` may return more than one key, and the
+    record is then drawn under each — a contact linked to two clients is listed under both,
+    because the alternative is picking one client to be "theirs" and that fact does not exist
+    (`is_primary` marks the primary contact *for a company*, not a person's primary company).
+    It is one record shown twice, not two, so the id repeats across sections and never within
+    one. A row that matched *no* declared section still falls to "Overig" — but one that matched
+    at least one does not, or a two-client contact whose second client fell off the page would
+    appear both where it belongs and under "Overig". The grouped-by column may still be worth
+    keeping when it says something the section heading cannot: from inside the Acme section, the
+    client chips are the only thing that says this person also sits under Globex. It loses its
+    `sortKey` rather than the whole column.
+  - **A sectioned list must say when it is only a page.** Counts in section headings read as
+    complete answers — "Acme (2)" above a client that has seven contacts is a wrong answer, not a
+    partial one. A capped list therefore prints what is on screen out of the total, and says how
+    to narrow it (`contacts.truncated`). A cap is reported, never silent (docs/PERFORMANCE.md).
 - **A panel is how a number opens.** A module hangs a panel off another module's detail page by
   registering an `EntityPanelSpec` (`core/registry.ts`), never by having the host page import it —
   a tenant with the module disabled then simply never renders it, and pays for no call. The panel
@@ -518,12 +594,24 @@
   keuzelijsten), how each module behaves (Modules & werkprocessen), what it talks to (Communicatie
   & koppelingen). A card is named after what is *on* it — the screen holding only client numbering
   is "Klantnummering", not "Bedrijven", which read as a sibling of Klantgroepen and was neither.
-- **The Instellingen rail** (`settings/+layout.svelte`) renders from `xl` up, and never on the index
-  itself — there the cards *are* the navigation, with subtitles the rail has no room for. Below
-  `xl` the content keeps the full column: a 13 rem rail on a laptop costs every settings form a
-  fifth of its width to save one click, and the app-wide breadcrumb row is already the way back. It
-  lists exactly what the index would show that viewer, marks the current screen, and resolves a
-  deep link (`/settings/roles/<id>`) to its section by longest matching href.
+- **The Instellingen rail** (`core/settings/SettingsShell.svelte`) renders from `xl` up, and never
+  on the index itself — there the cards *are* the navigation, with subtitles the rail has no room
+  for. Below `xl` the content keeps the full column: a 13 rem rail on a laptop costs every settings
+  form a fifth of its width to save one click, and the app-wide breadcrumb row is already the way
+  back. It lists exactly what the index would show that viewer, marks the current screen, and
+  resolves a deep link (`/settings/roles/<id>`) to its section by longest matching href.
+  It is a **component, not a route layout**, because of the bullet two above this one: the three
+  catalogs that live on their working page (#229) are Instellingen screens at a `/tasks/`,
+  `/subscriptions/` or `/domains/` URL, and a layout under `/settings/` can only wrap its own
+  subtree. So they mounted no rail at all — clicking Taaksjablonen, Standaardabonnementen or
+  Domeinprijzen in the rail dropped you out of the section and took the menu with it, on exactly
+  the three screens whose URL gives no hint how to get back. Each now mounts `SettingsShell`
+  through its own one-route `+layout.svelte`, and its `+layout.server.ts` resolves the posture flag
+  the rail needs via the shared `settingsShellData()`, so every rail lists the same entries. On
+  `/tasks/templates` the tasks tab row renders *inside* the shell: the page is a tab of the tasks
+  section **and** an Instellingen screen, and both ways in stay true.
+  `tests/unit/settings-rail.test.ts` fails if a registry entry outside `/settings/` has no shell —
+  nothing else in the build would notice, because the screen renders perfectly well without it.
 - The header holds only the profile menu (avatar → name, personal settings, logout).
   Language lives in personal settings, not the header.
 
@@ -553,6 +641,20 @@
 
 - Buttons that configure org-wide behaviour placed inside a working screen (the old "save
   as team default" on the dashboard) — config goes to Settings.
+- **A form filling itself in from the database and leaving the user to delete the wrong
+  parts.** Picking a client on a new invoice used to drop *every* unbilled hour they had onto
+  it as lines. It looked helpful and was the opposite: a partly-billable month became a list to
+  prune rather than a list to choose from, and nothing on screen said where the lines had come
+  from. What replaced it is the shape to copy — the section states what is waiting ("12"), and
+  a picker adds only what was ticked. Offer the count, never the contents.
+- **A per-row field that can only be filled in one way.** The invoice line editor asked for a
+  *unit* on every line, including the hours ones, where the only correct answer is "uur" — and
+  for a *type*, which is just the section the line already sits in. Both were dropped: derive
+  what the kind determines, and ask only where the answer is genuinely open (a service line
+  really is sold in stuks or dagen).
+- **A picker that hides what it has already done.** A billed subscription period is listed and
+  disabled with "al gefactureerd", not omitted: "did I invoice March?" is the question the
+  picker exists to answer, and answering it by omission is what produces the duplicate.
 - Native date and time inputs (US format, AM/PM clock, popup anchored to the window corner) —
   assuming a native control honours our locale hints when it does not.
 - Two favicon `<link>`s competing (static + tenant) — exactly one, tenant-driven.
@@ -630,6 +732,24 @@
   while its `GET` sits on a key the client holds. Those two lists now read as "you may edit a task"
   (`tasks.task.write`) and "you may apply a template" (`tasks.template.apply`), so a portal login
   cannot enumerate them at all, and the load skips the fetch it would 403 on.
+- **One screen for two audiences, gated on `!isPortal` instead of on the key.** Facturen (#266)
+  is the case the rule above does not cover: it is *not* a write surface, so it should not be
+  gated whole — a client belongs on it, reading their own invoices. What differs is the **chrome**
+  around the list: the Concepten tile and its filter chip, the client picker, "Nieuwe factuur",
+  the ⋯ Bewerken, the *Van abonnement* provenance chip, the activity trail, and the sibling
+  *Nog te factureren* in the sidebar. Each of those is a control whose API answer is
+  `invoicing.invoice.read:any`, so each renders behind `can(user, "invoicing.invoice.read", "any")`
+  — the same key **and scope** the route declares. `!isPortal` would have been shorter and wrong
+  twice over: it still shows the agency's draft count to a restricted staff member, and it stops
+  reading like a permission the admin can see in Instellingen → Rollen. A scoped key is the tool
+  for "the same screen, two depths"; `NavItem.requiresScope` exists so the sidebar can express it
+  too, because a nav link that always 403s is a broken control (#253).
+  Two things travel with it. The heading and the empty state say *Mijn facturen* / "U heeft nog
+  geen facturen" rather than the agency's own *Facturatie* — a screen names itself for whoever
+  opened it. And the load **skips what only the editor consumes**: the contacts, tax rates,
+  products, templates, settings and custom-field lookups exist for `DocumentForm` alone, so they
+  now hang off `canWrite`. That was five wasted round-trips for every read-only viewer before it
+  was a leak, and the client's invoice page went from eight API calls to two.
 - **A refusal that hides which of the two gates fired.** Permissions say *may they*, the company
   horizon says *which rows exist for them* (CLAUDE.md §15), and out-of-horizon deliberately answers
   `404 errors.not_found` so a get-by-id can't leak existence. Correct — but a `client`-role login

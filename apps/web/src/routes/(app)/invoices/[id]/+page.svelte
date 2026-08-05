@@ -17,13 +17,27 @@
   import Modal from "$lib/core/ui/Modal.svelte";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import DocumentForm from "$lib/modules/invoicing/DocumentForm.svelte";
-  import DocumentView from "$lib/modules/invoicing/DocumentView.svelte";
-  import { docMoney } from "$lib/modules/invoicing/types";
+  import DocumentFrame from "$lib/modules/invoicing/DocumentFrame.svelte";
+  import { docMoney, docStatus } from "$lib/modules/invoicing/types";
 
   let { data, form } = $props();
 
   const invoice = $derived(data.invoice);
   const isDraft = $derived(invoice.status === "draft");
+  const isCredit = $derived(invoice.kind === "credit_note");
+  const docState = $derived(docStatus(invoice));
+  // A credit note the invoice could not absorb is money going back to the client, so the
+  // whole payment affordance changes voice: you register a refund, not a payment.
+  const owesRefund = $derived(isCredit && Number(invoice.outstanding) < 0);
+  // Withdrawing is about registered money, not about status: a fully applied credit note
+  // rests at `paid` without a cent having moved, and is the one document still withdrawable.
+  // An invoice a credit note wrote down is not, or that credit note would be left stranded.
+  const canCancel = $derived(
+    data.canWrite &&
+      Number(invoice.paid_total) === 0 &&
+      !invoice.credited &&
+      (invoice.status === "open" || (isCredit && invoice.status === "paid")),
+  );
   // The edit affordance opens on a row's ⋯ → Bewerken arrival (#78), then the user owns it.
   let editing = $state(editIntent());
   $effect(() => {
@@ -47,8 +61,6 @@
   // The invoice's client rides along (#247): the new contact links to it by default.
   let qcContactCompany = $state<{ id: string; name: string } | null>(null);
 
-  const template = $derived(data.templates.find((tpl) => tpl.id === invoice.template_id) ?? null);
-  const theme = $derived(page.data.theme);
   const money = (value: string | number | null | undefined) =>
     docMoney(value, invoice.currency, data.locale);
 
@@ -76,22 +88,45 @@
         : t("invoicing.kind.invoice")}
       {title}
     </h1>
-    {#if invoice.overdue}
+    {#if docState.tone === "danger"}
       <span
         class="rounded-md bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/40 dark:text-red-300"
-        >{t("invoicing.status.overdue")}</span
+        >{t(docState.key)}</span
       >
     {:else}
       <span class="rounded-md bg-surface px-2 py-0.5 text-xs text-text-muted"
-        >{t(`invoicing.status.${invoice.status}`)}</span
+        >{t(docState.key)}</span
       >
     {/if}
+    <!-- Both halves of a correction link to each other: a credit note that names no invoice
+         is a document you have to go looking for. -->
+    {#if isCredit && invoice.credit_for_id}
+      <a
+        href="/invoices/{invoice.credit_for_id}"
+        class="rounded-md bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand hover:underline"
+      >
+        {t("invoicing.field.credit_for")}
+        {invoice.credit_for_number || ""}
+      </a>
+    {/if}
+    {#each invoice.credit_notes ?? [] as note (note.id)}
+      <a
+        href="/invoices/{note.id}"
+        class="rounded-md bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand hover:underline"
+      >
+        {t("invoicing.field.credited_by")}
+        {note.number || t("invoicing.status.draft")}
+      </a>
+    {/each}
     <a
       href="/companies/{invoice.company_id}"
       class="truncate text-sm text-text-muted hover:text-brand">{invoice.company_name}</a
     >
-    {#if invoice.subscription_id}
-      <!-- Provenance (owner feedback): a subscription-cycle draft says so, with its period. -->
+    {#if invoice.subscription_id && data.canReadRegister}
+      <!-- Provenance (owner feedback): a subscription-cycle draft says so, with its period.
+           A link into the agency's subscription register, so it follows the same gate as the
+           rest of the section's own chrome (#266) — a client's invoice may well come from a
+           recurring agreement, and the chip would have been a guaranteed 403 for them. -->
       <a
         href="/subscriptions"
         class="rounded-md bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand hover:underline"
@@ -123,7 +158,10 @@
       {#if data.canPay}
         <button
           class="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:border-brand"
-          onclick={() => (payOpen = true)}>{t("invoicing.action.register_payment")}</button
+          onclick={() => (payOpen = true)}
+          >{t(
+            owesRefund ? "invoicing.action.register_refund" : "invoicing.action.register_payment",
+          )}</button
         >
       {/if}
     {/if}
@@ -160,7 +198,12 @@
               },
             ]
           : []),
-        ...(data.canWrite && (invoice.status === "open" || invoice.status === "paid")
+        // A credit note is not credited (you re-bill with an invoice), and neither is one
+        // already written off in full — both 409 at the API, so neither is drawn.
+        ...(data.canWrite &&
+        !isCredit &&
+        !invoice.fully_credited &&
+        (invoice.status === "open" || invoice.status === "paid")
           ? [
               {
                 label: t("invoicing.action.credit"),
@@ -169,7 +212,7 @@
               },
             ]
           : []),
-        ...(data.canWrite && invoice.status === "open"
+        ...(canCancel
           ? [
               {
                 label: t("invoicing.action.cancel"),
@@ -236,14 +279,11 @@
         <input type="hidden" name="_status" value={invoice.status} form="doc-form-invoice" />
       </div>
     {:else}
-      <DocumentView
-        doc={invoice}
-        kind="invoice"
-        {template}
-        seller={data.settings?.company_details ?? {}}
-        brandName={theme?.brandName ?? ""}
-        logoUrl={theme?.logoUrl ?? null}
-        brandColor={theme?.primaryColor ?? "#4f46e5"}
+      <DocumentFrame
+        src="/invoices/{invoice.id}/preview"
+        version={invoice.updated_at}
+        title={`${t("invoicing.kind.invoice")} ${invoice.number ?? ""}`}
+        class="mx-auto max-w-3xl"
       />
     {/if}
 
@@ -261,19 +301,37 @@
 
   <aside class="space-y-4">
     <div class="rounded-xl border border-border bg-surface-raised p-4">
-      <h2 class="mb-2 text-sm font-semibold text-text">{t("invoicing.field.outstanding")}</h2>
+      <h2 class="mb-2 text-sm font-semibold text-text">
+        {t(owesRefund ? "invoicing.field.refund_due" : "invoicing.field.outstanding")}
+      </h2>
       <p
         class="text-2xl font-semibold {invoice.overdue
           ? 'text-red-600 dark:text-red-400'
           : 'text-text'}"
       >
-        {money(invoice.outstanding)}
+        {money(owesRefund ? -Number(invoice.outstanding) : invoice.outstanding)}
       </p>
       <dl class="mt-2 space-y-1 text-sm">
         <div class="flex justify-between">
           <dt class="text-text-muted">{t("invoicing.field.total")}</dt>
           <dd class="tabular-nums text-text">{money(invoice.total)}</dd>
         </div>
+        <!-- The second way a balance comes down. Shown only when it did, so an ordinary
+             invoice keeps the two-line card it always had. -->
+        {#if Number(invoice.credited_total) !== 0}
+          <div class="flex justify-between">
+            <dt class="text-text-muted">{t("invoicing.field.credited")}</dt>
+            <dd class="tabular-nums text-text">{money(-Number(invoice.credited_total))}</dd>
+          </div>
+        {/if}
+        {#if isCredit && Number(invoice.applied_total) !== 0}
+          <div class="flex justify-between">
+            <dt class="text-text-muted">
+              {t("invoicing.field.applied", { number: invoice.credit_for_number || "" })}
+            </dt>
+            <dd class="tabular-nums text-text">{money(invoice.applied_total)}</dd>
+          </div>
+        {/if}
         {#if invoice.due_date}
           <div class="flex justify-between">
             <dt class="text-text-muted">{t("invoicing.field.due_date")}</dt>
@@ -439,7 +497,10 @@
   </form>
 </Modal>
 
-<Modal bind:open={payOpen} title={t("invoicing.payment.title")}>
+<Modal
+  bind:open={payOpen}
+  title={t(owesRefund ? "invoicing.action.register_refund" : "invoicing.payment.title")}
+>
   <form
     method="POST"
     action="?/payment"
@@ -464,7 +525,7 @@
           id="pay-amount"
           name="amount"
           type="number"
-          step="0.01"
+          step="any"
           required
           value={invoice.outstanding}
           class={inputClass}

@@ -3,6 +3,25 @@
 Password-reset (and invite, which rides the same token — #161) emails go through the
 tenant-branded org transport (#17); a missing transport degrades to the P0 behaviour of
 logging the token. Password hashing uses FastAPI Users' default (Argon2 via pwdlib).
+
+**The account lookup is scoped to the request's org.** ``users`` is instance-level, so
+``get_by_email`` answered from every tenant at once — which is the single lookup behind three
+separate cross-tenant flaws on a multi-org instance: a member of org B could authenticate on
+org A's hostname (``authenticate`` calls it), could have a password-reset mail sent to them
+from org A's branded transport, and could be probed for existence from a tenant they have
+nothing to do with. Narrowing this one method fixes all three, because the framework routes
+that matter (``/auth/login``, ``/auth/forgot-password``, ``/auth/request-verify``) all reach
+the account through it.
+
+Two lookups deliberately stay **global**, and both are uniqueness checks rather than
+authentication: ``create`` goes through ``self.user_db.get_by_email`` (registering an address
+that exists in another tenant must still collide — ``users.email`` is globally unique), and
+``POST /users/me/email`` runs its own global query (``account.py``). Scoping either would turn
+a clean 409 into an integrity error.
+
+A host that resolves to **no** org does not narrow anything: the cloud console lives on the
+apex where no tenant exists (docs/CLOUD.md), and an instance owner must still be able to log
+in there. That session names no org and so reaches no tenant data (``backend.py``).
 """
 
 from __future__ import annotations
@@ -11,10 +30,12 @@ import logging
 import uuid
 
 from fastapi import Request
-from fastapi_users import BaseUserManager, InvalidPasswordException, UUIDIDMixin
+from fastapi_users import BaseUserManager, InvalidPasswordException, UUIDIDMixin, exceptions
+from sqlalchemy import select
 
 from app.config import settings
 from app.core.auth.models import User
+from app.db import async_session_maker, set_current_org
 
 logger = logging.getLogger("schakl.auth")
 
@@ -23,9 +44,58 @@ PASSWORD_MIN_LENGTH = 8
 PASSWORD_MAX_LENGTH = 128
 
 
+async def member_of_request_org(request: Request | None, user: User) -> bool:
+    """Does ``user`` hold a membership in the org this request's hostname resolves to?
+
+    ``True`` when there is no request to resolve against, and when the host resolves to no org
+    (the console apex, and any pre-tenant caller) — this narrows a lookup, it does not invent a
+    tenant. Its own session, like every pre-auth read: ``memberships`` is RLS-forced, so the GUC
+    goes on before the membership read. The org itself comes from ``request_org_id``, which the
+    login route resolves anyway, so the two share one hostname lookup.
+    """
+    if request is None:
+        return True
+    # Imported here, not at module scope: ``tenancy`` imports the auth package (the same cycle
+    # ``sso.require_local_login`` steps around).
+    from app.core.models import Membership
+    from app.core.tenancy import request_org_id
+
+    org_id = await request_org_id(request)
+    if org_id is None:
+        return True
+    async with async_session_maker() as session:
+        await set_current_org(session, org_id)
+        found = await session.scalar(
+            select(Membership.id).where(
+                Membership.org_id == org_id, Membership.user_id == user.id
+            )
+        )
+    return found is not None
+
+
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
     reset_password_token_secret = settings.secret_key
     verification_token_secret = settings.secret_key
+
+    def __init__(self, user_db, request: Request | None = None) -> None:  # noqa: ANN001
+        super().__init__(user_db)
+        #: Resolved lazily, only by :meth:`get_by_email` — this manager is a dependency of
+        #: *every* authenticated request (FastAPI Users' ``Authenticator``), so resolving the
+        #: org up front would put an extra query on the whole app (docs/PERFORMANCE.md).
+        self.request = request
+
+    async def get_by_email(self, user_email: str) -> User:
+        """The account with this address **in the request's org**, or ``UserNotExists``.
+
+        Callers cannot tell "no such account" from "not one of ours", which is the point: the
+        password route answers ``LOGIN_BAD_CREDENTIALS`` either way and the reset route answers
+        202 either way, so neither confirms that an address exists in some other tenant.
+        """
+        user = await super().get_by_email(user_email)
+        if not await member_of_request_org(self.request, user):
+            logger.info("Account lookup refused: %s is not a member of this org", user_email)
+            raise exceptions.UserNotExists()
+        return user
 
     async def validate_password(self, password: str, user) -> None:  # noqa: ANN001 — FastAPI Users' contract
         """One policy for register, reset and update (#161) — FastAPI Users' default accepts

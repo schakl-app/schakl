@@ -27,7 +27,6 @@ through the module's own service/repository — the descriptor is a shape, not a
 
 from __future__ import annotations
 
-import uuid
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
@@ -60,10 +59,16 @@ CreateRow = Callable[["RequestContext", dict[str, Any]], Awaitable[Any]]
 #: Update one existing entity (second arg: a row ``find_existing`` returned).
 UpdateRow = Callable[["RequestContext", Any, dict[str, Any]], Awaitable[None]]
 
-#: Batch-resolve raw FK references (exact name or UUID string) → per reference either the
-#: resolved tenant-scoped id, or an i18n error key ("impex.errors.unresolved_reference" /
-#: "impex.errors.ambiguous_match") that becomes that row's error.
-FkResolver = Callable[["RequestContext", list[str]], Awaitable[dict[str, uuid.UUID | str]]]
+#: Batch-resolve raw references (an exact name, an e-mail, a UUID string, a party token) → per
+#: reference either the resolved value, or an i18n error key
+#: ("impex.errors.unresolved_reference" / "impex.errors.ambiguous_match") that becomes that
+#: row's error.
+#:
+#: **A str return is always an error**, anything else is a success — that is the whole contract,
+#: and it is what lets a resolver hand back something other than an id (a ``party`` column
+#: resolves to a :class:`~app.core.party.schemas.PartyRef`, which the owning service then
+#: validates as it would one from a form) without core learning the shape.
+FkResolver = Callable[["RequestContext", list[str]], Awaitable[dict[str, Any]]]
 
 
 @dataclass(frozen=True)
@@ -84,10 +89,18 @@ class ImpexColumn:
       (row error ``impex.errors.invalid_bool``).
     * ``fk`` — raw reference handed to the descriptor's resolver; the resolved id lands in
       ``field`` (e.g. column ``company`` → ``company_id``).
+    * ``party`` — the same, for a :mod:`app.core.party` reference: the cell is a token
+      (``agency``, ``company``, ``employee:jan@bureau.nl``, ``contact:info@klant.nl``,
+      ``company:Acme``) and what lands in ``field`` is a ``PartyRef`` the owning service
+      validates exactly as it would one from the form. Unlike ``fk`` it *is* clearable —
+      "no contact set" is a real state, "no company" for a domain is not.
 
     An **empty cell** on an update clears the field when ``clearable`` (the round-trip rule:
     exporting a NULL writes "", importing "" restores NULL) and leaves it untouched otherwise —
-    a non-nullable field like ``status`` cannot be "cleared", and an FK column never unlinks.
+    a non-nullable field like ``status`` cannot be "cleared". This holds for references too:
+    whether an emptied cell *detaches* is a property of the link, not of it being a link. A
+    hosting record with no client is shared infrastructure, a real state the file must be able
+    to express; a domain with no client is nonsense, so its column says ``clearable=False``.
     A ``required`` column must be present in the header and non-empty in every row.
     """
 
@@ -124,6 +137,65 @@ class ImpexColumn:
         return self.field or self.key
 
 
+def locale_label_columns(
+    source: str = "label_i18n",
+    *,
+    prefix: str = "label",
+    aliases: Mapping[str, tuple[str, ...]] | None = None,
+) -> tuple[ImpexColumn, ...]:
+    """One column per locale the instance ships, for a tenant's ``label_i18n`` dict.
+
+    Tenant-defined catalogs (subscription types, and every ``label_i18n`` catalog after them)
+    carry their labels per locale, and a CSV cell holds one value — so the shape is one column
+    per locale (``label_nl``, ``label_en``), never a single "label" whose meaning depends on
+    who exported it.
+
+    The locales come from :data:`app.config.settings.supported_locales`, so §8's promise holds
+    here too: adding a locale is adding a JSON file plus that setting, and the import/export
+    grows the column by itself. The descriptor reassembles the dict from the ``<prefix>_<locale>``
+    values it gets back — core never learns which catalog it is writing to.
+    """
+    from app.config import settings
+
+    by_locale = aliases or {}
+    return tuple(
+        ImpexColumn(
+            f"{prefix}_{locale}",
+            getter=lambda row, loc=locale: (getattr(row, source, None) or {}).get(loc),
+            aliases=by_locale.get(locale, ()),
+        )
+        for locale in settings.supported_locales
+    )
+
+
+def merge_locale_labels(
+    values: Mapping[str, Any], current: Mapping[str, str] | None = None, *, prefix: str = "label"
+) -> dict[str, str] | None:
+    """The inverse of :func:`locale_label_columns`: ``{label_nl: …}`` → ``{"nl": …}``.
+
+    Merged over ``current`` so a file carrying only ``label_nl`` edits the Dutch label and
+    leaves the English one alone — the same "an absent column is not an empty value" rule the
+    whole engine runs on. Returns ``None`` when the file carried no label column at all, which
+    the caller reads as "don't touch the labels".
+    """
+    from app.config import settings
+
+    present = {
+        locale: values[f"{prefix}_{locale}"]
+        for locale in settings.supported_locales
+        if f"{prefix}_{locale}" in values
+    }
+    if not present:
+        return None
+    merged = dict(current or {})
+    for locale, label in present.items():
+        if label:
+            merged[locale] = label
+        else:
+            merged.pop(locale, None)  # an emptied cell removes that locale's label
+    return merged
+
+
 @dataclass(frozen=True)
 class ImpexDescriptor:
     """Everything core needs to import/export one entity type as CSV."""
@@ -134,6 +206,8 @@ class ImpexDescriptor:
     columns: tuple[ImpexColumn, ...]
     #: Column keys the upsert matches on, most stable first; empty = create-only import (no
     #: reliable natural key exists — a time entry, a task title that legitimately repeats).
+    #: A ``fk``/``party`` column may be named here: ``find_existing`` then receives the raw
+    #: cells (``example.nl``), not the ids they resolve to.
     natural_keys: tuple[str, ...]
     #: Which of the core filter params (see ``router.FILTER_PARAMS``) this entity's list
     #: supports; they mirror the entity's own list endpoint.

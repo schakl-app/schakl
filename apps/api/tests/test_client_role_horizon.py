@@ -76,6 +76,33 @@ async def _grant_client_role(c, headers, extra: list[str]) -> None:
     assert res.status_code == 200, res.text
 
 
+async def _scope_to_company(c, headers, client_user, company) -> None:
+    """Put the client's membership in a group holding ``company``, so their horizon is that one
+    client rather than the floor's empty set — the only way to isolate what is being tested."""
+    members = (await c.get("/api/v1/members", headers=headers)).json()
+    rows = members["items"] if isinstance(members, dict) else members
+    membership_id = next(
+        m["membership_id"] for m in rows if m["email"] == client_user.email
+    )
+    group = (
+        await c.post("/api/v1/companies/groups", json={"name": "Klantgroep"}, headers=headers)
+    ).json()
+    assert (
+        await c.put(
+            f"/api/v1/companies/groups/{group['id']}/companies",
+            json={"company_ids": [company["id"]]},
+            headers=headers,
+        )
+    ).status_code == 204
+    assert (
+        await c.put(
+            f"/api/v1/companies/groups/{group['id']}/memberships",
+            json={"membership_ids": [membership_id]},
+            headers=headers,
+        )
+    ).status_code == 204
+
+
 async def test_directly_invited_client_cannot_read_the_address_book(client_for) -> None:
     """Contacts carry no ``company_id``, so the floor's repo filter never reached them: the
     narrowing was gated on "is contact-linked" (#193) rather than "is a client login", and a
@@ -155,3 +182,67 @@ async def test_members_list_flags_a_client_scoped_to_nothing(client_for) -> None
         assert members["extern-flag@example.com"]["company_scope_empty"] is True
         # Staff are never flagged — the floor is the client role's alone.
         assert members[t.user.email]["company_scope_empty"] is False
+
+
+async def test_a_client_cannot_borrow_a_contact_reference_either(client_for) -> None:
+    """The address book is not the only way to name a person (#285's rule via the reference
+    seam, ``core/directory.py``).
+
+    A client may comment on a task they can see, and a comment may @mention a contact. That
+    validation is the contacts module's rule borrowed by tasks — and borrowed rules were being
+    answered with the *staff* horizon, which keeps unattached contacts. For a client those are
+    someone else's drafts (#193), so the mention must be dropped exactly as the contact list
+    drops the row.
+    """
+    t = await make_tenant("client-mention")
+    headers = await auth_cookie(t.user)
+
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Klant BV"}, headers=headers)
+        ).json()
+        theirs = (
+            await c.post(
+                "/api/v1/contacts",
+                json={"first_name": "Eigen", "company_ids": [company["id"]]},
+                headers=headers,
+            )
+        ).json()
+        floating = (
+            await c.post("/api/v1/contacts", json={"first_name": "Zwevend"}, headers=headers)
+        ).json()
+        task = (
+            await c.post(
+                "/api/v1/tasks",
+                json={"title": "Zichtbaar", "company_id": company["id"], "visible_to_client": True},
+                headers=headers,
+            )
+        ).json()
+
+        await c.post(
+            "/api/v1/members/invite",
+            json={"email": "extern-mention@example.com", "role": "client"},
+            headers=headers,
+        )
+        async with async_session_maker() as session:
+            client_user = await session.scalar(
+                select(User).where(User.email == "extern-mention@example.com")
+            )
+            assert client_user is not None
+        # Scope them to the company, so the *only* thing standing between them and the floating
+        # contact is the client rule — not an empty horizon that would refuse everything.
+        await _scope_to_company(c, headers, client_user, company)
+        client_headers = await auth_cookie(client_user)
+
+        comment = await c.post(
+            f"/api/v1/tasks/{task['id']}/comments",
+            json={
+                "body": (
+                    f"@[Eigen](mention:contact:{theirs['id']}) en "
+                    f"@[Zwevend](mention:contact:{floating['id']})"
+                )
+            },
+            headers=client_headers,
+        )
+        assert comment.status_code == 201, comment.text
+        assert comment.json()["mentioned_contact_ids"] == [theirs["id"]]

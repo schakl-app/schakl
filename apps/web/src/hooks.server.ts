@@ -41,13 +41,21 @@ const HTML_LANG: Record<string, string> = { nl: "nl", en: "en-GB" };
 // nonces is a worthwhile follow-up.
 const handleSecurityHeaders: Handle = async ({ event, resolve }) => {
   const response = await resolve(event);
-  response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  response.headers.set(
-    "Content-Security-Policy",
-    "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'",
-  );
+  // A route may declare its own CSP, and then it owns its framing rules too. Exactly one
+  // family does: the rendered invoice/quote document, which is served as a standalone page
+  // and shown inside a same-origin frame (`DocumentFrame`), so a blanket `frame-ancestors
+  // 'none'` would blank the preview on every document screen. Those routes set
+  // `frame-ancestors 'self'` *and* a far stricter `default-src 'none'` than this default —
+  // so overriding here is deliberate and narrower, never a way to loosen the page shell's.
+  if (!response.headers.has("Content-Security-Policy")) {
+    response.headers.set("X-Frame-Options", "DENY");
+    response.headers.set(
+      "Content-Security-Policy",
+      "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'",
+    );
+  }
   return response;
 };
 
