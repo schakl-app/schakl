@@ -174,11 +174,24 @@
     <p class="intro">{{ ctx.intro | nl2br }}</p>
   {% elif key == 'payment_box' and ctx.payment_box %}
     {{ payment_card(ctx.payment_box, ctx.t('invoicing.doc.payment_details')) }}
+  {% elif key == 'payment_link' and ctx.show_pay_link and ctx.pay_url %}
+    {# The URL is printed as well as linked: a PDF viewer follows the anchor, and paper has to
+       be typed. It is the invoice's page in the portal, never a provider checkout. #}
+    <p class="payment-link">
+      <a href="{{ ctx.pay_url }}">{{ ctx.pay_label }}</a>
+      <span class="micro muted">{{ ctx.pay_url }}</span>
+    </p>
   {% elif key == 'payment_qr' and ctx.payment_qr %}
     {# Inline SVG, never an <img src>: the document CSP allows `img-src data:` and nothing
-       else, and the renderer fetches no URL at all (render/engine.py). #}
+       else, and the renderer fetches no URL at all (render/engine.py).
+
+       Wrapped in the anchor so the code is **clickable as well as scannable** — a PDF opened
+       on a laptop is the case a QR serves worst, and WeasyPrint turns the anchor into a real
+       link annotation. Same destination as the scan, from the one resolver (`paylinks`). #}
     <div class="payment-qr avoid-break">
-      <div class="payment-qr-code">{{ ctx.payment_qr | safe }}</div>
+      <a class="payment-qr-code" href="{{ ctx.pay_url }}">
+        {{ ctx.payment_qr | safe }}
+      </a>
       <p class="micro muted">{{ ctx.payment_qr_caption }}</p>
     </div>
   {% elif key == 'lines' %}

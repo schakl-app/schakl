@@ -338,6 +338,30 @@
         <p class="mt-1 text-xs text-text-muted">{t("settings.invoicing.accent_color_hint")}</p>
       </div>
 
+      <!-- The QR's style, not its colour (epic #269): the code follows the accent above and is
+           replaced by near-black when that is too pale to scan, so there is no field here in
+           which a tenant could type an invoice their client's phone cannot read. -->
+      <fieldset class="space-y-2 rounded-lg border border-border p-3">
+        <legend class="px-1 text-sm font-medium text-text">
+          {t("settings.invoicing.qr_style")}
+        </legend>
+        <div class="flex flex-wrap gap-4">
+          {#each ["brand", "plain"] as const as style (style)}
+            <label class="flex items-center gap-2 text-sm text-text">
+              <input
+                type="radio"
+                name="qr-style"
+                checked={(config.qr_style ?? "brand") === style}
+                onchange={() => (config = { ...config, qr_style: style })}
+                class="border-border"
+              />
+              {t(`settings.invoicing.qr_style_${style}`)}
+            </label>
+          {/each}
+        </div>
+        <p class="text-xs text-text-muted">{t("settings.invoicing.qr_style_help")}</p>
+      </fieldset>
+
       <fieldset class="space-y-2 rounded-lg border border-border p-3">
         <legend class="px-1 text-sm font-medium text-text">
           {t("settings.invoicing.background_heading")}

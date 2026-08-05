@@ -47,6 +47,36 @@ chooses whether to *use* the included transport, never whether they have it — 
 withdrawn entitlement stops a stored `provider="instance"` row from sending rather than
 silently rerouting it.
 
+## Inline (`cid:`) body images — the one thing the transports disagree about
+
+An invoice mail wants its payment QR *in* the letter (epic #269), and each provider expresses
+that differently. `EmailAttachment.inline` is the one flag; `senders.py` maps it per transport:
+
+| provider | mechanism | the HTML writes |
+|---|---|---|
+| `smtp` | the image is `add_related`-ed onto the **html part**, which turns that part into `multipart/related`; ordinary attachments stay at the top level in `multipart/mixed` | `cid:invoice-qr.png` |
+| `sendgrid` | the same `attachments` array, with `"disposition": "inline"` and `"content_id"` | `cid:<content_id>` |
+| `smtp2go` | a **separate top-level `inlines` array** (same `{filename, fileblob, mimetype}` entry shape as `attachments`) | `cid:<filename>` |
+| `brevo` | **none.** Its attachment object is `{url, content, name}` — no Content-ID at all | not supported |
+
+Three rules follow, and none of them is optional:
+
+- **The content id is the filename.** SMTP2GO has no id field, so there the filename *is* the
+  cid; the other two are made to agree with it, and that is the only way one composed fragment
+  travels unchanged over all three. A filename is an identity — short, ASCII, unique in the
+  message.
+- **Ask `supports_inline_images(provider)` before composing the `<img>`.** The composer is the
+  only layer that can pick a fallback (a plain pay link instead of a QR); discovering the
+  failure after sending means a broken-image box in a client's inbox. Unknown names — including
+  `"instance"`, which is a settings choice and not a transport — answer `False`.
+- **An unsupported transport drops the part, never downgrades it.** A bare QR paperclipped to
+  the bottom of an invoice mail, next to the box where it should have rendered, is worse than
+  no QR. Logged once per process, not once per mail.
+
+`cid:` is in the template sanitiser's `_URL_SCHEMES`, so a tenant may place the image in their
+own body: it addresses a part of this very message rather than the network, and cannot report
+an open back the way a remote `<img>` can. `data:` and everything else stay out.
+
 ## The two layers
 
 **Content** is a *fragment* — paragraphs, a CTA button, a short list. It is built per mail
@@ -78,6 +108,16 @@ the things that are *not* shared between "reset your password" and "invoice 2026
   form cannot store an override for a mail this org no longer sends.
 - **Every declared variable always resolves**, to `""` if need be. An unfilled marker reaches
   the inbox as a literal `{reference}`.
+- **…and a variable that resolves to nothing takes its line with it** (epic #269). Some
+  markers are genuinely optional: the invoice mail's `{link}` is a pay button, and there is no
+  button when no payment provider is connected or the invoice is already settled. The two
+  naive renderings are both wrong in front of a client — an empty `<p></p>` opening a gap in
+  the middle of the letter, or a perfectly styled CTA whose `href` is the empty string, which
+  navigates to the mail client's own idea of nowhere. So `branded_default_html` drops a line
+  that renders blank, drops a paragraph left with no lines, and draws the button only when it
+  has a URL; and `_tidy` collapses the hole the same absence leaves in the plaintext half. Put
+  an optional marker in **a paragraph of its own** and the mail degrades to exactly the mail
+  it was before the variable existed.
 - **Adding a kind adds no schema**: it is a row in a table that already exists, and a missing
   row still means "use the built-in default", so shipping one changes nothing until a tenant
   types in the box.
@@ -124,7 +164,8 @@ Outlook desktop renders with Word. Hence, in any fragment or chrome:
 5. **Buttons** are a padded `<td>` with `background-color` and an inline-block `<a>` —
    never an image, no VML. See `button_html`.
 6. **Images:** absolute `https` URLs, `alt` text, explicit `height`, `border:0`. No `data:`
-   URIs (blocked by most clients). The logo is the only image the chrome ships.
+   URIs (blocked by most clients). The logo is the only image the chrome ships; a *body*
+   image travels as an inline `cid:` part instead (see above), never as a `data:` URI.
 7. **Colors** are hex literals; the only dynamic one is the tenant's validated
    `primary_color`. Assume light background — no dark-mode variants (clients that force
    dark recolor themselves).

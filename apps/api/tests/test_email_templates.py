@@ -49,7 +49,14 @@ async def test_list_returns_every_slot_with_defaults(client_for) -> None:
         by_key = {k["key"]: k for k in body["kinds"]}
         assert by_key["reset"]["variables"] == ["brand", "name", "link"]
         assert "outstanding" in by_key["invoicing.reminder"]["variables"]
-        assert "link" not in by_key["invoicing.invoice"]["variables"]
+        assert "number" not in by_key["reset"]["variables"]
+        # Both carry a `{link}`, and they are not the same link: a reset mail's is a one-shot
+        # token, an invoice mail's is the document's page in the client portal (epic #269).
+        # Sharing the *name* is what lets one mechanism draw the CTA for both — the marker is
+        # per kind, its meaning is the kind's own.
+        assert "link" in by_key["invoicing.invoice"]["variables"]
+        # …and a quote is not paid, so it never grew one.
+        assert "link" not in by_key["invoicing.quote"]["variables"]
         assert by_key["invoicing.invoice"]["module"] == "invoicing"
         # Every kind x every locale, each with a built-in default and no override yet.
         assert len(body["templates"]) == len(keys) * 2

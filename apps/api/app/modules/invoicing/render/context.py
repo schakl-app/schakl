@@ -37,7 +37,7 @@ from app.modules.invoicing.render.colors import (
     rgb_hex,
     rgba,
 )
-from app.modules.invoicing.render.qr import qr_svg
+from app.modules.invoicing.render.qr import qr_svg, readable_dark
 
 CURRENCY_SYMBOLS = {"EUR": "€", "USD": "$", "GBP": "£"}
 #: The order sections print in: what was worked, then what recurs, then what renews, then
@@ -560,15 +560,34 @@ def build_context(
     # an online payment is actually possible: the code still works without a provider (it
     # opens the invoice, where the PDF can be downloaded), so this is not a gate — it only
     # decides which caption goes under it.
-    show_qr = (
+    payable_here = (
         kind == "invoice"
         and not is_credit_note
         and outstanding > 0
         and bool(getattr(doc, "status", None) == "open")
         and bool(pay_url)
-        and layout.enabled("payment_qr")
     )
-    payment_qr = qr_svg(pay_url or "") if show_qr else ""
+    show_qr = payable_here and layout.enabled("payment_qr")
+    # Branded by default (epic #269): the tenant's accent in the modules and their logo in the
+    # middle, so the code on a client's invoice is recognisably *theirs*. `readable_dark`
+    # replaces an accent too pale to scan — a beautiful unreadable code is the one failure mode
+    # a QR cannot afford, and the person holding the paper cannot squint harder. `plain` is the
+    # escape hatch for monochrome printing and for a logo that does not survive 7 modules.
+    branded_qr = config.get("qr_style", "brand") != "plain"
+    payment_qr = (
+        qr_svg(
+            pay_url or "",
+            dark=readable_dark(accent) if branded_qr else "#000000",
+            logo=brand.logo if branded_qr else None,
+            logo_content_type=brand.logo_content_type if branded_qr else None,
+        )
+        if show_qr
+        else ""
+    )
+    # The same link in words, for the reader who is holding a mouse rather than a phone. Its
+    # own switch, sharing every condition — so a template may print one, both or neither, and
+    # neither can ever appear on a document that has nothing to collect.
+    show_pay_link = payable_here and layout.enabled("payment_link")
 
     # --- prose -------------------------------------------------------------------------- #
     def template_text(block: str) -> str:
@@ -636,6 +655,16 @@ def build_context(
         "payment_qr": payment_qr,
         "payment_qr_caption": (
             t("invoicing.doc.qr_pay") if payable_online else t("invoicing.doc.qr_view")
+        ),
+        #: **The address**, present whenever this document could be paid — not gated on either
+        #: block, because both link to it: the pay-online line prints it, and the QR is wrapped
+        #: in it so a code is clickable as well as scannable (a PDF opened on a laptop is the
+        #: case a QR serves worst).
+        "pay_url": pay_url if payable_here else "",
+        #: Whether the *words* print. The QR has its own switch and its own emptiness check.
+        "show_pay_link": show_pay_link,
+        "pay_label": (
+            t("invoicing.doc.pay_online") if payable_online else t("invoicing.doc.view_online")
         ),
         "columns": columns,
         "sections": sections,

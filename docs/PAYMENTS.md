@@ -377,9 +377,132 @@ would 402 too. Gate what the agency *does*; never gate the recording of what has
 happened to them. (Compare `docs/PORTAL.md`'s single exemption: ending your own impersonation,
 for the same shape of reason.)
 
-## 9. The link a payer follows, and the QR (#268)
+## 9. Every way a payer is invited in, and why they all lead to one door
 
-Two URLs go out with every payment and they are not the same thing:
+**Four surfaces offer a payer a way in, and every one of them points at the invoice's page in
+the client portal.** Never at a provider checkout URL. `app/modules/invoicing/paylinks.py` is
+the single function that says so, which is the only thing keeping four surfaces from drifting:
+
+| surface | what it is | configured where |
+|---|---|---|
+| the portal's own button | the real thing — mints the checkout on press | always on for a client |
+| the invoice mail's CTA | `{link}` on the `invoicing.invoice` kind | Instellingen → E-mail |
+| the reminder mail's CTA | `{link}` on the `invoicing.reminder` kind | Instellingen → E-mail |
+| the document's QR + pay line | blocks `payment_qr` / `payment_link` | the invoice template |
+
+Four reasons the destination is the portal and not the checkout, and only the first is the
+obvious one:
+
+- **A checkout URL is a bearer credential.** Printed on paper or forwarded in a mail, it hands
+  whoever picks it up the ability to look at — and settle — somebody else's bill. The portal
+  link goes through the login #193 already established.
+- **A checkout expires and an invoice does not.** iDEAL dies in fifteen minutes, a card in
+  thirty (`docs/MOLLIE.md` §7). A *reminder* mailed three weeks later would carry a URL that
+  had been dead for most of a month.
+- **It is the only thing that prevents doubles.** The portal's button reuses a live intent for
+  the same amount (`_reusable`, §3) rather than opening a competing one. Mail a checkout URL
+  *and* let the client press "pay now" and they hold two valid ways to settle one debt, which
+  ends in a refund conversation. Routing every entrance through one screen is what makes "one
+  open checkout per invoice" true rather than hoped for.
+- **It keeps the agency in control of what the client sees**: the status, the amount actually
+  outstanding after a part payment or a credit note, the PDF, the tenant's own branding. A
+  checkout page shows an amount and somebody else's logo, and once spent or expired it shows
+  an error.
+
+So a provider's checkout URL exists in exactly one place — on the intent row, handed to the
+payer by the portal at the moment they press. It never travels by mail or on paper.
+
+### What the code looks like, and why that is a style and not a colour picker
+
+The QR is **branded by default** (`TemplateConfig.qr_style = "brand"`): the tenant's accent in
+the modules, their logo in the middle, so the code on a client's invoice is recognisably the
+agency's rather than a generic black square. `plain` is the escape hatch — monochrome printing,
+or a logo that does not survive being seven modules across.
+
+Four rules in `render/qr.py` decide whether it actually scans, and each is a way to get this
+wrong that looks fine in a preview:
+
+- **A logo raises error correction to `H`** (~30%) from `m` (~15%). Anything overlaid on the
+  middle of an `m` symbol is damage the decoder has no budget for. The level is *derived from
+  the logo*, never passed in, so the two formats cannot disagree.
+- **The logo covers at most 22% of the width** (~4.8% of the area) — computed from the module
+  count, never in pixels, so it holds at 24mm on paper and at 132px in a mail.
+- **A light quiet patch sits behind it**, snapped to whole modules. A transparent logo would
+  otherwise leave live modules showing through, and noise decodes worse than uniform damage.
+- **The dark colour must stay dark** (`readable_dark`): below 4.5:1 against white the accent is
+  replaced by near-black. A brand colour is chosen to sit beside a logo, not to be binarized by
+  a phone camera, and a pale mint makes a code that is beautiful on screen and unreadable in the
+  room — where nobody can squint harder. There is deliberately **no field to type a QR colour
+  into**: it would be a way to print an invoice a client's phone cannot read.
+
+Both formats come out of one encode: an inline `<svg>` for the document (the renderer's CSP
+allows `img-src data:` and nothing else, so the logo travels as a data URI) and a **PNG** for
+the mail, because Gmail strips inline SVG.
+
+### The mail's button
+
+`invoicing.invoice` and `invoicing.reminder` declare `button_key="invoicing.email.pay_button"`
+and carry `{link}` in their catalog body, so the existing tier-1 mechanism
+(`branded_default_html`) draws a branded CTA in the org's own colour — the same one the reset
+mail has always had. A tenant who wants it inside a sentence writes their own anchor around
+`{link}`; the editor lists it like any other variable.
+
+It is **stricter than the document's link**: `paylinks.mail_pay_url` returns `""` unless a
+provider is connected *and* the invoice is collectable, and an empty `{link}` takes the whole
+paragraph and the button with it (§ `docs/EMAIL.md`). A mail has already reached the client, so
+a "view your invoice" button earns nothing, while one labelled *Nu betalen* that leads to a page
+with nothing to press is a control that refuses (#253). An instance with no provider connected
+therefore sends byte-for-byte the mail it sent before this shipped.
+
+"Is a provider connected" is asked **once per org**, beside the transport and the brand — never
+per mail — because a nightly dunning run legitimately sends dozens (`jobs._provider_connected`),
+and the logo the QR is drawn with is resolved the same way (`jobs._qr_brand`).
+
+### The mail's QR
+
+Under the button, and **inside the same link** — a reader on the device they would pay from
+should not have to fetch their phone. It exists for the case the button cannot serve: the mail
+is open on a laptop and the banking app is in a pocket.
+
+It rides as a real inline MIME part (`cid:invoice-qr.png`), never a remote `<img>`: a hosted
+image would report the open back to us, which an invoice has no business doing, and would need
+a public per-invoice URL — an enumeration oracle for something we deliberately keep behind a
+login. The composer asks `supports_inline_images(provider)` **before** building the markup, so a
+transport that cannot carry one (Brevo — no Content-ID mechanism at all, `docs/EMAIL.md`) gets
+the button alone rather than a broken-image box where the code should be.
+
+The catalog body carries `{image}` in a paragraph of its own, after `{link}`. Like the button it
+disappears whole when there is nothing behind it, and it is **the one value that is markup**:
+`branded_default_html` skips escaping it, and `build_email_content` substitutes it as `""` into
+the plaintext part, because an image has no plaintext form and the URL is already there as
+`{link}`.
+
+### The document's QR and pay line
+
+Two blocks, both off by default, both switchable independently, sharing one predicate so they
+cannot disagree about whether an invoice is payable:
+
+- **`payment_qr`** (`render/qr.py`) — an inline `<svg>`, because the document renderer's CSP
+  allows `img-src data:` and nothing else and its Jinja environment fetches nothing at all
+  (`render/engine.py`); an `<img src="https://…">` would be blocked in the preview and blank in
+  the PDF.
+- **`payment_link`** — the same address in words, linked *and* printed. A PDF viewer follows
+  the anchor; paper has to be typed, so hiding the URL behind a word would make the block
+  useless on exactly the medium a QR is for.
+
+Unlike the mail, neither is gated on a provider being connected: the page still works without
+one — it opens the live invoice, where the client reads the status and downloads the PDF — so a
+provider changes only the words (*"Betaal deze factuur online"* / *"Bekijk deze factuur
+online"*, *"Scan om te betalen"* / *"Scan om deze factuur te bekijken"*). An agency printing
+monochrome on a copier may reasonably want the line and not the code, which is why they are two
+switches rather than one.
+
+Note also that the QR reaches a client's inbox whether or not a mail carries one: **both send
+paths attach the rendered PDF**, so the code on the document travels with the mail.
+
+### The two URLs the provider itself is given
+
+Two more URLs go out with every payment, and they are not the same thing:
 
 - **`return_url`** — where the provider sends the payer afterwards, whatever the outcome:
   `{org_base_url}/invoices/{invoice_id}`, the invoice's page in the client portal. Not a
@@ -388,22 +511,8 @@ Two URLs go out with every payment and they are not the same thing:
 - **`webhook_url`** — the callback of §4, carrying the token.
 
 Both go through `app.core.hosts.org_base_url` like every other generated absolute link, so
-neither can point at a host whose edge cannot serve it (Golden Rule 4 — no hardcoded domain).
-
-The **QR block** an invoice may print (`render/qr.py`, block key `payment_qr`, off by default)
-encodes that same portal URL — **not** a checkout URL, and the difference is the security
-decision worth remembering. A live provider checkout URL is a **bearer credential**: printing
-one on paper hands whoever picks that paper up the ability to look at, and settle, somebody
-else's bill. The portal link goes through the login #193 already established, so a scan by the
-right person lands on the invoice and a scan by anyone else lands on a sign-in screen. The cost
-is a redirect through login, and that is the correct cost. It is drawn as an inline `<svg>`
-because the document renderer's CSP allows `img-src data:` and nothing else and its Jinja
-environment fetches nothing at all (`render/engine.py`), so an `<img src="https://…">` would be
-blocked in the preview and blank in the PDF.
-
-The caption is the only thing a connected provider changes: *"Scan om te betalen"* when one is
-connected, *"Scan om deze factuur te bekijken"* when none is. The QR is not gated on a provider
-— the code still works without one, it opens the invoice.
+neither can point at a host whose edge cannot serve it (Golden Rule 4 — no hardcoded domain) —
+and `return_url` is the same portal page everything else above leads to, for the same reasons.
 
 ## 10. Deployment: the callback must be publicly reachable
 

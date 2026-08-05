@@ -314,6 +314,17 @@ class TemplateConfig(BaseModel):
     html: str | None = Field(default=None, max_length=MAX_CUSTOM_HTML)
     #: Extra CSS. On a shipped design it layers on top; on a custom one it *is* the design.
     css: str | None = Field(default=None, max_length=MAX_CUSTOM_CSS)
+    #: How the payment QR is drawn (epic #269). ``brand`` — the default — puts the tenant's
+    #: accent colour in the modules and their logo in the middle, so the code on a client's
+    #: invoice is recognisably *theirs* rather than a generic black square. ``plain`` is the
+    #: black-and-white code, for an agency printing monochrome on a copier or one whose logo
+    #: simply looks wrong at 7 modules across.
+    #:
+    #: A style, never a colour picker: the colour follows ``accent_color`` (which already falls
+    #: back to the brand colour at render time, Golden Rule 4) and is replaced by near-black
+    #: when it is too pale to scan (``render/qr.readable_dark``). Letting a tenant type a hex
+    #: here would be offering them a way to print an invoice nobody's phone can read.
+    qr_style: Literal["brand", "plain"] = "brand"
     #: Per-locale text blocks: {"nl": "...", "en": "..."} — shown above the lines.
     intro_i18n: dict[str, str] = Field(default_factory=dict)
     #: Below the totals: payment instructions ("Gelieve te betalen binnen {days} dagen …").

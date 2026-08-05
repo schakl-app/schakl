@@ -404,8 +404,14 @@ belongs *here* is the part invoicing owns:
   starting a checkout settles nothing, while registering a payment is a bookkeeping claim.
   `InvoiceRead.online_payment` is the boolean the portal draws its pay button from — it never
   gets to read which accounts the agency has connected.
-- **The invoice's QR block encodes the portal URL, not a checkout URL** (#268). A checkout link
-  is a bearer credential and belongs on nobody's printed paper.
+- **Every invitation to pay leads to the portal, never to a checkout URL** — the invoice mail's
+  button and the reminder's, the document's QR (#268) and its pay-online line, and the portal's
+  own button. `paylinks.py` is the one function that says so, and four surfaces pointing at one
+  door is what makes "one open checkout per invoice" true: a checkout URL is a bearer credential,
+  it expires in minutes while the invoice does not, and a client holding both a mailed link and
+  a portal button can pay the same debt twice. The mail's button is the strict one — it appears
+  only when a provider is connected and the invoice is collectable, so an instance without
+  payments sends the mail it always sent (`docs/PAYMENTS.md` §9).
 
 ## The client-facing mails are the tenant's to write (`emails.py`)
 

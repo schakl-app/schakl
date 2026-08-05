@@ -803,9 +803,10 @@ def test_the_qr_encodes_the_portal_url_and_never_a_checkout_url() -> None:
     """The security decision worth pinning: a provider's checkout URL is a bearer credential,
     and printing one on paper hands whoever picks that paper up somebody else's bill. What the
     document gets is the invoice's page in the portal, behind the login #193 established."""
-    from app.modules.invoicing.render.qr import invoice_portal_url, qr_svg
+    from app.modules.invoicing.paylinks import invoice_pay_url
+    from app.modules.invoicing.render.qr import qr_svg
 
-    assert invoice_portal_url("https://bureau.schakl.app/", "abc") == (
+    assert invoice_pay_url("https://bureau.schakl.app/", "abc") == (
         "https://bureau.schakl.app/invoices/abc"
     )
     # Deterministic, and genuinely a function of the payload — a code that came out identical
@@ -813,3 +814,107 @@ def test_the_qr_encodes_the_portal_url_and_never_a_checkout_url() -> None:
     assert qr_svg(_PAY_URL) == qr_svg(_PAY_URL)
     assert qr_svg(_PAY_URL) != qr_svg("https://www.mollie.com/checkout/select-method/abc")
     assert qr_svg("") == ""
+
+
+# --------------------------------------------------------------------------- #
+# The pay-online line (epic #269) — the QR's twin, in words
+# --------------------------------------------------------------------------- #
+_LINK_ON = {"design": "letterhead", "layout": [{"key": "payment_link", "enabled": True}]}
+
+
+def test_the_pay_line_is_off_until_a_template_asks_for_it() -> None:
+    assert 'class="payment-link"' not in _with_qr(config={"design": "letterhead"})
+    assert 'class="payment-link"' in _with_qr(config=_LINK_ON)
+
+
+def test_the_pay_line_prints_the_url_as_well_as_linking_it() -> None:
+    """A document is read on two surfaces. A PDF viewer follows the anchor; paper has to be
+    typed, so the address itself is on the page rather than hidden behind a word."""
+    html = _with_qr(config=_LINK_ON)
+    assert f'href="{_PAY_URL}"' in html
+    block = html[html.index('class="payment-link"') :]
+    assert _PAY_URL in block[: block.index("</p>")], "the URL is linked but never shown"
+    assert "Betaal deze factuur online" in html
+
+
+def test_the_pay_line_and_the_qr_switch_independently() -> None:
+    """Two affordances for one destination, and an agency printing monochrome on a copier may
+    reasonably want the line without the code."""
+    both = _with_qr(
+        config={
+            "design": "letterhead",
+            "layout": [
+                {"key": "payment_link", "enabled": True},
+                {"key": "payment_qr", "enabled": True},
+            ],
+        }
+    )
+    assert 'class="payment-link"' in both and 'class="payment-qr' in both
+    assert 'class="payment-qr' not in _with_qr(config=_LINK_ON)
+    assert 'class="payment-link"' not in _with_qr()
+
+
+def test_the_pay_line_never_appears_where_there_is_nothing_to_pay() -> None:
+    """Exactly the QR's conditions — they share one predicate, so they cannot drift."""
+    assert 'class="payment-link"' not in _with_qr(config=_LINK_ON, status="draft")
+    assert 'class="payment-link"' not in _with_qr(
+        config=_LINK_ON, doc={"paid_total": Decimal("99999.00")}
+    )
+    assert 'class="payment-link"' not in _with_qr(config=_LINK_ON, doc={"kind": "credit_note"})
+    assert 'class="payment-link"' not in _with_qr(config=_LINK_ON, pay_url=None)
+
+
+def test_the_document_qr_is_branded_by_default_and_clickable() -> None:
+    """A QR on a client's invoice should look like *the agency's* (epic #269), and a code on a
+    PDF opened on a laptop should be pressable — the one case a QR serves worst."""
+    doc, lines, groups = sample_document("nl", "EUR", TODAY)
+    doc.status = "open"
+    html = render_document_html(
+        kind="invoice", doc=doc, lines=lines, seller=SELLER, config=_QR_ON,
+        brand=DocumentBrand(name="Agency", primary_color="#4f46e5"),
+        tax_groups=groups, pay_url=_PAY_URL, payable_online=True,
+    )
+    # The accent reaches the modules, and the code is wrapped in the same destination.
+    assert "#4f46e5" in html[html.index('class="payment-qr') :]
+    assert f'href="{_PAY_URL}"' in html[html.index('class="payment-qr') :]
+    # segno emits width/height only; without a viewBox the CSS box resizes the viewport rather
+    # than the symbol and the code overflows its 24mm square.
+    assert "viewBox" in html
+
+
+def test_a_plain_qr_style_drops_the_colour_and_the_logo() -> None:
+    """The escape hatch for an agency printing monochrome, or one whose logo does not survive
+    being seven modules across."""
+    plain = {"design": "letterhead", "qr_style": "plain",
+             "layout": [{"key": "payment_qr", "enabled": True}]}
+    doc, lines, groups = sample_document("nl", "EUR", TODAY)
+    doc.status = "open"
+    html = render_document_html(
+        kind="invoice", doc=doc, lines=lines, seller=SELLER, config=plain,
+        brand=DocumentBrand(name="Agency", primary_color="#4f46e5"),
+        tax_groups=groups, pay_url=_PAY_URL, payable_online=True,
+    )
+    block = html[html.index('class="payment-qr') :]
+    assert "#4f46e5" not in block
+    assert "data:image" not in block, "a plain code carries no logo"
+
+
+def test_a_pale_brand_colour_never_reaches_the_code() -> None:
+    """The one failure a QR cannot afford is being beautiful and unreadable, and the person
+    holding the paper cannot squint harder (``render/qr.readable_dark``)."""
+    doc, lines, groups = sample_document("nl", "EUR", TODAY)
+    doc.status = "open"
+    html = render_document_html(
+        kind="invoice", doc=doc, lines=lines, seller=SELLER, config=_QR_ON,
+        brand=DocumentBrand(name="Agency", primary_color="#ffe066"),
+        tax_groups=groups, pay_url=_PAY_URL, payable_online=True,
+    )
+    block = html[html.index('class="payment-qr') :]
+    assert "#ffe066" not in block
+
+
+def test_the_pay_line_reads_as_viewing_when_nothing_can_collect() -> None:
+    """Same rule as the QR's caption: the page still works without a provider — it opens the
+    invoice — so the words change and the link stays."""
+    assert "Betaal deze factuur online" in _with_qr(config=_LINK_ON, payable_online=True)
+    assert "Bekijk deze factuur online" in _with_qr(config=_LINK_ON, payable_online=False)

@@ -74,6 +74,7 @@ from app.modules.invoicing.models import (
     QuoteStatus,
     TaxRate,
 )
+from app.modules.invoicing.paylinks import invoice_pay_url, mail_pay_qr, mail_pay_url
 from app.modules.invoicing.render import (
     DocumentBrand,
     render_document_html,
@@ -81,7 +82,6 @@ from app.modules.invoicing.render import (
     resolve_layout,
     validate_custom_source,
 )
-from app.modules.invoicing.render.qr import invoice_portal_url
 from app.modules.invoicing.sample import sample_document
 from app.modules.invoicing.schemas import (
     DocumentSend,
@@ -948,9 +948,29 @@ class _DocumentService:
         if kind != "invoice" or getattr(doc, "kind", None) == InvoiceKind.CREDIT_NOTE.value:
             return {}
         return {
-            "pay_url": invoice_portal_url(org_base_url(self.ctx.org), doc.id),
+            "pay_url": invoice_pay_url(org_base_url(self.ctx.org), doc.id),
             "payable_online": await self._payable(),
         }
+
+    async def _pay_qr(self, pay_url: str, transport: Any) -> bytes | None:
+        """The inline QR for an outgoing mail, or ``None`` (epic #269).
+
+        The logo is read only when there is actually a code to draw — an org with no provider
+        connected must not pay a storage round-trip for an image nobody will see.
+        """
+        if not pay_url or transport is None:
+            return None
+        org_settings = await self.ctx.session.scalar(
+            select(OrgSettings).where(OrgSettings.org_id == self.ctx.org.id)
+        )
+        logo, logo_type = await load_brand_logo(self.ctx, org_settings)
+        return mail_pay_qr(
+            pay_url,
+            transport=transport[0],
+            brand_color=org_settings.primary_color if org_settings else None,
+            logo=logo,
+            logo_content_type=logo_type,
+        )
 
     async def _payable(self) -> bool:
         """Does this org hold an active payment credential? Once per request (epic #269)."""
@@ -1551,8 +1571,23 @@ class InvoiceService(_DocumentService):
             from app.modules.invoicing import emails
 
             brand = await load_brand(self.ctx.session, self.ctx.org)
+            # Resolved here rather than inside ``deliver`` because *composing* needs to know
+            # which transport will carry the mail: whether it can hold an inline QR is the
+            # provider's property (epic #269), and asking afterwards would be too late.
+            transport = await emails.load_transport(self.ctx.session, self.ctx.org.id)
+            # The pay button's destination. ``_payable`` is the same memoised "has this org
+            # connected a provider" the detail read uses, so sending costs no extra query.
+            pay_url = mail_pay_url(
+                invoice, brand.base_url, provider_connected=await self._payable()
+            )
             message = await emails.compose_invoice_email(
-                self.ctx.session, self.ctx.org.id, invoice, brand, data.message
+                self.ctx.session,
+                self.ctx.org.id,
+                invoice,
+                brand,
+                data.message,
+                pay_url,
+                await self._pay_qr(pay_url, transport),
             )
             message.to = to
             # The mail carries the document (owner feedback): a text summary is not an
@@ -1562,7 +1597,7 @@ class InvoiceService(_DocumentService):
             message.attachments.append(
                 EmailAttachment(filename=filename, content=content, mimetype="application/pdf")
             )
-            await emails.deliver(self.ctx, message, brand=brand)
+            await emails.deliver(self.ctx, message, brand=brand, transport=transport)
         invoice = await self.repo.update(invoice, sent_at=datetime.now(UTC))
         await ActivityService(self.ctx).record(
             self.entity_type, invoice.id, "sent",
@@ -1586,11 +1621,19 @@ class InvoiceService(_DocumentService):
         from app.modules.invoicing import emails
 
         brand = await load_brand(self.ctx.session, self.ctx.org)
+        transport = await emails.load_transport(self.ctx.session, self.ctx.org.id)
+        pay_url = mail_pay_url(invoice, brand.base_url, provider_connected=await self._payable())
         message = await emails.compose_reminder_email(
-            self.ctx.session, self.ctx.org.id, invoice, brand, max(days, 0)
+            self.ctx.session,
+            self.ctx.org.id,
+            invoice,
+            brand,
+            max(days, 0),
+            pay_url,
+            await self._pay_qr(pay_url, transport),
         )
         message.to = to
-        await emails.deliver(self.ctx, message, brand=brand)
+        await emails.deliver(self.ctx, message, brand=brand, transport=transport)
         invoice = await self.repo.update(
             invoice,
             reminder_count=invoice.reminder_count + 1,

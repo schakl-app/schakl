@@ -20835,6 +20835,12 @@ export interface components {
                 [key: string]: string;
             };
             /**
+             * Qr Style
+             * @default brand
+             * @enum {string}
+             */
+            qr_style: "brand" | "plain";
+            /**
              * Show Logo
              * @default true
              */

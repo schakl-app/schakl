@@ -27,6 +27,7 @@ locale**, so the words and the language can never disagree.
 
 from __future__ import annotations
 
+import html as html_lib
 import json
 from datetime import timedelta
 from typing import Any
@@ -36,12 +37,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.crypto import decrypt
 from app.core.email.branding import EmailBrand, apply_branding, load_brand, paragraphs_html
 from app.core.email.kinds import EmailTemplateKind
-from app.core.email.senders import OutgoingEmail, Sender, send_email
+from app.core.email.senders import EmailAttachment, OutgoingEmail, Sender, send_email
 from app.core.email.service import get_row
 from app.core.email.templates import build_email_content, resolve_template
 from app.errors import AppError
-from app.i18n import resolve_locale
+from app.i18n import resolve_locale, translate
 from app.modules.invoicing.calc import outstanding_of
+from app.modules.invoicing.paylinks import invoice_pay_url
 
 #: The customisable kinds' keys. Namespaced by the module, which is what lets a later module
 #: ship its own reminder mail without colliding with this one (asserted at mount time).
@@ -59,11 +61,38 @@ def _fmt_money(amount: Any, currency: str) -> str:
     return f"{currency} {amount}"
 
 
+#: The inline QR's filename, and therefore its content id — SMTP2GO has no id field and
+#: takes the filename as the cid, so the other transports are made to agree with it
+#: (``docs/EMAIL.md``). One name for the whole platform: a message carries at most one.
+QR_FILENAME = "invoice-qr.png"
+
+
+def _qr_block(pay_url: str, caption: str) -> str:
+    """The QR as an e-mail block: the code, wrapped in its own link, with a line under it.
+
+    **Wrapped in the anchor**, so the code is clickable as well as scannable — a client reading
+    on the device they would pay from should not have to fetch a second one. ``width``/``height``
+    attributes as well as the style, because Outlook ignores CSS dimensions on images and would
+    otherwise draw the raster at its natural pixel size.
+    """
+    return (
+        '<table cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 24px 0;"><tr>'
+        f'<td><a href="{html_lib.escape(pay_url, quote=True)}">'
+        f'<img src="cid:{QR_FILENAME}" alt="{html_lib.escape(caption)}"'
+        ' width="132" height="132"'
+        ' style="display:block;width:132px;height:132px;border:0;" /></a>'
+        f'<p style="margin:6px 0 0 0;font-size:12px;color:#666666;">{html_lib.escape(caption)}</p>'
+        "</td></tr></table>"
+    )
+
+
 def _customer(doc: Any, field: str) -> str:
     return (doc.customer or {}).get(field) or ""
 
 
-def _invoice_values(invoice: Any, brand: str) -> dict[str, str]:
+def _invoice_values(
+    invoice: Any, brand: str, pay_url: str = "", qr_caption: str = ""
+) -> dict[str, str]:
     return {
         "number": invoice.number or "",
         "company": _customer(invoice, "name"),
@@ -73,6 +102,15 @@ def _invoice_values(invoice: Any, brand: str) -> dict[str, str]:
         "due_date": _fmt_date(invoice.due_date),
         "reference": invoice.reference or "",
         "brand": brand,
+        # The pay button's destination (epic #269) — the invoice's page in the **client
+        # portal**, never a provider checkout URL (``paylinks``). Empty when there is nothing
+        # to collect or nothing to collect it with, and an empty ``{link}`` renders no button
+        # at all rather than a dead one (``core/email/templates.branded_default_html``).
+        "link": pay_url,
+        # The one value that is **markup** rather than text (``branded_default_html`` skips
+        # escaping it): the inline QR with its anchor, or "" when there is no code to draw —
+        # nothing to pay, or a transport that cannot carry an inline image.
+        "image": _qr_block(pay_url, qr_caption) if (pay_url and qr_caption) else "",
     }
 
 
@@ -89,8 +127,10 @@ def _quote_values(quote: Any, brand: str) -> dict[str, str]:
     }
 
 
-def _reminder_values(invoice: Any, brand: str, days_overdue: int) -> dict[str, str]:
-    return _invoice_values(invoice, brand) | {
+def _reminder_values(
+    invoice: Any, brand: str, days_overdue: int, pay_url: str = "", qr_caption: str = ""
+) -> dict[str, str]:
+    return _invoice_values(invoice, brand, pay_url, qr_caption) | {
         # What is still owed after payments *and* credit notes — the figure the cron now
         # selects on, so a reminder can never name an amount the invoice no longer carries.
         "outstanding": _fmt_money(outstanding_of(invoice), invoice.currency),
@@ -134,13 +174,43 @@ async def _compose(
     return OutgoingEmail(to="", subject=subject, text=text, html=html)
 
 
+def _with_qr(message: OutgoingEmail, pay_qr: bytes | None) -> OutgoingEmail:
+    """Attach the QR as an **inline** part, so ``cid:invoice-qr.png`` in the body resolves.
+
+    Inline rather than an ordinary attachment: a paperclipped QR sitting next to the empty box
+    where it should have rendered is worse than no QR at all, which is the same reason a
+    transport that cannot inline gets no ``<img>`` in the first place (``paylinks.mail_pay_qr``).
+    """
+    if pay_qr:
+        message.attachments.append(
+            EmailAttachment(
+                filename=QR_FILENAME, content=pay_qr, mimetype="image/png", inline=True
+            )
+        )
+    return message
+
+
 async def compose_invoice_email(
-    session: AsyncSession, org_id: Any, invoice: Any, brand: EmailBrand, message: str | None
+    session: AsyncSession,
+    org_id: Any,
+    invoice: Any,
+    brand: EmailBrand,
+    message: str | None,
+    pay_url: str = "",
+    pay_qr: bytes | None = None,
 ) -> OutgoingEmail:
-    return await _compose(
+    """``pay_url`` and ``pay_qr`` are resolved by the **caller** (``paylinks``), not here.
+
+    Composing stays a pure function of what it is handed, which is what lets the auto-send cron
+    ask "does this org have a provider connected?" **once per org** rather than once per
+    invoice — the same reason the transport is read outside this call (docs/PERFORMANCE.md).
+    """
+    caption = translate("invoicing.email.qr_hint", resolve_locale(invoice.locale))
+    composed = await _compose(
         session, org_id, INVOICE_KIND, invoice, brand,
-        _invoice_values(invoice, brand.brand_name), message,
+        _invoice_values(invoice, brand.brand_name, pay_url, caption if pay_qr else ""), message,
     )
+    return _with_qr(composed, pay_qr)
 
 
 async def compose_quote_email(
@@ -153,12 +223,24 @@ async def compose_quote_email(
 
 
 async def compose_reminder_email(
-    session: AsyncSession, org_id: Any, invoice: Any, brand: EmailBrand, days_overdue: int
+    session: AsyncSession,
+    org_id: Any,
+    invoice: Any,
+    brand: EmailBrand,
+    days_overdue: int,
+    pay_url: str = "",
+    pay_qr: bytes | None = None,
 ) -> OutgoingEmail:
-    return await _compose(
+    """The dunning mail is where the pay button earns most: the client is being chased, and the
+    shortest path from "you still owe this" to the money arriving is one press."""
+    caption = translate("invoicing.email.qr_hint", resolve_locale(invoice.locale))
+    composed = await _compose(
         session, org_id, REMINDER_KIND, invoice, brand,
-        _reminder_values(invoice, brand.brand_name, days_overdue),
+        _reminder_values(
+            invoice, brand.brand_name, days_overdue, pay_url, caption if pay_qr else ""
+        ),
     )
+    return _with_qr(composed, pay_qr)
 
 
 # --------------------------------------------------------------------------- #
@@ -180,11 +262,20 @@ async def _sample_values(ctx: Any, locale: str, kind: str) -> dict[str, str]:
     if kind == QUOTE_KIND:
         doc.valid_until = doc.issue_date + timedelta(days=30)
         return _quote_values(doc, brand.brand_name)
+    # The preview always shows the pay button, whether or not this org has a provider connected
+    # (epic #269). An admin judging the wording of a template is asking "what will this mail
+    # look like", and a button that vanishes because of an unrelated setting elsewhere in
+    # Instellingen makes the editor lie about the template being edited. The *sample* document
+    # is fabricated for exactly this reason; its link is fabricated the same way.
+    # A real-looking address on the org's own host with a placeholder id — the shape the auth
+    # kinds' sample already uses for its reset token. The sample document is fabricated and has
+    # no id to point at, which is the honest reason the preview cannot link to a real invoice.
+    pay_url = invoice_pay_url(brand.base_url, "preview")
     if kind == REMINDER_KIND:
         # An overdue invoice: a due date a fortnight back, and what the part payment left owing.
         doc.due_date = doc.issue_date - timedelta(days=14)
-        return _reminder_values(doc, brand.brand_name, 14)
-    return _invoice_values(doc, brand.brand_name)
+        return _reminder_values(doc, brand.brand_name, 14, pay_url)
+    return _invoice_values(doc, brand.brand_name, pay_url)
 
 
 def _sample_for(kind: str) -> Any:
@@ -205,9 +296,15 @@ INVOICING_EMAIL_KINDS: list[EmailTemplateKind] = [
         hint_key="invoicing.email.kind.invoice_hint",
         subject_key="invoicing.email.invoice_subject",
         body_key="invoicing.email.invoice_body",
+        # ``link`` is the pay button's destination (epic #269): the invoice in the client
+        # portal, never a provider checkout URL. It is the one variable here that may resolve
+        # to nothing — no provider connected, or nothing left to collect — and then the whole
+        # button goes with it.
         variables=(
             "brand", "number", "company", "contact", "total", "date", "due_date", "reference",
+            "link",
         ),
+        button_key="invoicing.email.pay_button",
         sample=_sample_for(INVOICE_KIND),
         position=110,
     ),
@@ -233,8 +330,9 @@ INVOICING_EMAIL_KINDS: list[EmailTemplateKind] = [
         body_key="invoicing.email.reminder_body",
         variables=(
             "brand", "number", "company", "contact", "total", "outstanding", "date", "due_date",
-            "days", "reference",
+            "days", "reference", "link",
         ),
+        button_key="invoicing.email.pay_button",
         sample=_sample_for(REMINDER_KIND),
         position=130,
     ),
@@ -256,14 +354,25 @@ async def load_transport(
     )
 
 
-async def deliver(ctx: Any, message: OutgoingEmail, brand: EmailBrand | None = None) -> None:
+async def deliver(
+    ctx: Any,
+    message: OutgoingEmail,
+    brand: EmailBrand | None = None,
+    transport: tuple[str, dict, Sender] | None = None,
+) -> None:
     """Request-path send: transport read first, network inside ``release_db``, honest
     failure. Callers write their bookkeeping (sent_at, counts) *after* this returns.
 
     This path bypasses ``send_org_email`` (the release-db dance), so the branded chrome
     (#236) is applied here — like the transport, the brand is read *before* the network call.
+
+    ``transport`` is accepted pre-resolved because a caller may need to know *which* transport
+    before it composes: whether the mail may carry an inline QR is a property of the provider
+    (epic #269, ``docs/EMAIL.md``), and asking after composing would mean discovering it too
+    late. Passing it also saves the second read the caller would otherwise cause.
     """
-    transport = await load_transport(ctx.session, ctx.org.id)
+    if transport is None:
+        transport = await load_transport(ctx.session, ctx.org.id)
     if transport is None:
         raise AppError(
             "email_not_configured", "errors.email_not_configured", status_code=400

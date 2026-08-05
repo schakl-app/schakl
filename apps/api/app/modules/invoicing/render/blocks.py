@@ -143,6 +143,12 @@ BLOCK_CATALOG: tuple[BlockSpec, ...] = (
     # is a diff against this catalog, not a snapshot, so a template that has never heard of
     # this key resolves it at the catalog's own position and default.
     BlockSpec("payment_qr", "body", default=False),
+    # The same destination as the QR, in words (epic #269). Both off by default and both
+    # independently switchable, because they answer different readers: a printed invoice gets
+    # scanned, a PDF opened on a laptop gets clicked, and an agency that prints in monochrome
+    # on a copier may want the line and not the code. Whichever is on, it leads to the
+    # invoice's page in the client portal and never to a provider checkout (``paylinks``).
+    BlockSpec("payment_link", "body", default=False),
     BlockSpec("intro", "body"),
     BlockSpec(
         "lines",

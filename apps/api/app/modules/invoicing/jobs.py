@@ -20,11 +20,12 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.activity import ActivityService
+from app.core.branding import load_brand_logo
 from app.core.email.branding import apply_branding, load_brand
 from app.core.email.senders import EmailAttachment, send_email
 from app.core.events import SystemContext
 from app.core.jobs import run_per_org
-from app.core.models import Org
+from app.core.models import Org, OrgSettings
 from app.core.timezone import org_zoneinfo
 from app.modules.invoicing.emails import (
     compose_invoice_email,
@@ -41,9 +42,40 @@ from app.modules.invoicing.models import (
     Quote,
     QuoteStatus,
 )
+from app.modules.invoicing.paylinks import mail_pay_qr, mail_pay_url
 from app.modules.invoicing.service import InvoiceService
 
 logger = logging.getLogger("schakl.invoicing")
+
+
+async def _provider_connected(session: AsyncSession, org_id) -> bool:  # noqa: ANN001
+    """Does this org hold an **active** payment credential (epic #269)?
+
+    One query per org per run, never per mail. Answers ``False`` for an instance with no
+    provider module enabled at all, which is what keeps the dunning mail of an org that has
+    never heard of online payments byte-identical to the one it sent yesterday.
+    """
+    from app.core.payments import available_accounts
+
+    return any(account.active for account in await available_accounts(session, org_id))
+
+
+async def _qr_brand(ctx) -> dict:  # noqa: ANN001
+    """The colour and logo an org's mail QRs are drawn with — **once per org, per run**.
+
+    Reading the logo out of storage is a round-trip, and a nightly dunning pass legitimately
+    sends dozens of mails for one tenant whose logo has not changed between them. The same
+    reason the transport and the brand are resolved beside this rather than per invoice.
+    """
+    org_settings = await ctx.session.scalar(
+        select(OrgSettings).where(OrgSettings.org_id == ctx.org.id)
+    )
+    logo, logo_type = await load_brand_logo(ctx, org_settings)
+    return {
+        "brand_color": org_settings.primary_color if org_settings else None,
+        "logo": logo,
+        "logo_content_type": logo_type,
+    }
 
 
 async def _expire_quotes(ctx: SystemContext, today) -> None:  # noqa: ANN001
@@ -99,6 +131,12 @@ async def _send_auto_issued(ctx: SystemContext, brand, transport) -> None:  # no
     )
     if not pending:
         return
+    # Asked **once for the org**, outside the loop (epic #269, docs/PERFORMANCE.md): whether a
+    # payment provider is connected is a property of the tenant, not of an invoice, and a
+    # per-invoice check would be one extra query per mail on a nightly run that legitimately
+    # sends dozens.
+    connected = await _provider_connected(ctx.session, ctx.org.id)
+    qr_brand = await _qr_brand(ctx) if connected else {}
     sent = 0
     for invoice in pending:
         to = (invoice.customer or {}).get("email")
@@ -119,9 +157,18 @@ async def _send_auto_issued(ctx: SystemContext, brand, transport) -> None:  # no
             )
             continue
         provider, config, sender = transport
+        pay_url = mail_pay_url(invoice, brand.base_url, provider_connected=connected)
         message = apply_branding(
             brand,
-            await compose_invoice_email(ctx.session, ctx.org.id, invoice, brand, None),
+            await compose_invoice_email(
+                ctx.session,
+                ctx.org.id,
+                invoice,
+                brand,
+                None,
+                pay_url,
+                mail_pay_qr(pay_url, transport=provider, **qr_brand),
+            ),
         )
         message.to = to
         try:
@@ -222,6 +269,10 @@ async def _remind_org(org: Org, session: AsyncSession) -> None:
 
     transport = await load_transport(session, org.id)
     brand = await load_brand(session, org)
+    # Once for the org, beside the transport and the brand, for the same reason all three are
+    # resolved here rather than per invoice (epic #269, docs/PERFORMANCE.md).
+    connected = await _provider_connected(session, org.id)
+    qr_brand = await _qr_brand(ctx) if connected else {}
     for invoice in due:
         if invoice.reminder_count >= len(schedule):
             continue  # the schedule is exhausted — escalation is a human's call now
@@ -249,9 +300,18 @@ async def _remind_org(org: Org, session: AsyncSession) -> None:
                 )
             continue
         provider, config, sender = transport
+        pay_url = mail_pay_url(invoice, brand.base_url, provider_connected=connected)
         message = apply_branding(
             brand,
-            await compose_reminder_email(session, org.id, invoice, brand, days_past),
+            await compose_reminder_email(
+                session,
+                org.id,
+                invoice,
+                brand,
+                days_past,
+                pay_url,
+                mail_pay_qr(pay_url, transport=provider, **qr_brand),
+            ),
         )
         message.to = to
         ok, error = await send_email(provider, config, sender, message)
