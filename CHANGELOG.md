@@ -2,7 +2,123 @@
 
 ## Unreleased
 
+## v0.21.0 — 2026-08-05
+
+### Invoicing
+
+- **An invoice is now drawn once, not twice.** The document on screen and the document in the
+  client's inbox were built by two separate pieces of code that each had to be changed in step,
+  and the failure that shape eventually produces is a client reading one invoice on screen and a
+  different one in their mail. There is now a single document: the preview shows exactly the page
+  that gets printed to PDF.
+- **Invoice and quote templates are editable.** A template decides which blocks appear, in what
+  order, and with which fields, in a visual editor — with your own wording on the letterhead and
+  your own colour on its rules. Blocks the law requires (the number, the date, the VAT
+  breakdown, the reverse-charge notice) can be moved but not switched off. A saved layout records
+  only your *changes*, so fields added by a later release still show up rather than being
+  invisible to everyone who ever saved a template.
+- **Editing a draft invoice no longer causes the same work to be billed twice.** An invoice line
+  did not record what it billed, and saving the editor rewrites all the lines — so opening an
+  invoice the automatic run had prepared, changing a single word and saving it released the
+  underlying claim, and that client was billed again for the same period the same month. Hours
+  had the mirror-image problem: removing an hours line left those hours marked invoiced with no
+  invoice billing them, so they could not be billed again without a database edit. Both are
+  fixed, and a line now carries its own record of what it covers.
+- **A credit note now actually corrects the balance.** Crediting produced a document and changed
+  nothing else, so a fully credited invoice stayed open, stayed overdue, and kept receiving
+  payment reminders for money the client no longer owed. The credit note could not be settled
+  either, so a refund you had already paid out still read as due. Crediting also **hands the
+  work back**: the hours, the agreement's month and the domain's year are released, so you can
+  bill them again correctly — which is usually the whole reason for crediting.
+- **Domain renewals are their own kind of line.** A register of forty domains renewing across the
+  year is reconciled line by line against the registrar's own invoice, and it used to sit in the
+  same band as your hosting retainers. Domains now have their own section in the editor, their
+  own tab in the "still to invoice" picker, and their own band on the document. Invoices written
+  before this release keep the shape they had, so a document a client has already read does not
+  change.
+- **"Nog te factureren" now covers everything owed** rather than only part of it.
+- Smaller ones: the VAT split is stated once instead of twice, an amount field steps by one euro
+  rather than by a cent, the framed document reloads when the document changes, and two dead ends
+  in the template editor are gone.
+
+### Domains, DNS and registrars
+
+- **Cloudflare integration.** A domain marked as a redirect finally has something behind it: a
+  real Cloudflare redirect rule that schakl creates, reads back, and can tell you has been changed
+  in the Cloudflare dashboard since. DNS records can be viewed and exported, and Cloudflare Pages
+  projects can be linked to a client's domain. Credentials are stored per Cloudflare account
+  rather than one per installation, because an agency has its own account and its clients bring
+  theirs — and nothing ever picks an account for you, since a zone created in the wrong account
+  cannot be moved, only deleted and rebuilt.
+- **OXXA registrar integration.** Read the register, see which domains you actually hold, and push
+  a nameserver change — which is what finishes "connect this domain to Cloudflare". Built against
+  OXXA's official API documentation. **It has not yet been run against a live OXXA account**,
+  because no credentials were available; `docs/OXXA.md` lists what to check first when you connect
+  one.
+- **A domain can now say whether it should be invoiced at all**, and the register can answer for
+  it. An agency's domain list mixes names you registered and renew for the client with names the
+  client registered themselves and merely asked you to point somewhere — and only the registrar's
+  register can tell those apart. Each domain is "yes", "no", or "follow the register". Only a
+  register that has actually been read can narrow what gets invoiced, so **an installation that
+  is already invoicing domains bills exactly what it did before** until you connect one.
+- Anything an integration mirrors from outside now stores *what it decided* separately from *what
+  it last saw*, so a change somebody made in the provider's own dashboard is reported as a
+  difference instead of being silently overwritten.
+
+### Contactmomenten
+
+- **A contactmoment can name everyone who was in it.** It could name exactly one person, so a call
+  that reached two of them was either logged twice or logged with one of them picked as the
+  winner — and the other person's own page quietly left it out. Attendees are now chips with a
+  type-ahead on every screen that writes one, with one of them marked as the lead so lists still
+  have a name to print and sort by. Filtering by a person finds the moments they were *in*, not
+  just the ones they led, and the Google Calendar mirror follows.
+- **Review a whole selection at once.** The Gmail review queue cost one open-read-approve round
+  trip per row, so a morning's forty e-mails was forty dialogs — which in practice meant the queue
+  was not reviewed, it was abandoned. Select rows and approve, file or reject them together.
+  Approving does not touch the links, so every row keeps the client, project or task the Gmail
+  match gave it.
+
+### AI and voice
+
+- **Speak a time entry instead of typing it.** Your browser records, your own speech provider
+  transcribes, and the transcript lands in the quick-add field for you to read and correct before
+  anything is parsed or saved. Nothing is saved automatically, and the audio goes only to the
+  service your organisation configured. Speech is its **own** setting rather than reusing the
+  chat provider, because Anthropic — this product's default — has no transcription service at
+  all, so "reuse the chat provider" would configure nothing.
+- **Quick add stopped throwing away part of what you typed.** Saying "niet declarabel" or "half
+  uur pauze" or naming an entry type was silently discarded and the entry landed on the form's
+  defaults. Those three are now understood. Quick add is also faster and fills the form
+  immediately instead of after a page reload.
+
+### The client portal, and who can see what
+
+- **Clients can see and download their own invoices.** A portal login lists and opens only its own
+  companies' *issued* invoices — never a draft, never another company's — with the status
+  including overdue, and downloads the same PDF you would.
+- **The portal is now a module of its own**, with its own licence, rather than living inside
+  contacts. Whether a client login stays restricted to its own company never depends on the
+  licence — only inviting *new* people does.
+- **Signing in as a client's contact person no longer refuses when it should simply do less.**
+  Giving clients invoice access meant staff who had been signing in as a client suddenly could
+  not, because the check demanded they already hold everything the client does. The session is
+  now capped to what the staff member holds instead of refused outright. Every trail records who
+  was really acting.
+- **A colleague limited to a portfolio of clients is now limited everywhere.** The restriction
+  only worked where a record pointed at a client directly, so contacts, websites, counts, activity
+  trails and attached files still showed the whole organisation. All four gaps are closed.
+
+### Import and export
+
+- **Twelve kinds of record travel by spreadsheet where six did** — domains, websites, hosting and
+  both rate cards join the list, along with the subscription fields that were missing.
+- **Export and import now sit on every list that has them**, next to the column picker, rather
+  than only in Instellingen.
+
 ### Security
+
+
 
 - **A sign-in now belongs to the organisation you signed in to.** The account list is shared by
   the whole installation and the password check never looked at which organisation the address
@@ -61,6 +177,35 @@
   as reported only once a mail actually went out: an organization whose administrators are all
   inactive, or whose e-mail transport is down, is alerted again tomorrow instead of having its
   outage silently marked as handled.
+- **Dates, deadlines and scheduled mail now follow your organisation's own timezone.** Three
+  places still assumed Amsterdam and three more assumed UTC, so on an installation configured for
+  another zone a budget period rolled over at the wrong midnight and hours landed in the wrong
+  month, "due today" named the wrong day for recurring tasks and reminders, and the daily digest
+  went out an hour early in Lisbon and an hour late in Warsaw.
+- **Listing a client's contacts sorted by name no longer fails** with a server error.
+- **The contact list groups people under their client**, rather than presenting one flat list.
+- **A cancelled Google Calendar meeting is mirrored as cancelled** instead of disappearing.
+- **A Google permission error now says which one it is**, instead of "try reconnecting" for every
+  possible cause, and connecting Google returns you to the page you started from.
+- **The role editor names its permissions.** Twenty of them were displayed as raw internal keys.
+- **"Uren boeken" on a client's page keeps that client** instead of clearing it.
+- The all-day row on the calendar lines up with the hour grid beneath it, and the settings
+  sidebar follows the three screens that moved out of that section.
+
+### Upgrade notes
+
+- **Everyone signs in again once.** Sessions now name the organisation they were created in, and
+  a session from before this release names none, so it is refused. There is nothing to run and
+  nothing to configure — people simply sign in again. See the first Security entry for why.
+- **No database decision to make.** All thirteen migrations only add tables and nullable columns;
+  nothing is dropped or rewritten, so the upgrade runs unattended as usual.
+- **Domain invoicing does not change by itself.** Every domain whose invoicing decision has not
+  been set keeps billing exactly as it did until you connect a registrar and sync it.
+
+## v0.20.0 — 2026-07-31
+
+### Fixed
+
 - **Cloudflare for SaaS custom domains activate on a Free, Pro or Business zone again** (#293).
   Every custom-hostname request carried `custom_origin_sni`, which is an Enterprise-only
   entitlement, so Cloudflare refused the whole create with *"Access to setting a custom origin SNI
