@@ -29,6 +29,7 @@ from app.modules.marketing.jobs import (
 )
 from app.modules.marketing.panels import marketing_company_panel
 from app.modules.marketing.permissions import MARKETING_PERMISSIONS
+from app.modules.marketing.report_sections import MARKETING_REPORT_SECTIONS
 from app.modules.marketing.router import router
 from app.registry import ModuleDescriptor, registry
 
@@ -45,6 +46,10 @@ module = ModuleDescriptor(
     sku="marketing",
     panels=[marketing_company_panel],
     permissions=MARKETING_PERMISSIONS,
+    # What a monthly client report is mostly made of (#300). Contributed here rather than
+    # named by the reporting module, so disabling marketing removes its sections from every
+    # future report and reporting still knows the name of no module (CLAUDE.md §6).
+    report_sections=MARKETING_REPORT_SECTIONS,
     # Nightly, per org, after the platform's other early jobs (subscriptions runs 05:30). The
     # daily aggregates power the panel/tab/overview without burning Google quota on page views.
     cron_jobs=[cron(marketing_sync_all, hour=4, minute=45)],

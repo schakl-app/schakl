@@ -16,8 +16,6 @@ from __future__ import annotations
 
 from datetime import date
 
-import pytest
-
 from app.modules.marketing.sources.seranking import (
     SeRankingAdapter,
     _keyword_entries,
@@ -124,7 +122,6 @@ def test_rows_tolerates_every_envelope_the_api_uses() -> None:
     assert _rows({"nope": 1}) == []
 
 
-@pytest.mark.anyio
 async def test_daily_aggregates_exclude_the_not_ranking_sentinel() -> None:
     """``pos: 0`` means *not in the results*, not "position zero".
 
@@ -149,7 +146,6 @@ async def test_daily_aggregates_exclude_the_not_ranking_sentinel() -> None:
     assert last.metrics["keywords_ranking"] == 1
 
 
-@pytest.mark.anyio
 async def test_keyword_rows_report_movement_the_way_a_client_reads_it() -> None:
     """Rank 8 → 3 is an improvement of five places, even though the number went down."""
     client = _Client({"/positions": _POSITIONS, "/keyword-groups/": _GROUPS})
@@ -181,7 +177,6 @@ def test_status_names_every_way_a_keyword_can_move() -> None:
     assert _status(0, 0) == "unchanged"
 
 
-@pytest.mark.anyio
 async def test_audit_reads_the_shape_the_api_actually_returns() -> None:
     """Findings live in ``sections[].props{}`` keyed by check code — not in ``checks[]``.
 
@@ -263,7 +258,6 @@ async def test_audit_reads_the_shape_the_api_actually_returns() -> None:
     assert audit["findings"][0]["section"] == "Crawlen & Indexatie"
 
 
-@pytest.mark.anyio
 async def test_audit_is_none_when_no_finished_audit_belongs_to_this_project() -> None:
     """Never another client's audit: the match is ``site_id``, never a domain search."""
     client = _Client(
@@ -272,7 +266,6 @@ async def test_audit_is_none_when_no_finished_audit_belongs_to_this_project() ->
     assert await ADAPTER.audit(client, "7457072") is None
 
 
-@pytest.mark.anyio
 async def test_ai_search_pairs_each_engine_with_its_own_statistics() -> None:
     client = _Client(
         {
@@ -307,7 +300,6 @@ async def test_ai_search_pairs_each_engine_with_its_own_statistics() -> None:
     ]
 
 
-@pytest.mark.anyio
 async def test_an_engine_whose_statistics_fail_is_skipped_not_fatal() -> None:
     """One engine's outage must not cost the report its whole AI-search section."""
     client = _Client(
@@ -331,7 +323,6 @@ def test_previous_period_is_the_same_span_a_year_earlier() -> None:
     assert (end - start).days == 28
 
 
-@pytest.mark.anyio
 async def test_accounts_are_listed_for_linking_never_guessed_from_a_domain() -> None:
     client = _Client(
         {

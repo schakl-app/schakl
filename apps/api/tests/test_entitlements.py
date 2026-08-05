@@ -124,6 +124,10 @@ def test_paid_module_set_is_pinned() -> None:
         # instance that has not bought it.
         "portal": "portal",
         "projects": "projects",
+        # #300: generating, narrating and sending the periodic client report is a premium
+        # capability *on top of* `marketing` — a tenant can license the dashboards without
+        # buying the documents, which is the product ladder rather than a technical split.
+        "reporting": "reporting",
         "subscriptions": "subscriptions",
         "time": "time",
         "websites": "websites",

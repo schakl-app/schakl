@@ -1,0 +1,182 @@
+{#
+  The body of the shipped report design — and the file "start from this design" hands a tenant
+  who wants their own. It renders against the context in `render/context.py`: strings and
+  lists, never rows.
+
+  One rule runs through it: **a section with no data is not printed**. The provider already
+  returned None for a client who has no social traffic, so there is no empty table here to
+  apologise for — and a report that silently prints a row of zeros is worse than one that is
+  shorter.
+#}
+<div class="cover">
+  <div class="cover-bar">
+    {% if client_logo %}
+      <img class="client" src="{{ client_logo }}" alt="{{ client }}" />
+    {% else %}
+      <span></span>
+    {% endif %}
+    {% if logo %}
+      <img class="agency" src="{{ logo }}" alt="{{ brand_name }}" />
+    {% else %}
+      <span class="wordmark">{{ brand_name }}</span>
+    {% endif %}
+  </div>
+
+  <div class="hero">
+    {% if cover %}<img src="{{ cover }}" alt="" />{% endif %}
+    <div class="hero-text{% if cover %} on-image{% endif %}">
+      <h1>{{ title }}</h1>
+      <div class="client">{{ client }}</div>
+    </div>
+  </div>
+
+  <div class="period">{{ period_label }}</div>
+
+  {% if internal %}
+    <p style="margin-top:14px"><span class="internal-band">{{ labels.internal_banner }}</span></p>
+  {% endif %}
+
+  {% if intro_text %}<div class="preface">{{ intro_text | nl2br }}</div>{% endif %}
+
+  {% if summary %}
+    <div class="summary">
+      <h2>{{ labels.summary }}</h2>
+      {{ summary | nl2br }}
+    </div>
+  {% endif %}
+
+  <div class="cover-foot">
+    {{ labels.period }}: {{ period_label }}{% if compare_label %} · {{ labels.compared_with }}
+    {{ compare_label }}{% endif %}
+  </div>
+</div>
+
+{% for section in sections %}
+  <div class="section{% if not loop.first and loop.index0 % 3 == 0 %} page-break{% endif %}">
+    <h2>{{ section.title }}</h2>
+    {% if section.narrative %}<div class="narrative">{{ section.narrative | nl2br }}</div>{% endif %}
+
+    {% if section.totals %}
+      <div class="kpis">
+        {% for tile in section.totals %}
+          <div class="kpi">
+            <div class="label">{{ tile.label }}</div>
+            <div class="value">{{ tile.value }}</div>
+            {% if tile.delta != '-' %}
+              <span class="badge {{ tile.delta_class }}">{{ tile.delta }}</span>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if section.chart %}<div class="chart">{{ section.chart }}</div>{% endif %}
+
+    {% if section.kind == 'rankings' %}
+      {# Positions read as a table per keyword group: a client thinks in themes, not in a
+         flat alphabetical list of 200 phrases. #}
+      {% for group in section.groups %}
+        {% if group.name %}<div class="group-head">{{ group.name }}</div>{% endif %}
+        <table class="data">
+          <thead>
+            <tr>
+              <th>{{ labels.keyword }}</th>
+              <th>{{ labels.landing_page }}</th>
+              <th class="num">{{ labels.start_position }}</th>
+              <th class="num">{{ labels.end_position }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in group.rows %}
+              <tr>
+                <td>{{ row.keyword }}</td>
+                <td class="url">{{ row.landing_page or '-' }}</td>
+                <td class="pos {% if row.begin and row.begin <= 10 %}good{% elif row.begin %}poor{% endif %}">
+                  {{ row.begin or '-' }}
+                </td>
+                <td class="pos {% if row.end and row.end <= 10 %}good{% elif row.end %}poor{% endif %}">
+                  {{ row.end or '-' }}
+                  {% if row.status == 'improved' %}
+                    <span class="badge up">+{{ row.change }}</span>
+                  {% elif row.status == 'declined' %}
+                    <span class="badge down">{{ row.change }}</span>
+                  {% elif row.status == 'new' %}
+                    <span class="badge up">{{ labels.new_keyword }}</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endfor %}
+
+    {% elif section.kind == 'audit' %}
+      <table class="data">
+        <thead>
+          <tr>
+            <th>{{ labels.source }}</th>
+            <th>{{ section.title }}</th>
+            <th class="num">{{ labels.pages }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in section.rows %}
+            <tr>
+              <td>{{ row.section }}</td>
+              <td>{{ row.name }}</td>
+              <td class="num">{{ fmt_number(row.pages) }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if section.audited_at %}
+        <p class="empty">{{ labels.audited_at }}: {{ section.audited_at }}</p>
+      {% endif %}
+
+    {% elif section.rows %}
+      <table class="data">
+        <thead>
+          <tr>
+            <th>{{ labels.source }}</th>
+            {% for column in section.columns %}<th class="num">{{ column.label }}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in section.rows %}
+            <tr>
+              {# `.get`, never `row.label`: the environment is StrictUndefined, and a row that
+                 has no `label` key must render a dash rather than take the report down. #}
+              <td>{{ row.get('label') or row.get('engine') or '-' }}</td>
+              {% for column in section.columns %}
+                <td class="num">
+                  {% if column.key == 'delta' %}
+                    <span class="badge {{ delta_class(column.key, row.get(column.key)) }}">
+                      {{ fmt_delta(row.get(column.key)) }}
+                    </span>
+                  {% else %}
+                    {{ fmt(column.key, row.get(column.key)) }}
+                  {% endif %}
+                </td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+  </div>
+{% endfor %}
+
+{% if internal and (actions or questions) %}
+  <div class="section page-break">
+    {% if actions %}
+      <h2>{{ labels.actions }}</h2>
+      <ul class="list">{% for item in actions %}<li>{{ item }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% if questions %}
+      <h2 style="margin-top:16px">{{ labels.questions }}</h2>
+      <ul class="list">{% for item in questions %}<li>{{ item }}</li>{% endfor %}</ul>
+    {% endif %}
+  </div>
+{% endif %}
+
+{% if footer_text %}<div class="doc-foot"><span>{{ footer_text }}</span></div>{% endif %}

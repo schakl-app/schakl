@@ -20,7 +20,9 @@ the same bus as a request.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+import uuid
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -54,16 +56,45 @@ class SystemContext:
     It also exposes ``repo`` so a job can call another module's **read-only** published service
     the same way a request does. Anything that reads ``ctx.user`` is a request
     concern and will rightly fail here: a cron has no one to authorize.
+
+    Since #300 it also answers the three questions a *service* asks of its context, so a job
+    can drive one rather than re-implementing it:
+
+    * ``can`` / ``require`` — **always yes.** Not a hole: there is no principal here to
+      authorize, and inventing a permissive "system user" would put a real membership's name
+      on work nobody did. What gates a job is the job — its licence check and its schedule —
+      and it is bounded by ``run_per_org`` binding exactly one org's RLS.
+    * ``company_scope`` / ``is_portal`` — a cron is not a membership and never a client login,
+      so: unrestricted, and never external. Stated rather than left to ``getattr``, because a
+      service reading ``is_portal`` off a context that has none would silently take the staff
+      branch and be right only by accident.
+    * ``release_db`` — a no-op window. A request holds one pooled connection for its whole
+      transaction, which is why releasing it around a slow call matters there; a worker owns
+      its session outright and has nothing to hand back. Committing here instead would end a
+      job's transaction halfway through its own work.
     """
 
     org: Org
     session: AsyncSession
     user: User | None = None
+    #: A cron sees its whole org: it is not a membership, so no company horizon applies.
+    company_scope: frozenset[uuid.UUID] | None = None
+    is_portal: bool = False
 
     def repo(self, model: type[Any]) -> Any:
         from app.core.tenancy import TenantScopedRepository
 
         return TenantScopedRepository(self.session, self.org.id, model)
+
+    def can(self, permission: str, scope: str | None = None) -> bool:  # noqa: ARG002
+        return True
+
+    def require(self, permission: str, scope: str | None = None) -> None:
+        """No-op: see the class docstring. A job is gated by being a job."""
+
+    @asynccontextmanager
+    async def release_db(self) -> AsyncGenerator[None, None]:
+        yield
 
 
 EventHandler = Callable[["EmitContext", dict[str, Any]], Awaitable[None]]

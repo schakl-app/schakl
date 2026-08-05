@@ -1,0 +1,57 @@
+"""The reporting panel on a company's detail page (issue #300).
+
+A ``PanelSpec``, so it composes into the company hub through the registry with no edit to the
+company page (CLAUDE.md §6). It answers two questions an account manager has while looking at
+a client: *did last month's report go out*, and *when is the next one*.
+
+Cheap by construction: the latest few rows plus the profile, read from our own tables — no
+Google call, no SE Ranking call, no render (docs/PERFORMANCE.md). It is also what a **portal**
+login sees on their own company page, which is why it goes through ``ReportService`` rather
+than a hand-built select: the portal repository is what keeps a client to their own published
+client-facing reports.
+"""
+
+from __future__ import annotations
+
+import uuid
+
+from app.core.tenancy import RequestContext
+from app.modules.reporting.models import ReportAudience
+from app.modules.reporting.service import ProfileService, ReportService
+from app.registry import PanelSpec
+
+_RECENT = 6
+
+
+async def _reporting_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
+    if not ctx.can("reporting.report.read"):
+        return {"forbidden": True}
+    reports = await ReportService(ctx).list(
+        company_id=company_id, limit=_RECENT, count=False
+    )
+    payload: dict = {
+        "reports": [row.model_dump(mode="json") for row in reports.items],
+        "can_manage": ctx.can("reporting.profile.manage"),
+        "can_send": ctx.can("reporting.report.send"),
+    }
+    # A client has no schedule to read: it is the agency's arrangement, not theirs.
+    if ctx.can("reporting.profile.manage") and not ctx.is_portal:
+        profile = await ProfileService(ctx).get(company_id)
+        payload["schedule"] = profile.effective_schedule
+        payload["next_run_on"] = (
+            profile.next_run_on.isoformat() if profile.next_run_on else None
+        )
+        payload["recipients"] = profile.recipients
+        payload["configured"] = profile.id != uuid.UUID(int=0)
+    return payload
+
+
+reporting_company_panel = PanelSpec(
+    key="reporting.reports",
+    entity_type="company",
+    title_key="reporting.panel.title",
+    provider=_reporting_provider,
+    position=55,
+)
+
+__all__ = ["ReportAudience", "reporting_company_panel"]

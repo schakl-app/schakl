@@ -1,0 +1,19 @@
+{#
+  The shell a tenant's own report template renders inside.
+
+  Their Jinja produced `custom_body` against the same context the shipped design gets; what
+  they do not have to re-derive is the page geometry, the palette and — the piece that must
+  never be theirs to drop — the "not for the client" band on an internal analysis.
+#}
+{% extends "_shell.html" %}
+
+{% block design_css %}
+{% include "standard.css" %}
+{% endblock %}
+
+{% block body %}
+{% if internal %}
+  <p style="margin-bottom:12px"><span class="internal-band">{{ labels.internal_banner }}</span></p>
+{% endif %}
+{{ custom_body }}
+{% endblock %}

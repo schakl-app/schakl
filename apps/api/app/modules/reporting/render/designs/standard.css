@@ -1,0 +1,164 @@
+/* The shipped report design.
+ *
+ * Ported from the layout the n8n workflow produced, with every hex that was one agency's
+ * brand replaced by the tenant's own (Golden Rule 4). The accent arrives contrast-corrected
+ * against paper, so a pale-yellow brand still prints a readable heading.
+ *
+ * Density is deliberate: a monthly report is read once, on a screen or on paper, and a client
+ * who has to hunt for the number stops opening it. Tables are hairline-ruled rather than
+ * boxed, sections are separated by air rather than by borders, and only the accent is loud.
+ */
+
+.cover {
+  break-after: page;
+  min-height: 250mm;
+  display: flex;
+  flex-direction: column;
+}
+
+.cover-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--rule);
+}
+.cover-bar img.client { max-height: 40px; max-width: 150px; }
+.cover-bar img.agency { max-height: 26px; max-width: 130px; }
+.cover-bar .wordmark { font-size: 13pt; font-weight: 800; color: var(--accent); }
+
+.hero {
+  margin: 22px 0 20px;
+  border-radius: 5px;
+  overflow: hidden;
+  position: relative;
+  background: var(--wash);
+}
+.hero img { display: block; width: 100%; height: 190px; object-fit: cover; }
+.hero-text { padding: 20px 22px; }
+.hero-text.on-image {
+  position: absolute;
+  inset: auto 0 0 0;
+  color: #fff;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.78) 100%);
+}
+.hero h1 { font-size: 21pt; letter-spacing: -0.01em; }
+.hero .client { font-size: 14pt; font-weight: 700; color: var(--accent); margin-top: 2px; }
+.hero-text.on-image .client { color: #fff; }
+
+.period {
+  align-self: flex-start;
+  border: 1.5px solid var(--accent);
+  color: var(--accent);
+  padding: 5px 14px;
+  font-size: 8pt;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 3px;
+}
+
+.preface { margin: 18px 0; max-width: 150mm; color: #333; }
+
+.summary {
+  margin-top: 16px;
+  padding: 16px 18px;
+  border-left: 3px solid var(--accent);
+  background: var(--wash);
+  border-radius: 0 4px 4px 0;
+}
+.summary h2 {
+  font-size: 8pt;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+.cover-foot { margin-top: auto; padding-top: 16px; font-size: 8pt; color: var(--muted); }
+
+/* ---- sections ---- */
+.section { margin: 0 0 26px; break-inside: auto; }
+.section > h2 {
+  font-size: 12pt;
+  border-left: 3px solid var(--accent);
+  padding-left: 9px;
+  margin-bottom: 10px;
+}
+.section .narrative { margin-bottom: 12px; color: #333; }
+.chart { margin: 10px 0 12px; break-inside: avoid; }
+
+/* ---- tables ---- */
+table.data { font-size: 8pt; margin-top: 6px; }
+table.data thead th {
+  background: var(--ink);
+  color: #fff;
+  padding: 6px 7px;
+  font-size: 7pt;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+table.data tbody td { padding: 5px 7px; border-bottom: 1px solid var(--rule); }
+table.data tbody tr:last-child td { border-bottom: none; }
+table.data tr { break-inside: avoid; }
+table.data thead { display: table-header-group; }
+.url { color: var(--muted); font-size: 7pt; word-break: break-all; }
+
+.group-head {
+  background: var(--accent);
+  color: #fff;
+  padding: 4px 9px;
+  font-size: 8pt;
+  font-weight: 700;
+  margin-top: 12px;
+  break-after: avoid;
+}
+
+.pos { text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pos.good { background: var(--up-wash); }
+.pos.poor { background: var(--down-wash); }
+
+.badge {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 7pt;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.badge.up { background: var(--up-wash); color: var(--up); }
+.badge.down { background: var(--down-wash); color: var(--down); }
+.badge.neutral { background: var(--wash); color: var(--muted); }
+
+.kpis { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0 12px; }
+.kpi {
+  flex: 1 1 22%;
+  min-width: 30mm;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+.kpi .label {
+  font-size: 7pt;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.kpi .value { font-size: 14pt; font-weight: 700; }
+
+.empty { color: var(--muted); font-style: italic; font-size: 8pt; }
+
+/* ---- internal only ---- */
+.list { margin: 6px 0 0 16px; }
+.list li { margin-bottom: 4px; }
+
+.doc-foot {
+  margin-top: 24px;
+  padding-top: 10px;
+  border-top: 1.5px solid var(--accent);
+  font-size: 7.5pt;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+}

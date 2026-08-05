@@ -99,7 +99,10 @@ async def write_file(
         entity_type=entity_type,
         entity_id=entity_id,
         content_id=content_id,
-        created_by_user_id=ctx.user.id,
+        # A background job stores files too (a generated report's PDF, #300) and has no user —
+        # `SystemContext.user` is None by design. Snapshotting "nobody" is the honest answer,
+        # and the column is already nullable for the departed-account case.
+        created_by_user_id=getattr(ctx.user, "id", None),
     )
 
 
