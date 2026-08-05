@@ -17,9 +17,9 @@ import { marked, type Tokens } from "marked";
 import { sourceHref } from "$lib/core/ai";
 
 // A deliberately small allow-list: the tags markdown itself produces, and nothing else. No
-// `<img>` (no remote content / tracking pixels in a note), no `<h1>`/`<h2>` (headings in a task
-// description are visual noise — `###`+ still render, as `<h3>`). Links are the one attribute
-// surface, locked to safe protocols by DOMPurify and hardened further in the hook below.
+// `<img>` by default (no remote content / tracking pixels in a note), no `<h1>`/`<h2>` (headings
+// in a task description are visual noise — `###`+ still render, as `<h3>`). Links are the one
+// attribute surface, locked to safe protocols by DOMPurify and hardened further in the hook below.
 const ALLOWED_TAGS = [
   "p",
   "br",
@@ -39,10 +39,23 @@ const ALLOWED_TAGS = [
   "h5",
   "h6",
   "hr",
+  // We parse with `gfm: true`, so markdown *does* produce these — and stripping the tags while
+  // keeping their text turned a table into a run of loose words with the header row missing.
+  // The API's own renderer (`richtext.markdown_to_html`, for documents) has always allowed them;
+  // the two disagreeing was the bug, not the tags.
+  "table",
+  "thead",
+  "tbody",
+  "tr",
+  "th",
+  "td",
   // The @mention chip (issue #63): a fixed-class span this module's own extension emits.
   "span",
 ];
 const ALLOWED_ATTR = ["href", "title", "class", "data-user-id", "data-contact-id"];
+
+/** The only `src` an `<img>` may carry: a file this instance stored and serves. */
+const FILE_SRC = "/api/v1/files/";
 
 const _UUID = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 // Optional kind prefix (#165): `mention:contact:<uuid>`; absent = a colleague (pre-#165 bodies).
@@ -82,6 +95,24 @@ function ensureConfigured(): void {
       node.setAttribute("target", "_blank");
       node.setAttribute("rel", "noopener noreferrer nofollow");
     }
+    // An `<img>` may only ever name a file we stored and serve ourselves. The `fileimage`
+    // extension is the only thing that emits one, but *this* is where it is enforced: a
+    // remote src is a request to somebody else's server, which for a received e-mail means
+    // telling the sender the agency opened it. Removed outright rather than blanked — an
+    // empty `<img>` is a broken-image icon in the middle of someone's message.
+    if (node.tagName === "IMG" && !(node.getAttribute("src") ?? "").startsWith(FILE_SRC)) {
+      node.remove();
+    }
+  });
+  // Ordinary markdown images never render — `![x](https://…)` degrades to its alt text, whatever
+  // the `images` option says. Only the `fileimage` extension below may produce an `<img>`, so
+  // "an image is something we already hold" is true by construction rather than by allow-list.
+  marked.use({
+    renderer: {
+      image(token: Tokens.Image) {
+        return escapeHtml(token.text ?? "");
+      },
+    },
   });
   // Render `@[Name](mention:<uuid>)` markers as a distinguishable chip (issue #63). A marked
   // extension (not raw-HTML injection) keeps the "markdown source only" rule; the output is a
