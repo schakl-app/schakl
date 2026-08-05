@@ -2140,6 +2140,7 @@
   "domains.price_per_year": "{amount} / jaar",
   "domains.price_source_override": "prijsafspraak",
   "domains.price_source_tld": "TLD-prijs",
+  "domains.invoicing.section": "Facturatie",
   "domains.invoiceable.legend": "Facturatie",
   "domains.invoiceable.column": "Gefactureerd",
   "domains.invoiceable.follow": "Volg het register",

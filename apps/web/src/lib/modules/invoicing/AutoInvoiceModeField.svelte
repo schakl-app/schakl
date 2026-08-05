@@ -28,6 +28,7 @@
     orgMode = null,
     disabled = false,
     formId,
+    onchoose,
   }: {
     name: string;
     value?: AutoInvoiceMode | "" | null;
@@ -35,12 +36,16 @@
     orgMode?: AutoInvoiceMode | null;
     disabled?: boolean;
     formId?: string;
+    /** The current level, for a caller that states it elsewhere — a collapsed section's summary
+     *  (`DomainForm`). Read-only: the radios stay this component's own state. */
+    onchoose?: (chosen: string) => void;
   } = $props();
 
   // Bound, never a one-way `checked` (docs/UX.md): a radio rendered one-way loses its mark on
   // hydration, and the next save then silently strips what the user never touched.
   // svelte-ignore state_referenced_locally
   let chosen = $state<string>(value ?? "");
+  $effect(() => onchoose?.(chosen));
 
   const rowClass =
     "flex cursor-pointer items-start gap-2 rounded-lg border border-border p-3 text-sm";

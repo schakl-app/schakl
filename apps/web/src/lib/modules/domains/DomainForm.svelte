@@ -91,6 +91,25 @@
   // entity must resolve to its label in the picker.
   const companyItems = $derived(companies.map((c) => ({ value: c.id, label: c.name })));
 
+  // What the two invoicing rows currently answer. Held here so the collapsed section can state
+  // it: a disclosure that hides a decision without naming it is worse than no disclosure.
+  const invoiceableRow = (v: boolean | null | undefined) =>
+    v === true ? "yes" : v === false ? "no" : "";
+  // svelte-ignore state_referenced_locally
+  let invoiceableChoice = $state(invoiceableRow(domain?.invoiceable));
+  // svelte-ignore state_referenced_locally
+  let autoModeChoice = $state<string>(domain?.auto_invoice_mode ?? "");
+  const invoicingSummary = $derived(
+    [
+      invoiceableChoice === "yes"
+        ? t("domains.invoiceable.yes")
+        : invoiceableChoice === "no"
+          ? t("domains.invoiceable.no")
+          : t("domains.invoiceable.follow"),
+      autoModeChoice ? t(`invoicing.auto.${autoModeChoice}`) : t("invoicing.auto.inherit"),
+    ].join(" · "),
+  );
+
   // Stateful so the TLD price hint follows what is typed (#250); still normalized on change.
   // svelte-ignore state_referenced_locally
   let nameValue = $state(domain?.name ?? normalizeDomainName(nameDefault));
@@ -154,25 +173,43 @@
     </div>
   </div>
 
-  <!-- Whether the renewal is billed on at all (#298). Above the automation level on purpose:
-       "do we invoice this" comes before "how far does the cron take it". -->
-  <InvoiceableField
-    name="invoiceable"
-    value={domain?.invoiceable ?? null}
-    source={domain?.invoiceable_source ?? null}
-    registers={domain?.registers ?? []}
-    {formId}
-  />
+  <!-- Invoicing: whether the renewal is billed on at all (#298), then how far the cron takes
+       that invoice. Nine radio cards is the right shape for the decision and the wrong shape
+       for a *create* form, where both answers already default to "follow" and nobody has an
+       opinion on a domain that does not exist yet — so it opens collapsed there and the
+       summary states what those defaults resolve to. Editing an existing record opens it,
+       because that is what someone came to the form for.
+       A closed <details> still submits the inputs inside it, so nothing here depends on the
+       section being open — collapsing it can never silently clear a stored decision. -->
+  <details class="rounded-lg border border-border" open={domain !== null}>
+    <summary class="cursor-pointer list-item px-3 py-2 text-sm text-text marker:text-text-muted">
+      <span class="font-medium">{t("domains.invoicing.section")}</span>
+      <span class="text-text-muted">: {invoicingSummary}</span>
+    </summary>
+    <div class="space-y-4 border-t border-border p-3">
+      <!-- Above the automation level on purpose: "do we invoice this" comes before "how far
+           does the cron take it". -->
+      <InvoiceableField
+        name="invoiceable"
+        value={domain?.invoiceable ?? null}
+        source={domain?.invoiceable_source ?? null}
+        registers={domain?.registers ?? []}
+        {formId}
+        onchoose={(chosen) => (invoiceableChoice = chosen)}
+      />
 
-  <!-- How far the renewal cron takes this domain's invoice. Only about the paper: nothing
-       here renews the registration. Defaults to following the organisation setting. -->
-  <AutoInvoiceModeField
-    name="auto_invoice_mode"
-    value={domain?.auto_invoice_mode ?? ""}
-    inheritable
-    {orgMode}
-    formId={formId}
-  />
+      <!-- Only about the paper: nothing here renews the registration. Defaults to following
+           the organisation setting. -->
+      <AutoInvoiceModeField
+        name="auto_invoice_mode"
+        value={domain?.auto_invoice_mode ?? ""}
+        inheritable
+        {orgMode}
+        {formId}
+        onchoose={(chosen) => (autoModeChoice = chosen)}
+      />
+    </div>
+  </details>
 
   <div>
     <label for="{idPrefix}-company" class="mb-1 block text-sm text-text"

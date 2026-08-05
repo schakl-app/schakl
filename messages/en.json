@@ -2140,6 +2140,7 @@
   "domains.price_per_year": "{amount} / year",
   "domains.price_source_override": "custom price",
   "domains.price_source_tld": "TLD price",
+  "domains.invoicing.section": "Invoicing",
   "domains.invoiceable.legend": "Invoicing",
   "domains.invoiceable.column": "Invoiced",
   "domains.invoiceable.follow": "Follow the register",
