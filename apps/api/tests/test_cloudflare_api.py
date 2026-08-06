@@ -225,6 +225,85 @@ async def test_a_working_sync_clears_a_token_error_nobody_else_would(
         assert row["status"] == "active" and row["last_error"] is None
 
 
+async def test_a_failed_sync_records_why_despite_rolling_back(client_for, cloudflare) -> None:
+    """``require_context`` rolls the request transaction back on any exception, so writing
+    ``last_error`` and *then* raising recorded nothing: the row read healthy while the admin was
+    looking at a red toast, and the settings screen — whose whole job is to say what is wrong
+    with a credential — was the one place that never found out."""
+    t = await make_tenant("cf-syncfail")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        account = await _account(c, headers, cf_account_id="acct-1")
+        cloudflare.revoked = True
+        failed = await c.post(
+            f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers
+        )
+        assert failed.status_code == 409, failed.text
+        assert failed.json()["error"]["code"] == "cloudflare_token_rejected"
+
+        cloudflare.revoked = False  # only so the *read* below can happen
+        row = (await c.get("/api/v1/cloudflare/accounts", headers=headers)).json()[0]
+        assert row["status"] == "error"
+        assert row["last_error"] and "Invalid API Token" in row["last_error"]
+
+
+async def test_a_sync_fills_in_an_account_id_so_pages_is_not_skipped(
+    client_for, cloudflare
+) -> None:
+    """Zones need no account id; Pages and Registrar are addressed by one.
+
+    That asymmetry is what makes a half-configured row look healthy — zones arrive and fill the
+    screen while the two halves that need an id are skipped, and skipped as a *zero*, which
+    reads exactly like "this account has no Pages projects". Only ``verify_account`` ever filled
+    the id in, so any tenant whose verify had failed kept a blank Pages panel over a Cloudflare
+    account that was serving their sites.
+    """
+    t = await make_tenant("cf-fillid")
+    headers = await auth_cookie(t.user)
+    cloudflare.add_zone("klant.nl")
+    cloudflare.pages["acct-1"] = [
+        {"name": "klant-site", "subdomain": "klant-site.pages.dev", "production_branch": "main"}
+    ]
+    cloudflare.add_pages_domain("klant-site", "klant.nl")
+    async with client_for(t.host) as c:
+        company = await _company(c, headers)
+        await _domain(c, headers, "klant.nl", company)
+        account = await _account(c, headers)  # no cf_account_id — never verified
+        synced = await c.post(
+            f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers
+        )
+        assert synced.status_code == 200, synced.text
+        body = synced.json()
+        assert "no_account_id" not in body["warnings"]
+        assert body["pages_projects_synced"] == 1
+        # The hostname was already attached at Cloudflare, so it arrives as an adopted link
+        # rather than needing anyone to press a button that re-registers what exists.
+        assert body["pages_links_adopted"] == 1
+        row = (await c.get("/api/v1/cloudflare/accounts", headers=headers)).json()[0]
+        assert row["cf_account_id"] == "acct-1"
+
+
+async def test_a_sync_that_cannot_name_an_account_says_pages_was_not_read(
+    client_for, cloudflare
+) -> None:
+    """"Not asked" and "nothing found" are different answers and only the warning tells them
+    apart (§17's no-silent-caps rule). Two accounts behind one token is the never-guess case:
+    picking one would point every later Pages call at the wrong client's account."""
+    cloudflare.accounts = [{"id": "acct-1", "name": "Agency"}, {"id": "acct-2", "name": "Klant"}]
+    t = await make_tenant("cf-ambig-id")
+    headers = await auth_cookie(t.user)
+    cloudflare.add_zone("klant.nl")
+    async with client_for(t.host) as c:
+        account = await _account(c, headers)
+        body = (
+            await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers)
+        ).json()
+        assert "no_account_id" in body["warnings"]
+        assert body["pages_projects_synced"] == 0
+        row = (await c.get("/api/v1/cloudflare/accounts", headers=headers)).json()[0]
+        assert row["cf_account_id"] is None
+
+
 async def test_an_invalid_token_is_recorded_not_raised(client_for, cloudflare) -> None:
     t = await make_tenant("cf-badtoken")
     headers = await auth_cookie(t.user)

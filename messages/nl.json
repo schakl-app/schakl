@@ -3957,6 +3957,7 @@
   "cloudflare.accounts.delete_confirm": "{name} verwijderen? De opgehaalde zones verdwijnen uit schakl. Bij Cloudflare verandert er niets.",
   "cloudflare.accounts.status.error": "Probleem met token",
   "cloudflare.accounts.last_error": "Laatste melding van Cloudflare",
+  "cloudflare.accounts.synced_no_account_id": "Pages-projecten en registraties zijn niet gelezen: er kon geen Cloudflare-account bij dit token worden bepaald. Vul het account-ID in bij dit account, of geef het token rechten om accounts te lezen.",
   "cloudflare.accounts.verified": "Token werkt.",
   "cloudflare.accounts.verify_failed": "Cloudflare weigert het token.",
   "cloudflare.accounts.synced": "{zones} zones opgehaald, {matched} gekoppeld aan een domein.",

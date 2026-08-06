@@ -41,6 +41,7 @@ from app.core.crypto import decrypt, encrypt
 from app.core.providers.models import Provider
 from app.core.tenancy import RequestContext
 from app.core.urls import reject_dangerous_url
+from app.db import async_session_maker, set_current_org
 from app.errors import AppError
 from app.modules.cloudflare import redirects as rules
 from app.modules.cloudflare.client import (
@@ -624,15 +625,8 @@ class CloudflareService:
         try:
             zones = await client.list_zones(account_id=account.cf_account_id)
         except CloudflareError as exc:
-            await self.accounts.update(
-                account,
-                status=(
-                    CloudflareAccountStatus.ERROR.value
-                    if isinstance(exc, CloudflareAuthError)
-                    else account.status
-                ),
-                last_error=str(exc)[:500],
-            )
+            # Written outside this transaction: the raise below rolls everything else back.
+            await self._record_failure(account, exc)
             raise self._translate(exc) from exc
 
         now = datetime.now(UTC)
@@ -702,6 +696,8 @@ class CloudflareService:
 
         pages = _PagesSyncCounts()
         registrar = _RegistrarSyncCounts()
+        if not account.cf_account_id:
+            account = await self._resolve_account_id(account, client)
         if account.cf_account_id:
             try:
                 pages = await self._sync_pages_projects(account, client, now)
@@ -743,6 +739,43 @@ class CloudflareService:
             registrar_domains_at_cloudflare=registrar.at_cloudflare,
             registrar_domains_matched=registrar.matched,
             warnings=warnings,
+        )
+
+    async def _resolve_account_id(
+        self, account: CloudflareAccount, client: CloudflareClient
+    ) -> CloudflareAccount:
+        """Fill in a missing ``cf_account_id`` from the token itself, when it is unambiguous.
+
+        **Zones need no account id; Pages and Registrar are addressed by one.** That asymmetry
+        is why a half-configured row looks entirely healthy: zones arrive, match domains and
+        fill the screen, while the two halves that need an id are skipped — and skipped as a
+        *zero*, which reads exactly like "this account has no Pages projects".
+
+        Nothing used to fill it in but ``verify_account``, so any tenant whose verify had ever
+        failed — every account-owned token, before ``client.verify_token`` learned the second
+        endpoint — kept a NULL id and a permanently blank Pages panel over a Cloudflare account
+        that was serving their sites. The sync holds a client and the answer is one call, so it
+        asks rather than waiting to be told.
+
+        Exactly one visible account is an answer; **several is not**, and this is the module's
+        never-guess rule (§ file docstring) at its sharpest — picking one would silently point
+        every later Pages call at the wrong client's account. Ambiguity leaves the id NULL, and
+        the caller's ``no_account_id`` warning says so.
+        """
+        try:
+            accounts = await client.list_accounts()
+        except CloudflareError:
+            # Not scoped to read accounts. Degraded, not broken: the zone half already worked.
+            return account
+        if len(accounts) != 1:
+            return account
+        discovered = str(accounts[0].get("id") or "")
+        if not discovered:
+            return account
+        return await self.accounts.update(
+            account,
+            cf_account_id=discovered,
+            cf_account_name=str(accounts[0].get("name") or "") or account.cf_account_name,
         )
 
     async def _domains_by_name(self, names: set[str]) -> dict[str, uuid.UUID]:
@@ -1877,6 +1910,45 @@ class CloudflareService:
             status=CloudflareAccountStatus.ERROR.value if rejected else account.status,
             last_error=str(exc)[:500],
         )
+
+    async def _record_failure(self, account: CloudflareAccount, exc: CloudflareError) -> None:
+        """Remember a token failure on a path that then **raises** — outside this transaction.
+
+        ``require_context`` commits on the way out and rolls back on any exception, so writing
+        ``last_error`` and *then* raising records nothing at all: the update is undone by the
+        very error it describes. The row kept reading healthy while the admin was looking at a
+        red toast, and the settings screen — whose whole job is to say what is wrong with a
+        credential — was the one place that never found out.
+
+        So this note is written on its own session and committed on its own, deliberately
+        surviving the rollback of everything else. It is the narrow exception the general rule
+        allows, and it is safe here because it touches exactly one row and only ever writes the
+        *diagnosis*: nothing a caller could mistake for the operation having partly succeeded.
+        RLS is bound the same way any out-of-request writer binds it (``app.core.jobs``), and
+        the org is pinned in the ``WHERE`` too — belt and braces on the one write in this module
+        that does not ride the scoped repository.
+
+        It must never replace the error it is recording, so a failure to write it is logged and
+        swallowed. Losing the note is bad; losing the exception is worse.
+        """
+        rejected = isinstance(exc, CloudflareAuthError) and exc.status == 401
+        try:
+            async with async_session_maker() as session:
+                await set_current_org(session, self.ctx.org.id)
+                values: dict[str, Any] = {"last_error": str(exc)[:500]}
+                if rejected:
+                    values["status"] = CloudflareAccountStatus.ERROR.value
+                await session.execute(
+                    update(CloudflareAccount)
+                    .where(
+                        CloudflareAccount.id == account.id,
+                        CloudflareAccount.org_id == self.ctx.org.id,
+                    )
+                    .values(**values)
+                )
+                await session.commit()
+        except Exception:  # noqa: BLE001 — see the docstring: never mask the real failure
+            logger.warning("could not record cloudflare failure for account %s", account.id)
 
     async def _clear_account_error(self, account: CloudflareAccount) -> None:
         """The mirror of :meth:`_flag_account`: Cloudflare answered, so the row is not broken.

@@ -93,14 +93,23 @@
     </span>
     <!-- What the Pages half found. A sync adopts hostnames already attached at Cloudflare, so
          this is where an agency sees its existing setup arrive — and where drift is named
-         rather than silently resolved. -->
-    <span class="mt-1 block text-text-muted">
-      {t("cloudflare.accounts.synced_pages", {
-        projects: form.sync.pages_projects_synced,
-        domains: form.sync.pages_domains_synced,
-        adopted: form.sync.pages_links_adopted,
-      })}
-    </span>
+         rather than silently resolved.
+         Pages and Registrar are addressed by account id and zones are not, so a row without one
+         reports three zeros here that read exactly like "no Pages projects". Not asked and
+         nothing found are different answers (§17), and only this line can tell them apart. -->
+    {#if form.sync.warnings?.includes("no_account_id")}
+      <span class="mt-1 block text-amber-600">
+        {t("cloudflare.accounts.synced_no_account_id")}
+      </span>
+    {:else}
+      <span class="mt-1 block text-text-muted">
+        {t("cloudflare.accounts.synced_pages", {
+          projects: form.sync.pages_projects_synced,
+          domains: form.sync.pages_domains_synced,
+          adopted: form.sync.pages_links_adopted,
+        })}
+      </span>
+    {/if}
     {#if form.sync.pages_links_missing}
       <span class="mt-1 block text-amber-600">
         {t("cloudflare.accounts.synced_pages_missing", {

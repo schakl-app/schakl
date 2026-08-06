@@ -86,6 +86,16 @@ for ever over an optional Pages probe it was never meant to pass. The text is st
 missing scope is worth reading); it is the red status it does not earn, so the screen labels the
 two differently.
 
+And a note written on a path that then **raises** must not ride the request transaction.
+`require_context` commits on the way out and rolls back on any exception, so `sync_account`
+writing `last_error` and then raising recorded nothing at all — the update was undone by the very
+error it described, and the row read healthy while the admin looked at a red toast.
+`_record_failure` writes it on its own session and commits it there, deliberately surviving that
+rollback. It is the one write in this module that does not ride the scoped repository, so RLS is
+bound the way `app.core.jobs` binds it and the org is pinned in the `WHERE` too; and a failure to
+write the note is logged and swallowed, because losing the note is bad and losing the exception
+is worse.
+
 `_clear_account_error` is the mirror, and its absence was the other half of the same complaint.
 The flag used to be one-way — nothing but a manual re-verify took a row out of `error` — so a token
 that had been fixed at Cloudflare, or was never broken at all, kept its red line through every sync
@@ -245,6 +255,29 @@ Three rules hold the reconcile up, and none of them is about Pages.
   was ever ours.
 - **`missing_at` keeps the *first* time it went missing.** "Since when" is the question an agency
   asks; restamping it every check answers "just now" forever.
+
+### Only one half of this module needs an account id, and that is why a blank panel looked fine
+
+**Zones are listed without an account id; Pages and Registrar are addressed by one.** A zone sync
+therefore works perfectly on a row whose `cf_account_id` is NULL, filling the screen with matched
+domains — while the two halves that need an id are skipped entirely. And skipped as a *zero*,
+which on the sync banner reads exactly like "this account has no Pages projects".
+
+Nothing but `verify_account` ever filled that id in. So any tenant whose verify had failed — every
+account-owned token, before `client.verify_token` learned the second endpoint — kept a NULL id and
+a permanently blank Pages panel over a Cloudflare account that was serving their sites, with the
+zone half working the whole time and nothing on any screen connecting the two facts. Note that
+`_refresh_pages_links` cannot rescue it either: it refreshes links that already exist and returns
+early when there are none, because **adoption is the sync's job**. A domain page alone can never
+discover a project.
+
+Two changes, and the second matters as much as the first. `sync_account` resolves a missing id
+itself (`_resolve_account_id`) — it holds a client and the answer is one call, so it asks rather
+than waiting to be told; **exactly one** visible account is an answer and several is §3's
+never-guess case, since picking one would point every later Pages call at the wrong client's
+account. And the `no_account_id` warning is now *rendered*: "not asked" and "nothing found" are
+different answers (§17), and while three zeros were the only thing on screen, no one could tell
+which one they were looking at.
 
 ## 7. Registrar — who *pays* for the name (#298)
 

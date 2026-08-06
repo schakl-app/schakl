@@ -3957,6 +3957,7 @@
   "cloudflare.accounts.delete_confirm": "Remove {name}? The zones fetched from it disappear from schakl. Nothing at Cloudflare changes.",
   "cloudflare.accounts.status.error": "Token problem",
   "cloudflare.accounts.last_error": "Last message from Cloudflare",
+  "cloudflare.accounts.synced_no_account_id": "Pages projects and registrations were not read: no Cloudflare account could be determined for this token. Fill in the account ID on this account, or give the token permission to list accounts.",
   "cloudflare.accounts.verified": "Token works.",
   "cloudflare.accounts.verify_failed": "Cloudflare rejected the token.",
   "cloudflare.accounts.synced": "{zones} zones fetched, {matched} matched to a domain.",
