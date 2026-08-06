@@ -210,6 +210,22 @@ class InvoicingSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Bas
         JSONB, nullable=False, default=lambda: [7, 14, 30], server_default=text("'[7, 14, 30]'")
     )
 
+    # --- the public invoice link ------------------------------------------------ #
+    #: Whether an issued invoice gets a **public** address at all — a link that opens the
+    #: document and its pay button with no login (``app/modules/invoicing/public.py``).
+    #:
+    #: On by default, which is the deliberate choice and not the safe-looking one. The link is
+    #: what the QR on a printed invoice has always promised: the client who received the paper
+    #: can look at it and settle it. Off by default would have shipped a feature nobody
+    #: discovers behind a switch nobody finds, and left every QR pointing at a sign-in screen
+    #: for the majority of clients who hold no portal login. It is a switch rather than a
+    #: constant because an agency whose invoices carry data they consider sensitive gets to say
+    #: no — and turning it off is retroactive: the read refuses on this flag before it looks at
+    #: the token, so an already-printed link stops working the moment the box is unticked.
+    public_invoice_links: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+
 
 class TaxRate(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     """A tenant-defined tax rate (BTW hoog / TVA réduite / VAT zero …).
@@ -364,6 +380,15 @@ class Invoice(
             unique=True,
             postgresql_where=text("domain_id IS NOT NULL"),
         ),
+        # The public link's token. Unique **globally**, not per org: the token is the whole
+        # address a session-less reader presents, so two tenants holding one string would make
+        # "whose invoice is this?" ambiguous at the one lookup with nothing to fall back on.
+        Index(
+            "uq_invoices_public_token",
+            "public_token",
+            unique=True,
+            postgresql_where=text("public_token IS NOT NULL"),
+        ),
     )
 
     company_id: Mapped[uuid.UUID] = mapped_column(
@@ -454,6 +479,18 @@ class Invoice(
     auto_send_pending: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
+
+    #: The capability token in this invoice's **public** address (``/invoice/<token>``), minted
+    #: when the document is issued and rotatable at any time. It is the only thing that names a
+    #: document to a reader with no session, which is why it is a column and not something
+    #: derived: a derived token cannot be revoked without changing a key that revokes every
+    #: other invoice's link at the same time.
+    #:
+    #: ``NULL`` means *no public link exists* — a draft, an org that switched the feature off,
+    #: or a rotation that has not been asked for yet. It is never inferred: the public read
+    #: refuses a NULL rather than treating it as a wildcard, which is what stops an empty token
+    #: in a URL from matching every un-linked invoice in the table.
+    public_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     @classmethod
     def __portal_horizon_clause__(cls, scope: frozenset[uuid.UUID] | None):  # noqa: ANN206
@@ -742,6 +779,17 @@ class InvoicePaymentIntent(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, 
     method: Mapped[str | None] = mapped_column(String(40), nullable=True)
     #: When the provider last told us something, however it reached us.
     synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: When a **poll** last asked the provider (#304) — the landing page's refresh, and only
+    #: that. Its own column rather than a reuse of ``synced_at``, because the two answer
+    #: different questions and conflating them broke the feature they exist for: ``synced_at``
+    #: is written by the create as well, so a payer returning inside the throttle window was
+    #: told "nothing to ask" about the payment they had just made. A webhook and the reconcile
+    #: cron deliberately do **not** touch this: neither is a caller whose rate needs bounding,
+    #: and letting them push the window forward would let a well-timed callback suppress the
+    #: payer's own first poll.
+    refreshed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     #: When *we* wrote the ledger row. Separate from ``status`` on purpose: ``paid`` with no
     #: ``settled_at`` is precisely the state a human must be shown and a retry must fix.
     settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

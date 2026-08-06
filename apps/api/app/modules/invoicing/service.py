@@ -76,14 +76,23 @@ from app.modules.invoicing.models import (
     QuoteStatus,
     TaxRate,
 )
-from app.modules.invoicing.paylinks import invoice_pay_url, mail_pay_qr, mail_pay_url
+from app.modules.invoicing.paylinks import (
+    invoice_pay_url,
+    mail_pay_qr,
+    mail_pay_url,
+    public_invoice_url,
+)
+from app.modules.invoicing.public import ensure_public_token
 from app.modules.invoicing.render import (
     DocumentBrand,
+    accent_for,
+    qr_appearance,
     render_document_html,
     render_document_pdf,
     resolve_layout,
     validate_custom_source,
 )
+from app.modules.invoicing.render.qr import pair_was_replaced, qr_svg, readable_pair
 from app.modules.invoicing.sample import sample_document
 from app.modules.invoicing.schemas import (
     DocumentSend,
@@ -376,6 +385,25 @@ async def _load_background(
     return await load_org_image(ctx, file_id, what="document background")
 
 
+async def _load_qr_logo(
+    ctx: RequestContext, config: dict[str, Any]
+) -> tuple[bytes | None, str | None]:
+    """The template's own mark for the middle of the payment QR (#305), if it has one.
+
+    Read only when the config actually asks for one — the same rule ``_load_background``
+    follows, and the same reason: a storage round-trip per rendered document, for an image the
+    overwhelming majority of templates do not use, is exactly the shape docs/PERFORMANCE.md
+    asks you to count before writing.
+    """
+    if config.get("qr_style") != "custom" or config.get("qr_logo") != "custom":
+        return None, None
+    try:
+        file_id = uuid.UUID(str(config.get("qr_logo_file_id")))
+    except (TypeError, ValueError):
+        return None, None
+    return await load_org_image(ctx, file_id, what="QR logo")
+
+
 class _RenderShared:
     """The org-level half of a render, resolved **once** for a whole batch (#307).
 
@@ -406,6 +434,8 @@ class _RenderShared:
         self.logo_content_type = logo_content_type
         self.configs: dict[uuid.UUID | None, dict[str, Any]] = {}
         self.backgrounds: dict[uuid.UUID | None, tuple[bytes | None, str | None]] = {}
+        #: The QR's own mark (#305) — a second per-template image, memoised beside the first.
+        self.qr_logos: dict[uuid.UUID | None, tuple[bytes | None, str | None]] = {}
 
 
 def _zip_documents(jobs: Sequence[tuple[str, dict[str, Any]]]) -> bytes:
@@ -651,6 +681,48 @@ class TemplateService:
         template = await self.repo.get_or_404(template_id)
         await self.repo.delete(template)
 
+    async def qr_preview(self, config: Any) -> dict[str, Any]:
+        """Just the payment QR, as an unsaved config would draw it (#305).
+
+        Deliberately **not** ``_vet_config``'d, because it renders none of the tenant's Jinja:
+        it reads four colour/logo keys and calls the same encoder the document calls. Requiring
+        ``invoicing.template.author`` here would mean an admin who may configure a template
+        could not see the code that template prints, which is the authoring gate applied to
+        something that is not authoring.
+
+        It answers with *what will be drawn*, not with what was asked for — including whether
+        the pair was substituted, so the editor can explain the rule instead of appearing to
+        ignore a colour.
+        """
+        self.ctx.require("invoicing.settings.manage")
+        values = config.model_dump(mode="json") if hasattr(config, "model_dump") else dict(config)
+        org_settings = await self.ctx.session.scalar(
+            select(OrgSettings).where(OrgSettings.org_id == self.ctx.org.id)
+        )
+        logo, logo_type = await load_brand_logo(self.ctx, org_settings)
+        qr_logo, qr_logo_type = await _load_qr_logo(self.ctx, values)
+        brand = DocumentBrand(
+            name=(org_settings.brand_name if org_settings else None) or self.ctx.org.name,
+            primary_color=org_settings.primary_color if org_settings else None,
+            logo=logo,
+            logo_content_type=logo_type,
+            qr_logo=qr_logo,
+            qr_logo_content_type=qr_logo_type,
+        )
+        accent = accent_for(values.get("accent_color"), brand.primary_color)
+        dark, light, mark, mark_type = qr_appearance(values, brand, accent)
+        ink, paper = readable_pair(dark, light)
+        # A sample payload of roughly the real length. A QR's version — and therefore its
+        # density, and therefore how a logo looks on it — follows the number of characters, so
+        # previewing a short string would flatter a design that is about to get 43 more.
+        sample = f"{org_base_url(self.ctx.org)}/invoice/{'x' * 43}"
+        return {
+            "svg": qr_svg(sample, dark=dark, light=light, logo=mark, logo_content_type=mark_type),
+            "dark": ink,
+            "light": paper,
+            "replaced": pair_was_replaced(dark, light),
+        }
+
     async def preview(self, config: Any, template_id: uuid.UUID | None = None) -> str:
         """A sample document rendered with an **unsaved** config — the editor's live preview.
 
@@ -681,6 +753,7 @@ class TemplateService:
         doc, lines, groups = sample_document(locale, currency, await org_today(self.ctx))
         logo, logo_type = await load_brand_logo(self.ctx, org_settings)
         background, background_type = await _load_background(self.ctx, values)
+        qr_logo, qr_logo_type = await _load_qr_logo(self.ctx, values)
         return render_document_html(
             kind="invoice",
             doc=doc,
@@ -694,6 +767,8 @@ class TemplateService:
                 logo_content_type=logo_type,
                 background=background,
                 background_content_type=background_type,
+                qr_logo=qr_logo,
+                qr_logo_content_type=qr_logo_type,
             ),
             tax_groups=groups,
         )
@@ -954,8 +1029,15 @@ class _DocumentService:
 
     async def _template_render_inputs(
         self, template_id: uuid.UUID | None, shared: _RenderShared
-    ) -> tuple[dict[str, Any], tuple[bytes | None, str | None]]:
-        """This document's design and its background bytes, memoised per template id."""
+    ) -> tuple[
+        dict[str, Any], tuple[bytes | None, str | None], tuple[bytes | None, str | None]
+    ]:
+        """This document's design and its two per-template images, memoised per template id.
+
+        The QR's own mark (#305) rides the same memo as the background for the same reason
+        (#307): both are storage reads that answer identically for every document drawn from
+        one template, and a batch of fifty must pay for each once rather than fifty times.
+        """
         if template_id not in shared.configs:
             config: dict[str, Any] = {}
             if template_id is not None:
@@ -968,7 +1050,12 @@ class _DocumentService:
                     config = template.config or {}
             shared.configs[template_id] = config
             shared.backgrounds[template_id] = await _load_background(self.ctx, config)
-        return shared.configs[template_id], shared.backgrounds[template_id]
+            shared.qr_logos[template_id] = await _load_qr_logo(self.ctx, config)
+        return (
+            shared.configs[template_id],
+            shared.backgrounds[template_id],
+            shared.qr_logos[template_id],
+        )
 
     async def _render_inputs(
         self, doc: Any, kind: str, *, shared: _RenderShared | None = None
@@ -985,8 +1072,8 @@ class _DocumentService:
         document; a single render leaves it out and pays exactly what it always did.
         """
         shared = shared or await self._render_shared()
-        config, (background, background_type) = await self._template_render_inputs(
-            doc.template_id, shared
+        config, (background, background_type), (qr_logo, qr_logo_type) = (
+            await self._template_render_inputs(doc.template_id, shared)
         )
         return {
             "kind": kind,
@@ -1001,6 +1088,8 @@ class _DocumentService:
                 logo_content_type=shared.logo_content_type,
                 background=background,
                 background_content_type=background_type,
+                qr_logo=qr_logo,
+                qr_logo_content_type=qr_logo_type,
             ),
             "tax_groups": _totals_from_rows(
                 list(doc.lines), prices_include_tax=doc.prices_include_tax
@@ -1022,30 +1111,77 @@ class _DocumentService:
         """
         if kind != "invoice" or getattr(doc, "kind", None) == InvoiceKind.CREDIT_NOTE.value:
             return {}
+        # #304: the code on the paper leads to the document's **public** page when it has one.
+        # Minted here rather than only at issue, because the register predates the feature and
+        # a link that only exists on invoices raised after the upgrade would be a QR that works
+        # or doesn't depending on a date nobody can see. `ensure_public_token` writes nothing
+        # for a draft or for an org with the switch off, so this stays a read for both.
+        token = await ensure_public_token(self.ctx, doc) if isinstance(doc, Invoice) else None
         return {
-            "pay_url": invoice_pay_url(org_base_url(self.ctx.org), doc.id),
+            "pay_url": invoice_pay_url(org_base_url(self.ctx.org), doc.id, token),
             "payable_online": await self._payable(),
         }
 
-    async def _pay_qr(self, pay_url: str, transport: Any) -> bytes | None:
+    async def _pay_qr(self, doc: Any, pay_url: str, transport: Any) -> bytes | None:
         """The inline QR for an outgoing mail, or ``None`` (epic #269).
 
-        The logo is read only when there is actually a code to draw — an org with no provider
+        Everything is read only when there is actually a code to draw — an org with no provider
         connected must not pay a storage round-trip for an image nobody will see.
+
+        It takes ``doc`` since #305 because the appearance is the **document's template's**, not
+        the org's. Before that this drew the org's brand colour and logo unconditionally, so a
+        template set to ``plain`` printed a black-and-white code on paper and mailed a branded
+        one — two answers to "what does our QR look like" from one document. ``qr_appearance``
+        is now the single answer, and this passes the same config the renderer will.
         """
         if not pay_url or transport is None:
             return None
         org_settings = await self.ctx.session.scalar(
             select(OrgSettings).where(OrgSettings.org_id == self.ctx.org.id)
         )
+        config = await self._template_config(doc)
         logo, logo_type = await load_brand_logo(self.ctx, org_settings)
+        qr_logo, qr_logo_type = await _load_qr_logo(self.ctx, config)
+        brand = DocumentBrand(
+            name=(org_settings.brand_name if org_settings else None) or self.ctx.org.name,
+            primary_color=org_settings.primary_color if org_settings else None,
+            logo=logo,
+            logo_content_type=logo_type,
+            qr_logo=qr_logo,
+            qr_logo_content_type=qr_logo_type,
+        )
+        accent = accent_for(config.get("accent_color"), brand.primary_color)
+        dark, light, mark, mark_type = qr_appearance(config, brand, accent)
         return mail_pay_qr(
             pay_url,
             transport=transport[0],
-            brand_color=org_settings.primary_color if org_settings else None,
-            logo=logo,
-            logo_content_type=logo_type,
+            dark=dark,
+            light=light,
+            logo=mark,
+            logo_content_type=mark_type,
         )
+
+    async def _template_config(self, doc: Any) -> dict[str, Any]:
+        """The design config this document prints under — the template's, else empty.
+
+        The **mail** path's read. ``_render_inputs`` gets the same answer through
+        ``_template_render_inputs``, which memoises it per template id across a batch (#307);
+        the composer sends one document at a time and has no batch to share, so it reads
+        directly rather than manufacturing a ``_RenderShared`` for a single row.
+
+        It exists at all because the mail's QR has to be drawn from the *document's* template
+        rather than from the org's branding (#305) — the bug where a template set to ``plain``
+        printed mono on paper and mailed a coloured code.
+        """
+        template_id = getattr(doc, "template_id", None)
+        if template_id is None:
+            return {}
+        template = await self.ctx.session.scalar(
+            self.ctx.repo(DocumentTemplate)
+            .scoped_select()
+            .where(DocumentTemplate.id == template_id)
+        )
+        return (template.config or {}) if template is not None else {}
 
     async def _payable(self) -> bool:
         """Does this org hold an active payment credential? Once per request (epic #269)."""
@@ -1405,6 +1541,18 @@ class InvoiceService(_DocumentService):
                     if invoice.credit_for_id
                     else ""
                 )
+                # The public link, for staff to hand to a client who asks for it by phone
+                # (#304). **Detail read only** — a list of two hundred invoices draws no
+                # links and must not carry two hundred credentials — and **never for an
+                # external login**: a client is already looking at the document, and putting
+                # a bearer token on their own screen is a thing to forward by accident.
+                # No minting here either: this reads what exists, so a GET stays a GET and
+                # a document nobody has ever printed simply shows no link yet.
+                invoice.public_url = (  # type: ignore[attr-defined]
+                    public_invoice_url(org_base_url(self.ctx.org), invoice.public_token)
+                    if invoice.public_token and not self.ctx.is_portal
+                    else ""
+                )
 
     # --- writes -------------------------------------------------------------- #
     async def create(self, data: InvoiceCreate) -> Invoice:
@@ -1569,6 +1717,11 @@ class InvoiceService(_DocumentService):
             due_date=due_date,
             customer=_customer_snapshot(company, email=email, attn=attn),
         )
+        # A real document gets a real address (#304). At issue rather than at first render, so
+        # "the link on the paper" and "the link in the mail" are the same string from the first
+        # moment either could exist — and so the send path, which runs seconds later, never
+        # races a lazy mint. A no-op for an org with public links switched off.
+        await ensure_public_token(self.ctx, invoice)
         await ActivityService(self.ctx).record(
             self.entity_type, invoice.id, "issued", {"number": number}
         )
@@ -1731,7 +1884,7 @@ class InvoiceService(_DocumentService):
                 brand,
                 data.message,
                 pay_url,
-                await self._pay_qr(pay_url, transport),
+                await self._pay_qr(invoice, pay_url, transport),
             )
             message.to = to
             # The mail carries the document (owner feedback): a text summary is not an
@@ -1774,7 +1927,7 @@ class InvoiceService(_DocumentService):
             brand,
             max(days, 0),
             pay_url,
-            await self._pay_qr(pay_url, transport),
+            await self._pay_qr(invoice, pay_url, transport),
         )
         message.to = to
         await emails.deliver(self.ctx, message, brand=brand, transport=transport)

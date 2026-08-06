@@ -23,7 +23,7 @@ from app.modules.invoicing.render.blocks import (
     resolve_layout,
 )
 from app.modules.invoicing.render.colors import accent_for, document_accent
-from app.modules.invoicing.render.context import DocumentBrand, build_context
+from app.modules.invoicing.render.context import DocumentBrand, build_context, qr_appearance
 from app.modules.invoicing.render.engine import (
     BUILTIN_DESIGNS,
     DEFAULT_DESIGN,
@@ -50,6 +50,7 @@ __all__ = [
     "catalog_payload",
     "document_accent",
     "layout_from_legacy",
+    "qr_appearance",
     "render_document_html",
     "render_document_pdf",
     "resolve_layout",

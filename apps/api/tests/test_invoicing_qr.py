@@ -27,10 +27,14 @@ from PIL import Image
 
 from app.modules.invoicing.render.qr import (
     LOGO_WIDTH_FRACTION,
+    MIN_CONTRAST_ON_WHITE,
     QUIET_ZONE_MODULES,
+    contrast,
+    pair_was_replaced,
     qr_png,
     qr_svg,
     readable_dark,
+    readable_pair,
 )
 
 PAY_URL = "https://bureau.schakl.app/invoices/8f1c2a90-0c9c-4a1a-9a1a-000000000042"
@@ -357,3 +361,77 @@ def test_the_code_is_deterministic_and_a_function_of_its_payload() -> None:
     assert qr_png(PAY_URL, dark=BRAND, logo=_logo()) == qr_png(PAY_URL, dark=BRAND, logo=_logo())
     assert qr_svg(PAY_URL, dark=BRAND) != qr_svg(other, dark=BRAND)
     assert qr_png(PAY_URL, dark=BRAND) != qr_png(other, dark=BRAND)
+
+
+# --------------------------------------------------------------------------- #
+# The colour pair (#305) — the rule that grew when the picker arrived
+# --------------------------------------------------------------------------- #
+
+
+def test_a_pair_that_cannot_be_scanned_is_replaced_whole_and_never_half() -> None:
+    """The load-bearing property of ``readable_pair``, and the one a "fix the ink" version
+    fails: a mid-grey panel with darkened ink passes a contrast ratio and still loses a phone
+    camera, because the *pair* is what a decoder binarizes. So a refused combination falls all
+    the way back to black on white rather than being nudged into range."""
+    for dark, light in (
+        ("#ffe08a", "#ffffff"),  # a soft yellow on paper — #269's original failure
+        ("#777777", "#8a8a8a"),  # two mid-greys: plenty of "colour", no contrast
+        ("#1a1a2e", "#2b2b40"),  # dark on dark
+    ):
+        assert readable_pair(dark, light) == ("#171717", "#ffffff")
+        assert pair_was_replaced(dark, light) is True
+
+
+def test_an_inverted_pair_is_refused_even_though_it_clears_the_contrast_threshold() -> None:
+    """"No dark mode" as a number rather than as a missing option (:data:`MIN_LIGHT_LUMINANCE`).
+
+    White on charcoal is 16:1 — better than most accepted pairs — and scans worse everywhere,
+    because decoders assume dark-on-light and the ones that cope are slower. Contrast alone
+    would wave it through, which is exactly why the rule is not contrast alone.
+    """
+    assert contrast((255, 255, 255), (17, 17, 17)) > MIN_CONTRAST_ON_WHITE
+    assert readable_pair("#ffffff", "#111111") == ("#171717", "#ffffff")
+    # …and the same failure arrived at by typo: the two arguments the wrong way round.
+    assert readable_pair("#f4f1ea", "#1a1a2e") == ("#171717", "#ffffff")
+
+
+def test_a_tinted_panel_survives_when_it_is_actually_readable() -> None:
+    """The feature, not just its guardrail: cream paper with near-black ink is an ordinary
+    thing to want on a letterhead and must come out as asked."""
+    assert readable_pair("#1a1a2e", "#f4f1ea") == ("#1a1a2e", "#f4f1ea")
+    assert pair_was_replaced("#1a1a2e", "#f4f1ea") is False
+    assert readable_dark(BRAND) == BRAND, "the single-colour rule still answers as it did"
+
+
+def test_the_tint_is_painted_behind_the_symbol_in_both_formats() -> None:
+    """A ``light`` colour handed to segno's SVG writer paints nothing at all — it omits light
+    modules entirely, which is why the file is small — so the panel has to be a rect of our
+    own, full-bleed on the viewBox so the quiet zone is tinted too rather than ringed in white.
+    The PNG writes every pixel and needs no such thing. Two mechanisms, one visible result, and
+    this is the test that stops the SVG silently losing its background again.
+    """
+    svg = qr_svg(PAY_URL, dark="#1a1a2e", light="#f4f1ea")
+    root = ElementTree.fromstring(svg)
+    rects = [el for el in root.iter(f"{SVG_NS}rect")]
+    assert rects, "no panel was drawn"
+    panel = rects[0]
+    assert panel.get("fill") == "#f4f1ea"
+    assert (panel.get("width"), panel.get("height")) == (
+        root.get("width"),
+        root.get("height"),
+    ), "a panel smaller than the symbol leaves a white halo the design never asked for"
+
+    png = _png(qr_png(PAY_URL, dark="#1a1a2e", light="#f4f1ea")).convert("RGB")
+    assert png.getpixel((0, 0)) == (244, 241, 234), "the quiet zone carries the tint too"
+
+    # White is the default and must stay free of the extra element: every invoice in every
+    # existing tenant renders this, and an unconditional rect is a needless byte on all of them.
+    assert "<rect" not in qr_svg(PAY_URL, dark=BRAND)
+
+
+def test_an_unscannable_pair_cannot_be_smuggled_past_the_renderer() -> None:
+    """The guarantee has to live at the draw, not at the caller: ``qr_appearance`` hands the
+    tenant's raw colours on precisely so that a future caller cannot take the colours without
+    the rule. This is that, asserted — the drawn code is byte-identical to the fallback."""
+    assert qr_svg(PAY_URL, dark="#ffe08a", light="#ffffff") == qr_svg(PAY_URL, dark="#171717")
+    assert qr_png(PAY_URL, dark="#ffffff", light="#111111") == qr_png(PAY_URL, dark="#171717")

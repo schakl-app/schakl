@@ -31,8 +31,20 @@ rules are stated once and shared by both formats:
    would otherwise leave live modules showing through it, which is worse than covering them —
    the decoder reads noise where the overlay at least reads as uniform damage. The patch snaps
    to whole modules so it never slices one in half.
-4. **The dark colour must stay dark** (:func:`readable_dark`), and there is no dark mode:
-   ``light`` is white, because paper is.
+4. **The two colours must contrast, and the dark one must be the dark one**
+   (:func:`readable_pair`). #305 opened the code up to a full colour picker — a tenant can
+   print their own ink on their own tinted panel — and the rule that made a *single* colour
+   safe had to grow with it rather than be dropped. It did not become a preference: a pair that
+   does not clear :data:`MIN_CONTRAST` falls back to black on white **as a pair**, because
+   half-correcting a pair (darkening the ink and keeping a mid-grey panel) produces a code that
+   passes a number and still fails a camera. What is gone is only the assumption that the light
+   side is paper; what stays is that a QR's legibility is judged by a machine, and on the one
+   element where nobody can squint harder the honest answer is the one that always works.
+
+   A **dark mode is still not offered**, and that is now a consequence rather than a rule: an
+   inverted pair (light modules on a dark panel) clears the contrast threshold happily, and
+   scanners are much worse at it — so :func:`readable_pair` requires the *dark* colour to
+   actually be the darker of the two and swaps to black-on-white when it is not.
 
 Deliberately **not** imported from ``app.core.auth.twofactor``: that helper exists to draw an
 authenticator secret, and coupling the document renderer to the 2FA module to save six lines
@@ -52,13 +64,21 @@ from dataclasses import dataclass
 import segno
 from PIL import Image, ImageDraw, ImageOps
 
-from app.core.documents.colors import INK, contrast_on_white, hex_rgb, rgb_hex
+from app.core.documents.colors import INK, hex_rgb, luminance, rgb_hex
 
-#: Paper is white and so is every e-mail chrome worth designing for. A dark-mode QR is a
-#: request that sounds reasonable and produces an unscannable invoice, so it is not offered.
+#: What a code falls back to, and what the quiet patch behind a logo is always drawn in.
+#: A tenant may now tint the *code's* own background (#305), but the patch stays white: it
+#: exists to give a transparent logo something opaque to sit on, and matching it to a tinted
+#: panel would trade the one guarantee it provides for a decoration nobody asked for.
 LIGHT = "#ffffff"
 
-#: The dark colour's minimum WCAG contrast against white. ISO/IEC 15415 grades a printed
+#: The darkest a "light" side may be before the pair is refused outright, independent of the
+#: contrast ratio. Contrast alone permits white-on-charcoal, which reads beautifully and scans
+#: badly: most decoders assume dark-on-light and the ones that do not are slower at it. This is
+#: the "no dark mode" rule, expressed as a number instead of as an absence of an option.
+MIN_LIGHT_LUMINANCE = 0.45
+
+#: The minimum WCAG contrast between the two colours. ISO/IEC 15415 grades a printed
 #: symbol on *reflectance* difference and calls ≥70% grade A; 4.5:1 here works out at a
 #: relative luminance of ≤0.183, i.e. ~82% symbol contrast — grade A with room left over for
 #: print gain, a photocopy, and a phone camera in a badly lit office. It is also exactly the
@@ -87,20 +107,68 @@ MAX_LOGO_BYTES = 3 * 1024 * 1024
 def readable_dark(color: str | None) -> str:
     """``color`` if it scans against white, else near-black. Never raises.
 
-    Rule 4. A brand colour is chosen to look right beside a logo, not to be binarized by a
-    camera, so a pale mint or a soft yellow makes a code that is beautiful in the preview and
-    unreadable in the room. Below :data:`MIN_CONTRAST_ON_WHITE` we fall back to the document's
-    own ink rather than *darkening the hue* the way ``document_accent`` does for headings: a
-    heading dragged down the lightness axis still reads as the brand, but a QR's colour is pure
-    decoration and its legibility is judged by a machine — so on the one element where nobody
-    can squint harder, the honest answer is the one that always works.
+    Rule 4, for the common case where the light side *is* paper. A brand colour is chosen to
+    look right beside a logo, not to be binarized by a camera, so a pale mint or a soft yellow
+    makes a code that is beautiful in the preview and unreadable in the room. Below
+    :data:`MIN_CONTRAST_ON_WHITE` we fall back to the document's own ink rather than *darkening
+    the hue* the way ``document_accent`` does for headings: a heading dragged down the lightness
+    axis still reads as the brand, but a QR's colour is pure decoration and its legibility is
+    judged by a machine — so on the one element where nobody can squint harder, the honest
+    answer is the one that always works.
 
     Garbage (``None``, ``"rebeccapurple"``, ``"#12"``) resolves through ``hex_rgb``'s fallback
     to the same ink: a document that fails to print because a settings field held a typo would
     be the worse failure.
     """
-    rgb = hex_rgb(color, INK)
-    return rgb_hex(rgb if contrast_on_white(rgb) >= MIN_CONTRAST_ON_WHITE else INK)
+    return readable_pair(color, LIGHT)[0]
+
+
+def contrast(a: tuple[int, int, int], b: tuple[int, int, int]) -> float:
+    """WCAG contrast between two arbitrary colours — ``contrast_on_white`` with both sides
+    given. Kept here rather than in ``documents.colors`` until a second caller wants it."""
+    high, low = sorted((luminance(a), luminance(b)), reverse=True)
+    return (high + 0.05) / (low + 0.05)
+
+
+def readable_pair(dark: str | None, light: str | None) -> tuple[str, str]:
+    """A ``(dark, light)`` pair a camera can actually read. Never raises.
+
+    Rule 4 generalised for #305's colour picker. Three ways a pair is refused, and it is
+    refused **as a pair** — black on white — rather than corrected one side at a time:
+
+    * The two are too close (:data:`MIN_CONTRAST_ON_WHITE`). Nudging only the ink would leave a
+      mid-grey panel that passes a ratio and still loses a phone camera in a dim office.
+    * The "light" side is not light (:data:`MIN_LIGHT_LUMINANCE`). See that constant: an
+      inverted code clears every contrast check and scans worse everywhere.
+    * The "dark" side is the lighter of the two — a swapped pair, which is the same failure
+      arrived at by typo rather than on purpose.
+
+    Substituting the whole pair is also the only version a *preview* can explain honestly: the
+    editor shows what will print and says "this combination cannot be scanned", which is a
+    sentence a tenant can act on. "We darkened your colour a bit" is not.
+    """
+    ink = hex_rgb(dark, INK)
+    paper = hex_rgb(light, (255, 255, 255))
+    if (
+        contrast(ink, paper) < MIN_CONTRAST_ON_WHITE
+        or luminance(paper) < MIN_LIGHT_LUMINANCE
+        or luminance(ink) >= luminance(paper)
+    ):
+        return rgb_hex(INK), LIGHT
+    return rgb_hex(ink), rgb_hex(paper)
+
+
+def pair_was_replaced(dark: str | None, light: str | None) -> bool:
+    """Did :func:`readable_pair` substitute? What the editor's warning is drawn from.
+
+    A separate question from "what are the colours", deliberately: a caller that wants to
+    *render* must never branch on this, and a caller that wants to *explain* must never
+    re-derive the rule. One implementation, two readers.
+    """
+    return readable_pair(dark, light) != (
+        rgb_hex(hex_rgb(dark, INK)),
+        rgb_hex(hex_rgb(light, (255, 255, 255))),
+    )
 
 
 @dataclass(frozen=True)
@@ -201,6 +269,7 @@ def qr_svg(
     payload: str,
     *,
     dark: str = "#000000",
+    light: str | None = None,
     logo: bytes | None = None,
     logo_content_type: str | None = None,
     scale: int = 4,
@@ -219,6 +288,7 @@ def qr_svg(
     """
     if not payload:
         return ""
+    ink, paper = readable_pair(dark, light)
     code, box, asset = _encode(payload, logo, logo_content_type, raster_only=False)
     width, height = code.symbol_size(scale=scale, border=0)
     buffer = io.BytesIO()
@@ -230,10 +300,19 @@ def qr_svg(
         lineclass=None,
         scale=scale,
         border=0,
-        dark=readable_dark(dark),
+        dark=ink,
     )
     svg = buffer.getvalue().decode("utf-8")
     svg = svg.replace("<svg ", f'<svg viewBox="0 0 {width} {height}" ', 1)
+    # A tinted panel is drawn *behind* the symbol rather than passed to segno as ``light``:
+    # the writer omits light modules entirely (that is why the SVG is small), so a ``light``
+    # colour there paints nothing at all. It also has to cover the quiet zone the page provides
+    # — a panel the exact size of the symbol leaves a white halo the design never asked for —
+    # which is why it is a full-bleed rect on the viewBox and the border stays 0.
+    if paper.lower() not in ("#ffffff", "#fff"):
+        panel = f'<rect x="0" y="0" width="{width}" height="{height}" fill="{paper}"/>'
+        opening = svg.index(">") + 1  # end of the <svg …> tag; no attribute here holds one
+        svg = svg[:opening] + panel + svg[opening:]
     if box is None or asset is None:
         return svg
     edge = box.offset * scale
@@ -255,6 +334,7 @@ def qr_png(
     payload: str,
     *,
     dark: str = "#000000",
+    light: str | None = None,
     logo: bytes | None = None,
     logo_content_type: str | None = None,
     scale: int = 8,
@@ -272,6 +352,7 @@ def qr_png(
     """
     if not payload:
         return b""
+    ink, paper = readable_pair(dark, light)
     code, box, asset = _encode(payload, logo, logo_content_type, raster_only=True)
     buffer = io.BytesIO()
     code.save(
@@ -279,8 +360,11 @@ def qr_png(
         kind="png",
         scale=scale,
         border=QUIET_ZONE_MODULES,
-        dark=readable_dark(dark),
-        light=LIGHT,
+        dark=ink,
+        # Unlike the SVG, the raster genuinely has a light *colour* to fill — every pixel is
+        # written — so the panel needs no second element here. The quiet zone takes the tint
+        # too, which is what a mail wants: a tinted card, not a tinted square in a white one.
+        light=paper,
     )
     plain = buffer.getvalue()
     if box is None or asset is None:

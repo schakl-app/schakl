@@ -37,7 +37,7 @@ from app.modules.invoicing.render.colors import (
     rgb_hex,
     rgba,
 )
-from app.modules.invoicing.render.qr import qr_svg, readable_dark
+from app.modules.invoicing.render.qr import LIGHT, qr_svg, readable_dark
 
 CURRENCY_SYMBOLS = {"EUR": "€", "USD": "$", "GBP": "£"}
 #: The order sections print in: what was worked, then what recurs, then what renews, then
@@ -69,6 +69,12 @@ class DocumentBrand:
     #: The template's background mark, read from storage the same way.
     background: bytes | None = None
     background_content_type: str | None = None
+    #: The mark in the middle of the payment QR when the template supplies its own (#305).
+    #: A third pair rather than a reuse of ``background``: a watermark is a page-sized crop at
+    #: 4% opacity and a QR overlay is a square that has to read at 5mm, and a tenant who wants
+    #: one does not thereby want the other.
+    qr_logo: bytes | None = None
+    qr_logo_content_type: str | None = None
 
 
 def data_uri(payload: bytes | None, content_type: str | None) -> str | None:
@@ -266,6 +272,41 @@ def _background(config: dict[str, Any], brand: DocumentBrand) -> dict[str, Any] 
         "rotate": max(-180.0, min(180.0, float(raw.get("rotate", 0) or 0))),
         "repeat": bool(raw.get("repeat", False)),
     }
+
+
+def qr_appearance(
+    config: dict[str, Any], brand: DocumentBrand, accent: str
+) -> tuple[str, str, bytes | None, str | None]:
+    """``(dark, light, logo_bytes, logo_content_type)`` for this template's payment QR (#305).
+
+    One function, three readers — the document below, the mail's PNG (``service._pay_qr``) and
+    the editor's live preview (``TemplateService.qr_preview``). That is the whole reason it is
+    a function: three surfaces drawing "the tenant's QR" from three copies of the same three
+    ``config.get`` calls is how a preview starts lying about what will print.
+
+    ``custom``'s colours are handed on **raw**: the substitution rule lives in
+    ``qr.readable_pair`` and is applied at the one place that draws, so a caller cannot
+    accidentally take the colours without the guarantee. Every other style resolves to a pair
+    that was already safe.
+    """
+    style = config.get("qr_style", "brand")
+    if style == "plain":
+        return "#000000", LIGHT, None, None
+    if style != "custom":
+        return readable_dark(accent), LIGHT, brand.logo, brand.logo_content_type
+
+    dark = str(config.get("qr_color") or "").strip() or accent
+    light = str(config.get("qr_background") or "").strip() or LIGHT
+    choice = config.get("qr_logo", "brand")
+    if choice == "none":
+        return dark, light, None, None
+    if choice == "custom":
+        # The template's own mark, loaded by the *service* into `brand.qr_logo` for the same
+        # reason the background is: the renderer is sandboxed and reaches no storage. Falling
+        # back to the org logo when the upload is missing would draw a mark the tenant
+        # explicitly replaced, so an absent one draws nothing.
+        return dark, light, brand.qr_logo, brand.qr_logo_content_type
+    return dark, light, brand.logo, brand.logo_content_type
 
 
 def build_context(
@@ -568,18 +609,16 @@ def build_context(
         and bool(pay_url)
     )
     show_qr = payable_here and layout.enabled("payment_qr")
-    # Branded by default (epic #269): the tenant's accent in the modules and their logo in the
-    # middle, so the code on a client's invoice is recognisably *theirs*. `readable_dark`
-    # replaces an accent too pale to scan — a beautiful unreadable code is the one failure mode
-    # a QR cannot afford, and the person holding the paper cannot squint harder. `plain` is the
-    # escape hatch for monochrome printing and for a logo that does not survive 7 modules.
-    branded_qr = config.get("qr_style", "brand") != "plain"
+    # Branded by default (epic #269), fully configurable since #305 — resolved in one helper so
+    # the document, the mail's PNG and the editor's live preview cannot answer differently.
+    qr_ink, qr_paper, qr_logo, qr_logo_type = qr_appearance(config, brand, accent)
     payment_qr = (
         qr_svg(
             pay_url or "",
-            dark=readable_dark(accent) if branded_qr else "#000000",
-            logo=brand.logo if branded_qr else None,
-            logo_content_type=brand.logo_content_type if branded_qr else None,
+            dark=qr_ink,
+            light=qr_paper,
+            logo=qr_logo,
+            logo_content_type=qr_logo_type,
         )
         if show_qr
         else ""
@@ -653,8 +692,14 @@ def build_context(
         if show_payment_box
         else [],
         "payment_qr": payment_qr,
+        # The tenant's own words when they wrote any, else the built-in — which is *two*
+        # sentences, picked by whether a payment can actually be started, because "scan to pay"
+        # under a code that only opens a document is a promise the page cannot keep. A tenant
+        # who overrides it takes that judgement on themselves, which is the right trade: they
+        # know whether they have a provider connected and we are guessing per render.
         "payment_qr_caption": (
-            t("invoicing.doc.qr_pay") if payable_online else t("invoicing.doc.qr_view")
+            pick_locale(config.get("qr_caption_i18n"), locale)
+            or (t("invoicing.doc.qr_pay") if payable_online else t("invoicing.doc.qr_view"))
         ),
         #: **The address**, present whenever this document could be paid — not gated on either
         #: block, because both link to it: the pay-online line prints it, and the QR is wrapped

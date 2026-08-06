@@ -71,6 +71,21 @@ async def _open_invoice(client, headers, company_id: str, *, due_days: int = 14)
     return issued.json()
 
 
+async def _public_path(client, headers, invoice_id: str) -> str:
+    """The path a mail's pay link should carry — the invoice's **public** address (#304).
+
+    Read back off the detail (`InvoiceRead.public_url`, staff only) rather than spelled out
+    here, because the whole point of `paylinks.invoice_pay_url` is that one function decides
+    this. A test that hardcoded `/invoice/<token>` would keep passing through a change of shape
+    and stop testing that the surfaces agree.
+    """
+    read = await client.get(f"/api/v1/invoicing/invoices/{invoice_id}", headers=headers)
+    assert read.status_code == 200, read.text
+    url = read.json()["public_url"]
+    assert url, "an issued invoice has a public address"
+    return url[url.index("/invoice/") :]
+
+
 async def _save_template(client, headers, kind: str, **body) -> None:
     saved = await client.put(
         "/api/v1/settings/email/templates",
@@ -309,9 +324,13 @@ async def test_the_invoice_mail_offers_the_portal_and_never_a_checkout_url(
 ) -> None:
     """The pay button leads to **our** page, and that is the whole design (``paylinks``).
 
-    A provider's checkout URL is a bearer credential, it expires in minutes, and mailing one
-    lets a client hold two valid ways to pay one debt. So the mail carries the invoice's
-    portal address and the checkout is minted on the far side, once, when they press.
+    A provider's checkout URL is a bearer credential that spends money, it expires in minutes,
+    and mailing one lets a client hold two valid ways to pay one debt. So the mail carries the
+    invoice's own address and the checkout is minted on the far side, once, when they press.
+
+    Since #304 that address is the **public** one: the portal is bought per client, so the old
+    destination was a sign-in screen for the majority who hold no login. What is asserted is
+    unchanged in substance — a page of ours, never the provider's.
     """
     tenant: Tenant = await make_tenant("invtpl-pay")
     headers = await auth_cookie(tenant.user)
@@ -333,10 +352,10 @@ async def test_the_invoice_mail_offers_the_portal_and_never_a_checkout_url(
             headers=headers,
         )
         assert resp.status_code == 200, resp.text
+        expected = await _public_path(client, headers, invoice["id"])
 
     message = sent[0]
-    expected = f"/invoices/{invoice['id']}"
-    # The branded CTA, pointing at the portal, in both parts of the mail.
+    # The branded CTA, pointing at our own page, in both parts of the mail.
     assert "Nu betalen" in message.html
     assert expected in message.html
     assert expected in message.text
@@ -376,7 +395,9 @@ async def test_no_provider_means_no_button_and_an_unchanged_mail(
 
     message = sent[0]
     assert "Nu betalen" not in message.html
+    # Neither address: not the portal page, and not the public one either (#304).
     assert f"/invoices/{invoice['id']}" not in message.html
+    assert "/invoice/" not in message.html
     # No dead anchor, no hole in either part.
     assert 'href=""' not in message.html
     assert "\n\n\n" not in message.text
@@ -453,10 +474,11 @@ async def test_a_tenants_own_template_may_place_the_link_itself(client_for, monk
             headers=headers,
         )
         assert resp.status_code == 200, resp.text
+        expected = await _public_path(client, headers, invoice["id"])
 
     html = sent[0].html
     assert 'href="https://' in html
-    assert f"/invoices/{invoice['id']}" in html
+    assert expected in html
     assert "mollie.com" not in html
 
 
@@ -504,6 +526,7 @@ async def test_the_mail_carries_a_clickable_qr_as_an_inline_part(client_for, mon
             headers=headers,
         )
         assert resp.status_code == 200, resp.text
+        expected = await _public_path(client, headers, invoice["id"])
 
     message = sent[0]
     inline = [a for a in message.attachments if a.inline]
@@ -514,10 +537,10 @@ async def test_the_mail_carries_a_clickable_qr_as_an_inline_part(client_for, mon
     assert qr.content[:4] == b"\x89PNG"
     # The body points at it by the filename — the cid every transport agrees on.
     assert 'src="cid:invoice-qr.png"' in message.html
-    # …and the code is a link to the same portal page the button uses.
+    # …and the code is a link to the same page the button uses.
     anchor = re.search(r'<a href="([^"]+)"[^>]*>\s*<img src="cid:invoice-qr\.png"', message.html)
     assert anchor is not None, "the QR is not clickable"
-    assert anchor.group(1).endswith(f"/invoices/{invoice['id']}")
+    assert anchor.group(1).endswith(expected)
     # The PDF is still an ordinary attachment beside it.
     assert [a.filename for a in message.attachments if not a.inline][0].endswith(".pdf")
     # Plaintext never carries markup — an image has no plaintext form.
@@ -555,6 +578,7 @@ async def test_a_transport_that_cannot_inline_gets_the_button_and_no_broken_imag
             headers=headers,
         )
         assert resp.status_code == 200, resp.text
+        expected = await _public_path(client, headers, invoice["id"])
 
     message = sent[0]
     assert [a for a in message.attachments if a.inline] == []
@@ -562,7 +586,7 @@ async def test_a_transport_that_cannot_inline_gets_the_button_and_no_broken_imag
     assert "<img" not in message.html
     # The way in survives, in the form this transport can carry.
     assert "Nu betalen" in message.html
-    assert f"/invoices/{invoice['id']}" in message.html
+    assert expected in message.html
 
 
 async def test_no_provider_means_no_qr_either(client_for, monkeypatch) -> None:
