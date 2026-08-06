@@ -95,6 +95,9 @@ async def _project(
     budget_period: str = "total",
     status: str = "active",
 ) -> str:
+    # A project belongs to a client, so a caller that does not care which one still gets one.
+    if company_id is None:
+        company_id = await _company(client, headers, f"Klant van {name}")
     res = await client.post(
         "/api/v1/projects",
         json={
@@ -651,14 +654,23 @@ async def test_projects_sort_by_assignee_too(client_for) -> None:
     ann = await _member(t.org.id, "ann@proj.test", "Ann Appel")
     async with client_for(t.host) as c:
         headers = await auth_cookie(t.user)
+        klant = await _company(c, headers)
         await c.post(
             "/api/v1/projects",
-            json={"name": "Zed", "assignees": [{"user_id": ann, "is_primary": True}]},
+            json={
+                "name": "Zed",
+                "company_id": klant,
+                "assignees": [{"user_id": ann, "is_primary": True}],
+            },
             headers=headers,
         )
         await c.post(
             "/api/v1/projects",
-            json={"name": "Alpha", "assignees": [{"user_id": str(t.user.id), "is_primary": True}]},
+            json={
+                "name": "Alpha",
+                "company_id": klant,
+                "assignees": [{"user_id": str(t.user.id), "is_primary": True}],
+            },
             headers=headers,
         )
         items = (await c.get("/api/v1/projects?sort=assignee", headers=headers)).json()["items"]

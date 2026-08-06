@@ -81,7 +81,13 @@ async def test_tasks_belong_to_project(client_for) -> None:
     t = await make_tenant("proj-tasks")
     async with client_for(t.host) as c:
         headers = await auth_cookie(t.user)
-        project = await c.post("/api/v1/projects", json={"name": "P1"}, headers=headers)
+        # A project belongs to a client, so every create here names one.
+        company = await c.post("/api/v1/companies", json={"name": "Klant"}, headers=headers)
+        project = await c.post(
+            "/api/v1/projects",
+            json={"name": "P1", "company_id": company.json()["id"]},
+            headers=headers,
+        )
         project_id = project.json()["id"]
 
         task = await c.post(
@@ -122,7 +128,10 @@ async def test_projects_are_tenant_isolated(client_for) -> None:
     a = await make_tenant("proj-iso-a")
     b = await make_tenant("proj-iso-b")
     async with client_for(a.host) as ca, client_for(b.host) as cb:
-        created = await c_post(ca, a, {"name": "Secret A"})
+        company_a = await ca.post(
+            "/api/v1/companies", json={"name": "Klant A"}, headers=await auth_cookie(a.user)
+        )
+        created = await c_post(ca, a, {"name": "Secret A", "company_id": company_a.json()["id"]})
         project_id = created["id"]
 
         # Tenant B cannot list or fetch tenant A's project.
@@ -139,3 +148,60 @@ async def c_post(client, tenant, body) -> dict:
     r = await client.post("/api/v1/projects", json=body, headers=await auth_cookie(tenant.user))
     assert r.status_code == 201
     return r.json()
+
+
+# --- a project belongs to a client ------------------------------------------------- #
+async def test_a_project_cannot_be_created_without_a_client(client_for) -> None:
+    """The whole point: a project is work done *for* somebody, so there is no unattached one."""
+    t = await make_tenant("proj-client-required")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        missing = await c.post("/api/v1/projects", json={"name": "Los project"}, headers=headers)
+        assert missing.status_code == 422
+        explicit_null = await c.post(
+            "/api/v1/projects", json={"name": "Los project", "company_id": None}, headers=headers
+        )
+        assert explicit_null.status_code == 422
+
+
+async def test_a_project_can_move_client_but_never_lose_one(client_for) -> None:
+    """An update may reassign the work; it may not orphan it.
+
+    ``exclude_unset`` is what makes the two distinguishable, so both halves are pinned: an
+    update that says nothing about the client leaves it alone, and one that says ``null``
+    is refused with the field named rather than silently detaching the project.
+    """
+    t = await make_tenant("proj-client-move")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        first = (
+            await c.post("/api/v1/companies", json={"name": "Eerste"}, headers=headers)
+        ).json()["id"]
+        second = (
+            await c.post("/api/v1/companies", json={"name": "Tweede"}, headers=headers)
+        ).json()["id"]
+        project = (
+            await c.post(
+                "/api/v1/projects",
+                json={"name": "Onderhoud", "company_id": first},
+                headers=headers,
+            )
+        ).json()
+
+        moved = await c.patch(
+            f"/api/v1/projects/{project['id']}", json={"company_id": second}, headers=headers
+        )
+        assert moved.status_code == 200
+        assert moved.json()["company_id"] == second
+
+        untouched = await c.patch(
+            f"/api/v1/projects/{project['id']}", json={"name": "Beheer"}, headers=headers
+        )
+        assert untouched.json()["company_id"] == second
+
+        detached = await c.patch(
+            f"/api/v1/projects/{project['id']}", json={"company_id": None}, headers=headers
+        )
+        assert detached.status_code == 422
+        body = detached.json()["error"]
+        assert body["fields"]["company_id"] == "errors.projects_company_required"

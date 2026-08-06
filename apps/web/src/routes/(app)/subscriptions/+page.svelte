@@ -925,11 +925,13 @@
         <label for="qc-sub-project-company" class="mb-1 block text-sm font-medium text-text"
           >{t("projects.field.company")}</label
         >
+        <!-- Required: a project belongs to a client. The agreement's client is the default. -->
         <Combobox
           items={companyItems}
           name="company_id"
           value={pv.companyId}
           id="qc-sub-project-company"
+          allowEmpty={false}
           placeholder={t("projects.field.company")}
         />
       </div>

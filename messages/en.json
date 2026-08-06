@@ -3058,6 +3058,7 @@
   "errors.portal_email_required": "This contact needs an email address before they can be invited.",
   "errors.portal_email_in_use": "This email address already belongs to an existing account. A portal login must have its own address.",
   "errors.projects_budget_hours_locked": "This project's hours come from a linked subscription. Adjust the included hours on the subscription itself.",
+  "errors.projects_company_required": "A project belongs to a client. Pick the client this work is done for.",
   "companies.logo.label": "Logo",
   "companies.logo.remove": "Remove current logo",
   "companies.logo.hint": "Shown on this page and on the client's own portal dashboard. This is the client's mark, not your agency branding.",

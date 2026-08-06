@@ -111,10 +111,14 @@ PROJECT_IMPEX = ImpexDescriptor(
     filters=("q", "status", "company_id", "mine", "sort"),
     columns=(
         ImpexColumn("name", required=True),
+        # Required, and stated *here* rather than left to ``ProjectCreate``: a schema rejection
+        # is a request-level 422 that names no row, so a 300-row file would fail whole over one
+        # blank cell (#289). The engine checks this per row and the report names the column.
         ImpexColumn(
             "company",
             data_type="fk",
             field="company_id",
+            required=True,
             getter=lambda p: getattr(p, "_impex_company", None),
         ),
         ImpexColumn(

@@ -5,6 +5,7 @@ import { editHref } from "$lib/core/edit-intent";
 import { apiErrorKey } from "$lib/core/errors";
 import { t } from "$lib/core/i18n";
 import { impexAction } from "$lib/core/impex/actions.server";
+import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { resolvePaging } from "$lib/core/table/paging";
@@ -63,6 +64,9 @@ export const actions: Actions = {
     return { tableSaved: true };
   },
 
+  /** The new-project dialog's client picker offers "＋ … toevoegen" like every other (#115). */
+  createCompany: createCompanyAction,
+
   /** The ✎ menu's two actions, shared by every list that has one. */
   bulkUpdate: (event) => bulkUpdateAction(event, "project"),
   bulkDelete: (event) => bulkDeleteAction(event, "project"),
@@ -75,12 +79,17 @@ export const actions: Actions = {
    */
   create: async (event) => {
     const form = await event.request.formData();
+    const company_id = String(form.get("company_id") ?? "").trim();
+    // The one thing the dialog asks for, and the one thing the placeholder cannot stand in
+    // for: a project belongs to a client. Refused here as well as by the API, so the answer
+    // is this key rather than the generic validation envelope.
+    if (!company_id) return fail(400, { error: "errors.projects_company_required" });
     const { data, error } = await apiFor(event).POST("/api/v1/projects", {
       body: {
         // The API requires a non-empty name; the placeholder is replaced the moment the user
         // types a real one on the detail page.
         name: t("projects.untitled"),
-        company_id: String(form.get("company_id") ?? "").trim() || null,
+        company_id,
         status: "active",
         budget_period: "total",
         currency: event.locals.theme.currency,

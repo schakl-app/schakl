@@ -16,6 +16,7 @@
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
   import Assignees from "$lib/core/ui/Assignees.svelte";
+  import Combobox from "$lib/core/ui/Combobox.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
@@ -23,6 +24,7 @@
   import Markdown from "$lib/core/ui/Markdown.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
+  import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import InteractionForm from "$lib/modules/interactions/InteractionForm.svelte";
   import { PROJECT_STATUSES } from "$lib/modules/projects/status";
   import { terminalKeys } from "$lib/modules/tasks/statuses";
@@ -119,6 +121,36 @@
   const companyName = $derived(
     project.company_id ? (data.companies.find((c) => c.id === project.company_id)?.name ?? "") : "",
   );
+  const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
+
+  // The client the edit form posts. A project created from the list arrives with none — the
+  // "Nieuw project" button creates a minimal record and drops you here in edit mode (UX §3), so
+  // this picker is the only place it can ever be set, and until it existed such a project could
+  // not be attached to a client at all. Copied into local state rather than bound to `project`,
+  // so a cancelled edit leaves the record alone; re-armed from the stored row on the edit-mode
+  // toggle and when navigating to another project, never on an ordinary reload — a mid-session
+  // invalidation (a to-do added, a client quick-created) must not clobber a live pick.
+  // svelte-ignore state_referenced_locally
+  let fCompany = $state(project.company_id ?? "");
+  // svelte-ignore state_referenced_locally
+  let armedFor = project.id;
+  // svelte-ignore state_referenced_locally
+  let wasEditing = editing;
+  $effect(() => {
+    if (project.id !== armedFor || (editing && !wasEditing)) {
+      armedFor = project.id;
+      fCompany = project.company_id ?? "";
+    }
+    wasEditing = editing;
+  });
+  // Inline create from that picker (#115, docs/UX.md — every entity-reference picker offers it):
+  // the dialog posts to ?/createCompany and the new client auto-selects here.
+  let qcCompanyOpen = $state(false);
+  let qcCompanyName = $state("");
+  $effect(() => {
+    const created = form?.inlineCreated;
+    if (created?.slot === "company") fCompany = created.id;
+  });
   // Actuals from logged time (team-wide) against the budget, computed by the API over the budget's
   // current period — the same figures the projects list column shows, and the same period the Uren
   // panel below lists the entries for. Money is priced per logger (#226): the API's employee-rate
@@ -290,6 +322,27 @@
             >{t("projects.field.name")}</label
           >
           <input id="edit-name" name="name" value={project.name} required class={inputClass} />
+        </div>
+        <div>
+          <label for="edit-project-company" class="mb-1 block text-sm font-medium text-text"
+            >{t("projects.field.company")}</label
+          >
+          <!-- `allowEmpty={false}`: a project belongs to a client, so there is no "Geen" to
+               pick. A legacy row that has none still opens here — with the field empty and
+               the save refused until one is chosen, which is the only way such a row gets
+               fixed. -->
+          <Combobox
+            items={companyItems}
+            name="company_id"
+            bind:value={fCompany}
+            id="edit-project-company"
+            allowEmpty={false}
+            placeholder={t("projects.field.company")}
+            oncreate={(name) => {
+              qcCompanyName = name;
+              qcCompanyOpen = true;
+            }}
+          />
         </div>
         <div>
           <span class="mb-1 block text-sm font-medium text-text"
@@ -599,6 +652,16 @@
     onsaved={() => (showLogInteraction = false)}
   />
 </Modal>
+
+<!-- The full new-client dialog behind the client picker's "＋ … toevoegen". The definitions are
+     the section layout's own (`entity_type=company` is not what this page loads), so it fetches
+     them itself on first open. -->
+<CompanyQuickCreate
+  bind:open={qcCompanyOpen}
+  name={qcCompanyName}
+  locale={data.locale}
+  error={form?.qcError ?? null}
+/>
 
 <ConfirmDialog
   bind:open={confirmDelete}

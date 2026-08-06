@@ -3058,6 +3058,7 @@
   "errors.portal_email_required": "Deze contactpersoon heeft een e-mailadres nodig voordat je kunt uitnodigen.",
   "errors.portal_email_in_use": "Dit e-mailadres hoort al bij een bestaand account. Een portaal-login heeft een eigen adres nodig.",
   "errors.projects_budget_hours_locked": "De uren van dit project komen van een gekoppeld abonnement. Pas de inbegrepen uren aan op het abonnement zelf.",
+  "errors.projects_company_required": "Een project hoort bij een klant. Kies voor welke klant dit werk is.",
   "companies.logo.label": "Logo",
   "companies.logo.remove": "Huidig logo verwijderen",
   "companies.logo.hint": "Zichtbaar op deze pagina en op het eigen portaaldashboard van de klant. Dit is het beeldmerk van de klant, niet jullie huisstijl.",

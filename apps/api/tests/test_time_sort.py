@@ -51,6 +51,9 @@ async def _company(client, headers, name: str) -> str:
 
 
 async def _project(client, headers, name: str, company_id: str | None = None, **fields) -> str:
+    # A project belongs to a client, so a caller that does not care which one still gets one.
+    if company_id is None:
+        company_id = await _company(client, headers, f"Klant van {name}")
     body = {"name": name, "company_id": company_id, **fields}
     res = await client.post("/api/v1/projects", json=body, headers=headers)
     assert res.status_code == 201, res.text

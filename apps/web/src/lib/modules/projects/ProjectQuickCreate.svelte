@@ -97,12 +97,15 @@
           <label for="qc-project-company" class="mb-1 block text-sm font-medium text-text"
             >{t("projects.field.company")}</label
           >
+          <!-- Not optional: a project belongs to a client, and the API refuses one without.
+               The caller's client is still only a *default* — this picker may change it. -->
           <Combobox
             items={companies}
             name="company_id"
             bind:value={clientId}
             id="qc-project-company"
-            placeholder={t("common.none")}
+            allowEmpty={false}
+            placeholder={t("projects.field.company")}
           />
         </div>
       </div>
@@ -127,7 +130,7 @@
           class="rounded-lg border border-border px-4 py-2 text-sm text-text"
           onclick={() => (open = false)}>{t("common.cancel")}</button
         >
-        <Button loading={busy.active} disabled={definitions === null || busy.active}>
+        <Button loading={busy.active} disabled={definitions === null || !clientId || busy.active}>
           {t("common.create")}
         </Button>
       </div>

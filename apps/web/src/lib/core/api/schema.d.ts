@@ -17670,8 +17670,11 @@ export interface components {
             budget_period: string;
             /** Color */
             color?: string | null;
-            /** Company Id */
-            company_id?: string | null;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
             /**
              * Currency
              * @default EUR

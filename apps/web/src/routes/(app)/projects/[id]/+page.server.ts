@@ -7,6 +7,7 @@ import { dedupeGets } from "$lib/core/api/dedupe";
 import { parseAssignees } from "$lib/core/assignees";
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
+import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { entityPanelsFor } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
 import { interactionActions } from "$lib/modules/interactions/actions.server";
@@ -102,10 +103,17 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
   update: async (event) => {
     const form = await event.request.formData();
+    const company_id = String(form.get("company_id") ?? "").trim();
+    if (!company_id) return fail(400, { error: "errors.projects_company_required" });
     const { error: apiError } = await apiFor(event).PATCH("/api/v1/projects/{project_id}", {
       params: { path: { project_id: event.params.id } },
       body: {
         name: String(form.get("name") ?? "").trim() || undefined,
+        // The client. Until this field existed there was no surface at all that could move a
+        // project between clients, and a project created from the list had none. It is never
+        // sent empty (refused above) — a project belongs to a client and an update may move
+        // one, never remove it.
+        company_id,
         description: String(form.get("description") ?? "").trim() || null,
         assignees: parseAssignees(form.get("assignees")),
         status: String(form.get("status") ?? "active") as "active",
@@ -270,6 +278,9 @@ export const actions: Actions = {
     }
     return { entryDeleted: true };
   },
+
+  /** The client picker's "＋ … toevoegen" (#115) — the shared dialog posts here. */
+  createCompany: createCompanyAction,
 
   // Contactmomenten panel contract (lib/modules/interactions).
   ...interactionActions,
