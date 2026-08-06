@@ -33,6 +33,7 @@ const ringNodes = ringSlugs
   .map((s) => groups.flatMap((g) => g.items).find((i: any) => i.slug === s))
   .filter(Boolean)
   .map((i: any) => ({
+    slug: i.slug,
     monogram: i.mark?.monogram ?? i.name.charAt(0),
     color: i.mark?.color,
     lucide: i.lucide,
@@ -135,6 +136,7 @@ const title = `${settings.brandName} · ${t.eyebrow}`;
                 >
                   <div class="ix__card-head">
                     <IntegrationMark
+                      slug={i.slug}
                       monogram={i.mark?.monogram ?? i.name.charAt(0)}
                       color={i.mark?.color}
                       lucide={i.lucide}
@@ -176,6 +178,7 @@ const title = `${settings.brandName} · ${t.eyebrow}`;
                 {g.planned.map((i: any) => (
                   <div class="ix__soon">
                     <IntegrationMark
+                      slug={i.slug}
                       monogram={i.mark?.monogram ?? i.name.charAt(0)}
                       color={i.mark?.color}
                       lucide={i.lucide}

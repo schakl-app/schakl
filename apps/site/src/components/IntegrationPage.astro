@@ -58,6 +58,7 @@ const title = `${settings.brandName} · ${i.name}`;
 
     <header class="ip__hero" data-reveal>
       <IntegrationMark
+        slug={i.slug}
         monogram={i.mark?.monogram ?? i.name.charAt(0)}
         color={i.mark?.color}
         lucide={i.lucide}
@@ -199,6 +200,7 @@ const title = `${settings.brandName} · ${i.name}`;
             {siblings.map((s: any) => (
               <a class="ip__link" href={href(`/integrations/${s.slug}`)}>
                 <IntegrationMark
+                  slug={s.slug}
                   monogram={s.mark?.monogram ?? s.name.charAt(0)}
                   color={s.mark?.color}
                   size={1.9}
@@ -220,6 +222,7 @@ const title = `${settings.brandName} · ${i.name}`;
             {others.map((s: any) => (
               <a class="ip__link" href={href(`/integrations/${s.slug}`)}>
                 <IntegrationMark
+                  slug={s.slug}
                   monogram={s.mark?.monogram ?? s.name.charAt(0)}
                   color={s.mark?.color}
                   size={1.9}

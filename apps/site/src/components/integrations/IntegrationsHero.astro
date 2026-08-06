@@ -14,7 +14,7 @@ import IntegrationMark from './IntegrationMark.astro';
 interface Props {
   locale: 'nl' | 'en';
   /** Satellites, drawn clockwise from the top. Six reads as a ring; more crowds it. */
-  nodes: { monogram: string; color?: string; lucide?: string; name: string }[];
+  nodes: { slug?: string; monogram: string; color?: string; lucide?: string; name: string }[];
   brand: string;
 }
 const { locale, nodes, brand } = Astro.props;
@@ -68,7 +68,13 @@ const hubLabel = locale === 'nl' ? 'jouw installatie' : 'your install';
         class="ring__node"
         style={`left:${n.x}%;top:${n.y}%;--node-delay:${(i * 0.09).toFixed(2)}s`}
       >
-        <IntegrationMark monogram={n.monogram} color={n.color} lucide={n.lucide} size={2.6} />
+        <IntegrationMark
+          slug={n.slug}
+          monogram={n.monogram}
+          color={n.color}
+          lucide={n.lucide}
+          size={2.6}
+        />
         <span class="ring__node-name">{n.name}</span>
       </div>
     ))

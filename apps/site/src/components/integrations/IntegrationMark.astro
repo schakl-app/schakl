@@ -1,16 +1,23 @@
 ---
-// The tile that stands in for a vendor logo.
+// The tile that stands for a vendor.
 //
-// Deliberately NOT the vendor's own logo: we do not ship their trademarks, and a redrawn
-// approximation of a mark everybody recognises looks worse than not having one. So each card
-// gets a monogram tile tinted with the vendor's own brand colour plus the category glyph —
-// recognisable at a glance, correct by construction, and one static file with no image requests.
+// It draws the vendor's actual brand mark where one exists (src/lib/brand-marks.ts, generated
+// from Simple Icons) and falls back to a monogram where none does — Mollie, OXXA, Exact Online,
+// SnelStart and SE Ranking have no CC0 mark, and redrawing a logo everybody recognises looks
+// worse than not having one. That fallback is why the mark is drawn as a single path in the
+// vendor's own brand colour inside the tile rather than as a full-colour logo on a white chip:
+// a set of full-colour logos at five aspect ratios beside five monograms reads as broken, while
+// one tinted tile per vendor reads as a system that happens to know some logos better than
+// others. It also means one path serves light and dark themes, with no second asset per vendor.
 //
-// The colour is decorative only; the name is always in text beside it, so nothing here carries
-// meaning a screen reader would miss.
+// The colour is decorative; the name is always in text beside it, so the tile is aria-hidden and
+// carries nothing a screen reader would miss.
 import Icon from '../showcase/Icon.astro';
+import { brandMarks } from '../../lib/brand-marks';
 
 interface Props {
+  /** Integration slug — the key into the brand-mark set. Absent or unknown ⇒ monogram. */
+  slug?: string;
   monogram: string;
   color?: string;
   lucide?: string;
@@ -18,11 +25,12 @@ interface Props {
   size?: number;
   class?: string;
 }
-const { monogram, color, lucide, size = 3, class: cls = '' } = Astro.props;
+const { slug, monogram, color, lucide, size = 3, class: cls = '' } = Astro.props;
 
 // No brand colour on the card falls back to the site accent, so a new integration added in the
 // CMS without one still looks deliberate rather than grey.
 const tint = color || 'var(--accent)';
+const path = slug ? brandMarks[slug] : undefined;
 ---
 
 <span
@@ -30,7 +38,15 @@ const tint = color || 'var(--accent)';
   style={`--mark-color:${tint};--mark-size:${size}rem`}
   aria-hidden="true"
 >
-  <span class="mark__mono">{monogram}</span>
+  {
+    path ? (
+      <svg class="mark__logo" viewBox="0 0 24 24" fill="currentColor" focusable="false">
+        <path d={path} />
+      </svg>
+    ) : (
+      <span class="mark__mono">{monogram}</span>
+    )
+  }
   {lucide && (
     <span class="mark__glyph"><Icon name={lucide} size={0.85} stroke={2.4} /></span>
   )}
@@ -55,6 +71,14 @@ const tint = color || 'var(--accent)';
       transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
       border-color 0.25s ease,
       background 0.25s ease;
+  }
+  .mark__logo {
+    /* Slightly smaller than the monogram's optical size: a logo fills its 24×24 box edge to
+       edge, where a letterform carries its own side bearings. Matching them by font-size would
+       leave the logos looking oversized next to the monograms they sit beside. */
+    width: calc(var(--mark-size) * 0.5);
+    height: calc(var(--mark-size) * 0.5);
+    display: block;
   }
   .mark__mono {
     font-weight: 750;
