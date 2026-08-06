@@ -508,6 +508,35 @@ async def test_the_document_renders_and_prints_from_the_snapshot(tmp_path) -> No
     assert len(pdf) > 2000
     (tmp_path / "report.pdf").write_bytes(pdf)
 
+    # And the chart is *on* the printed page, not merely in the markup.
+    #
+    # `"<svg " in html` passed for the whole of the module's life while every report went out
+    # with a blank where its chart should be: `width="100%"` with no intrinsic size laid out at
+    # 0×0 in WeasyPrint and at full width in every browser, so the preview was right, the PDF
+    # was empty, and the assertion above could not tell them apart. A preview and a print share
+    # HTML; they do not share a layout engine. Assert the geometry the printer computed.
+    from weasyprint import HTML as WeasyHTML
+
+    from app.core.documents.engine import no_network_fetcher
+
+    def svg_boxes(box) -> list[tuple[float, float]]:
+        tag = str(getattr(box, "element_tag", "") or "")
+        if tag.endswith("}svg") or tag == "svg":
+            return [(box.width, box.height)]
+        found: list[tuple[float, float]] = []
+        for child in getattr(box, "children", []) or []:
+            found += svg_boxes(child)
+        return found
+
+    document = await asyncio.to_thread(
+        lambda: WeasyHTML(string=html, url_fetcher=no_network_fetcher, base_url=None).render()
+    )
+    drawn = [box for page in document.pages for box in svg_boxes(page._page_box)]
+    assert drawn, "the document declares a chart but printed no SVG box at all"
+    assert all(width > 50 and height > 50 for width, height in drawn), (
+        f"a chart printed with no area: {drawn}"
+    )
+
 
 async def test_an_internal_document_says_so_and_wears_no_client_branding() -> None:
     """The one piece of chrome a design may never drop."""

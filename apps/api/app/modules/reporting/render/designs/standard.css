@@ -9,11 +9,19 @@
  * boxed, sections are separated by air rather than by borders, and only the accent is loud.
  */
 
+/* The cover fills its page, and its footer sits on the floor of it.
+ *
+ * It used to do that with `display:flex` + `margin-top:auto` on the footer — correct CSS, right
+ * in the preview, and in print the line was stranded two thirds of the way up: WeasyPrint does
+ * not resolve auto margins on a flex item. Absolute positioning against a positioned parent is
+ * the phrasing both engines answer the same — but only against a *definite* height, because
+ * `bottom: 0` on a `min-height` box resolves against the content and lands the footer back in
+ * the middle of the text. Hence `height`, not `min-height`: the cover is one page by
+ * construction, and saying so is what makes its floor a real edge. */
 .cover {
   break-after: page;
-  min-height: 250mm;
-  display: flex;
-  flex-direction: column;
+  height: 250mm;
+  position: relative;
 }
 
 .cover-bar {
@@ -47,7 +55,7 @@
 .hero-text.on-image .client { color: #fff; }
 
 .period {
-  align-self: flex-start;
+  display: inline-block;
   border: 1.5px solid var(--accent);
   color: var(--accent);
   padding: 5px 14px;
@@ -75,7 +83,16 @@
   margin-bottom: 6px;
 }
 
-.cover-foot { margin-top: auto; padding-top: 16px; font-size: 8pt; color: var(--muted); }
+.cover-foot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding-top: 10px;
+  border-top: 2px solid var(--accent);
+  font-size: 8pt;
+  color: var(--muted);
+}
 
 /* ---- sections ---- */
 .section { margin: 0 0 26px; break-inside: auto; }
@@ -84,9 +101,33 @@
   border-left: 3px solid var(--accent);
   padding-left: 9px;
   margin-bottom: 10px;
+  /* A heading is never the last thing on a page, and its opening paragraph goes with it. */
+  break-after: avoid;
 }
+.section .narrative { break-after: avoid; }
+/* The KPI strip and its chart belong to the section above them, not to whatever page they
+   happen to land on. */
+.kpis, .split { break-inside: avoid; }
 .section .narrative { margin-bottom: 12px; color: #333; }
-.chart { margin: 10px 0 12px; break-inside: avoid; }
+
+/* A chart is scaled by its container, so the container is where its size is decided.
+ *
+ * Left to fill the column it would print 108mm tall — half a page for five bars, which is how
+ * a report starts feeling padded. 150mm caps it at a shape you read in one glance, and the
+ * table underneath still carries every number. */
+.chart { margin: 10px 0 12px; max-width: 150mm; break-inside: avoid; }
+
+/* Chart left, table right — the arrangement the n8n report used, kept for the sections narrow
+ * enough to survive it (three metric columns or fewer; the resolution is the template's).
+ *
+ * `display: table` rather than flex or grid on purpose: this is the one two-column idiom
+ * WeasyPrint and every browser lay out identically, and the auto-margin lesson two rules up is
+ * what buying that certainty is worth. */
+.split { display: table; width: 100%; table-layout: fixed; border-spacing: 12px 0; margin: 0 -12px; }
+.split > .cell { display: table-cell; vertical-align: top; }
+.split > .cell.chart-cell { width: 44%; }
+.split .chart { margin: 0; max-width: none; }
+.split table.data { margin-top: 0; }
 
 /* ---- tables ---- */
 table.data { font-size: 8pt; margin-top: 6px; }
