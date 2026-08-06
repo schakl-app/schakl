@@ -31,7 +31,7 @@
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import Button from "$lib/core/ui/Button.svelte";
-  import DocumentFrame from "$lib/modules/invoicing/DocumentFrame.svelte";
+  import DocumentFrame from "$lib/core/ui/DocumentFrame.svelte";
   import { docMoney } from "$lib/modules/invoicing/types";
 
   let { data, form } = $props();
