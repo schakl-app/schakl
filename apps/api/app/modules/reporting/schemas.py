@@ -267,3 +267,9 @@ class ReportRunBatchRequest(BaseModel):
 class ReportRunBatchResult(BaseModel):
     queued: int
     skipped: list[dict[Literal["company_id", "reason"], Any]] = Field(default_factory=list)
+    #: How many clients the batch actually looked at — an enrolled client is one with a
+    #: reporting profile. Zero is the answer that needs explaining, not hiding.
+    enrolled: int = 0
+    #: Clients with a linked data source and no profile yet. Only counted when nothing was
+    #: enrolled, so the screen can point at the next step instead of shrugging.
+    unconfigured: int = 0

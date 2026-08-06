@@ -18538,12 +18538,22 @@ export interface components {
         };
         /** ReportRunBatchResult */
         ReportRunBatchResult: {
+            /**
+             * Enrolled
+             * @default 0
+             */
+            enrolled: number;
             /** Queued */
             queued: number;
             /** Skipped */
             skipped?: {
                 [key: string]: unknown;
             }[];
+            /**
+             * Unconfigured
+             * @default 0
+             */
+            unconfigured: number;
         };
         /** ReportRunRequest */
         ReportRunRequest: {

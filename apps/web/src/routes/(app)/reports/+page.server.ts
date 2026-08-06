@@ -94,6 +94,14 @@ export const actions: Actions = {
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
-    return { queued: true, batch: { queued: data?.queued ?? 0, skipped: data?.skipped ?? [] } };
+    return {
+      queued: true,
+      batch: {
+        queued: data?.queued ?? 0,
+        skipped: data?.skipped ?? [],
+        enrolled: data?.enrolled ?? 0,
+        unconfigured: data?.unconfigured ?? 0,
+      },
+    };
   },
 };
