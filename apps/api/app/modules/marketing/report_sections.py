@@ -35,7 +35,6 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
-from weakref import WeakKeyDictionary
 
 from sqlalchemy import select
 
@@ -68,11 +67,17 @@ _GA4_LIVE_KINDS = ("organic_sources", "social_sources", "referral_sources", "key
 MAX_TABLE_ROWS = 25
 MAX_KEYWORD_ROWS = 200
 
-#: Memoised per request, so ten sections cost one gather. Weak keys, so a finished request's
-#: payload is collected with it rather than lingering in a module-level dict.
-_CACHE: WeakKeyDictionary[RequestContext, dict[tuple, GatheredMarketing]] = (
-    WeakKeyDictionary()
-)
+#: Where the per-request memo lives: on the context object itself.
+#:
+#: It was a module-level ``WeakKeyDictionary`` keyed on the context, which raises
+#: ``TypeError: unhashable type`` on its first use — ``RequestContext`` and ``SystemContext``
+#: are both ``@dataclass`` with the default ``eq=True``, and Python sets ``__hash__ = None`` on
+#: any class that defines ``__eq__``. Every provider funnels through :func:`gather`, so one
+#: unhashable key failed all eight sections at once and the report came out empty.
+#:
+#: An attribute on the context needs no hashing and no weak reference, and it is collected with
+#: the request rather than by a cache-eviction policy nobody would remember to check.
+_CACHE_ATTR = "_marketing_report_gather"
 
 
 @dataclass
@@ -93,13 +98,21 @@ class GatheredMarketing:
     notes: list[dict[str, str]] = field(default_factory=list)
 
 
+def _memo(ctx: RequestContext) -> dict[tuple, GatheredMarketing]:
+    cache = getattr(ctx, _CACHE_ATTR, None)
+    if cache is None:
+        cache = {}
+        setattr(ctx, _CACHE_ATTR, cache)
+    return cache
+
+
 async def gather(ctx: RequestContext, window: ReportWindow) -> GatheredMarketing:
     """Everything, once. Memoised on ``(company, period)`` for the life of the request."""
     key = (window.company_id, window.start, window.end, window.compare_start)
-    per_ctx = _CACHE.setdefault(ctx, {})
-    if key not in per_ctx:
-        per_ctx[key] = await _gather(ctx, window)
-    return per_ctx[key]
+    memo = _memo(ctx)
+    if key not in memo:
+        memo[key] = await _gather(ctx, window)
+    return memo[key]
 
 
 async def _gather(ctx: RequestContext, window: ReportWindow) -> GatheredMarketing:
@@ -607,9 +620,11 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
 
 def clear_cache(ctx: RequestContext, company_id: uuid.UUID | None = None) -> None:
     """Drop the memoised gather — used between clients in a batch run."""
-    if company_id is None:
-        _CACHE.pop(ctx, None)
+    memo = getattr(ctx, _CACHE_ATTR, None)
+    if memo is None:
         return
-    per_ctx = _CACHE.get(ctx) or {}
-    for key in [key for key in per_ctx if key[0] == company_id]:
-        per_ctx.pop(key, None)
+    if company_id is None:
+        memo.clear()
+        return
+    for key in [key for key in memo if key[0] == company_id]:
+        memo.pop(key, None)

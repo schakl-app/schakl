@@ -540,3 +540,137 @@ async def test_an_internal_document_says_so_and_wears_no_client_branding() -> No
     assert "niet voor de klant" in html.lower()
     # The actions list only exists on the internal document.
     assert "Alt-teksten aanvullen" in html
+
+
+# --------------------------------------------------------------------------------------- #
+# Gathering — the step every section funnels through
+# --------------------------------------------------------------------------------------- #
+async def test_sections_are_actually_built_from_stored_metrics() -> None:
+    """Run a real provider, not just the layout resolution around it.
+
+    This test exists because its absence shipped a report with nothing in it. Every marketing
+    section funnels through one memoised ``gather``, whose cache was a ``WeakKeyDictionary``
+    keyed on the request context — and both context classes are ``@dataclass`` with the default
+    ``eq=True``, so Python had set ``__hash__ = None`` and the first ``setdefault`` raised
+    ``TypeError``. ``gather_sections`` catches per-section exceptions so one dead source cannot
+    cost the whole report, which meant all eight sections failed identically and the run ended
+    "no linked data sources" on a client that had two.
+
+    The lesson generalises past the bug: `enabled_sections` and the renderer were both tested,
+    and neither one calls a provider.
+    """
+    from datetime import UTC, datetime
+
+    from app.core.permissions.permset import PermissionSet
+    from app.core.tenancy import RequestContext
+    from app.modules.marketing.models import MarketingLink, MarketingMetricDaily
+    from app.modules.reporting.generate import gather_sections
+    from app.registry import ReportWindow
+
+    tenant = await make_tenant("repgather")
+    company = await _company(tenant.org.id, "Acme")
+
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        link = MarketingLink(
+            org_id=tenant.org.id,
+            company_id=company,
+            source="ga4",
+            external_id="properties/1",
+            display_name="Acme GA4",
+            active=True,
+            backfill_done=True,
+            last_synced_at=datetime.now(UTC),
+        )
+        session.add(link)
+        await session.flush()
+        # Two days in the period and two in the comparison, so the delta has something to be.
+        for day, sessions in ((date(2026, 7, 1), 100.0), (date(2026, 7, 2), 140.0)):
+            session.add(
+                MarketingMetricDaily(
+                    org_id=tenant.org.id,
+                    link_id=link.id,
+                    date=day,
+                    metrics={
+                        "sessions": sessions,
+                        "keyEvents": 3.0,
+                        "channels": {"Organic Search": sessions * 0.6, "Direct": sessions * 0.4},
+                    },
+                )
+            )
+        for day in (date(2025, 7, 1), date(2025, 7, 2)):
+            session.add(
+                MarketingMetricDaily(
+                    org_id=tenant.org.id,
+                    link_id=link.id,
+                    date=day,
+                    metrics={"sessions": 50.0, "channels": {"Organic Search": 50.0}},
+                )
+            )
+        await session.commit()
+
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        org = await session.get(type(tenant.org), tenant.org.id)
+        # A section declares the permission its data needs and is *skipped* without it, so a
+        # bare context gathers nothing at all — which is correct, and is why this must grant.
+        ctx = RequestContext(
+            user=tenant.user,
+            org=org,
+            session=session,
+            permissions=PermissionSet.of(["marketing.metrics.read"]),
+        )
+        window = ReportWindow(
+            company_id=company,
+            start=date(2026, 7, 1),
+            end=date(2026, 7, 31),
+            compare_start=date(2025, 7, 1),
+            compare_end=date(2025, 7, 31),
+            locale="nl",
+        )
+        gathered = await gather_sections(ctx, window, ReportAudience.CLIENT.value, None)
+
+    # The failure this pins: eight `section_failed` warnings and nothing to print.
+    failures = [w for w in gathered.warnings if w["code"] == "reporting.warning.section_failed"]
+    assert failures == [], failures
+
+    traffic = gathered.sections.get("marketing.traffic_channels")
+    assert traffic is not None, list(gathered.sections)
+    assert traffic["totals"]["sessions"] == 240
+    labels = {row["label"] for row in traffic["rows"]}
+    assert labels == {"Organic Search", "Direct"}
+    organic = next(row for row in traffic["rows"] if row["label"] == "Organic Search")
+    # 144 this period against 100 last year.
+    assert organic["sessions"] == 144
+    assert organic["compare_sessions"] == 100
+    assert organic["delta"] == 44.0
+
+    # A section this client has no data for contributes nothing rather than an empty table.
+    assert "marketing.rankings" not in gathered.sections
+
+
+async def test_gathering_twice_costs_one_gather() -> None:
+    """The memo is what makes eight sections one Google session; assert it actually memoises."""
+    from app.core.tenancy import RequestContext
+    from app.modules.marketing import report_sections
+    from app.registry import ReportWindow
+
+    tenant = await make_tenant("repmemo")
+    company = await _company(tenant.org.id)
+    window = ReportWindow(
+        company_id=company,
+        start=date(2026, 7, 1),
+        end=date(2026, 7, 31),
+        compare_start=None,
+        compare_end=None,
+        locale="nl",
+    )
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        org = await session.get(type(tenant.org), tenant.org.id)
+        ctx = RequestContext(user=tenant.user, org=org, session=session)
+        first = await report_sections.gather(ctx, window)
+        second = await report_sections.gather(ctx, window)
+        assert first is second
+        report_sections.clear_cache(ctx)
+        assert await report_sections.gather(ctx, window) is not first
