@@ -639,6 +639,36 @@
     </form>
   </section>
 
+  <!-- The public invoice link (#304). Its own section, because it is the one setting here that
+       decides what somebody *without an account* can reach, rather than how a document is
+       produced. -->
+  <section class={sectionClass}>
+    <h2 class="mb-1 text-base font-semibold text-text">
+      {t("settings.invoicing.public_links_heading")}
+    </h2>
+    <p class="mb-3 text-sm text-text-muted">{t("settings.invoicing.public_links_hint")}</p>
+    <form
+      method="POST"
+      action="?/savePublicLinks"
+      use:enhance={busy.keep("publicLinks")}
+      class="space-y-3"
+    >
+      <label class="flex items-center gap-2 text-sm text-text">
+        <FormCheckbox
+          name="public_invoice_links"
+          value="1"
+          checked={data.settings?.public_invoice_links ?? true}
+          class="rounded border-border"
+        />
+        {t("settings.invoicing.public_links_enabled")}
+      </label>
+      <p class="text-xs text-text-muted">{t("settings.invoicing.public_links_off_hint")}</p>
+      <div class="flex justify-end">
+        <Button loading={busy.is("publicLinks")} disabled={busy.active}>{t("common.save")}</Button>
+      </div>
+    </form>
+  </section>
+
   <!-- Accounting (#31): UBL today, live providers behind the same seam later. -->
   <section class={sectionClass}>
     <h2 class="mb-1 text-base font-semibold text-text">

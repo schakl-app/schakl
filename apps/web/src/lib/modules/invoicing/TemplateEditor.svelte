@@ -194,6 +194,98 @@
     }
   }
 
+  // --- the payment QR (#305) ---------------------------------------------------------- #
+  //
+  // The colour fields exist because the *renderer* holds the guarantee, not because the risk
+  // went away. #269 shipped no picker on the reasoning that "letting a tenant type a hex here
+  // would be offering them a way to print an invoice nobody's phone can read" — right about
+  // the danger, wrong about the remedy. `readable_pair` already replaced an unscannable
+  // accent; what was missing was not a locked field, it was a preview that shows the
+  // substitution and a sentence that explains it. Both are below.
+  const qrStyle = $derived(config.qr_style ?? "brand");
+  const qrCaption = $derived(config.qr_caption_i18n ?? {});
+
+  function setQr(patch: Partial<TemplateConfig>) {
+    config = { ...config, ...patch };
+  }
+
+  function setQrCaption(text: string) {
+    const next = { ...qrCaption };
+    if (text.trim()) next[labelLocale] = text;
+    else delete next[labelLocale];
+    setQr({ qr_caption_i18n: next });
+  }
+
+  async function uploadQrLogo(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    uploading = true;
+    uploadError = "";
+    try {
+      const body = new FormData();
+      body.append("file", file, file.name);
+      // The background's own endpoint: same storage, same `entity_type`, same reason it is not
+      // the anonymously-served `branding` type. A second route would be a second copy of that
+      // decision.
+      const res = await fetch("/settings/invoicing/background", { method: "POST", body });
+      if (!res.ok) throw new Error(String(res.status));
+      const meta = (await res.json()) as { id: string };
+      setQr({ qr_logo_file_id: meta.id, qr_logo: "custom" });
+    } catch {
+      uploadError = t("errors.upload_type");
+    } finally {
+      uploading = false;
+      input.value = "";
+    }
+  }
+
+  /**
+   * The code itself, drawn by the API from the unsaved config.
+   *
+   * Its own request rather than a crop of the document preview, for two reasons: a whole-page
+   * render is far too slow to drag a colour picker through, and the thing a tenant needs to
+   * see here — whether the pair was substituted — is invisible at 3cm inside a scaled A4.
+   *
+   * Keyed on only the fields that change the code, so typing in the footer text box does not
+   * redraw a QR that cannot have changed.
+   */
+  let qrSvg = $state("");
+  let qrReplaced = $state(false);
+  const qrKey = $derived(
+    JSON.stringify([
+      config.qr_style,
+      config.qr_color,
+      config.qr_background,
+      config.qr_logo,
+      config.qr_logo_file_id,
+      config.accent_color,
+    ]),
+  );
+
+  $effect(() => {
+    const key = qrKey;
+    const timer = setTimeout(() => void renderQr(key), 250);
+    return () => clearTimeout(timer);
+  });
+
+  async function renderQr(_key: string) {
+    try {
+      const res = await fetch("/settings/invoicing/qr-preview", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ config, template_id: templateId }),
+      });
+      if (!res.ok) return;
+      const body = (await res.json()) as { svg: string; replaced: boolean };
+      qrSvg = body.svg;
+      qrReplaced = body.replaced;
+    } catch {
+      // A preview that fails to load is not worth an error line: the document preview beside
+      // it already reports a dead API, and this one redraws on the next edit.
+    }
+  }
+
   // --- source ----------------------------------------------------------------------- #
   let sourceFrom = $state<"classic" | "letterhead">("classic");
   async function loadSource(design = sourceFrom, { confirmFirst = true } = {}) {
@@ -293,8 +385,9 @@
     </div>
 
     <!-- One switcher for every box the tenant types their own wording into — the field labels on
-         the layout tab and the three text blocks (docs/UX.md). The other tabs carry none. -->
-    {#if tab === "layout" || tab === "texts"}
+         the layout tab, the three text blocks, and (since #305) the QR's caption on the design
+         tab (docs/UX.md). The source tab carries none. -->
+    {#if tab === "layout" || tab === "texts" || tab === "design"}
       <I18nLocaleSwitcher hint={false} />
     {/if}
 
@@ -338,21 +431,22 @@
         <p class="mt-1 text-xs text-text-muted">{t("settings.invoicing.accent_color_hint")}</p>
       </div>
 
-      <!-- The QR's style, not its colour (epic #269): the code follows the accent above and is
-           replaced by near-black when that is too pale to scan, so there is no field here in
-           which a tenant could type an invoice their client's phone cannot read. -->
-      <fieldset class="space-y-2 rounded-lg border border-border p-3">
+      <!-- The payment QR (epic #269, opened up in #305). The preview is not decoration: it is
+           where `readable_pair`'s substitution becomes visible, which is the only reason a
+           colour picker can be offered here at all. -->
+      <fieldset class="space-y-3 rounded-lg border border-border p-3">
         <legend class="px-1 text-sm font-medium text-text">
           {t("settings.invoicing.qr_style")}
         </legend>
+
         <div class="flex flex-wrap gap-4">
-          {#each ["brand", "plain"] as const as style (style)}
+          {#each ["brand", "plain", "custom"] as const as style (style)}
             <label class="flex items-center gap-2 text-sm text-text">
               <input
                 type="radio"
                 name="qr-style"
-                checked={(config.qr_style ?? "brand") === style}
-                onchange={() => (config = { ...config, qr_style: style })}
+                checked={qrStyle === style}
+                onchange={() => setQr({ qr_style: style })}
                 class="border-border"
               />
               {t(`settings.invoicing.qr_style_${style}`)}
@@ -360,6 +454,138 @@
           {/each}
         </div>
         <p class="text-xs text-text-muted">{t("settings.invoicing.qr_style_help")}</p>
+
+        <div class="flex gap-4">
+          <!-- The code, at roughly the size it prints. Sitting beside the controls rather than
+               under them, so a colour change and its result are in one glance. -->
+          <div
+            class="flex h-24 w-24 shrink-0 items-center justify-center rounded-lg border border-border bg-white p-1"
+          >
+            <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+            {@html qrSvg}
+          </div>
+
+          <div class="min-w-0 flex-1 space-y-2">
+            {#if qrReplaced}
+              <!-- The rule, in words. Without this the tenant picks a colour, sees a different
+                   one, and concludes the field is broken — which is exactly why #269 preferred
+                   to have no field rather than a silent one. -->
+              <p class="text-xs text-amber-700 dark:text-amber-400">
+                {t("settings.invoicing.qr_unreadable")}
+              </p>
+            {:else}
+              <p class="text-xs text-text-muted">{t("settings.invoicing.qr_preview_hint")}</p>
+            {/if}
+          </div>
+        </div>
+
+        {#if qrStyle === "custom"}
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label for="qr-color" class="mb-1 block text-xs font-medium text-text">
+                {t("settings.invoicing.qr_color")}
+              </label>
+              <div class="flex items-center gap-2">
+                <input
+                  id="qr-color"
+                  type="color"
+                  value={config.qr_color ?? config.accent_color ?? "#000000"}
+                  oninput={(e) => setQr({ qr_color: e.currentTarget.value })}
+                  class="h-9 w-9 shrink-0 cursor-pointer rounded border border-border bg-transparent"
+                />
+                <!-- The hex box beside the swatch, not instead of it: a brand colour arrives
+                     as a hex from a style guide and is pasted, never eyeballed. -->
+                <input
+                  value={config.qr_color ?? ""}
+                  oninput={(e) => setQr({ qr_color: e.currentTarget.value.trim() || null })}
+                  placeholder={config.accent_color ?? "#000000"}
+                  class={inputClass}
+                />
+              </div>
+            </div>
+            <div>
+              <label for="qr-bg" class="mb-1 block text-xs font-medium text-text">
+                {t("settings.invoicing.qr_background")}
+              </label>
+              <div class="flex items-center gap-2">
+                <input
+                  id="qr-bg"
+                  type="color"
+                  value={config.qr_background ?? "#ffffff"}
+                  oninput={(e) => setQr({ qr_background: e.currentTarget.value })}
+                  class="h-9 w-9 shrink-0 cursor-pointer rounded border border-border bg-transparent"
+                />
+                <input
+                  value={config.qr_background ?? ""}
+                  oninput={(e) => setQr({ qr_background: e.currentTarget.value.trim() || null })}
+                  placeholder="#ffffff"
+                  class={inputClass}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <span class="mb-1 block text-xs font-medium text-text">
+              {t("settings.invoicing.qr_logo")}
+            </span>
+            <div class="flex flex-wrap gap-4">
+              {#each ["brand", "none", "custom"] as const as choice (choice)}
+                <label class="flex items-center gap-2 text-sm text-text">
+                  <input
+                    type="radio"
+                    name="qr-logo"
+                    checked={(config.qr_logo ?? "brand") === choice}
+                    onchange={() => setQr({ qr_logo: choice })}
+                    class="border-border"
+                  />
+                  {t(`settings.invoicing.qr_logo_${choice}`)}
+                </label>
+              {/each}
+            </div>
+            <p class="mt-1 text-xs text-text-muted">{t("settings.invoicing.qr_logo_help")}</p>
+            {#if config.qr_logo === "custom"}
+              <div class="mt-2 flex items-center gap-2">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onchange={uploadQrLogo}
+                  disabled={uploading}
+                  class="text-xs text-text-muted file:mr-2 file:rounded file:border-0 file:bg-surface file:px-2 file:py-1 file:text-xs file:text-text"
+                />
+                {#if config.qr_logo_file_id}
+                  <button
+                    type="button"
+                    class="text-xs text-text-muted underline"
+                    onclick={() => setQr({ qr_logo_file_id: null })}
+                  >
+                    {t("common.remove")}
+                  </button>
+                {/if}
+              </div>
+              {#if uploadError}
+                <p class="mt-1 text-xs text-red-600 dark:text-red-400">{uploadError}</p>
+              {/if}
+            {/if}
+          </div>
+        {/if}
+
+        <!-- The caption is offered for every style, not only `custom`: rewording the sentence
+             under the code is a copy decision, not a colour one, and a tenant who wants
+             "Betaal met iDEAL" there should not have to opt into a colour picker for it. -->
+        <div>
+          <label for="qr-caption" class="mb-1 block text-xs font-medium text-text">
+            {t("settings.invoicing.qr_caption")}
+          </label>
+          <input
+            id="qr-caption"
+            value={qrCaption[labelLocale] ?? ""}
+            oninput={(e) => setQrCaption(e.currentTarget.value)}
+            placeholder={t("settings.invoicing.qr_caption_placeholder")}
+            class={inputClass}
+          />
+          <p class="mt-1 text-xs text-text-muted">{t("settings.invoicing.qr_caption_help")}</p>
+        </div>
       </fieldset>
 
       <fieldset class="space-y-2 rounded-lg border border-border p-3">

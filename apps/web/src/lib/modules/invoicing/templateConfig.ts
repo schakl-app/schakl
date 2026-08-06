@@ -68,11 +68,25 @@ export interface TemplateConfig {
   columns: Record<"quantity" | "unit" | "unit_price" | "tax", boolean>;
   layout: TemplateLayoutBlock[];
   background: TemplateBackground;
-  /** How the payment QR is drawn (epic #269). `brand` — the default — uses the accent colour
-   *  and puts the tenant's logo in the middle; `plain` is black and white, for monochrome
-   *  printing. A *style*, never a colour: the API replaces an accent too pale to scan, so
-   *  there is no field here in which to type an unreadable invoice. */
-  qr_style: "brand" | "plain";
+  /** How the payment QR is drawn (epic #269, opened up in #305). `brand` — the default —
+   *  uses the accent colour and puts the tenant's logo in the middle; `plain` is black and
+   *  white, for monochrome printing; `custom` unlocks the four fields below.
+   *
+   *  The colours are safe to offer because the *renderer* enforces the rule, not the absence
+   *  of a field: `render/qr.readable_pair` substitutes black-on-white for any pair a camera
+   *  could not read, and the editor's live preview shows the substitution and says so. */
+  qr_style: "brand" | "plain" | "custom";
+  /** `custom` only: the modules' colour. Null follows `accent_color`. */
+  qr_color: string | null;
+  /** `custom` only: the panel behind them. Null is paper white. */
+  qr_background: string | null;
+  /** `custom` only: whose mark sits in the middle. */
+  qr_logo: "brand" | "none" | "custom";
+  /** `qr_logo === "custom"`: a file uploaded exactly as the background mark is. */
+  qr_logo_file_id: string | null;
+  /** The caption under the code, per locale. Empty keeps the built-in, which already picks
+   *  between "scan to pay" and "scan to view" by whether a payment can be started. */
+  qr_caption_i18n: Record<string, string>;
   html: string | null;
   css: string | null;
   intro_i18n: Record<string, string>;
@@ -100,6 +114,11 @@ export const DEFAULT_CONFIG: TemplateConfig = {
   layout: [],
   background: DEFAULT_BACKGROUND,
   qr_style: "brand",
+  qr_color: null,
+  qr_background: null,
+  qr_logo: "brand",
+  qr_logo_file_id: null,
+  qr_caption_i18n: {},
   html: null,
   css: null,
   intro_i18n: {},
@@ -118,6 +137,7 @@ export function toConfig(stored: unknown): TemplateConfig {
     intro_i18n: { nl: "", en: "", ...(raw.intro_i18n ?? {}) },
     payment_i18n: { nl: "", en: "", ...(raw.payment_i18n ?? {}) },
     footer_i18n: { nl: "", en: "", ...(raw.footer_i18n ?? {}) },
+    qr_caption_i18n: { nl: "", en: "", ...(raw.qr_caption_i18n ?? {}) },
     layout: raw.layout ?? [],
   };
 }

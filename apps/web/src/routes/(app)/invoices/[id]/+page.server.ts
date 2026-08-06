@@ -27,6 +27,22 @@ export const load: PageServerLoad = async (event) => {
    */
   const panels = isPortal ? [] : entityPanelsFor(enabled, "invoice");
   /**
+   * Coming back from a provider's checkout (#304). The API stamps `?return=1` on the URL it
+   * hands the provider, so this runs on exactly that hop and on no ordinary view of an invoice.
+   *
+   * Before the fetch below, so the first paint is usually already right: a webhook is
+   * asynchronous and routinely lands after the redirect, which is why a payer used to be shown
+   * the word "open" seconds after paying. The API bounds the outbound call (non-final attempts
+   * only, one per attempt per five seconds), so a reloaded return URL costs nothing and an
+   * ordinary visit never reaches this at all.
+   */
+  const returning = event.url.searchParams.get("return") === "1";
+  if (returning && can(event.locals.user, "invoicing.payment.link")) {
+    await api.POST("/api/v1/invoicing/invoices/{invoice_id}/payment-intents/refresh", {
+      params: { path: { invoice_id } },
+    });
+  }
+  /**
    * Six lookups below exist for one consumer: `DocumentForm`. Loading them for a viewer who
    * cannot open it was always six wasted round-trips; since #266 four of them also answer 403
    * to a client (the price list, the template library, the tax rates and the seller's bank
@@ -103,6 +119,8 @@ export const load: PageServerLoad = async (event) => {
      */
     canStartPayment: can(event.locals.user, "invoicing.payment.link"),
     canSyncPayment: can(event.locals.user, "invoicing.payment.link", "any"),
+    /** See above: drives the "we are confirming your payment" line and its bounded polling. */
+    returning,
     /** See the list route: the agency's view of a document, or only your own copy (#266). */
     canReadRegister: can(event.locals.user, "invoicing.invoice.read", "any"),
     locale: event.locals.locale,

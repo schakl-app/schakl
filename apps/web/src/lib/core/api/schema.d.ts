@@ -4474,6 +4474,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoicing/invoices/{invoice_id}/payment-intents/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Payments
+         * @description "Did my payment land?" — asked by the page a payer returns to (#304).
+         *
+         *     ``:own`` at the floor, unlike ``sync`` beside it, and the difference is the whole point.
+         *     ``sync`` is the *operator's* repair action: it spends a provider call on any attempt on
+         *     demand, so it stays ``:any``. This one is the **payer** finding out what happened to their
+         *     own money, so a client must be able to reach it — and it is bounded instead of trusted:
+         *     non-final attempts only, throttled per attempt on ``synced_at``, and free when there is
+         *     nothing in flight.
+         */
+        post: operations["refresh_payments_api_v1_invoicing_invoices__invoice_id__payment_intents_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoicing/invoices/{invoice_id}/payment-intents/{intent_id}/sync": {
         parameters: {
             query?: never;
@@ -4784,6 +4811,127 @@ export interface paths {
         get: operations["list_providers_api_v1_invoicing_providers_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/public/invoices/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public Invoice
+         * @description This invoice, as the person holding its link sees it.
+         *
+         *     A hand-built narrow shape, never ``InvoiceRead`` — see ``schemas.PublicInvoiceRead`` for
+         *     why a subset-by-omission would have leaked the next field somebody added.
+         */
+        get: operations["public_invoice_api_v1_invoicing_public_invoices__token__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/public/invoices/{token}/payment-intents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Public Start Payment
+         * @description Open a checkout for what this invoice still owes, and hand back where to go.
+         *
+         *     **No body at all**, which is stricter than the signed-in sibling: that one accepts a
+         *     provider/account so an agency running two credentials can say which. A public caller has
+         *     no business naming a credential — the service resolves one and prefers the live over the
+         *     test key (``docs/PAYMENTS.md`` §2) — and no business naming an amount, ever.
+         *
+         *     Gated by the module's ordinary licence write gate, like the portal's own pay button. That
+         *     is deliberate symmetry rather than an oversight: an expired licence stops the agency
+         *     *asking* for money on every surface at once, and the two exemptions that exist (the
+         *     callback, and the refresh below) are both about money that has **already** moved.
+         */
+        post: operations["public_start_payment_api_v1_invoicing_public_invoices__token__payment_intents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/public/invoices/{token}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public Invoice Pdf
+         * @description The PDF, for the client who wants it in their own bookkeeping.
+         */
+        get: operations["public_invoice_pdf_api_v1_invoicing_public_invoices__token__pdf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/public/invoices/{token}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public Invoice Preview
+         * @description The rendered document — **the same HTML** the signed-in preview and the PDF produce.
+         *
+         *     One artefact, so the page a client opens from a QR can never disagree with the paper it
+         *     was printed on. It is also why the public page draws no document of its own in Svelte.
+         */
+        get: operations["public_invoice_preview_api_v1_invoicing_public_invoices__token__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/public/invoices/{token}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Public Refresh Payments
+         * @description "Did my payment land?", for the payer coming back from a checkout (#304).
+         *
+         *     Bounded by ``InvoicePaymentService.refresh_pending`` — the *same* implementation the
+         *     signed-in route uses, so the throttle cannot drift between them: non-final attempts only,
+         *     and at most one provider call per attempt per ``REFRESH_MIN_INTERVAL``, whatever the
+         *     caller does.
+         */
+        post: operations["public_refresh_payments_api_v1_invoicing_public_invoices__token__refresh_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5135,6 +5283,31 @@ export interface paths {
          *     those are what the design has to sit around.
          */
         post: operations["preview_template_api_v1_invoicing_templates_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/templates/qr-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Template Qr
+         * @description The payment QR alone, as an unsaved config would draw it (#305).
+         *
+         *     Its own route beside ``/templates/preview`` because the colour picker needs an answer per
+         *     keystroke and a full document render is a Jinja pass over a sample invoice. It also carries
+         *     what the whole-page preview cannot show at 3cm: whether ``readable_pair`` substituted, so
+         *     the editor can say *why* the colour on screen is not the colour that was typed.
+         */
+        post: operations["preview_template_qr_api_v1_invoicing_templates_qr_preview_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -14258,6 +14431,28 @@ export interface components {
             /** Synced At */
             synced_at: string | null;
         };
+        /**
+         * InvoicePaymentRefresh
+         * @description What a "did my payment land yet?" poll answers with (#304).
+         *
+         *     ``changed`` is whether a provider was actually asked — a throttled poll answers ``False``
+         *     and is not a failure. The caller re-reads the document either way; this only tells a page
+         *     whether it is worth invalidating.
+         */
+        InvoicePaymentRefresh: {
+            /**
+             * Changed
+             * @default false
+             */
+            changed: boolean;
+            invoice_status?: components["schemas"]["InvoiceStatus"] | null;
+            /**
+             * Settled
+             * @default false
+             */
+            settled: boolean;
+            status?: components["schemas"]["PaymentIntentStatus"] | null;
+        };
         /** InvoiceRead */
         InvoiceRead: {
             /**
@@ -14377,6 +14572,11 @@ export interface components {
             period_start: string | null;
             /** Prices Include Tax */
             prices_include_tax: boolean;
+            /**
+             * Public Url
+             * @default
+             */
+            public_url: string;
             /** Quote Id */
             quote_id: string | null;
             /** Reference */
@@ -14470,6 +14670,11 @@ export interface components {
             number_reset_yearly: boolean;
             /** Prices Include Tax */
             prices_include_tax: boolean;
+            /**
+             * Public Invoice Links
+             * @default true
+             */
+            public_invoice_links: boolean;
             /** Quote Next Seq */
             quote_next_seq: number;
             /** Quote Number Format */
@@ -14503,6 +14708,8 @@ export interface components {
             number_reset_yearly?: boolean | null;
             /** Prices Include Tax */
             prices_include_tax?: boolean | null;
+            /** Public Invoice Links */
+            public_invoice_links?: boolean | null;
             /** Quote Next Seq */
             quote_next_seq?: number | null;
             /** Quote Number Format */
@@ -17771,10 +17978,101 @@ export interface components {
             /** Url */
             url: string;
         };
+        /**
+         * PublicCheckout
+         * @description Where to send the payer. The provider's live checkout URL and nothing else.
+         */
+        PublicCheckout: {
+            /** Checkout Url */
+            checkout_url: string;
+        };
+        /**
+         * PublicInvoiceRead
+         * @description The invoice as a reader with **no session** sees it (#304).
+         *
+         *     Deliberately *not* ``InvoiceRead`` and deliberately not a subset expressed as an exclusion
+         *     list. Every field here was typed out on purpose, so the next field added to the staff model
+         *     does not appear on an unauthenticated endpoint as a side effect of somebody extending
+         *     something else. It carries no ids at all — not the invoice's, not the company's, not the
+         *     contact's — because the token is the only name this surface has for anything, and an id it
+         *     handed out would be an id somebody tries somewhere else.
+         *
+         *     The document itself (lines, addresses, totals, the tenant's design) is not here either: the
+         *     page shows the **rendered document**, which is the same HTML the PDF prints, fetched from
+         *     its own route. One artefact, so a public page can never disagree with the paper.
+         */
+        PublicInvoiceRead: {
+            /** Currency */
+            currency: string;
+            /**
+             * Customer Name
+             * @default
+             */
+            customer_name: string;
+            /** Due Date */
+            due_date?: string | null;
+            /** Issue Date */
+            issue_date?: string | null;
+            /** @default invoice */
+            kind: components["schemas"]["InvoiceKind"];
+            /** Locale */
+            locale: string;
+            /**
+             * Number
+             * @default
+             */
+            number: string;
+            /** Outstanding */
+            outstanding: string;
+            /** Paid Total */
+            paid_total: string;
+            /**
+             * Payable
+             * @default false
+             */
+            payable: boolean;
+            /**
+             * Payment Pending
+             * @default false
+             */
+            payment_pending: boolean;
+            /**
+             * Payment Settled
+             * @default false
+             */
+            payment_settled: boolean;
+            payment_status?: components["schemas"]["PaymentIntentStatus"] | null;
+            status: components["schemas"]["InvoiceStatus"];
+            /** Total */
+            total: string;
+        };
         /** PurgeRequest */
         PurgeRequest: {
             /** Confirm */
             confirm: string;
+        };
+        /**
+         * QrPreview
+         * @description The payment QR as this unsaved config would draw it (#305).
+         *
+         *     Its own endpoint rather than a corner of the full document preview, for two reasons that
+         *     are both about the editor being usable. A whole-document render is a WeasyPrint-adjacent
+         *     Jinja pass on a sample invoice and takes long enough that dragging a colour picker through
+         *     it is unpleasant; and the *code* is the one element where the tenant needs to see the
+         *     substitution rule fire, which a 3cm square in a scaled-down A4 preview cannot show.
+         */
+        QrPreview: {
+            /** Dark */
+            dark: string;
+            /** Light */
+            light: string;
+            /**
+             * Replaced
+             * @default false
+             */
+            replaced: boolean;
+            /** Svg */
+            svg: string;
         };
         /** QuoteCreate */
         QuoteCreate: {
@@ -20978,12 +21276,28 @@ export interface components {
             payment_i18n?: {
                 [key: string]: string;
             };
+            /** Qr Background */
+            qr_background?: string | null;
+            /** Qr Caption I18N */
+            qr_caption_i18n?: {
+                [key: string]: string;
+            };
+            /** Qr Color */
+            qr_color?: string | null;
+            /**
+             * Qr Logo
+             * @default brand
+             * @enum {string}
+             */
+            qr_logo: "brand" | "none" | "custom";
+            /** Qr Logo File Id */
+            qr_logo_file_id?: string | null;
             /**
              * Qr Style
              * @default brand
              * @enum {string}
              */
-            qr_style: "brand" | "plain";
+            qr_style: "brand" | "plain" | "custom";
             /**
              * Show Logo
              * @default true
@@ -31805,6 +32119,37 @@ export interface operations {
             };
         };
     };
+    refresh_payments_api_v1_invoicing_invoices__invoice_id__payment_intents_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicePaymentRefresh"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     sync_payment_intent_api_v1_invoicing_invoices__invoice_id__payment_intents__intent_id__sync_post: {
         parameters: {
             query?: never;
@@ -32321,6 +32666,159 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     }[];
+                };
+            };
+        };
+    };
+    public_invoice_api_v1_invoicing_public_invoices__token__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicInvoiceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_start_payment_api_v1_invoicing_public_invoices__token__payment_intents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicCheckout"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_invoice_pdf_api_v1_invoicing_public_invoices__token__pdf_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_invoice_preview_api_v1_invoicing_public_invoices__token__preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_refresh_payments_api_v1_invoicing_public_invoices__token__refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicePaymentRefresh"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -33096,6 +33594,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_template_qr_api_v1_invoicing_templates_qr_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplatePreview"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QrPreview"];
+                };
             };
             /** @description Validation Error */
             422: {

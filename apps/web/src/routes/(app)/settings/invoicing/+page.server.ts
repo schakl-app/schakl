@@ -105,6 +105,24 @@ export const actions: Actions = {
     return { saved: true };
   },
 
+  /**
+   * The public invoice link, on or off (#304).
+   *
+   * Its own action rather than a checkbox on one of the blocks above, because the *reason* for
+   * it is its own: everything else in this screen configures how a document is produced, and
+   * this decides whether a document is reachable by someone with no account. Turning it off is
+   * retroactive at the API — the read checks the flag before it compares a token — so this one
+   * checkbox withdraws every link already printed on paper.
+   */
+  savePublicLinks: async (event) => {
+    const form = await event.request.formData();
+    const { error } = await apiFor(event).PUT("/api/v1/invoicing/settings", {
+      body: { public_invoice_links: form.get("public_invoice_links") === "1" } as never,
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { saved: true };
+  },
+
   saveReminders: async (event) => {
     const form = await event.request.formData();
     const raw = String(form.get("reminder_days") ?? "");

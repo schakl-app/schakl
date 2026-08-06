@@ -380,6 +380,9 @@
       canStart={data.canStartPayment}
       canSync={data.canSyncPayment}
       agencyView={data.canReadRegister}
+      returning={data.returning}
+      invoiceId={invoice.id}
+      publicUrl={invoice.public_url ?? ""}
       {form}
     />
 
