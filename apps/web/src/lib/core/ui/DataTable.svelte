@@ -277,9 +277,39 @@
 
   function cellStyle(column: ColumnSpec<T>): string | undefined {
     const width = headerWidth(column);
-    if (width) return `width:${width}px`;
-    return column.key === flexKey ? `min-width:${FLEX_MIN}px` : undefined;
+    return width ? `width:${width}px` : undefined;
   }
+
+  /**
+   * The floor, expressed where a fixed layout will actually honour it: on the **table**.
+   *
+   * It used to be `min-width` on the flexible column's own cells, and that did nothing at all.
+   * Fixed layout sizes a column from the `width` of its first-row cell and from nothing else —
+   * `min-width` on a table cell does not enter the algorithm — so once the declared widths
+   * summed past the box, the table grew to that sum and the one auto column was allotted what
+   * remained: zero. Measured on a 820px screen: `Naam` 0px wide, `Klantnummer` through
+   * `Beschikbare uren` all at their full width, and an 812px table in a 532px box. The identity
+   * column — the only cell that links out of the row — was not merely narrow, it was *gone*,
+   * while every optional column to its right survived and the user scrolled sideways looking
+   * for the name. The exact failure the floor was written to prevent.
+   *
+   * On the table it is one value the fixed algorithm does read: the used width becomes
+   * `max(100%, min-width)`, so the auto column is handed `min-width − Σ declared` = `FLEX_MIN`
+   * at its worst and every pixel of the slack when there is any. Computed from widths we
+   * already hold, so it is right in the SSR HTML rather than after a measurement on mount.
+   */
+  /** The `w-10` checkbox gutter, in px — declared in Tailwind rather than in a width style. */
+  const SELECT_COL = 40;
+
+  const tableMinWidth = $derived(
+    columns.reduce(
+      // A width the user dragged onto the flexible column is its floor; otherwise FLEX_MIN is.
+      (sum, column) => sum + (headerWidth(column) ?? (column.key === flexKey ? FLEX_MIN : 0)),
+      0,
+    ) +
+      (selectable ? SELECT_COL : 0) +
+      (actions ? actionsWidth : 0),
+  );
 
   const checkboxClass = "h-4 w-4 cursor-pointer rounded border-border text-brand focus:ring-brand";
 </script>
@@ -337,9 +367,10 @@
 
       The one thing fixed layout cannot do is invent slack, so exactly one column carries no
       declared width and absorbs it (`flexKey`) — otherwise a list whose columns sum past the
-      viewport would trade a scrollbar for an overflow.
+      viewport would trade a scrollbar for an overflow. When there is no slack to absorb,
+      `min-width` on the table (`tableMinWidth`) is what stops that column being handed zero.
     -->
-    <table class="w-full table-fixed text-sm">
+    <table class="w-full table-fixed text-sm" style="min-width:{tableMinWidth}px">
       <thead>
         <tr class="border-b border-border text-left text-xs text-text-muted">
           {#if selectable}
