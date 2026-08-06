@@ -1,0 +1,194 @@
+{
+  "slug": "oidc",
+  "name": "Single sign-on (OIDC)",
+  "order": 70,
+  "category": "identity",
+  "status": "live",
+  "lucide": "key",
+  "mark": {
+    "monogram": "ID",
+    "color": "#4A6FA5"
+  },
+  "tagline": {
+    "nl": "Inloggen met je eigen identiteitsprovider",
+    "en": "Sign in with your own identity provider"
+  },
+  "summary": {
+    "nl": "Je team logt in met het account dat je bureau al heeft: Google Workspace, Microsoft Entra ID, Authentik, Keycloak of Auth0. Je stelt de koppeling volledig in de app in, zonder omgevingsvariabelen en zonder herstart. Wil je verder gaan, dan zet je inloggen met wachtwoord voor de hele organisatie uit.",
+    "en": "Your team signs in with the account your agency already has: Google Workspace, Microsoft Entra ID, Authentik, Keycloak or Auth0. You configure the whole thing in-app, with no environment variables and no restart. If you want to go further, you switch password login off for the entire organisation."
+  },
+  "highlights": {
+    "nl": [
+      "Discovery-URL, client-ID en clientgeheim per organisatie; PKCE staat altijd aan",
+      "Verbinding testen voordat je iets verplicht stelt",
+      "Break-glass voor de beheerder van de installatie, zodat een kapotte provider je niet buitensluit"
+    ],
+    "en": [
+      "Discovery URL, client ID and secret per organisation; PKCE is always on",
+      "Test the connection before you make anything mandatory",
+      "An operator break-glass, so a broken provider can never lock you out"
+    ]
+  },
+  "where": {
+    "nl": "Instellingen → Single sign-on, plus de knop 'Inloggen met ...' op de inlogpagina.",
+    "en": "Instellingen → Single sign-on (Settings → Single sign-on), plus the 'Inloggen met ...' button on the login page."
+  },
+  "docs": "/docs/admin/sso/",
+  "page": {
+    "lead": {
+      "nl": "OpenID Connect per organisatie, ingesteld op één scherm. Je bewijst dat de verbinding werkt voordat je hem verplicht stelt, en er is altijd een weg terug.",
+      "en": "OpenID Connect per organisation, configured on one screen. You prove the connection works before you make it mandatory, and there is always a way back."
+    },
+    "requirements": {
+      "nl": [
+        "Een identiteitsprovider met OpenID Connect discovery: Google Workspace, Microsoft Entra ID, Authentik, Keycloak, Auth0.",
+        "Het recht settings.auth.manage; eigenaar en beheerder hebben dat standaard.",
+        "Rechten bij die provider om een web-applicatie met clientgeheim te registreren (een confidential client).",
+        "Een installatie die publiek over HTTPS bereikbaar is, met een reverse proxy waarvan de API de headers vertrouwt."
+      ],
+      "en": [
+        "An identity provider with OpenID Connect discovery: Google Workspace, Microsoft Entra ID, Authentik, Keycloak, Auth0.",
+        "The settings.auth.manage permission; owner and admin hold it by default.",
+        "Rights at that provider to register a web application with a client secret (a confidential client).",
+        "An installation reachable publicly over HTTPS, behind a reverse proxy whose headers the API trusts."
+      ]
+    },
+    "steps": {
+      "nl": [
+        "Open <strong>Instellingen → Single sign-on</strong> en kopieer bovenaan het veld <strong>Callback-URL</strong>. Dat adres is niet instelbaar: het is altijd <code>https://jouw-host/api/v1/auth/oidc/callback</code>, gebouwd uit je geverifieerde eigen domein of uit de subdomeinnaam van je organisatie.",
+        "Registreer bij je provider een <strong>web-applicatie met clientgeheim</strong> en plak die callback-URL letterlijk in het veld voor redirect-URI's. Bij Google is dat Google Cloud Console → APIs &amp; Services → Credentials → OAuth client ID → Web application; voor een bureau dat alleen Workspace gebruikt, zet je het toestemmingsscherm op <code>Internal</code>.",
+        "Geef de applicatie de scopes <code>openid email profile</code>. Meer wordt er niet gevraagd, en <code>email</code> is verplicht: een login die geen e-mailclaim teruggeeft, wordt geweigerd. Een 'Authorized JavaScript origin' is niet nodig, want dit is een server-side redirect en geen browserflow.",
+        "Vul op het instellingenscherm <strong>Discovery-URL</strong>, <strong>Client-ID</strong> en <strong>Clientgeheim</strong> in, plus een <strong>Weergavenaam</strong>. Die naam staat op de inlogknop.",
+        "Kies de <strong>Rol voor nieuwe gebruikers</strong> en beslis over <strong>Maak bij de eerste keer inloggen een lidmaatschap aan</strong>. Staat dat uit, dan kunnen alleen mensen inloggen die hier al toegang hebben.",
+        "Zet <strong>Single sign-on inschakelen</strong> aan, druk op <strong>Opslaan</strong> en daarna op <strong>Verbinding testen</strong>. De server haalt het discovery-document op en noemt bij succes de issuer; gaat het mis, dan zie je de melding van de provider zelf.",
+        "Log eerst zelf in met de nieuwe knop. Pas daarna, als je dat wilt, zet je <strong>Single sign-on verplichten</strong> aan. De API weigert dat op te slaan zolang de huidige verbindingsgegevens geen geslaagde test achter zich hebben."
+      ],
+      "en": [
+        "Open <strong>Instellingen → Single sign-on</strong> (Settings → Single sign-on) and copy the <strong>Callback-URL</strong> field at the top. That address is not configurable: it is always <code>https://your-host/api/v1/auth/oidc/callback</code>, built from your verified custom domain or your organisation's subdomain.",
+        "At your provider, register a <strong>web application with a client secret</strong> and paste that callback URL literally into the redirect URI field. For Google that is Google Cloud Console → APIs &amp; Services → Credentials → OAuth client ID → Web application; a Workspace-only agency sets the consent screen to <code>Internal</code>.",
+        "Grant the application the scopes <code>openid email profile</code>. Nothing more is asked for, and <code>email</code> is mandatory: a login that returns no email claim is refused. No 'Authorized JavaScript origin' is needed, because this is a server-side redirect and not a browser flow.",
+        "On the settings screen, fill in <strong>Discovery-URL</strong>, <strong>Client-ID</strong> and <strong>Clientgeheim</strong> (client secret), plus a <strong>Weergavenaam</strong> (display name). That name is what the login button says.",
+        "Pick the <strong>Rol voor nieuwe gebruikers</strong> (role for new users) and decide on <strong>Maak bij de eerste keer inloggen een lidmaatschap aan</strong> (create a membership on first sign-in). With it off, only people who already have access here can sign in.",
+        "Tick <strong>Single sign-on inschakelen</strong> (enable single sign-on), press <strong>Opslaan</strong> and then <strong>Verbinding testen</strong> (test connection). The server fetches the discovery document and reports the issuer on success; on failure you see the provider's own error.",
+        "Sign in with the new button yourself first. Only then, if you want to, tick <strong>Single sign-on verplichten</strong> (enforce single sign-on). The API refuses to store it while the current connection fields have no passed test behind them."
+      ]
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Testen voordat je verplicht stelt",
+          "en": "Test before you enforce"
+        },
+        "body": {
+          "nl": "'Verbinding testen' haalt het discovery-document server-side op en controleert het. Slaagt dat, dan krijg je de issuer terug; faalt het, dan zie je de fout van de provider ongewijzigd, zodat je niet hoeft te raden. Pas na een geslaagde test accepteert de API 'Single sign-on verplichten'. Wijzig je daarna de discovery-URL, het client-ID of het geheim, dan vervalt die markering en vraagt de app om een nieuwe test.",
+          "en": "'Verbinding testen' (test connection) fetches and validates the discovery document server-side. On success it reports the issuer; on failure it shows the provider's own error verbatim, so you are not left guessing. Only after a passed test will the API accept 'Single sign-on verplichten'. Change the discovery URL, client ID or secret afterwards and that marker is cleared: the app asks for a fresh test."
+        },
+        "bullets": {
+          "nl": [
+            "Het clientgeheim is write-only: de app meldt alleen of er een is opgeslagen. Laat het veld leeg bij een volgende bewerking om het bestaande geheim te behouden.",
+            "Staat SCHAKL_SECRET_KEY nog op de meegeleverde standaardwaarde en is er geen SCHAKL_ENCRYPTION_KEY, dan waarschuwt het scherm: zet een echte sleutel voordat je in productie een geheim opslaat.",
+            "PKCE (S256) en state gaan altijd mee. Het is geen instelling en geen keuze."
+          ],
+          "en": [
+            "The client secret is write-only: the app only reports whether one is stored. Leave the field empty on a later save to keep the existing secret.",
+            "If SCHAKL_SECRET_KEY is still the shipped default and no SCHAKL_ENCRYPTION_KEY is set, the screen warns you: set a real key before storing a secret in production.",
+            "PKCE (S256) and state are always sent. Not a setting, not a choice."
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Verplichten, en de weg terug",
+          "en": "Enforcing, and the way back"
+        },
+        "body": {
+          "nl": "Verplichten zet inloggen met wachtwoord uit voor iedereen in de organisatie, dus elke sessie loopt vanaf dat moment langs de MFA- en conditional-accessregels van je provider. Ligt die provider eruit, dan zet de beheerder van de installatie SCHAKL_FORCE_LOCAL_LOGIN op true bij de API-container en herstart: wachtwoordinloggen werkt weer, wat er ook is opgeslagen. Inloggen, SSO repareren of uitzetten, variabele weer weghalen.",
+          "en": "Enforcing switches password login off for everyone in the organisation, so from that moment every session goes through your provider's own MFA and conditional-access rules. If that provider goes down, whoever runs the installation sets SCHAKL_FORCE_LOCAL_LOGIN to true on the API container and restarts: password login works again, whatever is stored. Sign in, fix or disable SSO, then unset it."
+        },
+        "bullets": {
+          "nl": [
+            "Verplichten schakelt ook de hele tweestapsverificatie van die organisatie uit, inclusief het instellen ervan; de identiteitsprovider levert de MFA.",
+            "SCHAKL_FORCE_LOCAL_LOGIN staat in infra/compose.yaml en infra/compose.tunnel.yaml, maar niet in infra/compose.portainer.yml: op zo'n stack voeg je hem zelf toe.",
+            "Uitloggen blijft altijd bereikbaar, ongeacht deze instellingen."
+          ],
+          "en": [
+            "Enforcing also switches off that organisation's entire two-factor surface, enrolment included; the identity provider supplies the MFA.",
+            "SCHAKL_FORCE_LOCAL_LOGIN is present in infra/compose.yaml and infra/compose.tunnel.yaml but not in infra/compose.portainer.yml, so on such a stack you add it by hand.",
+            "Signing out always stays reachable, whatever these settings say."
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Wie er binnenkomt, en wie niet meer",
+          "en": "Who gets in, and who stays out"
+        },
+        "body": {
+          "nl": "Automatisch aanmaken gaat over het eerste contact met deze organisatie, niet over 'heeft nu geen lidmaatschap'. Verwijder je iemand in Instellingen → Team & gebruikers, dan komt die persoon bij de volgende SSO-login niet stilletjes terug: de app onthoudt dat. Toegang teruggeven is een bewuste handeling met de rol die je bedoelt. Iemand die de provider wel herkent maar hier geen lidmaatschap heeft, krijgt helemaal geen sessie en leest op de inlogpagina dat hij een beheerder om toegang moet vragen.",
+          "en": "Auto-provisioning is about first contact with this organisation, not about 'has no membership right now'. Remove somebody in Instellingen → Team & gebruikers (Settings → Team & users) and their next SSO sign-in does not quietly restore them: the app remembers. Restoring access is a deliberate act, with the role you mean. Someone the provider recognises but who holds no membership here gets no session at all, and reads on the login page that they should ask an admin for access."
+        },
+        "bullets": {
+          "nl": [
+            "Een bestaand lokaal account wordt alleen aan een SSO-identiteit gekoppeld als de provider email_verified bevestigt; dat beschermt tegen providers met zelfregistratie.",
+            "De profielfoto uit de provider wordt bij elke login ververst; heb je zelf een foto geüpload, dan wint die.",
+            "Nieuwe gebruikers krijgen de rol die je in 'Rol voor nieuwe gebruikers' hebt gekozen, standaard lid."
+          ],
+          "en": [
+            "An existing local account is only linked to an SSO identity when the provider asserts email_verified; that guards against providers with self-service signup.",
+            "The provider's profile picture is refreshed on every login; a photo you uploaded yourself wins.",
+            "New users get the role you picked under 'Rol voor nieuwe gebruikers', member by default."
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "De valkuil bij de eerste keer",
+          "en": "The first-setup trap"
+        },
+        "body": {
+          "nl": "Bijna elke mislukte eerste poging ziet er hetzelfde uit: de provider antwoordt met redirect_uri_mismatch en in de details staat een redirect-URI die met http:// begint. De app vertrouwt dan de headers van je reverse proxy niet en gebruikt het interne schema. Dat los je op in je deployment, niet op het instellingenscherm.",
+          "en": "Almost every failed first attempt looks the same: the provider answers with redirect_uri_mismatch and the details carry a redirect URI starting with http://. The app is not trusting your reverse proxy's headers and is emitting the internal scheme. You fix that in your deployment, not on the settings screen."
+        },
+        "bullets": {
+          "nl": [
+            "Draai de API-container met --proxy-headers en --forwarded-allow-ips=\"*\", en zorg dat het publieke verzoek echt HTTPS is (bijvoorbeeld Cloudflare 'Always Use HTTPS').",
+            "Zet SCHAKL_AUTH_COOKIE_SECURE op true in productie.",
+            "Bij Google kan een wijziging aan de redirect-URI's een paar minuten duren voordat hij overal is doorgevoerd.",
+            "Een discovery-URL op http:// mag bewust wel: een Keycloak of Authentik op je eigen netwerk is een ondersteund geval."
+          ],
+          "en": [
+            "Run the API container with --proxy-headers and --forwarded-allow-ips=\"*\", and make sure the public request really is HTTPS (Cloudflare 'Always Use HTTPS', for instance).",
+            "Set SCHAKL_AUTH_COOKIE_SECURE to true in production.",
+            "At Google, a change to the redirect URIs can take a few minutes to propagate.",
+            "An http:// discovery URL is deliberately allowed: a Keycloak or Authentik on your own network is a supported case."
+          ]
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "key": "settings.auth.manage",
+        "nl": "Geeft toegang tot Instellingen → Single sign-on: de instellingen lezen, opslaan en de verbinding testen. Standaard alleen beheerder; de eigenaar heeft het recht via zijn wildcard.",
+        "en": "Opens Instellingen → Single sign-on: reading and saving the settings and running the connection test. Admin only by default; the owner holds it through the wildcard."
+      }
+    ],
+    "limits": {
+      "nl": [
+        "De redirect-URI is niet instelbaar. Er is geen omgevingsvariabele om hem te overschrijven, en providers vergelijken teken voor teken.",
+        "SSO regelt alleen inloggen, geen toegang tot de Google Workspace-API. Agenda, Gmail en Drive zijn een aparte koppeling met een eigen toestemming.",
+        "De oude SCHAKL_OIDC_*-variabelen zijn vervallen: ze worden genegeerd en mogen uit je compose-bestand.",
+        "Een discovery-URL die doorverwijst, wordt geweigerd; het document wordt opgehaald zonder redirects te volgen (bescherming tegen SSRF).",
+        "Eén sessie hoort bij één organisatie: inloggen op de hostname van organisatie A geeft geen sessie bij organisatie B, ook niet als je lid bent van allebei.",
+        "Er verschijnt geen SSO-knop zolang de configuratie uit staat of discovery-URL, client-ID of geheim ontbreekt."
+      ],
+      "en": [
+        "The redirect URI is not configurable. There is no environment variable to override it, and providers match it character for character.",
+        "SSO covers signing in, not access to the Google Workspace API. Calendar, Gmail and Drive are a separate connection with a grant of their own.",
+        "The old SCHAKL_OIDC_* variables are retired: they are ignored and can come out of your compose file.",
+        "A discovery URL that redirects is refused; the document is fetched without following redirects (an SSRF guard).",
+        "One session belongs to one organisation: signing in on organisation A's hostname is not a session at organisation B, even for a member of both.",
+        "No SSO button appears while the configuration is off or the discovery URL, client ID or secret is missing."
+      ]
+    }
+  }
+}

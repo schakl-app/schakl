@@ -1,0 +1,158 @@
+{
+  "slug": "openai-compatible",
+  "name": "OpenAI-compatibel",
+  "order": 62,
+  "category": "ai",
+  "status": "live",
+  "lucide": "server",
+  "mark": {
+    "monogram": "OC",
+    "color": "#64748B"
+  },
+  "tagline": {
+    "nl": "Je eigen model, op je eigen server",
+    "en": "Your own model, on your own server"
+  },
+  "summary": {
+    "nl": "Alles wat de chat-API van OpenAI spreekt op een basis-URL van jezelf: Azure OpenAI, Mistral, of een Ollama of vLLM in je eigen rack. Het veld Basis-URL is bij deze aanbieder verplicht; opslaan zonder levert een validatiefout op precies dat veld. Verder werken de vier functies, het budget en de meter exact hetzelfde als bij een aanbieder in de cloud.",
+    "en": "Anything that speaks the OpenAI chat API on a base URL of your own: Azure OpenAI, Mistral, or an Ollama or vLLM in your own rack. The Basis-URL (base URL) field is mandatory for this provider; saving without it is a validation error on that exact field. Beyond that, the four features, the budget and the meter work exactly as they do with a cloud provider."
+  },
+  "highlights": {
+    "nl": [
+      "Azure OpenAI, Mistral, een lokale Ollama of vLLM: alles wat de OpenAI chat-API spreekt",
+      "Basis-URL is hier verplicht, bijvoorbeeld https://ai.example.com/v1",
+      "Kan ook spraak naar tekst, als jouw server dat endpoint implementeert"
+    ],
+    "en": [
+      "Azure OpenAI, Mistral, a local Ollama or vLLM: anything speaking the OpenAI chat API",
+      "Base URL is mandatory here, for example https://ai.example.com/v1",
+      "Can also do speech to text, if your server implements that endpoint"
+    ]
+  },
+  "where": {
+    "nl": "Instellingen → AI, veld Provider op OpenAI-compatibel (eigen server), met het veld Basis-URL eronder.",
+    "en": "Instellingen → AI (Settings → AI): set Provider to OpenAI-compatibel (eigen server), with the Basis-URL (base URL) field below it."
+  },
+  "docs": "/docs/modules/ai/",
+  "page": {
+    "lead": {
+      "nl": "Voor een bureau dat klantgegevens niet naar een externe aanbieder mag of wil sturen, is dit de manier om de AI-functies toch te gebruiken: het model draait waar jij het neerzet en schakl. praat alleen met jouw endpoint.",
+      "en": "For an agency that may not, or will not, send client data to a third party, this is how you still use the AI features: the model runs where you put it and schakl. talks to your endpoint and nothing else."
+    },
+    "requirements": {
+      "nl": [
+        "Een endpoint dat de chat-API van OpenAI spreekt en bereikbaar is vanaf de server waarop schakl. draait.",
+        "De basis-URL van dat endpoint, inclusief het versiepad, bijvoorbeeld https://ai.example.com/v1.",
+        "Een API-sleutel die jouw endpoint accepteert.",
+        "De naam van het model dat je wilt draaien. Deze aanbieder heeft geen ingebouwde standaard, dus dit vul je zelf in.",
+        "Het recht ai.settings.manage om de aanbieder in te stellen. Standaard alleen voor beheerders."
+      ],
+      "en": [
+        "An endpoint that speaks the OpenAI chat API and is reachable from the server schakl. runs on.",
+        "That endpoint's base URL, including the version path, for example https://ai.example.com/v1.",
+        "An API key your endpoint accepts.",
+        "The name of the model you want to run. This provider has no built-in default, so you fill it in yourself.",
+        "The ai.settings.manage permission to configure the provider. Admin-only by default."
+      ]
+    },
+    "steps": {
+      "nl": [
+        "Zet je model klaar achter een endpoint dat de chat-API van OpenAI spreekt: Azure OpenAI, Mistral, of een eigen Ollama of vLLM.",
+        "Open <strong>Instellingen → AI</strong> en zet <strong>Provider</strong> op <strong>OpenAI-compatibel (eigen server)</strong>.",
+        "Vul <strong>Basis-URL</strong> in, bijvoorbeeld <code>https://ai.example.com/v1</code>. Dit veld is hier verplicht: opslaan zonder geeft een validatiefout op het veld zelf.",
+        "Plak in <strong>API-sleutel</strong> de sleutel die jouw endpoint accepteert. Die wordt versleuteld opgeslagen en nooit teruggetoond; bij een latere opslag houdt een leeg veld de bewaarde sleutel.",
+        "Vul bij <strong>Model</strong> de naam in die jouw server gebruikt. <strong>Modellen ophalen</strong> haalt de lijst op bij je eigen server, want ook die spreekt <code>GET /models</code>.",
+        "Zet onder <strong>Functies</strong> aan wat je wilt gebruiken en druk op <strong>Verbinding testen</strong>. De foutmelding van je eigen server komt letterlijk terug, wat het zoeken naar een verkeerde URL of modelnaam kort houdt.",
+        "Wil je ook dictaat, zet dan onder <strong>Spraak naar tekst</strong> de <strong>Spraakaanbieder</strong> op <strong>OpenAI-compatibel</strong> met een eigen basis-URL en sleutel, of laat hem op <strong>Uit</strong> staan om hetzelfde endpoint te hergebruiken."
+      ],
+      "en": [
+        "Put your model behind an endpoint that speaks the OpenAI chat API: Azure OpenAI, Mistral, or your own Ollama or vLLM.",
+        "Open <strong>Instellingen → AI</strong> (Settings → AI) and set <strong>Provider</strong> to <strong>OpenAI-compatibel (eigen server)</strong>.",
+        "Fill in <strong>Basis-URL</strong>, for example <code>https://ai.example.com/v1</code>. The field is mandatory here: saving without it is a validation error on that field.",
+        "Paste the key your endpoint accepts into <strong>API-sleutel</strong>. It is stored encrypted and never played back; on a later save, a blank field keeps the stored key.",
+        "Fill in <strong>Model</strong> with the name your server uses. <strong>Modellen ophalen</strong> (fetch models) reads the list from your own server, which speaks <code>GET /models</code> too.",
+        "Under <strong>Functies</strong> (features), switch on what you want and press <strong>Verbinding testen</strong> (test connection). Your own server's error text comes back verbatim, which keeps the hunt for a wrong URL or model name short.",
+        "For dictation, set <strong>Spraakaanbieder</strong> (speech provider) under <strong>Spraak naar tekst</strong> to <strong>OpenAI-compatibel</strong> with its own base URL and key, or leave it on <strong>Uit</strong> to reuse the same endpoint."
+      ]
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Als klantdata het pand niet uit mag",
+          "en": "When client data may not leave the building"
+        },
+        "body": {
+          "nl": "Sommige opdrachtgevers staan geen externe verwerker toe, en sommige bureaus willen die discussie gewoon niet voeren. Met een eigen endpoint blijft de keuze bij jou: schakl. stuurt de aanvraag naar de basis-URL die jij invult, op de sleutel die jij invult, en verder nergens heen. De functies in de app veranderen er niet van.",
+          "en": "Some clients allow no external processor, and some agencies would simply rather not have the conversation. With your own endpoint the choice stays yours: schakl. sends the request to the base URL you fill in, on the key you fill in, and nowhere else. The features in the app behave no differently."
+        },
+        "bullets": {
+          "nl": [
+            "De aanvraag vertrekt vanaf de server van schakl., niet vanuit de browser van de gebruiker",
+            "De sleutel staat versleuteld per organisatie en wordt nooit teruggetoond",
+            "Verbruik wordt geteld in aantallen en labels, nooit als de tekst van een prompt of antwoord"
+          ],
+          "en": [
+            "The request leaves from the schakl. server, not from the user's browser",
+            "The key is stored encrypted per organisation and never played back",
+            "Usage is recorded as counts and labels, never as the text of a prompt or completion"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Wat je hier zelf invult",
+          "en": "What you fill in yourself here"
+        },
+        "body": {
+          "nl": "Deze aanbieder kent geen standaarden, want wij weten niet wat er op jouw server draait. Basis-URL en Model zijn dus allebei van jou, en modelnamen blijven vrije tekst zodat een nieuw model geen nieuwe release nodig heeft. Verbinding testen doet een kleine echte aanroep met de opgeslagen instellingen en toont de fout van je server ongefilterd: dat is de snelste manier om een tikfout in de URL of de modelnaam te vinden.",
+          "en": "This provider ships no defaults, because we do not know what runs on your server. Base URL and Model are both yours, and model names stay free text so a new model needs no new release. Verbinding testen round-trips a small real completion through the stored settings and shows your server's error unfiltered — the quickest way to find a typo in the URL or the model name."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Spraak naar tekst, als je server het kan",
+          "en": "Speech to text, if your server can do it"
+        },
+        "body": {
+          "nl": "Dictaat op Uren werkt met deze aanbieder zodra jouw endpoint het transcriptie-endpoint implementeert. Je kiest onder Spraak naar tekst voor een eigen server met eigen basis-URL en sleutel, of je laat Spraakaanbieder op Uit staan en dan wordt hetzelfde chat-endpoint hergebruikt. Het audioverbruik heeft een eigen maandbudget in seconden, omdat een audiomodel geen tokens rapporteert.",
+          "en": "Dictation on Uren works with this provider as soon as your endpoint implements the transcription endpoint. Under Spraak naar tekst you either pick your own server with its own base URL and key, or leave Spraakaanbieder on Uit and the same chat endpoint is reused. Audio has its own monthly budget in seconds, because an audio model reports no token usage."
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "key": "ai.settings.manage",
+        "nl": "Instellingen → AI beheren: aanbieder, basis-URL, sleutel, model, functies, budgetten, de testknop en de verbruiksmeter. Standaard alleen beheerder.",
+        "en": "Manage Instellingen → AI: provider, base URL, key, model, features, budgets, the test button and the usage meter. Admin-only by default."
+      },
+      {
+        "key": "ai.use",
+        "nl": "De AI-functies gebruiken. Staat standaard bij beheerder en medewerker, en is op elke AI-route vereist.",
+        "en": "Use the AI features. Granted to admin and member by default, and declared on every AI route."
+      },
+      {
+        "key": "time.entry.write",
+        "nl": "Extra vereist voor dictaat op Uren, want een transcript bestaat om een urenregel te worden.",
+        "en": "Additionally required for dictation on Uren, because a transcript exists to become a time entry."
+      }
+    ],
+    "limits": {
+      "nl": [
+        "Er is geen standaardmodel. De modelnaam vul je zelf in en een typefout merk je pas aan de foutmelding van je eigen server.",
+        "schakl. controleert niet wat jouw endpoint kan. Implementeert je server geen transcriptie, dan is er simpelweg geen dictaat.",
+        "Het endpoint moet bereikbaar zijn vanaf de server van schakl. De browser van een gebruiker praat nooit rechtstreeks met je model.",
+        "De verbinding naar de aanbieder heeft vaste time-outs: 10 seconden om te verbinden, 180 seconden om te lezen. Een lokaal model dat daar structureel overheen gaat, valt af.",
+        "Het antwoordplafond ligt vast op 8192 tokens en er is nog geen instelling voor reasoning-effort.",
+        "De assistent blijft alleen-lezen en de Urenhulp levert een concept: ook op je eigen model wordt er nooit vanzelf een record aangemaakt of gewijzigd."
+      ],
+      "en": [
+        "There is no default model. You fill in the model name yourself, and a typo only surfaces as your own server's error.",
+        "schakl. does not check what your endpoint can do. If your server implements no transcription, there simply is no dictation.",
+        "The endpoint must be reachable from the schakl. server. A user's browser never talks to your model directly.",
+        "The connection to the provider has fixed timeouts: 10 seconds to connect, 180 seconds to read. A local model that structurally exceeds that will not work.",
+        "The response ceiling is fixed at 8192 tokens, and there is no reasoning-effort setting yet.",
+        "The assistant stays read-only and the time assist returns a draft: even on your own model, nothing is ever created or changed on its own."
+      ]
+    }
+  }
+}

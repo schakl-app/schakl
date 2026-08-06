@@ -1,0 +1,127 @@
+{
+  "slug": "exact-online",
+  "name": "Exact Online",
+  "order": 20,
+  "category": "accounting",
+  "status": "planned",
+  "lucide": "ledger",
+  "mark": {
+    "monogram": "EO",
+    "color": "#5C7A99"
+  },
+  "tagline": {
+    "nl": "Nu via UBL, de directe koppeling komt nog",
+    "en": "UBL today, a direct connection later"
+  },
+  "summary": {
+    "nl": "Er is nog geen live koppeling met Exact Online. Wat er vandaag wel is: elke definitieve factuur en creditfactuur download je als UBL 2.1, precies het bestand dat Exact Online importeert. De aansluiting waar een echte koppeling later in klikt ligt er, maar er is nog geen adapter geïnstalleerd.",
+    "en": "There is no live Exact Online connection yet. What does exist today: every issued invoice and credit note downloads as UBL 2.1, exactly the file Exact Online imports. The seam a real connector plugs into is in place, but no adapter is installed."
+  },
+  "highlights": {
+    "nl": [
+      "Vandaag: UBL 2.1 per definitief document, met de hand gedownload",
+      "Btw per tariefgroep, categoriecodes S, Z, E en AE volgens EN 16931",
+      "Nog geen OAuth, geen automatische verzending, niets dat terugkomt"
+    ],
+    "en": [
+      "Today: UBL 2.1 per issued document, downloaded by hand",
+      "VAT per rate group, category codes S, Z, E and AE per EN 16931",
+      "No OAuth yet, no automatic push, nothing read back"
+    ]
+  },
+  "where": {
+    "nl": "Instellingen → Facturatie → Boekhouding, plus de actie UBL downloaden op een definitieve factuur.",
+    "en": "Instellingen → Facturatie → Boekhouding (Settings → Invoicing → Accounting), plus the UBL downloaden action on an issued invoice."
+  },
+  "roadmapNote": {
+    "nl": "Een live koppeling met Exact Online staat op de roadmap en is nog niet gebouwd. Instellingen → Facturatie → Boekhouding meldt vandaag 'Geen live boekhoudkoppelingen geïnstalleerd', en dat blijft zo tot er een adapter met een release meekomt. Tot dan is de UBL-download de hele brug naar je boekhouding.",
+    "en": "A live Exact Online connection is on the roadmap and has not been built. Instellingen → Facturatie → Boekhouding today reports 'Geen live boekhoudkoppelingen geïnstalleerd' (no live accounting connections installed), and it will keep saying that until an adapter ships in a release. Until then, the UBL download is the whole bridge to your books."
+  },
+  "page": {
+    "lead": {
+      "nl": "Exact Online importeert UBL 2.1, en dat is precies wat schakl. van een definitieve factuur maakt. Een koppeling die je facturen zelf doorzet bestaat nog niet.",
+      "en": "Exact Online imports UBL 2.1, and that is exactly what schakl. produces from an issued invoice. A connection that pushes your invoices through by itself does not exist yet."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Wat er vandaag werkt: de UBL-export",
+          "en": "What works today: the UBL export"
+        },
+        "body": {
+          "nl": "Op een definitieve factuur staat de actie UBL downloaden. Je krijgt XML volgens de UBL 2.1-binding van EN 16931: afzender en geadresseerde met btw- en KvK-nummer, factuurnummer, factuurdatum en vervaldatum, je IBAN als betaalwijze, de regels met nettobedragen en de btw per tariefgroep. Een creditfactuur gaat mee als type 381, een gewone factuur als 380.",
+          "en": "An issued invoice carries the action UBL downloaden. You get XML shaped by EN 16931's UBL 2.1 binding: supplier and customer with their VAT and chamber-of-commerce numbers, the invoice number, issue date and due date, your IBAN as the payment means, the lines with net amounts and the VAT per rate group. A credit note travels as type 381, an ordinary invoice as 380."
+        },
+        "bullets": {
+          "nl": [
+            "Alleen definitieve documenten: op een concept weigert de export",
+            "Btw wordt één keer per tariefgroep afgerond, de vorm die UBL zelf modelleert",
+            "Bij prijzen inclusief btw valt het afrondingsverschil in de grootste regel van de groep, zodat de optelling tot op de cent klopt",
+            "Categoriecodes: S bij een positief tarief, Z bij nul, E bij vrijgesteld, AE bij verlegd (met de reden erbij)"
+          ],
+          "en": [
+            "Issued documents only: the export refuses on a draft",
+            "VAT is rounded once per rate group, the shape UBL itself models",
+            "On tax-inclusive documents the rounding drift folds into the group's largest line, so the totals reconcile to the cent",
+            "Category codes: S for any positive rate, Z for zero, E for exempt, AE for reverse charge, each with the exemption reason a validator demands"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Wat je nu al goed zet",
+          "en": "What you can already get right"
+        },
+        "body": {
+          "nl": "De afzender in het UBL-bestand komt uit Instellingen → Facturatie, onderdeel Bedrijfsgegevens. Vul die volledig in: naam, adres, postcode, plaats, land, btw-nummer, KvK-nummer en IBAN. Zonder ingevulde naam kun je überhaupt geen factuur definitief maken. Per btw-tarief kun je onder Btw-tarieven een Grootboekcode vastleggen, de btw- of grootboekcode die je pakket verwacht; die wordt bewaard voor een boekhoudexport en staat niet in het UBL-bestand zelf.",
+          "en": "The supplier block in the UBL file comes from Instellingen → Facturatie (Settings → Invoicing), section Bedrijfsgegevens. Fill it in completely: name, address, postcode, city, country, VAT number, chamber-of-commerce number and IBAN. Without a name you cannot issue an invoice at all. Under Btw-tarieven each VAT rate can carry a Grootboekcode, the VAT or ledger code your package expects; it is stored for an accounting export and does not appear in the UBL file itself."
+        }
+      },
+      {
+        "heading": {
+          "nl": "De aansluiting die er al ligt",
+          "en": "The seam that is already there"
+        },
+        "body": {
+          "nl": "Een boekhoudkoppeling is in schakl. een module die zichzelf aanmeldt bij een register; facturatie zelf noemt geen enkel pakket bij naam. Wat een extern pakket van een document weet wordt apart bijgehouden, uniek per pakket en per record, zodat 'nooit twee keer dezelfde factuur aanmaken' een constraint is en geen belofte. Het scherm Boekhouding somt de geïnstalleerde koppelingen op en toont vandaag een lege lijst.",
+          "en": "An accounting connector in schakl. is a module that registers itself; invoicing names no package at all. What an external package knows about a document is tracked separately, unique per package and per record, so \"never create the same invoice twice\" is a constraint rather than a promise. The Boekhouding screen lists installed connectors, and today that list is empty."
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "key": "invoicing.invoice.read",
+        "nl": "Facturen bekijken en de UBL van een definitieve factuur downloaden.",
+        "en": "View invoices and download the UBL of an issued invoice."
+      },
+      {
+        "key": "invoicing.settings.manage",
+        "nl": "Instellingen → Facturatie beheren: Bedrijfsgegevens, Btw-tarieven met Grootboekcode en het onderdeel Boekhouding.",
+        "en": "Manage Instellingen → Facturatie (Settings → Invoicing): company details, VAT rates with their ledger code, and the Boekhouding section."
+      },
+      {
+        "key": "invoicing.invoice.write",
+        "nl": "Facturen aanmaken en bewerken, en straks een factuur doorzetten naar een boekhoudpakket.",
+        "en": "Create and edit invoices, and later push one through to an accounting package."
+      }
+    ],
+    "limits": {
+      "nl": [
+        "Er is geen koppeling met Exact Online: geen OAuth, geen automatische verzending, geen synchronisatie.",
+        "De export is per document. Er is geen bulkexport van facturen en geen geplande push.",
+        "Eenrichtingsverkeer: wat je in Exact Online boekt komt niet terug in schakl. Betalingen registreer je hier zelf, of ze landen hier via een betaalkoppeling.",
+        "Offertes gaan niet mee: UBL is voor verkoopfacturen en creditfacturen.",
+        "De Grootboekcode per btw-tarief wordt bewaard, maar reist niet mee in het UBL-bestand.",
+        "Peppol en andere e-facturatienetwerken zijn een apart vervolg, geen onderdeel hiervan."
+      ],
+      "en": [
+        "There is no Exact Online connection: no OAuth, no automatic sending, no synchronisation.",
+        "The export is per document. There is no bulk export of invoices and no scheduled push.",
+        "One direction only: what you book in Exact Online never comes back into schakl. You register payments here yourself, or they land here through a payment connector.",
+        "Quotes are not included: UBL covers sales invoices and credit notes.",
+        "The ledger code per VAT rate is stored, but does not travel inside the UBL file.",
+        "Peppol and other e-invoicing networks are a separate follow-up, not part of this."
+      ]
+    }
+  }
+}

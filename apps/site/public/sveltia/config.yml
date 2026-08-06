@@ -164,6 +164,22 @@ collections:
                     label: Punten
                     widget: list
                     field: { name: bullet, label: Punt, widget: string }
+              - name: integrations
+                label: Koppelingenstrook
+                widget: object
+                summary: 'Koppelingen — {{fields.title}}'
+                # De kaarten zelf komen uit de collectie Koppelingen; hier kies je alleen welke
+                # er op de landingspagina staan, op naam. Een slug die niet bestaat wordt
+                # overgeslagen in plaats van een lege kaart te tonen.
+                fields:
+                  - { name: anchor, label: 'Anker (voor #links)', widget: string, required: false }
+                  - { name: title, label: Titel, widget: string }
+                  - { name: intro, label: Intro, widget: text }
+                  - name: slugs
+                    label: 'Welke koppelingen (slug uit Koppelingen)'
+                    widget: list
+                    field: { name: slug, label: Slug, widget: string }
+                  - { name: label, label: 'Tekst van de link naar alle koppelingen', widget: string }
               - name: cta
                 label: Call-to-action-band
                 widget: object
@@ -249,6 +265,151 @@ collections:
                 fields:
                   - { name: nl, label: NL, widget: list, field: { name: item, widget: string }, required: false }
                   - { name: en, label: EN, widget: list, field: { name: item, widget: string }, required: false }
+
+  - name: integrations
+    label: Koppelingen
+    icon: hub
+    folder: apps/site/src/data/integrations
+    extension: json
+    create: true
+    identifier_field: slug
+    summary: '{{name}} ({{status}})'
+    # De categorie is een keuzelijst en geen vrij veld: de indeling van de pagina staat in
+    # src/lib/integrations.ts. Een categorie die daar niet bestaat levert een kaart op die
+    # nergens getoond wordt, dus de opties hieronder moeten gelijk blijven aan die lijst.
+    fields:
+      - { name: slug, label: 'Slug (URL /integrations/<slug>/)', widget: string }
+      - { name: name, label: Naam, widget: string }
+      - { name: order, label: Volgorde, widget: number, value_type: int }
+      - name: category
+        label: Categorie
+        widget: select
+        options:
+          - { label: Betalen, value: payments }
+          - { label: Boekhouding, value: accounting }
+          - { label: 'Domeinen & DNS', value: domains }
+          - { label: Google Workspace, value: google }
+          - { label: 'Marketing & analytics', value: marketing }
+          - { label: 'AI & assistenten', value: ai }
+          - { label: 'Inloggen & identiteit', value: identity }
+          - { label: 'Opslag & verzending', value: infrastructure }
+          - { label: 'Automatisering & API', value: automation }
+      - name: status
+        label: Status
+        widget: select
+        default: live
+        hint: 'Beschikbaar = werkt vandaag. Bèta = werkt, maar is nog nooit tegen een echte account van die leverancier gedraaid. Roadmap = nog niets te koppelen.'
+        options:
+          - { label: Beschikbaar, value: live }
+          - { label: 'Bèta (nog niet op een echte account gedraaid)', value: beta }
+          - { label: 'Op de roadmap', value: planned }
+      - { name: lucide, label: 'Icoon (Lucide-naam, zie Icon.astro)', widget: string }
+      - name: mark
+        label: Merkteken
+        widget: object
+        fields:
+          - { name: monogram, label: 'Letter(s)', widget: string }
+          - { name: color, label: Merkkleur, widget: color, required: false }
+      - name: tagline
+        label: 'Ondertitel (kort)'
+        widget: object
+        fields:
+          - { name: nl, label: NL, widget: string }
+          - { name: en, label: EN, widget: string }
+      - name: summary
+        label: Samenvatting (kaart)
+        widget: object
+        fields:
+          - { name: nl, label: NL, widget: text }
+          - { name: en, label: EN, widget: text }
+      - name: highlights
+        label: 'Punten op de kaart (max 3 worden getoond)'
+        widget: object
+        required: false
+        fields:
+          - { name: nl, label: NL, widget: list, field: { name: item, widget: string }, required: false }
+          - { name: en, label: EN, widget: list, field: { name: item, widget: string }, required: false }
+      - name: where
+        label: 'Waar je het vindt (schermnaam)'
+        widget: object
+        required: false
+        fields:
+          - { name: nl, label: NL, widget: text }
+          - { name: en, label: EN, widget: text }
+      - { name: docs, label: 'Link naar de handleiding (laat leeg bij roadmap)', widget: string, required: false }
+      - name: roadmapNote
+        label: 'Roadmaptoelichting (alleen bij status roadmap)'
+        widget: object
+        required: false
+        fields:
+          - { name: nl, label: NL, widget: text }
+          - { name: en, label: EN, widget: text }
+      - name: page
+        label: Koppelingspagina
+        widget: object
+        required: false
+        fields:
+          - name: lead
+            label: Lead
+            widget: object
+            fields:
+              - { name: nl, label: NL, widget: text }
+              - { name: en, label: EN, widget: text }
+          - name: requirements
+            label: 'Wat je nodig hebt'
+            widget: object
+            required: false
+            fields:
+              - { name: nl, label: NL, widget: list, field: { name: item, widget: string }, required: false }
+              - { name: en, label: EN, widget: list, field: { name: item, widget: string }, required: false }
+          - name: steps
+            label: 'Stappen (mag <strong> en <code> bevatten)'
+            widget: object
+            required: false
+            fields:
+              - { name: nl, label: NL, widget: list, field: { name: item, widget: text }, required: false }
+              - { name: en, label: EN, widget: list, field: { name: item, widget: text }, required: false }
+          - name: sections
+            label: Secties
+            label_singular: sectie
+            widget: list
+            required: false
+            fields:
+              - name: heading
+                label: Kop
+                widget: object
+                fields:
+                  - { name: nl, label: NL, widget: string }
+                  - { name: en, label: EN, widget: string }
+              - name: body
+                label: Tekst
+                widget: object
+                fields:
+                  - { name: nl, label: NL, widget: text }
+                  - { name: en, label: EN, widget: text }
+              - name: bullets
+                label: Punten (optioneel)
+                widget: object
+                required: false
+                fields:
+                  - { name: nl, label: NL, widget: list, field: { name: item, widget: string }, required: false }
+                  - { name: en, label: EN, widget: list, field: { name: item, widget: string }, required: false }
+          - name: permissions
+            label: Rechten
+            label_singular: recht
+            widget: list
+            required: false
+            fields:
+              - { name: key, label: 'Rechtsleutel (bijv. mollie.settings.manage)', widget: string }
+              - { name: nl, label: 'Uitleg NL', widget: string }
+              - { name: en, label: 'Uitleg EN', widget: string }
+          - name: limits
+            label: 'Wat het bewust niet doet'
+            widget: object
+            required: false
+            fields:
+              - { name: nl, label: NL, widget: list, field: { name: item, widget: string }, required: false }
+              - { name: en, label: EN, widget: list, field: { name: item, widget: string }, required: false }
 
   - name: forms
     label: Formulieren

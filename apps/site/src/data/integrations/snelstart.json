@@ -1,0 +1,122 @@
+{
+  "slug": "snelstart",
+  "name": "SnelStart",
+  "order": 21,
+  "category": "accounting",
+  "status": "planned",
+  "lucide": "ledger",
+  "mark": {
+    "monogram": "SS",
+    "color": "#6F8C7A"
+  },
+  "tagline": {
+    "nl": "Het UBL-bestand nu, de koppeling later",
+    "en": "The UBL file now, the connector later"
+  },
+  "summary": {
+    "nl": "Een live koppeling met SnelStart is er nog niet. Wel kun je elke definitieve factuur en creditfactuur als UBL 2.1 downloaden, het formaat dat SnelStart importeert. Voor een bureau dat een handvol facturen per maand stuurt is dat vaak het hele werk: één bestand per factuur, of een mapje voor je boekhouder.",
+    "en": "There is no live SnelStart connection yet. You can download every issued invoice and credit note as UBL 2.1, the format SnelStart imports. For an agency that sends a handful of invoices a month that is often the whole job: one file per invoice, or a folder for your bookkeeper."
+  },
+  "highlights": {
+    "nl": [
+      "UBL 2.1 volgens EN 16931, per definitieve factuur of creditfactuur",
+      "Je bedrijfsgegevens, btw-nummer, KvK-nummer en IBAN staan erin",
+      "Geen account koppelen, geen sleutel, geen synchronisatie: alleen een bestand"
+    ],
+    "en": [
+      "UBL 2.1 shaped by EN 16931, per issued invoice or credit note",
+      "Your company details, VAT number, chamber-of-commerce number and IBAN are in it",
+      "No account to link, no key, no sync: just a file"
+    ]
+  },
+  "where": {
+    "nl": "Instellingen → Facturatie → Boekhouding, en de actie UBL downloaden op een definitieve factuur.",
+    "en": "Instellingen → Facturatie → Boekhouding (Settings → Invoicing → Accounting), and the UBL downloaden action on an issued invoice."
+  },
+  "roadmapNote": {
+    "nl": "Er is nog geen adapter voor SnelStart, dus er valt op dit moment niets te koppelen. Het scherm Instellingen → Facturatie → Boekhouding somt geïnstalleerde koppelingen op en meldt vandaag 'Geen live boekhoudkoppelingen geïnstalleerd'. De UBL-download werkt wel en verandert niet als de koppeling er later bijkomt.",
+    "en": "There is no SnelStart adapter yet, so there is nothing to connect right now. Instellingen → Facturatie → Boekhouding lists installed connectors and today reports 'Geen live boekhoudkoppelingen geïnstalleerd' (no live accounting connections installed). The UBL download does work, and it does not change when the connector arrives later."
+  },
+  "page": {
+    "lead": {
+      "nl": "SnelStart importeert UBL 2.1-verkoopfacturen, en dat is het bestand dat schakl. van een definitieve factuur maakt. Een koppeling die zelf boekt is er nog niet.",
+      "en": "SnelStart imports UBL 2.1 sales invoices, and that is the file schakl. produces from an issued invoice. A connector that books them for you does not exist yet."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Eén bestand per factuur",
+          "en": "One file per invoice"
+        },
+        "body": {
+          "nl": "Zodra een factuur definitief is, staat de actie UBL downloaden in het actiemenu. Het bestand bevat je bedrijfsgegevens en die van de klant, het factuurnummer, de factuurdatum en de vervaldatum, je IBAN als betaalwijze, de regels met nettobedragen en de btw per tariefgroep. Een creditfactuur gaat mee als het eigen UBL-type, met negatieve bedragen die terugwijzen naar de bron.",
+          "en": "Once an invoice is issued, the UBL downloaden action appears in its actions menu. The file carries your company details and the client's, the invoice number, the issue date and the due date, your IBAN as the payment means, the lines with net amounts and the VAT per rate group. A credit note travels as its own UBL type, with negative amounts pointing back at the source."
+        },
+        "bullets": {
+          "nl": [
+            "Een concept heeft nog geen nummer en kan dus niet geëxporteerd worden",
+            "Btw wordt één keer per tariefgroep afgerond, niet per regel",
+            "Bij prijzen inclusief btw klopt de optelling van de nettoregels tot op de cent",
+            "Vrijgesteld en verlegd krijgen hun eigen categoriecode en de verplichte toelichting"
+          ],
+          "en": [
+            "A draft has no number yet and therefore cannot be exported",
+            "VAT is rounded once per rate group, never per line",
+            "On tax-inclusive documents the net lines still add up to the cent",
+            "Exempt and reverse charge get their own category code and the required explanation"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Zet je bedrijfsgegevens en btw-tarieven goed",
+          "en": "Get your company details and VAT rates right"
+        },
+        "body": {
+          "nl": "Alles wat over jou in het bestand staat komt uit Instellingen → Facturatie, onderdeel Bedrijfsgegevens: naam, adres, postcode, plaats, land, btw-nummer, KvK-nummer en IBAN. Een factuur definitief maken lukt niet zolang de naam leeg is. In hetzelfde scherm staan je btw-tarieven, met per tarief een categorie (standaard, verlaagd, nultarief, vrijgesteld of verlegd) en een optionele Grootboekcode voor het pakket dat erom vraagt. De categorie bepaalt wat er gebeurt: vrijgesteld en verlegd rekenen niets, wat het percentage ook zegt.",
+          "en": "Everything the file says about you comes from Instellingen → Facturatie (Settings → Invoicing), section Bedrijfsgegevens: name, address, postcode, city, country, VAT number, chamber-of-commerce number and IBAN. You cannot issue an invoice while the name is empty. The same screen holds your VAT rates, each with a category (standard, reduced, zero, exempt or reverse charge) and an optional Grootboekcode for the package that asks for one. The category drives behaviour: exempt and reverse charge bill no VAT at all, whatever the nominal percentage says."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Wat er nodig is voordat de koppeling er kan zijn",
+          "en": "What has to exist before the connector can"
+        },
+        "body": {
+          "nl": "De plek waar een boekhoudkoppeling zich aanmeldt bestaat al, net als de administratie van wat een extern pakket van een document weet, uniek per pakket en per record. Dat laatste is precies wat voorkomt dat dezelfde factuur er twee keer in belandt als een verbinding halverwege wegvalt. Wat ontbreekt is de adapter zelf: de OAuth-verbinding met SnelStart, de vertaling van een factuurregel naar hun model en de vastlegging van je inloggegevens per organisatie.",
+          "en": "The place where an accounting connector registers itself already exists, as does the record of what an external package knows about a document, unique per package and per record. That last part is exactly what stops the same invoice landing there twice when a connection drops halfway. What is missing is the adapter itself: the OAuth connection to SnelStart, the translation of an invoice line into their model, and the per-organisation storage of your credentials."
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "key": "invoicing.invoice.read",
+        "nl": "Facturen bekijken en de UBL van een definitieve factuur downloaden.",
+        "en": "View invoices and download the UBL of an issued invoice."
+      },
+      {
+        "key": "invoicing.settings.manage",
+        "nl": "Bedrijfsgegevens, btw-tarieven met Grootboekcode en het onderdeel Boekhouding beheren in Instellingen → Facturatie.",
+        "en": "Manage company details, VAT rates with their ledger code, and the Boekhouding section under Instellingen → Facturatie (Settings → Invoicing)."
+      }
+    ],
+    "limits": {
+      "nl": [
+        "Er valt niets te koppelen: geen SnelStart-account, geen sleutel, geen automatische boeking.",
+        "Je downloadt per factuur. Er is geen bulkexport en geen taak die de bestanden vanzelf klaarzet.",
+        "Niets komt terug uit SnelStart: betaalde facturen, dagboeken en grootboek blijven daar.",
+        "Offertes hebben geen UBL-export; die is er voor verkoopfacturen en creditfacturen.",
+        "Facturen en offertes doen niet mee met de spreadsheet-import en -export van de rest van de app.",
+        "Peppol en e-facturatienetwerken staan los hiervan en komen later."
+      ],
+      "en": [
+        "There is nothing to connect: no SnelStart account, no key, no automatic booking.",
+        "You download per invoice. There is no bulk export and no job that prepares the files for you.",
+        "Nothing comes back from SnelStart: paid invoices, day books and the ledger stay there.",
+        "Quotes have no UBL export; it exists for sales invoices and credit notes.",
+        "Invoices and quotes are not part of the spreadsheet import and export the rest of the app has.",
+        "Peppol and e-invoicing networks are separate from this and come later."
+      ]
+    }
+  }
+}

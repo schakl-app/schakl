@@ -1,0 +1,182 @@
+{
+  "slug": "sms-gateway",
+  "name": "Sms-gateway",
+  "order": 71,
+  "category": "identity",
+  "status": "live",
+  "lucide": "phone",
+  "mark": {
+    "monogram": "SM",
+    "color": "#4E8C6A"
+  },
+  "tagline": {
+    "nl": "Sms-codes als vangnet naast je authenticator",
+    "en": "SMS codes as a fallback beside your app"
+  },
+  "summary": {
+    "nl": "Tweestapsverificatie werkt uit zichzelf: een authenticator-app en tien eenmalige back-upcodes, zonder dat je iets hoeft te koppelen. Alleen het vangnet per sms vraagt om een gateway, en die zet de beheerder van de installatie aan met één omgevingsvariabele. Staat die niet, dan bestaat de sms-optie nergens in het product.",
+    "en": "Two-factor verification works on its own: an authenticator app and ten single-use backup codes, with nothing to connect. Only the SMS fallback needs a gateway, and whoever runs the installation switches it on with one environment variable. Without it, the SMS option does not exist anywhere in the product."
+  },
+  "highlights": {
+    "nl": [
+      "TOTP en back-upcodes hebben geen koppeling nodig; iedereen zet ze zelf aan",
+      "Eén vaste JSON-POST naar een gateway van jezelf; voor Twilio, MessageBird of Spryng zet je er een klein doorgeefluik voor",
+      "Sms komt er altijd bovenop, nooit in plaats van de authenticator-app"
+    ],
+    "en": [
+      "TOTP and backup codes need no integration; everyone enables them themselves",
+      "One fixed JSON POST to a gateway of your own; Twilio, MessageBird or Spryng each need a small relay in front",
+      "SMS always sits on top of the authenticator app, never instead of it"
+    ]
+  },
+  "where": {
+    "nl": "Instellingen → Mijn account, blok Tweestapsverificatie; de gateway zelf staat in de omgeving van de API-container.",
+    "en": "Instellingen → Mijn account (Settings → My account), the Tweestapsverificatie block; the gateway itself lives in the API container's environment."
+  },
+  "docs": "/docs/admin/two-factor/",
+  "page": {
+    "lead": {
+      "nl": "De tweede stap heeft geen leverancier nodig. Wil je daarnaast codes per sms kunnen sturen, dan wijs je de API naar een gateway die een simpel JSON-bericht aanneemt.",
+      "en": "The second step needs no vendor. If you also want to send codes by SMS, you point the API at a gateway that accepts a simple JSON message."
+    },
+    "requirements": {
+      "nl": [
+        "Toegang tot de omgevingsvariabelen van de API-container: dit is configuratie van de installatie, geen instelling per organisatie.",
+        "Een gateway die een POST met JSON accepteert, bijvoorbeeld Twilio, MessageBird, Spryng of iets zelfgebouwds.",
+        "Per persoon een bevestigde authenticator-app; sms komt daar bovenop.",
+        "Telefoonnummers in internationaal formaat, bijvoorbeeld +31612345678."
+      ],
+      "en": [
+        "Access to the API container's environment variables: this is installation configuration, not a per-organisation setting.",
+        "A gateway that accepts a JSON POST, such as Twilio, MessageBird, Spryng or something you built yourself.",
+        "A confirmed authenticator app per person; SMS sits on top of that.",
+        "Phone numbers in international format, for example +31612345678."
+      ]
+    },
+    "steps": {
+      "nl": [
+        "Zet <code>SCHAKL_SMS_GATEWAY_URL</code> op het verzendadres van je gateway, bijvoorbeeld <code>https://jouw-gateway.example/send</code>, en herstart de API-container.",
+        "Heeft je gateway een token nodig, zet dan <code>SCHAKL_SMS_GATEWAY_TOKEN</code>; de API stuurt hem mee als <code>Authorization: Bearer</code>. Met <code>SCHAKL_SMS_GATEWAY_SENDER</code> kies je een afzender; laat je die leeg, dan gebruikt de gateway zijn eigen standaard.",
+        "Controleer of je gateway de vorm aankan die de API stuurt: een POST met <code>{\"to\": \"+31612345678\", \"message\": \"...\", \"sender\": \"...\"}</code>. Past dat niet, zet er dan een klein doorgeefluik voor.",
+        "Elk teamlid stelt eerst zelf de authenticator in: <strong>Instellingen → Mijn account</strong>, blok <strong>Tweestapsverificatie</strong>, knop <strong>Tweestapsverificatie instellen</strong>, code invullen en <strong>Verifiëren en inschakelen</strong>. Bewaar daarna de tien back-upcodes; ze worden maar één keer getoond.",
+        "Op datzelfde scherm verschijnt nu het blok <strong>Sms-codes</strong>. Vul een nummer in bij <strong>Telefoonnummer</strong>, druk op <strong>Verificatiecode versturen</strong>, typ de ontvangen code en druk op <strong>Nummer verifiëren</strong>.",
+        "Bij het aanmelden staat er vanaf dan een extra knop: <strong>Sms een code naar mijn telefoon</strong>. Verwijderen kan later met <strong>Nummer verwijderen</strong>; de authenticator blijft gewoon staan."
+      ],
+      "en": [
+        "Set <code>SCHAKL_SMS_GATEWAY_URL</code> to your gateway's send address, for example <code>https://your-gateway.example/send</code>, and restart the API container.",
+        "If your gateway needs a token, set <code>SCHAKL_SMS_GATEWAY_TOKEN</code>; the API sends it as <code>Authorization: Bearer</code>. <code>SCHAKL_SMS_GATEWAY_SENDER</code> picks a sender id; leave it empty and the gateway applies its own default.",
+        "Check that your gateway takes the shape the API sends: a POST with <code>{\"to\": \"+31612345678\", \"message\": \"...\", \"sender\": \"...\"}</code>. If it does not, put a small relay in front of it.",
+        "Each team member sets up the authenticator themselves first: <strong>Instellingen → Mijn account</strong> (Settings → My account), the <strong>Tweestapsverificatie</strong> block, button <strong>Tweestapsverificatie instellen</strong>, then the code and <strong>Verifiëren en inschakelen</strong>. Keep the ten backup codes; they are shown once.",
+        "The <strong>Sms-codes</strong> block now appears on that same screen. Enter a number under <strong>Telefoonnummer</strong>, press <strong>Verificatiecode versturen</strong>, type the code you receive and press <strong>Nummer verifiëren</strong>.",
+        "From then on the login flow offers an extra button: <strong>Sms een code naar mijn telefoon</strong>. You can drop the number later with <strong>Nummer verwijderen</strong>; the authenticator stays."
+      ]
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Wat zonder gateway al werkt",
+          "en": "What already works with no gateway"
+        },
+        "body": {
+          "nl": "De basis staat er zodra je de app draait: een authenticator-app als vaste factor, met tien eenmalige back-upcodes ernaast. Er is geen recht voor nodig, want het gaat over je eigen account. In de app van je collega staat de merknaam van jouw bureau als uitgever, want die komt uit Instellingen → Huisstijl; een white-label installatie noemt daar dus nooit een productnaam die de klant niet kent. Nieuwe back-upcodes aanvragen kost een actuele code uit de app, zodat een gestolen sessie in zijn eentje geen herstelcodes kan maken.",
+          "en": "The basics are there the moment you run the app: an authenticator app as the standing factor, with ten single-use backup codes beside it. No permission is involved, because it is your own account. The issuer your colleague sees in their app is your agency's own brand name, taken from Instellingen → Huisstijl (Settings → Branding), so a white-label install never shows a product name the client has never heard of. Regenerating backup codes costs a current code from the app, so a stolen session on its own cannot mint recovery codes."
+        },
+        "bullets": {
+          "nl": [
+            "Na acht mislukte pogingen gaat de factor vijftien minuten op slot.",
+            "Een aanmeldpoging die op de codestap blijft hangen, verloopt na vijf minuten en stuurt je terug naar het wachtwoord.",
+            "Een al geaccepteerde code werkt geen tweede keer, ook niet binnen dezelfde 30 seconden.",
+            "Uitzetten kan alleen met je accountwachtwoord; een half afgemaakte instelling annuleren kost niets."
+          ],
+          "en": [
+            "After eight failed attempts the factor locks for fifteen minutes.",
+            "A sign-in left waiting on the code step expires after five minutes and returns you to the password step.",
+            "An already-accepted code never works a second time, not even inside the same 30-second window.",
+            "Turning it off takes your account password; abandoning a half-finished setup costs nothing."
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "De sms-leg hoort bij de installatie, niet bij de organisatie",
+          "en": "The SMS leg belongs to the installation, not the organisation"
+        },
+        "body": {
+          "nl": "SCHAKL_SMS_GATEWAY_URL is configuratie van de instantie. Een bureau dat op de server van iemand anders draait, kan sms dus niet zelf aanzetten. Staat de variabele niet, dan is er geen blok Sms-codes, geen extra knop op de inlogpagina en antwoordt de API met 'Sms-codes zijn niet beschikbaar op deze installatie.' De tekst van het bericht komt uit de vertaalcatalogus, in de taal van de ontvanger zelf.",
+          "en": "SCHAKL_SMS_GATEWAY_URL is instance configuration, so an agency running on somebody else's server cannot switch SMS on for itself. With the variable unset there is no Sms-codes block, no extra button on the login page, and the API answers 'Sms-codes zijn niet beschikbaar op deze installatie' (SMS codes are not available on this installation). The message text comes from the translation catalogue, in the recipient's own language."
+        },
+        "bullets": {
+          "nl": [
+            "Een sms-code is zes cijfers, tien minuten geldig, vijf pogingen, en werkt één keer.",
+            "Opnieuw sturen kan pas na dertig seconden.",
+            "Sms is nooit een losse factor: het nummer verwijderen laat een account nooit zonder tweede stap achter.",
+            "Zonder afzender-id laat de API het veld leeg, zodat de gateway zijn eigen standaard gebruikt; een vaste productnaam zou de merknaam van je klant doorkruisen."
+          ],
+          "en": [
+            "An SMS code is six digits, valid for ten minutes, five attempts, single use.",
+            "A resend is refused for the first thirty seconds.",
+            "SMS is never a standalone factor: removing the number never leaves an account without a second step.",
+            "With no sender id the API leaves the field empty so the gateway applies its own default; a fixed product name there would cut across your client's branding."
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Telefoon kwijt",
+          "en": "Lost phone"
+        },
+        "body": {
+          "nl": "Dat lost een beheerder zelf op vanuit de ploeg: Instellingen → Team & gebruikers, het menu ⋯ op de rij van de collega, 'Tweestapsverificatie resetten'. Het account gaat terug naar aanmelden met alleen een wachtwoord, totdat het opnieuw wordt ingesteld. Het menu-item verschijnt alleen bij mensen die tweestapsverificatie aan hebben staan, en nooit op je eigen rij.",
+          "en": "An admin handles that from the team roster: Instellingen → Team & gebruikers (Settings → Team & users), the ⋯ menu on that colleague's row, 'Tweestapsverificatie resetten' (reset two-factor). The account goes back to signing in with a password alone until it is set up again. The menu item only appears for people who actually have two-factor on, and never on your own row."
+        },
+        "bullets": {
+          "nl": [
+            "De reset wist de inschrijving helemaal: het geheim, de back-upcodes en het telefoonnummer. Er wordt nooit een geheim uitgelezen.",
+            "Elke reset wordt vastgelegd in het auditlogboek van de organisatie.",
+            "De tweede factor hoort bij de persoon en niet bij de organisatie, dus een reset geldt overal waar dat account lid is. Op een gewone installatie met één organisatie is dat hetzelfde."
+          ],
+          "en": [
+            "The reset clears the enrolment outright: secret, backup codes and phone number. No secret is ever read out.",
+            "Every reset is written to the organisation's audit log.",
+            "The second factor belongs to the person, not the organisation, so a reset applies everywhere that account is a member. On an ordinary single-organisation install those are the same thing."
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Met SSO verplicht regelt je provider de MFA",
+          "en": "With SSO enforced, your provider owns the MFA"
+        },
+        "body": {
+          "nl": "Verplicht je organisatie single sign-on, dan schakelt dat de hele tweestapsverificatie hier uit, inclusief het instellen ervan. Dat is de bedoeling: bij een federatieve sessie hoort de tweede stap bij je identiteitsprovider, en twee plekken die allebei een code vragen, leveren alleen verwarring op. Dit scherm is er dus voor bureaus die met een wachtwoord inloggen.",
+          "en": "If your organisation enforces single sign-on, that switches off the whole two-factor surface here, enrolment included. That is deliberate: on a federated session the second step belongs to your identity provider, and two places both asking for a code only creates confusion. So this screen is for agencies that sign in with a password."
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "key": "members.member.write",
+        "nl": "Gebruikers uitnodigen, wijzigen en verwijderen, en 'Tweestapsverificatie resetten' gebruiken in Instellingen → Team & gebruikers. Standaard alleen beheerder. Je eigen tweestapsverificatie instellen, nieuwe back-upcodes maken, een nummer toevoegen of alles uitzetten vraagt geen enkel recht.",
+        "en": "Invite, change and remove users, and use 'Tweestapsverificatie resetten' in Instellingen → Team & gebruikers. Admin only by default. Setting up your own two-factor, regenerating backup codes, adding a number or switching it all off needs no permission at all."
+      }
+    ],
+    "limits": {
+      "nl": [
+        "Er is geen organisatiebrede verplichting: elk teamlid zet tweestapsverificatie zelf aan, en niemand kan het opleggen.",
+        "Geen 'vertrouw dit apparaat': elke aanmelding met een wachtwoord vraagt opnieuw om een code.",
+        "Geen tweestapsverificatie bovenop SSO; verplicht je single sign-on, dan verdwijnt het hele onderdeel voor die organisatie.",
+        "Sms staat nooit op zichzelf: zonder bevestigde authenticator-app verschijnt er geen sms-optie.",
+        "De gateway is configuratie van de installatie en niet iets wat een organisatie in de app kan aanzetten.",
+        "API-sleutels en MCP gaan buiten tweestapsverificatie om; die authenticeren met hun eigen sleutel en scopes."
+      ],
+      "en": [
+        "There is no organisation-wide requirement: every team member enables two-factor themselves, and nobody can mandate it.",
+        "No 'trust this device': every password login asks for a code again.",
+        "No two-factor on top of SSO; enforce single sign-on and the whole surface disappears for that organisation.",
+        "SMS never stands alone: with no confirmed authenticator app, no SMS option appears.",
+        "The gateway is installation configuration, not something an organisation can switch on in the app.",
+        "API keys and MCP bypass two-factor entirely; they authenticate with their own key and scopes."
+      ]
+    }
+  }
+}

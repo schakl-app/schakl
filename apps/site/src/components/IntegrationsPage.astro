@@ -1,0 +1,585 @@
+---
+// The /integrations/ overview: what schakl. connects to, grouped by category, with an honest
+// badge on every card. Live integrations come first inside a category; roadmap items sit
+// behind a divider so nobody reads a plan as a product.
+import SiteShell from './SiteShell.astro';
+import Icon from './showcase/Icon.astro';
+import DemoButton from './DemoButton.astro';
+import IntegrationMark from './integrations/IntegrationMark.astro';
+import IntegrationsHero from './integrations/IntegrationsHero.astro';
+import {
+  groupedIntegrations,
+  counts,
+  statusLabel,
+  betaNote,
+  type Locale,
+} from '../lib/integrations.ts';
+import { localizeHref } from '../lib/links';
+import settings from '../data/settings/site.json';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const href = (h: string) => localizeHref(locale, h);
+const groups = groupedIntegrations();
+const n = counts();
+const hasDemo = Boolean((settings as any).demo?.url?.trim());
+
+// The ring shows the six that an agency actually recognises by name — the hero is a picture,
+// not the index. Everything else is one scroll below it.
+const ringSlugs = ['mollie', 'cloudflare', 'oxxa', 'google-workspace', 'anthropic', 'oidc'];
+const ringNodes = ringSlugs
+  .map((s) => groups.flatMap((g) => g.items).find((i: any) => i.slug === s))
+  .filter(Boolean)
+  .map((i: any) => ({
+    monogram: i.mark?.monogram ?? i.name.charAt(0),
+    color: i.mark?.color,
+    lucide: i.lucide,
+    name: i.name,
+  }));
+
+const t = {
+  eyebrow: locale === 'nl' ? 'Koppelingen' : 'Integrations',
+  h1:
+    locale === 'nl'
+      ? 'Praat met de diensten die je al gebruikt'
+      : 'Talks to the services you already use',
+  lead:
+    locale === 'nl'
+      ? 'Betalingen, domeinregisters, DNS, Google Workspace en AI: elke koppeling draait op jouw eigen account en jouw eigen sleutels, per organisatie ingesteld. Niets loopt via ons, want er is geen "ons": je draait de installatie zelf.'
+      : 'Payments, domain registrars, DNS, Google Workspace and AI: every integration runs on your own account and your own keys, configured per organisation. Nothing routes through us, because there is no "us" — you run the install yourself.',
+  statLive: locale === 'nl' ? 'te koppelen' : 'connectable',
+  statPlanned: locale === 'nl' ? 'op de roadmap' : 'on the roadmap',
+  statCats: locale === 'nl' ? 'categorieën' : 'categories',
+  betaHead: locale === 'nl' ? 'Bèta' : 'Beta',
+  betaNote: betaNote[locale],
+  jump: locale === 'nl' ? 'Spring naar' : 'Jump to',
+  read: locale === 'nl' ? 'Lees meer' : 'Read more',
+  docs: locale === 'nl' ? 'Handleiding' : 'Guide',
+  plannedHead: locale === 'nl' ? 'In voorbereiding' : 'In preparation',
+  plannedNote:
+    locale === 'nl'
+      ? 'Nog niet te koppelen. Ze staan hier omdat het pad ernaartoe al in de code zit, niet omdat er een datum bij hoort.'
+      : 'Not connectable yet. They are listed because the path to them already exists in the code, not because a date does.',
+  ownKeys: locale === 'nl' ? 'Jouw eigen sleutels' : 'Your own keys',
+  ownKeysBody:
+    locale === 'nl'
+      ? 'Elke koppeling wordt per organisatie ingesteld en versleuteld opgeslagen. Je bureau gebruikt zijn eigen account; een klant die zijn eigen Cloudflare of registrar meebrengt, krijgt zijn eigen rij. Niets wordt voor je gekozen.'
+      : 'Every integration is configured per organisation and stored encrypted. Your agency uses its own account; a client who brings their own Cloudflare or registrar gets their own row. Nothing is ever picked for you.',
+  noLockIn: locale === 'nl' ? 'Geen lock-in' : 'No lock-in',
+  noLockInBody:
+    locale === 'nl'
+      ? 'Een koppeling uitzetten haalt niets weg wat al vastligt. Betalingen die binnen zijn blijven op de factuur staan, gesynchroniseerde domeinen blijven in je register. schakl bewaart wat het besloot én wat het als laatste zag, apart, zodat "iemand heeft dit in het dashboard van de leverancier veranderd" een zichtbaar verschil is in plaats van een stille overschrijving.'
+      : 'Switching an integration off removes nothing that is already recorded. Payments that came in stay on the invoice; synced domains stay in your register. schakl stores what it decided and what it last observed in separate columns, so "somebody changed this in the provider\'s dashboard" shows up as visible drift instead of a silent overwrite.',
+  ctaTitle: locale === 'nl' ? 'Iets missen?' : 'Missing something?',
+  ctaBody:
+    locale === 'nl'
+      ? 'De koppellaag is een naadje in de code, geen lijstje: een tweede betaaldienst of registrar is één bestand, geen verbouwing. Laat weten wat je nodig hebt.'
+      : 'The integration layer is a seam in the code, not a list: a second payment provider or registrar is one file, not a rebuild. Tell us what you need.',
+  ctaLabel: locale === 'nl' ? 'Neem contact op' : 'Get in touch',
+  docsLabel: locale === 'nl' ? 'Naar de documentatie' : 'Go to the docs',
+};
+const title = `${settings.brandName} · ${t.eyebrow}`;
+---
+
+<SiteShell locale={locale} title={title} description={t.lead}>
+  <section class="ix container">
+    <header class="ix__hero">
+      <div class="ix__hero-copy" data-reveal>
+        <p class="eyebrow">{t.eyebrow}</p>
+        <h1>{t.h1}</h1>
+        <p class="subtitle">{t.lead}</p>
+        <dl class="ix__stats">
+          <div><dt>{n.ready}</dt><dd>{t.statLive}</dd></div>
+          <div><dt>{n.categories}</dt><dd>{t.statCats}</dd></div>
+          <div><dt>{n.planned}</dt><dd>{t.statPlanned}</dd></div>
+        </dl>
+      </div>
+      <div class="ix__hero-art" data-reveal style="--reveal-delay:120ms">
+        <IntegrationsHero locale={locale} nodes={ringNodes} brand={settings.brandName} />
+      </div>
+    </header>
+
+    <nav class="ix__jump" aria-label={t.jump} data-reveal>
+      {
+        groups.map((g) => (
+          <a class="ix__chip" href={`#${g.key}`}>
+            <Icon name={g.lucide} size={1} />
+            <span>{locale === 'nl' ? g.nl : g.en}</span>
+            <span class="ix__chip-n">{g.items.length}</span>
+          </a>
+        ))
+      }
+    </nav>
+
+    {
+      groups.map((g) => (
+        <section class="ix__group" id={g.key}>
+          <div class="ix__group-head" data-reveal>
+            <span class="ix__group-icon"><Icon name={g.lucide} size={1.35} /></span>
+            <div>
+              <h2>{locale === 'nl' ? g.nl : g.en}</h2>
+              <p class="section-intro">{locale === 'nl' ? g.intro.nl : g.intro.en}</p>
+            </div>
+          </div>
+
+          {g.ready.length > 0 && (
+            <div class="ix__grid">
+              {g.ready.map((i: any, idx: number) => (
+                <a
+                  class="ix__card"
+                  href={href(`/integrations/${i.slug}`)}
+                  data-reveal
+                  style={`--reveal-delay:${Math.min(idx, 4) * 60}ms`}
+                >
+                  <div class="ix__card-head">
+                    <IntegrationMark
+                      monogram={i.mark?.monogram ?? i.name.charAt(0)}
+                      color={i.mark?.color}
+                      lucide={i.lucide}
+                      size={2.75}
+                    />
+                    <div class="ix__card-id">
+                      <h3>{i.name}</h3>
+                      <p class="ix__tagline">{i.tagline[locale]}</p>
+                    </div>
+                    <span class={`ix__badge ix__badge--${i.status}`}>
+                      {statusLabel[i.status as 'live' | 'beta'][locale]}
+                    </span>
+                  </div>
+                  <p class="ix__summary">{i.summary[locale]}</p>
+                  {i.highlights?.[locale]?.length > 0 && (
+                    <ul class="ix__points">
+                      {i.highlights[locale].slice(0, 3).map((h: string) => (
+                        <li>{h}</li>
+                      ))}
+                    </ul>
+                  )}
+                  {i.status === 'beta' && <p class="ix__beta">{t.betaNote}</p>}
+                  <span class="ix__more">
+                    {t.read}
+                    <Icon name="arrowRight" size={0.9} />
+                  </span>
+                </a>
+              ))}
+            </div>
+          )}
+
+          {g.planned.length > 0 && (
+            <div class="ix__planned" data-reveal>
+              <p class="ix__planned-head">
+                <Icon name="clock" size={0.95} />
+                {t.plannedHead}
+              </p>
+              <div class="ix__planned-grid">
+                {g.planned.map((i: any) => (
+                  <div class="ix__soon">
+                    <IntegrationMark
+                      monogram={i.mark?.monogram ?? i.name.charAt(0)}
+                      color={i.mark?.color}
+                      lucide={i.lucide}
+                      size={2.2}
+                    />
+                    <div>
+                      <h3>
+                        {i.name}
+                        <span class="ix__badge ix__badge--soon">{statusLabel.planned[locale]}</span>
+                      </h3>
+                      <p>{i.summary[locale]}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p class="ix__planned-note">{t.plannedNote}</p>
+            </div>
+          )}
+        </section>
+      ))
+    }
+
+    <section class="ix__promises">
+      <div class="ix__promise" data-reveal>
+        <span class="ix__promise-icon"><Icon name="key" size={1.3} /></span>
+        <h2>{t.ownKeys}</h2>
+        <p>{t.ownKeysBody}</p>
+      </div>
+      <div class="ix__promise" data-reveal style="--reveal-delay:100ms">
+        <span class="ix__promise-icon"><Icon name="shield" size={1.3} /></span>
+        <h2>{t.noLockIn}</h2>
+        <p>{t.noLockInBody}</p>
+      </div>
+    </section>
+
+    <section class="ix__cta" data-reveal>
+      <h2>{t.ctaTitle}</h2>
+      <p class="section-intro">{t.ctaBody}</p>
+      <div class="ix__cta-row">
+        <a class="button primary" href={href('/contact/')}>{t.ctaLabel}</a>
+        <a class="button" href={href('/docs/')}>{t.docsLabel}</a>
+        {hasDemo && <DemoButton locale={locale} variant="button" />}
+      </div>
+    </section>
+  </section>
+</SiteShell>
+
+<style>
+  .ix {
+    padding-block: 3rem 5rem;
+  }
+
+  /* ---- hero ---- */
+  .ix__hero {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 2.5rem;
+    align-items: center;
+    padding-bottom: 3rem;
+  }
+  @media (min-width: 900px) {
+    .ix__hero {
+      grid-template-columns: 1.05fr 1fr;
+      gap: 3.5rem;
+    }
+  }
+  .ix__hero h1 {
+    font-size: clamp(2.2rem, 6vw, 3.4rem);
+    font-weight: 700;
+  }
+  .ix__hero .subtitle {
+    margin-inline: 0;
+  }
+  .ix__stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2rem;
+    margin: 2rem 0 0;
+  }
+  .ix__stats dt {
+    font-size: 1.9rem;
+    font-weight: 750;
+    letter-spacing: -0.03em;
+    color: var(--accent);
+    line-height: 1;
+  }
+  .ix__stats dd {
+    margin: 0.3rem 0 0;
+    color: var(--muted);
+    font-size: 0.86rem;
+  }
+
+  /* ---- jump bar ---- */
+  .ix__jump {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding-block: 1.5rem;
+    border-block: 1px solid var(--border);
+  }
+  .ix__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.4rem 0.7rem 0.4rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text);
+    font-size: 0.88rem;
+    font-weight: 550;
+    transition:
+      border-color 0.15s ease,
+      background 0.15s ease;
+  }
+  .ix__chip :global(svg) {
+    color: var(--accent);
+  }
+  .ix__chip:hover {
+    border-color: var(--accent);
+    background: var(--bg-soft);
+  }
+  .ix__chip-n {
+    display: inline-grid;
+    place-items: center;
+    min-width: 1.25rem;
+    height: 1.25rem;
+    padding-inline: 0.3rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+
+  /* ---- category ---- */
+  .ix__group {
+    margin-top: 3.5rem;
+    scroll-margin-top: 2rem;
+  }
+  .ix__group-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    max-width: 46rem;
+    margin-bottom: 1.6rem;
+  }
+  .ix__group-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.85rem;
+    height: 2.85rem;
+    flex: none;
+    border-radius: 0.8rem;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
+  }
+  .ix__group-head h2 {
+    font-size: clamp(1.4rem, 3.2vw, 1.85rem);
+  }
+  .ix__group-head .section-intro {
+    margin-top: 0.2rem;
+    margin-bottom: 0;
+  }
+
+  .ix__grid {
+    display: grid;
+    /* `auto-fit`, not `auto-fill`: a category may hold one card (Google Workspace) or four
+       (marketing), and auto-fill would leave the single card in a 21rem column with three empty
+       tracks of dead space beside it. auto-fit collapses the empty tracks, so one card reads as
+       a featured row and four still lay out as four. */
+    grid-template-columns: repeat(auto-fit, minmax(21rem, 1fr));
+    gap: 1rem;
+  }
+  .ix__card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    border-radius: 0.9rem;
+    background: var(--bg);
+    color: var(--text);
+    transition:
+      border-color 0.18s ease,
+      transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ix__card:hover {
+    border-color: var(--accent);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .ix__card:hover {
+      transform: translateY(-2px);
+    }
+    .ix__card:hover :global(.mark) {
+      transform: scale(1.06);
+    }
+  }
+  .ix__card-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.9rem;
+  }
+  .ix__card-id {
+    flex: 1;
+    min-width: 0;
+  }
+  .ix__card h3 {
+    font-size: 1.1rem;
+    margin: 0;
+  }
+  .ix__tagline {
+    color: var(--muted);
+    font-size: 0.86rem;
+    margin: 0.15rem 0 0;
+  }
+  .ix__summary {
+    color: var(--muted);
+    font-size: 0.94rem;
+    margin: 0;
+    flex: 1;
+  }
+  .ix__points {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.35rem;
+  }
+  .ix__points li {
+    position: relative;
+    padding-left: 1.15rem;
+    font-size: 0.88rem;
+    color: var(--text);
+  }
+  .ix__points li::before {
+    content: '';
+    position: absolute;
+    left: 0.15rem;
+    top: 0.62em;
+    width: 0.32rem;
+    height: 0.32rem;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .ix__more {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+
+  .ix__badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.12rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    flex: none;
+  }
+  .ix__badge--live {
+    color: #15803d;
+    background: color-mix(in srgb, #22c55e 16%, transparent);
+  }
+  .ix__badge--beta {
+    color: #b45309;
+    background: color-mix(in srgb, #f59e0b 18%, transparent);
+  }
+  /* The badge says "beta"; this says what beta means here, on the card itself, so the caveat
+     travels with the claim instead of living on a page nobody clicked through to. */
+  .ix__beta {
+    margin: 0;
+    padding: 0.6rem 0.75rem;
+    border-radius: 0.5rem;
+    border: 1px solid color-mix(in srgb, #f59e0b 35%, transparent);
+    background: color-mix(in srgb, #f59e0b 8%, transparent);
+    color: var(--text);
+    font-size: 0.82rem;
+    line-height: 1.5;
+  }
+  .ix__badge--soon {
+    color: var(--muted);
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    margin-left: 0.5rem;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 600;
+  }
+  @media (prefers-color-scheme: dark) {
+    .ix__badge--live {
+      color: #4ade80;
+    }
+  }
+
+  /* ---- roadmap block ---- */
+  .ix__planned {
+    margin-top: 1.5rem;
+    padding: 1.4rem 1.5rem 1.2rem;
+    border: 1px dashed var(--border);
+    border-radius: 0.9rem;
+    background: var(--bg-soft);
+  }
+  .ix__planned-head {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin: 0 0 1rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .ix__planned-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+    gap: 1.1rem;
+  }
+  .ix__soon {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.85rem;
+  }
+  .ix__soon h3 {
+    font-size: 0.98rem;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .ix__soon p {
+    color: var(--muted);
+    font-size: 0.87rem;
+    margin: 0.25rem 0 0;
+  }
+  .ix__planned-note {
+    color: var(--muted);
+    font-size: 0.82rem;
+    margin: 1rem 0 0;
+  }
+
+  /* ---- promises ---- */
+  .ix__promises {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    margin-top: 4rem;
+  }
+  @media (min-width: 760px) {
+    .ix__promises {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+  .ix__promise {
+    padding: 1.75rem;
+    border: 1px solid var(--border);
+    border-radius: 0.9rem;
+  }
+  .ix__promise-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 0.75rem;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
+    margin-bottom: 1rem;
+  }
+  .ix__promise h2 {
+    font-size: 1.2rem;
+  }
+  .ix__promise p {
+    color: var(--muted);
+    margin: 0.4rem 0 0;
+    font-size: 0.94rem;
+  }
+
+  .ix__cta {
+    margin-top: 4rem;
+    padding: 3rem 2.5rem;
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    background: var(--bg-soft);
+    text-align: center;
+  }
+  .ix__cta h2 {
+    font-size: clamp(1.5rem, 4vw, 2rem);
+  }
+  .ix__cta .section-intro {
+    margin-inline: auto;
+  }
+  .ix__cta-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.75rem;
+    margin-top: 1.25rem;
+  }
+</style>

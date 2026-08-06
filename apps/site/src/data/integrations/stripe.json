@@ -1,0 +1,89 @@
+{
+  "slug": "stripe",
+  "name": "Stripe",
+  "order": 12,
+  "category": "payments",
+  "status": "planned",
+  "lucide": "wallet",
+  "mark": { "monogram": "S", "color": "#635BFF" },
+  "tagline": {
+    "nl": "Tweede betaalprovider, nog niet koppelbaar",
+    "en": "Second payment provider, not connectable yet"
+  },
+  "summary": {
+    "nl": "De betaallaag in schakl. noemt geen leverancier: er is een protocol dat elke provider invult, een eigen accountzoeker per provider en een meldingsadres dat zijn eigen organisatie benoemt. Stripe wordt daardoor een pakket erbij en geen verbouwing van het deel dat geld raakt. Vandaag valt er niets in te stellen; Mollie is de enige provider die er staat.",
+    "en": "The payment layer in schakl. names no provider: there is a protocol each provider fills in, a per-provider account resolver, and a callback address that names its own organisation. Stripe therefore arrives as an added package rather than a rebuild of the part that touches money. There is nothing to configure today; Mollie is the only implementation that exists."
+  },
+  "highlights": {
+    "nl": [
+      "Het protocol, de accountzoeker en het meldingsadres liggen er al",
+      "Een tweede provider vult drie gedragingen in, niet het boekingspad",
+      "Een bevestigde betaling blijft een gewone betaalregel op de factuur"
+    ],
+    "en": [
+      "The protocol, the account resolver and the callback address already exist",
+      "A second provider fills in three behaviours, not the settle path",
+      "A confirmed payment stays an ordinary payment line on the invoice"
+    ]
+  },
+  "where": {
+    "nl": "Nog nergens: er is geen Stripe-scherm en geen veld voor een sleutel.",
+    "en": "Nowhere yet: there is no Stripe screen and no field for a key."
+  },
+  "roadmapNote": {
+    "nl": "Er is nog niets te koppelen. Bureaus met klanten in de VS of het VK vragen om Stripe, en daarom is de betaallaag bewust leveranciersneutraal gebouwd: Stripe wordt een pakket erbij en geen verbouwing van het pad dat een betaling boekt.",
+    "en": "Nothing to connect yet. Agencies with clients in the US or the UK ask for Stripe, which is exactly why the payment layer was built provider-neutral: Stripe becomes an added package rather than a rebuild of the path that books a payment."
+  },
+  "page": {
+    "lead": {
+      "nl": "Stripe staat op de roadmap. Wat er nu al ligt, is de laag eronder: de plek waar een tweede betaalprovider straks in past zonder dat het boekingspad opnieuw geschreven wordt.",
+      "en": "Stripe is on the roadmap. What exists today is the layer beneath it: the place a second payment provider will fit without the settle path being rewritten."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Wat er al klaarligt",
+          "en": "What is already in place"
+        },
+        "body": {
+          "nl": "De betaallaag kent een protocol dat elke provider invult, een aparte accountzoeker per provider en een meldingsadres waarin de organisatie, het account en een geheim zitten. De kaart Online betalingen op een factuur en de controle die elk uur draait zijn ook al leveranciersneutraal. Een tweede provider vult daarin drie gedragingen in: of de inhoud van een melding geloofd mag worden, of die ondertekend is, en of de aanmaakaanroep herhaald mag worden.",
+          "en": "The payment layer holds a protocol each provider fills in, a separate account resolver per provider, and a callback address carrying the organisation, the account and a secret. The Online betalingen card on an invoice and the hourly reconcile are provider-neutral too. A second provider fills in three behaviours: whether the body of a callback may be believed, whether it is signed, and whether the create call may be replayed."
+        },
+        "bullets": {
+          "nl": [
+            "Het boekingspad blijft van facturatie: een bevestigde betaling is één gewone betaalregel",
+            "De module die het geld ophaalt en de module die de factuur kent, lezen elkaars tabellen niet",
+            "Zolang er één implementatie is, is de laag een aanname en geen bewezen tweede pad"
+          ],
+          "en": [
+            "The settle path stays invoicing's: a confirmed payment is one ordinary payment line",
+            "The module that collects the money and the module that knows the invoice never read each other's tables",
+            "With one implementation the layer is still a hypothesis, not a proven second path"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Wat je vandaag niet kunt",
+          "en": "What you cannot do today"
+        },
+        "body": {
+          "nl": "Er is geen Stripe-scherm, geen sleutelveld en geen meldingsadres. Wil je nu online laten betalen, dan is Mollie de enige koppeling die er staat, en die is zelf nog bèta. Voor een bureau dat vandaag klanten buiten de eurozone factureert, verandert deze kaart dus nog niets aan de praktijk.",
+          "en": "There is no Stripe screen, no key field and no callback address. If you want to collect online today, Mollie is the only connection that exists, and that one is itself still in beta. For an agency invoicing clients outside the eurozone right now, this card changes nothing in practice yet."
+        }
+      }
+    ],
+    "limits": {
+      "nl": [
+        "Niets is te koppelen: er is geen scherm en geen plek om een Stripe-sleutel in te voeren.",
+        "Mollie is vandaag de enige betaalprovider die schakl. spreekt.",
+        "Er staat geen datum op. De laag eronder ligt er, de implementatie niet."
+      ],
+      "en": [
+        "Nothing is connectable: there is no screen and no place to enter a Stripe key.",
+        "Mollie is the only payment provider schakl. speaks today.",
+        "There is no date on it. The layer beneath exists, the implementation does not."
+      ]
+    }
+  }
+}

@@ -1,0 +1,195 @@
+{
+  "slug": "google-workspace",
+  "name": "Google Workspace",
+  "order": 40,
+  "category": "google",
+  "status": "live",
+  "lucide": "cloud",
+  "mark": {
+    "monogram": "G",
+    "color": "#4285F4"
+  },
+  "tagline": {
+    "nl": "Agenda, Drive en Gmail bij de klant",
+    "en": "Calendar, Drive and Gmail on the client"
+  },
+  "summary": {
+    "nl": "Je registreert je eigen Google Cloud OAuth-client als Internal app; dat is wat de afgeschermde Gmail- en Drive-rechten bruikbaar maakt zonder Google's CASA-keuring. Daarna koppelt elke medewerker zichzelf. Goedgekeurd verlof en ingeplande taken gaan naar de eigen Google Agenda, het Drive-paneel opent de klantmap, en e-mail met een bekende contactpersoon komt op de klanttijdlijn zodra de eigenaar van de mailbox hem goedkeurt.",
+    "en": "You register your own Google Cloud OAuth client as an Internal app, which is what makes the restricted Gmail and Drive scopes usable without Google's CASA assessment. Each employee then connects their own account: approved leave and planned tasks push into their own Google Calendar, the Drive panel opens the client's folder, and mail with a known contact lands on the client timeline once the mailbox owner approves it."
+  },
+  "highlights": {
+    "nl": [
+      "Agenda: verlof en taken één kant op naar Google, Google-afspraken gelezen uit een cache",
+      "Drive: bladeren en uploaden als jijzelf, een klantmap uit je eigen sjabloonmap",
+      "Gmail: alleen mail bij een bekende contactpersoon, metadata eerst, de tekst pas na goedkeuring"
+    ],
+    "en": [
+      "Calendar: leave and tasks push one way to Google, Google events read from a cache",
+      "Drive: browse and upload as yourself, a client folder built from your own template folder",
+      "Gmail: only mail with a known contact, metadata first, the body only after approval"
+    ]
+  },
+  "where": {
+    "nl": "Instellingen → Google Workspace voor de organisatie, Instellingen → Mijn account (kaart Google-account) voor je eigen koppeling, plus het paneel Drive op een klant, project of taak en de wachtrij Interacties → E-mails te beoordelen.",
+    "en": "Instellingen → Google Workspace (Settings → Google Workspace) for the organisation, Instellingen → Mijn account (Settings → My account, card Google-account) for your own connection, plus the Drive panel on a client, project or task and the queue Interacties → E-mails te beoordelen (Interactions → Emails to review)."
+  },
+  "docs": "/docs/integrations/google-workspace/",
+  "page": {
+    "lead": {
+      "nl": "Google Workspace koppel je met je eigen Google Cloud-project: per organisatie ingesteld, per medewerker gekoppeld. Inloggen met Google en Google koppelen zijn twee losse toestemmingen, dus wie via Google inlogt heeft daarmee nog geen Agenda, Drive of Gmail gekoppeld.",
+      "en": "You connect Google Workspace with your own Google Cloud project: configured per organisation, connected per employee. Signing in with Google and connecting Google are two separate grants — a login through Google does not hand the app your Calendar, Drive or Gmail."
+    },
+    "requirements": {
+      "nl": [
+        "Een Google Workspace-domein, en een Google Cloud-project dat je zelf beheert",
+        "Een licentiesleutel die de module Google Workspace dekt (Instellingen → Licentie)",
+        "Het recht google.settings.manage voor de instelpagina; standaard alleen beheerders",
+        "Voor de Gmail-tijdlijn ook de module Contactmomenten, een aparte licentie",
+        "Zit er een toegangsproxy voor je host (bijvoorbeeld Cloudflare Access), dan een bypass voor <code>/api/v1/google/calendar/webhook</code>. Die meldingen komen van de servers van Google en niet uit een browser, dus zonder bypass worden ze stilzwijgend weggestuurd."
+      ],
+      "en": [
+        "A Google Workspace domain, and a Google Cloud project you administer yourself",
+        "A licence key covering the Google Workspace module (Instellingen → Licentie)",
+        "The google.settings.manage permission for the settings page; admin only by default",
+        "For the Gmail timeline, the Contactmomenten (interactions) module as well, a separate licence",
+        "If an access proxy sits in front of your host (Cloudflare Access, for instance), a bypass for <code>/api/v1/google/calendar/webhook</code>. Those notifications come from Google's servers rather than a browser, so without one they are silently turned away."
+      ]
+    },
+    "steps": {
+      "nl": [
+        "Zet <strong>Google Workspace</strong> aan onder <strong>Instellingen → Modules</strong>. Zonder dekkende licentie gaat de module na de respijtperiode op alleen-lezen en houden de eigen achtergrondtaken op.",
+        "Maak in de Google Cloud console één project voor je bureau en registreer een <strong>OAuth 2.0 Client ID</strong> van het type <code>Web application</code>. Zet het consent screen op <strong>Internal</strong>: dat is wat de keuring voor de afgeschermde rechten overbodig maakt.",
+        "Zet in datzelfde project onder <strong>APIs &amp; Services → Library</strong> de API's aan die je gaat gebruiken: <code>Google Calendar API</code>, <code>Google Drive API</code>, <code>Gmail API</code>.",
+        "Open <strong>Instellingen → Google Workspace</strong>. Het bovenste veld is de <strong>Redirect-URI</strong>; die wordt uit de hostname van je omgeving afgeleid en typ je nooit zelf. Kopieer hem met de knop <strong>Kopiëren</strong> en plak hem bij <strong>Authorized redirect URIs</strong> op je OAuth-client. Google vergelijkt hem letterlijk.",
+        "Vul op dezelfde pagina <strong>Client-ID</strong> en <strong>Clientgeheim</strong> in (versleuteld opgeslagen; laat het geheim leeg om het bestaande te behouden) en vink onder <strong>Onderdelen</strong> aan wat je medewerkers gevraagd wordt te geven: <strong>Agenda</strong>, <strong>Drive</strong>, <strong>Gmail</strong>.",
+        "Vul onder <strong>Drive-indeling</strong> de <strong>Gedeelde Drive-ID</strong>, de <strong>Bovenliggende map voor klantmappen (ID)</strong> en eventueel de <strong>Sjabloonmap (ID)</strong>, kies een <strong>Automatiseringsaccount</strong> en vink <strong>Maak automatisch een map voor elke nieuwe klant</strong> aan. Kies onder <strong>Gmail-beleid</strong> of nieuwe gekoppelde e-mails eerst worden goedgekeurd of direct worden vastgelegd.",
+        "Laat daarna elke medewerker zichzelf koppelen: <strong>Instellingen → Mijn account</strong>, kaart <strong>Google-account</strong>, knop <strong>Google koppelen</strong>. Staat Gmail aan, dan zit daar het vinkje <strong>Koppel ook mijn mailbox (Gmail)</strong> bij."
+      ],
+      "en": [
+        "Switch <strong>Google Workspace</strong> on under <strong>Instellingen → Modules</strong> (Settings → Modules). Without a covering licence the module goes read-only after the grace period and its own background jobs stand down.",
+        "In the Google Cloud console, create one project for your agency and register an <strong>OAuth 2.0 Client ID</strong> of type <code>Web application</code>. Set the consent screen to <strong>Internal</strong>: that is what removes the verification review for the restricted scopes.",
+        "In that same project, under <strong>APIs &amp; Services → Library</strong>, enable the APIs you will actually call: <code>Google Calendar API</code>, <code>Google Drive API</code>, <code>Gmail API</code>.",
+        "Open <strong>Instellingen → Google Workspace</strong> (Settings → Google Workspace). The first field is the <strong>Redirect-URI</strong>, derived from your environment's own hostname and never typed by hand. Copy it with the <strong>Kopiëren</strong> button and paste it into <strong>Authorized redirect URIs</strong> on your OAuth client. Google matches it exactly.",
+        "On the same page, fill in <strong>Client-ID</strong> and <strong>Clientgeheim</strong> (stored encrypted; leave the secret blank to keep the stored one), and under <strong>Onderdelen</strong> tick the surfaces employees will be asked to grant: <strong>Agenda</strong>, <strong>Drive</strong>, <strong>Gmail</strong>.",
+        "Under <strong>Drive-indeling</strong> fill in the <strong>Gedeelde Drive-ID</strong>, the <strong>Bovenliggende map voor klantmappen (ID)</strong> and optionally the <strong>Sjabloonmap (ID)</strong>, pick an <strong>Automatiseringsaccount</strong> and tick <strong>Maak automatisch een map voor elke nieuwe klant</strong>. Under <strong>Gmail-beleid</strong>, decide whether newly matched emails wait for approval or are captured straight away.",
+        "Then have every employee connect themselves: <strong>Instellingen → Mijn account</strong>, card <strong>Google-account</strong>, button <strong>Google koppelen</strong>. With Gmail enabled, the checkbox <strong>Koppel ook mijn mailbox (Gmail)</strong> sits alongside it."
+      ]
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Inloggen met Google is niet hetzelfde als Google koppelen",
+          "en": "Signing in with Google is not connecting Google"
+        },
+        "body": {
+          "nl": "Dit is de verwarring die het vaakst voorkomt, dus we zeggen het expliciet: single sign-on met Google (Instellingen → Single sign-on) en de koppeling met Agenda, Drive en Gmail zijn twee losse toestemmingen met een eigen levensduur. Ook een bureau dat iedereen verplicht via Google laat inloggen, moet elke medewerker apart op <strong>Google koppelen</strong> laten drukken. Andersom geldt hetzelfde: je inlog krijgt nooit stilletjes het recht om je mail te lezen.",
+          "en": "This is the confusion that comes up most, so we say it plainly: single sign-on with Google (Instellingen → Single sign-on) and the connection to Calendar, Drive and Gmail are two separate grants with separate lifetimes. Even an agency that forces everyone to sign in through Google still needs each employee to press <strong>Google koppelen</strong> for themselves. It works the other way round too: your login never quietly gains the right to read your mail."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Je eigen Cloud-project is het hele punt",
+          "en": "Your own Cloud project is the whole point"
+        },
+        "body": {
+          "nl": "Bladeren door bestaande klantmappen vraagt het volledige Drive-recht, niet het smalle recht dat alleen bestanden ziet die de app zelf heeft gemaakt. Voor gewone SaaS is dat onbetaalbaar, want zulke rechten kosten een beveiligingskeuring. Omdat elk bureau zijn eigen Cloud-project registreert en het consent screen op Internal staat, blijft alles binnen je eigen Workspace-domein en vervalt die keuring. Laat je de client leeg, dan valt de omgeving terug op de client van de serverbeheerder; API's die je in je eigen project aanzet doen dan niets.",
+          "en": "Browsing a client's existing Drive folders needs the full Drive scope, not the narrow one that only sees files the app created itself. For ordinary SaaS that is prohibitive, because scopes like this cost a security assessment. Because each agency registers its own Cloud project and the consent screen is Internal, everything stays inside your own Workspace domain and the assessment falls away. Leave the client blank and the environment falls back to the server operator's client instead, at which point enabling APIs in your own project changes nothing."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Agenda en Drive in dagelijks gebruik",
+          "en": "Calendar and Drive, day to day"
+        },
+        "body": {
+          "nl": "De Agenda krijgt er een bron <strong>Google Agenda</strong> bij met je eigen afspraken, gelezen uit de cache van schakl. en nooit live bij Google. Andersom worden goedgekeurd verlof en taken die op iemands agenda zijn ingepland naar diens eigen Google Agenda geschreven. Het paneel <strong>Drive</strong> verschijnt op klant, project en taak; het bladert live als de kijkende gebruiker, dus de rechten in Drive zelf blijven bepalend.",
+          "en": "The Agenda gains a source <strong>Google Agenda</strong> carrying your own events, read from schakl's cache and never live from Google. In the other direction, approved leave and tasks planned onto someone's calendar are written into that person's own Google Calendar. The <strong>Drive</strong> panel appears on clients, projects and tasks; it browses live as the viewing user, so Drive's own permissions stay authoritative."
+        },
+        "bullets": {
+          "nl": [
+            "Nieuwe map aanmaken, bestanden rechtstreeks naar Drive uploaden, en een bestaand Drive-bestand aan een record koppelen",
+            "Ontkoppelen haalt alleen de koppeling weg; het bestand in Drive blijft ongemoeid",
+            "Mappen voor klanten die van vóór de instelling dateren maak je alsnog met Mappen aanmaken"
+          ],
+          "en": [
+            "Create a subfolder, upload files straight to Drive, and link an existing Drive file to a record",
+            "Unlinking removes only the link; the file in Drive is never touched",
+            "Folders for clients that predate the setting are filled in afterwards with Mappen aanmaken"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Gmail: eerst metadata, dan pas de tekst",
+          "en": "Gmail: metadata first, the body later"
+        },
+        "body": {
+          "nl": "Elke vijf minuten leest de worker de aangemelde mailboxen incrementeel uit, haalt alleen metadata op, en legt berichten vast waarvan een deelnemer een bekende contactpersoon is. Ze komen als contactmoment in de wachtrij <strong>Interacties → E-mails te beoordelen</strong>, waar de eigenaar van de mailbox ze goedkeurt, afwijst of naar de juiste klant of het juiste project verplaatst. Pas na goedkeuring wordt de inhoud bij Google opgehaald. Beslissen over de mailbox van een collega kan niet: een beheerder krijgt dat recht ook niet.",
+          "en": "Every five minutes the worker reads each opted-in mailbox incrementally, fetches metadata only, and logs messages whose participants match a known contact. They arrive as pending touchpoints in the queue <strong>Interacties → E-mails te beoordelen</strong>, where the mailbox owner approves, rejects or remaps them to the right client or project. Only after approval is the body fetched from Google. Deciding about a colleague's mailbox is not possible: no permission grants it, admins included."
+        },
+        "bullets": {
+          "nl": [
+            "Per persoon aan te zetten met Registreer mijn e-mail in het CRM, plus een Gmail-label dat nooit wordt vastgelegd",
+            "Een geëxporteerd .eml-bestand kun je ook met de hand uploaden via Interacties → E-mail uploaden",
+            "Een remote afbeelding in een bericht wordt weggelaten: een trackingpixel laden zou de afzender vertellen dat je de mail opende"
+          ],
+          "en": [
+            "Switched on per person with Registreer mijn e-mail in het CRM, plus a Gmail label that is never logged",
+            "An exported .eml file can be uploaded by hand instead, via Interacties → E-mail uploaden",
+            "A remote image in a message is dropped: loading a tracking pixel would tell the sender the mail was opened"
+          ]
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "key": "google.settings.manage",
+        "nl": "De pagina Instellingen → Google Workspace beheren en mappen voor bestaande klanten aanmaken. Standaard alleen beheerders.",
+        "en": "Manage the Instellingen → Google Workspace page and run the folder backfill for existing clients. Admin only by default."
+      },
+      {
+        "key": "google.connection.manage",
+        "nl": "Het eigen Google-account koppelen en ontkoppelen. Standaard beheerder en medewerker.",
+        "en": "Connect and disconnect your own Google account. Admin and member by default."
+      },
+      {
+        "key": "google.calendar.read",
+        "nl": "De bron Google Agenda in de Agenda zien.",
+        "en": "See the Google Agenda source inside the Agenda."
+      },
+      {
+        "key": "google.drive.read",
+        "nl": "Door de Drive-map van een klant bladeren en gekoppelde bestanden zien.",
+        "en": "Browse a client's Drive folder and see the linked files."
+      },
+      {
+        "key": "google.drive.write",
+        "nl": "Bestanden koppelen en ontkoppelen, uploaden, en mappen aanmaken.",
+        "en": "Link and unlink files, upload, and create folders."
+      },
+      {
+        "key": "interactions.interaction.review",
+        "nl": "Gematchte e-mails goedkeuren, afwijzen of hertoewijzen. Alleen voor je eigen mailbox, hoe ruim het recht ook is toegekend.",
+        "en": "Approve, reject or remap matched emails. Your own mailbox only, however broadly the permission is granted."
+      }
+    ],
+    "limits": {
+      "nl": [
+        "Domain-wide delegation zit er niet in: alleen koppeling per gebruiker, dus elke medewerker koppelt zichzelf.",
+        "Gmail wordt alleen gelezen. schakl. verstuurt nooit mail via Gmail; uitgaande post gaat via de transportinstelling onder Instellingen → E-mail.",
+        "De agendasynchronisatie schrijft één kant op. Google-afspraken worden alleen gelezen; tweerichtingssync is geen onderdeel van deze versie.",
+        "De eerste Gmail-uitlezing importeert niets en legt alleen een startpunt vast. Bestaande mail wordt niet met terugwerkende kracht opgehaald. Is een mailbox langer dan ongeveer een week niet uitgelezen (worker uit, licentie verlopen, koppeling op Aandacht nodig), dan begint hij opnieuw vanaf nu en wordt het gat overgeslagen.",
+        "Gmail wordt uitgelezen, niet gepusht: een gematchte e-mail staat binnen ongeveer vijf minuten in de wachtrij, niet meteen.",
+        "Drive-koppelingen zijn verwijzingen, geen kopieën. Verdwijnt het bestand in Drive, dan wijst de koppeling nergens meer heen, en de mappen stel je in met een geplakt map-ID omdat er nog geen mapkiezer is."
+      ],
+      "en": [
+        "Domain-wide delegation is not implemented: per-user connections only, so every employee connects themselves.",
+        "Gmail is read-only. schakl. never sends mail through Gmail; outgoing post uses the transport under Instellingen → E-mail.",
+        "Calendar sync writes one way. Google events are only read; two-way sync is not part of this version.",
+        "The first Gmail poll imports nothing and only records a starting point. Existing mail is never fetched retroactively. If a mailbox goes unpolled for more than about a week (worker stopped, licence lapsed, connection needing attention), it re-baselines from now and the gap is skipped.",
+        "Gmail is polled, not pushed: a matched email is in the queue within roughly five minutes, not instantly.",
+        "Drive links are references, not copies. Delete the file in Drive and the link points at nothing, and folders are configured by pasting a folder ID because there is no folder picker yet."
+      ]
+    }
+  }
+}

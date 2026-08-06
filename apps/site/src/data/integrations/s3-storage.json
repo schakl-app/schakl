@@ -1,0 +1,166 @@
+{
+  "slug": "s3-storage",
+  "name": "S3-opslag",
+  "order": 81,
+  "category": "infrastructure",
+  "status": "live",
+  "lucide": "cloud",
+  "mark": {
+    "monogram": "S3",
+    "color": "#5F8A7B"
+  },
+  "tagline": {
+    "nl": "Een volume of je eigen S3-bucket",
+    "en": "A named volume or your own S3 bucket"
+  },
+  "summary": {
+    "nl": "Bestanden staan standaard op een Docker-volume naast de database. Zet je de opslag-backend op s3, dan schrijft de app nieuwe bestanden naar elke S3-compatibele bucket: Hetzner Object Storage, MinIO, Scaleway of AWS. Identieke bytes kosten per organisatie één object, dus hetzelfde handtekeninglogo op 500 binnengekomen mails is één object en geen 500.",
+    "en": "Files live on a Docker volume beside the database by default. Point the storage backend at s3 and the app writes new files to any S3-compatible bucket: Hetzner Object Storage, MinIO, Scaleway or AWS. Identical bytes cost one object per organisation, so the same signature logo on 500 received mails is one object rather than 500."
+  },
+  "highlights": {
+    "nl": [
+      "Named volume of S3-compatibele bucket, gekozen bij het uitrollen",
+      "Bestanden worden op hun inhoud geadresseerd: duplicaten kosten niets na de eerste",
+      "Een nachtelijke taak vouwt oude duplicaten samen en ruimt losse bytes op"
+    ],
+    "en": [
+      "Named volume or S3-compatible bucket, chosen at deploy time",
+      "Files are addressed by their content: duplicates cost nothing after the first",
+      "A nightly job folds legacy duplicates and reclaims unreferenced bytes"
+    ]
+  },
+  "where": {
+    "nl": "Nergens in de app: dit is een keuze van de beheerder, in de omgevingsvariabelen van api en worker. De bestanden zelf kom je tegen bij Documenten op een project, bijlagen op een taak, het logo van een klant en Instellingen → Huisstijl.",
+    "en": "Nowhere in the app: this is an operator's choice, set in the environment of api and worker. The files themselves you meet under Documenten (Documents) on a project, attachments on a task, a client's logo and Instellingen → Huisstijl (Settings → Branding)."
+  },
+  "docs": "/docs/admin/storage/",
+  "page": {
+    "lead": {
+      "nl": "Waar de bytes van je bestanden staan, kies je één keer bij het uitrollen. Er is geen scherm voor en geen instelling per organisatie: api en worker krijgen dezelfde variabelen mee en dat is het hele verhaal.",
+      "en": "Where your files' bytes live is a choice you make once, at deploy time. There is no screen for it and no per-organisation setting: api and worker get the same variables and that is the whole story."
+    },
+    "requirements": {
+      "nl": [
+        "Toegang tot de omgevingsvariabelen van je stack (Docker Compose, Portainer of Swarm) en de mogelijkheid om api en worker opnieuw uit te rollen.",
+        "Een S3-compatibele bucket met endpoint, region, bucketnaam en een sleutelpaar. Hetzner Object Storage, MinIO, Scaleway en AWS voldoen.",
+        "Een back-up die de database en het opslagvolume samen pakt; ook na de overstap blijft het volume nodig zolang er nog bestanden op staan."
+      ],
+      "en": [
+        "Access to your stack's environment variables (Docker Compose, Portainer or Swarm) and the ability to redeploy api and worker.",
+        "An S3-compatible bucket with endpoint, region, bucket name and a key pair. Hetzner Object Storage, MinIO, Scaleway and AWS all qualify.",
+        "A backup that takes the database and the storage volume together; the volume stays necessary after the switch for as long as files still sit on it."
+      ]
+    },
+    "steps": {
+      "nl": [
+        "Standaard hoef je niets te doen: <code>SCHAKL_STORAGE_BACKEND=local</code> schrijft naar het named volume <code>storage-data</code>, aangekoppeld in <strong>api</strong> en <strong>worker</strong> op <code>SCHAKL_STORAGE_PATH</code> (standaard <code>/data/storage</code>).",
+        "Wil je objectopslag, zet dan op <strong>allebei</strong> die services <code>SCHAKL_STORAGE_BACKEND=s3</code>, plus <code>SCHAKL_STORAGE_S3_ENDPOINT</code>, <code>_REGION</code>, <code>_BUCKET</code>, <code>_ACCESS_KEY_ID</code> en <code>_SECRET_ACCESS_KEY</code>. Zet je het maar bij één van de twee, dan blijft de ander naar het volume schrijven.",
+        "Optioneel: <code>SCHAKL_STORAGE_S3_KEY_PREFIX</code> om alles onder één pad te zetten, en <code>SCHAKL_STORAGE_S3_FORCE_PATH_STYLE</code>, dat al op <code>true</code> staat en daarmee MinIO-vriendelijk is.",
+        "Houd de sleutels uit je stackdefinitie met <code>SCHAKL_STORAGE_S3_ACCESS_KEY_ID_FILE</code> en <code>SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY_FILE</code>, wijzend naar een Docker-secret. Een leeg of onleesbaar bestand weigert de start, met het pad in de melding.",
+        "Rol <strong>api</strong> en <strong>worker</strong> opnieuw uit en upload één bestand, bijvoorbeeld met <strong>Bestand uploaden</strong> op een taak. Vanaf dat moment landen nieuwe bestanden in de bucket.",
+        "Laat het volume staan en houd het in je back-up zolang er bestanden zijn die er nog vandaan komen. Welke dat zijn, is te zien aan de <code>backend</code> en <code>storage_key</code> die elke bestandsrij in de API meedraagt."
+      ],
+      "en": [
+        "By default there is nothing to do: <code>SCHAKL_STORAGE_BACKEND=local</code> writes to the named volume <code>storage-data</code>, mounted into <strong>api</strong> and <strong>worker</strong> at <code>SCHAKL_STORAGE_PATH</code> (<code>/data/storage</code> by default).",
+        "For object storage, set on <strong>both</strong> of those services <code>SCHAKL_STORAGE_BACKEND=s3</code> plus <code>SCHAKL_STORAGE_S3_ENDPOINT</code>, <code>_REGION</code>, <code>_BUCKET</code>, <code>_ACCESS_KEY_ID</code> and <code>_SECRET_ACCESS_KEY</code>. Set it on only one and the other keeps writing to the volume.",
+        "Optional: <code>SCHAKL_STORAGE_S3_KEY_PREFIX</code> to keep everything under one path, and <code>SCHAKL_STORAGE_S3_FORCE_PATH_STYLE</code>, which already defaults to <code>true</code> and is what keeps MinIO happy.",
+        "Keep the keys out of your stack definition with <code>SCHAKL_STORAGE_S3_ACCESS_KEY_ID_FILE</code> and <code>SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY_FILE</code>, pointing at a Docker secret. An empty or unreadable file refuses the boot and names the path.",
+        "Redeploy <strong>api</strong> and <strong>worker</strong> and upload one file, for instance with <strong>Bestand uploaden</strong> (upload file) on a task. From then on new files land in the bucket.",
+        "Leave the volume in place and keep it in your backup for as long as files still come from it. Which ones those are is answerable: every file row in the API carries its own <code>backend</code> and <code>storage_key</code>."
+      ]
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Dezelfde bytes, één object",
+          "en": "The same bytes, one object"
+        },
+        "body": {
+          "nl": "Een bestand wordt geadresseerd op de sha256 van zijn eigen inhoud, per organisatie. Een doorgestuurde prijslijst, een opnieuw bijgesneden logo en de handtekeningafbeelding onder elke binnengekomen mail kosten daardoor samen één object in plaats van steeds een nieuwe. De-duplicatie gaat nooit over organisaties heen: de sleutel is organisatie plus backend plus hash, en elk object staat onder de prefix van die ene organisatie. Dat is een bewuste keuze; het opruimen van een organisatie wist die hele prefix, en met gedeelde bytes zou dat de bestanden van een ander meenemen.",
+          "en": "A file is addressed by the sha256 of its own content, per organisation. A forwarded price list, a re-cropped logo and the signature image under every received mail therefore cost one object between them instead of a new one each time. De-duplication never crosses organisations: the key is organisation plus backend plus hash, and every object sits under that one organisation's prefix. That is deliberate — terminating an organisation deletes its whole prefix, and shared bytes would take somebody else's files with it."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Verwijderen geeft niet meteen ruimte terug",
+          "en": "Deleting frees no space right away"
+        },
+        "body": {
+          "nl": "Een verwijderd bestand haalt zijn rij weg; de bytes blijven nog even staan. Een onderhoudstaak in de worker draait elke nacht om 03:15 UTC, per organisatie, en doet twee dingen.",
+          "en": "Deleting a file removes its row; the bytes stay a while longer. A maintenance job in the worker runs nightly at 03:15 UTC, per organisation, and does two things."
+        },
+        "bullets": {
+          "nl": [
+            "Vouwen: rijen van vóór de de-duplicatie, standaard 500 per organisatie per nacht (SCHAKL_STORAGE_FOLD_BATCH). Een grote installatie is na een paar nachten bij, niet tijdens de upgrade.",
+            "Opruimen: bytes waar geen enkele bestandsrij meer naar wijst, en pas nadat ze SCHAKL_STORAGE_BLOB_GRACE_HOURS (standaard 24 uur) ongebruikt zijn gezien.",
+            "Bijeffect: binnen dat venster is een per ongeluk verwijderd bestand nog te redden zonder een back-up terug te zetten, al is dat handwerk in de database."
+          ],
+          "en": [
+            "Fold: rows from before de-duplication, 500 per organisation per night by default (SCHAKL_STORAGE_FOLD_BATCH). A large installation catches up over a few nights rather than during the upgrade.",
+            "Sweep: bytes that no file row points at any more, and only after they have been seen unreferenced for SCHAKL_STORAGE_BLOB_GRACE_HOURS (24 by default).",
+            "Side effect: inside that window a file deleted by mistake is still recoverable without restoring a backup, though that is hand work in the database."
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Overstappen is geen verhuizing",
+          "en": "Switching is not a migration"
+        },
+        "body": {
+          "nl": "De backend wordt per bestandsrij vastgelegd, dus s3 aanzetten geldt alleen voor nieuwe uploads. Terugdraaien is even simpel: haal de variabelen weg en nieuwe uploads gaan weer naar het volume. Een bestand waarvan de backend niet bereikbaar is, geeft een expliciete melding over de objectopslag-configuratie in plaats van een leeg bestand.",
+          "en": "The backend is recorded per file row, so switching to s3 applies to new uploads only. Rolling back is just as simple: remove the variables and new uploads go to the volume again. A file whose backend cannot be reached answers with an explicit message about the object-storage configuration rather than an empty download."
+        },
+        "bullets": {
+          "nl": [
+            "Bestaande bestanden blijven van het volume komen, dus het volume blijft nodig.",
+            "Later van bucket of prefix wisselen laat de objecten die er al staan onbereikbaar achter.",
+            "Database en volume horen in dezelfde back-up: een teruggezette database zonder volume levert bestandsrijen zonder inhoud."
+          ],
+          "en": [
+            "Existing files keep serving from the volume, so the volume stays necessary.",
+            "Changing bucket or prefix later strands the objects already written.",
+            "Database and volume belong in the same backup: a restored database without its volume leaves file rows whose bytes are gone."
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Wie erbij kan",
+          "en": "Who can reach a file"
+        },
+        "body": {
+          "nl": "Uploaden en verwijderen vraagt het recht files.file.write, standaard bij beheerder en medewerker en niet bij een klantaccount. Een bestand ophalen vraagt geen apart recht: elke ingelogde collega mag de bestanden van de eigen organisatie lezen, maar de rijen zijn tenant-gescoped, het klantbereik van de lezer telt mee, en een klantlogo of een HR-dossierdocument antwoordt 404 in plaats van een 403 die het bestaan zou verraden. Alleen huisstijlbestanden (logo, favicon, app-icoon) zijn zonder inloggen op te halen, want die staan op het inlogscherm; de organisatie wordt daarbij strikt uit de hostnaam bepaald.",
+          "en": "Uploading and deleting needs the files.file.write permission, which by default sits with admin and member and not with a client account. Fetching a file declares no permission of its own: any signed-in colleague may read their own organisation's files, but the rows are tenant-scoped, the reader's company horizon applies, and a client logo or an HR dossier document answers 404 rather than a 403 that would give away its existence. Only branding assets (logo, favicon, app icon) are reachable without signing in, because they appear on the login screen; the organisation is resolved strictly from the hostname there."
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "key": "files.file.write",
+        "nl": "Bestanden uploaden en verwijderen, overal waar de app bestanden accepteert. Standaard bij beheerder en medewerker, niet bij een klantaccount.",
+        "en": "Uploading and deleting files, everywhere the app accepts them. Held by admin and member by default, not by a client account."
+      }
+    ],
+    "limits": {
+      "nl": [
+        "Geen opslagscherm: nergens in de app staat hoeveel ruimte je gebruikt, er is geen quotum per organisatie en geen koppeling met facturatie.",
+        "Geen instelling per organisatie of per klant: de backend geldt voor de hele installatie en wordt in de omgeving van api en worker gekozen.",
+        "Aanzetten verhuist niets. Er is geen migratieknop: bestaande bestanden blijven staan waar ze staan.",
+        "De-duplicatie gaat nooit over organisaties heen. Dat scheelt minder ruimte, maar houdt de scheiding tussen organisaties heel.",
+        "Verwijderen geeft niet meteen ruimte terug: de bytes verdwijnen pas bij de nachtelijke opruiming, minstens een etmaal later.",
+        "Rol je een release terug, verwijder dan geen bestanden tot je weer vooruit hebt gerold. De vorige versie wist het object onvoorwaardelijk en neemt gedeelde kopieën mee.",
+        "Per bestand geldt een harde grens van 10 MB (<code>SCHAKL_UPLOAD_MAX_BYTES</code>) en een vaste lijst met toegestane bestandstypen (<code>SCHAKL_UPLOAD_ALLOWED_TYPES</code>). Allebei horen bij de installatie en niet bij de organisatie: S3 aanzetten verhoogt ze niet."
+      ],
+      "en": [
+        "No storage screen: nowhere in the app does it say how much space you use, there is no per-organisation quota and no billing hook.",
+        "No per-organisation or per-client setting: the backend applies to the whole installation and is chosen in the environment of api and worker.",
+        "Enabling it moves nothing. There is no migrate button: existing files stay where they are.",
+        "De-duplication never crosses organisations. That saves less space, but it keeps the separation between organisations intact.",
+        "Deleting frees no space right away: the bytes go with the nightly sweep, at least a day later.",
+        "If you roll a release back, do not delete files until you have rolled forward again. The previous version removes the object unconditionally and takes shared copies with it.",
+        "A hard 10 MB ceiling per file (<code>SCHAKL_UPLOAD_MAX_BYTES</code>) and a fixed list of accepted types (<code>SCHAKL_UPLOAD_ALLOWED_TYPES</code>). Both belong to the install rather than the organisation: switching S3 on does not raise them."
+      ]
+    }
+  }
+}

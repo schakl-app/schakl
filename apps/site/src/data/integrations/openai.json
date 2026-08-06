@@ -1,0 +1,170 @@
+{
+  "slug": "openai",
+  "name": "OpenAI",
+  "order": 61,
+  "category": "ai",
+  "status": "live",
+  "lucide": "bot",
+  "mark": {
+    "monogram": "O",
+    "color": "#10A37F"
+  },
+  "tagline": {
+    "nl": "GPT-5, plus spraak naar tekst op Uren",
+    "en": "GPT-5, plus speech to text on Uren"
+  },
+  "summary": {
+    "nl": "Dezelfde kern als elke aanbieder: je eigen sleutel versleuteld per organisatie, vier functies die los aan of uit gaan en één maandbudget met meter. Het ingebouwde standaardmodel is gpt-5. OpenAI is daarnaast de aanbieder die spraak naar tekst kan doen, dus hiermee werkt ook de microfoon naast Snel toevoegen op Uren.",
+    "en": "The same core as every provider: your own key encrypted per organisation, four independently switchable features and one monthly budget with a meter. The built-in default model is gpt-5. OpenAI is also the provider that can do speech to text, so this is the choice that lights up the microphone beside Snel toevoegen (quick add) on Uren (Time)."
+  },
+  "highlights": {
+    "nl": [
+      "Eigen sleutel, versleuteld opgeslagen, standaardmodel gpt-5",
+      "Kan ook spraak naar tekst: inspreken in Snel toevoegen op Uren",
+      "Audio heeft een eigen maandbudget in seconden, los van het tokenbudget"
+    ],
+    "en": [
+      "Your own key, stored encrypted, default model gpt-5",
+      "Can also do speech to text: dictate into Snel toevoegen on Uren",
+      "Audio has its own monthly budget in seconds, separate from the token budget"
+    ]
+  },
+  "where": {
+    "nl": "Instellingen → AI, met de fieldset Spraak naar tekst eronder; de microfoonknop zelf staat op Uren naast Snel toevoegen.",
+    "en": "Instellingen → AI (Settings → AI), with the Spraak naar tekst (speech to text) fieldset below it; the microphone button itself sits on Uren (Time) beside Snel toevoegen."
+  },
+  "docs": "/docs/modules/ai/",
+  "page": {
+    "lead": {
+      "nl": "Eén sleutel voor de vier AI-functies, en desgewenst een tweede voor dictaat. Wat je inspreekt gaat naar de dienst die jij hebt ingesteld, niet naar de spraakherkenning van je browser.",
+      "en": "One key for the four AI features, and optionally a second one for dictation. What you speak goes to the service you configured yourself, not to your browser's built-in speech recognition."
+    },
+    "requirements": {
+      "nl": [
+        "Een OpenAI-account met een API-sleutel. Je rekent rechtstreeks met OpenAI af.",
+        "Het recht ai.settings.manage om de aanbieder in te stellen. Standaard alleen voor beheerders.",
+        "Voor dictaat: de functie Urenhulp aan, het recht time.entry.write bij de gebruiker, en een browser die MediaRecorder ondersteunt.",
+        "Voor dictaat: de app via https bereikbaar. Zonder beveiligde verbinding geeft de browser geen toegang tot de microfoon."
+      ],
+      "en": [
+        "An OpenAI account with an API key. You settle with OpenAI directly.",
+        "The ai.settings.manage permission to configure the provider. Admin-only by default.",
+        "For dictation: the Urenhulp feature on, the time.entry.write permission on the user, and a browser that supports MediaRecorder.",
+        "For dictation: the app reachable over https. Without a secure context the browser grants no microphone access at all."
+      ]
+    },
+    "steps": {
+      "nl": [
+        "Maak in je OpenAI-account een API-sleutel aan voor deze installatie.",
+        "Open <strong>Instellingen → AI</strong>, zet <strong>Provider</strong> op <strong>OpenAI</strong> en plak de sleutel in <strong>API-sleutel</strong>. Die wordt versleuteld opgeslagen en nooit teruggetoond.",
+        "Vul <strong>Model</strong> in of druk op <strong>Modellen ophalen</strong> voor de actuele lijst van OpenAI. De ingebouwde standaard is <code>gpt-5</code>.",
+        "Zet onder <strong>Functies</strong> aan wat je wilt gebruiken. Voor dictaat moet <strong>Urenhulp</strong> aan staan: het inspreken rijdt mee op die functie.",
+        "Wil je dictaat, ga dan naar de fieldset <strong>Spraak naar tekst</strong>, zet <strong>Spraakaanbieder</strong> op <strong>OpenAI</strong> en vul <strong>API-sleutel voor spraak</strong> in. <strong>Spraakmodel</strong> is vrije tekst; leeg betekent <code>whisper-1</code>.",
+        "Vul eventueel <strong>Maandbudget audio (seconden)</strong> in. Dat is een aparte teller, want een audiomodel rapporteert geen tokens.",
+        "Druk op <strong>Verbinding testen</strong> en geef in <strong>Instellingen → Rollen</strong> het recht <code>ai.use</code> aan de rollen die de functies mogen gebruiken; voor dictaat daarbij <code>time.entry.write</code>."
+      ],
+      "en": [
+        "Create an API key for this installation in your OpenAI account.",
+        "Open <strong>Instellingen → AI</strong> (Settings → AI), set <strong>Provider</strong> to <strong>OpenAI</strong> and paste the key into <strong>API-sleutel</strong>. It is stored encrypted and never played back.",
+        "Fill in <strong>Model</strong>, or press <strong>Modellen ophalen</strong> (fetch models) for OpenAI's current list. The built-in default is <code>gpt-5</code>.",
+        "Under <strong>Functies</strong> (features), switch on what you want. Dictation requires <strong>Urenhulp</strong> to be on: it rides that feature key.",
+        "For dictation, go to the <strong>Spraak naar tekst</strong> fieldset, set <strong>Spraakaanbieder</strong> (speech provider) to <strong>OpenAI</strong> and fill in <strong>API-sleutel voor spraak</strong>. <strong>Spraakmodel</strong> is free text; empty means <code>whisper-1</code>.",
+        "Optionally set <strong>Maandbudget audio (seconden)</strong> — a separate counter in seconds, because an audio model reports no token usage.",
+        "Press <strong>Verbinding testen</strong> (test connection) and grant <code>ai.use</code> in <strong>Instellingen → Rollen</strong> (Settings → Roles) to the roles allowed to use the features, plus <code>time.entry.write</code> for dictation."
+      ]
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Dezelfde kern als elke aanbieder",
+          "en": "The same core as every provider"
+        },
+        "body": {
+          "nl": "De aanbieder wisselt, de rest niet. Assistent, Schrijfhulp, Urenhulp en Briefing & rapporten staan los van elkaar aan of uit, elke functie mag een eigen model krijgen, en alles telt op in één maandbudget met een meter in Instellingen → AI. Van het verbruik worden aantallen en labels bewaard, nooit de tekst van een prompt of een antwoord.",
+          "en": "The provider changes, nothing else does. Assistent, Schrijfhulp, Urenhulp and Briefing & rapporten switch on and off independently, each can take its own model, and everything adds up in one monthly budget with a meter in Instellingen → AI. Usage keeps counts and labels, never the text of a prompt or a completion."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Inspreken bij de dienst die jij kiest",
+          "en": "Dictation at the service you choose"
+        },
+        "body": {
+          "nl": "De spraakherkenning van de browser is bewust niet gebruikt: Chrome en Edge sturen de audio naar Google, Safari naar Apple. In plaats daarvan gaat de opname naar de spraakdienst die jouw bureau zelf heeft ingesteld. De prijs van die keuze is dat dictaat een eigen aanbieder nodig heeft en pas werkt als een beheerder die invult.",
+          "en": "The browser's own speech recognition was deliberately not used: Chrome and Edge ship the audio to Google, Safari to Apple. Instead the recording goes to the speech service your agency configured itself. The price of that choice is that dictation needs its own provider, and does nothing until an admin fills it in."
+        },
+        "bullets": {
+          "nl": [
+            "Druk op Inspreken naast Snel toevoegen, spreek één regel in en druk op Opname stoppen; een secondeteller loopt mee",
+            "Het transcript verschijnt in het veld, zodat je het leest en corrigeert voordat je op Snel toevoegen drukt",
+            "De opname stopt na 60 seconden en de upload is gemaximeerd op 8 MB; erboven is een foutmelding, nooit een stilzwijgende afkapping"
+          ],
+          "en": [
+            "Press Inspreken beside Snel toevoegen, speak one line, press Opname stoppen; an elapsed-seconds counter runs while you record",
+            "The transcript lands in the field so you can read and correct it before pressing Snel toevoegen",
+            "Recording stops at 60 seconds and the upload is capped at 8 MB; over the limit is an error, never a silent truncation"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Vier voorwaarden voor de microfoon",
+          "en": "Four conditions for the microphone"
+        },
+        "body": {
+          "nl": "De knop wordt alleen getekend als hij ook echt kan werken, zodat niemand op een microfoon drukt die daarna een foutmelding geeft. De instellingenpagina en de knop lezen hetzelfde antwoord, dus ze kunnen niet van mening verschillen.",
+          "en": "The button is only drawn when it can actually work, so nobody presses a microphone that then errors out. The settings screen and the control read the same resolved answer, so they can never disagree."
+        },
+        "bullets": {
+          "nl": [
+            "De organisatie heeft een spraakaanbieder die daadwerkelijk kan transcriberen",
+            "De functie Urenhulp staat aan",
+            "De browser ondersteunt MediaRecorder en getUserMedia, vastgesteld na het laden en nooit geraden uit een user agent",
+            "De gebruiker heeft time.entry.write, want het transcript bestaat om een urenregel te worden"
+          ],
+          "en": [
+            "The organisation has a speech provider that can actually transcribe",
+            "The Urenhulp feature is on",
+            "The browser supports MediaRecorder and getUserMedia, resolved after mount and never guessed from a user agent",
+            "The user holds time.entry.write, because the transcript exists to become a time entry"
+          ]
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "key": "ai.settings.manage",
+        "nl": "Instellingen → AI beheren: aanbieder, sleutels, modellen, functies, budgetten, de testknop en de verbruiksmeter. Standaard alleen beheerder.",
+        "en": "Manage Instellingen → AI: provider, keys, models, features, budgets, the test button and the usage meter. Admin-only by default."
+      },
+      {
+        "key": "ai.use",
+        "nl": "De AI-functies gebruiken, inclusief het uitschrijven van een opname. Staat standaard bij beheerder en medewerker.",
+        "en": "Use the AI features, including transcribing a recording. Granted to admin and member by default."
+      },
+      {
+        "key": "time.entry.write",
+        "nl": "Extra vereist voor dictaat: AI-toegang alleen mag de urenstaat niet raken, dus wie geen uren mag schrijven krijgt geen microfoon.",
+        "en": "Additionally required for dictation: AI access alone must not reach the timesheet, so someone who cannot write hours gets no microphone."
+      }
+    ],
+    "limits": {
+      "nl": [
+        "Het transcript gaat niet automatisch de parse in. Je leest en corrigeert het eerst, want Nederlandse klantnamen zijn precies wat een herkenner verkeerd verstaat.",
+        "Inspreken werkt alleen in het veld Snel toevoegen op Uren. De assistent en de tekstverwerker zijn voorbereid als volgende plek, maar gebruiken het vandaag niet.",
+        "Alleen via https. Op een http-adres tekent de browser geen microfoon en is het typeveld ernaast de terugvaloptie.",
+        "Ondersteunde audioformaten: WebM, Ogg, MP4 of M4A, WAV en MP3, herkend aan de inhoud van het bestand en niet aan de bestandsnaam of het opgegeven type.",
+        "Er is geen taalkeuze per opname. De herkenner krijgt de taal van je eigen account als hint mee.",
+        "De assistent blijft alleen-lezen en de Urenhulp levert een concept: er wordt nooit vanzelf een record aangemaakt of gewijzigd."
+      ],
+      "en": [
+        "The transcript is deliberately not fed straight into the parse. You read and fix it first, because Dutch client names are exactly what a recogniser gets wrong.",
+        "Dictation works only in the Snel toevoegen field on Uren. The assistant panel and the rich-text editor are prepared as the next hosts, but neither uses it today.",
+        "HTTPS only. On an http address the browser draws no microphone and the typed field beside it is the fallback.",
+        "Supported audio containers: WebM, Ogg, MP4/M4A, WAV and MP3, identified by the file's own bytes rather than by a filename or a client-supplied type.",
+        "There is no per-recording language picker. The recogniser is given the user's own locale as a hint.",
+        "The assistant stays read-only and the time assist returns a draft: nothing is ever created or changed on its own."
+      ]
+    }
+  }
+}

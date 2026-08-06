@@ -1,0 +1,170 @@
+{
+  "slug": "cloudflare",
+  "name": "Cloudflare",
+  "order": 30,
+  "category": "domains",
+  "status": "live",
+  "lucide": "cloud",
+  "mark": {
+    "monogram": "CF",
+    "color": "#F6821F"
+  },
+  "tagline": {
+    "nl": "Zones, DNS en een omleiding die bestaat",
+    "en": "Zones, DNS and a redirect that exists"
+  },
+  "summary": {
+    "nl": "Koppel per klant een Cloudflare-account en beheer de zone vanaf het domein zelf: nameservers, de live DNS-tabel, export en één domeinbrede omleiding die schakl. aanmaakt en terugleest. Een domein dat op omleiding staat, is nu ook echt een Redirect Rule bij Cloudflare. De Registrar-lijst vertelt daarnaast welke domeinen je zelf verlengt, en dus mag factureren.",
+    "en": "Connect a Cloudflare account per client and manage the zone from the domain record itself: nameservers, the live DNS table, exports and one domain-wide redirect that schakl. creates and reads back. A domain marked as a redirect is now an actual Cloudflare Redirect Rule. The Registrar list separately answers which domains you pay to renew, and may therefore invoice."
+  },
+  "highlights": {
+    "nl": [
+      "Een bestaande zone wordt overgenomen, pas daarna aangemaakt",
+      "DNS live uitlezen en bewerken, export als zonebestand of CSV",
+      "Wijzigt iemand de omleiding in het Cloudflare-dashboard, dan meldt schakl. dat"
+    ],
+    "en": [
+      "An existing zone is adopted first, and only then created",
+      "Read and edit DNS live, export as a zone file or CSV",
+      "If somebody changes the redirect in Cloudflare's own dashboard, schakl. reports it"
+    ]
+  },
+  "where": {
+    "nl": "Instellingen → Cloudflare voor de accounts en de opgehaalde zones, plus het paneel Cloudflare op Domeinen → het domein voor het werk per domein.",
+    "en": "Instellingen → Cloudflare (Settings → Cloudflare) for the accounts and the fetched zones, plus the Cloudflare panel on Domeinen → the domain (Domains) for the per-domain work."
+  },
+  "docs": "/docs/integrations/cloudflare/",
+  "page": {
+    "lead": {
+      "nl": "Cloudflare is geen plek waar je heen gaat: het is iets wat een domein heeft. Daarom staat het beheer op het domein zelf en houdt Instellingen alleen de accounts en de opgehaalde zones bij.",
+      "en": "Cloudflare is not a place you go; it is something a domain has. So the management lives on the domain record itself, and Instellingen only keeps the accounts and the zones you fetched."
+    },
+    "requirements": {
+      "nl": [
+        "De module cloudflare aan onder Instellingen → Modules, en dekking op de licentie via Instellingen → Licentie. Zonder dekking blijft na de respijtperiode alleen het leesgedeelte werken: de zonelijst, de DNS-weergave, de export en de opgeslagen status.",
+        "De rechten cloudflare.settings.manage, cloudflare.dns.read en cloudflare.zone.manage, uitgedeeld in Instellingen → Rollen. Alle drie zijn standaard alleen voor beheerders.",
+        "Een API-token met beperkte rechten uit het Cloudflare-dashboard (My Profile → API Tokens → Create Token). Nooit de Global API Key: het veld eist een scoped token en weigert de ongescoopte sleutel met opzet.",
+        "Eén accountregel per Cloudflare-account, niet per installatie. Een bureau heeft er zelf een; klanten brengen dat van henzelf mee.",
+        "Geen webhook en geen callback-URL. Al het verkeer gaat naar buiten, van de API-container naar api.cloudflare.com."
+      ],
+      "en": [
+        "The cloudflare module switched on under Instellingen → Modules (Settings → Modules), and licence cover via Instellingen → Licentie (Settings → Licence). Without cover, past the grace period only the read surface keeps working: the zone list, the DNS view, the export and the stored status.",
+        "The permissions cloudflare.settings.manage, cloudflare.dns.read and cloudflare.zone.manage, granted in Instellingen → Rollen (Settings → Roles). All three are admin-only by default.",
+        "A scoped API token from Cloudflare's own dashboard (My Profile → API Tokens → Create Token). Never the legacy Global API Key: the field demands a scoped token and refuses the unscoped key on purpose.",
+        "One account row per Cloudflare account, not per installation. An agency has its own; clients bring theirs.",
+        "No webhook and no callback URL. Traffic is outbound only, from the API container to api.cloudflare.com."
+      ]
+    },
+    "steps": {
+      "nl": [
+        "Zet de module aan onder <strong>Instellingen → Modules</strong> en deel de drie rechten uit in <strong>Instellingen → Rollen</strong>: <code>cloudflare.settings.manage</code>, <code>cloudflare.dns.read</code> en <code>cloudflare.zone.manage</code>.",
+        "Maak het token in Cloudflare (<strong>My Profile → API Tokens → Create Token</strong>, custom token). Minimaal <strong>Zone → Zone → Read</strong>. Voor de DNS-tabel, de export en de records die een omleiding nodig heeft: <strong>Zone → DNS → Edit</strong>. Voor de omleiding zelf: <strong>Zone → Dynamic Redirect → Edit</strong>. Optioneel <strong>Zone → Page Rules → Read</strong> (herkent een oude forwarding page rule als conflict), <strong>Account → Zone → Edit</strong> (een zone aanmaken die er nog niet is), <strong>Account → Cloudflare Pages → Read/Edit</strong> en <strong>Account → Domain Registration → Read</strong> (de Registrar-lijst, en daarmee de facturatiebeslissing).",
+        "Voeg het account toe: <strong>Instellingen → Cloudflare → Account toevoegen</strong>. Vul <strong>Naam</strong> in (bijvoorbeeld de klantnaam), plak het token bij <strong>API-token</strong>, koppel desgewenst een <strong>Leveranciersregel</strong> en zet <strong>In gebruik</strong> aan. Het token wordt nooit teruggetoond; de regel meldt alleen dat er een token is opgeslagen.",
+        "Druk op <strong>Token controleren</strong>. Onder <strong>Wat dit token mag</strong> staat daarna per onderdeel het antwoord: Token is geldig, Account uitlezen, Zones uitlezen, Pages-projecten uitlezen, Registrar-domeinen uitlezen. Wat je niet hebt toegekend leest hier <code>niet toegekend</code>, in plaats van drie schermen verderop als 403 op een knop. Ziet het token meerdere Cloudflare-accounts, dan vul je <strong>Cloudflare-account-ID</strong> zelf in.",
+        "Druk op <strong>Zones ophalen</strong>. Eén actie haalt de zones, de Pages-projecten en de Cloudflare Registrar-lijst op. Wat niet vanzelf op apexnaam matcht, koppel je in de tabel <strong>Zones</strong> met <strong>Aan domein koppelen</strong>; het filter <strong>Alleen niet-gekoppelde</strong> laat precies die rijen zien.",
+        "Koppel een domein: <strong>Domeinen → het domein → paneel Cloudflare → Koppelen aan Cloudflare</strong>, en kies het <strong>Account</strong>. Neem je een bestaande klantopstelling over, zet dan <strong>Alleen een bestaande zone koppelen</strong> aan. schakl. neemt sowieso eerst een bestaande zone over en maakt er alleen een aan als die er niet is. <strong>Controleren bij Cloudflare</strong> is daarna de knop die echt gaat kijken.",
+        "Maakte schakl. een <strong>nieuwe</strong> zone aan, zet dan bij je registrar de nameservers van het domein om naar het paar dat het paneel toont onder <strong>Cloudflare verwacht</strong>. Tot dat gebeurd is staat de zone bij Cloudflare op <code>pending</code> en bereikt er geen verkeer de rand, dus een omleiding vuurt nog niet. Loopt het domein via OXXA, dan doet de knop <strong>Nameservers van Cloudflare gebruiken</strong> op het registrar-paneel dat voor je.",
+        "Zet de omleiding onder <strong>Domeinbrede omleiding</strong>: <strong>Omleiden naar</strong>, <strong>Soort omleiding</strong>, <strong>Pad meenemen</strong>, <strong>Querystring meenemen</strong> en <strong>Ook www en andere subdomeinen omleiden</strong>. Laat <strong>Records toevoegen die de omleiding nodig heeft</strong> aanstaan en druk op <strong>Omleiding opslaan</strong>."
+      ],
+      "en": [
+        "Switch the module on under <strong>Instellingen → Modules</strong> (Settings → Modules) and hand out the three permissions in <strong>Instellingen → Rollen</strong> (Settings → Roles): <code>cloudflare.settings.manage</code>, <code>cloudflare.dns.read</code> and <code>cloudflare.zone.manage</code>.",
+        "Mint the token in Cloudflare (<strong>My Profile → API Tokens → Create Token</strong>, custom token). Minimum <strong>Zone → Zone → Read</strong>. For the DNS table, the export and the records a redirect needs: <strong>Zone → DNS → Edit</strong>. For the redirect itself: <strong>Zone → Dynamic Redirect → Edit</strong>. Optional are <strong>Zone → Page Rules → Read</strong> (spots a legacy forwarding page rule as a conflict), <strong>Account → Zone → Edit</strong> (create a zone that does not exist yet), <strong>Account → Cloudflare Pages → Read/Edit</strong> and <strong>Account → Domain Registration → Read</strong> (the Registrar list, and therefore the invoicing decision).",
+        "Add the account under <strong>Instellingen → Cloudflare → Account toevoegen</strong> (Add account). Fill in <strong>Naam</strong> (Name, e.g. the client), paste the token into <strong>API-token</strong>, optionally link a <strong>Leveranciersregel</strong> (supplier row) and tick <strong>In gebruik</strong> (In use). The token is never played back; the row only reports that a token is stored.",
+        "Press <strong>Token controleren</strong> (Check token). Under <strong>Wat dit token mag</strong> (What this token may do) you then get an answer per item: token valid, read account, read zones, read Pages projects, read Registrar domains. Anything you did not grant reads <code>niet toegekend</code> here, instead of surfacing as a 403 on a button three screens away. If the token sees several Cloudflare accounts, fill in <strong>Cloudflare-account-ID</strong> yourself.",
+        "Press <strong>Zones ophalen</strong> (Fetch zones). One action pulls the zones, the Pages projects and the Cloudflare Registrar list. Whatever did not match on apex name you link by hand in the <strong>Zones</strong> table with <strong>Aan domein koppelen</strong> (Link to domain); the <strong>Alleen niet-gekoppelde</strong> (Unlinked only) filter shows exactly those rows.",
+        "Connect a domain: <strong>Domeinen → the domain → Cloudflare panel → Koppelen aan Cloudflare</strong> (Connect to Cloudflare), and pick the <strong>Account</strong>. Taking over a client's existing setup, tick <strong>Alleen een bestaande zone koppelen</strong> (Adopt an existing zone only). schakl. adopts an existing zone before it ever creates one either way. <strong>Controleren bij Cloudflare</strong> (Check at Cloudflare) is then the button that actually goes and looks.",
+        "If schakl. created a <strong>new</strong> zone, repoint the domain's nameservers at your registrar to the pair the panel shows under <strong>Cloudflare verwacht</strong> (Cloudflare expects). Until you do, the zone stays <code>pending</code> at Cloudflare and no traffic reaches the edge, so a redirect does not fire yet. For a domain at OXXA, the <strong>Nameservers van Cloudflare gebruiken</strong> button on the registrar panel fills it in for you.",
+        "Set the redirect under <strong>Domeinbrede omleiding</strong> (Domain-wide redirect): <strong>Omleiden naar</strong> (Redirect to), <strong>Soort omleiding</strong> (Redirect type), <strong>Pad meenemen</strong> (Keep the path), <strong>Querystring meenemen</strong> (Keep the query string) and <strong>Ook www en andere subdomeinen omleiden</strong> (Redirect www and other subdomains too). Leave <strong>Records toevoegen die de omleiding nodig heeft</strong> (Add the records the redirect needs) ticked and press <strong>Omleiding opslaan</strong> (Save redirect)."
+      ]
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "De omleiding heeft eindelijk een mechaniek",
+          "en": "The redirect finally has a mechanism"
+        },
+        "body": {
+          "nl": "Een domein dat in schakl. op omleiding stond, was lang een statuslabel zonder iets erachter. Nu is het een Redirect Rule bij Cloudflare met één eigenaar. schakl. bewaart wat het heeft ingesteld en leest bij Controleren bij Cloudflare terug wat er werkelijk staat; wijkt dat af, dan lees je Gewijzigd bij Cloudflare en beslis jij of je overschrijft. Staat er al een andere omleidingsregel of een oude forwarding page rule op de zone, dan verschijnt die onder Andere omleidingen op deze zone. schakl. verplaatst of verwijdert nooit de regel van iemand anders.",
+          "en": "A domain marked as a redirect in schakl. was a status label with nothing behind it for a long time — the actual redirect lived in an external flow. Now it is a Cloudflare Redirect Rule with a single owner. schakl. stores what it set and, on Controleren bij Cloudflare, reads back what is really there; if the two differ you get Gewijzigd bij Cloudflare (changed at Cloudflare) and you decide whether to overwrite. If another redirect rule or a legacy forwarding page rule already redirects on the zone, it shows up under Andere omleidingen op deze zone (other redirects on this zone). schakl. never reorders or deletes somebody else's rule."
+        },
+        "bullets": {
+          "nl": [
+            "301, 302, 307 of 308, met een waarschuwing bij de permanente varianten omdat browsers die onthouden",
+            "Een omleiding die in haar eigen bereik uitkomt wordt geweigerd, niet opgeslagen",
+            "Verwijderen zet de status van het domein alleen terug als die nog zegt wat schakl. er neerzette"
+          ],
+          "en": [
+            "301, 302, 307 or 308, with a warning on the permanent ones because browsers remember them",
+            "A redirect that points back into its own match set is refused, not saved",
+            "Removing one walks the domain's own status back only if it still says what schakl. put there"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Zonder geproxyd record gebeurt er niets",
+          "en": "Without a proxied record, nothing happens"
+        },
+        "body": {
+          "nl": "Dit is de verwarrendste manier waarop een omleiding kan mislukken. Een Redirect Rule vuurt alleen op verkeer dat de rand van Cloudflare bereikt, en een zone waarvan de apex geen geproxyd record heeft, krijgt dat verkeer nooit. De regel wordt opgeslagen, het dashboard van Cloudflare zegt dat hij actief is, en er gebeurt niets. Daarom staat Records toevoegen die de omleiding nodig heeft standaard aan: die zet Cloudflares eigen placeholder neer, een geproxyd AAAA 100::, voor de apex en voor www en bewust nergens anders. Een bestaand record wordt nooit vervangen. Haal je het wolkje later weg, dan verschijnt dat onder Aandachtspunten in plaats van dat het stilletjes stopt met werken.",
+          "en": "This is the single most confusing way a redirect fails. A Redirect Rule only fires for traffic that actually reaches Cloudflare's edge, and a zone whose apex has no proxied record never receives any. The rule saves, Cloudflare's dashboard shows it active, and nothing happens. That is why Records toevoegen die de omleiding nodig heeft is on by default: it writes Cloudflare's own documented placeholder, a proxied AAAA 100::, covering the apex and www and deliberately nothing else. An existing record is never replaced. Grey the cloud out later and it is reported under Aandachtspunten (points of attention) rather than quietly ceasing to work."
+        }
+      },
+      {
+        "heading": {
+          "nl": "DNS, export en Pages",
+          "en": "DNS, export and Pages"
+        },
+        "body": {
+          "nl": "De DNS-tabel wordt live bij Cloudflare gelezen en door schakl. nooit bewaard: een kopie is binnen een paar minuten na elke wijziging onwaar. Je voegt records toe en bewerkt ze in hetzelfde paneel, met Type, Naam, Waarde, TTL, Via Cloudflare, Prioriteit en Notitie. Exporteren kan als zonebestand (Cloudflares eigen BIND-export) of als CSV. Draait de site op Cloudflare Pages, dan kies je onder Cloudflare Pages een Project en optioneel een Hostnaam; schakl. registreert de hostnaam bij het project en schrijft het CNAME als het domein hier een zone heeft. Heeft het die niet, dan zegt het paneel met zoveel woorden dat je zelf naar het pages.dev-adres moet wijzen.",
+          "en": "The DNS table is read live from Cloudflare and never stored by schakl.: a cached copy would be wrong within minutes of any change. You add and edit records in the same panel, with Type, Naam, Waarde, TTL, Via Cloudflare (proxied), Prioriteit and Notitie. Exports come as a zone file (Cloudflare's own BIND export) or CSV. For a site on Cloudflare Pages you pick a Project and optionally a Hostnaam under Cloudflare Pages; schakl. registers the hostname on the project and writes the CNAME when the domain has a zone here. When it does not, the panel says in so many words that you must point DNS at the project's pages.dev address yourself."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Het register beslist wie betaalt",
+          "en": "The register decides who pays"
+        },
+        "body": {
+          "nl": "Een zone is geen registratie. Cloudflare beantwoordt met plezier DNS voor een domein dat de klant zelf elders heeft geregistreerd en zelf verlengt, en dat is precies het domein dat je nooit moet factureren. Alleen de Cloudflare Registrar-lijst kan die twee uit elkaar houden. Daarom is het veld Facturatie op een domein driewaardig: Wel factureren, Niet factureren, of Volg het register. Bij Volg het register leest de hint of het domein in een gekoppeld register staat, en de kolom Gefactureerd in de domeinenlijst zet er volgens register naast. Alleen een register dat werkelijk heeft geantwoord mag versmallen wat er gefactureerd wordt: zolang dat niet is gebeurd, factureert elk onbeslist domein precies zoals het altijd deed.",
+          "en": "A zone is not a registration. Cloudflare will happily answer DNS for a domain the client registered elsewhere and renews themselves, which is exactly the domain an agency must never invoice. Only the Cloudflare Registrar list can tell those two apart. So the Facturatie (invoicing) field on a domain is three-state: Wel factureren (do invoice), Niet factureren (do not invoice), or Volg het register (follow the register). Under Volg het register the hint says whether the domain sits in a connected register, and the Gefactureerd column in the domain list prints volgens register beside the answer. Only a register that has actually answered may narrow what gets invoiced: until then, every undecided domain bills exactly as it did before."
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "key": "cloudflare.settings.manage",
+        "nl": "Een Cloudflare-account toevoegen, het token vervangen, controleren of verwijderen, en de sync draaien. Dit recht opent ook Instellingen → Cloudflare.",
+        "en": "Add a Cloudflare account, rotate, verify or delete its token, and run the sync. This permission is also what opens Instellingen → Cloudflare."
+      },
+      {
+        "key": "cloudflare.dns.read",
+        "nl": "De zonelijst, de DNS-tabel en de export, het opgeslagen statusrapport en de accountkiezer.",
+        "en": "The zone list, the DNS table and its export, the stored status report and the account picker."
+      },
+      {
+        "key": "cloudflare.zone.manage",
+        "nl": "Een zone aanmaken of overnemen, DNS bewerken, de domeinbrede omleiding zetten of verwijderen, en Pages koppelen. Alle drie de rechten zijn standaard alleen voor beheerders en worden nooit aan de rol client gegeven.",
+        "en": "Create or adopt a zone, edit DNS, set or remove the domain-wide redirect, and link Pages. All three permissions are admin-only by default and are never granted to the seeded client role."
+      }
+    ],
+    "limits": {
+      "nl": [
+        "Er draait geen achtergrondsync. Zones ophalen is een knop: zones, Pages-projecten en de Registrar-lijst verversen zichzelf niet op een schema.",
+        "De Registrar-helft heeft nog nooit tegen een echt Cloudflare Registrar-account gedraaid. Elk veld wordt defensief gelezen en docs/CLOUDFLARE.md houdt een checklist bij voor de dag dat zo'n account er is.",
+        "schakl. kiest nooit zelf een Cloudflare-account. Bestaat dezelfde apex in meerdere accounts, dan weigert het koppelen: een zone in het verkeerde account is niet te verplaatsen, alleen te verwijderen en opnieuw aan te maken, met een nameserverwijziging en een propagatievenster ertussen.",
+        "Conflicten worden gemeld, niet opgelost. Een andere omleidingsregel of page rule blijft staan, en Bulk Redirects op accountniveau worden helemaal niet bekeken.",
+        "De zonetabel in Instellingen toont maximaal 200 zones zonder pager. Een account met meer zones laat hier niet alles zien.",
+        "Een accountregel verwijderen haalt alleen de lokale rijen weg (zones, omleidingen, Pages-projecten en koppelingen). Bij Cloudflare verandert er niets."
+      ],
+      "en": [
+        "There is no background sync. Zones ophalen is a button: zones, Pages projects and the Registrar list never refresh themselves on a schedule.",
+        "The Registrar half has never been exercised against a live Cloudflare Registrar account. Every field is parsed defensively, and docs/CLOUDFLARE.md carries a checklist to run the day such an account exists.",
+        "schakl. never guesses which Cloudflare account. If the same apex exists in several of them, connecting is refused — a zone created in the wrong account cannot be moved, only deleted and recreated, with a nameserver change and a propagation window in between.",
+        "Conflicts are reported, never resolved. Another redirect rule or page rule stays where it is, and account-level Bulk Redirects are not inspected at all.",
+        "The zone table in Instellingen is a flat inventory capped at 200 zones with no pager. An account holding more will not show them all on that screen.",
+        "Deleting an account row removes only the local rows (zones, redirects, Pages projects and links). Nothing changes at Cloudflare."
+      ]
+    }
+  }
+}

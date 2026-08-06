@@ -1,0 +1,154 @@
+{
+  "slug": "search-console",
+  "name": "Google Search Console",
+  "order": 51,
+  "category": "marketing",
+  "status": "live",
+  "lucide": "search",
+  "mark": {
+    "monogram": "SC",
+    "color": "#4285F4"
+  },
+  "tagline": {
+    "nl": "Kliks, vertoningen en posities per klant",
+    "en": "Clicks, impressions and positions per client"
+  },
+  "summary": {
+    "nl": "Je koppelt per klant een Search Console-property op de klantpagina, een domeinproperty of een URL-prefix. Kliks, vertoningen, CTR en gemiddelde positie worden per dag bewaard, en de tabel met stijgers en dalers laat zien welke zoektermen ten opzichte van de vorige periode bewogen zijn. Dezelfde Google-toestemming als Analytics en Ads, dus geen extra login.",
+    "en": "You link a Search Console property per client on the client's page, either a domain property or a URL prefix. Clicks, impressions, CTR and average position are stored per day, and the movers table shows which queries shifted against the previous period. The same Google consent as Analytics and Ads, so no extra login."
+  },
+  "highlights": {
+    "nl": [
+      "Kliks, vertoningen, CTR en gemiddelde positie, per dag bewaard",
+      "Topzoektermen, toppagina's en de grootste stijgers en dalers",
+      "Search Console maakt cijfers twee tot drie dagen later definitief; de nachtelijke run haalt de laatste week opnieuw op"
+    ],
+    "en": [
+      "Clicks, impressions, CTR and average position, stored per day",
+      "Top queries, top pages and the biggest movers",
+      "Search Console finalises data two to three days late; the nightly run re-pulls the last week"
+    ]
+  },
+  "where": {
+    "nl": "Klanten → de klant → paneel Marketing, plus het tabblad Marketing van die klant en Overzicht → Marketing.",
+    "en": "Klanten → de klant → paneel Marketing (Clients → the client → Marketing panel), plus that client's Marketing tab and Overzicht → Marketing (Overview → Marketing)."
+  },
+  "docs": "/docs/integrations/marketing-sources/",
+  "page": {
+    "lead": {
+      "nl": "Search Console hangt aan dezelfde klantkoppeling en dezelfde Google-toestemming als Analytics. Wat het toevoegt is de kant van de zoekresultaten: waarop je gevonden wordt, hoe vaak daarop geklikt wordt en wat er sinds vorige maand veranderd is.",
+      "en": "Search Console hangs off the same per-client link and the same Google consent as Analytics. What it adds is the search-results side: what you are found on, how often that gets clicked, and what changed since last month."
+    },
+    "requirements": {
+      "nl": [
+        "De module Marketing staat aan en is gelicentieerd voor deze werkomgeving (Instellingen → Modules)",
+        "Een Google Cloud-project met een OAuth-client, ingesteld onder Instellingen → Google Workspace",
+        "De Google Search Console API staat aan in datzelfde project",
+        "Een Google-account dat in Search Console toegang heeft tot de property, gekoppeld onder Instellingen → Mijn account",
+        "Het recht marketing.link.manage om accounts te mogen koppelen"
+      ],
+      "en": [
+        "The Marketing module is enabled and licensed for this workspace (Instellingen → Modules)",
+        "A Google Cloud project with an OAuth client, configured under Instellingen → Google Workspace",
+        "The Google Search Console API is switched on in that same project",
+        "A Google account that has access to the property in Search Console, connected under Instellingen → Mijn account",
+        "The marketing.link.manage permission, to be allowed to link accounts"
+      ]
+    },
+    "steps": {
+      "nl": [
+        "Zet de <strong>Google Search Console API</strong> aan in het Google Cloud-project waar je OAuth-client bij hoort.",
+        "Ga naar <strong>Instellingen → Mijn account</strong> en koppel je Google-account, als dat nog niet gebeurd is. Die ene toestemming dekt Analytics, Search Console en Ads samen.",
+        "Open <strong>Klanten → de klant</strong> en klik in het paneel <strong>Marketing</strong> op bewerken.",
+        "Kies <strong>Account koppelen</strong>, zet de bron op <code>Search Console-site</code> en pak de property van deze klant. Een domeinproperty staat in de lijst zonder het voorvoegsel <code>sc-domain:</code>, dus <code>klant.nl</code> is de domeinproperty en <code>https://klant.nl/</code> de URL-prefix.",
+        "Meet de klant meerdere sites, koppel dan per site een property en zet bij <strong>Koppelen aan website</strong> de juiste site erbij; het paneel groepeert daarop.",
+        "De koppeling haalt ongeveer 13 maanden historie op en wordt daarna elke nacht bijgewerkt, waarbij de laatste zeven dagen opnieuw worden opgehaald."
+      ],
+      "en": [
+        "Switch on the <strong>Google Search Console API</strong> in the Google Cloud project your OAuth client belongs to.",
+        "Go to <strong>Instellingen → Mijn account</strong> (Settings → My account) and connect your Google account if you haven't. That single consent covers Analytics, Search Console and Ads together.",
+        "Open <strong>Klanten → de klant</strong> (Clients → the client) and click edit on the <strong>Marketing</strong> panel.",
+        "Choose <strong>Account koppelen</strong> (Link account), set the source to <code>Search Console-site</code> and pick this client's property. A domain property is listed without its <code>sc-domain:</code> prefix, so <code>klant.nl</code> is the domain property and <code>https://klant.nl/</code> the URL prefix.",
+        "If the client measures several sites, link a property per site and set the matching site under <strong>Koppelen aan website</strong> (Link to website) — the panel groups on it.",
+        "The link backfills roughly 13 months and is then updated nightly, re-pulling the last seven days on every run."
+      ]
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Vier cijfers per dag, en twee ervan zijn gemiddelden",
+          "en": "Four figures per day, two of them averages"
+        },
+        "body": {
+          "nl": "Per dag worden kliks, vertoningen, CTR en gemiddelde positie bewaard. Kliks en vertoningen worden over een periode opgeteld, CTR en gemiddelde positie worden opnieuw berekend: de CTR over dertig dagen is niet de som van dertig dagelijkse percentages. Bij de positie is bovendien een lager getal beter, dus een stijgende lijn wordt als achteruitgang gelezen en niet als winst.",
+          "en": "Clicks, impressions, CTR and average position are stored per day. Clicks and impressions are summed over a range; CTR and average position are re-derived, because thirty days of CTR is not the sum of thirty daily percentages. On position a lower number is also better, so a rising line reads as a decline rather than as a win."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Stijgers en dalers, tegen de vorige periode",
+          "en": "Movers, against the previous period"
+        },
+        "body": {
+          "nl": "De uitsplitsing Grootste stijgers en dalers beantwoordt de vraag die een marketeer daadwerkelijk stelt: welke zoektermen zijn bewogen. Hij vergelijkt de gemiddelde positie in de gekozen periode met precies dezelfde lengte daarvoor, per zoekterm, en sorteert op de grootte van de verandering, omhoog en omlaag door elkaar. Zoektermen die in één van beide periodes ontbreken doen niet mee: zonder vertrekpunt is er geen verandering te melden.",
+          "en": "The movers drill-down answers the question a marketeer actually asks: which queries moved. It compares average position in the selected range with the equal-length window right before it, per query, and sorts on the size of the change, gains and losses together. Queries missing from either window are left out — with no starting point there is no change to report."
+        },
+        "bullets": {
+          "nl": [
+            "Topzoektermen met kliks, vertoningen, CTR en positie",
+            "Toppagina's, met een link naar de pagina zelf",
+            "Stijgers en dalers, met de positieverandering als apart getal"
+          ],
+          "en": [
+            "Top queries with clicks, impressions, CTR and position",
+            "Top pages, each linking out to the page itself",
+            "Movers, with the position change as its own number"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Late cijfers herstellen zichzelf",
+          "en": "Late data heals itself"
+        },
+        "body": {
+          "nl": "Search Console levert de laatste dagen pas twee tot drie dagen later definitief aan. Daarom haalt de nachtelijke run niet alleen gisteren op, maar de hele laatste week opnieuw, en overschrijft hij de dagen die hij al had. Cijfers van eergisteren kunnen dus nog een keer veranderen, en dat is bedoeld: de alternatieve keuze zou zijn dat de eerste, onvolledige meting voor altijd blijft staan.",
+          "en": "Search Console only finalises the most recent days two to three days later. So the nightly run does not just fetch yesterday — it re-pulls the whole trailing week and overwrites the days it already had. Figures from the day before yesterday can therefore change once more, by design: the alternative would leave the first, incomplete reading standing forever."
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "key": "marketing.metrics.read",
+        "nl": "De marketingcijfers van een klant lezen: het paneel, het tabblad en de dashboardwidget. Standaard voor beheerder, medewerker en klantportaal.",
+        "en": "Read a client's marketing figures: the panel, the tab and the dashboard widget. Granted by default to admin, member and the client portal."
+      },
+      {
+        "key": "marketing.link.manage",
+        "nl": "Search Console-property's koppelen en ontkoppelen, en de accountkiezer openen. Standaard alleen beheerder.",
+        "en": "Link and unlink Search Console properties and open the account picker. Admin only by default."
+      },
+      {
+        "key": "marketing.overview.read",
+        "nl": "Het cross-klantoverzicht onder Overzicht → Marketing, waar de kolom Gem. positie vandaan komt. Standaard alleen beheerder.",
+        "en": "The cross-client grid under Overzicht → Marketing, which is where the average-position column comes from. Admin only by default."
+      }
+    ],
+    "limits": {
+      "nl": [
+        "Er wordt niets teruggeschreven: geen sitemaps indienen, geen URL's laten indexeren, geen dekkingsproblemen oplossen.",
+        "Alleen property's waar het gekoppelde Google-account zelf toegang toe heeft staan in de kiezer.",
+        "Topzoektermen en toppagina's tonen tien regels; de stijgers en dalers worden bepaald over de drukste zoektermen van elke periode.",
+        "CTR en gemiddelde positie over een periode worden opnieuw berekend en nooit opgeteld.",
+        "De cijfers van de laatste paar dagen zijn nog niet definitief en kunnen bij een volgende run veranderen."
+      ],
+      "en": [
+        "Nothing is written back: no submitting sitemaps, no requesting indexing, no fixing coverage issues.",
+        "Only properties the connected Google account itself has access to appear in the picker.",
+        "Top queries and top pages show ten rows; movers are computed over each period's busiest queries.",
+        "CTR and average position over a range are re-derived, never summed.",
+        "The last few days are not final yet and can change on a later run."
+      ]
+    }
+  }
+}

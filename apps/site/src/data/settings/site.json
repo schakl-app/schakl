@@ -23,12 +23,15 @@
   },
   "nav": [
     { "href": "/#features", "nl": "Functies", "en": "Features" },
+    { "href": "/integrations/", "nl": "Koppelingen", "en": "Integrations" },
     { "href": "/#selfhost", "nl": "Hosting", "en": "Hosting" },
     { "href": "/docs/", "nl": "Documentatie", "en": "Docs" },
     { "href": "/contact/", "nl": "Contact", "en": "Contact" }
   ],
   "footerLinks": [
     { "href": "/docs/", "nl": "Documentatie", "en": "Documentation" },
+    { "href": "/features/", "nl": "Functies", "en": "Features" },
+    { "href": "/integrations/", "nl": "Koppelingen", "en": "Integrations" },
     { "href": "/docs/admin/installation/", "nl": "Installeren", "en": "Install" },
     { "href": "/contact/", "nl": "Contact", "en": "Contact" },
     { "href": "/interest/", "nl": "Interesse", "en": "Interest" },
