@@ -380,3 +380,47 @@ async def test_upload_costs_one_extra_statement(client_for, monkeypatch, count_q
         assert again.status_code == 201
     assert len(counter.matching("file_blobs")) == 1, counter.matching("file_blobs")
     assert store.puts == 1
+
+
+async def test_a_renderer_reads_a_stored_image_back_by_its_own_storage_key(
+    client_for, monkeypatch
+) -> None:
+    """The happy path of a loader whose failure branch is a shrug.
+
+    ``load_org_image`` composed ``{org_id}/{id}`` — the layout *before* de-duplication. Since
+    ``file_blobs`` the object lives at the blob's key, so the path it built had not existed for
+    any file written since, and every branded document printed without its logo, its background
+    mark and its report cover. Nothing caught it because the miss is an ``OSError`` and the
+    function is deliberately forgiving: "branding must never be able to fail an invoice" is the
+    right call, and it is exactly what makes a *positive* round-trip the only honest test.
+
+    So this writes through the real upload route and reads back through the real loader. A
+    mocked backend keyed on whatever the loader asked for would agree with itself and prove
+    nothing; ``_CountingStorage`` only holds the key the *writer* used.
+    """
+    from app.core.branding import load_org_image
+    from app.core.tenancy import RequestContext
+
+    store = _counting_backend(monkeypatch)
+    monkeypatch.setattr(
+        "app.core.branding.storage_for", lambda _name, s=store: s, raising=False
+    )
+    t = await make_tenant("brandread")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        created = await c.post(
+            "/api/v1/files",
+            files={"file": ("cover.png", _PNG, "image/png")},
+            headers=headers,
+        )
+    assert created.status_code == 201
+    file_id = uuid.UUID(created.json()["id"])
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        org = await session.get(type(t.org), t.org.id)
+        ctx = RequestContext(user=t.user, org=org, session=session)
+        payload, content_type = await load_org_image(ctx, file_id, what="report cover")
+
+    assert payload == _PNG, "the renderer read nothing back — check the key it composed"
+    assert content_type == "image/png"
