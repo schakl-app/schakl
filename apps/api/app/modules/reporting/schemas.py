@@ -90,6 +90,18 @@ class ReportTemplateRead(BaseModel):
     is_default: bool = False
 
 
+class ReportTemplateSource(BaseModel):
+    """A shipped design's own source, for branching a custom report template off it.
+
+    Named for its module rather than ``TemplateSource``: invoicing already publishes a schema
+    by that name, and two same-named models make FastAPI qualify *both* components in the
+    OpenAPI document — renaming a type in a module that changed nothing.
+    """
+
+    html: str
+    css: str
+
+
 class SectionCatalogEntry(BaseModel):
     """One section a template may order or switch off — the registry, made visible."""
 

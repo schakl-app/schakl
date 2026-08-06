@@ -259,5 +259,37 @@ defensive.
 - **A new source** is a `MarketingSourceAdapter` with its `auth` kind.
 - **A new design** is a Jinja file in `render/designs/` plus a name in `BUILTIN_DESIGNS`; a
   tenant's own is `design: "custom"`, sandboxed, against the same context.
+
+### Bringing your own report design
+
+A tenant's own document is a `report_templates` row with `design: "custom"` and a `custom_html`
+body (plus optional `custom_css`), rendered inside `_shell.html` — so the page geometry, the
+palette and the "not for the client" band on an internal analysis are not theirs to re-derive
+or to drop. The body renders against the dict in `render/context.py`: **strings and lists,
+never rows**, with `fmt`, `fmt_number`, `fmt_delta` and `delta_class` supplied so a Dutch
+thousands separator is not something anyone reimplements in Jinja.
+
+Start from the shipped design rather than a blank page:
+
+```
+GET  /api/v1/reporting/templates/designs/standard/source   → {html, css}
+PUT  /api/v1/reporting/templates/{id}   { design: "custom", custom_html: …, custom_css: … }
+```
+
+`…/source` returns the *same* `standard.body.html` and `standard.css` the built-in renders
+from, so what an author gets is what they saw. The save path renders the body against a sample
+context and refuses a template that cannot render (`validate_custom_source`) — a syntax error is
+a red field under the editor, not a report that fails the morning it is due.
+
+Two limits are the sandbox, not an oversight: `{% include %}` / `{% extends %}` resolve against
+no loader, and every URL but `data:` is refused, so a design inlines its images or does without
+them. Charts arrive already rendered as inline SVG in `section.chart`.
+
+**The one thing Instellingen → Rapportage does not yet do is edit that body.** The invoicing
+template editor's *Bron* tab (`$lib/modules/invoicing/TemplateEditor.svelte`) is the shape this
+wants and does not have yet; until it does, a custom report design is set over the API. What the
+settings form *does* now guarantee is that it will not destroy one: it carries `design`,
+`custom_html`, `custom_css` and `cover_image_file_id` through a save instead of posting nulls
+for the fields it draws no control for.
 - **A second document family** (a quarterly board pack, a campaign wrap-up) is a
   `DocumentEngine` and its own designs directory — the shared engine is already the seam.

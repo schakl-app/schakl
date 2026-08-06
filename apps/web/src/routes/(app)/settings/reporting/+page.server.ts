@@ -123,15 +123,24 @@ export const actions: Actions = {
     } catch {
       layout = { sections: [] };
     }
+    // The PUT is wholesale, and this form edits four of a template's ten fields — so anything
+    // it does not draw a control for has to be *carried*, not defaulted. Sending `design:
+    // "standard"` and `custom_html: null` because the form has no such input reads to the API
+    // as a deliberate "throw the tenant's own design away", and renaming a template silently
+    // did exactly that. Absent means unchanged; only a control the user actually saw may clear
+    // a field.
+    const current = id
+      ? ((await api.GET("/api/v1/reporting/templates", {})).data ?? []).find((t) => t.id === id)
+      : undefined;
     const body = {
       name: String(form.get("name") ?? "").trim(),
       audience: String(form.get("audience") ?? "client") as "client" | "internal",
-      design: String(form.get("design") ?? "standard"),
+      design: current?.design ?? "standard",
       layout,
-      custom_html: null,
-      custom_css: null,
+      custom_html: current?.custom_html ?? null,
+      custom_css: current?.custom_css ?? null,
       accent_color: String(form.get("accent_color") ?? "").trim() || null,
-      cover_image_file_id: null,
+      cover_image_file_id: current?.cover_image_file_id ?? null,
       intro_text: String(form.get("intro_text") ?? "").trim() || null,
       is_default: form.get("is_default") === "on",
     };

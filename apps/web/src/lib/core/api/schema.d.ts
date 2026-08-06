@@ -7247,6 +7247,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/reporting/templates/designs/{design}/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Template Source
+         * @description A shipped design's own HTML and CSS, to start a custom report template from.
+         *
+         *     The counterpart invoicing has had since its designer shipped, and the piece whose absence
+         *     made ``design: "custom"`` a field nobody could reach: writing a report template from a
+         *     blank page means knowing the whole render context by heart, while branching from the
+         *     design you already like means changing the two things you want changed. These are the
+         *     *same* files ``standard`` renders from, so what an author gets is what they saw.
+         *
+         *     Declared on ``reporting.settings.manage`` because handing back the body a tenant is about
+         *     to author against is part of the same act as saving it.
+         */
+        get: operations["template_source_api_v1_reporting_templates_designs__design__source_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/reporting/templates/sections": {
         parameters: {
             query?: never;
@@ -18650,6 +18679,20 @@ export interface components {
             };
             /** Name */
             name: string;
+        };
+        /**
+         * ReportTemplateSource
+         * @description A shipped design's own source, for branching a custom report template off it.
+         *
+         *     Named for its module rather than ``TemplateSource``: invoicing already publishes a schema
+         *     by that name, and two same-named models make FastAPI qualify *both* components in the
+         *     OpenAPI document — renaming a type in a module that changed nothing.
+         */
+        ReportTemplateSource: {
+            /** Css */
+            css: string;
+            /** Html */
+            html: string;
         };
         /** ReportTemplateWrite */
         ReportTemplateWrite: {
@@ -37486,6 +37529,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReportTemplateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    template_source_api_v1_reporting_templates_designs__design__source_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                design: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportTemplateSource"];
                 };
             };
             /** @description Validation Error */
