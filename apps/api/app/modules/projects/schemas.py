@@ -36,6 +36,12 @@ class ProjectBase(BaseModel):
 
 
 class ProjectCreate(ProjectBase):
+    # A project is work done *for* somebody, so it is created for a client and never floats
+    # unattached: the budget, the hours it prices, the invoice it ends up on and the panel it
+    # appears under all read this. Narrowed from the base rather than declared there, because
+    # ``ProjectRead`` shares that base and rows predating the rule keep an honest ``None``
+    # (the column stays nullable — see the update rule in ``service.py``).
+    company_id: uuid.UUID
     # ``None`` (not ``[]``) means the caller didn't say: fall back to ``responsible_user_id``,
     # else inherit the company's primary.
     assignees: list[AssigneeWrite] | None = None

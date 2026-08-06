@@ -314,7 +314,11 @@ async def test_assignees_never_cross_tenants(client_for) -> None:
         project_id = (
             await c.post(
                 "/api/v1/projects",
-                json={"name": "A Project", "assignees": [{"user_id": str(a.user.id)}]},
+                json={
+                    "name": "A Project",
+                    "company_id": company_id,
+                    "assignees": [{"user_id": str(a.user.id)}],
+                },
                 headers=headers,
             )
         ).json()["id"]

@@ -66,6 +66,8 @@ from app.modules.invoicing.models import (
     InvoiceStatus,
     PaymentIntentStatus,
 )
+from app.modules.invoicing.paylinks import portal_invoice_url, public_invoice_url
+from app.modules.invoicing.public import IN_FLIGHT_STATUSES, REFRESH_MIN_INTERVAL
 from app.modules.invoicing.schemas import InvoicePaymentIntentCreate
 from app.modules.invoicing.service import InvoiceService, org_today
 
@@ -186,7 +188,11 @@ class InvoicePaymentService:
 
     # --- starting a payment ---------------------------------------------------- #
     async def start(
-        self, invoice_id: uuid.UUID, data: InvoicePaymentIntentCreate
+        self,
+        invoice_id: uuid.UUID,
+        data: InvoicePaymentIntentCreate,
+        *,
+        surface: str = "portal",
     ) -> InvoicePaymentIntent:
         """Open a checkout for an invoice's outstanding balance.
 
@@ -194,6 +200,14 @@ class InvoicePaymentService:
         by staff, which is why every narrowing rides the repository: ``get_or_404`` is the
         portal one for an external login, so a draft and another company's invoice are both
         already 404 by the time this body runs.
+
+        ``surface`` decides which of *our* pages the provider returns the payer to, and it is
+        an enum-ish string rather than a URL for one reason: a caller-supplied ``return_url``
+        on a route a client can reach is an open redirect, and this one would be an open
+        redirect handed to a payment provider to send someone to after they have typed their
+        bank details. The two values name pages this module already owns
+        (``paylinks.public_invoice_url`` / ``portal_invoice_url``), so the worst a wrong value
+        can do is land somebody on the other one of ours.
         """
         self.ctx.require("invoicing.payment.link")
         invoice = await self.invoices.repo.get_or_404(invoice_id)
@@ -226,7 +240,7 @@ class InvoicePaymentService:
             amount=amount,
             currency=invoice.currency,
             description=self._description(invoice),
-            return_url=f"{org_base_url(self.ctx.org)}/invoices/{invoice.id}",
+            return_url=self._return_url(invoice, surface),
             webhook_url=callback_url(
                 self.ctx.org,
                 account.provider,
@@ -304,12 +318,84 @@ class InvoicePaymentService:
         )
         return rows.scalars().first()
 
+    def _return_url(self, invoice: Invoice, surface: str) -> str:
+        """Where the provider drops the payer afterwards — the page they started from.
+
+        Sending a public payer to the portal would end a successful payment on a sign-in screen
+        for an account they do not have, which is the failure #304 exists to remove; sending a
+        signed-in one to the public page would silently downgrade them out of their own session.
+
+        The URL carries ``?return=1``. It is not decoration and it is not state: it is how the
+        landing page knows it is a *return* and may spend one provider call asking whether the
+        money arrived (``public.PublicInvoiceService.refresh`` / the invoice route's own
+        refresh). Without it every ordinary view of an invoice with a stale open intent would
+        do the same, which is a poll nobody asked for on a page nobody is waiting on.
+        """
+        base = org_base_url(self.ctx.org)
+        if surface == "public" and invoice.public_token:
+            return f"{public_invoice_url(base, invoice.public_token)}?return=1"
+        return f"{portal_invoice_url(base, invoice.id)}?return=1"
+
     def _description(self, invoice: Invoice) -> str:
         """What the payer sees on their statement. Providers truncate hard (Mollie at 255,
         card networks far shorter), so it leads with the number a client can match."""
         brand = self.ctx.org.name
         number = invoice.number or str(invoice.id)[:8]
         return f"{number} — {brand}"[:255]
+
+    async def refresh_pending(
+        self, invoice_id: uuid.UUID
+    ) -> tuple[bool, InvoicePaymentIntent | None]:
+        """Ask the provider about this invoice's in-flight attempts. "Did we ask", plus the latest.
+
+        The answer to "does a payer coming back from a checkout see their money?" (#304). They
+        did not, and the reason is not a bug anywhere in the settle path: a provider's webhook
+        is **asynchronous and routinely later than the browser redirect** — Mollie documents
+        exactly this and makes no ordering promise — so the return landed on a page whose SSR
+        read had happened before anything told us. The invoice said *open* to the person who
+        had just paid it, and the only cure on the screen was ``sync``, which is ``:any`` and
+        therefore staff-only: the one human who could prove the payment was the one human
+        without a button.
+
+        So the *landing* asks, once, and the ordinary reconcile cron stays the safety net
+        underneath. Two bounds keep it honest, and both matter because the public sibling of
+        this method (``public.PublicInvoiceService.refresh``) is reachable with no session:
+
+        * **Only non-final attempts.** A final status is final; asking again can only return
+          what is already stored.
+        * **Throttled on ``refreshed_at``** (:data:`REFRESH_MIN_INTERVAL`) — a column this
+          method alone writes. At most one outbound call per attempt per interval, whatever
+          the caller does, so a page polling every two seconds costs one provider call and a
+          public endpoint cannot be turned into an amplifier pointed at somebody else's API.
+
+          The clock is its own, and that is not tidiness. Throttling on ``synced_at`` — the
+          obvious reuse — meant the *creation* of the intent counted as a poll, so a payer
+          who came back inside the window was told there was nothing to ask about the payment
+          they had just made. The one case the feature exists for was the one case it skipped.
+          For the same reason a webhook and the reconcile cron leave it alone: neither is a
+          caller whose rate needs bounding, and a well-timed callback would otherwise suppress
+          the payer's own first press.
+
+        ``:own`` on purpose, unlike ``sync``: this is not the operator's repair action, it is
+        the payer finding out what happened to their own money. It spends nothing when there is
+        nothing in flight.
+        """
+        self.ctx.require("invoicing.payment.link")
+        intents = await self.list_for(invoice_id)
+        cutoff = datetime.now(UTC) - REFRESH_MIN_INTERVAL
+        asked = False
+        for intent in intents:
+            if intent.status not in IN_FLIGHT_STATUSES:
+                continue
+            if intent.refreshed_at is not None and intent.refreshed_at > cutoff:
+                continue
+            # Stamped *before* the call, so a provider that hangs cannot be hammered by a page
+            # whose polls all start before any of them finish.
+            await self.intents.update(intent, refreshed_at=datetime.now(UTC))
+            await self.reconcile(intent)
+            asked = True
+        latest = intents[0] if intents else None
+        return asked, latest
 
     # --- reconciling ----------------------------------------------------------- #
     async def reconcile(

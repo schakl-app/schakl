@@ -2,7 +2,7 @@
   /** The quote print surface — the invoice one's twin; see it for why the frame prints. */
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
-  import DocumentFrame from "$lib/modules/invoicing/DocumentFrame.svelte";
+  import DocumentFrame from "$lib/core/ui/DocumentFrame.svelte";
 
   let { data } = $props();
 

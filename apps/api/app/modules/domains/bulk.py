@@ -6,8 +6,17 @@ they actually invoice. All four of those are one shared value over a long list.
 
 ``invoiceable`` keeps its three states here (#298), and that is why the field is clearable:
 ``true``/``false`` are somebody's decision, and **clearing it means "follow the register"** —
-which is a real answer, not an empty one. It is also the only clearable field on this
-descriptor, because a domain with no client is nonsense and a domain always has a status.
+which is a real answer, not an empty one.
+
+``next_invoice_date`` is the second, and it is the one place this descriptor deliberately
+disagrees with the import it borrows from. Both surfaces write the same field through the same
+service call; they differ on what an **empty** one means. In a file, a blank column is what an
+export that somebody edited two cells of comes back as, and letting it reschedule a thousand
+renewal invoices is not a thing a blank should be able to say — so the import leaves it alone.
+In this dialog the field is filled in over a selection the user is looking at, one they had to
+tick row by row, and "put these back on the date they should have" is exactly the repair a bulk
+edit is for: hence :class:`BulkField`'s ``clearable`` override, which is what that flag exists
+for (its docstring makes the same argument in the other direction, for a contact's client).
 
 The name is not editable, in bulk or otherwise: it *is* the record.
 """
@@ -38,6 +47,7 @@ DOMAIN_BULK = BulkDescriptor(
         BulkField("dns_provider"),
         BulkField("email_provider"),
         BulkField("invoiceable"),
+        BulkField("next_invoice_date", clearable=True),
     ),
     delete_permission="domains.domain.delete",
     delete_row=_delete,

@@ -15,6 +15,35 @@
 import Icon from '../showcase/Icon.astro';
 import { brandMarks } from '../../lib/brand-marks';
 
+// Vendor-supplied logos (src/assets/brands/<slug>.svg) win over the generated set: a file put
+// there came from the vendor's own brand kit, which beats a community redraw. They are inlined
+// rather than <img>-ed so they cost no request and can inherit currentColor where they are
+// monochrome. Anything full-colour keeps its own fills and simply ignores the tint.
+const vendorLogos = import.meta.glob('../../assets/brands/*.svg', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+}) as Record<string, string>;
+
+const vendorLogoBySlug: Record<string, string> = Object.fromEntries(
+  Object.entries(vendorLogos).map(([p, svg]) => [p.split('/').pop()!.replace(/\.svg$/, ''), svg]),
+);
+
+// A vendor who only publishes a raster gets one too. These are app-icon shaped — the mark on the
+// vendor's own background, edge to edge — so they fill the tile and are clipped by its radius
+// rather than floated inside it on a tint that would fight the icon's own background.
+const vendorRasters = import.meta.glob('../../assets/brands/*.{png,webp,jpg,jpeg}', {
+  import: 'default',
+  eager: true,
+}) as Record<string, { src: string } | string>;
+
+const vendorRasterBySlug: Record<string, string> = Object.fromEntries(
+  Object.entries(vendorRasters).map(([p, asset]) => [
+    p.split('/').pop()!.replace(/\.(png|webp|jpe?g)$/, ''),
+    typeof asset === 'string' ? asset : asset.src,
+  ]),
+);
+
 interface Props {
   /** Integration slug — the key into the brand-mark set. Absent or unknown ⇒ monogram. */
   slug?: string;
@@ -30,16 +59,22 @@ const { slug, monogram, color, lucide, size = 3, class: cls = '' } = Astro.props
 // No brand colour on the card falls back to the site accent, so a new integration added in the
 // CMS without one still looks deliberate rather than grey.
 const tint = color || 'var(--accent)';
+const vendorLogo = slug ? vendorLogoBySlug[slug] : undefined;
+const vendorRaster = slug && !vendorLogo ? vendorRasterBySlug[slug] : undefined;
 const path = slug ? brandMarks[slug] : undefined;
 ---
 
 <span
-  class={`mark ${cls}`}
+  class={`mark ${vendorRaster ? 'mark--raster' : ''} ${cls}`}
   style={`--mark-color:${tint};--mark-size:${size}rem`}
   aria-hidden="true"
 >
   {
-    path ? (
+    vendorRaster ? (
+      <img class="mark__raster" src={vendorRaster} alt="" loading="lazy" decoding="async" />
+    ) : vendorLogo ? (
+      <span class="mark__vendor" set:html={vendorLogo} />
+    ) : path ? (
       <svg class="mark__logo" viewBox="0 0 24 24" fill="currentColor" focusable="false">
         <path d={path} />
       </svg>
@@ -78,6 +113,31 @@ const path = slug ? brandMarks[slug] : undefined;
        leave the logos looking oversized next to the monograms they sit beside. */
     width: calc(var(--mark-size) * 0.5);
     height: calc(var(--mark-size) * 0.5);
+    display: block;
+  }
+  /* An app-icon raster brings its own background, so the tile drops its tint and becomes a
+     frame: the border stays, because a white-backed icon on a light page needs one edge. */
+  .mark--raster {
+    background: none;
+    overflow: hidden;
+  }
+  .mark__raster {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  /* A vendor file carries its own aspect ratio, so it is fitted to a box rather than given a
+     fixed square: preserveAspectRatio contains it, and a wide mark uses the extra width instead
+     of being squeezed into the height a square glyph would take. */
+  .mark__vendor {
+    display: block;
+    width: calc(var(--mark-size) * 0.62);
+    height: calc(var(--mark-size) * 0.62);
+  }
+  .mark__vendor :global(svg) {
+    width: 100%;
+    height: 100%;
     display: block;
   }
   .mark__mono {

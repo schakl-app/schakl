@@ -40,6 +40,7 @@
   import { Copy, ExternalLink, RefreshCw } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import { invalidateAll } from "$app/navigation";
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -57,6 +58,9 @@
     canStart,
     canSync,
     agencyView,
+    returning = false,
+    invoiceId,
+    publicUrl = "",
     form,
   }: {
     /** This invoice's attempts, newest first (the API orders them). */
@@ -75,6 +79,17 @@
     /** `invoicing.invoice.read:any`: this viewer reads the agency's register, so speak to them
      *  as the agency. Naming, never gating. */
     agencyView: boolean;
+    /** This page load is the hop back from a provider's checkout (`?return=1`, #304). Only
+     *  then does the card poll — an ordinary view of an invoice with a stale open intent is
+     *  nobody waiting on anything, and polling it would be a request nobody asked for. */
+    returning?: boolean;
+    /** For the poll's own endpoint. The card is mounted by two different routes, so it takes
+     *  the id rather than reading a param it cannot be sure of. */
+    invoiceId: string;
+    /** `InvoiceRead.public_url` (#304) — the link on the paper, so the agency can hand it to a
+     *  client who rings up. Empty for a draft, for an org with public links off, and always
+     *  for an external login (the API decides all three; this only draws what it is given). */
+    publicUrl?: string;
     /**
      * The host route's whole `form` result. Untyped beyond "an object" for the same reason
      * `PortalCard` does it: a page's `ActionData` is the union of *every* action on it, so a
@@ -97,16 +112,17 @@
   // Copy feedback, the house clipboard pattern (Instellingen → Domein, → SSO): the label swaps
   // for a moment and reverts, keyed by attempt so two rows never both read "gekopieerd".
   let copiedId = $state<string | null>(null);
-  async function copyLink(intent: PaymentIntent) {
-    if (!intent.checkout_url) return;
+  async function copy(value: string, key: string) {
+    if (!value) return;
     try {
-      await navigator.clipboard.writeText(intent.checkout_url);
-      copiedId = intent.id;
+      await navigator.clipboard.writeText(value);
+      copiedId = key;
       setTimeout(() => (copiedId = null), 2000);
     } catch {
       copiedId = null;
     }
   }
+  const copyLink = (intent: PaymentIntent) => copy(intent.checkout_url ?? "", intent.id);
 
   /** How a state reads. Waiting is amber because it is not finished; `authorized` is money
    *  reserved and not yet captured, which is the same "not finished" to a reader. `expired`
@@ -127,7 +143,37 @@
     intent.status === "paid" && intent.settled_at === null && intent.mode !== "test";
 
   const canOffer = $derived(canStart && payable);
-  const visible = $derived(intents.length > 0 || canOffer);
+  const visible = $derived(intents.length > 0 || canOffer || Boolean(publicUrl));
+
+  /**
+   * The payer is back from a checkout and the provider has not confirmed yet (#304).
+   *
+   * The server already asked once during the load, which is what usually makes the first paint
+   * correct. This covers the rest: Mollie's webhook is asynchronous and can lag the redirect by
+   * seconds, and the alternative on screen was the word "open" in front of somebody who had
+   * just paid — with the only repair control (`sync`) being `:any`, i.e. not theirs.
+   */
+  const pendingStatuses = ["open", "pending", "authorized"];
+  const confirming = $derived(
+    returning && intents.some((intent) => pendingStatuses.includes(intent.status)),
+  );
+
+  /**
+   * Bounded three ways so an unattended tab is not a poller: a fixed number of attempts, a
+   * two-second gap, and `confirming` going false the moment an attempt reaches a final state.
+   * The outbound call to the provider is throttled independently at the API (once per attempt
+   * per five seconds), so this interval decides how fast the *screen* updates and nothing else.
+   */
+  let polls = $state(0);
+  $effect(() => {
+    if (!confirming || polls >= 10) return;
+    const timer = setTimeout(async () => {
+      polls += 1;
+      await fetch(`/invoices/${invoiceId}/refresh`, { method: "POST" });
+      await invalidateAll();
+    }, 2000);
+    return () => clearTimeout(timer);
+  });
 </script>
 
 {#if visible}
@@ -136,6 +182,14 @@
 
     {#if paymentError}
       <p class="mb-3 text-sm text-red-600 dark:text-red-400">{t(paymentError)}</p>
+    {/if}
+
+    {#if confirming}
+      <!-- Silence here reads as "my payment did not go through", which is the one thing this
+           screen must never imply to somebody whose money has already left. -->
+      <p class="mb-3 text-sm text-amber-700 dark:text-amber-400" role="status">
+        {t("invoicing.intents.confirming")}
+      </p>
     {/if}
 
     {#if canOffer}
@@ -147,6 +201,28 @@
       {#if agencyView}
         <p class="mt-2 text-xs text-text-muted">{t("invoicing.intents.new_hint")}</p>
       {/if}
+    {/if}
+
+    {#if publicUrl}
+      <!-- The link that is on the paper (#304), so the agency can hand it over when a client
+           rings up rather than re-sending the whole invoice. Shown, not just copyable: seeing
+           the address is how anyone learns the QR leads somewhere they can also type. -->
+      <div class="mt-3 rounded-lg bg-surface p-2.5">
+        <p class="mb-1 text-xs font-medium text-text">{t("invoicing.intents.public_link")}</p>
+        <div class="flex items-center gap-2">
+          <code class="min-w-0 flex-1 truncate text-xs text-text-muted">{publicUrl}</code>
+          <Button
+            type="button"
+            variant="secondary"
+            size="xs"
+            onclick={() => copy(publicUrl, "public")}
+          >
+            <Copy size={13} aria-hidden="true" />
+            {copiedId === "public" ? t("invoicing.intents.copied") : t("invoicing.intents.copy")}
+          </Button>
+        </div>
+        <p class="mt-1 text-xs text-text-muted">{t("invoicing.intents.public_link_hint")}</p>
+      </div>
     {/if}
 
     {#if intents.length === 0}

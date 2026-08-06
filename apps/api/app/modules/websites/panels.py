@@ -13,10 +13,21 @@ from app.core.tenancy import RequestContext
 from app.modules.websites.service import WebsiteService
 from app.registry import PanelSpec
 
+#: How many websites the client card shows before handing over to the list — the domains
+#: panel's number and rule (``domains/panels.py``): the panel is the first page of the list it
+#: links to, same filter and same default sort, so "Alle 12 bekijken" continues where the card
+#: stopped instead of reshuffling.
+_PANEL_LIMIT = 5
+
 
 async def _websites_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
-    websites, _total = await WebsiteService(ctx).list(limit=50, offset=0, company_id=company_id)
+    websites, total = await WebsiteService(ctx).list(
+        limit=_PANEL_LIMIT, offset=0, company_id=company_id
+    )
     return {
+        # The whole count, never the shown one: five over a client who has twelve reads as the
+        # complete answer, which is the one thing a summary must not do.
+        "total": total,
         "websites": [
             {
                 "id": str(w.id),

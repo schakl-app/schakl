@@ -90,6 +90,37 @@ class ReportTemplateRead(BaseModel):
     is_default: bool = False
 
 
+class ReportTemplatePreviewRequest(BaseModel):
+    """An unsaved template, for the editor's live preview.
+
+    Deliberately not :class:`ReportTemplateWrite`. That model requires a ``name``, and a
+    preview that 422s while its name field is empty is a frame that goes blank the moment the
+    author starts a new template. It also carries ``layout``, which decides which sections a
+    *run* gathers and has nothing to say about how the gathered ones are drawn — sending it
+    here would imply the preview honours it.
+    """
+
+    audience: ReportAudience = ReportAudience.CLIENT
+    design: str = Field(default="standard", max_length=32)
+    custom_html: str | None = None
+    custom_css: str | None = None
+    accent_color: str | None = Field(default=None, max_length=16)
+    cover_image_file_id: uuid.UUID | None = None
+    intro_text: str | None = Field(default=None, max_length=4000)
+
+
+class ReportTemplateSource(BaseModel):
+    """A shipped design's own source, for branching a custom report template off it.
+
+    Named for its module rather than ``TemplateSource``: invoicing already publishes a schema
+    by that name, and two same-named models make FastAPI qualify *both* components in the
+    OpenAPI document — renaming a type in a module that changed nothing.
+    """
+
+    html: str
+    css: str
+
+
 class SectionCatalogEntry(BaseModel):
     """One section a template may order or switch off — the registry, made visible."""
 
@@ -267,3 +298,9 @@ class ReportRunBatchRequest(BaseModel):
 class ReportRunBatchResult(BaseModel):
     queued: int
     skipped: list[dict[Literal["company_id", "reason"], Any]] = Field(default_factory=list)
+    #: How many clients the batch actually looked at — an enrolled client is one with a
+    #: reporting profile. Zero is the answer that needs explaining, not hiding.
+    enrolled: int = 0
+    #: Clients with a linked data source and no profile yet. Only counted when nothing was
+    #: enrolled, so the screen can point at the next step instead of shrugging.
+    unconfigured: int = 0

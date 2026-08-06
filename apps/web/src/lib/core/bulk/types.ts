@@ -70,7 +70,16 @@ export interface BulkFieldDef {
 export interface BulkAction {
   label: string;
   icon?: Component;
-  onclick: () => void;
+  /** What the action does. Omit only when it is a `href` navigation instead. */
+  onclick?: () => void;
+  /**
+   * Renders the action as a real `<a>` rather than a button, for the one kind of bulk action
+   * that is a **navigation and not a mutation**: a download (the invoice zip, #307). It then
+   * behaves like every other link here — middle-click, right-click → save as — instead of
+   * being a click handler that happens to set `location`. A disabled action falls back to the
+   * button, because there is no such thing as a disabled anchor.
+   */
+  href?: string;
   danger?: boolean;
   /**
    * How many of the selected rows this action can actually do. Rendered beside the label
@@ -78,6 +87,12 @@ export interface BulkAction {
    * silently did less than it said is the failure this prevents (docs/UX.md, #299).
    */
   eligible?: number;
+  /**
+   * Disables the action and says why, for a limit the selection can exceed rather than a
+   * subset it can miss. `eligible` cannot express this: "Download (50)" over 120 picked rows
+   * would state a number and still leave *which* fifty to chance.
+   */
+  disabledReason?: string;
 }
 
 /**

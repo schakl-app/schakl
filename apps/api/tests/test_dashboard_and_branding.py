@@ -191,7 +191,12 @@ async def test_search_filters(client_for) -> None:
         hit = await c.get("/api/v1/contacts", params={"q": "vries"}, headers=headers)
         assert hit.json()["total"] == 1
 
-        await c.post("/api/v1/projects", json={"name": "Website redesign"}, headers=headers)
+        klant = await c.post("/api/v1/companies", json={"name": "Zoekklant"}, headers=headers)
+        await c.post(
+            "/api/v1/projects",
+            json={"name": "Website redesign", "company_id": klant.json()["id"]},
+            headers=headers,
+        )
         assert (
             await c.get("/api/v1/projects", params={"q": "redesign"}, headers=headers)
         ).json()["total"] == 1

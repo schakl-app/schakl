@@ -88,6 +88,11 @@ class InvoicingSettingsWrite(BaseModel):
     auto_invoice_mode: AutoInvoiceMode | None = None
     reminders_enabled: bool | None = None
     reminder_days: list[int] | None = None
+    #: Whether an issued invoice gets a public address at all (#304). Turning it off is
+    #: retroactive — the public read checks this before it compares a token — so it withdraws
+    #: links that are already on paper, which is the only useful meaning for an off switch on a
+    #: credential the agency cannot collect back.
+    public_invoice_links: bool | None = None
 
     @field_validator("invoice_number_format", "quote_number_format")
     @classmethod
@@ -125,6 +130,7 @@ class InvoicingSettingsRead(BaseModel):
     auto_invoice_mode: AutoInvoiceMode
     reminders_enabled: bool
     reminder_days: list[int]
+    public_invoice_links: bool = True
 
 
 # --------------------------------------------------------------------------- #
@@ -314,17 +320,42 @@ class TemplateConfig(BaseModel):
     html: str | None = Field(default=None, max_length=MAX_CUSTOM_HTML)
     #: Extra CSS. On a shipped design it layers on top; on a custom one it *is* the design.
     css: str | None = Field(default=None, max_length=MAX_CUSTOM_CSS)
-    #: How the payment QR is drawn (epic #269). ``brand`` — the default — puts the tenant's
-    #: accent colour in the modules and their logo in the middle, so the code on a client's
-    #: invoice is recognisably *theirs* rather than a generic black square. ``plain`` is the
-    #: black-and-white code, for an agency printing monochrome on a copier or one whose logo
-    #: simply looks wrong at 7 modules across.
+    #: How the payment QR is drawn (epic #269, opened up in #305).
     #:
-    #: A style, never a colour picker: the colour follows ``accent_color`` (which already falls
-    #: back to the brand colour at render time, Golden Rule 4) and is replaced by near-black
-    #: when it is too pale to scan (``render/qr.readable_dark``). Letting a tenant type a hex
-    #: here would be offering them a way to print an invoice nobody's phone can read.
-    qr_style: Literal["brand", "plain"] = "brand"
+    #: * ``brand`` — the default and the zero-config answer: the tenant's accent colour in the
+    #:   modules and their logo in the middle, so the code on a client's invoice is recognisably
+    #:   *theirs* rather than a generic black square. Nothing below is read.
+    #: * ``plain`` — black and white, no logo. For an agency printing monochrome on a copier, or
+    #:   one whose logo simply looks wrong at 7 modules across.
+    #: * ``custom`` — the fields below apply.
+    #:
+    #: #269 deliberately shipped **no** colour picker, and the reason it gave was right about
+    #: the danger and wrong about the remedy: "letting a tenant type a hex here would be
+    #: offering them a way to print an invoice nobody's phone can read". What actually stops
+    #: that is not the absence of a field, it is ``render/qr.readable_pair`` — which already
+    #: replaced an unscannable accent and now judges the whole pair, refuses an inverted one,
+    #: and is *shown* in the editor's live preview with the substitution explained. A tenant who
+    #: wants their code on their own tinted panel is asking for something ordinary, and the
+    #: honest answer is to let them and to keep the guarantee, not to keep the guarantee by
+    #: keeping the request out.
+    qr_style: Literal["brand", "plain", "custom"] = "brand"
+    #: ``custom`` only. The modules' colour; ``None`` follows ``accent_color``.
+    qr_color: str | None = Field(default=None, max_length=32)
+    #: ``custom`` only. The panel behind them; ``None`` is paper white. Replaced together with
+    #: ``qr_color`` when the pair cannot be scanned — never half-corrected.
+    qr_background: str | None = Field(default=None, max_length=32)
+    #: ``custom`` only. Whose mark sits in the middle: the org logo, nothing, or an image of
+    #: this template's own. A logo raises the error-correction level to ``H`` wherever it comes
+    #: from, so ``none`` is a genuinely denser, more forgiving code and not merely a plainer one.
+    qr_logo: Literal["brand", "none", "custom"] = "brand"
+    #: ``qr_logo == "custom"``: a file this org owns, uploaded through the ordinary files API
+    #: exactly as the background mark is. A missing or unreadable one degrades to a plain code
+    #: (``render/qr._probe_logo``), never to a hole with nothing in it.
+    qr_logo_file_id: uuid.UUID | None = None
+    #: The sentence under the code, per locale. Empty falls back to the built-in — "Scan om te
+    #: betalen" / "…om deze factuur te bekijken", picked by whether a payment can actually be
+    #: started — so a tenant who says nothing keeps the wording that already answers both cases.
+    qr_caption_i18n: dict[str, str] = Field(default_factory=dict)
     #: Per-locale text blocks: {"nl": "...", "en": "..."} — shown above the lines.
     intro_i18n: dict[str, str] = Field(default_factory=dict)
     #: Below the totals: payment instructions ("Gelieve te betalen binnen {days} dagen …").
@@ -393,6 +424,29 @@ class TemplatePreview(BaseModel):
     #: baseline for the authoring check, so redrawing a saved custom template needs no
     #: `invoicing.template.author` — only changing its code does.
     template_id: uuid.UUID | None = None
+
+
+class QrPreview(BaseModel):
+    """The payment QR as this unsaved config would draw it (#305).
+
+    Its own endpoint rather than a corner of the full document preview, for two reasons that
+    are both about the editor being usable. A whole-document render is a WeasyPrint-adjacent
+    Jinja pass on a sample invoice and takes long enough that dragging a colour picker through
+    it is unpleasant; and the *code* is the one element where the tenant needs to see the
+    substitution rule fire, which a 3cm square in a scaled-down A4 preview cannot show.
+    """
+
+    #: The inline ``<svg>``, ready to drop into the editor. Same encoder, same geometry and
+    #: same error level as the document — one ``qr_svg`` call, so a preview that scans is a
+    #: promise about the paper rather than about the preview.
+    svg: str
+    #: What is actually being drawn, after ``readable_pair``.
+    dark: str
+    light: str
+    #: True when the pair asked for could not be scanned and black-on-white was substituted.
+    #: The editor says so in words: the alternative is a tenant picking a colour, seeing a
+    #: different one, and concluding the field is broken.
+    replaced: bool = False
 
 
 # --------------------------------------------------------------------------- #
@@ -639,6 +693,64 @@ class InvoicePaymentIntentRead(BaseModel):
     created_at: datetime
 
 
+class InvoicePaymentRefresh(BaseModel):
+    """What a "did my payment land yet?" poll answers with (#304).
+
+    ``changed`` is whether a provider was actually asked — a throttled poll answers ``False``
+    and is not a failure. The caller re-reads the document either way; this only tells a page
+    whether it is worth invalidating.
+    """
+
+    changed: bool = False
+    #: The latest attempt's state, so a page can stop polling without a second round-trip.
+    status: PaymentIntentStatus | None = None
+    settled: bool = False
+    #: The document's status after the refresh — ``paid`` is what the payer came back to see.
+    invoice_status: InvoiceStatus | None = None
+
+
+class PublicInvoiceRead(BaseModel):
+    """The invoice as a reader with **no session** sees it (#304).
+
+    Deliberately *not* ``InvoiceRead`` and deliberately not a subset expressed as an exclusion
+    list. Every field here was typed out on purpose, so the next field added to the staff model
+    does not appear on an unauthenticated endpoint as a side effect of somebody extending
+    something else. It carries no ids at all — not the invoice's, not the company's, not the
+    contact's — because the token is the only name this surface has for anything, and an id it
+    handed out would be an id somebody tries somewhere else.
+
+    The document itself (lines, addresses, totals, the tenant's design) is not here either: the
+    page shows the **rendered document**, which is the same HTML the PDF prints, fetched from
+    its own route. One artefact, so a public page can never disagree with the paper.
+    """
+
+    number: str = ""
+    kind: InvoiceKind = InvoiceKind.INVOICE
+    status: InvoiceStatus
+    issue_date: date | None = None
+    due_date: date | None = None
+    currency: str
+    locale: str
+    total: Decimal
+    paid_total: Decimal
+    outstanding: Decimal
+    #: Who it was billed to, as frozen on the document — so the page can say "for Acme BV"
+    #: and a person who opened the wrong link knows immediately.
+    customer_name: str = ""
+    #: A credential is connected *and* there is something to collect (#253).
+    payable: bool = False
+    #: The latest attempt, for the sentence a payer returning from a checkout needs to read.
+    payment_status: PaymentIntentStatus | None = None
+    payment_settled: bool = False
+    payment_pending: bool = False
+
+
+class PublicCheckout(BaseModel):
+    """Where to send the payer. The provider's live checkout URL and nothing else."""
+
+    checkout_url: str
+
+
 class CreditNoteRef(BaseModel):
     """A credit note as seen from the invoice it corrects — enough to link to it and say
     how much of it that invoice absorbed."""
@@ -715,6 +827,11 @@ class InvoiceRead(BaseModel):
     #: whether to draw a "pay now" button without being allowed to read which accounts the
     #: agency has connected — a control that always refuses is a broken control (#253).
     online_payment: bool = False
+    #: The document's **public** address (#304), for staff to hand to a client who rings up
+    #: asking for it. Detail read only, and empty for an external login: a client is already
+    #: looking at the document, and a bearer token on their own screen is a thing to forward
+    #: by accident. Empty also for a draft, and for an org with public links switched off.
+    public_url: str = ""
     #: Both halves of a correction, resolved on the detail read so either document can link
     #: to the other. Empty on a list, which draws the ``credited`` flag instead.
     credit_notes: list[CreditNoteRef] = Field(default_factory=list)

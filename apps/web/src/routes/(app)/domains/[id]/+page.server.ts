@@ -92,6 +92,10 @@ export const actions: Actions = {
         status: String(form.get("status") ?? "active") as never,
         redirect_url: String(form.get("redirect_url") ?? "").trim() || null,
         start_date: String(form.get("start_date") ?? "").trim() || undefined,
+        // Empty **resets** the renewal date rather than stopping the cycle: the API re-resolves
+        // the register's expiry, else the anniversary of the start date. So it is an explicit
+        // null, not `undefined` — "leave it alone" is what not sending the key means.
+        next_invoice_date: String(form.get("next_invoice_date") ?? "").trim() || null,
         // Empty clears the override: the TLD list price applies again.
         price_override: String(form.get("price_override") ?? "").trim() || null,
         // Three-state (#298): "" clears the decision back to *follow the register*.

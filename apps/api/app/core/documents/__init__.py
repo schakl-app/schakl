@@ -27,9 +27,11 @@ from __future__ import annotations
 from app.core.documents.charts import (
     ChartStyle,
     Formatter,
+    ShareSegment,
     column_chart,
     grouped_columns,
     share_bar,
+    share_palette,
     sparkline,
 )
 from app.core.documents.colors import (
@@ -68,6 +70,7 @@ __all__ = [
     "ChartStyle",
     "DocumentEngine",
     "Formatter",
+    "ShareSegment",
     "TemplateRenderError",
     "accent_for",
     "column_chart",
@@ -81,5 +84,6 @@ __all__ = [
     "rgb_hex",
     "rgba",
     "share_bar",
+    "share_palette",
     "sparkline",
 ]

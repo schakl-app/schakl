@@ -88,8 +88,10 @@ class ImpexSourceColumn(BaseModel):
     samples: list[str] = Field(default_factory=list)
     #: Pre-filled target key, or ``None`` for "don't import".
     suggested_key: str | None = None
-    #: How the suggestion was reached: ``key`` (exact header key), ``alias``, or ``position``
-    #: — so the UI can present a weak guess differently from a certain one.
+    #: How the suggestion was reached, strongest first: ``key`` (the stable column key, however
+    #: it was capitalised), ``label`` (the column's own name in one of the instance's locales)
+    #: or ``alias`` (a hand-written spelling) — so the UI can present a weak guess differently
+    #: from a certain one.
     match: str | None = None
 
 

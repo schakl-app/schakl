@@ -51,6 +51,15 @@ async def load_org_image(ctx, file_id, *, what: str = "image") -> tuple[bytes | 
 
     Every failure degrades rather than raises. A missing or unreadable image must cost a
     logo, never the invoice a client is waiting for.
+
+    **The key comes from the row, never from its ids.** This built ``{org_id}/{id}``, which was
+    the layout before de-duplication (``docs/STORAGE.md``): a file row is not its bytes, and
+    since ``file_blobs`` the object lives at ``{org_id}/sha256/{digest}`` with exactly one copy
+    per distinct content per org. So the path this composed had not existed for any file
+    written since, and every document quietly printed without its logo, its background mark and
+    its cover — for months, because the ``OSError`` lands in the degrade-don't-raise branch
+    three lines down. A silent fallback needs a test that the *happy* path still happens; the
+    one below round-trips a real upload rather than a mocked backend.
     """
     if file_id is None:
         return None, None
@@ -62,7 +71,7 @@ async def load_org_image(ctx, file_id, *, what: str = "image") -> tuple[bytes | 
     try:
         backend = storage_for(stored.backend)
         # Blocking storage IO off the event loop, the rule the file routes follow (#190).
-        data = await asyncio.to_thread(lambda: backend.open(f"{stored.org_id}/{stored.id}").read())
+        data = await asyncio.to_thread(lambda: backend.open(stored.storage_key).read())
     except (StorageUnavailableError, OSError):
         logger.warning("%s %s could not be read; rendering without it", what, file_id)
         return None, None

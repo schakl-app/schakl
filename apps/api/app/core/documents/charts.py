@@ -112,11 +112,29 @@ def _svg(width: float, height: float, body: str, title: str) -> str:
     ``font-family: inherit`` so the chart wears the document's face rather than carrying its
     own; ``role="img"`` + ``<title>`` so a screen reader on the HTML preview announces what it
     is instead of skipping an anonymous graphic.
+
+    **The width is a CSS declaration, not only a presentation attribute — and that is the whole
+    bug.** ``width="100%"`` on the element is the responsive-SVG idiom every browser honours;
+    WeasyPrint does not resolve a percentage there, so with no CSS ``width`` and ``height:
+    auto`` the box laid out at 0×0. Every chart this module ever drew was visible in the
+    preview and *absent from the printed PDF* — the one property the shared renderer exists to
+    guarantee, broken by four characters of stylesheet.
+
+    ``width: 100%`` in the style block is the fix. The ``width``/``height`` attributes in user
+    units come along as the intrinsic size, which is what a strict engine scales the viewBox
+    ratio from — but they are not sufficient on their own: with no CSS width, WeasyPrint prints
+    the 320×190 chart 320×320. State the used width, and the ratio follows.
+
+    The lesson generalises past this one tag: a preview and a print that share HTML still do not
+    share a layout engine, so "the markup is in the document" is not evidence that anything was
+    drawn. ``tests/test_reporting.py`` asserts the chart has *area on a rendered page*, and
+    fails on the markup this replaced.
     """
     return (
-        f'<svg viewBox="0 0 {width:.0f} {height:.0f}" width="100%" '
+        f'<svg viewBox="0 0 {width:.0f} {height:.0f}" '
+        f'width="{width:.0f}" height="{height:.0f}" '
         f'preserveAspectRatio="xMidYMid meet" role="img" '
-        f'style="font-family:inherit;display:block;max-width:100%;height:auto">'
+        f'style="font-family:inherit;display:block;width:100%;max-width:100%;height:auto">'
         f"<title>{_esc(title)}</title>{body}</svg>"
     )
 
@@ -148,19 +166,78 @@ def _axis(
     return "".join(out)
 
 
+def _ellipsized(text: str, width: float, font_size: float) -> str:
+    """``Organic Social`` in the room for ``Organic S…`` — cut, never overlapped.
+
+    Rotation buys a category label more room; it does not buy unlimited room, and a name that
+    still does not fit has to give way to its neighbour somehow. An ellipsis says "there was
+    more here"; two names printed through each other say nothing and look broken.
+    """
+    room = int((width - 8) / max(_CHAR_W * font_size, 0.01))
+    if room < 2 or len(text) <= room:
+        return text
+    return text[: room - 1].rstrip() + "…"
+
+
+#: Room under the category strip for the series legend.
+_LEGEND_STRIP = 16.0
+#: The plot never shrinks below this, however deep the labels run — a 20pt-tall bar chart
+#: carries no information, so a long category name grows the canvas instead of eating the data.
+_MIN_PLOT = 70.0
+
+
+def _fit_baseline(height: float, label_depth: float, legend: float) -> tuple[float, float]:
+    """``(height, baseline)`` — the canvas the labels actually need, and where the axis sits."""
+    baseline = height - label_depth - legend
+    if baseline < _MIN_PLOT:
+        height += _MIN_PLOT - baseline
+        baseline = _MIN_PLOT
+    return height, baseline
+
+
+def _rotates(style: ChartStyle, labels: Sequence[str], band: float) -> bool:
+    return any(not _fits(label, band, style.font_size) for label in labels)
+
+
+def _label_depth(style: ChartStyle, labels: Sequence[str], band: float) -> float:
+    """How much vertical room the category strip needs — measured, not assumed.
+
+    The strip used to be a constant (34pt, 46pt with a legend) chosen for horizontal labels,
+    and a rotated name simply ran out the bottom of it and through the legend. A label's depth
+    is a function of its own length and angle, so the geometry asks it rather than guessing:
+    that is what lets one chart carry ``Direct`` and the next ``Organic Social`` without either
+    of them being laid out for the other.
+    """
+    if not _rotates(style, labels, band):
+        return 15.0
+    budget = band * 1.41
+    longest = max(
+        (len(_ellipsized(label, budget, style.font_size)) for label in labels), default=0
+    )
+    # sin 45° of the rotated advance, plus the gap between baseline and the first glyph.
+    return 10.0 + longest * _CHAR_W * style.font_size * 0.707
+
+
 def _category_labels(
     style: ChartStyle, labels: Sequence[str], centres: Sequence[float], baseline: float
 ) -> str:
     """Category names under the baseline, rotated only when they would otherwise collide."""
     out: list[str] = []
     band = (centres[1] - centres[0]) if len(centres) > 1 else 999.0
-    rotate = any(not _fits(label, band, style.font_size) for label in labels)
+    rotate = _rotates(style, labels, band)
+    # A rotated label is not a free label: anchored at its end and laid at -45°, it still eats
+    # `length × cos 45°` of horizontal room, so neighbours cross once a name runs past ~1.4
+    # bands. That is the whole reason the printed chart showed "Organic Social" driven through
+    # "Referral" — the old code chose to rotate and then never asked whether rotating had been
+    # enough.
+    budget = band * 1.41
     for label, centre in zip(labels, centres, strict=False):
         if rotate:
             out.append(
-                f'<text transform="translate({centre:.1f},{baseline + 8:.1f}) rotate(-35)" '
+                f'<text transform="translate({centre:.1f},{baseline + 8:.1f}) rotate(-45)" '
                 f'text-anchor="end" font-size="{style.font_size:.1f}" '
-                f'fill="{style.muted}">{_esc(label)}</text>'
+                f'fill="{style.muted}">'
+                f"{_esc(_ellipsized(label, budget, style.font_size))}</text>"
             )
         else:
             out.append(
@@ -203,8 +280,8 @@ def column_chart(
         return ""
     top, ticks = _nice_ceiling(max(values, default=0.0))
     left, right, plot_top = 44.0, width - 6.0, 8.0
-    baseline = height - 34.0
     band = (right - left) / len(labels)
+    height, baseline = _fit_baseline(height, _label_depth(style, labels, band), 0.0)
     bar = min(_MAX_BAR, band - _GAP * 2)
     body = [_axis(style, left, right, plot_top, baseline, ticks, top, fmt)]
     centres: list[float] = []
@@ -245,8 +322,8 @@ def grouped_columns(
     columns = [[max(0.0, float(v or 0)) for v in list(vals)[:10]] for _, vals in series]
     top, ticks = _nice_ceiling(max((max(c, default=0.0) for c in columns), default=0.0))
     left, right, plot_top = 44.0, width - 6.0, 8.0
-    baseline = height - 46.0
     band = (right - left) / len(labels)
+    height, baseline = _fit_baseline(height, _label_depth(style, labels, band), _LEGEND_STRIP)
     colours = [style.accent, style.comparison][: len(series)]
     bar = min(_MAX_BAR, (band - _GAP * 3) / len(series))
     body = [_axis(style, left, right, plot_top, baseline, ticks, top, fmt)]
@@ -278,6 +355,79 @@ def grouped_columns(
     return _svg(width, height, "".join(body), title)
 
 
+@dataclass(frozen=True)
+class ShareSegment:
+    """One share of a whole: its label, its value, its fraction, and the colour it is drawn in.
+
+    ``tail`` marks the folded remainder — the segment that stands for every row past
+    ``max_segments`` rather than for a row of its own.
+    """
+
+    label: str
+    value: float
+    fraction: float
+    colour: str
+    #: How much accent the tint carries (1.0 = the accent itself, 0 = white). Kept beside the
+    #: hex because "is this fill dark enough for white text" is answered from the recipe, not
+    #: re-derived from the colour it produced.
+    weight: float
+    tail: bool = False
+
+
+def share_palette(
+    items: Sequence[tuple[str, float]],
+    *,
+    style: ChartStyle,
+    other_label: str = "",
+    max_segments: int = 5,
+) -> list[ShareSegment]:
+    """The share bar's own segment assignment, as data.
+
+    Split out of :func:`share_bar` so the *table* under a chart can mark each row with the
+    colour of its segment. A legend that names six colours the table beside it does not repeat
+    leaves the reader matching two orderings by eye — which is most of what a share chart was
+    supposed to save them. One function answering both is what makes the dot and the segment
+    agree by construction; two call sites choosing the same formula is how they stop agreeing
+    the first time one of them is tuned.
+
+    Segments are tints of the *tenant's* accent, light → dark by share, so it stays one hue
+    (a rainbow of six brand-unrelated colours for "which search engine" says nothing the
+    order does not) and it degrades to distinguishable greys in black and white. The tail
+    folds into one segment rather than growing an eighth colour nobody can name — and the
+    fold is part of the *scale*, so a caller that wants colours matching a drawn bar has to
+    pass the same ``other_label`` the bar was drawn with.
+    """
+    ranked = sorted(
+        ((str(label), max(0.0, float(value or 0))) for label, value in items),
+        key=lambda pair: pair[1],
+        reverse=True,
+    )
+    total = sum(value for _, value in ranked)
+    if total <= 0:
+        return []
+    head: list[tuple[str, float, bool]] = [
+        (label, value, False) for label, value in ranked[:max_segments]
+    ]
+    tail = sum(value for _, value in ranked[max_segments:])
+    if tail > 0 and other_label:
+        head.append((other_label, tail, True))
+    steps = max(len(head) - 1, 1)
+    out: list[ShareSegment] = []
+    for index, (label, value, is_tail) in enumerate(head):
+        weight = 1.0 - 0.62 * (index / steps)
+        out.append(
+            ShareSegment(
+                label=label,
+                value=value,
+                fraction=value / total,
+                colour=rgb_hex(mix_on_white(_hex_rgb(style.accent), weight)),
+                weight=weight,
+                tail=is_tail,
+            )
+        )
+    return out
+
+
 def share_bar(
     items: Sequence[tuple[str, float]],
     *,
@@ -288,53 +438,37 @@ def share_bar(
     height: float = 62.0,
     max_segments: int = 5,
 ) -> str:
-    """Part-to-whole as one 100 %-wide stacked bar, with a legend under it.
-
-    Segments are tints of the *tenant's* accent, light → dark by share, so it stays one hue
-    (a rainbow of six brand-unrelated colours for "which search engine" says nothing the
-    order does not) and it degrades to distinguishable greys in black and white. The tail
-    folds into one segment rather than growing an eighth colour nobody can name.
-    """
-    ranked = sorted(
-        ((str(label), max(0.0, float(value or 0))) for label, value in items),
-        key=lambda pair: pair[1],
-        reverse=True,
+    """Part-to-whole as one 100 %-wide stacked bar, with a legend under it."""
+    segments = share_palette(
+        items, style=style, other_label=other_label, max_segments=max_segments
     )
-    total = sum(value for _, value in ranked)
-    if total <= 0:
+    if not segments:
         return ""
-    head = ranked[:max_segments]
-    tail = sum(value for _, value in ranked[max_segments:])
-    if tail > 0 and other_label:
-        head.append((other_label, tail))
     left, right = 4.0, width - 4.0
     bar_top, bar_height = 8.0, 18.0
     span = right - left
     body: list[str] = []
     legend: list[tuple[str, str]] = []
     cursor = left
-    steps = max(len(head) - 1, 1)
-    for index, (label, value) in enumerate(head):
-        fraction = value / total
+    for index, share in enumerate(segments):
         # The trailing 2px gap comes out of each segment, so the bar still ends flush right.
-        segment = max(0.0, span * fraction - (_GAP if index < len(head) - 1 else 0.0))
-        weight = 1.0 - 0.62 * (index / steps)
-        colour = rgb_hex(mix_on_white(_hex_rgb(style.accent), weight))
+        last = index == len(segments) - 1
+        segment = max(0.0, span * share.fraction - (0.0 if last else _GAP))
         body.append(
             f'<rect x="{cursor:.2f}" y="{bar_top:.1f}" width="{segment:.2f}" '
-            f'height="{bar_height:.1f}" rx="2" fill="{colour}" />'
+            f'height="{bar_height:.1f}" rx="2" fill="{share.colour}" />'
         )
-        percent = f"{fraction * 100:.0f}%"
+        percent = f"{share.fraction * 100:.0f}%"
         if _fits(percent, segment, style.font_size):
             # Inside a colored fill is the one place a label may not wear an ink token: pick
             # white or ink by the fill's own luminance so it always clears contrast.
-            fill = "#ffffff" if weight > 0.55 else style.ink
+            fill = "#ffffff" if share.weight > 0.55 else style.ink
             body.append(
                 f'<text x="{cursor + segment / 2:.2f}" y="{bar_top + 12.5:.1f}" '
                 f'text-anchor="middle" font-size="{style.font_size:.1f}" fill="{fill}" '
                 f'style="font-variant-numeric:tabular-nums">{percent}</text>'
             )
-        legend.append((colour, f"{label} {percent}"))
+        legend.append((share.colour, f"{share.label} {percent}"))
         cursor += segment + _GAP
     body.append(_legend(style, legend, left, height - 8.0))
     return _svg(width, height, "".join(body), title)

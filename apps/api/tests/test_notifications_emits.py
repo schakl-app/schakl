@@ -287,11 +287,15 @@ async def test_project_assignment_is_immediate_and_status_change_follows(client_
     member_headers = await auth_cookie(member)
 
     async with client_for(t.host) as c:
+        company_id = (
+            await c.post("/api/v1/companies", json={"name": "Klant"}, headers=owner_headers)
+        ).json()["id"]
         project = (
             await c.post(
                 "/api/v1/projects",
                 json={
                     "name": "Website rebuild",
+                    "company_id": company_id,
                     "assignees": [{"user_id": str(member.id), "is_primary": True}],
                 },
                 headers=owner_headers,

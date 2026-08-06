@@ -1640,11 +1640,14 @@
         <label for="qc-task-project-company" class="mb-1 block text-sm font-medium text-text"
           >{t("projects.field.company")}</label
         >
+        <!-- Required: a project belongs to a client. The task's own client is the default,
+             and a task that has none makes this the one field to fill in. -->
         <Combobox
           items={companyItems}
           name="company_id"
           value={fCompany}
           id="qc-task-project-company"
+          allowEmpty={false}
           placeholder={t("projects.field.company")}
         />
       </div>

@@ -49,6 +49,7 @@ from app.modules.reporting.schemas import (
     ReportRunBatchResult,
     ReportRunRequest,
     ReportSendRequest,
+    ReportTemplatePreviewRequest,
     ReportTemplateRead,
     ReportTemplateWrite,
     ReportToneRead,
@@ -271,6 +272,56 @@ class TemplateService:
         await self.ctx.repo(ReportTemplate).delete(
             await self.ctx.repo(ReportTemplate).get_or_404(template_id)
         )
+
+    async def preview(self, data: ReportTemplatePreviewRequest) -> str:
+        """Render an **unsaved** template — the editor's live preview.
+
+        Against the tenant's own most recent report of that audience wherever there is one.
+        That is the whole argument for the shared renderer restated at the editing end: what
+        the author sees is the page their client will get, on their client's real numbers,
+        and there is no second implementation that could disagree with it. Only a tenant who
+        has never run reporting falls back to :func:`sample_report`.
+
+        The template is a ``ReportTemplate`` instance that is never added to the session. It
+        exists to carry six values into ``render_report_html`` in the shape that function
+        already takes, which is cheaper and less likely to drift than a parallel protocol —
+        and an ORM object nobody adds is an ordinary Python object.
+        """
+        self.ctx.require("reporting.settings.manage")
+        from app.modules.reporting.render import render_report_html
+        from app.modules.reporting.render.engine import ENGINE
+        from app.modules.reporting.render.sample import sample_report
+
+        # The same refusal the save path gives, so an unparseable body is a message under the
+        # editor rather than a 500 from the renderer.
+        ENGINE.validate_custom_source(data.custom_html, data.custom_css)
+        audience = data.audience.value
+        report = await self.ctx.session.scalar(
+            self.ctx.repo(Report)
+            .scoped_select()
+            .where(Report.audience == audience)
+            .order_by(Report.period_start.desc(), Report.created_at.desc())
+            .limit(1)
+        )
+        if report is None:
+            settings = await ReportingSettingsService(self.ctx).get()
+            report = sample_report(
+                audience,
+                settings.default_locale,
+                await org_today(self.ctx.session, self.ctx.org.id),
+            )
+        template = ReportTemplate(
+            name="",
+            audience=audience,
+            design=data.design,
+            layout={},
+            custom_html=data.custom_html,
+            custom_css=data.custom_css,
+            accent_color=data.accent_color,
+            cover_image_file_id=data.cover_image_file_id,
+            intro_text=data.intro_text,
+        )
+        return await render_report_html(self.ctx, report, template)
 
     def _validate(self, data: ReportTemplateWrite, current: ReportTemplate | None = None) -> None:
         """Refuse a template that cannot render, at save time — and gate *authoring* code.
@@ -641,11 +692,22 @@ class ReportService:
         return await self._read(report), True
 
     async def generate_batch(self, data: ReportRunBatchRequest) -> ReportRunBatchResult:
-        """Every client with an active profile, one job each.
+        """Every **enrolled** client, one job each.
 
         One job *per client*, never a loop inside one transaction: the workflow this replaces
         ran thirty clients in a single execution, so one SE Ranking timeout took the whole
         month's reporting with it.
+
+        Enrolment is a ``report_profiles`` row — the spreadsheet row, in other words. It stays
+        explicit rather than "every client with a linked property", because generating for a
+        client the agency does not report on spends their AI budget and their Google quota on
+        a document nobody asked for.
+
+        **It therefore has to say when nobody is enrolled.** Answering a bare ``0`` to somebody
+        who has just linked GA4 to eight clients and pressed the button is technically correct
+        and completely useless: it looks like a broken feature rather than a step not taken.
+        So the result carries what it looked at (``enrolled``) and how many clients *could* be
+        (``unconfigured``), and the screen turns that into a sentence with a way forward.
         """
         self.ctx.require("reporting.report.write")
         stmt = self.ctx.repo(ReportProfile).scoped_select().where(
@@ -671,7 +733,38 @@ class ReportService:
             queued += 1 if started else 0
             if not started:
                 skipped.append({"company_id": profile.company_id, "reason": "already_ready"})
-        return ReportRunBatchResult(queued=queued, skipped=skipped)
+        return ReportRunBatchResult(
+            queued=queued,
+            skipped=skipped,
+            enrolled=len(profiles),
+            unconfigured=await self._unconfigured() if not profiles else 0,
+        )
+
+    async def _unconfigured(self) -> int:
+        """Clients with a live data source but no reporting profile — the ones to enrol next.
+
+        Only asked when the batch found nobody, so the ordinary path pays nothing for it.
+        Through the repository, so a member scoped to one company group is counted the same
+        clients they can see (§15).
+        """
+        from app.modules.marketing.models import MarketingLink
+
+        linked = (
+            self.ctx.repo(MarketingLink)
+            .scoped_select()
+            .where(MarketingLink.active.is_(True))
+            .with_only_columns(MarketingLink.company_id)
+            .distinct()
+        )
+        company_ids = set((await self.ctx.session.execute(linked)).scalars().all())
+        if not company_ids:
+            return 0
+        enrolled = (
+            self.ctx.repo(ReportProfile)
+            .scoped_select()
+            .with_only_columns(ReportProfile.company_id)
+        )
+        return len(company_ids - set((await self.ctx.session.execute(enrolled)).scalars().all()))
 
     # --- review --------------------------------------------------------------------------- #
     async def update_narrative(

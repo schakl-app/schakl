@@ -123,15 +123,30 @@ export const actions: Actions = {
     } catch {
       layout = { sections: [] };
     }
+    // The PUT is wholesale, so anything the form does not draw a control for has to be
+    // *carried*, not defaulted — sending `design: "standard"` and `custom_html: null` because
+    // there is no such input reads to the API as "throw the tenant's own design away", and
+    // renaming a template silently did exactly that.
+    //
+    // The editor now draws all four of them, and it posts back what it was seeded with, so
+    // `field()` prefers the form and falls back to the stored row. The fallback is not
+    // redundant: a caller that posts a subset (an older cached page, a scripted save) still
+    // keeps what it never mentioned. Absent means unchanged; only a control the user actually
+    // saw may clear a field.
+    const current = id
+      ? ((await api.GET("/api/v1/reporting/templates", {})).data ?? []).find((t) => t.id === id)
+      : undefined;
+    const field = (key: string, stored: string | null | undefined) =>
+      form.has(key) ? String(form.get(key) ?? "").trim() || null : (stored ?? null);
     const body = {
       name: String(form.get("name") ?? "").trim(),
       audience: String(form.get("audience") ?? "client") as "client" | "internal",
-      design: String(form.get("design") ?? "standard"),
+      design: field("design", current?.design) ?? "standard",
       layout,
-      custom_html: null,
-      custom_css: null,
+      custom_html: field("custom_html", current?.custom_html),
+      custom_css: field("custom_css", current?.custom_css),
       accent_color: String(form.get("accent_color") ?? "").trim() || null,
-      cover_image_file_id: null,
+      cover_image_file_id: field("cover_image_file_id", current?.cover_image_file_id),
       intro_text: String(form.get("intro_text") ?? "").trim() || null,
       is_default: form.get("is_default") === "on",
     };

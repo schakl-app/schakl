@@ -25,7 +25,9 @@ and their web counterparts — currently:
 - `apps/api/app/modules/leave/`
 - `apps/api/app/modules/marketing/`
 - `apps/api/app/modules/mollie/`
+- `apps/api/app/modules/portal/`
 - `apps/api/app/modules/projects/`
+- `apps/api/app/modules/reporting/`
 - `apps/api/app/modules/subscriptions/`
 - `apps/api/app/modules/time/`
 - `apps/api/app/modules/websites/`
@@ -41,7 +43,9 @@ and their web counterparts — currently:
 - `apps/web/src/lib/modules/leave/`
 - `apps/web/src/lib/modules/marketing/`
 - `apps/web/src/lib/modules/mollie/`
+- `apps/web/src/lib/modules/portal/`
 - `apps/web/src/lib/modules/projects/`
+- `apps/web/src/lib/modules/reporting/`
 - `apps/web/src/lib/modules/subscriptions/`
 - `apps/web/src/lib/modules/time/`
 - `apps/web/src/lib/modules/websites/`
@@ -49,10 +53,12 @@ and their web counterparts — currently:
 - `apps/web/src/routes/(app)/domains/`
 - `apps/web/src/routes/(app)/interactions/`
 - `apps/web/src/routes/(app)/invoices/`
+- `apps/web/src/routes/invoice/`
 - `apps/web/src/routes/(app)/leave/`
 - `apps/web/src/routes/(app)/marketing/`
 - `apps/web/src/routes/(app)/projects/`
 - `apps/web/src/routes/(app)/quotes/`
+- `apps/web/src/routes/(app)/reports/`
 - `apps/web/src/routes/(app)/subscriptions/`
 - `apps/web/src/routes/(app)/time/`
 - `apps/web/src/routes/(app)/websites/`
@@ -66,6 +72,8 @@ and their web counterparts — currently:
 - `apps/web/src/routes/(app)/settings/leave/`
 - `apps/web/src/routes/(app)/settings/marketing/`
 - `apps/web/src/routes/(app)/settings/mollie/`
+- `apps/web/src/routes/(app)/settings/reporting/`
+- `apps/web/src/routes/(app)/settings/service-access/`
 - `apps/web/src/routes/(app)/settings/subscriptions/`
 - `apps/web/src/routes/(app)/settings/time-entry-types/`
 
@@ -73,6 +81,14 @@ Each covered directory carries a `LICENSE` file referring here. Code in these di
 published in repository history **before** this file was introduced — or, for a directory
 added to this list later, before the commit that added it — remains available under the
 AGPL-3.0 terms it was published under; this license governs all later versions.
+
+`pnpm license:check` (CI and pre-commit) enforces the correspondence: a module that declares
+a `sku` carries a marker on its API directory and its web counterpart, every marked directory
+appears in the list above, every listed directory exists and is marked, and all markers read
+alike. Route directories are the part no rule can derive from a module name — `invoicing`
+covers `routes/(app)/invoices/`, `.../quotes/`, `.../settings/invoicing/` and the public
+`routes/invoice/` (#304), which is not even under `(app)` — so adding a screen to a licensed
+module is a judgement, and the check only keeps it honest once made.
 
 ## Grant
 

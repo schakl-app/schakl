@@ -24,6 +24,7 @@ from app.core.documents import (
     column_chart,
     grouped_columns,
     share_bar,
+    share_palette,
 )
 from app.i18n import translate
 
@@ -129,6 +130,7 @@ def build_context(
         data = (snapshot.get("sections") or {}).get(key)
         if not data:
             continue
+        colors = _row_colors(data, style, locale)
         sections.append(
             {
                 "key": key,
@@ -138,7 +140,11 @@ def build_context(
                     {"key": column, "label": translate(f"marketing.metric.{column}", locale)}
                     for column in data.get("columns") or []
                 ],
-                "rows": data.get("rows") or [],
+                "rows": _coloured(data.get("rows") or [], colors),
+                # Whether this section's *column* carries the mark. A design needs it as well
+                # as the per-row colour, because the rows past the chart's segment cap have no
+                # segment and must still line up with the ones that do.
+                "dots": bool(colors),
                 "groups": data.get("groups") or [],
                 # Resolved to labelled tiles here rather than in the template: a design should
                 # never have to know that "keyEvents" is called something else on screen.
@@ -197,6 +203,64 @@ def build_context(
         "fmt_delta": lambda value: fmt_delta(value, locale),
         "delta_class": delta_class,
     }
+
+
+def _row_colors(
+    data: dict[str, Any], style: ChartStyle, locale: str
+) -> dict[str, str]:
+    """``{row label: hex}`` for the sections whose rows are shares of one whole.
+
+    Two sections qualify, for the same reason and by the same scale.
+
+    A section drawn as a **share bar** hands its reader six colours in a legend and then a
+    table that repeats none of them, so "which row is the dark one" is answered by counting.
+    The dot closes that: it is the row's own segment, taken from :func:`share_palette` — the
+    function the bar itself draws from — and the ``other_label`` is passed through because the
+    folded tail is part of the *scale*, not decoration. Get that wrong and every dot is one
+    step off the segment it names, which is worse than no dot at all.
+
+    **Traffic by channel** has no share bar (its chart compares this period with last), but it
+    does carry a ``share`` column, and the dot is that column drawn rather than read. That is
+    the one thing this may be: a second encoding of a number already on the row. It is
+    deliberately *not* offered to a section whose rows are not parts of a whole — a referral
+    table's rows do not sum to anything, so a tint by rank there would be decoration wearing a
+    data mark's clothes.
+
+    Rows past the bar's segment cap get no colour rather than the tail's: the tail stands for
+    all of them at once, and handing four rows one colour reads as four rows that belong
+    together.
+    """
+    spec = data.get("chart") or {}
+    if spec.get("type") == "share":
+        items = [
+            (str(item.get("label") or ""), float(item.get("value") or 0))
+            for item in spec.get("items") or []
+        ]
+    elif (data.get("kind") or "") == "channels":
+        items = [
+            (str(row.get("label") or ""), float(row.get("sessions") or 0))
+            for row in data.get("rows") or []
+        ]
+    else:
+        return {}
+    return {
+        segment.label: segment.colour
+        for segment in share_palette(
+            items, style=style, other_label=translate("reporting.doc.other", locale)
+        )
+        if not segment.tail
+    }
+
+
+def _coloured(rows: list[dict[str, Any]], colors: dict[str, str]) -> list[dict[str, Any]]:
+    if not colors:
+        return rows
+    return [
+        {**row, "color": colors[row["label"]]}
+        if isinstance(row, dict) and row.get("label") in colors
+        else row
+        for row in rows
+    ]
 
 
 def _pct(current: Any, previous: Any) -> float | None:

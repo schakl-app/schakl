@@ -1,6 +1,14 @@
 /** Web-side shapes of the marketing API payloads (epic #134), mirroring the Pydantic schemas. */
 
-export type MarketingSource = "ga4" | "gsc" | "gads";
+/**
+ * A linkable data source. `seranking` is the one that is not Google (#300) — it rides one
+ * agency API key rather than a per-user OAuth grant, which is why the picker below teaches
+ * "not configured" for it instead of offering a Connect link that would lead nowhere.
+ */
+export type MarketingSource = "ga4" | "gsc" | "gads" | "seranking";
+
+/** Sources whose credential is an org-level API key, not the shared Google consent. */
+export const ORG_KEY_SOURCES: readonly MarketingSource[] = ["seranking"];
 
 export interface KpiValue {
   current: number;
@@ -160,6 +168,7 @@ export const HEADLINE_METRICS: Record<MarketingSource, string[]> = {
   ga4: ["sessions", "totalUsers", "conversions", "engagementRate"],
   gsc: ["clicks", "impressions", "position", "ctr"],
   gads: ["cost", "clicks", "conversions", "conversionsValue"],
+  seranking: ["avg_position", "top10", "top3", "keywords_ranking"],
 };
 
 /** Every metric a source carries, in display order (mirrors the API's METRICS_BY_SOURCE). */
@@ -175,13 +184,23 @@ export const ALL_METRICS: Record<MarketingSource, string[]> = {
   ],
   gsc: ["clicks", "impressions", "ctr", "position"],
   gads: ["cost", "clicks", "impressions", "conversions", "conversionsValue"],
+  seranking: ["avg_position", "top3", "top10", "top30", "keywords_ranking", "keywords_tracked"],
 };
 
 /** The tier-2 drill-downs each source offers (mirrors the adapter's `drilldowns`). */
 export const DRILLDOWNS: Record<MarketingSource, string[]> = {
-  ga4: ["top_pages", "channels", "devices", "key_events"],
+  ga4: [
+    "top_pages",
+    "channels",
+    "devices",
+    "key_events",
+    "organic_sources",
+    "social_sources",
+    "referral_sources",
+  ],
   gsc: ["top_queries", "top_pages", "movers"],
   gads: ["campaigns"],
+  seranking: ["keywords", "keyword_groups", "audit", "ai_search"],
 };
 
 /**

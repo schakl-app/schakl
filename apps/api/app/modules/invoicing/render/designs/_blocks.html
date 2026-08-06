@@ -201,10 +201,13 @@
         </div>
       {% endif %}
       <div class="pay-online-words">
-        {% if with_link %}
+        {% if ctx.show_pay_label %}
           <a class="pay-online-link" href="{{ ctx.pay_url }}">{{ ctx.pay_label }}</a>
-          {# `muted` and not `micro`, for the reason `block()` gives below: the class uppercases,
-             and this address ends in a case-sensitive token. #}
+        {% endif %}
+        {# Separately switchable (#304): the address is a capability token, and printing it in
+           human-readable type is a choice. `muted` and not `micro`, for the reason `block()`
+           gives below: the class uppercases, and this address ends in a case-sensitive token. #}
+        {% if ctx.show_pay_url %}
           <span class="pay-online-url muted">{{ ctx.pay_url }}</span>
         {% endif %}
         {% if with_code and not with_link %}
@@ -230,16 +233,22 @@
   {% elif key == 'payment_box' and ctx.payment_box %}
     {{ payment_card(ctx.payment_box, ctx.t('invoicing.doc.payment_details')) }}
   {% elif key == 'payment_link' and ctx.show_pay_link and ctx.pay_url %}
-    {# The URL is printed as well as linked: a PDF viewer follows the anchor, and paper has to
-       be typed. It is the invoice's page in the portal, never a provider checkout.
+    {# Two halves, separately switchable (#304). The wording is what a PDF viewer follows; the
+       address underneath is for the reader holding paper, who has to type it — and it is also
+       a capability token in plain type, so an agency gets to keep the line without printing
+       the credential.
 
        Small and quiet, but **never `micro`**: that class uppercases, and the address it was
        uppercasing ends in a case-sensitive token. Every client who typed it off paper got a
        link that does not resolve — and the one reason to print the URL at all is the reader
        who cannot click it. #}
     <p class="payment-link">
-      <a class="pay-online-link" href="{{ ctx.pay_url }}">{{ ctx.pay_label }}</a>
-      <span class="muted">{{ ctx.pay_url }}</span>
+      {% if ctx.show_pay_label %}
+        <a class="pay-online-link" href="{{ ctx.pay_url }}">{{ ctx.pay_label }}</a>
+      {% endif %}
+      {% if ctx.show_pay_url %}
+        <span class="muted">{{ ctx.pay_url }}</span>
+      {% endif %}
     </p>
   {% elif key == 'payment_qr' and ctx.payment_qr %}
     {# Inline SVG, never an <img src>: the document CSP allows `img-src data:` and nothing

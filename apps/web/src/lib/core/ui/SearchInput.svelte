@@ -7,15 +7,25 @@
   import { t } from "$lib/core/i18n";
   import { resetPage } from "$lib/core/table/paging";
 
-  let { placeholder = t("common.search") }: { placeholder?: string } = $props();
+  let {
+    placeholder = t("common.search"),
+    key = "q",
+    wrapperClass = "relative w-56",
+  }: {
+    placeholder?: string;
+    /** The query parameter this box owns. Only a list with two search boxes needs to say. */
+    key?: string;
+    /** Width, so the shared filter bar can go full-width on a phone without forking this. */
+    wrapperClass?: string;
+  } = $props();
 
-  let value = $state(page.url.searchParams.get("q") ?? "");
+  let value = $state(page.url.searchParams.get(key) ?? "");
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   function apply() {
     const url = new URL(page.url);
-    if (value.trim()) url.searchParams.set("q", value.trim());
-    else url.searchParams.delete("q");
+    if (value.trim()) url.searchParams.set(key, value.trim());
+    else url.searchParams.delete(key);
     // A new search is a new set — page 4 of the old one would land on an empty page and read
     // as "nothing found" (`paging.ts`).
     resetPage(url);
@@ -28,7 +38,7 @@
   }
 </script>
 
-<div class="relative w-56">
+<div class={wrapperClass}>
   <span class="pointer-events-none absolute inset-y-0 left-2.5 flex items-center text-text-muted">
     <Search size={15} />
   </span>

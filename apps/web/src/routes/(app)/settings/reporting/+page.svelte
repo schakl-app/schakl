@@ -10,6 +10,7 @@
    * A client's own profile is not on this page. It belongs on the client.
    */
   import { ChevronDown, Plus, Trash2 } from "@lucide/svelte";
+  import { SvelteSet } from "svelte/reactivity";
 
   import { enhance } from "$app/forms";
   import { t } from "$lib/core/i18n";
@@ -18,6 +19,7 @@
   import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
+  import ReportTemplateEditor from "$lib/modules/reporting/ReportTemplateEditor.svelte";
   import type {
     ReportTemplate,
     ReportTone,
@@ -64,6 +66,37 @@
   let addingTone = $state(false);
   let addingTemplate = $state(false);
 
+  /**
+   * The open template's editable state.
+   *
+   * One set of variables rather than one per card, because exactly one card is ever unfolded —
+   * and the alternative, deriving each field from `template.*` inside the loop, would make the
+   * live preview redraw from the *saved* row instead of from what is being typed.
+   *
+   * Seeded on open from the row itself, which is what carries `design`, `custom_html`,
+   * `custom_css` and `cover_image_file_id` through a save that does not edit them (#300's
+   * "absent is not clear"): the editor posts what it was given back, unchanged.
+   */
+  let editDesign = $state("standard");
+  let editHtml = $state<string | null>(null);
+  let editCss = $state<string | null>(null);
+  let editCover = $state<string | null>(null);
+  let editAccent = $state("");
+  let editIntro = $state("");
+  /** Reactive by identity, so the hidden `layout` field below recomputes as boxes are ticked. */
+  const editOff = new SvelteSet<string>();
+
+  function seed(template: ReportTemplate) {
+    editDesign = template.design || "standard";
+    editHtml = template.custom_html ?? null;
+    editCss = template.custom_css ?? null;
+    editCover = template.cover_image_file_id ?? null;
+    editAccent = template.accent_color ?? "";
+    editIntro = template.intro_text ?? "";
+    editOff.clear();
+    for (const key of disabledKeys(template)) editOff.add(key);
+  }
+
   const clientSections = $derived(
     (data.sections as SectionCatalogEntry[]).filter((s) => s.audience !== "internal"),
   );
@@ -72,17 +105,17 @@
   );
 
   /** The layout a template posts: every catalog key, in order, with its on/off state. */
-  function layoutJson(template: ReportTemplate, disabled: Set<string>): string {
-    const catalog = template.audience === "internal" ? internalSections : clientSections;
+  function layoutJson(audience: string, disabled: ReadonlySet<string>): string {
+    const catalog = audience === "internal" ? internalSections : clientSections;
     return JSON.stringify(
       catalog.map((section) => ({ key: section.key, enabled: !disabled.has(section.key) })),
     );
   }
 
-  function disabledKeys(template: ReportTemplate): Set<string> {
+  function disabledKeys(template: ReportTemplate): string[] {
     const stored = (template.layout as { sections?: { key: string; enabled?: boolean }[] })
       ?.sections;
-    return new Set((stored ?? []).filter((s) => s.enabled === false).map((s) => s.key));
+    return (stored ?? []).filter((s) => s.enabled === false).map((s) => s.key);
   }
 </script>
 
@@ -372,13 +405,22 @@
 </section>
 
 <!-- ─── Templates ────────────────────────────────────────────────────────── -->
-<section class="mb-8 max-w-3xl">
+<!-- Wider than the blocks above it: the editor draws the document beside its controls, and a
+     preview squeezed into a third of a 3xl column is a thumbnail, not a proof. -->
+<section class="mb-8 max-w-7xl">
   <div class="mb-3 flex items-center justify-between">
     <div>
       <h2 class="text-base font-semibold text-text">{t("settings.reporting.templates")}</h2>
       <p class="text-sm text-text-muted">{t("settings.reporting.templates_hint")}</p>
     </div>
-    <Button variant="secondary" size="sm" onclick={() => (addingTemplate = !addingTemplate)}>
+    <Button
+      variant="secondary"
+      size="sm"
+      onclick={() => {
+        addingTemplate = !addingTemplate;
+        if (addingTemplate) seed(blankTemplate);
+      }}
+    >
       <Plus size={14} />
       {t("settings.reporting.add_template")}
     </Button>
@@ -387,12 +429,18 @@
   <div class="space-y-3">
     {#each [...(addingTemplate ? [blankTemplate] : []), ...(data.templates as ReportTemplate[])] as template (template.id || "new")}
       {@const isOpen = openTemplate === (template.id || "new") || (!template.id && addingTemplate)}
-      {@const off = disabledKeys(template)}
       <div class="rounded-xl border border-border bg-surface-raised">
         <button
           type="button"
           class="flex w-full items-center gap-3 px-5 py-4 text-left"
-          onclick={() => (openTemplate = isOpen ? null : template.id || "new")}
+          onclick={() => {
+            if (isOpen) {
+              openTemplate = null;
+              return;
+            }
+            seed(template);
+            openTemplate = template.id || "new";
+          }}
         >
           <span class="font-medium text-text">
             {template.name || t("settings.reporting.new_template")}
@@ -419,7 +467,7 @@
             class="space-y-4 border-t border-border px-5 py-4"
           >
             <input type="hidden" name="id" value={template.id} />
-            <input type="hidden" name="layout" value={layoutJson(template, off)} />
+            <input type="hidden" name="layout" value={layoutJson(template.audience, editOff)} />
             <div class="grid gap-4 sm:grid-cols-3">
               <div>
                 <label
@@ -459,12 +507,15 @@
                 >
                   {t("settings.reporting.accent")}
                 </label>
+                <!-- Bound, not just posted: the preview beside the editor has to redraw from
+                     what is being typed, and a plain `value=` would leave it on the last
+                     saved colour until the form came back. -->
                 <input
                   id={`tpl-accent-${template.id}`}
                   name="accent_color"
                   class={inputClass}
                   placeholder={t("settings.reporting.accent_placeholder")}
-                  value={template.accent_color ?? ""}
+                  bind:value={editAccent}
                 />
               </div>
             </div>
@@ -480,27 +531,23 @@
                 id={`tpl-intro-${template.id}`}
                 name="intro_text"
                 rows="4"
-                class={inputClass}>{template.intro_text ?? ""}</textarea
-              >
+                class={inputClass}
+                bind:value={editIntro}></textarea>
               <p class="mt-1 text-xs text-text-muted">{t("settings.reporting.intro_hint")}</p>
             </div>
 
-            <div>
-              <span class="mb-1 block text-sm font-medium text-text">
-                {t("settings.reporting.sections")}
-              </span>
-              <p class="mb-2 text-xs text-text-muted">{t("settings.reporting.sections_hint")}</p>
-              <ul class="space-y-1">
-                {#each template.audience === "internal" ? internalSections : clientSections as section (section.key)}
-                  <li class="text-sm text-text-muted">
-                    · {t(section.title_key)}
-                    {#if off.has(section.key)}
-                      <span class="text-xs">({t("settings.reporting.section_off")})</span>
-                    {/if}
-                  </li>
-                {/each}
-              </ul>
-            </div>
+            <ReportTemplateEditor
+              {template}
+              sections={template.audience === "internal" ? internalSections : clientSections}
+              audience={template.audience}
+              bind:design={editDesign}
+              bind:customHtml={editHtml}
+              bind:customCss={editCss}
+              bind:coverFileId={editCover}
+              disabledSections={editOff}
+              accentColor={editAccent}
+              introText={editIntro}
+            />
 
             <label class="flex items-center gap-2 text-sm text-text">
               <FormCheckbox

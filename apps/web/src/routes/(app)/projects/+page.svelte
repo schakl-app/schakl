@@ -13,19 +13,23 @@
   import { t } from "$lib/core/i18n";
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { can } from "$lib/core/permissions";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import { resetPage } from "$lib/core/table/paging";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Assignees from "$lib/core/ui/Assignees.svelte";
+  import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import Modal from "$lib/core/ui/Modal.svelte";
   import Pagination from "$lib/core/ui/Pagination.svelte";
   import HoursCell from "$lib/core/ui/HoursCell.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
+  import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import { HOURS_COLUMN, PROJECT_COLUMNS } from "$lib/modules/projects/columns";
   import { PROJECT_STATUSES } from "$lib/modules/projects/status";
 
@@ -44,6 +48,20 @@
   const companyName = $derived((id: string | null | undefined) =>
     id ? (data.companies.find((c) => c.id === id)?.name ?? "") : "",
   );
+
+  // Create-then-edit still (docs/UX.md Principle 3) — the one thing asked up front is the
+  // client, because a project without one no longer exists: the API refuses it, and the
+  // alternative is a record you make and then cannot save. One field, prefilled from the
+  // list's own client filter, and the rest of the definition is the detail page's as before.
+  const busy = new InFlight();
+  let newOpen = $state(false);
+  let newCompany = $state("");
+  let qcCompanyOpen = $state(false);
+  let qcCompanyName = $state("");
+  $effect(() => {
+    const created = form?.inlineCreated;
+    if (created?.slot === "company") newCompany = created.id;
+  });
 
   // --- columns ---------------------------------------------------------------
   const allColumns = $derived([
@@ -252,13 +270,16 @@
        minimal project and redirects to its detail page in edit mode — creating and editing
        share one surface instead of a duplicate inline form. -->
   {#if canWrite}
-    <form method="POST" action="?/create" use:enhance>
-      <button
-        class="shrink-0 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-      >
-        {t("projects.new")}
-      </button>
-    </form>
+    <button
+      type="button"
+      class="shrink-0 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+      onclick={() => {
+        newCompany = data.companyFilter;
+        newOpen = true;
+      }}
+    >
+      {t("projects.new")}
+    </button>
   {/if}
 </div>
 
@@ -345,6 +366,48 @@
   page={data.paging.page}
   limit={data.paging.limit}
   onsize={table.onPageSize}
+/>
+
+<!-- "Voor welke klant?" — the whole of the new-project question, because everything else about
+     a project is edited on the record itself (create-then-edit). -->
+<Modal bind:open={newOpen} title={t("projects.new")}>
+  <form method="POST" action="?/create" use:enhance={busy.clear()} class="space-y-3">
+    <div>
+      <label for="new-project-company" class="mb-1 block text-sm font-medium text-text"
+        >{t("projects.field.company")}</label
+      >
+      <Combobox
+        items={companyItems}
+        name="company_id"
+        bind:value={newCompany}
+        id="new-project-company"
+        allowEmpty={false}
+        placeholder={t("projects.filter.company")}
+        oncreate={(name) => {
+          qcCompanyName = name;
+          qcCompanyOpen = true;
+        }}
+      />
+    </div>
+    {#if form?.error}<p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
+    <div class="flex justify-end gap-2">
+      <button
+        type="button"
+        class="rounded-lg border border-border px-4 py-2 text-sm text-text"
+        onclick={() => (newOpen = false)}>{t("common.cancel")}</button
+      >
+      <Button loading={busy.active} disabled={!newCompany || busy.active}>
+        {t("common.create")}
+      </Button>
+    </div>
+  </form>
+</Modal>
+
+<CompanyQuickCreate
+  bind:open={qcCompanyOpen}
+  name={qcCompanyName}
+  locale={data.locale}
+  error={form?.qcError ?? null}
 />
 
 <ConfirmDialog

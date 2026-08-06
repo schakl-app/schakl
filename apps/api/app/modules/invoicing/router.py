@@ -18,6 +18,11 @@ from app.errors import AppError
 from app.modules.invoicing import accounting
 from app.modules.invoicing.models import InvoiceStatus
 from app.modules.invoicing.payments import InvoicePaymentService, handle_webhook
+from app.modules.invoicing.public import (
+    PublicInvoice,
+    PublicInvoiceService,
+    require_public_invoice,
+)
 from app.modules.invoicing.render import BUILTIN_DESIGNS, builtin_source, catalog_payload
 from app.modules.invoicing.schemas import (
     BacklogGroupBy,
@@ -30,6 +35,7 @@ from app.modules.invoicing.schemas import (
     InvoicePaymentAccountRead,
     InvoicePaymentIntentCreate,
     InvoicePaymentIntentRead,
+    InvoicePaymentRefresh,
     InvoiceRead,
     InvoiceUpdate,
     InvoicingSettingsRead,
@@ -40,6 +46,9 @@ from app.modules.invoicing.schemas import (
     ProductCreate,
     ProductRead,
     ProductUpdate,
+    PublicCheckout,
+    PublicInvoiceRead,
+    QrPreview,
     QuoteCreate,
     QuoteDecision,
     QuoteRead,
@@ -85,6 +94,18 @@ _READ = "invoicing.invoice.read"
 #: Staff are unaffected — a legacy bare grant and ``:any`` both satisfy it; only ``:own``
 #: alone does not.
 _MODULE = "any"
+
+#: The most documents one archive may hold (#307).
+#:
+#: Deliberately **not** the bulk selection's own 200 (``core.bulk.schemas.MAX_BULK_IDS``):
+#: every entry here is a full WeasyPrint layout, tens of milliseconds on a developer's machine
+#: and several times that on the small VPS an agency self-hosts on, so two hundred of them is a
+#: request no proxy in front of this will wait out — and one with no progress to show for it.
+#: Fifty is the pager's default page size, so "tick the page, download it" is exactly what fits,
+#: and it keeps the id list comfortably inside a URL. ``MAX_IMPORT_ROWS``' reasoning applied to
+#: the other synchronous batch: a cap is what keeps this path honest until archives are a
+#: background job (issue #77's sibling).
+MAX_ARCHIVE_DOCUMENTS = 50
 
 
 # --- settings ----------------------------------------------------------------- #
@@ -318,6 +339,25 @@ async def template_source(design: str) -> TemplateSource:
 
 
 @router.post(
+    "/templates/qr-preview",
+    response_model=QrPreview,
+    dependencies=[require_permission("invoicing.settings.manage")],
+)
+async def preview_template_qr(
+    payload: TemplatePreview,
+    ctx: RequestContext = Depends(require_context),
+) -> QrPreview:
+    """The payment QR alone, as an unsaved config would draw it (#305).
+
+    Its own route beside ``/templates/preview`` because the colour picker needs an answer per
+    keystroke and a full document render is a Jinja pass over a sample invoice. It also carries
+    what the whole-page preview cannot show at 3cm: whether ``readable_pair`` substituted, so
+    the editor can say *why* the colour on screen is not the colour that was typed.
+    """
+    return QrPreview.model_validate(await TemplateService(ctx).qr_preview(payload.config))
+
+
+@router.post(
     "/templates/preview",
     response_class=Response,
     dependencies=[require_permission("invoicing.settings.manage")],
@@ -472,6 +512,43 @@ async def list_invoices(
     return Page(
         items=[InvoiceRead.model_validate(i) for i in items],
         total=total, limit=limit, offset=offset,
+    )
+
+
+@router.get(
+    "/invoices/pdf",
+    dependencies=[require_permission(_READ)],
+)
+async def download_invoices_zip(
+    ids: list[uuid.UUID] = Query(
+        ...,
+        min_length=1,
+        max_length=MAX_ARCHIVE_DOCUMENTS,
+        description="The invoices to pack, by id — the list screen's ✎ selection (#307).",
+    ),
+    ctx: RequestContext = Depends(require_context),
+) -> Response:
+    """A selection of invoices as one zip of PDFs — the bulk half of ``/{invoice_id}/pdf``.
+
+    **A GET, and that is load-bearing twice over.** It is a read: past a licence's expiry a
+    module goes read-only, not gone, and ``license_write_gate`` reads the method — a POST here
+    would 402 an agency out of its own paperwork at exactly the moment it wants to hand it to
+    an accountant. It is also idempotent and cacheable-in-principle, which a download is.
+
+    Ids the caller may not read are **absent**, not an error (``InvoiceService.by_ids``); an
+    empty result is a 404, because "here is your archive of nothing" is not an answer. Drafts
+    print like they do one at a time — the list offers this only for documents that exist, the
+    same rule its row menu follows, and this route has no second opinion about it.
+    """
+    service = InvoiceService(ctx)
+    invoices = await service.by_ids(ids)
+    if not invoices:
+        raise AppError("not_found", "errors.not_found", status_code=404)
+    content, filename = await service.documents_zip(invoices, "invoice")
+    return Response(
+        content=content,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
@@ -672,6 +749,39 @@ async def start_payment(
     """
     return InvoicePaymentIntentRead.model_validate(
         await InvoicePaymentService(ctx).start(invoice_id, payload)
+    )
+
+
+@router.post(
+    "/invoices/{invoice_id}/payment-intents/refresh",
+    response_model=InvoicePaymentRefresh,
+    dependencies=[require_permission("invoicing.payment.link")],
+)
+@license_exempt(
+    "Finding out whether money that has already left a client's bank account arrived is the "
+    "webhook's argument one step removed: an expired licence makes a module read-only, it "
+    "does not make a payment already made unknowable to the person who made it."
+)
+async def refresh_payments(
+    invoice_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> InvoicePaymentRefresh:
+    """"Did my payment land?" — asked by the page a payer returns to (#304).
+
+    ``:own`` at the floor, unlike ``sync`` beside it, and the difference is the whole point.
+    ``sync`` is the *operator's* repair action: it spends a provider call on any attempt on
+    demand, so it stays ``:any``. This one is the **payer** finding out what happened to their
+    own money, so a client must be able to reach it — and it is bounded instead of trusted:
+    non-final attempts only, throttled per attempt on ``synced_at``, and free when there is
+    nothing in flight.
+    """
+    asked, latest = await InvoicePaymentService(ctx).refresh_pending(invoice_id)
+    invoice = await InvoiceService(ctx).get(invoice_id)
+    return InvoicePaymentRefresh(
+        changed=asked,
+        status=latest.status if latest is not None else None,
+        settled=latest is not None and latest.settled_at is not None,
+        invoice_status=invoice.status,
     )
 
 
@@ -1045,3 +1155,147 @@ async def convert_quote(
 ) -> InvoiceRead:
     """Accepted quote → draft invoice carrying the lines at their accepted prices."""
     return InvoiceRead.model_validate(await QuoteService(ctx).convert(quote_id))
+
+
+# --------------------------------------------------------------------------- #
+# The public invoice link (#304)
+# --------------------------------------------------------------------------- #
+#: Everything a session-less document response must say, on top of the preview policy.
+#:
+#: ``Referrer-Policy: no-referrer`` is the one that is not obvious and is the most important
+#: line in this block. **The token is in the path**, so every outbound navigation from a page
+#: that carries it would leak it in a ``Referer`` header — and the very next thing a payer does
+#: is leave for a payment provider. ``strict-origin-when-cross-origin`` (the app's default)
+#: strips the path cross-origin but sends the full URL same-origin, which is not enough: what
+#: must never travel is the whole credential, and the hop that matters is to a third party.
+#: ``no-referrer`` is the only value that guarantees it does not.
+#:
+#: ``X-Robots-Tag`` because a link mailed to a client ends up in signatures, tickets and
+#: helpdesk threads, and a crawler that finds one must not put an invoice in an index.
+_PUBLIC_HEADERS = {
+    **_PREVIEW_HEADERS,
+    "Referrer-Policy": "no-referrer",
+    "X-Robots-Tag": "noindex, nofollow, noarchive",
+}
+
+#: The non-document version of the same: JSON and PDF carry no CSP worth stating, but they
+#: carry the token in their own URL exactly as the page does.
+_PUBLIC_META_HEADERS = {
+    "Referrer-Policy": "no-referrer",
+    "X-Robots-Tag": "noindex, nofollow, noarchive",
+    "Cache-Control": "no-store",
+}
+
+_PUBLIC_REASON = (
+    "The public invoice link (#304). Authenticated by a 256-bit capability token in its own "
+    "URL, resolved against the request's tenant with RLS already bound, and answered by a "
+    "context that is a client-portal session scoped to that one invoice's company — never by "
+    "a user session, and never able to name a second document."
+)
+
+
+@router.get(
+    "/public/invoices/{token}",
+    response_model=PublicInvoiceRead,
+    dependencies=[no_permission_required(_PUBLIC_REASON)],
+)
+async def public_invoice(
+    response: Response,
+    public: PublicInvoice = Depends(require_public_invoice),
+) -> PublicInvoiceRead:
+    """This invoice, as the person holding its link sees it.
+
+    A hand-built narrow shape, never ``InvoiceRead`` — see ``schemas.PublicInvoiceRead`` for
+    why a subset-by-omission would have leaked the next field somebody added.
+    """
+    response.headers.update(_PUBLIC_META_HEADERS)
+    return PublicInvoiceRead.model_validate(await PublicInvoiceService(public).read())
+
+
+@router.get(
+    "/public/invoices/{token}/preview",
+    response_class=Response,
+    dependencies=[no_permission_required(_PUBLIC_REASON)],
+)
+async def public_invoice_preview(
+    public: PublicInvoice = Depends(require_public_invoice),
+) -> Response:
+    """The rendered document — **the same HTML** the signed-in preview and the PDF produce.
+
+    One artefact, so the page a client opens from a QR can never disagree with the paper it
+    was printed on. It is also why the public page draws no document of its own in Svelte.
+    """
+    service = InvoiceService(public.ctx)
+    invoice = await service.get(public.invoice.id)
+    return Response(
+        content=await service.document_html(invoice, "invoice"),
+        media_type="text/html; charset=utf-8",
+        headers=_PUBLIC_HEADERS,
+    )
+
+
+@router.get(
+    "/public/invoices/{token}/pdf",
+    dependencies=[no_permission_required(_PUBLIC_REASON)],
+)
+async def public_invoice_pdf(
+    public: PublicInvoice = Depends(require_public_invoice),
+) -> Response:
+    """The PDF, for the client who wants it in their own bookkeeping."""
+    service = InvoiceService(public.ctx)
+    invoice = await service.get(public.invoice.id)
+    content, filename = await service.document_pdf(invoice, "invoice")
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            **_PUBLIC_META_HEADERS,
+        },
+    )
+
+
+@router.post(
+    "/public/invoices/{token}/payment-intents",
+    response_model=PublicCheckout,
+    dependencies=[no_permission_required(_PUBLIC_REASON)],
+)
+async def public_start_payment(
+    public: PublicInvoice = Depends(require_public_invoice),
+) -> PublicCheckout:
+    """Open a checkout for what this invoice still owes, and hand back where to go.
+
+    **No body at all**, which is stricter than the signed-in sibling: that one accepts a
+    provider/account so an agency running two credentials can say which. A public caller has
+    no business naming a credential — the service resolves one and prefers the live over the
+    test key (``docs/PAYMENTS.md`` §2) — and no business naming an amount, ever.
+
+    Gated by the module's ordinary licence write gate, like the portal's own pay button. That
+    is deliberate symmetry rather than an oversight: an expired licence stops the agency
+    *asking* for money on every surface at once, and the two exemptions that exist (the
+    callback, and the refresh below) are both about money that has **already** moved.
+    """
+    return PublicCheckout(checkout_url=await PublicInvoiceService(public).start_payment())
+
+
+@router.post(
+    "/public/invoices/{token}/refresh",
+    response_model=InvoicePaymentRefresh,
+    dependencies=[no_permission_required(_PUBLIC_REASON)],
+)
+@license_exempt(
+    "The same rule as the payment callback: a 402 here would hide money that has already "
+    "left someone's bank account from the person who sent it. An expired licence makes a "
+    "module read-only; it does not un-happen a payment."
+)
+async def public_refresh_payments(
+    public: PublicInvoice = Depends(require_public_invoice),
+) -> InvoicePaymentRefresh:
+    """"Did my payment land?", for the payer coming back from a checkout (#304).
+
+    Bounded by ``InvoicePaymentService.refresh_pending`` — the *same* implementation the
+    signed-in route uses, so the throttle cannot drift between them: non-final attempts only,
+    and at most one provider call per attempt per ``REFRESH_MIN_INTERVAL``, whatever the
+    caller does.
+    """
+    return InvoicePaymentRefresh.model_validate(await PublicInvoiceService(public).refresh())

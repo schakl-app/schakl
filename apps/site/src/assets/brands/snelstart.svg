@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 672.61 706.48" role="img">
+  <!-- SnelStart logomark, supplied by the vendor. This is the icon half of their combined
+       logo file: the wordmark that sits beside it is 5.66:1 and cannot be read in a tile, so
+       only the square mark is kept. Colours are the vendor's own and are not themed. -->
+  <polygon points="0 706.48 672.61 706.48 672.61 647.61 0 647.61 0 706.48 0 706.48" fill="#fa6105"/>
+  <path d="M0,647.61h672.61V0H0v647.61h0Z" fill="#0d6efd"/>
+  <polygon points="489.48 544.62 336.27 451.15 183 544.62 224.69 370.18 88.31 253.47 267.28 239.15 336.27 73.59 405.26 239.15 584.3 253.47 447.92 370.18 489.48 544.62 489.48 544.62" fill="#fff"/>
+</svg>

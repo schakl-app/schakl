@@ -14,9 +14,20 @@ from app.core.tenancy import RequestContext
 from app.modules.domains.service import DomainService
 from app.registry import PanelSpec
 
+#: How many domains the client card shows before handing over to the register.
+#:
+#: The panel is deliberately the **first page of the list it links to**: same filter, same
+#: default sort, so "Alle 23 bekijken" opens on the five that were already on screen followed by
+#: the rest, rather than on a differently-ordered set the user has to re-find their place in.
+#: That is also why this reads through ``list`` rather than a bespoke query — a client with a
+#: 400-name portfolio used to load every one of them to render a handful.
+_PANEL_LIMIT = 5
+
 
 async def _domains_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
-    domains = await DomainService(ctx).domains_for_company(company_id)
+    domains, total = await DomainService(ctx).list(
+        limit=_PANEL_LIMIT, offset=0, company_id=company_id
+    )
     # Which domains already carry their (0/1) website — so the panel can link to it, or offer
     # "＋ website" where there is none: everything for a client starts from the client's page.
     # Raw table SQL (the websites service's own `_attach` pattern) — never a Python import of
@@ -34,6 +45,9 @@ async def _domains_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
         ).all()
         website_by_domain = {row[0]: row[1] for row in rows}
     return {
+        # The whole count, not the shown one: a card that says "5" over a client who has 23 is
+        # the truncated-total failure (#37) in miniature — it reads as the complete answer.
+        "total": total,
         "domains": [
             {
                 "id": str(d.id),

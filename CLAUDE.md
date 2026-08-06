@@ -298,12 +298,23 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   module + company-panel pattern must be proven in P0.
 - **`cloudflare`** (epic #278, `docs/CLOUDFLARE.md`) is what finally puts a mechanism behind
   `Domain.status = redirect`: a Redirect Rule schakl owns on the client's own Cloudflare zone,
-  plus DNS view/export and Pages linking. Two rules generalise beyond it. The credential is a
+  plus DNS view/export and Pages linking. Three rules generalise beyond it. The credential is a
   **row, not a per-org setting** — an agency holds its own account and its clients bring theirs,
   and the same apex can legally exist in two of them, so nothing ever picks an account for you.
-  And an integration that mirrors outside state stores **what it decided** and **what it last
+  An integration that mirrors outside state stores **what it decided** and **what it last
   observed** in separate columns, so "somebody changed this in the provider's dashboard" is
-  expressible at all: a reconcile reports drift instead of silently overwriting it. The
+  expressible at all: a reconcile reports drift instead of silently overwriting it. And **a
+  health probe is evidence, never the gate** — a credential check that runs first and raises for
+  everything behind it converts one endpoint's opinion into a verdict on the whole integration.
+  Cloudflare's account-owned tokens are refused by `GET /user/tokens/verify` (401, code 1000,
+  *"Invalid API Token"*) and work everywhere else, so a valid credential read "Token problem" on
+  a screen whose zone list was filling in beside it. Every probe now fails softly, a **read that
+  succeeds outranks a verify that refuses** (it is the call the module actually makes), and only
+  a token refused by *every* probe is called invalid. Its sibling: a status flag that only ever
+  turns **on** is a bug with a long tail — `_flag_account` had no mirror, so a row nothing was
+  wrong with kept its red line through every sync that worked. Whatever sets a health flag must
+  say what clears it, and the fake must reject a bad credential *everywhere* or the only test
+  that could catch this passes against a provider that does not exist. The
   registrar half is now **`oxxa`** (#296, `docs/OXXA.md`): the register sync, the nameserver
   write-back that finishes "Connect to Cloudflare", and the `app/core/registrar/` seam a second
   registrar plugs into. Written from OXXA's official API documentation — §11 bans writing an
@@ -399,6 +410,37 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   a 402 there would drop money that has already left someone's bank account and no retry would
   ever fix it (the provider's retries would 402 too). Gate what the agency *does*; never gate the
   recording of what has already happened to them.
+- **A link on paper needs a page a stranger can open** (#304, `docs/INVOICING.md`). #268 pointed
+  the invoice's QR at the client portal and called it safe because "anyone else lands on a
+  sign-in screen". True, and answering the wrong question: the portal is a licensed product an
+  agency buys *per client*, so most clients hold no login, and the sentence really read
+  *everyone* lands on a sign-in screen — #253's control that always refuses, printed on paper and
+  posted. So an issued invoice carries `public_token` (`secrets.token_urlsafe(32)`) and
+  `/invoice/<token>` opens that one document with no session. Three rules generalise. **A
+  session-less reader is expressed in the machinery that already exists, never in a bespoke
+  one**: the context is a client-portal session (`is_portal`, `company_scope` of that one
+  company, two `:own` permissions), so the horizon, the draft rule and #266's `:any` fences all
+  apply by construction rather than by this file remembering — the tempting shortcut,
+  `system_context`, holds `*`. **A credential in a path segment must never travel in a
+  `Referer`**, and the app's `strict-origin-when-cross-origin` default is not enough, because it
+  still sends the whole URL same-origin; every public response says `no-referrer` and
+  `noindex`. And **an off switch for a credential you cannot collect back has to be
+  retroactive** — the flag is read before the token is compared, so unticking it withdraws links
+  already on desks. The public shape is hand-written (`PublicInvoiceRead`), because a subset
+  expressed as an omission leaks the next field somebody adds.
+- **A silent field is worse than a refused one, and that is an argument *for* the field** (#305).
+  #269 shipped the QR with no colour picker, reasoning that a hex box "would be offering them a
+  way to print an invoice nobody's phone can read". Right about the danger and wrong about what
+  was holding it back: the guarantee was never the missing field, it was `readable_dark`
+  replacing an unscannable accent. What was actually missing was a way to *see* that rule fire.
+  So the picker exists now, the rule grew into `readable_pair` (both colours judged together,
+  substituted **as a pair** — half-correcting produces a code that passes a ratio and still
+  loses a camera; and "no dark mode" became a luminance floor rather than an absent option), and
+  the editor renders the real code from the unsaved config and says in words when a combination
+  was replaced. Reach for *show the constraint working* before *remove the control*. Its sibling
+  finding is the ordinary one: `qr_appearance` is now the single resolution read by the document,
+  the mail and the preview alike — before it, the mail drew the org's brand colour
+  unconditionally, so a template set to `plain` printed mono on paper and mailed a coloured code.
 
 ## 11. Working agreement (for Claude Code)
 
@@ -986,6 +1028,14 @@ validation, activity line, events and custom-field rules that fifty visits to th
   same act, repeated*. A bulk edit is the second kind. Unlike impex it **does** carry its
   module's `license_write_gate`: a bulk write must not be the one way an uncovered module can
   still be written to.
+- **A bulk action that hands back a *file* belongs to the module, not here** (#307). Core's whole
+  contract is `BulkActionResult` — "37 done, 3 skipped, and here is why" — and a zip cannot carry
+  that; what the file *is* (a rendered invoice) is knowledge core may not have, and the whole cost
+  of the batch is the rendering. So `GET /invoicing/invoices/pdf?ids=…` is an ordinary module route
+  reached through `BulkBar`'s existing `items` seam, and it is a **GET** because a read must
+  survive an expired licence (`license_write_gate` reads the method) and because a download is a
+  navigation, not a click handler. The thing worth lifting later is `app/core/documents/` — which
+  quotes and reports already share — never a `download_row` on the descriptor.
 - **An entity with no import shape still gets a bulk delete.** `impex` is optional; a descriptor
   that names its `entity`, its model, its delete permission and its service call is complete.
   Deleting needs no column vocabulary, and requiring one would have excluded the two entities

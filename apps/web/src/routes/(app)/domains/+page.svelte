@@ -8,6 +8,8 @@
   import BulkToggle from "$lib/core/bulk/BulkToggle.svelte";
   import BulkResult from "$lib/core/bulk/BulkResult.svelte";
   import type { BulkFieldDef } from "$lib/core/bulk/types";
+  import FilterBar from "$lib/core/filters/FilterBar.svelte";
+  import type { FilterDef } from "$lib/core/filters/types";
   import { fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
@@ -27,15 +29,18 @@
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import { DOMAIN_COLUMNS } from "$lib/modules/domains/columns";
+  import type { DomainFilterKey } from "$lib/modules/domains/filters";
   import DomainForm from "$lib/modules/domains/DomainForm.svelte";
 
   let { data, form } = $props();
 
   type Domain = (typeof data.domains)[number];
 
-  // Quick-create from a client page (?new=1&company=): the dialog opens with the client set.
+  // Deep link from a client card: `?company=` filters the list *and* prefills the create dialog,
+  // and `?new=1` opens it. One parameter for both, because they are the same intent — "I am
+  // working on this client's domains" — and two would let the list and the dialog disagree.
   let showCreate = $state(page.url.searchParams.has("new"));
-  const initialCompanyId = page.url.searchParams.get("company") ?? "";
+  const initialCompanyId = $derived(data.filters.company ?? "");
   let deleteId = $state("");
   let confirmDelete = $state(false);
   const busy = new InFlight();
@@ -141,10 +146,21 @@
       key: "invoiceable",
       label: t("impex.column.domain.invoiceable"),
       type: "bool",
-      // The one clearable field here (#298): emptying it is not "do not invoice", it hands the
-      // decision back to the register — so the tick says that instead of reading as a blank.
+      // Clearable (#298): emptying it is not "do not invoice", it hands the decision back to
+      // the register — so the tick says that instead of reading as a blank.
       clearable: true,
       clearLabel: t("domains.bulk.invoiceable_auto"),
+    },
+    {
+      key: "next_invoice_date",
+      label: t("impex.column.domain.next_invoice_date"),
+      type: "date",
+      // Clearable here and not in the import, on purpose: over a selection somebody ticked row
+      // by row, "put these back on the date they should have" is the repair this control is
+      // for, while in a file the same blank is just a column nobody filled in
+      // (`app/api/app/modules/domains/bulk.py` argues it in full).
+      clearable: true,
+      clearLabel: t("domains.bulk.renewal_reset"),
     },
   ]);
   // One configuration, spread into the ✎ in the toolbar and the strip above the table: they
@@ -156,6 +172,56 @@
     deleteMessage: t("domains.bulk.delete_message", { count: bulkSelected.length }),
     fieldErrors: form?.bulkFields ?? null,
   });
+
+  // --- the filter bar (core/filters) ----------------------------------------------------
+  // Six questions an agency asks of its register. Every option list here is one the section
+  // layout already loaded for the create form, so the bar costs no request of its own; the
+  // providers are split by kind exactly as `DomainForm` splits them.
+  //
+  // The two-value ones are `select`, not a pair of pills, and their labels say the whole thing:
+  // a Combobox shows the *selected* label with the placeholder gone, so "Ja" would leave the
+  // screen reading "Ja" with nothing to say Ja to.
+  const filtering = $derived(Object.keys(data.filters).length > 0);
+  const filterDefs: FilterDef<DomainFilterKey>[] = $derived([
+    { kind: "search", key: "q", placeholder: t("domains.search_placeholder") },
+    {
+      // Every placeholder here is the *column's* own label key, so the filter and the column it
+      // narrows can never end up calling the same thing two different names.
+      kind: "select",
+      key: "company",
+      placeholder: t("domains.company"),
+      options: data.companies.map((company) => ({ value: company.id, label: company.name })),
+    },
+    {
+      kind: "pills",
+      key: "status",
+      options: DOMAIN_STATUSES.map((status) => ({
+        value: status,
+        label: t(`domains.status.${status}`),
+      })),
+    },
+    {
+      kind: "select",
+      key: "registrar",
+      placeholder: t("domains.registrar"),
+      options: providerOptions("registrar"),
+    },
+    {
+      kind: "select",
+      key: "dns",
+      placeholder: t("domains.dns"),
+      options: providerOptions("dns"),
+    },
+    {
+      kind: "select",
+      key: "invoiceable",
+      placeholder: t("domains.invoiceable.legend"),
+      options: [
+        { value: "true", label: t("domains.filter.invoiceable_yes") },
+        { value: "false", label: t("domains.filter.invoiceable_no") },
+      ],
+    },
+  ]);
 
   // The tenant's custom fields join the built-ins as selectable columns with no code here (#24).
   // Layout resolution and persistence are the shared table layout's job.
@@ -177,6 +243,7 @@
       dnssec: dnssecCell,
       email_enabled: emailCell,
       next_invoice: renewalCell,
+      register_expires: registerExpiryCell,
       price: priceCell,
       invoiceable: invoiceableCell,
       created_at: createdCell,
@@ -232,6 +299,19 @@
 {#snippet renewalCell(domain: Domain)}
   <span class="tabular-nums text-text-muted">
     {domain.next_invoice_date ? fmtNumericDate(domain.next_invoice_date) : "—"}
+  </span>
+{/snippet}
+
+{#snippet registerExpiryCell(domain: Domain)}
+  <!-- The registrar's own date. Highlighted only when it disagrees with what we bill on: a
+       column of matching dates is noise, and the disagreement is the entire reason to open it. -->
+  <span
+    class="tabular-nums {domain.register_expires_on &&
+    domain.register_expires_on !== domain.next_invoice_date
+      ? 'font-medium text-text'
+      : 'text-text-muted'}"
+  >
+    {domain.register_expires_on ? fmtNumericDate(domain.register_expires_on) : "—"}
   </span>
 {/snippet}
 
@@ -292,7 +372,11 @@
 
 {#snippet emptyState()}
   <div class="rounded-xl border border-dashed border-border bg-surface-raised p-10 text-center">
-    <p class="font-medium text-text">{t("domains.empty")}</p>
+    <!-- Under a filter, "nog geen domeinen" is false and sends the reader looking for the
+         wrong problem: the register is fine, the filter is what emptied it. -->
+    <p class="font-medium text-text">
+      {filtering ? t("common.no_results") : t("domains.empty")}
+    </p>
   </div>
 {/snippet}
 
@@ -313,31 +397,40 @@
   {/if}
 </div>
 
-<!-- The personal column picker: every sort is reachable from here too (docs/UX.md). -->
-<div class="mb-4 flex flex-wrap items-center justify-end gap-2">
-  <ImpexBar
-    entity="domain"
-    readPermission="domains.domain.read"
-    writePermission="domains.domain.write"
-    filters={{
-      q: page.url.searchParams.get("q"),
-      sort: data.table.sort,
-    }}
-    locale={data.locale}
-    {form}
-  />
-  <ColumnPicker
-    all={table.pickerColumns}
-    visible={table.visibleKeys}
-    sort={table.sort}
-    onchange={table.onColumnsChange}
-    onsort={table.onSort}
-  />
-  <!-- Last in the toolbar, always: it is the only control here that changes what the *rows*
+<FilterBar filters={filterDefs} idPrefix="domain-filter">
+  {#snippet actions()}
+    <!-- Export carries what the screen is narrowed by, so the file *is* the list on screen,
+         whole (docs/UX.md) — the API declares exactly these on the export route. -->
+    <ImpexBar
+      entity="domain"
+      readPermission="domains.domain.read"
+      writePermission="domains.domain.write"
+      filters={{
+        q: data.filters.q,
+        company_id: data.filters.company,
+        status: data.filters.status,
+        registrar_provider_id: data.filters.registrar,
+        dns_provider_id: data.filters.dns,
+        invoiceable: data.filters.invoiceable,
+        sort: data.table.sort,
+      }}
+      locale={data.locale}
+      {form}
+    />
+    <!-- The personal column picker: every sort is reachable from here too (docs/UX.md). -->
+    <ColumnPicker
+      all={table.pickerColumns}
+      visible={table.visibleKeys}
+      sort={table.sort}
+      onchange={table.onColumnsChange}
+      onsort={table.onSort}
+    />
+    <!-- Last in the toolbar, always: it is the only control here that changes what the *rows*
          do rather than what the list shows, so it sits after Kolommen rather than among the
          list's own controls. Pressing it opens the selection strip above the table. -->
-  <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
-</div>
+    <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
+  {/snippet}
+</FilterBar>
 
 <BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
 

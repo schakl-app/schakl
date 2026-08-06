@@ -50,6 +50,14 @@ FILTER_PARAMS: dict[str, tuple[Any, Any]] = {
     "user_id": (uuid.UUID | None, Query(None)),
     "date_from": (dt.date | None, Query(None, description="Rows on/after this day")),
     "date_to": (dt.date | None, Query(None, description="Rows on/before this day")),
+    "hosting_id": (uuid.UUID | None, Query(None)),
+    "registrar_provider_id": (uuid.UUID | None, Query(None)),
+    "dns_provider_id": (uuid.UUID | None, Query(None)),
+    # Three-state, and that is the point: absent is "every row", and `false` is a filter in its
+    # own right ("what am I *not* invoicing", "what is *not* monitored"). A plain `bool` would
+    # make those two indistinguishable and quietly export the lot.
+    "invoiceable": (bool | None, Query(None)),
+    "uptime_enabled": (bool | None, Query(None)),
     "sort": (str | None, Query(None, max_length=50, description="List sort key, '-' desc")),
 }
 
@@ -57,7 +65,12 @@ FILTER_PARAMS: dict[str, tuple[Any, Any]] = {
 def _export_endpoint(descriptor: ImpexDescriptor) -> Any:
     async def export_csv(**kwargs: Any) -> Response:
         ctx: RequestContext = kwargs.pop("ctx")
-        filters = {key: value for key, value in kwargs.items() if value not in (None, False)}
+        # Only `None` is "not asked for". Dropping `False` too — which this did — is right for a
+        # plain flag like `mine` (whose absent state *is* False) and wrong for every tri-state
+        # one: `invoiceable=false` means "list what I do not bill", and discarding it exported
+        # the whole register under a filename that says otherwise. A `fetch_page` that reads a
+        # flag with `filters.get(...)` is unaffected, since False is what it inferred anyway.
+        filters = {key: value for key, value in kwargs.items() if value is not None}
         return await ImpexService(ctx).export_csv(descriptor, filters)
 
     parameters = [

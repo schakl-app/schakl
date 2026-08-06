@@ -58,6 +58,17 @@ export const DOMAIN_COLUMNS: ColumnMeta[] = [
     align: "right",
     width: 130,
   },
+  // What the registrar last observed, beside the date we bill on. Its own column rather than a
+  // badge on the one above, because the reason to switch it on is to *sort a list by drift* —
+  // "which of these does the registrar disagree with me about" is the question, and it is off by
+  // default because an instance with no register connected would only ever see dashes. Quiet
+  // header: the value is a correlated subquery over another module's table, not a sortable one.
+  {
+    key: "register_expires",
+    labelKey: "domains.register_expiry.column",
+    align: "right",
+    width: 140,
+  },
   { key: "price", labelKey: "domains.price", align: "right", width: 110 },
   // Resolved server-side from a three-state flag and the registrar registers (#298), so there
   // is nothing to sort by — a quiet header, like the price beside it. Wider than a plain yes/no

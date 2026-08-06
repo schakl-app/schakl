@@ -164,6 +164,22 @@ already corrected once.
   double-encodes it and burns the only free channel. Part-to-whole is a share bar rather than a
   doughnut: a circle whose largest slice is 95 % tells a reader nothing a sentence would not tell
   them faster.
+- **A row's colour dot and its segment come from one function.** `charts.share_palette` is what
+  `share_bar` draws from, and it is also what `render/context.py` marks table rows with — so the
+  reader matching "Organic Search" in a legend to a line in the table below is never one step
+  off. The fold into *Overig* is part of the scale, not decoration: colour the rows without it
+  and the named segments spread across a shorter ramp. The dot is offered only where rows are
+  parts of one whole (a share chart, or traffic-by-channel with its `share` column); a keyword
+  table's rows sum to nothing, and tinting them by rank would be decoration wearing a data
+  mark's clothes. It is absolutely positioned against its cell, because as an inline-block it is
+  an *atomic inline* that line breaking may break after — which in a narrow first column put the
+  mark on a line of its own above the name it belonged to.
+- **Every other section prints on a full-bleed band.** "Separated by air" holds for three
+  sections and stops holding at nine, which is what a client report runs to. The alternation is
+  the loop's own index, never `:nth-child` — the cover is these sections' elder sibling, so a
+  rule counting children stripes the wrong one. The band bleeds to the sheet edge (a negative
+  margin restating the 14 mm page margin) because a wash that stops at the text column reads as
+  a *box around this section*, claiming a relationship its contents do not have.
 - **Gotenberg is gone.** WeasyPrint prints A4 in-process, and the page footer is the engine's
   existing `page_number_css`.
 
@@ -259,5 +275,61 @@ defensive.
 - **A new source** is a `MarketingSourceAdapter` with its `auth` kind.
 - **A new design** is a Jinja file in `render/designs/` plus a name in `BUILTIN_DESIGNS`; a
   tenant's own is `design: "custom"`, sandboxed, against the same context.
+
+### Bringing your own report design
+
+A tenant's own document is a `report_templates` row with `design: "custom"` and a `custom_html`
+body (plus optional `custom_css`), rendered inside `_shell.html` — so the page geometry, the
+palette and the "not for the client" band on an internal analysis are not theirs to re-derive
+or to drop. The body renders against the dict in `render/context.py`: **strings and lists,
+never rows**, with `fmt`, `fmt_number`, `fmt_delta` and `delta_class` supplied so a Dutch
+thousands separator is not something anyone reimplements in Jinja.
+
+Start from the shipped design rather than a blank page:
+
+```
+GET  /api/v1/reporting/templates/designs/standard/source   → {html, css}
+POST /api/v1/reporting/templates/preview                   → text/html
+PUT  /api/v1/reporting/templates/{id}   { design: "custom", custom_html: …, custom_css: … }
+```
+
+`…/source` returns the *same* `standard.body.html` and `standard.css` the built-in renders
+from, so what an author gets is what they saw. The save path refuses a template that cannot
+compile (`validate_custom_source`) — a syntax error is a red field under the editor, not a
+report that fails the morning it is due.
+
+Two limits are the sandbox, not an oversight: `{% include %}` / `{% extends %}` resolve against
+no loader, and every URL but `data:` is refused, so a design inlines its images or does without
+them. Charts arrive already rendered as inline SVG in `section.chart`.
+
+### The editor
+
+`$lib/modules/reporting/ReportTemplateEditor.svelte`, inside Instellingen → Rapportage. Three
+tabs — *Ontwerp* (which design, the cover image), *Secties* (what prints), *Code* (the body and
+its stylesheet) — beside a live preview. The shape is invoicing's `TemplateEditor`, and
+`DocumentFrame` moved to `$lib/core/ui/` to be shared rather than imported across a module
+boundary (§6), which is `app/core/documents/`'s own argument one layer out.
+
+**The preview renders the tenant's own most recent report of that audience**, through
+`render_report_html` — the very function the PDF is printed from. That is the shared-renderer
+argument restated at the *editing* end: there is no second implementation that could disagree
+with what the client receives. A tenant configuring reporting before their first run gets
+`render/sample.py` instead — invented numbers under the registry's **real** section headings, so
+a section a later release contributes appears in the sample without that file changing. Neither
+document is ever persisted, so a preview cannot collide with the
+`(org, company, audience, period)` uniqueness that makes a re-run update a report rather than
+mail a second copy.
+
+**The cover image** is `cover_image_file_id`, uploaded through `/settings/reporting/cover` as an
+ordinary tenant file (`entity_type=reporting_template`) and inlined as a `data:` URI at render.
+Deliberately not `entity_type=branding`, which is served without a session so the login screen
+can draw it — a photograph on the front of a client's report is not something to publish
+anonymously on the org's domain. `standard.body.html` draws it across the top of the cover with
+the title over it.
+
+The save carries `design`, `custom_html`, `custom_css` and `cover_image_file_id` rather than
+posting nulls for fields it draws no control for, which is what stops renaming a template from
+throwing a tenant's own design away.
+
 - **A second document family** (a quarterly board pack, a campaign wrap-up) is a
   `DocumentEngine` and its own designs directory — the shared engine is already the seam.

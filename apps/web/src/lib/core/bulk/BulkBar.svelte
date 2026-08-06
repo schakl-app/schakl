@@ -67,18 +67,32 @@
            mode whose purpose is invisible. -->
       {#each items as item (item.label)}
         {@const Icon = item.icon}
-        <button
-          type="button"
-          class="{button} {item.danger
-            ? 'hover:border-red-400 hover:text-red-600 dark:hover:border-red-500 dark:hover:text-red-400'
-            : 'hover:border-brand hover:text-brand'}"
-          disabled={count === 0 || item.eligible === 0}
-          title={count === 0 ? t("bulk.select_first") : undefined}
-          onclick={item.onclick}
-        >
-          {#if Icon}<Icon size={14} />{/if}
-          {item.label}{partial(item.eligible)}
-        </button>
+        {@const blocked = count === 0 || item.eligible === 0 || !!item.disabledReason}
+        {@const tone = item.danger
+          ? "hover:border-red-400 hover:text-red-600 dark:hover:border-red-500 dark:hover:text-red-400"
+          : "hover:border-brand hover:text-brand"}
+        {#if item.href && !blocked}
+          <!-- A download is a navigation, so it is a link: middle-click and "save as" work, and
+               there is no handler pretending to be one. `data-sveltekit-reload` for the reason
+               `ImpexBar` gives — the target is a download endpoint, never a client-side route.
+               Blocked falls through to the button below: a disabled anchor does not exist, and
+               an <a> that refuses on click is #253's "link that always refuses". -->
+          <a href={item.href} class="{button} {tone}" data-sveltekit-reload>
+            {#if Icon}<Icon size={14} />{/if}
+            {item.label}{partial(item.eligible)}
+          </a>
+        {:else}
+          <button
+            type="button"
+            class="{button} {tone}"
+            disabled={blocked}
+            title={item.disabledReason ?? (count === 0 ? t("bulk.select_first") : undefined)}
+            onclick={item.onclick}
+          >
+            {#if Icon}<Icon size={14} />{/if}
+            {item.label}{partial(item.eligible)}
+          </button>
+        {/if}
       {/each}
 
       {#if canEdit}

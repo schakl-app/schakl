@@ -247,3 +247,88 @@ async def test_domain_dns_refresh(client_for, monkeypatch) -> None:
             {"priority": 20, "exchange": "mail2.example.net"},
         ]
         assert body["dns_checked_at"] is not None
+
+
+async def test_list_filters_narrow_the_register(client_for) -> None:
+    """The register's filter bar, at the only layer that can answer it (docs/PERFORMANCE.md).
+
+    A filter applied in the browser narrows the fifty rows that happened to load and reports a
+    total counted over all of them — so every one of these is a query parameter, and what comes
+    back is the *filtered* total.
+    """
+    t = await make_tenant("dom-filters")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        acme = await _company(c, headers, "Acme")
+        other = await _company(c, headers, "Bravo")
+        oxxa = await _provider(c, headers, "registrar", "OXXA")
+        transip = await _provider(c, headers, "registrar", "TransIP")
+        flare = await _provider(c, headers, "dns", "Cloudflare")
+
+        for name, company, status, registrar, dns in [
+            ("acme-live.nl", acme, "active", oxxa, flare),
+            ("acme-parked.nl", acme, "parked", oxxa, None),
+            ("acme-old.nl", acme, "expired", transip, None),
+            ("bravo-live.nl", other, "active", transip, flare),
+        ]:
+            body = {
+                "name": name,
+                "company_id": company,
+                "status": status,
+                "registrar_provider_id": registrar,
+                "dns_provider_id": dns,
+            }
+            created = await c.post("/api/v1/domains", json=body, headers=headers)
+            assert created.status_code == 201, created.text
+
+        async def names(query: str) -> list[str]:
+            res = await c.get(f"/api/v1/domains?{query}", headers=headers)
+            assert res.status_code == 200, res.text
+            body = res.json()
+            # The count above a filtered list counts the filter, never the whole table.
+            assert body["total"] == len(body["items"])
+            return sorted(d["name"] for d in body["items"])
+
+        assert await names(f"company_id={acme}") == [
+            "acme-live.nl",
+            "acme-old.nl",
+            "acme-parked.nl",
+        ]
+        assert await names("status=active") == ["acme-live.nl", "bravo-live.nl"]
+        assert await names(f"registrar_provider_id={oxxa}") == ["acme-live.nl", "acme-parked.nl"]
+        assert await names(f"dns_provider_id={flare}") == ["acme-live.nl", "bravo-live.nl"]
+        assert await names("q=acme") == ["acme-live.nl", "acme-old.nl", "acme-parked.nl"]
+        # Filters compose — the bar sets several at once and each narrows the last.
+        assert await names(f"company_id={acme}&status=active&registrar_provider_id={oxxa}") == [
+            "acme-live.nl"
+        ]
+        # A combination that matches nothing says so, rather than falling back to everything.
+        assert await names(f"company_id={other}&status=expired") == []
+
+
+async def test_company_panel_shows_five_domains_and_the_whole_count(client_for) -> None:
+    """The client card is the first page of the register, and it says how long that register is.
+
+    Showing five without the count is the truncated-total failure (#37) in miniature: a card
+    listing five for a client who has eight reads as the complete answer, and nothing on screen
+    contradicts it.
+    """
+    t = await make_tenant("dom-panel-cap")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = await _company(c, headers)
+        for i in range(8):
+            created = await c.post(
+                "/api/v1/domains",
+                json={"name": f"klant-{i:02d}.nl", "company_id": company},
+                headers=headers,
+            )
+            assert created.status_code == 201, created.text
+
+        res = await c.get(f"/api/v1/companies/{company}/panels", headers=headers)
+        panel = next(p for p in res.json() if p["key"] == "domains.company")["data"]
+        assert panel["total"] == 8
+        assert len(panel["domains"]) == 5
+        # The order the list itself opens in (name ascending), so "view all" continues the card
+        # rather than reshuffling it.
+        assert [d["name"] for d in panel["domains"]] == [f"klant-{i:02d}.nl" for i in range(5)]

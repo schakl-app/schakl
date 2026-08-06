@@ -35,7 +35,6 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
-from weakref import WeakKeyDictionary
 
 from sqlalchemy import select
 
@@ -55,7 +54,7 @@ from app.modules.marketing.service import (
     resolve_seranking_key,
 )
 from app.modules.marketing.sources import source_for
-from app.registry import AUDIENCE_INTERNAL, ReportSectionSpec, ReportWindow
+from app.registry import AUDIENCE_BOTH, AUDIENCE_INTERNAL, ReportSectionSpec, ReportWindow
 
 logger = logging.getLogger("schakl.marketing")
 
@@ -68,11 +67,17 @@ _GA4_LIVE_KINDS = ("organic_sources", "social_sources", "referral_sources", "key
 MAX_TABLE_ROWS = 25
 MAX_KEYWORD_ROWS = 200
 
-#: Memoised per request, so ten sections cost one gather. Weak keys, so a finished request's
-#: payload is collected with it rather than lingering in a module-level dict.
-_CACHE: WeakKeyDictionary[RequestContext, dict[tuple, GatheredMarketing]] = (
-    WeakKeyDictionary()
-)
+#: Where the per-request memo lives: on the context object itself.
+#:
+#: It was a module-level ``WeakKeyDictionary`` keyed on the context, which raises
+#: ``TypeError: unhashable type`` on its first use — ``RequestContext`` and ``SystemContext``
+#: are both ``@dataclass`` with the default ``eq=True``, and Python sets ``__hash__ = None`` on
+#: any class that defines ``__eq__``. Every provider funnels through :func:`gather`, so one
+#: unhashable key failed all eight sections at once and the report came out empty.
+#:
+#: An attribute on the context needs no hashing and no weak reference, and it is collected with
+#: the request rather than by a cache-eviction policy nobody would remember to check.
+_CACHE_ATTR = "_marketing_report_gather"
 
 
 @dataclass
@@ -93,13 +98,21 @@ class GatheredMarketing:
     notes: list[dict[str, str]] = field(default_factory=list)
 
 
+def _memo(ctx: RequestContext) -> dict[tuple, GatheredMarketing]:
+    cache = getattr(ctx, _CACHE_ATTR, None)
+    if cache is None:
+        cache = {}
+        setattr(ctx, _CACHE_ATTR, cache)
+    return cache
+
+
 async def gather(ctx: RequestContext, window: ReportWindow) -> GatheredMarketing:
     """Everything, once. Memoised on ``(company, period)`` for the life of the request."""
     key = (window.company_id, window.start, window.end, window.compare_start)
-    per_ctx = _CACHE.setdefault(ctx, {})
-    if key not in per_ctx:
-        per_ctx[key] = await _gather(ctx, window)
-    return per_ctx[key]
+    memo = _memo(ctx)
+    if key not in memo:
+        memo[key] = await _gather(ctx, window)
+    return memo[key]
 
 
 async def _gather(ctx: RequestContext, window: ReportWindow) -> GatheredMarketing:
@@ -514,12 +527,19 @@ async def _site_audit(ctx: RequestContext, window: ReportWindow) -> dict[str, An
     }
 
 
+#: Every data section is contributed to **both** documents, and only the audit is withheld.
+#: The two reports are about the same month and read the same numbers; what makes them
+#: different is the prompt, not the data. Marking these ``client``-only left the internal
+#: analysis with one section to reason over — it could tell a marketer about the site audit and
+#: nothing about the traffic, the rankings or the conversions, which is most of what they need
+#: and all of what the workflow this replaces gave them.
 MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
     ReportSectionSpec(
         key="marketing.traffic_channels",
         title_key="reporting.section.traffic_channels",
         brief_key="reporting.brief.traffic_channels",
         provider=_traffic_channels,
+        audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
         position=10,
     ),
@@ -528,6 +548,7 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         title_key="reporting.section.search_engines",
         brief_key="reporting.brief.search_engines",
         provider=_split_section("organic_sources", "share", 10),
+        audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
         position=20,
     ),
@@ -536,6 +557,7 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         title_key="reporting.section.rankings",
         brief_key="reporting.brief.rankings",
         provider=_rankings,
+        audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
         position=30,
     ),
@@ -544,6 +566,7 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         title_key="reporting.section.search_console",
         brief_key="reporting.brief.search_console",
         provider=_search_console,
+        audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
         position=40,
     ),
@@ -552,6 +575,7 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         title_key="reporting.section.referral",
         brief_key="reporting.brief.referral",
         provider=_split_section("referral_sources", None, MAX_TABLE_ROWS),
+        audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
         position=50,
     ),
@@ -560,6 +584,7 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         title_key="reporting.section.social",
         brief_key="reporting.brief.social",
         provider=_split_section("social_sources", "grouped", 10),
+        audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
         position=60,
     ),
@@ -568,6 +593,7 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         title_key="reporting.section.conversions",
         brief_key="reporting.brief.conversions",
         provider=_conversions,
+        audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
         position=70,
     ),
@@ -576,6 +602,7 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         title_key="reporting.section.ai_search",
         brief_key="reporting.brief.ai_search",
         provider=_ai_search,
+        audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
         position=80,
     ),
@@ -593,9 +620,11 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
 
 def clear_cache(ctx: RequestContext, company_id: uuid.UUID | None = None) -> None:
     """Drop the memoised gather — used between clients in a batch run."""
-    if company_id is None:
-        _CACHE.pop(ctx, None)
+    memo = getattr(ctx, _CACHE_ATTR, None)
+    if memo is None:
         return
-    per_ctx = _CACHE.get(ctx) or {}
-    for key in [key for key in per_ctx if key[0] == company_id]:
-        per_ctx.pop(key, None)
+    if company_id is None:
+        memo.clear()
+        return
+    for key in [key for key in memo if key[0] == company_id]:
+        memo.pop(key, None)

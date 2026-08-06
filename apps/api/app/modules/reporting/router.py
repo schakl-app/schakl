@@ -15,6 +15,7 @@ from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.errors import AppError
 from app.modules.reporting.models import ReportAudience
+from app.modules.reporting.render.engine import ENGINE
 from app.modules.reporting.schemas import (
     ReportActionResult,
     ReportDetail,
@@ -29,7 +30,9 @@ from app.modules.reporting.schemas import (
     ReportRunBatchResult,
     ReportRunRequest,
     ReportSendRequest,
+    ReportTemplatePreviewRequest,
     ReportTemplateRead,
+    ReportTemplateSource,
     ReportTemplateWrite,
     ReportToneRead,
     ReportToneWrite,
@@ -116,6 +119,46 @@ async def section_catalog(
     """What a template may order or switch off — the registry, made visible (§15's
     "registry, not free text", applied to design)."""
     return TemplateService(ctx).catalog()
+
+
+@router.get(
+    "/templates/designs/{design}/source",
+    response_model=ReportTemplateSource,
+    dependencies=[require_permission("reporting.settings.manage")],
+)
+async def template_source(design: str) -> ReportTemplateSource:
+    """A shipped design's own HTML and CSS, to start a custom report template from.
+
+    The counterpart invoicing has had since its designer shipped, and the piece whose absence
+    made ``design: "custom"`` a field nobody could reach: writing a report template from a
+    blank page means knowing the whole render context by heart, while branching from the
+    design you already like means changing the two things you want changed. These are the
+    *same* files ``standard`` renders from, so what an author gets is what they saw.
+
+    Declared on ``reporting.settings.manage`` because handing back the body a tenant is about
+    to author against is part of the same act as saving it.
+    """
+    html, css = ENGINE.builtin_source(design)
+    return ReportTemplateSource(html=html, css=css)
+
+
+@router.post(
+    "/templates/preview",
+    dependencies=[require_permission("reporting.settings.manage")],
+)
+async def preview_template(
+    payload: ReportTemplatePreviewRequest, ctx: RequestContext = Depends(require_context)
+) -> Response:
+    """Render an unsaved template — the editor's live preview.
+
+    Declared *above* ``/templates/{template_id}``-shaped routes for the ordinary reason: a
+    literal segment and a path parameter both match ``/templates/preview``, and whichever is
+    registered first wins.
+    """
+    return Response(
+        content=await TemplateService(ctx).preview(payload),
+        media_type="text/html; charset=utf-8",
+    )
 
 
 @router.post(

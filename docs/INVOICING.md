@@ -301,6 +301,36 @@ for accounting packages.
   due date* (`price_override`, else the TLD's `domain_tld_prices` row valid then); the
   same `events.py` drafts one invoice per `(domain, period)` under its own claim table and
   partial unique index, one line ("Domeinverlenging …" in the org locale). Same level applies.
+- **…on the day the registration actually lapses, which only a register knows.** `next_invoice_date`
+  began life purely derived — the first yearly anniversary of `start_date` still ahead — and that
+  is the true expiry exactly when `start_date` is the true registration date. For a portfolio
+  onboarded in one afternoon it is not: every domain is anchored to that afternoon, and every
+  renewal then invoices on the wrong day, every year, with no amount of re-saving the record
+  fixing it because nothing ever asked the registrar. So a connected register that has *answered*
+  now supplies the default, through `app/core/registrar/expiry.py` — the `presence.py` seam
+  applied to a date, so `domains` still names no registrar and two registers holding one name
+  resolve in a fixed key order rather than by import order. Four rules carry over from #298 and
+  are what make it safe to ship into an instance already invoicing domains:
+  - **A credential is not an authority.** A register speaks only through a row a *sync* wrote, so
+    a connected-but-never-read account contributes nothing and every existing date stands.
+  - **Only forward.** An expiry in the past is a lapsed registration — a thing to look at, not a
+    date to bill on. Taking it would hand the cron a due date it fires on immediately and draft a
+    renewal for a registration that has run out.
+  - **Observed is not decided** (CLAUDE.md §10). `Domain.register_expires_on` is a second, read-only
+    field beside the date schakl bills on; the list has a column for it and the detail view says
+    "de registrar zegt …" when the two differ. Drift is *reported*, and the edit form offers it in
+    one click — a mirror that silently overwrites cannot express "somebody changed this at the
+    registrar" at all.
+  - **The one-off correction skips what was billed.** The migration moves existing rows onto the
+    observed expiry, but never a domain with an `invoice_domain_periods` claim: moving a period
+    boundary underneath a claim is how a period gets billed twice or skipped entirely.
+
+  The date is now editable everywhere the record is — form, spreadsheet and bulk selection — and
+  an explicit `null` means *work the default out again*, not *stop invoicing*: "never bill this
+  domain" is `invoiceable`'s job and already has a field. The import is the one surface where
+  blank means **leave alone**, because in a file a blank column is what an export somebody edited
+  two cells of comes back as, and rescheduling a thousand renewals is not something a blank should
+  be able to say.
 - **…but only if the domain is invoiced at all (#298).** An agency's domain list mixes names it
   registered and renews for the client with names the client registered themselves and merely
   asked us to point somewhere, and only the second kind must never reach an invoice.
@@ -404,14 +434,108 @@ belongs *here* is the part invoicing owns:
   starting a checkout settles nothing, while registering a payment is a bookkeeping claim.
   `InvoiceRead.online_payment` is the boolean the portal draws its pay button from — it never
   gets to read which accounts the agency has connected.
-- **Every invitation to pay leads to the portal, never to a checkout URL** — the invoice mail's
-  button and the reminder's, the document's QR (#268) and its pay-online line, and the portal's
-  own button. `paylinks.py` is the one function that says so, and four surfaces pointing at one
-  door is what makes "one open checkout per invoice" true: a checkout URL is a bearer credential,
-  it expires in minutes while the invoice does not, and a client holding both a mailed link and
-  a portal button can pay the same debt twice. The mail's button is the strict one — it appears
-  only when a provider is connected and the invoice is collectable, so an instance without
-  payments sends the mail it always sent (`docs/PAYMENTS.md` §9).
+- **Every invitation to pay leads to a page of ours, never to a checkout URL** — the invoice
+  mail's button and the reminder's, the document's QR (#268) and its pay-online line, and the
+  portal's own button. `paylinks.py` is the one function that says so, and four surfaces
+  pointing at one door is what makes "one open checkout per invoice" true: a checkout URL is a
+  bearer credential that spends money, it expires in minutes while the invoice does not, and a
+  client holding both a mailed link and a portal button can pay the same debt twice. The mail's
+  button is the strict one — it appears only when a provider is connected and the invoice is
+  collectable, so an instance without payments sends the mail it always sent
+  (`docs/PAYMENTS.md` §9). *Which* page of ours is §"De publieke factuurlink" below.
+- **A payer who comes back sees their own money** (#304). Mollie's callback is asynchronous and
+  makes no ordering promise against the browser redirect, so the return landed on a page whose
+  read had already happened: the invoice said *open* to the person who had just paid it, and
+  the only control that could fix it was **Check status**, which is `:any` and therefore not
+  theirs. The return URL now carries `?return=1`, the landing asks once server-side, and the
+  page polls a few times while an attempt is still in flight. Bounded at the API
+  (`refresh_pending`): non-final attempts only, and one provider call per attempt per five
+  seconds, counted on its own `refreshed_at` — **not** on `synced_at`, which the *create* also
+  writes and which therefore made the one case this exists for the one case it skipped.
+
+## De publieke factuurlink (#304 — `public.py`)
+
+An issued invoice has its own web address, and anybody holding it can read that invoice and pay
+it without an account: `https://<tenant host>/invoice/<token>`.
+
+**Why it exists.** #268 sent the QR to the client portal and argued that this was safe because
+"the right person lands on the invoice, anyone else lands on a sign-in screen". True, and
+answering the wrong question: the portal is a licensed product an agency buys per client
+(`docs/PORTAL.md`), so most clients have no login — and for them the sentence read *everyone
+lands on a sign-in screen*. A QR whose only outcome is a login form for an account you do not
+have is #253's control that always refuses, printed on paper and posted.
+
+**What the token is.** `invoices.public_token`, `secrets.token_urlsafe(32)` — 256 bits — minted
+at issue, and lazily on first render for the register that predates the feature. Deliberately
+not a UUID: 122 bits would also be unguessable, but a UUID in a URL *reads* as an identifier,
+gets pasted into tickets and spreadsheets as though it were one, and carries no hint that it is
+a credential. `NULL` means no public link, and the read refuses a NULL rather than treating it
+as a wildcard.
+
+**What it grants, exactly.** Read this one invoice, download its PDF, open a checkout for what
+it still owes, and ask whether that checkout has landed. That is the same thing handing somebody
+the paper invoice already grants — look at it, and pay what it says — and paying someone else's
+bill is not an attack. It grants **no** second document, no company record, no contact, no
+activity trail, and no other write.
+
+**How that is enforced, and why it is not a list of things to remember.** The routes build a
+`RequestContext` that is a *client-portal session scoped to one company* — `is_portal=True`,
+`company_scope={invoice.company_id}`, and two permissions at `:own`
+(`invoicing.invoice.read:own`, `invoicing.payment.link:own`). Every narrowing then comes from
+machinery that already exists and is already tested: the company horizon fences the rows,
+`Invoice.__portal_horizon_clause__` hides drafts, `_PortalDocumentRepository` applies both on
+every path (§#266, §#285), and the module's own `:any` surfaces — the seller's bank details,
+the price list, the template library, the unbilled backlog with every employee's rate on it —
+are refused by the same dependency that refuses them to a client. The obvious shortcut,
+`jobs.system_context`, holds `*` and would have made all of that a matter of this one file
+remembering.
+
+**The other four properties**, each of which has a plausible wrong version:
+
+- **The lookup is tenant-scoped.** `org_id = :oid AND public_token = :token`, with RLS bound
+  first, exactly like the payment callback's five gates. Looking a token up across tenants would
+  be a second unscoped crossing and would answer before authenticating.
+- **The token never travels in a `Referer`.** It is a path segment and the very next thing a
+  payer does is leave for a payment provider, so every public response — page, document, PDF —
+  sets `Referrer-Policy: no-referrer`. The app default (`strict-origin-when-cross-origin`)
+  strips the path cross-origin but still sends the whole URL same-origin, which is not enough.
+  `X-Robots-Tag: noindex, nofollow, noarchive` rides along, because a link mailed to a client
+  ends up in signatures, tickets and helpdesk threads.
+- **Every refusal is the same bare 404.** Unknown token, a draft's token, a suspended org, a
+  tenant with the switch off. Distinguishing them tells an enumerator which guess was closer and
+  helps nobody holding a real link.
+- **The switch is retroactive.** `invoicing_settings.public_invoice_links` (Instellingen →
+  Facturatie, on by default) is checked *before* the token is compared, so unticking it
+  withdraws links that are already on paper — the only useful meaning of an off switch for a
+  credential the agency cannot collect back.
+
+**What is deliberately *not* mitigated, and why.** There is **no rate limit on token guessing**,
+because at 256 bits guessing is not a threat model — an attacker managing ten thousand attempts
+a second for a century covers about 2⁻¹⁹⁷ of the space, and a limiter there would only add a
+knob that reads as protection. The one bound worth being aware of is different: `/pdf` renders
+through WeasyPrint on every call, so a holder of a *valid* token can spend CPU by looping it.
+That is a resource question rather than a disclosure one (they may read that document), the page
+itself frames the cheap HTML and only an explicit download reaches the PDF, and it is called out
+here so that the day it matters, the fix is a render cache keyed on
+`(invoice, template, updated_at)` rather than a scramble.
+
+**Printing the address is its own switch.** The pay-online block (`payment_link`) has two
+fields, `label` and `url`, both on by default and toggled in the template editor's Layout tab
+like any other. Before #304 they were one thing, and that was fine while the address was
+`/invoices/<uuid>` — long, inert, meaningless to a reader. It stopped being fine when the
+address became a **capability token in plain type**: printed, it is readable over a shoulder, in
+a photocopy left on a shared tray, and in any screenshot of the invoice. The QR carries none of
+that, because a code is not human-readable at a glance. So an agency that wants the convenience
+without the naked credential switches `url` off and keeps a line the PDF everybody actually
+receives still follows. With both off the block prints nothing and the QR's caption comes back,
+because there is no longer a line for it to stand down beside.
+
+Staff see the link on the invoice screen (`InvoiceRead.public_url`, detail read only) so they
+can hand it over when a client rings up. It is empty for an external login: a client is already
+looking at the document, and a bearer token on their own screen is a thing to forward by
+accident. The surface is excluded from the MCP tool map for the same reason `/auth` is — a route
+that authenticates *itself* does not travel `require_context`, which is the proxy's whole safety
+argument.
 
 ## The client-facing mails are the tenant's to write (`emails.py`)
 
@@ -589,6 +713,36 @@ service._render_inputs ─┬─▶ context.build_context ──▶ engine.rende
   because then they are the statement. The reader's question at the foot of an invoice is how
   much VAT; only a document carrying several rates also has to answer which.
 
+### A selection prints as one archive (#307)
+
+`GET /invoicing/invoices/pdf?ids=…` is the bulk half of `/invoices/{id}/pdf`: the invoices
+ticked in the list's ✎ mode come back as one zip, each entry filed under the number the single
+download would have given it. Handing a month of invoices to an accountant was otherwise a
+click per document. Four decisions hold it up, and none of them is about zip files.
+
+- **It is a `GET`, twice over on purpose.** It is a read, and `license_write_gate` keys off the
+  method — past a licence's expiry a module goes read-only, not gone, so a `POST` here would
+  have locked an agency out of its own paperwork at the moment it wants to file it. It is also
+  what lets the bulk bar's control be a real `<a href>` rather than a click handler that sets
+  `location` (docs/UX.md).
+- **The selection rides the scoped repository** (`InvoiceService.by_ids`, one query for the
+  batch). An id this caller may not read is therefore **absent** from the archive rather than a
+  403 that would confirm whose invoice it is, a client's login gets its own issued documents and
+  no drafts through the very same clause the list obeys (#266, #285), and a selection that
+  resolves to nothing is a 404 — an empty zip is not an answer.
+- **Nothing in it is per row.** The seller block, the brand and the logo bytes are one read for
+  the whole batch (`_render_shared`), the design is memoised per template id, and the lines are
+  `_attach`'s grouped read — so a five-invoice archive issues exactly the statements a
+  one-invoice archive does, which is what `test_invoicing_archive.py` pins. Resolving the org
+  half inside `_render_inputs` is right for one document and is three round trips per document
+  for fifty.
+- **It caps at `MAX_ARCHIVE_DOCUMENTS` (50), declared on the route.** Every entry is a full
+  WeasyPrint layout, so two hundred is a request no proxy will wait out and one with no progress
+  to show for it; fifty is the pager's default page size, so "tick the page, download it" fits
+  exactly. `MAX_IMPORT_ROWS`' reasoning: a cap is what keeps a synchronous batch honest until it
+  is a background job. The web mirrors the number to *say* so (`invoicing/types.ts`) rather than
+  letting the user press a control that will 422.
+
 ### What a template may rearrange (`render/blocks.py`)
 
 A template carries a **layout**: an ordered list of blocks, each toggleable, each with its own
@@ -680,7 +834,28 @@ it is:
   same distinction the line's own label draws — betalen against bekijken — about a picture
   nobody needs told is scannable, and under the address it reads as belonging to the address.
   With the line off it is the only thing saying the code is worth pointing a phone at, and it
-  prints.
+  prints. A tenant who writes their own caption (`qr_caption_i18n`) always gets theirs: they put
+  it there on purpose, and they know whether they have a provider connected.
+- **The QR is fully configurable, and the rule that made it safe grew rather than went**
+  (#305, on top of #269). `qr_style` is now `brand` (accent + logo, the default and unchanged) ·
+  `plain` (mono) · `custom`, and `custom` unlocks `qr_color`, `qr_background`, `qr_logo`
+  (`brand` / `none` / an uploaded `qr_logo_file_id`) and the caption. #269 shipped no picker on
+  the argument that "letting a tenant type a hex here would be offering them a way to print an
+  invoice nobody's phone can read" — right about the danger, wrong about the remedy. What kept
+  a pale accent scannable was never the absence of a field, it was `readable_dark`; so that
+  became **`readable_pair`**, which judges both colours together, and the editor gained a live
+  preview of the actual code plus a sentence explaining any substitution. Three refusals, and
+  each falls back to black-on-white **as a pair**: too little contrast between them (nudging
+  only the ink leaves a mid-grey panel that passes a ratio and still loses a camera), a "light"
+  side that is not light (`MIN_LIGHT_LUMINANCE` — an inverted code clears every contrast check
+  and scans worse everywhere, so "no dark mode" is now a number instead of a missing option),
+  and a "dark" side that is the lighter of the two. `qr_appearance` (`render/context.py`) is the
+  single resolution, read by the document, the mail's PNG *and* the editor's preview — which
+  also fixed a quieter #269 bug: the mail drew the org's brand colour unconditionally, so a
+  template set to `plain` printed mono on paper and mailed a coloured code. One more mechanism
+  worth knowing: segno's SVG writer omits light modules entirely (that is why the file is
+  small), so a tinted background there is a full-bleed `<rect>` of ours behind the symbol, while
+  the PNG can just be handed a `light` colour.
 - **A rule that styles an inline element does nothing, and the QR is the scar.**
   `.payment-qr-code { width: 24mm; height: 24mm }` sat on an `<a>`, which is inline: width and
   height do not apply, the svg's `100%` resolved against the paragraph instead, and the code

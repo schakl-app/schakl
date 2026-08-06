@@ -3,7 +3,7 @@
    * The domain field set (issue #90). The caller owns the <form>, action and buttons, so create
    * and edit share identical fields. Providers come as one list and are filtered per slot by kind.
    */
-  import { fmtMoney } from "$lib/core/format";
+  import { fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
@@ -110,6 +110,18 @@
     ].join(" · "),
   );
 
+  // The renewal date, held so the "use the registrar's date" shortcut can fill it (#250). Blank
+  // on create is not an empty answer: the API resolves the default — the register's expiry if
+  // one has spoken, else the anniversary of the start date — so the placeholder says so rather
+  // than the form guessing a date the server is about to work out properly.
+  // svelte-ignore state_referenced_locally
+  let renewalValue = $state(domain?.next_invoice_date ?? "");
+  // What the registrar last observed, shown only when it is worth acting on: a date we already
+  // hold is not news (CLAUDE.md §10 — decided and observed are separate, and drift is the whole
+  // point of keeping them so).
+  const registerExpiry = $derived(domain?.register_expires_on ?? null);
+  const registerDiffers = $derived(registerExpiry != null && registerExpiry !== renewalValue);
+
   // Stateful so the TLD price hint follows what is typed (#250); still normalized on change.
   // svelte-ignore state_referenced_locally
   let nameValue = $state(domain?.name ?? normalizeDomainName(nameDefault));
@@ -149,6 +161,31 @@
         value={domain?.start_date ?? new Date().toISOString().slice(0, 10)}
       />
       <p class="mt-1 text-xs text-text-muted">{t("domains.start_date_hint")}</p>
+    </div>
+    <div>
+      <label for="{idPrefix}-next-invoice-date" class="mb-1 block text-sm text-text"
+        >{t("domains.next_invoice_date")}</label
+      >
+      <DateInput
+        name="next_invoice_date"
+        id="{idPrefix}-next-invoice-date"
+        bind:value={renewalValue}
+        {formId}
+      />
+      <p class="mt-1 text-xs text-text-muted">
+        {t("domains.next_invoice_date_hint")}
+        {#if registerDiffers}
+          <!-- The registrar's own answer, offered rather than applied: an integration reports
+               drift, it never silently overwrites what somebody decided (CLAUDE.md §10). -->
+          <button
+            type="button"
+            class="text-brand hover:underline"
+            onclick={() => (renewalValue = registerExpiry ?? "")}
+          >
+            {t("domains.register_expiry_use", { date: fmtNumericDate(registerExpiry ?? "") })}
+          </button>
+        {/if}
+      </p>
     </div>
     <div>
       <label for="{idPrefix}-price-override" class="mb-1 block text-sm text-text"

@@ -50,6 +50,58 @@ A token scoped to less is **degraded, not broken**. Every probe in the status ch
 and names itself in `unavailable`, because losing the whole screen to one optional 403 pushes an
 admin to mint a wider token than they need.
 
+### No probe is the gate
+
+Cloudflare has **two kinds of API token and they do not verify at the same URL**. A *user* token
+answers `GET /user/tokens/verify`; an **account-owned** token — the newer kind, owned by the
+account rather than by a person, which is exactly what an agency mints so the integration does not
+leave with whoever created it — is refused there with `401` and code `1000`, *"Invalid API Token"*,
+while working perfectly for every zone, DNS and account call it is scoped for. It verifies at
+`GET /accounts/{account_id}/tokens/verify` instead. So `verify_token` takes an account id and asks
+the second endpoint when the first refuses, and `probe_capabilities` reads `/accounts` **first**,
+precisely so it has an id to address that call with.
+
+The endpoint was the bug; treating one probe as the gate is what made it fatal. `probe_capabilities`
+ran verify first and raised for everything behind it, so a valid credential read *"Token problem:
+Invalid API Token"* on a screen whose zone list was filling in beside it. Two rules replace it:
+
+- **A read that succeeds outranks a verify that refuses.** "Cloudflare will describe this token to
+  me" is a strictly narrower question than "Cloudflare accepts this token", and only the second one
+  matters — the reads *are* the calls this module makes. `token_valid` is therefore true when any
+  probe was answered, and no probe raises on its own.
+- **"Invalid" is only honest when every probe was refused.** That is the one state where the word
+  describes the token rather than one endpoint's opinion of it.
+
+The same shape is why the fake had to change: it modelled a dead token as "verify says no,
+everything else works", which is not a Cloudflare that exists. The only test that could have caught
+this was passing against a fiction. A token the fake rejects is now rejected at every path.
+
+### The flag is two-way
+
+`_flag_account` marks a row `error` on a path that still commits, and **only a 401 does it**.
+`CloudflareAuthError` covers both of Cloudflare's refusals and they are different sentences: 401 is
+"I do not accept this token at all", 403 is "not scoped for *this call*" — degraded, not broken,
+and already reported per capability. Flagging the 403 left a DNS-only token reading "Token problem"
+for ever over an optional Pages probe it was never meant to pass. The text is still recorded (a
+missing scope is worth reading); it is the red status it does not earn, so the screen labels the
+two differently.
+
+And a note written on a path that then **raises** must not ride the request transaction.
+`require_context` commits on the way out and rolls back on any exception, so `sync_account`
+writing `last_error` and then raising recorded nothing at all — the update was undone by the very
+error it described, and the row read healthy while the admin looked at a red toast.
+`_record_failure` writes it on its own session and commits it there, deliberately surviving that
+rollback. It is the one write in this module that does not ride the scoped repository, so RLS is
+bound the way `app.core.jobs` binds it and the org is pinned in the `WHERE` too; and a failure to
+write the note is logged and swallowed, because losing the note is bad and losing the exception
+is worse.
+
+`_clear_account_error` is the mirror, and its absence was the other half of the same complaint.
+The flag used to be one-way — nothing but a manual re-verify took a row out of `error` — so a token
+that had been fixed at Cloudflare, or was never broken at all, kept its red line through every sync
+and check that plainly worked. A successful zone read now clears it, because that read is the same
+evidence a verify would have been.
+
 ## 3. Two rules the module never bends
 
 **Never guess which account.** The same apex may exist in several of the tenant's accounts —
@@ -204,6 +256,29 @@ Three rules hold the reconcile up, and none of them is about Pages.
 - **`missing_at` keeps the *first* time it went missing.** "Since when" is the question an agency
   asks; restamping it every check answers "just now" forever.
 
+### Only one half of this module needs an account id, and that is why a blank panel looked fine
+
+**Zones are listed without an account id; Pages and Registrar are addressed by one.** A zone sync
+therefore works perfectly on a row whose `cf_account_id` is NULL, filling the screen with matched
+domains — while the two halves that need an id are skipped entirely. And skipped as a *zero*,
+which on the sync banner reads exactly like "this account has no Pages projects".
+
+Nothing but `verify_account` ever filled that id in. So any tenant whose verify had failed — every
+account-owned token, before `client.verify_token` learned the second endpoint — kept a NULL id and
+a permanently blank Pages panel over a Cloudflare account that was serving their sites, with the
+zone half working the whole time and nothing on any screen connecting the two facts. Note that
+`_refresh_pages_links` cannot rescue it either: it refreshes links that already exist and returns
+early when there are none, because **adoption is the sync's job**. A domain page alone can never
+discover a project.
+
+Two changes, and the second matters as much as the first. `sync_account` resolves a missing id
+itself (`_resolve_account_id`) — it holds a client and the answer is one call, so it asks rather
+than waiting to be told; **exactly one** visible account is an answer and several is §3's
+never-guess case, since picking one would point every later Pages call at the wrong client's
+account. And the `no_account_id` warning is now *rendered*: "not asked" and "nothing found" are
+different answers (§17), and while three zeros were the only thing on screen, no one could tell
+which one they were looking at.
+
 ## 7. Registrar — who *pays* for the name (#298)
 
 A zone is not a registration, and this section exists because the difference is money. Cloudflare
@@ -299,7 +374,10 @@ or the message would point at Cloudflare rather than at the token the admin just
 
 `tests/cloudflare_fake.py` is a stateful stand-in installed through `client.set_transport` — the
 only network seam. A test sets up "the zone already redirects" by writing the rule into the fake's
-`rulesets` and asserts on what the module *reports*; `deny` simulates a token missing a scope.
+`rulesets` and asserts on what the module *reports*; `deny` simulates a token missing a scope,
+`account_owned_token` the kind that refuses the user verify endpoint, and `revoked` a credential
+disabled at Cloudflare after schakl stored it — flipping that one back is how a test exercises
+*recovery*, which nothing could reach while the error flag was one-way.
 Nothing in the suite touches the network, and a test that forgot to install the fake fails loudly
 on connect rather than quietly hitting `api.cloudflare.com`.
 

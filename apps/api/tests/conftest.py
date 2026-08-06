@@ -31,6 +31,13 @@ os.environ.setdefault("SCHAKL_BASE_DOMAIN", "localhost")
 # dedicated test (test_login_rate_limit.py) sets its own ceiling and its own fake Redis.
 os.environ.setdefault("SCHAKL_LOGIN_RATE_LIMIT_PER_MINUTE", "0")
 os.environ.setdefault("SCHAKL_PASSWORD_RESET_RATE_LIMIT_PER_MINUTE", "0")
+# A PDF is not reproducible by default: WeasyPrint embeds a font subset, and fontTools stamps
+# the current time into its `head.modified` table — so two renders of the *same* document differ
+# whenever they straddle a second, and the xref stream's length shifts with them. Any test
+# comparing two renders byte-for-byte is therefore a coin toss on how loaded the machine is.
+# fontTools honours the reproducible-builds convention, so pinning it makes the comparison mean
+# what it says. Nothing in the app reads this.
+os.environ.setdefault("SOURCE_DATE_EPOCH", "1700000000")
 
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 from pwdlib import PasswordHash  # noqa: E402

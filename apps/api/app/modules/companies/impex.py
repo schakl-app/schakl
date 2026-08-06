@@ -136,6 +136,7 @@ COMPANY_IMPEX = ImpexDescriptor(
             data_type="select",
             clearable=False,
             options=tuple(status.value for status in CompanyStatus),
+            option_label_key="companies.status.{option}",
         ),
         ImpexColumn("vat_number", aliases=("btw", "btw-nummer", "vat", "vat number")),
         ImpexColumn("coc_number", aliases=("kvk", "kvk-nummer", "kvknummer", "coc")),

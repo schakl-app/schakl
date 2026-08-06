@@ -139,7 +139,12 @@ async def test_start_end_with_break_derives_minutes(client_for) -> None:
     t = await make_tenant("time-startend")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
-        project = await c.post("/api/v1/projects", json={"name": "P"}, headers=headers)
+        klant = await c.post("/api/v1/companies", json={"name": "Klant"}, headers=headers)
+        project = await c.post(
+            "/api/v1/projects",
+            json={"name": "P", "company_id": klant.json()["id"]},
+            headers=headers,
+        )
         project_id = project.json()["id"]
         start = datetime(2026, 7, 7, 9, 0, tzinfo=UTC)
         end = datetime(2026, 7, 7, 11, 0, tzinfo=UTC)
@@ -190,7 +195,12 @@ async def test_logged_by_project(client_for) -> None:
     headers = await auth_cookie(t.user)
     now = datetime(2026, 7, 7, 9, 0, tzinfo=UTC)
     async with client_for(t.host) as c:
-        proj = await c.post("/api/v1/projects", json={"name": "Burn"}, headers=headers)
+        klant = await c.post("/api/v1/companies", json={"name": "Klant"}, headers=headers)
+        proj = await c.post(
+            "/api/v1/projects",
+            json={"name": "Burn", "company_id": klant.json()["id"]},
+            headers=headers,
+        )
         pid = proj.json()["id"]
         await c.post(
             "/api/v1/time/entries",

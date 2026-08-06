@@ -21,7 +21,7 @@
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import { INVOICE_COLUMNS } from "$lib/modules/invoicing/columns";
   import DocTabs from "$lib/modules/invoicing/DocTabs.svelte";
-  import { docMoney, docStatus } from "$lib/modules/invoicing/types";
+  import { docMoney, docStatus, MAX_ARCHIVE_DOCUMENTS } from "$lib/modules/invoicing/types";
 
   let { data, form } = $props();
 
@@ -38,14 +38,40 @@
   let confirmDelete = $state(false);
 
   // --- bulk (the ✎ selection mode in the toolbar) ----------------------------
-  // Delete only, and deliberately: everything else an invoice has is money or its place in a
-  // lifecycle, and a status moves by *doing* something — issuing, sending, recording a payment
-  // — each with its own rules. Clearing out a batch of drafts is the real want, and the API
-  // allows drafts only (`app/modules/invoicing/bulk.py`), so a mixed selection comes back as
-  // "3 verwijderd · 5 overgeslagen" naming why rather than refusing the lot.
+  // Download and delete, and deliberately nothing else: everything else an invoice has is money
+  // or its place in a lifecycle, and a status moves by *doing* something — issuing, sending,
+  // recording a payment — each with its own rules. Clearing out a batch of drafts is one real
+  // want, and the API allows drafts only (`app/modules/invoicing/bulk.py`), so a mixed selection
+  // comes back as "3 verwijderd · 5 overgeslagen" naming why rather than refusing the lot.
+  //
+  // Handing a month of invoices to the accountant is the other, and it is the row menu's
+  // Download over a selection: one zip of exactly the PDFs those rows would have given one at a
+  // time (#307). A *link*, not a handler — it is a navigation, and the API is a GET so it keeps
+  // working on an expired licence, where "print what you already billed" must not be gated.
   let selecting = $state(false);
   let bulkSelected = $state<string[]>([]);
+  // A draft has no document, exactly as in the row menu — so it is not in the archive and the
+  // button says how many of the picked rows it will actually hand over (docs/UX.md, #299).
+  const downloadable = $derived(
+    data.invoices
+      .filter((i) => bulkSelected.includes(i.id) && i.status !== "draft")
+      .map((i) => i.id),
+  );
   const bulkConfig = $derived({
+    items: [
+      {
+        label: t("invoicing.action.download_pdf"),
+        icon: Download,
+        eligible: downloadable.length,
+        // Over the cap the control refuses and says why, rather than quietly archiving an
+        // arbitrary fifty of the rows that were ticked (the API declares the same number).
+        disabledReason:
+          downloadable.length > MAX_ARCHIVE_DOCUMENTS
+            ? t("invoicing.bulk.download_limit", { count: MAX_ARCHIVE_DOCUMENTS })
+            : undefined,
+        href: `/invoices/download?${downloadable.map((id) => `ids=${id}`).join("&")}`,
+      },
+    ],
     deletePermission: "invoicing.invoice.delete",
     deleteMessage: t("invoicing.bulk.delete_message", { count: bulkSelected.length }),
   });

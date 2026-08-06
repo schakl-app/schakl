@@ -217,10 +217,14 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const name = String(form.get("name") ?? "").trim();
     if (!name) return fail(400, { qcError: "errors.required" });
+    // A project belongs to a client (`ProjectCreate`): named here so the dialog says
+    // which field, instead of relaying a bare validation envelope.
+    const company_id = String(form.get("company_id") ?? "").trim();
+    if (!company_id) return fail(400, { qcError: "errors.projects_company_required" });
     const { data, error } = await apiFor(event).POST("/api/v1/projects", {
       body: {
         name,
-        company_id: String(form.get("company_id") ?? "").trim() || null,
+        company_id,
         status: "active",
         budget_period: "total",
         currency: event.locals.theme.currency,

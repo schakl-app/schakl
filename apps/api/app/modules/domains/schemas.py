@@ -102,6 +102,11 @@ class DomainCreate(DomainBase):
     #: When the registration began — anchors the renewal cycle (#250). The web form always
     #: sends it; omitted (an older API consumer), it defaults to the org-local today.
     start_date: date | None = None
+    #: When the registration actually lapses, and therefore when the renewal is invoiced.
+    #: Omitted, the service resolves the default: a connected register's expiry for this name
+    #: if one has been read, else the first anniversary of ``start_date`` still ahead. Sent, it
+    #: wins — an agency who knows the real date should never have to fix it afterwards.
+    next_invoice_date: date | None = None
 
 
 class DomainUpdate(BaseModel):
@@ -112,6 +117,11 @@ class DomainUpdate(BaseModel):
     status: DomainStatus | None = None
     redirect_url: str | None = Field(default=None, max_length=512)
     start_date: date | None = None
+    #: The renewal date (#250, editable since the register can tell us the real one). Explicit
+    #: ``null`` **resets it to the default** rather than stopping the cycle: on a billable domain
+    #: the service re-resolves register-expiry-else-anniversary, which is the answer somebody
+    #: reaching for "empty this" on a billing date actually wants. Absent leaves it alone.
+    next_invoice_date: date | None = None
     registrar_provider_id: uuid.UUID | None = None
     dns_provider_id: uuid.UUID | None = None
     registry_contact: PartyRef | None = None
@@ -152,6 +162,12 @@ class DomainRead(BaseModel):
     tld: str | None = None
     price_override: Decimal | None = None
     next_invoice_date: date | None = None
+    #: What a connected register last **observed** the registration to expire on; ``None`` when
+    #: no register holds this domain or none has been read. Kept in its own field beside the
+    #: date schakl **decided** (CLAUDE.md §10): they are allowed to differ, and a screen that
+    #: can say "the registrar says 14-03-2027" is the only way "somebody changed this at the
+    #: registrar" is expressible at all. Never written from here — reported, never applied.
+    register_expires_on: date | None = None
     auto_invoice_mode: AutoInvoiceMode | None = None
     #: The stored decision (#298): ``true``/``false`` explicit, ``null`` = follow the register.
     invoiceable: bool | None = None

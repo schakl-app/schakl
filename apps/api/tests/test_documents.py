@@ -19,7 +19,14 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from app.core.documents import ChartStyle, column_chart, grouped_columns, share_bar, sparkline
+from app.core.documents import (
+    ChartStyle,
+    column_chart,
+    grouped_columns,
+    share_bar,
+    share_palette,
+    sparkline,
+)
 
 STYLE = ChartStyle(accent="#4f46e5")
 
@@ -84,6 +91,39 @@ def test_share_bar_folds_the_tail_into_one_named_segment() -> None:
     assert any(label.startswith("Overig") for label in labels), labels
     # Four named segments plus the fold — never nine.
     assert len([r for r in root.iter() if r.tag.endswith("rect")]) == 5 + 5  # bars + legend keys
+
+
+def test_the_palette_a_table_marks_rows_with_is_the_one_the_bar_draws() -> None:
+    """The dot beside a row and the segment it names come from one function, or they drift.
+
+    ``share_palette`` exists so a *table* can carry the chart's colours. The property that
+    makes that worth doing is this one: every colour it hands out is a fill the bar actually
+    paints, in the same order — so a reader matching a row to a segment is never one step off.
+    """
+    items = [("Google", 90.0), ("Bing", 20.0), ("DuckDuckGo", 6.0), ("Ecosia", 4.0)]
+    segments = share_palette(items, style=STYLE, other_label="Overig")
+    svg = share_bar(items, style=STYLE, other_label="Overig")
+    fills = [
+        node.get("fill")
+        for node in _parsed(svg).iter()
+        if node.tag.endswith("rect") and node.get("rx") == "2"
+    ]
+    # Each segment is painted twice — once as the bar, once as its legend key.
+    assert [s.colour for s in segments] == fills[: len(segments)]
+    assert [s.label for s in segments] == ["Google", "Bing", "DuckDuckGo", "Ecosia"]
+    assert not any(s.tail for s in segments)
+
+
+def test_the_folded_tail_is_marked_so_a_table_does_not_hand_four_rows_one_colour() -> None:
+    """The remainder segment stands for every row past the cap, so it names none of them."""
+    items = [(f"engine-{index}", float(20 - index)) for index in range(9)]
+    segments = share_palette(items, style=STYLE, other_label="Overig", max_segments=4)
+    assert [s.tail for s in segments] == [False, False, False, False, True]
+    assert segments[-1].label == "Overig"
+    # And the fold is part of the *scale*: drop the label and the four named segments are
+    # spread across a shorter ramp, which is exactly how a dot ends up a step off its segment.
+    without = share_palette(items, style=STYLE, max_segments=4)
+    assert [s.colour for s in without] != [s.colour for s in segments[:4]]
 
 
 def test_grouped_columns_caps_at_two_series() -> None:

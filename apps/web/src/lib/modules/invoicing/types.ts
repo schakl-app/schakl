@@ -22,6 +22,15 @@ export type UnbilledEntry = components["schemas"]["UnbilledEntry"];
 export type AutoInvoiceMode = components["schemas"]["AutoInvoiceMode"];
 
 /**
+ * The most invoices one zip download may hold (#307). **Keep in step with
+ * `MAX_ARCHIVE_DOCUMENTS`** in `apps/api/.../invoicing/router.py`, which is the authority and
+ * answers 422 above it — this copy exists so the bulk bar can *say* so instead of letting the
+ * user press a control that will refuse. Mirrored rather than fetched for the same reason the
+ * bulk field definitions are (`core/bulk/types.ts`): a round trip per list load buys nothing.
+ */
+export const MAX_ARCHIVE_DOCUMENTS = 50;
+
+/**
  * The order the four kinds appear in: what was worked, what recurs, what renews, what was
  * sold. **Keep in step with `SECTION_ORDER`** in `apps/api/.../render/context.py` — the editor
  * and the printed document must lay a mixed invoice out the same way, or saving one reorders

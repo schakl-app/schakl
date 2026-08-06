@@ -17,7 +17,8 @@ from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from sqlalchemy import bindparam, func, select, text
+from sqlalchemy import bindparam, cast, func, literal, null, select, text
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.sql.expression import column as sa_column
 from sqlalchemy.sql.expression import table as sa_table
 
@@ -34,7 +35,7 @@ from app.core.party import PartyService, PartyType
 from app.core.party.schemas import PartyRef
 from app.core.providers import ProviderService
 from app.core.providers.models import Provider, ProviderKind
-from app.core.registrar import register_presences
+from app.core.registrar import register_expiry_expression, register_presences
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
@@ -63,14 +64,21 @@ logger = logging.getLogger("schakl.domains")
 
 ENTITY_TYPE = "domain"
 
-#: The definition fields the activity trail tracks (§16) — never the DNS-fetched facts
-#: (those are observations, not edits) and never the derived ``tld``/``next_invoice_date``.
+#: The definition fields the activity trail tracks (§16) — never the DNS-fetched facts (those
+#: are observations, not edits) and never the derived ``tld``.
+#:
+#: ``next_invoice_date`` **is** tracked, and was not while it was purely derived: it is now
+#: something a person sets, in the form, in a spreadsheet or over a selection, and "when does
+#: this client's renewal go out" is precisely the kind of change an agency later needs to be
+#: able to attribute. The cron's own yearly advance does not come through here (it writes the
+#: column directly in ``jobs.py``), which is right — that is the cycle running, not an edit.
 _AUDITED_FIELDS = (
     "name",
     "company_id",
     "status",
     "redirect_url",
     "start_date",
+    "next_invoice_date",
     "price_override",
     "invoiceable",
     "auto_invoice_mode",
@@ -133,6 +141,32 @@ def first_future_anniversary(start: date, today: date) -> date:
     while nxt <= today:
         nxt = add_months(nxt, 12)
     return nxt
+
+
+class _NamedDomain:
+    """A domain that does not exist yet, in the one shape the registrar seams correlate against.
+
+    :func:`~app.core.registrar.expiry.register_expiry_expression` builds a clause over ``.id``
+    and ``.name`` of a ``domains`` row, matching a register row by either — linked by a sync, or
+    by name for a domain typed since the last one. On a **create** there is no row yet, and
+    inserting first to re-resolve after would cost a second write on every domain anyone ever
+    adds. So the clause is handed literals: the name we are about to store, and an id half that
+    can never match.
+
+    That last part is the whole reason this is a cast and not a bare ``null()``. SQLAlchemy
+    renders ``column == null()`` as ``column IS NULL`` — which is a perfectly good predicate and
+    the exact opposite of what is wanted here: an unmatched register row *has* a NULL
+    ``domain_id``, so the id half would have matched **every registration the sync could not
+    place**, and a new domain would inherit the expiry of an unrelated one. ``CAST(NULL AS
+    UUID)`` compares as NULL instead, so the half never contributes and the name decides.
+
+    Deliberately not a ``Domain`` instance: a half-built ORM object in a query builder is the
+    kind of thing that later grows a flush nobody asked for.
+    """
+
+    def __init__(self, name: str) -> None:
+        self.id = cast(null(), PGUUID(as_uuid=True))
+        self.name = literal(name)
 
 
 def _bumped(current: Decimal, data: TldPriceIncreaseRequest) -> Decimal:
@@ -205,6 +239,39 @@ class DomainService:
         """Today in the org's zone (CLAUDE.md §8) — a renewal date is a local concept."""
         return datetime.now(await org_zoneinfo(self.ctx.session, self._org_id)).date()
 
+    async def _register_expiry_for(self, name: str) -> date | None:
+        """What a connected register says this **name** expires on, or ``None``.
+
+        By name rather than by row, because the two callers that need it — a create, and the
+        default offered for a row whose date is being reset — are both asking about a domain the
+        register may know better than we do. One query, and none at all when no register module
+        is enabled (:func:`register_expiry_expression` answers ``None` before any SQL is built).
+        """
+        expression = register_expiry_expression(self._org_id, _NamedDomain(name))
+        if expression is None:
+            return None
+        return await self.ctx.session.scalar(select(expression))
+
+    async def _default_invoice_date(self, *, name: str, start_date: date) -> date:
+        """The renewal date to use when nobody has named one (#250, extended).
+
+        **The register wins where it has spoken.** A domain's renewal is invoiced when the
+        registration actually lapses, and the derived anniversary is only ever a stand-in for
+        that date: it is correct exactly when ``start_date`` is the true registration date, and
+        off by however far it misses when it is not — which is the normal case for a portfolio
+        onboarded in one afternoon, where every domain is anchored to that afternoon and every
+        renewal then goes out on the wrong day.
+
+        An expiry already in the past is ignored rather than used. A lapsed registration is a
+        thing to look at, not a date to bill on: taking it would hand the cron a due date it
+        fires on immediately, and draft a renewal invoice for a registration that has run out.
+        """
+        expires_on = await self._register_expiry_for(name)
+        today = await self._org_today()
+        if expires_on is not None and expires_on > today:
+            return expires_on
+        return first_future_anniversary(start_date, today)
+
     async def _org_currency(self) -> str:
         """The org's money currency (#124) — what new TLD price rows are written in."""
         currency = await self.ctx.session.scalar(
@@ -222,12 +289,25 @@ class DomainService:
         q: str | None = None,
         sort: str | None = None,
         invoiceable: bool | None = None,
+        status: str | None = None,
+        registrar_provider_id: uuid.UUID | None = None,
+        dns_provider_id: uuid.UUID | None = None,
     ) -> tuple[Sequence[Domain], int]:
         conditions = []
         if company_id is not None:
             conditions.append(Domain.company_id == company_id)
         if q:
             conditions.append(Domain.name.ilike(f"%{q.strip()}%"))
+        if status:
+            conditions.append(Domain.status == status)
+        # "Which of our names sit at this registrar / on this DNS" is the question a portfolio
+        # move is planned from, and the answer has to be the whole register rather than the page
+        # that happened to load — so it is a query parameter, never a filter in the browser
+        # (docs/PERFORMANCE.md).
+        if registrar_provider_id is not None:
+            conditions.append(Domain.registrar_provider_id == registrar_provider_id)
+        if dns_provider_id is not None:
+            conditions.append(Domain.dns_provider_id == dns_provider_id)
         if invoiceable is not None:
             # Filters on the *resolved* answer, not the stored column: "show me what I am not
             # billing" must include the domains a register decided about, which are precisely
@@ -249,16 +329,6 @@ class DomainService:
         domain = await self.repo.get_or_404(domain_id)
         await self._attach([domain])
         return domain
-
-    async def domains_for_company(self, company_id: uuid.UUID) -> Sequence[Domain]:
-        stmt = (
-            self.repo.scoped_select()
-            .where(Domain.company_id == company_id)
-            .order_by(func.lower(Domain.name))
-        )
-        items = list((await self.ctx.session.execute(stmt)).scalars().all())
-        await self._attach(items)
-        return items
 
     async def open_renewals(self, company_id: uuid.UUID | None = None) -> list[OpenRenewal]:
         """Domains and **every renewal period of each still outstanding** (§6), for one client
@@ -290,7 +360,7 @@ class DomainService:
         )
         if not domains:
             return []
-        await self._attach_invoiceable(domains)
+        await self._attach_register_facts(domains)
         # One read for every client in play — see ``open_agreements`` (docs/PERFORMANCE.md).
         names: dict[uuid.UUID, str] = {}
         client_ids = {d.company_id for d in domains if d.company_id is not None}
@@ -418,13 +488,14 @@ class DomainService:
         name = data.name.strip()
         today = await self._org_today()
         start_date = data.start_date or today
-        # The renewal anchors on start_date; the first cycle still ahead, so a domain
-        # registered years ago starts billing at its next anniversary, never its history.
-        next_invoice_date = (
-            first_future_anniversary(start_date, today)
-            if data.status.value in BILLABLE_STATUSES
-            else None
-        )
+        # What was sent wins; otherwise the register's expiry, else the anniversary of
+        # start_date — the first cycle still ahead, so a domain registered years ago starts
+        # billing at its next renewal and never back-bills its history.
+        next_invoice_date: date | None = None
+        if data.status.value in BILLABLE_STATUSES:
+            next_invoice_date = data.next_invoice_date or await self._default_invoice_date(
+                name=name, start_date=start_date
+            )
         domain = await self.repo.create(
             name=name,
             company_id=data.company_id,
@@ -485,6 +556,25 @@ class DomainService:
             values["redirect_url"] = self._clean_redirect_url(data.redirect_url)
         if "start_date" in sent and data.start_date is not None:
             values["start_date"] = data.start_date
+        if "next_invoice_date" in sent:
+            # Explicit null **resets to the default** rather than stopping the cycle. That is
+            # not the `invoiceable` three-state pattern in disguise: "never invoice this domain"
+            # already has a field of its own, and a blank billing date that quietly meant it
+            # would be the same decision spelled two ways. Emptying a date whose whole job is to
+            # be derived means "forget my number, work it out again" — so it is, from the
+            # register if one has spoken and from the anniversary otherwise.
+            # A domain that is not billable has no cycle to reset to, so a reset leaves it NULL
+            # — exactly what a create in that status does, and what the block below re-seeds the
+            # moment it becomes billable again.
+            if data.next_invoice_date is not None:
+                values["next_invoice_date"] = data.next_invoice_date
+            elif values.get("status", domain.status) in BILLABLE_STATUSES:
+                values["next_invoice_date"] = await self._default_invoice_date(
+                    name=values.get("name", domain.name),
+                    start_date=values.get("start_date", domain.start_date),
+                )
+            else:
+                values["next_invoice_date"] = None
         if "price_override" in sent:
             values["price_override"] = data.price_override
         if "invoiceable" in sent:
@@ -536,13 +626,14 @@ class DomainService:
 
         domain = await self.repo.update(domain, **values)
         # A domain whose renewal was never scheduled (pre-#250 row in a dead status, or one
-        # created expired) gets its date the moment it becomes billable. An already-set date
-        # is never touched: rescheduling a cycle invoices may exist for is not an edit's job.
+        # created expired) gets its date the moment it becomes billable — from the register if
+        # one has spoken, else the anniversary. An already-set date is never touched:
+        # rescheduling a cycle invoices may exist for is not an edit's job.
         if domain.next_invoice_date is None and domain.status in BILLABLE_STATUSES:
             domain = await self.repo.update(
                 domain,
-                next_invoice_date=first_future_anniversary(
-                    domain.start_date, await self._org_today()
+                next_invoice_date=await self._default_invoice_date(
+                    name=domain.name, start_date=domain.start_date
                 ),
             )
         await ActivityService(self.ctx).record_update(
@@ -797,7 +888,7 @@ class DomainService:
             )
         resolved = await self.party.resolve_many(party_inputs)
 
-        await self._attach_invoiceable(domains)
+        await self._attach_register_facts(domains)
         current_prices = await self._current_tld_prices({d.tld for d in domains if d.tld})
         # The org currency backs an override with no TLD row behind it; fetched lazily so a
         # list without one pays no extra query.
@@ -825,34 +916,41 @@ class DomainService:
                 d.resolved_price = None  # type: ignore[attr-defined]
                 d.resolved_currency = None  # type: ignore[attr-defined]
 
-    async def _attach_invoiceable(self, domains: Sequence[Domain]) -> None:
-        """Resolve #298's three-state flag for a whole page in **one** query.
+    async def _attach_register_facts(self, domains: Sequence[Domain]) -> None:
+        """Everything the registers say about a whole page, in **one** query.
 
-        The resolved answer, whether any register has been read, and which registers hold each
-        domain all come back on the same statement: the authority clause and each source's
-        ``holds`` are just more selected columns, and the first is uncorrelated so it costs a
-        single evaluation regardless of the page size (docs/PERFORMANCE.md). With no register
-        module enabled there is nothing to ask, so the query is skipped entirely.
+        Two facts, deliberately on the same statement rather than in two passes: #298's
+        three-state billing answer, and the expiry a register last observed. Both correlate to
+        the same ``domains`` rows through the same seams, so the second is another selected
+        column and costs nothing (docs/PERFORMANCE.md) — the uncorrelated authority clause is
+        evaluated once per statement regardless of page size, and the per-row clauses ride along.
+
+        Skipped entirely when no register module is enabled: there is nothing to ask, and asking
+        would be a query per page to learn what an empty tuple already said.
         """
         sources = register_presences()
-        if not sources:
+        expiry = register_expiry_expression(self._org_id, Domain)
+        if not sources and expiry is None:
             for d in domains:
                 d.invoiceable_effective = d.invoiceable is not False  # type: ignore[attr-defined]
                 d.invoiceable_source = source_of(d.invoiceable, has_authority=False)  # type: ignore[attr-defined]
                 d.registers = []  # type: ignore[attr-defined]
+                d.register_expires_on = None  # type: ignore[attr-defined]
             return
         org_id = self._org_id
         ids = [d.id for d in domains]
+        extra = [
+            source.holds(org_id, Domain).label(f"held_{source.key}") for source in sources
+        ]
+        if expiry is not None:
+            extra.append(expiry.label("register_expires_on"))
         rows = (
             await self.ctx.session.execute(
                 select(
                     Domain.id,
                     invoiceable_condition(org_id).label("effective"),
                     register_authority(org_id).label("authority"),
-                    *[
-                        source.holds(org_id, Domain).label(f"held_{source.key}")
-                        for source in sources
-                    ],
+                    *extra,
                 ).where(Domain.org_id == org_id, Domain.id.in_(ids))
             )
         ).all()
@@ -869,6 +967,9 @@ class DomainService:
                 [s.key for s in sources if getattr(row, f"held_{s.key}", False)]
                 if row is not None
                 else []
+            )
+            d.register_expires_on = (  # type: ignore[attr-defined]
+                getattr(row, "register_expires_on", None) if row is not None else None
             )
 
     async def _current_tld_prices(self, tlds: set[str]) -> dict[str, DomainTldPrice]:

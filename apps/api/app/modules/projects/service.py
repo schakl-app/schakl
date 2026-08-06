@@ -432,6 +432,18 @@ class ProjectService:
                 )
             values.pop("budget_hours")
         if "company_id" in values:
+            # A create requires a client (``ProjectCreate``), so an update may move one and
+            # never remove it. ``exclude_unset`` is what makes the distinction expressible:
+            # the key is absent when the caller said nothing, and present-and-null only when
+            # somebody asked to detach. Rows that predate the rule still read ``None`` — they
+            # are fixed by picking a client, not by everyone else being allowed to clear one.
+            if values["company_id"] is None:
+                raise AppError(
+                    "validation",
+                    "errors.projects_company_required",
+                    status_code=422,
+                    fields={"company_id": "errors.projects_company_required"},
+                )
             await ensure_parent_in_tenant(
                 self.ctx.session, "companies", values.get("company_id"), self.ctx.org.id
             )

@@ -216,28 +216,56 @@ class CloudflareClient:
         )
 
     # --- identity & capabilities ---------------------------------------------------------- #
-    async def verify_token(self) -> dict:
-        """``GET /user/tokens/verify`` — the one call every scoped token may make."""
-        return await self.request("GET", "/user/tokens/verify") or {}
+    async def verify_token(self, account_id: str | None = None) -> dict:
+        """Ask Cloudflare to describe this token — at whichever of the two endpoints owns it.
+
+        Cloudflare has **two kinds of API token and they do not verify at the same URL**. A
+        *user* token answers at ``GET /user/tokens/verify``. An **account-owned** token — the
+        newer kind, owned by the account rather than by a person, which is exactly what an
+        agency mints so that a departing employee cannot take the integration with them — is
+        rejected there with ``401`` and code ``1000``, *"Invalid API Token"*, while working
+        perfectly for every zone, DNS and account call it is scoped for. It verifies at
+        ``GET /accounts/{account_id}/tokens/verify`` instead.
+
+        So a 401 *here* means "asked the wrong endpoint" at least as often as it means "dead
+        token", and the only way to tell the two apart is to ask the other one.
+        """
+        try:
+            return await self.request("GET", "/user/tokens/verify") or {}
+        except CloudflareAuthError:
+            if not account_id:
+                raise
+            return await self.request("GET", f"/accounts/{account_id}/tokens/verify") or {}
 
     async def list_accounts(self) -> list[dict]:
         return await self.paginate("/accounts")
 
-    async def probe_capabilities(self) -> tuple[dict[str, bool], dict | None]:
+    async def probe_capabilities(
+        self, account_id: str | None = None
+    ) -> tuple[dict[str, bool], dict | None]:
         """What this token can be observed to do, plus the account it belongs to (if visible).
 
-        Four cheap calls, each failing softly: a token that cannot list accounts is *scoped*,
-        not broken, and the admin needs to be told which of the two it is. Only an invalid token
-        raises — that is the one condition where nothing else is worth probing.
+        A handful of cheap calls, **each failing softly and none of them the gate**. A token
+        that cannot list accounts is *scoped*, not broken, and the admin needs to be told which
+        of the two it is.
+
+        That includes the verify call, which used to run first and raise for everyone behind
+        it. It is a probe like the others: it answers "Cloudflare will describe this token to
+        me", which is a strictly narrower question than "Cloudflare accepts this token" — an
+        account-owned token whose account id we cannot read answers *no* to the first and *yes*
+        to every call this module actually makes. So a successful read is taken as the better
+        evidence it is, and only a token that was refused by **every** probe raises: that is
+        the one state where "invalid" is the honest word rather than a guess.
         """
         caps = dict.fromkeys(CAPABILITIES, False)
-        await self.verify_token()  # raises CloudflareAuthError on a dead token
-        caps["token_valid"] = True
+        rejection: CloudflareAuthError | None = None
 
+        # Accounts first, because the account-owned verify endpoint needs an id to address.
         account: dict | None = None
         try:
             accounts = await self.list_accounts()
-        except CloudflareAuthError:
+        except CloudflareAuthError as exc:
+            rejection = exc
             accounts = []
         else:
             caps["accounts_read"] = True
@@ -247,14 +275,24 @@ class CloudflareClient:
                 # picks. Reported as the full list rather than silently taking the first.
                 account = {"_multiple": accounts}
 
+        discovered_id = account.get("id") if isinstance(account, dict) else None
+        # The caller's pinned id wins: it is the one every real call in this module uses.
+        account_id = account_id or (str(discovered_id) if discovered_id else None)
+
+        try:
+            await self.verify_token(account_id)
+        except CloudflareAuthError as exc:
+            rejection = rejection or exc
+        else:
+            caps["token_valid"] = True
+
         try:
             await self.request("GET", "/zones", params={"per_page": 1})
-        except CloudflareAuthError:
-            pass
+        except CloudflareAuthError as exc:
+            rejection = rejection or exc
         else:
             caps["zones_read"] = True
 
-        account_id = (account or {}).get("id") if isinstance(account, dict) else None
         if account_id:
             try:
                 await self.request(
@@ -279,6 +317,16 @@ class CloudflareClient:
                 pass
             else:
                 caps["registrar_read"] = True
+
+        if not any(caps.values()):
+            # Every probe refused. Now — and only now — "the token is invalid" is a statement
+            # about the token rather than about one endpoint's opinion of it.
+            raise rejection or CloudflareAuthError("Cloudflare rejected the token", status=401)
+        if not caps["token_valid"]:
+            # Something answered, so Cloudflare accepts this token; we just could not reach a
+            # verify endpoint that would say so out loud. The reads are better evidence anyway
+            # — they are the calls the module makes.
+            caps["token_valid"] = True
         return caps, account
 
     # --- zones ---------------------------------------------------------------------------- #

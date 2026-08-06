@@ -330,6 +330,17 @@
     forty-nine that worked), and a UI that swallowed that would be claiming work it did not do.
     The eligible-subset filter is still only UX: the API re-checks every row, so the menu may
     narrow the batch but never widens it.
+  - **A bulk action that produces a file is a link, and a limit it can exceed says so** (#307).
+    The invoices list's Download hands over the ticked invoices as one zip, and it is an `<a
+    href>` with `data-sveltekit-reload` — a download is a *navigation*, so middle-click and
+    "save as" work and there is no handler pretending to be one (the `ImpexBar` rule, applied to
+    a selection). Two things separate it from the buttons beside it. Its subset follows the same
+    rule as everything else here — a draft has no document, exactly as in the row menu, so it is
+    excluded and the count says so — but a **cap** is not a subset: over the fifty the API will
+    render, "Download (50)" would state a number and still leave *which* fifty to chance, so the
+    control refuses and names the limit (`BulkAction.disabledReason`) instead. And it needs no
+    write permission at all: the page's own read is the gate, which is what lets a client
+    download their own invoices in one go and is why the ✎ appears for a reader on this list.
   - **A field you did not touch is not sent** (`core/bulk/BulkEditDialog`). The edit dialog opens
     blank over a selection that disagrees with itself — twelve domains at four registrars — so an
     empty control can only honestly mean "leave each row's own alone". Reading it as "empty them
@@ -393,6 +404,41 @@
     complete answers — "Acme (2)" above a client that has seven contacts is a wrong answer, not a
     partial one. A capped list therefore prints what is on screen out of the total, and says how
     to narrow it (`contacts.truncated`). A cap is reported, never silent (docs/PERFORMANCE.md).
+  - **A list is filtered by one shared bar, and the bar owns the whole strip**
+    (`core/filters/FilterBar.svelte`, `core/filters/types.ts`). Each screen had grown its own
+    copy of the same twelve lines — a `setFilter` that rebuilt the URL, a `resetPage`, a `goto`,
+    a pill loop, a "wissen" link — and copies drift in ways nobody notices: the domains list
+    read `?q=` in its load and never rendered a box for it, so the filter existed and was
+    unreachable; the abonnementen list's "wissen" deleted three hand-named keys, so a fourth
+    filter would have survived being cleared. A screen now declares `FilterDef[]` — `search`,
+    `select`, `pills` — and gets the rest. Four rules ride along with it:
+    - **The URL is the view, on both sides.** A def carries no value: the bar reads the current
+      one off `page.url`, which is where the `+page.server.ts` load reads it too (`readFilters`),
+      so the controls and the request cannot disagree. `value` is the one escape hatch, for a
+      filter whose *absent* state is not its empty state (taken opens on **your** tasks).
+    - **A filter is a query parameter or it is not a filter.** Narrowing `data.rows` in the
+      browser filters the page that happened to load and leaves the total counting everything —
+      the bug this file already names below. If an API cannot express it, that is a missing
+      query parameter, not a licence to slice in the browser.
+    - **"Wissen" clears the bar's own keys and nothing else.** Not `href="/domains"`, which also
+      throws away the sort and the page size the user chose; those are not filters.
+    - **Below `sm` the filters collapse behind one toggle carrying a count, and the actions do
+      not.** Six stacked controls push the rows a screen down, but Kolommen and the ✎ are not
+      filters and hiding them under "Filters" would misname both. The count is what stops a
+      *collapsed* bar from silently explaining an empty list — and an empty list under a filter
+      says `common.no_results`, never "je hebt nog geen domeinen", which sends the reader
+      hunting for the wrong problem.
+- **A panel is the first page of the list it links to.** A client card shows five domains and
+  five websites and then hands over — but only if the three things that make the hand-over
+  honest hold. It shows the **whole count**, not the shown one, because five rows with nothing
+  to contradict them read as the complete answer (the truncated-total failure, #37, in
+  miniature). Its **deep link carries the filter** (`/domains?company=<id>`) rather than dumping
+  the reader on the unfiltered register to find the client again. And the API provider uses the
+  **same sort the list defaults to**, so "Alle 23 bekijken" continues where the card stopped
+  instead of reshuffling into an order the reader has to re-scan. The `?company=` on that link
+  is the same parameter the card's `＋ nieuw` already used, and it now does both jobs: it filters
+  the list *and* prefills the create dialog, because they are one intent and two parameters
+  would let them disagree.
 - **A panel is how a number opens.** A module hangs a panel off another module's detail page by
   registering an `EntityPanelSpec` (`core/registry.ts`), never by having the host page import it —
   a tenant with the module disabled then simply never renders it, and pays for no call. The panel

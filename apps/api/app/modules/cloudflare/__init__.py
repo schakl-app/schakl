@@ -23,9 +23,14 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import ColumnElement, or_, select
+from sqlalchemy import ColumnElement, Date, cast, or_, select
 
-from app.core.registrar import RegisterPresence, register_presence
+from app.core.registrar import (
+    RegisterExpiry,
+    RegisterPresence,
+    register_expiry,
+    register_presence,
+)
 from app.modules.cloudflare.models import CloudflareAccount, CloudflareRegistrarDomain
 from app.modules.cloudflare.permissions import CLOUDFLARE_PERMISSIONS
 from app.modules.cloudflare.router import router
@@ -85,5 +90,37 @@ def _holds(org_id: uuid.UUID, domain: Any) -> ColumnElement[bool]:
     )
 
 
-# Who holds the registration (#298) — asked by ``domains``, which may not name this module.
+def _expires_on(org_id: uuid.UUID, domain: Any) -> ColumnElement[Any]:
+    """When Cloudflare Registrar says this registration lapses; NULL where it holds none.
+
+    ``at_cloudflare`` again, and for :func:`_holds`' reason: a client's own registration is in
+    the same list, and its expiry is a date the client's registrar will invoice *them* for.
+
+    Cloudflare reports an instant and a renewal date is a calendar day, so this casts — in the
+    session's zone, which is UTC. That is a deliberate exception to §8's "take the zone as an
+    argument" rather than an oversight of it: the correlated subquery has no org to resolve one
+    from, the value is a **default somebody is shown and can overwrite**, and a registry expiry
+    that lands within hours of midnight is inside the registrar's own grace window either way.
+    Nothing bills off this date without a person or the backfill having accepted it first.
+    """
+    return (
+        select(cast(CloudflareRegistrarDomain.expires_at, Date))
+        .where(
+            CloudflareRegistrarDomain.org_id == org_id,
+            CloudflareRegistrarDomain.at_cloudflare.is_(True),
+            CloudflareRegistrarDomain.expires_at.is_not(None),
+            or_(
+                CloudflareRegistrarDomain.domain_id == domain.id,
+                CloudflareRegistrarDomain.name == domain.name,
+            ),
+        )
+        .order_by(CloudflareRegistrarDomain.expires_at.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
+
+
+# Who holds the registration (#298) and until when — both asked by ``domains``, which may not
+# name this module.
 register_presence(RegisterPresence(key="cloudflare", authority=_authority, holds=_holds))
+register_expiry(RegisterExpiry(key="cloudflare", expires_on=_expires_on))

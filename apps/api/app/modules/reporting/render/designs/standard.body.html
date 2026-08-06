@@ -51,8 +51,18 @@
   </div>
 </div>
 
+{# Sections flow; they are not broken every third one. The modulo rule that used to sit here
+   forced a page break after section 3 whatever was on the page, so a report whose fourth
+   section was a six-row table spent two thirds of a sheet on nothing. Where a break may *not*
+   fall is a property of the content — a heading above its table, a chart beside it — and
+   `standard.css` says so there. #}
+{# Every other section sits on a band. The alternation is stated with the loop's own index and
+   not with `:nth-child`, for two reasons that both bite: the cover is these sections' elder
+   sibling, so a CSS rule counting children starts the stripe on the wrong one, and a section
+   a design wraps or reorders stops being a sibling at all. The index is the thing that is
+   actually true — "this is the second section" — so that is what carries the class. #}
 {% for section in sections %}
-  <div class="section{% if not loop.first and loop.index0 % 3 == 0 %} page-break{% endif %}">
+  <div class="section{% if loop.index0 % 2 %} band{% endif %}">
     <h2>{{ section.title }}</h2>
     {% if section.narrative %}<div class="narrative">{{ section.narrative | nl2br }}</div>{% endif %}
 
@@ -70,7 +80,16 @@
       </div>
     {% endif %}
 
-    {% if section.chart %}<div class="chart">{{ section.chart }}</div>{% endif %}
+    {# A chart sits *beside* its table when the table is narrow enough to leave room — three
+       metric columns or fewer — and above it when it is not. Deciding it here from the shape
+       of the data, rather than per section key, is what keeps a section a later release adds
+       from having to be added to a list to look right. #}
+    {% set beside = section.chart and section.rows and section.columns | length <= 3
+                    and section.kind not in ('rankings', 'audit') %}
+    {% if section.chart and not beside %}<div class="chart">{{ section.chart }}</div>{% endif %}
+
+    {% if beside %}<div class="split"><div class="cell chart-cell">{{ section.chart }}</div>
+      <div class="cell">{% endif %}
 
     {% if section.kind == 'rankings' %}
       {# Positions read as a table per keyword group: a client thinks in themes, not in a
@@ -145,8 +164,18 @@
           {% for row in section.rows %}
             <tr>
               {# `.get`, never `row.label`: the environment is StrictUndefined, and a row that
-                 has no `label` key must render a dash rather than take the report down. #}
-              <td>{{ row.get('label') or row.get('engine') or '-' }}</td>
+                 has no `label` key must render a dash rather than take the report down.
+
+                 The dot is this row's segment in the chart above it, resolved in
+                 `render/context.py` from the very palette the chart draws from — so it is
+                 only ever present where it means something, and a section whose rows are not
+                 parts of one whole simply has none.
+
+                 `section.dots` marks the *column*, not the row: the dot is positioned against
+                 the cell (see `standard.css`), and a section's tail rows have no segment and
+                 so no dot — indenting only the marked ones would turn that honest absence into
+                 a ragged left edge. #}
+              <td{% if section.dots %} class="mark"{% endif %}>{% if row.get('color') %}<span class="dot" style="background: {{ row.get('color') }}"></span>{% endif %}{{ row.get('label') or row.get('engine') or '-' }}</td>
               {% for column in section.columns %}
                 <td class="num">
                   {% if column.key == 'delta' %}
@@ -163,6 +192,7 @@
         </tbody>
       </table>
     {% endif %}
+    {% if beside %}</div></div>{% endif %}
   </div>
 {% endfor %}
 

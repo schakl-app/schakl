@@ -73,14 +73,27 @@
 </div>
 
 {#if form?.batch}
-  <p class="mb-4 rounded-lg bg-surface px-4 py-3 text-sm text-text">
-    {t("reporting.list.batch_queued", { count: String(form.batch.queued) })}
-    {#if form.batch.skipped.length > 0}
-      <span class="text-text-muted">
-        · {t("reporting.list.batch_skipped", { count: String(form.batch.skipped.length) })}
-      </span>
-    {/if}
-  </p>
+  {#if form.batch.enrolled === 0}
+    <!-- Nobody is enrolled. A bare "0" here reads as a broken button; say which step is
+         missing, and how many clients are waiting for it. -->
+    <p
+      class="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200"
+    >
+      {t("reporting.list.nobody_enrolled")}
+      {#if form.batch.unconfigured > 0}
+        {t("reporting.list.unconfigured", { count: String(form.batch.unconfigured) })}
+      {/if}
+    </p>
+  {:else}
+    <p class="mb-4 rounded-lg bg-surface px-4 py-3 text-sm text-text">
+      {t("reporting.list.batch_queued", { count: String(form.batch.queued) })}
+      {#if form.batch.skipped.length > 0}
+        <span class="text-text-muted">
+          · {t("reporting.list.batch_skipped", { count: String(form.batch.skipped.length) })}
+        </span>
+      {/if}
+    </p>
+  {/if}
 {:else if form?.queued}
   <p class="mb-4 rounded-lg bg-surface px-4 py-3 text-sm text-text">
     {t("reporting.list.queued")}
@@ -123,6 +136,11 @@
   <div class="rounded-xl border border-border bg-surface-raised px-6 py-12 text-center">
     <FileText size={28} class="mx-auto mb-3 text-text-muted" />
     <p class="text-sm text-text-muted">{t("reporting.list.empty")}</p>
+    {#if data.canWrite}
+      <p class="mx-auto mt-2 max-w-md text-sm text-text-muted">
+        {t("reporting.list.empty_hint")}
+      </p>
+    {/if}
   </div>
 {:else}
   <div class="overflow-x-auto rounded-xl border border-border bg-surface-raised">

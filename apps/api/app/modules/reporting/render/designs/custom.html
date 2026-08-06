@@ -4,16 +4,26 @@
   Their Jinja produced `custom_body` against the same context the shipped design gets; what
   they do not have to re-derive is the page geometry, the palette and — the piece that must
   never be theirs to drop — the "not for the client" band on an internal analysis.
+
+  `custom_body` is already-rendered output from the *sandboxed* environment, which autoescaped
+  every value it interpolated. It is markup by the time it arrives here, so it is emitted with
+  `| safe`; without it this environment escapes it a second time and a tenant's whole design
+  prints as literal angle brackets. Nobody could see that until there was an editor to write
+  one in, which is the shape of every bug this file has had.
 #}
 {% extends "_shell.html" %}
 
-{% block design_css %}
-{% include "standard.css" %}
-{% endblock %}
+{#
+  Deliberately no design CSS. A custom template's stylesheet *is* the tenant's own, which the
+  editor prefills from `…/designs/standard/source` — the very `standard.css` this would have
+  included. Layering it underneath means the author gets every rule twice and, worse, cannot
+  *remove* one: delete a rule from the copy in the box and the shipped one still applies.
+#}
+{% block design_css %}{% endblock %}
 
 {% block body %}
 {% if internal %}
   <p style="margin-bottom:12px"><span class="internal-band">{{ labels.internal_banner }}</span></p>
 {% endif %}
-{{ custom_body }}
+{{ custom_body | safe }}
 {% endblock %}

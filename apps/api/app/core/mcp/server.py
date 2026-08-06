@@ -59,6 +59,13 @@ class ForwardCallerAuth(httpx.Auth):
 #: ``/users`` is fastapi-users' cookie-authenticated self-service — dead weight for a key.
 _ROUTE_MAPS = [
     RouteMap(pattern=r"^/api/v1/(auth|setup|instance|users)(/.*)?$", mcp_type=MCPType.EXCLUDE),
+    # Anything a route authenticates *itself* — with a token in its own URL rather than with the
+    # caller's session — is excluded for the same reason ``/auth`` is: the proxy's whole safety
+    # argument is that every tool call travels ``require_context`` and can therefore never
+    # exceed the key's scopes, and a route that resolves its own tenant does not travel it. The
+    # public invoice link (#304) is the first of these; a second one belongs in this pattern
+    # rather than in a second decision made somewhere else.
+    RouteMap(pattern=r"^/api/v1/invoicing/public(/.*)?$", mcp_type=MCPType.EXCLUDE),
     # A multipart upload is not a tool an LLM can call: the payload is a file it does not have,
     # and the mapping it would have to invent is exactly the human judgement the wizard exists
     # for. `/columns` and `/export` stay — reading a shape and taking data out are both useful.

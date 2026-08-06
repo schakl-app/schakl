@@ -124,6 +124,7 @@ const title = hero ? `${settings.brandName} · ${hero.title}` : settings.brandNa
                       style={`--reveal-delay:${Math.min(n, 6) * 55}ms`}
                     >
                       <IntegrationMark
+                        slug={i.slug}
                         monogram={i.mark?.monogram ?? i.name.charAt(0)}
                         color={i.mark?.color}
                         lucide={i.lucide}

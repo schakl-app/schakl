@@ -80,6 +80,20 @@ _EXEMPT_OPERATIONS = frozenset(
         # from the body. Everything unrecognised answers a bare 404, which is what this sweep
         # sees. docs/PAYMENTS.md holds the five gates in order.
         ("post", "/api/v1/invoicing/payments/webhook/{provider}/{token}"),
+        # The public invoice link (#304). The same shape a third time, and deliberately so: no
+        # session, a capability token in the URL, everything unrecognised a bare 404 — which is
+        # what this sweep sees, because it fills path params with a random UUID.
+        #
+        # What keeps it honest is *not* an exemption here, it is that the reader context these
+        # routes build is a client-portal session scoped to one company holding two ``:own``
+        # permissions (``invoicing/public.py``). ``tests/test_invoicing_public.py`` is where
+        # that is actually asserted: a valid token reaches its own invoice and nothing else,
+        # and a member with no permissions is still refused every *signed-in* invoicing route.
+        ("get", "/api/v1/invoicing/public/invoices/{token}"),
+        ("get", "/api/v1/invoicing/public/invoices/{token}/preview"),
+        ("get", "/api/v1/invoicing/public/invoices/{token}/pdf"),
+        ("post", "/api/v1/invoicing/public/invoices/{token}/payment-intents"),
+        ("post", "/api/v1/invoicing/public/invoices/{token}/refresh"),
     }
 )
 

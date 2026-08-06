@@ -22,6 +22,7 @@ jobs:
       api: ${{ steps.filter.outputs.api }}
       web: ${{ steps.filter.outputs.web }}
       i18n: ${{ steps.filter.outputs.i18n }}
+      licensing: ${{ steps.filter.outputs.licensing }}
       client: ${{ steps.filter.outputs.client }}
       site: ${{ steps.filter.outputs.site }}
       run_all: ${{ steps.gate.outputs.run_all }}
@@ -78,11 +79,20 @@ jobs:
               - 'messages/**'
               - 'scripts/i18n-check.mjs'
               - '.github/workflows/ci.yml'
+            licensing:
+              # A module gains a `sku` in its package `__init__`, and the markers and the list
+              # are the paperwork that has to follow it — so all three are triggers.
+              - '**/LICENSE'
+              - 'LICENSE-COMMERCIAL.md'
+              - 'apps/api/app/modules/*/__init__.py'
+              - 'scripts/license-check.mjs'
+              - '.github/workflows/ci.yml'
             site:
               - 'apps/site/**'
               - 'scripts/docs-check.mjs'
               - 'scripts/site-content-check.mjs'
               - 'scripts/site-feature-order.mjs'
+              - 'scripts/site-integration-marks.mjs'
               - 'scripts/site-links-check.mjs'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
@@ -110,6 +120,18 @@ jobs:
         with:
           node-version: 22
       - run: node scripts/i18n-check.mjs
+
+  licensing:
+    name: Commercial license markers
+    needs: changes
+    if: ${{ needs.changes.outputs.licensing == 'true' || needs.changes.outputs.run_all == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/license-check.mjs
 
   api:
     name: API (ruff + migrations + pytest)
@@ -204,7 +226,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      # Plain node first: these three need no install and catch the failures that `astro build`
+      # Plain node first: these four need no install and catch the failures that `astro build`
       # cannot see, because a broken reference between two data files still renders — a card with
       # a blank icon, a "Live demo" badge over no demo, a "Read more" into a 404.
       - name: Content references resolve
@@ -213,6 +235,8 @@ jobs:
         run: node scripts/site-feature-order.mjs --check
       - name: Docs locale parity + MDX hazards
         run: node scripts/docs-check.mjs
+      - name: Integration marks name their integration
+        run: node scripts/site-integration-marks.mjs
       - run: pnpm install --frozen-lockfile
       - name: Build
         run: pnpm --filter @schakl/site build

@@ -11,7 +11,7 @@ import type { RequestEvent } from "@sveltejs/kit";
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
 
-type MarketingSource = "ga4" | "gsc" | "gads";
+type MarketingSource = "ga4" | "gsc" | "gads" | "seranking";
 
 function parseConfig(raw: FormDataEntryValue | null): Record<string, unknown> {
   try {
@@ -60,10 +60,10 @@ export const marketingActions = {
   marketingSettings: async (event: RequestEvent) => {
     const form = await event.request.formData();
     const show_key_events = String(form.get("show_key_events") ?? "") === "true";
-    const { error } = await apiFor(event).PUT(
-      "/api/v1/marketing/companies/{company_id}/settings",
-      { params: { path: { company_id: event.params.id as string } }, body: { show_key_events } },
-    );
+    const { error } = await apiFor(event).PUT("/api/v1/marketing/companies/{company_id}/settings", {
+      params: { path: { company_id: event.params.id as string } },
+      body: { show_key_events },
+    });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { marketingSettingsSaved: true };
   },

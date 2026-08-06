@@ -1,5 +1,237 @@
 # Changelog
 
+## v0.23.0 — 2026-08-07
+
+A link on the invoice that a client without an account can actually open, invoices by the
+handful, the report designer, and the logo that had quietly stopped printing on everything.
+
+### Paying an invoice from the paper
+
+- **The QR code on an invoice now leads somewhere a stranger can go.** It pointed at the client
+  portal, which is a product an agency buys per client — so for the clients who hold no login,
+  and that is most of them, the code on the paper opened a sign-in screen they could never get
+  past. An issued invoice now carries its own address, and whoever holds it opens that one
+  document, with its pay button, with no account and no session (#268, #269).
+- **What the link grants is what handing somebody the paper already grants**: read this invoice,
+  download it, pay what it owes. Nothing else. The page is built out of the client-portal
+  machinery rather than a new kind of login, so the seller's bank details, the price list, the
+  template library and the org-wide unbilled backlog are refused by exactly the code that
+  refuses them to a signed-in client, and a draft is invisible (#266).
+- The page carries no menu — a visitor would find every door locked — works with JavaScript
+  switched off, and is served `noindex` and `no-referrer`, because the address *is* the
+  credential and the very next thing a payer does is leave for a payment provider.
+- **The off switch is retroactive.** Instellingen → Facturatie decides whether these links work
+  at all, and the setting is read before the address is, so unticking it withdraws links already
+  printed and posted. It is on after the upgrade; see the upgrade notes.
+- Staff see the link on the invoice screen, so it can be read out when a client rings up. A
+  client's own session never shows it.
+- **Coming back from a checkout no longer says "open".** Mollie confirms out of band and makes
+  no promise about arriving before the browser does, so a payer who had just paid landed on the
+  word for "unpaid". The invoice's own page now asks once when it loads and follows a payment
+  that is still settling, and the signed-in screen says "we are confirming this payment" rather
+  than showing a status that has been overtaken.
+
+### The QR code, and the line beside it
+
+- **There is a colour picker now, and a preview that proves the rule.** The previous release
+  shipped no field on the grounds that a hex box invites an invoice nobody's phone can read.
+  Right about the danger, wrong about what was preventing it: the guarantee was always the
+  substitution, and what was missing was any way to *see* it happen. So both colours, the logo
+  (yours, none, or an upload) and the caption are yours to set, the editor draws the real code
+  from what you have not saved yet, and it says in words when a combination was replaced.
+- The readability rule got stricter while the controls got looser: the two colours are judged
+  and replaced **as a pair**, because half-correcting produces a code that passes a contrast
+  check and still loses the camera, and a light-on-dark code is refused outright — it measures
+  beautifully and scans worse everywhere.
+- **One appearance, read by the document, the mail and the preview alike.** They disagreed: a
+  template set to plain printed a black code on paper and mailed a coloured one.
+- **The "pay online" block prints two things and now switches them separately** — the clickable
+  wording, and the address spelled out underneath. That address used to be inert and meaningless;
+  it is a credential now, readable over a shoulder, in a photocopy, in any screenshot of the
+  invoice. An agency that wants the click without publishing the address in 8pt no longer has to
+  turn the whole block off. Both default on, and a template written before the change prints
+  exactly what it printed yesterday.
+
+### Invoicing
+
+- **Tick a run of invoices and download them as one zip** (#307). The selection mode on the
+  invoices list could only delete; the other thing an agency does with a quarter's invoices is
+  hand them over. Each entry is the same document the single download gives you — one renderer,
+  pinned byte-for-byte by a test — filed under its own number. Capped at fifty, which is the
+  page size, so "tick the page, download it" fits exactly and the control says so instead of
+  quietly taking the first fifty of a hundred and twenty.
+- It is a download, not an action: an expired licence makes a module read-only, and filing your
+  own paperwork is not the thing to lock somebody out of.
+- Rendering fifty invoices costs what rendering one costs, per invoice: the seller block, the
+  branding and the logo are read once for the batch rather than three round trips per document.
+
+### Client reporting
+
+- **Every chart was in the document and none of them were on the page.** A percentage width on
+  an SVG is the idiom every browser honours and the print engine does not resolve, so the
+  preview drew four charts and the PDF the client received drew zero — the exact preview/print
+  drift the shared renderer exists to prevent. Fixed, and pinned by a test that walks the
+  rendered pages and demands the chart have area, rather than checking the markup, which is the
+  one place the bug was not.
+- Three things only became visible once charts printed: category labels ran through each other,
+  the label strip was sized for horizontal text so rotated names ran out of the chart and
+  through the legend, and a chart left to fill the column took half a page for five bars. All
+  three corrected, and where the table is narrow the chart now sits beside it.
+- **Six column headings reached the client as MARKETING.METRIC.DELTA** — derived and split
+  metrics that no screen but the report itself emits, so nothing ever showed them. Named, in
+  both languages.
+- **The whole run could die on one line.** Every section came back "could not be built" and a
+  client with two connected sources was reported as having none: the shared gather step keyed
+  its cache on an object Python refuses to hash, and the per-section safety net turned one type
+  error into eight identical warnings and an empty document. Fixed, plus the test that was
+  missing — one that gathers real sections from real stored figures and asserts the numbers.
+- **The design editor**, which the module shipped without: which design, the cover photo, which
+  sections print, the body and its stylesheet, beside a live preview. The preview renders
+  through the same path the PDF does, against your own most recent report — or, before the first
+  one exists, a sample document under the real section headings.
+- **A design you could store, never reach, and lose by renaming.** Instellingen → Rapportage drew
+  four of a template's ten fields and posted the other six as empty anyway, so renaming a
+  template — or ticking "default" — silently threw away a custom design. And "start from the
+  standard design" now exists, so authoring no longer means writing against a template context
+  you had to learn by heart.
+- Alternating section bands, because "separated by air" holds for three sections and a client
+  report runs to nine; and a row's colour dot is now its own segment in the chart above it,
+  where before a six-colour chart sat above a table repeating none of them.
+- **A batch that ran for nobody says so.** "Generate this period" answered `0` on an instance
+  where clients had live data sources but nobody had been enrolled yet — technically correct
+  and indistinguishable from a broken button. It now says how many clients are enrolled, how
+  many are ready to be, and where to do it.
+- The internal analysis reads the same sections the client document does — traffic, rankings,
+  conversions, referral, social — instead of only the site audit. The two documents describe the
+  same month from the same figures; what makes them different is the question asked of them. The
+  audit stays internal, because a list of somebody's technical faults is working material.
+- The house voice is seeded by the scheduled run too, not only by somebody opening the settings
+  screen — the first report is the one the feature gets judged by.
+
+### Every branded document has been printing without its logo
+
+- The loader every document uses built its storage path the way it did before files were
+  de-duplicated, so it had been reading nothing back: the agency logo on invoices, quotes and
+  every branded outgoing mail, the letterhead mark, the client's logo and the cover image on a
+  report — all of them silently falling back. Nothing caught it because "branding must never be
+  able to fail an invoice" is the correct rule and is exactly what hid this. The test that comes
+  with the fix uploads through the real route and reads back through the real loader, because a
+  fake keyed on whatever the loader asks for would have agreed with itself and proved nothing.
+
+### Domains and websites
+
+- **A renewal is invoiced on the day the registration lapses**, not on an anniversary of the
+  afternoon somebody typed it in. The billing date was derived from the start date, which for
+  any portfolio onboarded in bulk was the import date — so a whole register invoiced on the
+  wrong day, every year, and re-saving the record could not fix it because nothing ever asked
+  the registrar. The connected registers answer now; what they observed is shown beside the date
+  you bill on, never silently swapped for it, and the form offers it in one click.
+- The date is editable at last — on the form, in a spreadsheet and across a selection — which is
+  what makes an already-onboarded register fixable without a migration per agency. Clearing it
+  means "work the default out again", never "stop invoicing": that is a decision `invoiceable`
+  already carries.
+- **Both lists you could not search now have a box.** The domain register and the website list
+  were the last two indexes with none, which stopped being a small omission when lists started
+  paging: on a register hundreds of names long, the only way to reach the fifty-first was to page
+  towards it.
+- **One filter bar, on every list.** Each screen had grown its own copy of the same dozen lines,
+  and copies drift: the domains list read a search parameter it never drew a box for, and one
+  list's "wissen" cleared three hand-named filters and would have left a fourth behind. Below
+  phone width the filters now collapse behind one toggle carrying a count, while the actions stay
+  put.
+- The domain and website cards on a client's page are the first page of their list, with the true
+  total beside it — where before each card ran an unbounded query to draw five rows and threw the
+  rest away.
+
+### Cloudflare
+
+- **A valid token read "Token problem" beside a zone list that was filling in perfectly.** The
+  account-owned tokens an agency mints — the kind that do not leave with whoever created them —
+  are refused by the endpoint that checks user tokens and work everywhere else. That endpoint was
+  asked first and its opinion was treated as a verdict on the whole credential. Every check now
+  fails softly, a read that succeeds outranks a check that refuses, and only a token refused
+  everywhere is called invalid.
+- **And a red line that nothing could clear.** Nothing but a manual re-verify took an account out
+  of the error state, so a credential that was fixed — or was never broken — kept its warning
+  through every sync that plainly worked. A successful read clears it, and a missing scope is now
+  reported as the lesser news it is rather than as a broken token.
+- **A failed sync says why.** The note explaining the failure was written and then rolled back by
+  the very error it described, so the settings screen — whose whole job is to say what is wrong
+  with a credential — was the one place that never found out.
+- A Cloudflare account reached by an account-owned token had a permanently blank Pages panel, and
+  it read as "no Pages projects" rather than "never asked". The sync fills in what it needs when
+  exactly one answer exists, and says so instead of guessing when there are several.
+
+### Import & export
+
+- **A wizard that only recognised its own words is no wizard.** A domain register kept by hand —
+  Dutch headers, "Status", "Parked" — failed on all 154 of its rows, and two of the three reasons
+  were ours: a column named exactly like one of ours was not suggested for it, and a dropdown
+  value was compared byte for byte while a yes/no two lines away already understood "Ja". Both now
+  follow the app's own translations in every language it ships, so "Parked", "ACTIVE" and
+  "Geparkeerd" all land in the right column. It forgives spelling, never vocabulary: a value that
+  is no option at all is still a row error.
+
+### Marketing
+
+- **SE Ranking had a connector and no front door.** The adapter, the agency key and the report
+  sections all shipped last release, and there was no way to link a project from the interface at
+  all. The picker offers it now, and knows that "not configured" means a different thing per
+  source — reconnecting a Google account fixes neither a missing developer token nor a missing
+  agency key, so it is no longer offered as the cure.
+
+### Projects, time and lists
+
+- **A project can be attached to a client.** The edit form on a project's page had no client
+  field and never posted one, so a project made from the projects list — which creates the record
+  and drops you straight into editing it — could never be attached to anybody, and one filed to
+  the wrong client at creation stayed there.
+- **And now it must be.** A project is work done for somebody: the budget, the hours it prices,
+  the invoice those land on and the panel it appears under all read the client. Creating one
+  without a client is refused, an existing project can be **moved** between clients but never
+  orphaned, and the button on the list asks the single question it must before creating —
+  prefilled from the filter you were already looking at, with the usual ＋ for a client that does
+  not exist yet. Projects that predate the rule keep their empty client and are fixed by picking
+  one; nothing is invented for them, and nothing else about them changes.
+- **Logging a time entry no longer blanks the date you were logging.** Saving reset the whole
+  form, and a browser reset empties a field rather than restoring it — so the second entry of an
+  afternoon began by asking which day it was again. The entry's own fields are cleared for the
+  next one; the day, the client, the project and the kind of work stay where you put them.
+- **On a narrow screen, the column a table dropped was the name.** Measured at 820px: the
+  identity column — the only cell that links out of the row — was allotted zero width while every
+  optional column beside it kept its own, so the list scrolled sideways with the name nowhere on
+  it. The floor that was supposed to prevent this was expressed in a way a fixed table layout
+  ignores entirely. Every list gets its name column back, and an honest sideways scroll; wide
+  screens are unchanged.
+
+### Site and housekeeping
+
+- Vendor-supplied marks for Mollie and SnelStart, a path for vendors who publish no vector at
+  all, and a fix for the one place the logos never reached — the home page, where the first thing
+  a visitor sees kept drawing monograms after the real marks landed. A build check now fails on a
+  mark rendered without one, because a silent fallback that looks deliberate needs a check rather
+  than more care.
+- The commercial boundary is enforced rather than remembered: one script checks, in both
+  directions, that every licensed module marks its own directories and that the licence lists
+  exactly those. It had drifted three ways at once by the time anybody looked — all of them
+  invisible in a diff and none of them caught by a test.
+
+### Upgrade notes
+
+- **Two migrations.** One adds columns only. The other is a one-off correction to domain renewal
+  dates, guarded four ways: only where a registrar has actually answered, only forward in time
+  (a lapsed registration is a thing to look at, not a date to bill on), only where no invoice has
+  already claimed the period, and only where the date really changes. An instance with no
+  registrar connected matches nothing and every existing date stands.
+- **Public invoice links are on after the upgrade**, which is what makes the QR on an invoice
+  work. Only invoices issued from now on carry one, and Instellingen → Facturatie turns the whole
+  thing off — retroactively, including links already printed.
+- **A project now requires a client.** Existing projects without one keep working and are not
+  changed; they are refused only when saved, until a client is picked. Spreadsheet imports and
+  bulk edits follow the same rule, and both name the row and the column rather than failing the
+  file.
+- Nothing is dropped, renamed or retyped, so rolling the image back is safe.
+
 ## v0.22.0 — 2026-08-06
 
 Online payments, a monthly client report, de-duplicated file storage, and paging on every list.

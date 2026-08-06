@@ -11,10 +11,12 @@
   "scripts": {
     "prepare": "git config core.hooksPath .githooks || true",
     "i18n:check": "node scripts/i18n-check.mjs",
+    "license:check": "node scripts/license-check.mjs",
     "docs:check": "node scripts/docs-check.mjs",
     "site:content": "node scripts/site-content-check.mjs",
     "site:order": "node scripts/site-feature-order.mjs",
     "site:links": "node scripts/site-links-check.mjs",
+    "site:marks": "node scripts/site-integration-marks.mjs",
     "forms:check": "node scripts/forms-check.mjs",
     "gen:client": "bash scripts/gen-client.sh",
     "web": "pnpm --filter @schakl/web",

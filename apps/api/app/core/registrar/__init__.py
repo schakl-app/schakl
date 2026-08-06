@@ -19,6 +19,12 @@ from app.core.registrar.backend import (
     register_registrar,
     split_suffix,
 )
+from app.core.registrar.expiry import (
+    RegisterExpiry,
+    register_expiries,
+    register_expiry,
+    register_expiry_expression,
+)
 from app.core.registrar.presence import (
     RegisterPresence,
     register_presence,
@@ -26,6 +32,7 @@ from app.core.registrar.presence import (
 )
 
 __all__ = [
+    "RegisterExpiry",
     "RegisterPresence",
     "RegistrarAuthError",
     "RegistrarContact",
@@ -34,6 +41,9 @@ __all__ = [
     "RegistrarProvider",
     "get_registrar",
     "known_registrars",
+    "register_expiries",
+    "register_expiry",
+    "register_expiry_expression",
     "register_presence",
     "register_presences",
     "register_registrar",

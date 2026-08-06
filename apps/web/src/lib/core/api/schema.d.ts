@@ -882,7 +882,7 @@ export interface paths {
         put?: never;
         /**
          * Bulk Update Domain
-         * @description Set fields on a selection of domain records: `status`, `company`, `registrar_provider`, `dns_provider`, `email_provider`, `invoiceable`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
+         * @description Set fields on a selection of domain records: `status`, `company`, `registrar_provider`, `dns_provider`, `email_provider`, `invoiceable`, `next_invoice_date`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
          */
         post: operations["bulk_update_domain_api_v1_bulk_domain_update_post"];
         delete?: never;
@@ -4319,6 +4319,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoicing/invoices/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Invoices Zip
+         * @description A selection of invoices as one zip of PDFs — the bulk half of ``/{invoice_id}/pdf``.
+         *
+         *     **A GET, and that is load-bearing twice over.** It is a read: past a licence's expiry a
+         *     module goes read-only, not gone, and ``license_write_gate`` reads the method — a POST here
+         *     would 402 an agency out of its own paperwork at exactly the moment it wants to hand it to
+         *     an accountant. It is also idempotent and cacheable-in-principle, which a download is.
+         *
+         *     Ids the caller may not read are **absent**, not an error (``InvoiceService.by_ids``); an
+         *     empty result is a 404, because "here is your archive of nothing" is not an answer. Drafts
+         *     print like they do one at a time — the list offers this only for documents that exist, the
+         *     same rule its row menu follows, and this route has no second opinion about it.
+         */
+        get: operations["download_invoices_zip_api_v1_invoicing_invoices_pdf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoicing/invoices/{invoice_id}": {
         parameters: {
             query?: never;
@@ -4438,6 +4468,33 @@ export interface paths {
          *     The amount is the server's to decide — the body carries only *which* credential to use.
          */
         post: operations["start_payment_api_v1_invoicing_invoices__invoice_id__payment_intents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/invoices/{invoice_id}/payment-intents/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Payments
+         * @description "Did my payment land?" — asked by the page a payer returns to (#304).
+         *
+         *     ``:own`` at the floor, unlike ``sync`` beside it, and the difference is the whole point.
+         *     ``sync`` is the *operator's* repair action: it spends a provider call on any attempt on
+         *     demand, so it stays ``:any``. This one is the **payer** finding out what happened to their
+         *     own money, so a client must be able to reach it — and it is bounded instead of trusted:
+         *     non-final attempts only, throttled per attempt on ``synced_at``, and free when there is
+         *     nothing in flight.
+         */
+        post: operations["refresh_payments_api_v1_invoicing_invoices__invoice_id__payment_intents_refresh_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4754,6 +4811,127 @@ export interface paths {
         get: operations["list_providers_api_v1_invoicing_providers_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/public/invoices/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public Invoice
+         * @description This invoice, as the person holding its link sees it.
+         *
+         *     A hand-built narrow shape, never ``InvoiceRead`` — see ``schemas.PublicInvoiceRead`` for
+         *     why a subset-by-omission would have leaked the next field somebody added.
+         */
+        get: operations["public_invoice_api_v1_invoicing_public_invoices__token__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/public/invoices/{token}/payment-intents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Public Start Payment
+         * @description Open a checkout for what this invoice still owes, and hand back where to go.
+         *
+         *     **No body at all**, which is stricter than the signed-in sibling: that one accepts a
+         *     provider/account so an agency running two credentials can say which. A public caller has
+         *     no business naming a credential — the service resolves one and prefers the live over the
+         *     test key (``docs/PAYMENTS.md`` §2) — and no business naming an amount, ever.
+         *
+         *     Gated by the module's ordinary licence write gate, like the portal's own pay button. That
+         *     is deliberate symmetry rather than an oversight: an expired licence stops the agency
+         *     *asking* for money on every surface at once, and the two exemptions that exist (the
+         *     callback, and the refresh below) are both about money that has **already** moved.
+         */
+        post: operations["public_start_payment_api_v1_invoicing_public_invoices__token__payment_intents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/public/invoices/{token}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public Invoice Pdf
+         * @description The PDF, for the client who wants it in their own bookkeeping.
+         */
+        get: operations["public_invoice_pdf_api_v1_invoicing_public_invoices__token__pdf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/public/invoices/{token}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public Invoice Preview
+         * @description The rendered document — **the same HTML** the signed-in preview and the PDF produce.
+         *
+         *     One artefact, so the page a client opens from a QR can never disagree with the paper it
+         *     was printed on. It is also why the public page draws no document of its own in Svelte.
+         */
+        get: operations["public_invoice_preview_api_v1_invoicing_public_invoices__token__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/public/invoices/{token}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Public Refresh Payments
+         * @description "Did my payment land?", for the payer coming back from a checkout (#304).
+         *
+         *     Bounded by ``InvoicePaymentService.refresh_pending`` — the *same* implementation the
+         *     signed-in route uses, so the throttle cannot drift between them: non-final attempts only,
+         *     and at most one provider call per attempt per ``REFRESH_MIN_INTERVAL``, whatever the
+         *     caller does.
+         */
+        post: operations["public_refresh_payments_api_v1_invoicing_public_invoices__token__refresh_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5105,6 +5283,31 @@ export interface paths {
          *     those are what the design has to sit around.
          */
         post: operations["preview_template_api_v1_invoicing_templates_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/templates/qr-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Template Qr
+         * @description The payment QR alone, as an unsaved config would draw it (#305).
+         *
+         *     Its own route beside ``/templates/preview`` because the colour picker needs an answer per
+         *     keystroke and a full document render is a Jinja pass over a sample invoice. It also carries
+         *     what the whole-page preview cannot show at 3cm: whether ``readable_pair`` substituted, so
+         *     the editor can say *why* the colour on screen is not the colour that was typed.
+         */
+        post: operations["preview_template_qr_api_v1_invoicing_templates_qr_preview_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7241,6 +7444,59 @@ export interface paths {
         put?: never;
         /** Create Template */
         post: operations["create_template_api_v1_reporting_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reporting/templates/designs/{design}/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Template Source
+         * @description A shipped design's own HTML and CSS, to start a custom report template from.
+         *
+         *     The counterpart invoicing has had since its designer shipped, and the piece whose absence
+         *     made ``design: "custom"`` a field nobody could reach: writing a report template from a
+         *     blank page means knowing the whole render context by heart, while branching from the
+         *     design you already like means changing the two things you want changed. These are the
+         *     *same* files ``standard`` renders from, so what an author gets is what they saw.
+         *
+         *     Declared on ``reporting.settings.manage`` because handing back the body a tenant is about
+         *     to author against is part of the same act as saving it.
+         */
+        get: operations["template_source_api_v1_reporting_templates_designs__design__source_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reporting/templates/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Template
+         * @description Render an unsaved template — the editor's live preview.
+         *
+         *     Declared *above* ``/templates/{template_id}``-shaped routes for the ordinary reason: a
+         *     literal segment and a path parameter both match ``/templates/preview``, and whichever is
+         *     registered first wins.
+         */
+        post: operations["preview_template_api_v1_reporting_templates_preview_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11992,6 +12248,8 @@ export interface components {
             invoiceable?: boolean | null;
             /** Name */
             name: string;
+            /** Next Invoice Date */
+            next_invoice_date?: string | null;
             /** Price Override */
             price_override?: number | string | null;
             /** Redirect Url */
@@ -12098,6 +12356,8 @@ export interface components {
             price_override?: string | null;
             /** Redirect Url */
             redirect_url?: string | null;
+            /** Register Expires On */
+            register_expires_on?: string | null;
             /** Registers */
             registers?: string[];
             /** Registrar Provider Id */
@@ -12228,6 +12488,8 @@ export interface components {
             invoiceable?: boolean | null;
             /** Name */
             name?: string | null;
+            /** Next Invoice Date */
+            next_invoice_date?: string | null;
             /** Price Override */
             price_override?: number | string | null;
             /** Redirect Url */
@@ -14169,6 +14431,28 @@ export interface components {
             /** Synced At */
             synced_at: string | null;
         };
+        /**
+         * InvoicePaymentRefresh
+         * @description What a "did my payment land yet?" poll answers with (#304).
+         *
+         *     ``changed`` is whether a provider was actually asked — a throttled poll answers ``False``
+         *     and is not a failure. The caller re-reads the document either way; this only tells a page
+         *     whether it is worth invalidating.
+         */
+        InvoicePaymentRefresh: {
+            /**
+             * Changed
+             * @default false
+             */
+            changed: boolean;
+            invoice_status?: components["schemas"]["InvoiceStatus"] | null;
+            /**
+             * Settled
+             * @default false
+             */
+            settled: boolean;
+            status?: components["schemas"]["PaymentIntentStatus"] | null;
+        };
         /** InvoiceRead */
         InvoiceRead: {
             /**
@@ -14288,6 +14572,11 @@ export interface components {
             period_start: string | null;
             /** Prices Include Tax */
             prices_include_tax: boolean;
+            /**
+             * Public Url
+             * @default
+             */
+            public_url: string;
             /** Quote Id */
             quote_id: string | null;
             /** Reference */
@@ -14381,6 +14670,11 @@ export interface components {
             number_reset_yearly: boolean;
             /** Prices Include Tax */
             prices_include_tax: boolean;
+            /**
+             * Public Invoice Links
+             * @default true
+             */
+            public_invoice_links: boolean;
             /** Quote Next Seq */
             quote_next_seq: number;
             /** Quote Number Format */
@@ -14414,6 +14708,8 @@ export interface components {
             number_reset_yearly?: boolean | null;
             /** Prices Include Tax */
             prices_include_tax?: boolean | null;
+            /** Public Invoice Links */
+            public_invoice_links?: boolean | null;
             /** Quote Next Seq */
             quote_next_seq?: number | null;
             /** Quote Number Format */
@@ -17374,8 +17670,11 @@ export interface components {
             budget_period: string;
             /** Color */
             color?: string | null;
-            /** Company Id */
-            company_id?: string | null;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
             /**
              * Currency
              * @default EUR
@@ -17682,10 +17981,101 @@ export interface components {
             /** Url */
             url: string;
         };
+        /**
+         * PublicCheckout
+         * @description Where to send the payer. The provider's live checkout URL and nothing else.
+         */
+        PublicCheckout: {
+            /** Checkout Url */
+            checkout_url: string;
+        };
+        /**
+         * PublicInvoiceRead
+         * @description The invoice as a reader with **no session** sees it (#304).
+         *
+         *     Deliberately *not* ``InvoiceRead`` and deliberately not a subset expressed as an exclusion
+         *     list. Every field here was typed out on purpose, so the next field added to the staff model
+         *     does not appear on an unauthenticated endpoint as a side effect of somebody extending
+         *     something else. It carries no ids at all — not the invoice's, not the company's, not the
+         *     contact's — because the token is the only name this surface has for anything, and an id it
+         *     handed out would be an id somebody tries somewhere else.
+         *
+         *     The document itself (lines, addresses, totals, the tenant's design) is not here either: the
+         *     page shows the **rendered document**, which is the same HTML the PDF prints, fetched from
+         *     its own route. One artefact, so a public page can never disagree with the paper.
+         */
+        PublicInvoiceRead: {
+            /** Currency */
+            currency: string;
+            /**
+             * Customer Name
+             * @default
+             */
+            customer_name: string;
+            /** Due Date */
+            due_date?: string | null;
+            /** Issue Date */
+            issue_date?: string | null;
+            /** @default invoice */
+            kind: components["schemas"]["InvoiceKind"];
+            /** Locale */
+            locale: string;
+            /**
+             * Number
+             * @default
+             */
+            number: string;
+            /** Outstanding */
+            outstanding: string;
+            /** Paid Total */
+            paid_total: string;
+            /**
+             * Payable
+             * @default false
+             */
+            payable: boolean;
+            /**
+             * Payment Pending
+             * @default false
+             */
+            payment_pending: boolean;
+            /**
+             * Payment Settled
+             * @default false
+             */
+            payment_settled: boolean;
+            payment_status?: components["schemas"]["PaymentIntentStatus"] | null;
+            status: components["schemas"]["InvoiceStatus"];
+            /** Total */
+            total: string;
+        };
         /** PurgeRequest */
         PurgeRequest: {
             /** Confirm */
             confirm: string;
+        };
+        /**
+         * QrPreview
+         * @description The payment QR as this unsaved config would draw it (#305).
+         *
+         *     Its own endpoint rather than a corner of the full document preview, for two reasons that
+         *     are both about the editor being usable. A whole-document render is a WeasyPrint-adjacent
+         *     Jinja pass on a sample invoice and takes long enough that dragging a colour picker through
+         *     it is unpleasant; and the *code* is the one element where the tenant needs to see the
+         *     substitution rule fire, which a 3cm square in a scaled-down A4 preview cannot show.
+         */
+        QrPreview: {
+            /** Dark */
+            dark: string;
+            /** Light */
+            light: string;
+            /**
+             * Replaced
+             * @default false
+             */
+            replaced: boolean;
+            /** Svg */
+            svg: string;
         };
         /** QuoteCreate */
         QuoteCreate: {
@@ -18538,12 +18928,22 @@ export interface components {
         };
         /** ReportRunBatchResult */
         ReportRunBatchResult: {
+            /**
+             * Enrolled
+             * @default 0
+             */
+            enrolled: number;
             /** Queued */
             queued: number;
             /** Skipped */
             skipped?: {
                 [key: string]: unknown;
             }[];
+            /**
+             * Unconfigured
+             * @default 0
+             */
+            unconfigured: number;
         };
         /** ReportRunRequest */
         ReportRunRequest: {
@@ -18608,6 +19008,35 @@ export interface components {
                 [key: string]: string;
             };
         };
+        /**
+         * ReportTemplatePreviewRequest
+         * @description An unsaved template, for the editor's live preview.
+         *
+         *     Deliberately not :class:`ReportTemplateWrite`. That model requires a ``name``, and a
+         *     preview that 422s while its name field is empty is a frame that goes blank the moment the
+         *     author starts a new template. It also carries ``layout``, which decides which sections a
+         *     *run* gathers and has nothing to say about how the gathered ones are drawn — sending it
+         *     here would imply the preview honours it.
+         */
+        ReportTemplatePreviewRequest: {
+            /** Accent Color */
+            accent_color?: string | null;
+            /** @default client */
+            audience: components["schemas"]["ReportAudience"];
+            /** Cover Image File Id */
+            cover_image_file_id?: string | null;
+            /** Custom Css */
+            custom_css?: string | null;
+            /** Custom Html */
+            custom_html?: string | null;
+            /**
+             * Design
+             * @default standard
+             */
+            design: string;
+            /** Intro Text */
+            intro_text?: string | null;
+        };
         /** ReportTemplateRead */
         ReportTemplateRead: {
             /** Accent Color */
@@ -18640,6 +19069,20 @@ export interface components {
             };
             /** Name */
             name: string;
+        };
+        /**
+         * ReportTemplateSource
+         * @description A shipped design's own source, for branching a custom report template off it.
+         *
+         *     Named for its module rather than ``TemplateSource``: invoicing already publishes a schema
+         *     by that name, and two same-named models make FastAPI qualify *both* components in the
+         *     OpenAPI document — renaming a type in a module that changed nothing.
+         */
+        ReportTemplateSource: {
+            /** Css */
+            css: string;
+            /** Html */
+            html: string;
         };
         /** ReportTemplateWrite */
         ReportTemplateWrite: {
@@ -20836,12 +21279,28 @@ export interface components {
             payment_i18n?: {
                 [key: string]: string;
             };
+            /** Qr Background */
+            qr_background?: string | null;
+            /** Qr Caption I18N */
+            qr_caption_i18n?: {
+                [key: string]: string;
+            };
+            /** Qr Color */
+            qr_color?: string | null;
+            /**
+             * Qr Logo
+             * @default brand
+             * @enum {string}
+             */
+            qr_logo: "brand" | "none" | "custom";
+            /** Qr Logo File Id */
+            qr_logo_file_id?: string | null;
             /**
              * Qr Style
              * @default brand
              * @enum {string}
              */
-            qr_style: "brand" | "plain";
+            qr_style: "brand" | "plain" | "custom";
             /**
              * Show Logo
              * @default true
@@ -26548,6 +27007,10 @@ export interface operations {
                 sort?: string | null;
                 /** @description Filter on the *resolved* billing answer (#298), not the stored flag: false lists what is registered elsewhere and therefore never invoiced. */
                 invoiceable?: boolean | null;
+                /** @description active | redirect | parked | expired | inactive */
+                status?: string | null;
+                registrar_provider_id?: string | null;
+                dns_provider_id?: string | null;
             };
             header?: never;
             path?: never;
@@ -28113,6 +28576,10 @@ export interface operations {
                 /** @description Search, as on the list */
                 q?: string | null;
                 company_id?: string | null;
+                status?: string | null;
+                registrar_provider_id?: string | null;
+                dns_provider_id?: string | null;
+                invoiceable?: boolean | null;
                 /** @description List sort key, '-' desc */
                 sort?: string | null;
             };
@@ -29213,7 +29680,11 @@ export interface operations {
     impex_export_website_api_v1_impex_website_export_get: {
         parameters: {
             query?: {
+                /** @description Search, as on the list */
+                q?: string | null;
                 company_id?: string | null;
+                hosting_id?: string | null;
+                uptime_enabled?: boolean | null;
                 /** @description List sort key, '-' desc */
                 sort?: string | null;
             };
@@ -31337,6 +31808,38 @@ export interface operations {
             };
         };
     };
+    download_invoices_zip_api_v1_invoicing_invoices_pdf_get: {
+        parameters: {
+            query: {
+                /** @description The invoices to pack, by id — the list screen's ✎ selection (#307). */
+                ids: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_invoice_api_v1_invoicing_invoices__invoice_id__get: {
         parameters: {
             query?: never;
@@ -31616,6 +32119,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InvoicePaymentIntentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_payments_api_v1_invoicing_invoices__invoice_id__payment_intents_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicePaymentRefresh"];
                 };
             };
             /** @description Validation Error */
@@ -32145,6 +32679,159 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     }[];
+                };
+            };
+        };
+    };
+    public_invoice_api_v1_invoicing_public_invoices__token__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicInvoiceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_start_payment_api_v1_invoicing_public_invoices__token__payment_intents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicCheckout"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_invoice_pdf_api_v1_invoicing_public_invoices__token__pdf_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_invoice_preview_api_v1_invoicing_public_invoices__token__preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    public_refresh_payments_api_v1_invoicing_public_invoices__token__refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicePaymentRefresh"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -32920,6 +33607,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_template_qr_api_v1_invoicing_templates_qr_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplatePreview"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QrPreview"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -37489,6 +38209,70 @@ export interface operations {
             };
         };
     };
+    template_source_api_v1_reporting_templates_designs__design__source_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                design: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportTemplateSource"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_template_api_v1_reporting_templates_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportTemplatePreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     section_catalog_api_v1_reporting_templates_sections_get: {
         parameters: {
             query?: never;
@@ -41397,6 +42181,10 @@ export interface operations {
                 offset?: number;
                 domain_id?: string | null;
                 company_id?: string | null;
+                /** @description Matches the parent domain's name */
+                q?: string | null;
+                hosting_id?: string | null;
+                uptime_enabled?: boolean | null;
                 /** @description name | company | hosting | uptime | created_at | updated_at, '-' desc */
                 sort?: string | null;
             };
