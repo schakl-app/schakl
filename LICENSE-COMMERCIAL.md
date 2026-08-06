@@ -43,6 +43,7 @@ and their web counterparts — currently:
 - `apps/web/src/lib/modules/leave/`
 - `apps/web/src/lib/modules/marketing/`
 - `apps/web/src/lib/modules/mollie/`
+- `apps/web/src/lib/modules/portal/`
 - `apps/web/src/lib/modules/projects/`
 - `apps/web/src/lib/modules/reporting/`
 - `apps/web/src/lib/modules/subscriptions/`
