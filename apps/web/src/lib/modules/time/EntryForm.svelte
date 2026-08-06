@@ -371,6 +371,28 @@
 
   // Save in flight (#242): spinner on the button, no double submit.
   const busy = new InFlight();
+
+  /**
+   * What the *next* entry does not inherit, after one is logged.
+   *
+   * This used to be `update({ reset: true })`, and a DOM reset puts every control back to its
+   * `value` **attribute** — which a `bind:value` field does not have — so Svelte read the blanks
+   * back into the bound state and the day being logged disappeared along with the entry
+   * (docs/UX.md, "Saving must never blank the form"). Emptying the form is right; emptying it
+   * with `reset` is what took the date.
+   *
+   * What starts fresh is *this entry*: its times and what it was. The day, the client, the
+   * project, the task and the kind of work are the context you are logging **within** — an
+   * afternoon is several entries against one of them, and re-picking five fields per entry is
+   * exactly the friction this form exists to remove.
+   */
+  function clearForNextEntry() {
+    fStart = "";
+    fEnd = "";
+    fBreak = 0;
+    durationText = "";
+    fDescription = "";
+  }
 </script>
 
 <form
@@ -386,7 +408,10 @@
       sawFirstRun = false;
     }
     ondone?.();
-    await update({ reset: !entry });
+    // Never a DOM reset — see `clearForNextEntry`. Ordered after the draft branch above, so the
+    // clear rides the same `sawFirstRun = false` and does not autosave a draft of itself.
+    if (result.type === "success" && !entry) clearForNextEntry();
+    await update({ reset: false });
   })}
   class="space-y-3"
 >
