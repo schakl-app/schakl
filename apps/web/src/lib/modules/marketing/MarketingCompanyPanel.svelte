@@ -58,7 +58,9 @@
       : "",
   );
 
-  const SOURCE_ORDER: MarketingSource[] = ["ga4", "gsc", "gads"];
+  // Google's three, then the one that is not (#300). Order is display order; a fourth
+  // picker wraps onto its own row rather than squeezing the others.
+  const SOURCE_ORDER: MarketingSource[] = ["ga4", "gsc", "gads", "seranking"];
   const linkedIdsBySource = $derived(
     Object.fromEntries(
       SOURCE_ORDER.map((s) => [s, sources.filter((x) => x.source === s).map((x) => x.external_id)]),

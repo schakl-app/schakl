@@ -128,7 +128,16 @@
       {t("marketing.reconnect")}
     </a>
   {:else if response && !response.configured}
-    <p class="text-sm text-text-muted">{t("marketing.ads_not_configured")}</p>
+    <!-- "Not configured" means a different thing per source and has a different cure. Ads
+         needs a developer token; SE Ranking needs the agency's API key. Neither is fixed by
+         reconnecting Google, so neither offers that — and the message carries the link to
+         where it *is* fixed, rather than naming a screen and leaving you to find it. -->
+    <p class="text-sm text-text-muted">
+      {t(source === "gads" ? "marketing.ads_not_configured" : `marketing.${source}_not_configured`)}
+    </p>
+    <a href="/settings/marketing" class="text-sm font-medium text-brand hover:underline">
+      {t("marketing.picker.configure")}
+    </a>
   {:else if response?.error}
     <p class="text-sm text-red-600 dark:text-red-400">{t(response.error)}</p>
     <!-- A disabled Cloud API is not a token problem: a reconnect mints the same token against

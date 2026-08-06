@@ -13,7 +13,8 @@ import { apiFor } from "$lib/core/session";
 import type { RequestHandler } from "./$types";
 
 export const GET: RequestHandler = async (event) => {
-  const source = (event.url.searchParams.get("source") ?? "") as "ga4" | "gsc" | "gads";
+  const source = (event.url.searchParams.get("source") ?? "") as
+    "ga4" | "gsc" | "gads" | "seranking";
   const { data, error } = await apiFor(event).GET("/api/v1/marketing/accounts", {
     params: { query: { source } },
   });
