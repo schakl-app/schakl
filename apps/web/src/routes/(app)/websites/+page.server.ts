@@ -40,17 +40,19 @@ export const load: PageServerLoad = async (event) => {
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
 
   const paging = resolvePaging(event.url, pref);
+  const q = event.url.searchParams.get("q") || undefined;
 
   // Only the URL-dependent read; every picker and definition set comes from the section
-  // layout, which does not rerun on a sort click (#290).
+  // layout, which does not rerun on a search or sort navigation (#290).
   const websites = await api.GET("/api/v1/websites", {
-    params: { query: { limit: paging.limit, offset: paging.offset, sort } },
+    params: { query: { limit: paging.limit, offset: paging.offset, q, sort } },
   });
 
   return {
     websites: websites.data?.items ?? [],
     total: websites.data?.total ?? 0,
     paging,
+    q: q ?? "",
     agencyLabel: event.locals.theme?.brandName ?? "",
     table: { pref, sort: sort ?? null, widths: resolved.widths },
     locale: event.locals.locale,

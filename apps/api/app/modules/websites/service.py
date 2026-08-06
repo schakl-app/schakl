@@ -69,6 +69,25 @@ def _hosting_sort_name() -> Any:
     )
 
 
+def _name_matches(needle: str) -> Any:
+    """A website's searchable text is its **parent domain's name**, because that is the only
+    name it has — the row prints one and stores none (``natural_keys=("domain",)``, §17).
+
+    Correlated ``EXISTS`` over the same bare table the sorts use (§6): the bridge is a join
+    ``websites`` may not make by importing, and an ``EXISTS`` never multiplies the row the way
+    a real join would.
+    """
+    return (
+        select(_domains.c.id)
+        .where(
+            _domains.c.org_id == Website.org_id,
+            _domains.c.id == Website.domain_id,
+            _domains.c.name.ilike(f"%{needle}%"),
+        )
+        .exists()
+    )
+
+
 # Sort keys a client may pass; anything else is rejected (app/core/sorting.py).
 SORTABLE = {
     "name": _domain_sort_name(),
@@ -99,11 +118,14 @@ class WebsiteService:
         offset: int,
         domain_id: uuid.UUID | None = None,
         company_id: uuid.UUID | None = None,
+        q: str | None = None,
         sort: str | None = None,
     ) -> tuple[Sequence[Website], int]:
         conditions = []
         if domain_id is not None:
             conditions.append(Website.domain_id == domain_id)
+        if q and q.strip():
+            conditions.append(_name_matches(q.strip()))
         if company_id is not None:
             # A website's client is its parent domain's (§6 bare-table bridge, no import).
             company_domains = (

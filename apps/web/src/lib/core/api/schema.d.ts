@@ -29267,6 +29267,8 @@ export interface operations {
         parameters: {
             query?: {
                 company_id?: string | null;
+                /** @description Search, as on the list */
+                q?: string | null;
                 /** @description List sort key, '-' desc */
                 sort?: string | null;
             };
@@ -41481,6 +41483,8 @@ export interface operations {
                 offset?: number;
                 domain_id?: string | null;
                 company_id?: string | null;
+                /** @description Matches the parent domain's name */
+                q?: string | null;
                 /** @description name | company | hosting | uptime | created_at | updated_at, '-' desc */
                 sort?: string | null;
             };

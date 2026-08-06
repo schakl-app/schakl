@@ -31,6 +31,7 @@
   import Modal from "$lib/core/ui/Modal.svelte";
   import PartyPicker from "$lib/core/ui/PartyPicker.svelte";
   import ProviderQuickCreate from "$lib/core/ui/ProviderQuickCreate.svelte";
+  import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
@@ -313,29 +314,36 @@
   {/if}
 </div>
 
-<!-- The personal column picker: every sort is reachable from here too (docs/UX.md). -->
-<div class="mb-4 flex flex-wrap items-center justify-end gap-2">
-  <ImpexBar
-    entity="website"
-    readPermission="websites.website.read"
-    writePermission="websites.website.write"
-    filters={{
-      sort: data.table.sort,
-    }}
-    locale={data.locale}
-    {form}
-  />
-  <ColumnPicker
-    all={table.pickerColumns}
-    visible={table.visibleKeys}
-    sort={table.sort}
-    onchange={table.onColumnsChange}
-    onsort={table.onSort}
-  />
-  <!-- Last in the toolbar, always: it is the only control here that changes what the *rows*
+<!-- Search, then the personal column picker: every sort is reachable from there too (docs/UX.md).
+     A site has no name of its own, so the box searches the domain it renders under. -->
+<div class="mb-4 flex flex-wrap items-center gap-2">
+  <SearchInput placeholder={t("websites.search_placeholder")} />
+  <!-- The list's own controls, pushed right: the filters read left-to-right, what you can *do*
+       with the list sits at the far end, and that is the same on every list here. -->
+  <div class="ml-auto flex flex-wrap items-center gap-2">
+    <ImpexBar
+      entity="website"
+      readPermission="websites.website.read"
+      writePermission="websites.website.write"
+      filters={{
+        q: page.url.searchParams.get("q"),
+        sort: data.table.sort,
+      }}
+      locale={data.locale}
+      {form}
+    />
+    <ColumnPicker
+      all={table.pickerColumns}
+      visible={table.visibleKeys}
+      sort={table.sort}
+      onchange={table.onColumnsChange}
+      onsort={table.onSort}
+    />
+    <!-- Last in the toolbar, always: it is the only control here that changes what the *rows*
          do rather than what the list shows, so it sits after Kolommen rather than among the
          list's own controls. Pressing it opens the selection strip above the table. -->
-  <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
+    <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
+  </div>
 </div>
 
 <BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
