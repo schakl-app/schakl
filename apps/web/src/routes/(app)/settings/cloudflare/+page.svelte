@@ -199,9 +199,18 @@
               · {t("cloudflare.accounts.synced_at", { when: fmtDateTime(account.last_synced_at) })}
             {/if}
           </p>
-          {#if account.status === "error" && account.last_error}
-            <p class="mt-1 break-words text-xs text-red-600">
-              {t("cloudflare.accounts.status.error")}: {account.last_error}
+          <!-- A rejected token and a token merely missing one scope both leave text here, and
+               they are not the same news: only the first is red, only the first is something
+               the admin must fix before anything works. -->
+          {#if account.last_error}
+            <p
+              class="mt-1 break-words text-xs {account.status === 'error'
+                ? 'text-red-600'
+                : 'text-text-muted'}"
+            >
+              {account.status === "error"
+                ? t("cloudflare.accounts.status.error")
+                : t("cloudflare.accounts.last_error")}: {account.last_error}
             </p>
           {/if}
         </div>

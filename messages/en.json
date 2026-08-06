@@ -3952,6 +3952,7 @@
   "cloudflare.accounts.zone_count_other": "{count} zones",
   "cloudflare.accounts.delete_confirm": "Remove {name}? The zones fetched from it disappear from schakl. Nothing at Cloudflare changes.",
   "cloudflare.accounts.status.error": "Token problem",
+  "cloudflare.accounts.last_error": "Last message from Cloudflare",
   "cloudflare.accounts.verified": "Token works.",
   "cloudflare.accounts.verify_failed": "Cloudflare rejected the token.",
   "cloudflare.accounts.synced": "{zones} zones fetched, {matched} matched to a domain.",

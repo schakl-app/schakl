@@ -131,6 +131,100 @@ async def test_a_zone_scoped_token_is_degraded_not_broken(client_for, cloudflare
         assert body["cf_account_id"] is None
 
 
+async def test_an_account_owned_token_verifies_at_its_own_account(client_for, cloudflare) -> None:
+    """Cloudflare has two kinds of token and they verify at two different URLs.
+
+    An **account-owned** token — what an agency mints so the integration does not leave with the
+    person who made it — is refused at ``/user/tokens/verify`` with the same 401/1000 a dead
+    token gets, while working for every zone call it is scoped for. Asking only the user
+    endpoint made a perfectly good credential read *"Token problem: Invalid API Token"* on a
+    screen whose zone list was filling in beside it.
+    """
+    cloudflare.account_owned_token = True
+    t = await make_tenant("cf-acct-token")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        account = await _account(c, headers, cf_account_id="acct-1")
+        body = (
+            await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/verify", headers=headers)
+        ).json()
+        assert body["ok"] is True
+        assert body["capabilities"]["token_valid"] is True
+        assert ("GET", "/accounts/acct-1/tokens/verify") in cloudflare.calls
+        row = (await c.get("/api/v1/cloudflare/accounts", headers=headers)).json()[0]
+        assert row["status"] == "active" and row["last_error"] is None
+
+
+async def test_an_account_owned_token_is_verified_via_a_discovered_account(
+    client_for, cloudflare
+) -> None:
+    """No pinned ``cf_account_id`` yet — the usual state right after pasting a token. The probe
+    reads ``/accounts`` first precisely so it has an id to address the verify call with."""
+    cloudflare.account_owned_token = True
+    t = await make_tenant("cf-acct-discover")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        account = await _account(c, headers)
+        body = (
+            await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/verify", headers=headers)
+        ).json()
+        assert body["ok"] is True
+        assert body["capabilities"]["token_valid"] is True
+        assert body["cf_account_id"] == "acct-1"
+
+
+async def test_a_token_that_reads_zones_is_valid_even_if_no_verify_endpoint_answers(
+    client_for, cloudflare
+) -> None:
+    """The worst case of the pair: account-owned *and* not allowed to list accounts, so neither
+    verify endpoint is reachable — one is the wrong kind, the other has no id to address.
+
+    Cloudflare is still answering this token's zone list, which is the call the module actually
+    makes. A read that succeeds is better evidence than a verify that refuses, so no single
+    probe may be the gate.
+    """
+    cloudflare.account_owned_token = True
+    cloudflare.deny.add("/accounts")
+    t = await make_tenant("cf-acct-blind")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        account = await _account(c, headers)
+        body = (
+            await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/verify", headers=headers)
+        ).json()
+        assert body["ok"] is True
+        assert body["capabilities"]["token_valid"] is True
+        assert body["capabilities"]["zones_read"] is True
+        assert body["capabilities"]["accounts_read"] is False
+        row = (await c.get("/api/v1/cloudflare/accounts", headers=headers)).json()[0]
+        assert row["status"] == "active"
+
+
+async def test_a_working_sync_clears_a_token_error_nobody_else_would(
+    client_for, cloudflare
+) -> None:
+    """The flag was one-way: ``_flag_account`` set ``error`` and nothing but a manual re-verify
+    took it off again, so a row kept its red line through every sync that plainly worked."""
+    t = await make_tenant("cf-recover")
+    headers = await auth_cookie(t.user)
+    cloudflare.add_zone("klant.nl")
+    async with client_for(t.host) as c:
+        account = await _account(c, headers, cf_account_id="acct-1")
+        cloudflare.revoked = True
+        await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/verify", headers=headers)
+        row = (await c.get("/api/v1/cloudflare/accounts", headers=headers)).json()[0]
+        assert row["status"] == "error" and row["last_error"]
+
+        # The admin re-enables the token at Cloudflare. Nothing in schakl changes.
+        cloudflare.revoked = False
+        synced = await c.post(
+            f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers
+        )
+        assert synced.status_code == 200, synced.text
+        row = (await c.get("/api/v1/cloudflare/accounts", headers=headers)).json()[0]
+        assert row["status"] == "active" and row["last_error"] is None
+
+
 async def test_an_invalid_token_is_recorded_not_raised(client_for, cloudflare) -> None:
     t = await make_tenant("cf-badtoken")
     headers = await auth_cookie(t.user)

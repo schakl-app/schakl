@@ -298,12 +298,23 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   module + company-panel pattern must be proven in P0.
 - **`cloudflare`** (epic #278, `docs/CLOUDFLARE.md`) is what finally puts a mechanism behind
   `Domain.status = redirect`: a Redirect Rule schakl owns on the client's own Cloudflare zone,
-  plus DNS view/export and Pages linking. Two rules generalise beyond it. The credential is a
+  plus DNS view/export and Pages linking. Three rules generalise beyond it. The credential is a
   **row, not a per-org setting** — an agency holds its own account and its clients bring theirs,
   and the same apex can legally exist in two of them, so nothing ever picks an account for you.
-  And an integration that mirrors outside state stores **what it decided** and **what it last
+  An integration that mirrors outside state stores **what it decided** and **what it last
   observed** in separate columns, so "somebody changed this in the provider's dashboard" is
-  expressible at all: a reconcile reports drift instead of silently overwriting it. The
+  expressible at all: a reconcile reports drift instead of silently overwriting it. And **a
+  health probe is evidence, never the gate** — a credential check that runs first and raises for
+  everything behind it converts one endpoint's opinion into a verdict on the whole integration.
+  Cloudflare's account-owned tokens are refused by `GET /user/tokens/verify` (401, code 1000,
+  *"Invalid API Token"*) and work everywhere else, so a valid credential read "Token problem" on
+  a screen whose zone list was filling in beside it. Every probe now fails softly, a **read that
+  succeeds outranks a verify that refuses** (it is the call the module actually makes), and only
+  a token refused by *every* probe is called invalid. Its sibling: a status flag that only ever
+  turns **on** is a bug with a long tail — `_flag_account` had no mirror, so a row nothing was
+  wrong with kept its red line through every sync that worked. Whatever sets a health flag must
+  say what clears it, and the fake must reject a bad credential *everywhere* or the only test
+  that could catch this passes against a provider that does not exist. The
   registrar half is now **`oxxa`** (#296, `docs/OXXA.md`): the register sync, the nameserver
   write-back that finishes "Connect to Cloudflare", and the `app/core/registrar/` seam a second
   registrar plugs into. Written from OXXA's official API documentation — §11 bans writing an

@@ -63,6 +63,15 @@ class FakeCloudflare:
         self.registrar: dict[str, list[dict]] = {}
         #: Path fragments this token is not allowed to touch → 403.
         self.deny: set[str] = set()
+        #: Model an **account-owned** API token: ``GET /user/tokens/verify`` refuses it with the
+        #: same 401/1000 it gives a dead token, while every other call it is scoped for works.
+        #: It verifies at ``GET /accounts/{id}/tokens/verify`` instead. Cloudflare's real
+        #: behaviour, and the reason a valid token used to read as "Token problem".
+        self.account_owned_token = False
+        #: Refuse every call with 401, whatever the token says — a token disabled or deleted at
+        #: Cloudflare after schakl stored it. Flipping it back is how a test says "the admin
+        #: fixed it at Cloudflare", which is the only way to exercise the *recovery* path.
+        self.revoked = False
         #: Answer every call the way Cloudflare answers a malformed credential: 400/6003, before
         #: it ever looks the token up — deliberately *not* a 401 (observed against the live API).
         self.malformed_token = False
@@ -177,6 +186,13 @@ class FakeCloudflare:
         token = request.headers.get("Authorization", "").removeprefix("Bearer ")
         if self.malformed_token:
             return _err(400, "Invalid format for Authorization header", 6003)
+        # A token Cloudflare does not accept is refused at **every** endpoint, not just at the
+        # verify one. Modelling it as "verify says no, everything else works" is precisely the
+        # fiction that let a valid account-owned token read as a dead one for a release: the
+        # only test that could have caught it was passing against a Cloudflare that does not
+        # exist. If a probe rejects a token, so must every other path here.
+        if token.startswith("bad-token") or self.revoked:
+            return _err(401, "Invalid API Token", 1000)
         for fragment in self.deny:
             if fragment in path:
                 return _err(403, "Actor is not authorized to perform this action", 10000)
@@ -184,8 +200,14 @@ class FakeCloudflare:
         parts = [p for p in path.split("/") if p]
 
         if path == "/user/tokens/verify":
-            if token.startswith("bad-token"):
+            # An account-owned token is refused here and nowhere else — Cloudflare's own
+            # behaviour, and the whole reason ``verify_token`` takes an account id.
+            if self.account_owned_token:
                 return _err(401, "Invalid API Token", 1000)
+            return _ok({"id": "tok-1", "status": "active"})
+
+        # /accounts/{id}/tokens/verify — where an account-owned token verifies.
+        if len(parts) == 4 and parts[0] == "accounts" and parts[2:] == ["tokens", "verify"]:
             return _ok({"id": "tok-1", "status": "active"})
 
         if path == "/accounts":

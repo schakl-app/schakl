@@ -571,7 +571,9 @@ class CloudflareService:
         account = await self.accounts.get_or_404(account_id)
         client = self._client(account)
         try:
-            capabilities, discovered = await client.probe_capabilities()
+            # The pinned id is handed in because an account-owned token verifies at its own
+            # account's endpoint and nowhere else (``client.verify_token``).
+            capabilities, discovered = await client.probe_capabilities(account.cf_account_id)
         except CloudflareError as exc:
             await self.accounts.update(
                 account,
@@ -719,7 +721,15 @@ class CloudflareService:
 
         if pages.truncated:
             warnings.append("pages_domains_truncated")
-        await self.accounts.update(account, last_synced_at=now, last_error=None)
+        # Cloudflare just answered this token's zone list, so whatever was wrong with it is not
+        # wrong any more — clearing the text without clearing the status is what left the screen
+        # reading "Token problem" over a sync that had plainly worked.
+        await self.accounts.update(
+            account,
+            last_synced_at=now,
+            last_error=None,
+            status=CloudflareAccountStatus.ACTIVE.value,
+        )
         return AccountSyncResult(
             zones_synced=len(zones),
             zones_matched=matched,
@@ -1732,6 +1742,7 @@ class CloudflareService:
             report["unavailable"].append("zone")
             await self._flag_account(account, exc)
         else:
+            await self._clear_account_error(account)
             zone = await self.zones.update(
                 zone,
                 status=str(remote.get("status") or zone.status),
@@ -1850,16 +1861,36 @@ class CloudflareService:
     async def _flag_account(self, account: CloudflareAccount, exc: CloudflareError) -> None:
         """Remember a token failure on a path that still commits, so the settings screen can say
         what Cloudflare said. (A failing *write* raises and rolls back, so it is not marked —
-        the caller sees the error there and then.)"""
+        the caller sees the error there and then.)
+
+        **Only a 401 marks the row broken.** ``CloudflareAuthError`` covers both of Cloudflare's
+        refusals and they are different sentences: a 401 says it does not accept this token at
+        all, a 403 says this token is not scoped for *this call* — which §Token scopes calls
+        degraded, not broken, and which the probes already report per capability. Flagging a 403
+        left an agency's DNS-only token reading "Token problem" for ever over an optional Pages
+        probe it was never meant to pass. The text is still recorded either way, because a
+        missing scope is worth reading; it is the red status it does not earn.
+        """
+        rejected = isinstance(exc, CloudflareAuthError) and exc.status == 401
         await self.accounts.update(
             account,
-            status=(
-                CloudflareAccountStatus.ERROR.value
-                if isinstance(exc, CloudflareAuthError)
-                else account.status
-            ),
+            status=CloudflareAccountStatus.ERROR.value if rejected else account.status,
             last_error=str(exc)[:500],
         )
+
+    async def _clear_account_error(self, account: CloudflareAccount) -> None:
+        """The mirror of :meth:`_flag_account`: Cloudflare answered, so the row is not broken.
+
+        Without it the flag was one-way — nothing but a manual re-verify could take a row out of
+        ``error``, so a token that had been fixed (or was never broken, just asked the wrong
+        verify endpoint) kept its red line through every successful sync and check.
+        """
+        if account.status == CloudflareAccountStatus.ERROR.value or account.last_error:
+            await self.accounts.update(
+                account,
+                status=CloudflareAccountStatus.ACTIVE.value,
+                last_error=None,
+            )
 
     def _issues(
         self,
