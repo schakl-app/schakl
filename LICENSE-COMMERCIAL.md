@@ -25,7 +25,9 @@ and their web counterparts — currently:
 - `apps/api/app/modules/leave/`
 - `apps/api/app/modules/marketing/`
 - `apps/api/app/modules/mollie/`
+- `apps/api/app/modules/portal/`
 - `apps/api/app/modules/projects/`
+- `apps/api/app/modules/reporting/`
 - `apps/api/app/modules/subscriptions/`
 - `apps/api/app/modules/time/`
 - `apps/api/app/modules/websites/`
@@ -42,6 +44,7 @@ and their web counterparts — currently:
 - `apps/web/src/lib/modules/marketing/`
 - `apps/web/src/lib/modules/mollie/`
 - `apps/web/src/lib/modules/projects/`
+- `apps/web/src/lib/modules/reporting/`
 - `apps/web/src/lib/modules/subscriptions/`
 - `apps/web/src/lib/modules/time/`
 - `apps/web/src/lib/modules/websites/`
@@ -53,6 +56,7 @@ and their web counterparts — currently:
 - `apps/web/src/routes/(app)/marketing/`
 - `apps/web/src/routes/(app)/projects/`
 - `apps/web/src/routes/(app)/quotes/`
+- `apps/web/src/routes/(app)/reports/`
 - `apps/web/src/routes/(app)/subscriptions/`
 - `apps/web/src/routes/(app)/time/`
 - `apps/web/src/routes/(app)/websites/`
@@ -66,6 +70,8 @@ and their web counterparts — currently:
 - `apps/web/src/routes/(app)/settings/leave/`
 - `apps/web/src/routes/(app)/settings/marketing/`
 - `apps/web/src/routes/(app)/settings/mollie/`
+- `apps/web/src/routes/(app)/settings/reporting/`
+- `apps/web/src/routes/(app)/settings/service-access/`
 - `apps/web/src/routes/(app)/settings/subscriptions/`
 - `apps/web/src/routes/(app)/settings/time-entry-types/`
 
