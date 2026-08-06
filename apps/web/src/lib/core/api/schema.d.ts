@@ -7276,6 +7276,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/reporting/templates/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Template
+         * @description Render an unsaved template — the editor's live preview.
+         *
+         *     Declared *above* ``/templates/{template_id}``-shaped routes for the ordinary reason: a
+         *     literal segment and a path parameter both match ``/templates/preview``, and whichever is
+         *     registered first wins.
+         */
+        post: operations["preview_template_api_v1_reporting_templates_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/reporting/templates/sections": {
         parameters: {
             query?: never;
@@ -18652,6 +18676,35 @@ export interface components {
             label_i18n?: {
                 [key: string]: string;
             };
+        };
+        /**
+         * ReportTemplatePreviewRequest
+         * @description An unsaved template, for the editor's live preview.
+         *
+         *     Deliberately not :class:`ReportTemplateWrite`. That model requires a ``name``, and a
+         *     preview that 422s while its name field is empty is a frame that goes blank the moment the
+         *     author starts a new template. It also carries ``layout``, which decides which sections a
+         *     *run* gathers and has nothing to say about how the gathered ones are drawn — sending it
+         *     here would imply the preview honours it.
+         */
+        ReportTemplatePreviewRequest: {
+            /** Accent Color */
+            accent_color?: string | null;
+            /** @default client */
+            audience: components["schemas"]["ReportAudience"];
+            /** Cover Image File Id */
+            cover_image_file_id?: string | null;
+            /** Custom Css */
+            custom_css?: string | null;
+            /** Custom Html */
+            custom_html?: string | null;
+            /**
+             * Design
+             * @default standard
+             */
+            design: string;
+            /** Intro Text */
+            intro_text?: string | null;
         };
         /** ReportTemplateRead */
         ReportTemplateRead: {
@@ -37568,6 +37621,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReportTemplateSource"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_template_api_v1_reporting_templates_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportTemplatePreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

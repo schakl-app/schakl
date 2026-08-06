@@ -96,6 +96,29 @@
 
 /* ---- sections ---- */
 .section { margin: 0 0 26px; break-inside: auto; }
+
+/* Every other section on a band.
+ *
+ * "Separated by air" holds for three sections and stops holding at nine, which is what a
+ * client report actually runs to: heading, paragraph, tiles, chart, table, and then the same
+ * five again, with nothing but a gap saying where one ended. The band is the cheapest mark
+ * that survives being read on paper, in greyscale, and out of order.
+ *
+ * It bleeds to the sheet edge rather than sitting in the text column, because a wash that
+ * stops at the margin reads as a *box around this section* — a container, which claims a
+ * relationship between its contents that a plain background does not. The negative margin is
+ * the page margin (`@page`, 14mm) and the screen padding (`_shell.html`, 14mm) — one number
+ * because they are deliberately the same number, and the preview and the print have to agree
+ * about where the paper ends.
+ *
+ * No `break-inside: avoid`: a band is allowed to run onto the next page, and the alternative
+ * is a nine-section report that throws a page after every other one. */
+.section.band {
+  background: var(--wash);
+  margin-left: -14mm;
+  margin-right: -14mm;
+  padding: 14px 14mm 16px;
+}
 .section > h2 {
   font-size: 12pt;
   border-left: 3px solid var(--accent);
@@ -141,6 +164,34 @@ table.data thead th {
   letter-spacing: 0.05em;
 }
 table.data tbody td { padding: 5px 7px; border-bottom: 1px solid var(--rule); }
+
+/* The row's own segment in the chart above it — 8×8 with a 2px radius, which is the legend
+ * swatch's geometry in `core/documents/charts._legend`, so the two read as the same mark
+ * rather than as two things that happen to share a colour.
+ *
+ * Out of flow, and that is not a preference. As an inline-block the dot is an *atomic inline*,
+ * which line breaking is allowed to break after whether or not there is a space there — so in
+ * a narrow first column it duly wrapped onto a line of its own above the name it belonged to,
+ * and deleting the whitespace did not help. Absolute against the cell takes it out of line
+ * breaking entirely; the padding is what the label is indented by, so a name that wraps to
+ * three lines keeps all three aligned instead of tucking two of them under the mark.
+ *
+ * The 9px is the first line's own middle: 5px of cell padding, plus half of the 8pt × 1.55
+ * line box, less half the dot. `top: 50%` would centre it against a *cell* that grows with
+ * every wrapped line, which is the one thing it must not follow.
+ *
+ * The indent is on the column, not on the marked rows: a section's tail rows carry no segment
+ * and therefore no dot, and paying for that with a ragged left edge would make the honest
+ * absence look like a rendering fault. */
+table.data td.mark { position: relative; padding-left: 21px; }
+table.data td.mark .dot {
+  position: absolute;
+  left: 7px;
+  top: 9px;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
 table.data tbody tr:last-child td { border-bottom: none; }
 table.data tr { break-inside: avoid; }
 table.data thead { display: table-header-group; }

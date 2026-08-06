@@ -355,6 +355,79 @@ def grouped_columns(
     return _svg(width, height, "".join(body), title)
 
 
+@dataclass(frozen=True)
+class ShareSegment:
+    """One share of a whole: its label, its value, its fraction, and the colour it is drawn in.
+
+    ``tail`` marks the folded remainder — the segment that stands for every row past
+    ``max_segments`` rather than for a row of its own.
+    """
+
+    label: str
+    value: float
+    fraction: float
+    colour: str
+    #: How much accent the tint carries (1.0 = the accent itself, 0 = white). Kept beside the
+    #: hex because "is this fill dark enough for white text" is answered from the recipe, not
+    #: re-derived from the colour it produced.
+    weight: float
+    tail: bool = False
+
+
+def share_palette(
+    items: Sequence[tuple[str, float]],
+    *,
+    style: ChartStyle,
+    other_label: str = "",
+    max_segments: int = 5,
+) -> list[ShareSegment]:
+    """The share bar's own segment assignment, as data.
+
+    Split out of :func:`share_bar` so the *table* under a chart can mark each row with the
+    colour of its segment. A legend that names six colours the table beside it does not repeat
+    leaves the reader matching two orderings by eye — which is most of what a share chart was
+    supposed to save them. One function answering both is what makes the dot and the segment
+    agree by construction; two call sites choosing the same formula is how they stop agreeing
+    the first time one of them is tuned.
+
+    Segments are tints of the *tenant's* accent, light → dark by share, so it stays one hue
+    (a rainbow of six brand-unrelated colours for "which search engine" says nothing the
+    order does not) and it degrades to distinguishable greys in black and white. The tail
+    folds into one segment rather than growing an eighth colour nobody can name — and the
+    fold is part of the *scale*, so a caller that wants colours matching a drawn bar has to
+    pass the same ``other_label`` the bar was drawn with.
+    """
+    ranked = sorted(
+        ((str(label), max(0.0, float(value or 0))) for label, value in items),
+        key=lambda pair: pair[1],
+        reverse=True,
+    )
+    total = sum(value for _, value in ranked)
+    if total <= 0:
+        return []
+    head: list[tuple[str, float, bool]] = [
+        (label, value, False) for label, value in ranked[:max_segments]
+    ]
+    tail = sum(value for _, value in ranked[max_segments:])
+    if tail > 0 and other_label:
+        head.append((other_label, tail, True))
+    steps = max(len(head) - 1, 1)
+    out: list[ShareSegment] = []
+    for index, (label, value, is_tail) in enumerate(head):
+        weight = 1.0 - 0.62 * (index / steps)
+        out.append(
+            ShareSegment(
+                label=label,
+                value=value,
+                fraction=value / total,
+                colour=rgb_hex(mix_on_white(_hex_rgb(style.accent), weight)),
+                weight=weight,
+                tail=is_tail,
+            )
+        )
+    return out
+
+
 def share_bar(
     items: Sequence[tuple[str, float]],
     *,
@@ -365,53 +438,37 @@ def share_bar(
     height: float = 62.0,
     max_segments: int = 5,
 ) -> str:
-    """Part-to-whole as one 100 %-wide stacked bar, with a legend under it.
-
-    Segments are tints of the *tenant's* accent, light → dark by share, so it stays one hue
-    (a rainbow of six brand-unrelated colours for "which search engine" says nothing the
-    order does not) and it degrades to distinguishable greys in black and white. The tail
-    folds into one segment rather than growing an eighth colour nobody can name.
-    """
-    ranked = sorted(
-        ((str(label), max(0.0, float(value or 0))) for label, value in items),
-        key=lambda pair: pair[1],
-        reverse=True,
+    """Part-to-whole as one 100 %-wide stacked bar, with a legend under it."""
+    segments = share_palette(
+        items, style=style, other_label=other_label, max_segments=max_segments
     )
-    total = sum(value for _, value in ranked)
-    if total <= 0:
+    if not segments:
         return ""
-    head = ranked[:max_segments]
-    tail = sum(value for _, value in ranked[max_segments:])
-    if tail > 0 and other_label:
-        head.append((other_label, tail))
     left, right = 4.0, width - 4.0
     bar_top, bar_height = 8.0, 18.0
     span = right - left
     body: list[str] = []
     legend: list[tuple[str, str]] = []
     cursor = left
-    steps = max(len(head) - 1, 1)
-    for index, (label, value) in enumerate(head):
-        fraction = value / total
+    for index, share in enumerate(segments):
         # The trailing 2px gap comes out of each segment, so the bar still ends flush right.
-        segment = max(0.0, span * fraction - (_GAP if index < len(head) - 1 else 0.0))
-        weight = 1.0 - 0.62 * (index / steps)
-        colour = rgb_hex(mix_on_white(_hex_rgb(style.accent), weight))
+        last = index == len(segments) - 1
+        segment = max(0.0, span * share.fraction - (0.0 if last else _GAP))
         body.append(
             f'<rect x="{cursor:.2f}" y="{bar_top:.1f}" width="{segment:.2f}" '
-            f'height="{bar_height:.1f}" rx="2" fill="{colour}" />'
+            f'height="{bar_height:.1f}" rx="2" fill="{share.colour}" />'
         )
-        percent = f"{fraction * 100:.0f}%"
+        percent = f"{share.fraction * 100:.0f}%"
         if _fits(percent, segment, style.font_size):
             # Inside a colored fill is the one place a label may not wear an ink token: pick
             # white or ink by the fill's own luminance so it always clears contrast.
-            fill = "#ffffff" if weight > 0.55 else style.ink
+            fill = "#ffffff" if share.weight > 0.55 else style.ink
             body.append(
                 f'<text x="{cursor + segment / 2:.2f}" y="{bar_top + 12.5:.1f}" '
                 f'text-anchor="middle" font-size="{style.font_size:.1f}" fill="{fill}" '
                 f'style="font-variant-numeric:tabular-nums">{percent}</text>'
             )
-        legend.append((colour, f"{label} {percent}"))
+        legend.append((share.colour, f"{share.label} {percent}"))
         cursor += segment + _GAP
     body.append(_legend(style, legend, left, height - 8.0))
     return _svg(width, height, "".join(body), title)

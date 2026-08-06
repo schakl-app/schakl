@@ -20,7 +20,7 @@
   import { editLocale } from "$lib/core/i18n-edit.svelte";
   import I18nLocaleSwitcher from "$lib/core/ui/I18nLocaleSwitcher.svelte";
 
-  import DocumentFrame from "./DocumentFrame.svelte";
+  import DocumentFrame from "$lib/core/ui/DocumentFrame.svelte";
   import type { BlockSpec, TemplateConfig, TemplateLayoutBlock } from "./templateConfig";
   import { DEFAULT_CONFIG, layoutForApi, mergeLayout, moveItem } from "./templateConfig";
 

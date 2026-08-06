@@ -571,6 +571,213 @@ async def test_an_internal_document_says_so_and_wears_no_client_branding() -> No
     assert "Alt-teksten aanvullen" in html
 
 
+async def _render_snapshot(slug: str) -> str:
+    """The shipped design over ``_SNAPSHOT`` — two sections, the second of them banded."""
+    from app.core.tenancy import RequestContext
+    from app.modules.reporting.render import render_report_html
+
+    tenant = await make_tenant(slug)
+    company = await _company(tenant.org.id, "Acme B.V.")
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        org = await session.get(type(tenant.org), tenant.org.id)
+        report = Report(
+            org_id=tenant.org.id,
+            company_id=company,
+            company_name="Acme B.V.",
+            audience=ReportAudience.CLIENT.value,
+            status=ReportStatus.READY.value,
+            locale="nl",
+            title="Maandrapportage",
+            period_start=date(2026, 7, 1),
+            period_end=date(2026, 7, 31),
+            data_snapshot=_SNAPSHOT,
+            narrative={},
+        )
+        session.add(report)
+        await session.flush()
+        return await render_report_html(
+            RequestContext(user=tenant.user, org=org, session=session), report, None
+        )
+
+
+async def test_a_channel_row_carries_the_colour_of_its_share() -> None:
+    """The mark is on the rows that are parts of a whole, and on no others.
+
+    ``marketing.rankings`` sits right beside the channels in ``_SNAPSHOT`` and its rows are
+    keywords, which sum to nothing — tinting them by rank would be decoration wearing a data
+    mark's clothes, so the assertion that it has *no* dot is the load-bearing half.
+    """
+    html = await _render_snapshot("repdots")
+    assert html.count('class="dot"') == 2, "one per channel row, and not one more"
+    # The tint is a shade of the accent, and the bigger share is the darker one.
+    import re
+
+    dots = re.findall(r'<span class="dot" style="background: (#[0-9a-f]{6})"></span>', html)
+    assert len(set(dots)) == 2, dots
+    # Keyword rows are in their own table and carry none.
+    assert "zonnepanelen goes" in html
+    assert html.count("<td class=\"mark\"") == 2
+
+
+async def test_every_other_section_prints_on_a_band_that_reaches_the_sheet_edge() -> None:
+    """Asserted as geometry, because the markup cannot tell you whether a band *bled*.
+
+    A wash that stops at the text column reads as a box around one section — a container,
+    claiming a relationship its contents do not have. The negative margin that avoids that is
+    the page margin restated, and "correct CSS, wrong engine" has already cost this design a
+    stranded cover footer and four charts at 0×0. So this measures what WeasyPrint laid out.
+    """
+    import asyncio
+
+    from weasyprint import HTML as WeasyHTML
+
+    from app.core.documents.engine import no_network_fetcher
+
+    html = await _render_snapshot("repbands")
+    # Two sections, so exactly one band — and it is the second, never the first.
+    assert html.count('class="section band"') == 1
+    assert html.index('class="section"') < html.index('class="section band"')
+
+    def bands(box) -> list:
+        classes = (box.element.get("class") or "").split() if box.element is not None else []
+        found = [box] if "band" in classes else []
+        for child in getattr(box, "children", []) or []:
+            found += bands(child)
+        return found
+
+    document = await asyncio.to_thread(
+        lambda: WeasyHTML(string=html, url_fetcher=no_network_fetcher, base_url=None).render()
+    )
+    drawn = [box for page in document.pages for box in bands(page._page_box)]
+    assert drawn, "the document declares a band and printed no box for it"
+    mm = 96 / 25.4
+    for box in drawn:
+        # A4 is 210mm wide; the band's border box is the whole of it, not the 182mm column.
+        assert abs(box.border_width() / mm - 210) < 0.5, box.border_width() / mm
+        assert abs(box.position_x / mm - 14) < 0.5, box.position_x / mm
+
+
+# --------------------------------------------------------------------------------------- #
+# The template editor
+# --------------------------------------------------------------------------------------- #
+async def test_the_editor_previews_an_unsaved_design_against_a_real_report(
+    client_for,
+) -> None:
+    """What the author sees is the renderer the client's PDF comes out of, on this org's data.
+
+    A preview drawn a second way is the drift ``docs/INVOICING.md`` opens by saying was already
+    corrected once, so the endpoint takes an unsaved config and renders it through
+    ``render_report_html`` — the very function the print path calls.
+    """
+    from tests.conftest import auth_cookie
+
+    tenant = await make_tenant("reppreview")
+    company = await _company(tenant.org.id, "Acme B.V.")
+    await _report(tenant.org.id, company)
+    headers = await auth_cookie(tenant.user, tenant.org.id)
+
+    async with client_for(tenant.host) as client:
+        shipped = await client.post(
+            "/api/v1/reporting/templates/preview",
+            json={"audience": "client", "design": "standard"},
+            headers=headers,
+        )
+        assert shipped.status_code == 200
+        assert shipped.headers["content-type"].startswith("text/html")
+        assert "<!doctype html>" in shipped.text.lower()
+
+        # An unsaved custom body renders *instead of* the shipped design, and nothing is stored.
+        own = await client.post(
+            "/api/v1/reporting/templates/preview",
+            json={
+                "audience": "client",
+                "design": "custom",
+                "custom_html": "<p>Eigen ontwerp voor {{ client }}</p>",
+            },
+            headers=headers,
+        )
+        assert own.status_code == 200
+        assert "Eigen ontwerp voor" in own.text
+        # The shell is not the author's to drop, so it is still around their body.
+        assert "<html" in own.text
+        assert (await client.get("/api/v1/reporting/templates", headers=headers)).json() == []
+
+        # A body that cannot compile is a message under the editor, not a 500 at send time.
+        broken = await client.post(
+            "/api/v1/reporting/templates/preview",
+            json={"audience": "client", "design": "custom", "custom_html": "{% for %}"},
+            headers=headers,
+        )
+        assert broken.status_code == 422
+
+
+async def test_a_custom_design_prints_as_markup_and_owns_its_own_stylesheet(
+    client_for,
+) -> None:
+    """Two things `custom.html` got wrong for as long as nothing could open it.
+
+    The body arrives already rendered by the *sandboxed* environment, which autoescaped every
+    value it interpolated — so re-escaping it here printed a tenant's whole design as literal
+    angle brackets. And `standard.css` was included *under* the author's own stylesheet, which
+    the editor prefills from that same file: every rule twice, and no way to remove one, since
+    deleting it from the copy in the box left the shipped one applying.
+
+    Neither was reachable before there was an editor to write a custom design in, which is why
+    both are asserted here rather than trusted to the next person who opens the file.
+    """
+    from tests.conftest import auth_cookie
+
+    tenant = await make_tenant("repcustom")
+    headers = await auth_cookie(tenant.user, tenant.org.id)
+    async with client_for(tenant.host) as client:
+        response = await client.post(
+            "/api/v1/reporting/templates/preview",
+            json={
+                "audience": "client",
+                "design": "custom",
+                "custom_html": '<div class="mine"><h1>{{ client }}</h1></div>',
+                "custom_css": ".mine { color: red }",
+            },
+            headers=headers,
+        )
+    assert response.status_code == 200
+    html = response.text
+    # Markup, not a page describing markup.
+    assert '<div class="mine">' in html
+    assert "&lt;div" not in html
+    # Values interpolated *inside* the sandbox are still escaped — `| safe` widened the shell,
+    # not the author's own data path.
+    assert "<script>" not in html
+    # The author's stylesheet is theirs alone; the shipped one is not layered under it.
+    assert ".mine { color: red }" in html
+    assert "---- sections ----" not in html, "standard.css was included under the tenant's own"
+
+
+async def test_a_tenant_with_no_reports_yet_still_gets_a_page_to_design_against(
+    client_for,
+) -> None:
+    """The other half of the preview: configuring reporting before the first run.
+
+    Its section headings come from the registry rather than from a fixture, so a section a
+    later release contributes appears in the sample without anyone editing it.
+    """
+    from tests.conftest import auth_cookie
+
+    tenant = await make_tenant("repsample")
+    headers = await auth_cookie(tenant.user, tenant.org.id)
+    async with client_for(tenant.host) as client:
+        response = await client.post(
+            "/api/v1/reporting/templates/preview",
+            json={"audience": "client", "design": "standard"},
+            headers=headers,
+        )
+    assert response.status_code == 200
+    assert "Voorbeeld B.V." in response.text
+    # And the sample is rich enough to show what the design does *between* sections.
+    assert 'class="section band"' in response.text
+
+
 # --------------------------------------------------------------------------------------- #
 # Gathering — the step every section funnels through
 # --------------------------------------------------------------------------------------- #

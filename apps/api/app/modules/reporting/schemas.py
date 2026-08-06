@@ -90,6 +90,25 @@ class ReportTemplateRead(BaseModel):
     is_default: bool = False
 
 
+class ReportTemplatePreviewRequest(BaseModel):
+    """An unsaved template, for the editor's live preview.
+
+    Deliberately not :class:`ReportTemplateWrite`. That model requires a ``name``, and a
+    preview that 422s while its name field is empty is a frame that goes blank the moment the
+    author starts a new template. It also carries ``layout``, which decides which sections a
+    *run* gathers and has nothing to say about how the gathered ones are drawn — sending it
+    here would imply the preview honours it.
+    """
+
+    audience: ReportAudience = ReportAudience.CLIENT
+    design: str = Field(default="standard", max_length=32)
+    custom_html: str | None = None
+    custom_css: str | None = None
+    accent_color: str | None = Field(default=None, max_length=16)
+    cover_image_file_id: uuid.UUID | None = None
+    intro_text: str | None = Field(default=None, max_length=4000)
+
+
 class ReportTemplateSource(BaseModel):
     """A shipped design's own source, for branching a custom report template off it.
 

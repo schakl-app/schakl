@@ -30,6 +30,7 @@ from app.modules.reporting.schemas import (
     ReportRunBatchResult,
     ReportRunRequest,
     ReportSendRequest,
+    ReportTemplatePreviewRequest,
     ReportTemplateRead,
     ReportTemplateSource,
     ReportTemplateWrite,
@@ -139,6 +140,25 @@ async def template_source(design: str) -> ReportTemplateSource:
     """
     html, css = ENGINE.builtin_source(design)
     return ReportTemplateSource(html=html, css=css)
+
+
+@router.post(
+    "/templates/preview",
+    dependencies=[require_permission("reporting.settings.manage")],
+)
+async def preview_template(
+    payload: ReportTemplatePreviewRequest, ctx: RequestContext = Depends(require_context)
+) -> Response:
+    """Render an unsaved template — the editor's live preview.
+
+    Declared *above* ``/templates/{template_id}``-shaped routes for the ordinary reason: a
+    literal segment and a path parameter both match ``/templates/preview``, and whichever is
+    registered first wins.
+    """
+    return Response(
+        content=await TemplateService(ctx).preview(payload),
+        media_type="text/html; charset=utf-8",
+    )
 
 
 @router.post(

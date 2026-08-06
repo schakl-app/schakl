@@ -15,7 +15,7 @@
   import Modal from "$lib/core/ui/Modal.svelte";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import DocumentForm from "$lib/modules/invoicing/DocumentForm.svelte";
-  import DocumentFrame from "$lib/modules/invoicing/DocumentFrame.svelte";
+  import DocumentFrame from "$lib/core/ui/DocumentFrame.svelte";
 
   let { data, form } = $props();
 
