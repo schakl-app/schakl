@@ -1,6 +1,6 @@
 {
   "brandName": "schakl.",
-  "siteUrl": "https://schakl.app",
+  "siteUrl": "https://schakl.dev",
   "logo": "/src/assets/site/logo.svg",
   "logoDark": "/src/assets/site/logo-dark.svg",
   "favicon": "/favicon.svg",
@@ -12,7 +12,7 @@
     "github": "https://github.com/schakl-app/schakl"
   },
   "demo": {
-    "url": "https://demo.schakl.app",
+    "url": "https://demo.schakl.dev",
     "label": {
       "nl": "Bekijk de live demo",
       "en": "See the live demo"

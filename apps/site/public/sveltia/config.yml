@@ -8,10 +8,13 @@ backend:
   branch: dev
   # Remote sign-in goes through our own token-exchange service, deployed with this site as a
   # Cloudflare Pages Function (apps/site/functions/api/auth/, see apps/site/AUTH.md). The CMS
-  # requests `<base_url>/<auth_endpoint>`, so these two produce https://schakl.app/api/auth.
+  # requests `<base_url>/<auth_endpoint>`, so these two produce https://schakl.dev/api/auth.
   # Only the auth URL is built from base_url; the GitHub API root is separate and untouched.
+  # This must be the origin the CMS is *served* from, and it is the one value here that no
+  # code derives: the function itself reads its callback off the incoming request, so it
+  # follows whatever host answers. Change this and the OAuth app's callback URL together.
   # Until that is deployed, local editing ("Work with Local Repository") works without it.
-  base_url: https://schakl.app
+  base_url: https://schakl.dev
   auth_endpoint: api/auth
 
 media_folder: apps/site/public/images

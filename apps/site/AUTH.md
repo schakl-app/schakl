@@ -34,7 +34,7 @@ route and Cloudflare documents no exclusion for `_`-prefixed helpers.
 ### The flow
 
 1. An editor clicks "Sign in with GitHub" at `/admin`. The CMS opens a popup at
-   `<base_url>/<auth_endpoint>` — `https://schakl.app/api/auth?provider=github&site_id=schakl.app`.
+   `<base_url>/<auth_endpoint>` — `https://schakl.dev/api/auth?provider=github&site_id=schakl.dev`.
 2. `/api/auth` generates a random state, sets it in an `HttpOnly; Secure; SameSite=Lax` cookie
    scoped to `Path=/api/auth`, and redirects to GitHub. `SameSite=Lax` is load-bearing, not
    incidental: the cookie has to survive GitHub's top-level redirect back to us.
@@ -54,8 +54,8 @@ person leaving).
 | Field | Value |
 |---|---|
 | Application name | `schakl CMS` |
-| Homepage URL | `https://schakl.app` |
-| Authorization callback URL | `https://schakl.app/api/auth/callback` |
+| Homepage URL | `https://schakl.dev` |
+| Authorization callback URL | `https://schakl.dev/api/auth/callback` |
 
 Generate a client secret and keep it to hand; GitHub shows it once.
 
@@ -85,7 +85,7 @@ Optional:
 | `CMS_ALLOWED_ORIGINS` | this deployment's own origin | Only needed if the CMS is served from a different host than this function. |
 | `GITHUB_HOSTNAME` | `github.com` | GitHub Enterprise. |
 
-**4. Check it.** Open `https://schakl.app/admin`, click "Sign in with GitHub", approve. A save
+**4. Check it.** Open `https://schakl.dev/admin`, click "Sign in with GitHub", approve. A save
 should land as a commit on `dev`.
 
 ## Access control
