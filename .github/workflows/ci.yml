@@ -83,6 +83,7 @@ jobs:
               - 'scripts/docs-check.mjs'
               - 'scripts/site-content-check.mjs'
               - 'scripts/site-feature-order.mjs'
+              - 'scripts/site-integration-marks.mjs'
               - 'scripts/site-links-check.mjs'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
@@ -204,7 +205,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      # Plain node first: these three need no install and catch the failures that `astro build`
+      # Plain node first: these four need no install and catch the failures that `astro build`
       # cannot see, because a broken reference between two data files still renders — a card with
       # a blank icon, a "Live demo" badge over no demo, a "Read more" into a 404.
       - name: Content references resolve
@@ -213,6 +214,8 @@ jobs:
         run: node scripts/site-feature-order.mjs --check
       - name: Docs locale parity + MDX hazards
         run: node scripts/docs-check.mjs
+      - name: Integration marks name their integration
+        run: node scripts/site-integration-marks.mjs
       - run: pnpm install --frozen-lockfile
       - name: Build
         run: pnpm --filter @schakl/site build
