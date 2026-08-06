@@ -65,17 +65,58 @@
   /* The deadline is an aside on the amount, not a second value. */
   .payment-card .note { font-weight: 400; font-style: italic; padding-left: 3mm; }
 
-  /* The portal QR (#268) — see classic.css for why the size lives here. */
-  .payment-qr { margin: 6mm 0; }
-  .payment-qr-code { width: 24mm; height: 24mm; }
+  /* The portal QR (#268) — see classic.css for why the size lives here, and why the anchor
+     needs a box before 24mm means anything. */
+  .payment-qr-code { display: inline-block; width: 24mm; height: 24mm; }
   .payment-qr-code svg { width: 100%; height: 100%; display: block; }
-  .payment-qr p { margin-top: 1.5mm; max-width: 42mm; }
 
-  /* The pay-online line (#269). The URL sits under the link rather than beside it: it is
-     long, and a document that wraps it mid-word is worse than one that gives it a row. */
+  /* --- how to pay, in one box -------------------------------------------------------- */
+  /* The QR and the pay-online line (#268, #269), inside the payment card and under a rule:
+     the bank transfer above, the one gesture below.
+
+     A table and not flex, and not by preference — the same reason the closing band is one:
+     WeasyPrint fragments a flex container by leaving its children behind, and this box sits
+     at the top of a sheet a long addressee block can push down.
+
+     The code keeps its own column at exactly its own width, so the words beside it wrap
+     against the card's edge rather than against the code. Middle-aligned: the words are the
+     shorter of the two, and hanging them from the top of a 24mm square leaves the square
+     reading as an unlabelled picture.
+
+     A stylesheet is inlined into every document it renders, so a comment in this file is
+     shipped text. Never write the card's Dutch title in one: three tests search the rendered
+     page for that exact word to decide whether the card was drawn, and a comment mentioning
+     it made all three of them answer yes for a document that drew no card at all. */
+  .pay-online { display: table; width: 100%; }
+  .payment-card .pay-online {
+    margin-top: 3.5mm; padding-top: 3.5mm; border-top: 1px solid var(--accent-hairline);
+  }
+  .pay-online-code { display: table-cell; width: 24mm; vertical-align: middle; }
+  .pay-online-words { display: table-cell; vertical-align: middle; line-height: 1.45; }
+  .pay-online-code + .pay-online-words { padding-left: 5mm; }
+  .pay-online-link {
+    display: block; font-size: 9.5pt; color: var(--accent); text-decoration: underline;
+  }
+  /* The URL is long and there is no word in it to break at, so it gets its own rows rather
+     than a row it overflows. Printed as well as linked: a PDF viewer follows the anchor, and
+     paper has to be typed. */
+  .pay-online-url { display: block; font-size: 7.5pt; word-break: break-all; margin-top: 0.8mm; }
+  /* What the code beside it is for — printed only when the pay-online line is not, so it is
+     always the whole of its column and never a third line under the address. */
+  .pay-online-caption { display: block; }
+
+  /* This design draws neither block from the body stack any more, so nothing here emits these
+     classes. They stay because `builtin_source` hands *this file* to a tenant branching their
+     own template from it (`docs/INVOICING.md`): put `payment_qr` back in the loop and it wants
+     somewhere to land, and a stylesheet that only styles the arrangement we happened to pick
+     is a worse starting point than one that styles the pieces. */
+  .payment-qr { margin: 6mm 0; }
+  .payment-qr p { margin-top: 1.5mm; max-width: 42mm; }
   .payment-link { margin: 12px 0; }
   .payment-link a { color: var(--accent); text-decoration: underline; }
-  .payment-link span { display: block; word-break: break-all; margin-top: 2px; }
+  .payment-link span {
+    display: block; font-size: 7.5pt; word-break: break-all; margin-top: 2px;
+  }
 
   .meta { width: 100%; }
   .meta td { padding: 0.5mm 0; font-size: 9.5pt; }

@@ -75,9 +75,24 @@
     numbers.
   #}
   <div class="details">
+    {#
+      Everything about paying this invoice, in one box. The QR and the pay-online line are body
+      blocks in `classic`'s stack, and left there they landed adrift in the open middle of this
+      design — a code the width of the sheet, centimetres below the IBAN it is an alternative
+      to, with the reader's eye crossing the lines to get from one to the other. They are the
+      same answer to the same question as the rows above them, so they go inside the card and
+      under a rule: bank transfer above, one gesture below.
+
+      With the card switched off they still print, on their own — the left column is where this
+      design puts what is owed and how to settle it, whether or not the box is drawn around it.
+    #}
     <div class="details-left">
       {% if payment_box %}
-        {{ blocks.payment_card(payment_box, t('invoicing.doc.payment_details')) }}
+        {% call blocks.payment_card(payment_box, t('invoicing.doc.payment_details')) %}
+          {{ blocks.pay_online(ctx) }}
+        {% endcall %}
+      {% else %}
+        {{ blocks.pay_online(ctx) }}
       {% endif %}
     </div>
     <div class="details-right">
@@ -102,20 +117,25 @@
   {#
     The body stack, split around the closing band.
 
-    Four blocks are drawn by hand here rather than from the loop — the payment card above;
-    the lines, because this design gives each kind its own headed table rather than banding
-    one grid; and the VAT breakdown and totals below, which it sets side by side on one washed
-    band at the foot of the document instead of stacking them. `_blocks.html` sanctions
-    exactly this: omit the key from the loop and place it yourself. Everything else keeps its
-    configured order, and the band lands where `totals` was ordered, so "notes below the
-    total" still means what it says.
+    Five blocks are drawn by hand here rather than from the loop — the payment card above,
+    and with it the QR and the pay-online line it now holds; the lines, because this design
+    gives each kind its own headed table rather than banding one grid; and the VAT breakdown
+    and totals below, which it sets side by side on one washed band at the foot of the document
+    instead of stacking them. `_blocks.html` sanctions exactly this: omit the key from the loop
+    and place it yourself. Everything else keeps its configured order, and the band lands where
+    `totals` was ordered, so "notes below the total" still means what it says.
+
+    What a hand-placed block does *not* lose is its switch: each is still drawn only when the
+    layout says so, which is what keeps "turn the QR off" working from the template editor.
 
     `.flow` carries a floor rather than the closing band carrying a ceiling: a short invoice
     then leaves the open middle this design is built around, and a long one simply grows past
     it. Pinning the band to the bottom of the sheet instead would need the page's height,
     which no block in normal flow can ask for without risking a page break of its own.
   #}
-  {% set drawn_by_hand = ['payment_box', 'lines', 'tax_summary', 'totals'] %}
+  {% set drawn_by_hand = [
+    'payment_box', 'payment_qr', 'payment_link', 'lines', 'tax_summary', 'totals'
+  ] %}
   {% set closing_at = body_order.index('totals') if 'totals' in body_order else body_order | length %}
 
   <div class="flow">

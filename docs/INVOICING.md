@@ -666,10 +666,40 @@ it is:
   built around, and a long one grows past it. Pinning the band to the foot of the sheet would
   need the page's height, which no block in normal flow can ask for without risking a break of
   its own.
+- **How to pay is one box.** The QR (#268) and the pay-online line (#269) are body blocks in
+  `classic`'s stack; here they are drawn by hand *inside* the payment card, under a rule —
+  bank transfer above, one gesture below. Left in the loop they landed centimetres lower, in
+  the open middle of the sheet, with the reader's eye crossing the line table to get from the
+  IBAN to the code that is an alternative to it. The card takes them through `{% call %}`
+  (`payment_card` renders `caller()` if it has one), so `classic` is untouched and a tenant
+  branching from either still gets the plain card. With `payment_box` switched off the strip
+  still prints, on its own: the left column is where this design puts how to settle the
+  invoice, box or no box, and hanging the pair off the card would have made `payment_box` a
+  silent third switch on both of them.
+- **The QR's caption stands down beside the pay-online line.** "Scan om te betalen" draws the
+  same distinction the line's own label draws — betalen against bekijken — about a picture
+  nobody needs told is scannable, and under the address it reads as belonging to the address.
+  With the line off it is the only thing saying the code is worth pointing a phone at, and it
+  prints.
+- **A rule that styles an inline element does nothing, and the QR is the scar.**
+  `.payment-qr-code { width: 24mm; height: 24mm }` sat on an `<a>`, which is inline: width and
+  height do not apply, the svg's `100%` resolved against the paragraph instead, and the code
+  printed the full width of the sheet — in both designs, in the preview and in the PDF alike,
+  running the sample to three pages. Every test read the markup, and the markup was right. So
+  the anchor is `inline-block` now and the guard measures the **laid-out box** through
+  WeasyPrint (`_boxes` in `tests/test_invoicing_render.py`): anything about size or arrangement
+  has to ask the layout, because the HTML is not the document.
+- **The printed URL is never set in `micro`.** That class uppercases, and a URL path is
+  case-sensitive: what reached the paper was `HTTPS://…/INVOICES/6F1A…`, against a route that
+  is `/invoices/[id]`. The one reader the printed address exists for is the one who cannot
+  click it, and they were being handed a 404. The assertion is on the *rendered* text, since
+  the markup carried the right characters throughout.
 - **Density is part of the design.** The sample — three line kinds with subtotals, two VAT
   rates, a partial payment, a footer — prints on one sheet, and a test says so, because that
   sample *is* the editor's preview. It ran to two once, with the totals stranded alone on the
-  second.
+  second. That test is bound to the **default** layout on purpose: the card, the code and the
+  line all ship off, and switching every optional block on at once still costs a second sheet
+  — buying that back would mean making every ordinary invoice tighter than the paper it models.
 
 The background is **opt-in**: a template stored before it existed has no `background` key, and
 reading that as "yes please" would have put a mark behind every invoice every tenant had

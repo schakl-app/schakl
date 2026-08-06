@@ -162,12 +162,67 @@
         </tr>
       {% endfor %}
     </table>
+    {# A design may hang more inside the box by calling this as a block — the letterhead puts
+       the pay-online strip here, because "scan this" is the same question the IBAN above it
+       answers. Called plainly, this renders exactly the card it always did.
+
+       `is defined` and not a truth test: the environments run on `StrictUndefined`, so a plain
+       `{% if caller %}` raises on every ordinary call rather than falling through. #}
+    {% if caller is defined %}{{ caller() }}{% endif %}
   </div>
+{% endmacro %}
+
+{#
+  The QR and the pay-online line as one strip, for a design that wants them *together* rather
+  than as two body blocks in a stack.
+
+  Both halves lead to the same place and each keeps its own switch, because they answer two
+  readers: a printed invoice gets scanned, a PDF opened on a laptop gets clicked. So this draws
+  whichever is on — and nothing at all when neither is, which is the shipped default.
+
+  The words beside the code are whichever of the two actually says something. With the
+  pay-online line on they are its label and its address — and the QR's own caption stands down,
+  because it draws the same distinction the label already draws ("betalen" against "bekijken")
+  about a picture nobody needs told is scannable, and a second line under the URL reads as
+  belonging to the URL. With the line off the caption is all there is, and it prints: an
+  unlabelled code in the corner of an invoice is a thing people do not scan.
+#}
+{% macro pay_online(ctx) %}
+  {% set with_code = ctx.payment_qr %}
+  {% set with_link = ctx.show_pay_link and ctx.pay_url %}
+  {% if with_code or with_link %}
+    <div class="pay-online avoid-break">
+      {% if with_code %}
+        {# Inline SVG wrapped in the anchor, for the reasons `block()` gives below: the document
+           CSP allows no fetch at all, and WeasyPrint turns the anchor into a real link
+           annotation, so the code is clickable as well as scannable. #}
+        <div class="pay-online-code">
+          <a class="payment-qr-code" href="{{ ctx.pay_url }}">{{ ctx.payment_qr | safe }}</a>
+        </div>
+      {% endif %}
+      <div class="pay-online-words">
+        {% if with_link %}
+          <a class="pay-online-link" href="{{ ctx.pay_url }}">{{ ctx.pay_label }}</a>
+          {# `muted` and not `micro`, for the reason `block()` gives below: the class uppercases,
+             and this address ends in a case-sensitive token. #}
+          <span class="pay-online-url muted">{{ ctx.pay_url }}</span>
+        {% endif %}
+        {% if with_code and not with_link %}
+          <span class="pay-online-caption micro">{{ ctx.payment_qr_caption }}</span>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
 {% endmacro %}
 
 {#
   One body block, by key. Designs call this from their `body_order` loop; a design that wants
   to draw one of these itself simply omits it from the loop and places it by hand.
+
+  Two class names are the same wherever a block is drawn from — `payment-qr-code` on the code
+  and `pay-online-link` on the words — because *whether* a document offers them is a property
+  of the layout and not of the design that arranged them. They are what the switch tests read,
+  and binding those to one design's arrangement is what made moving it break seven of them.
 #}
 {% macro block(key, ctx) %}
   {% if key == 'intro' and ctx.intro %}
@@ -176,10 +231,15 @@
     {{ payment_card(ctx.payment_box, ctx.t('invoicing.doc.payment_details')) }}
   {% elif key == 'payment_link' and ctx.show_pay_link and ctx.pay_url %}
     {# The URL is printed as well as linked: a PDF viewer follows the anchor, and paper has to
-       be typed. It is the invoice's page in the portal, never a provider checkout. #}
+       be typed. It is the invoice's page in the portal, never a provider checkout.
+
+       Small and quiet, but **never `micro`**: that class uppercases, and the address it was
+       uppercasing ends in a case-sensitive token. Every client who typed it off paper got a
+       link that does not resolve — and the one reason to print the URL at all is the reader
+       who cannot click it. #}
     <p class="payment-link">
-      <a href="{{ ctx.pay_url }}">{{ ctx.pay_label }}</a>
-      <span class="micro muted">{{ ctx.pay_url }}</span>
+      <a class="pay-online-link" href="{{ ctx.pay_url }}">{{ ctx.pay_label }}</a>
+      <span class="muted">{{ ctx.pay_url }}</span>
     </p>
   {% elif key == 'payment_qr' and ctx.payment_qr %}
     {# Inline SVG, never an <img src>: the document CSP allows `img-src data:` and nothing

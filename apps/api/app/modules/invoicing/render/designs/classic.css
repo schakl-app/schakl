@@ -49,9 +49,13 @@
   .payment-card td:first-child { padding-right: 16px; }
 
   /* The portal QR (#268). Sized in CSS, not by segno's `scale`: WeasyPrint lays an inline
-     SVG out from its box, and 24mm is the smallest a phone camera reads reliably off paper. */
+     SVG out from its box, and 24mm is the smallest a phone camera reads reliably off paper.
+     `inline-block` is what makes that box exist at all — an `<a>` is inline, width and height
+     do not apply to it, and the 24mm was silently dropped in both the preview and the print:
+     the svg's `100%` then resolved against the paragraph and the code came out the full width
+     of the sheet, three pages long. The rule was always here; it had nothing to size. */
   .payment-qr { margin: 14px 0; }
-  .payment-qr-code { width: 24mm; height: 24mm; }
+  .payment-qr-code { display: inline-block; width: 24mm; height: 24mm; }
   .payment-qr-code svg { width: 100%; height: 100%; display: block; }
   .payment-qr p { margin-top: 4px; max-width: 40mm; }
 
@@ -59,7 +63,9 @@
      long, and a document that wraps it mid-word is worse than one that gives it a row. */
   .payment-link { margin: 12px 0; }
   .payment-link a { color: var(--accent); text-decoration: underline; }
-  .payment-link span { display: block; word-break: break-all; margin-top: 2px; }
+  .payment-link span {
+    display: block; font-size: 7.5pt; word-break: break-all; margin-top: 2px;
+  }
 
   .reverse-charge { margin-top: 14px; font-size: 8.5pt; }
   .notes { margin-top: 16px; }
