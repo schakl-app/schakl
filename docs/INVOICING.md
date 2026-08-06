@@ -434,14 +434,97 @@ belongs *here* is the part invoicing owns:
   starting a checkout settles nothing, while registering a payment is a bookkeeping claim.
   `InvoiceRead.online_payment` is the boolean the portal draws its pay button from — it never
   gets to read which accounts the agency has connected.
-- **Every invitation to pay leads to the portal, never to a checkout URL** — the invoice mail's
-  button and the reminder's, the document's QR (#268) and its pay-online line, and the portal's
-  own button. `paylinks.py` is the one function that says so, and four surfaces pointing at one
-  door is what makes "one open checkout per invoice" true: a checkout URL is a bearer credential,
-  it expires in minutes while the invoice does not, and a client holding both a mailed link and
-  a portal button can pay the same debt twice. The mail's button is the strict one — it appears
-  only when a provider is connected and the invoice is collectable, so an instance without
-  payments sends the mail it always sent (`docs/PAYMENTS.md` §9).
+- **Every invitation to pay leads to a page of ours, never to a checkout URL** — the invoice
+  mail's button and the reminder's, the document's QR (#268) and its pay-online line, and the
+  portal's own button. `paylinks.py` is the one function that says so, and four surfaces
+  pointing at one door is what makes "one open checkout per invoice" true: a checkout URL is a
+  bearer credential that spends money, it expires in minutes while the invoice does not, and a
+  client holding both a mailed link and a portal button can pay the same debt twice. The mail's
+  button is the strict one — it appears only when a provider is connected and the invoice is
+  collectable, so an instance without payments sends the mail it always sent
+  (`docs/PAYMENTS.md` §9). *Which* page of ours is §"De publieke factuurlink" below.
+- **A payer who comes back sees their own money** (#304). Mollie's callback is asynchronous and
+  makes no ordering promise against the browser redirect, so the return landed on a page whose
+  read had already happened: the invoice said *open* to the person who had just paid it, and
+  the only control that could fix it was **Check status**, which is `:any` and therefore not
+  theirs. The return URL now carries `?return=1`, the landing asks once server-side, and the
+  page polls a few times while an attempt is still in flight. Bounded at the API
+  (`refresh_pending`): non-final attempts only, and one provider call per attempt per five
+  seconds, counted on its own `refreshed_at` — **not** on `synced_at`, which the *create* also
+  writes and which therefore made the one case this exists for the one case it skipped.
+
+## De publieke factuurlink (#304 — `public.py`)
+
+An issued invoice has its own web address, and anybody holding it can read that invoice and pay
+it without an account: `https://<tenant host>/invoice/<token>`.
+
+**Why it exists.** #268 sent the QR to the client portal and argued that this was safe because
+"the right person lands on the invoice, anyone else lands on a sign-in screen". True, and
+answering the wrong question: the portal is a licensed product an agency buys per client
+(`docs/PORTAL.md`), so most clients have no login — and for them the sentence read *everyone
+lands on a sign-in screen*. A QR whose only outcome is a login form for an account you do not
+have is #253's control that always refuses, printed on paper and posted.
+
+**What the token is.** `invoices.public_token`, `secrets.token_urlsafe(32)` — 256 bits — minted
+at issue, and lazily on first render for the register that predates the feature. Deliberately
+not a UUID: 122 bits would also be unguessable, but a UUID in a URL *reads* as an identifier,
+gets pasted into tickets and spreadsheets as though it were one, and carries no hint that it is
+a credential. `NULL` means no public link, and the read refuses a NULL rather than treating it
+as a wildcard.
+
+**What it grants, exactly.** Read this one invoice, download its PDF, open a checkout for what
+it still owes, and ask whether that checkout has landed. That is the same thing handing somebody
+the paper invoice already grants — look at it, and pay what it says — and paying someone else's
+bill is not an attack. It grants **no** second document, no company record, no contact, no
+activity trail, and no other write.
+
+**How that is enforced, and why it is not a list of things to remember.** The routes build a
+`RequestContext` that is a *client-portal session scoped to one company* — `is_portal=True`,
+`company_scope={invoice.company_id}`, and two permissions at `:own`
+(`invoicing.invoice.read:own`, `invoicing.payment.link:own`). Every narrowing then comes from
+machinery that already exists and is already tested: the company horizon fences the rows,
+`Invoice.__portal_horizon_clause__` hides drafts, `_PortalDocumentRepository` applies both on
+every path (§#266, §#285), and the module's own `:any` surfaces — the seller's bank details,
+the price list, the template library, the unbilled backlog with every employee's rate on it —
+are refused by the same dependency that refuses them to a client. The obvious shortcut,
+`jobs.system_context`, holds `*` and would have made all of that a matter of this one file
+remembering.
+
+**The other four properties**, each of which has a plausible wrong version:
+
+- **The lookup is tenant-scoped.** `org_id = :oid AND public_token = :token`, with RLS bound
+  first, exactly like the payment callback's five gates. Looking a token up across tenants would
+  be a second unscoped crossing and would answer before authenticating.
+- **The token never travels in a `Referer`.** It is a path segment and the very next thing a
+  payer does is leave for a payment provider, so every public response — page, document, PDF —
+  sets `Referrer-Policy: no-referrer`. The app default (`strict-origin-when-cross-origin`)
+  strips the path cross-origin but still sends the whole URL same-origin, which is not enough.
+  `X-Robots-Tag: noindex, nofollow, noarchive` rides along, because a link mailed to a client
+  ends up in signatures, tickets and helpdesk threads.
+- **Every refusal is the same bare 404.** Unknown token, a draft's token, a suspended org, a
+  tenant with the switch off. Distinguishing them tells an enumerator which guess was closer and
+  helps nobody holding a real link.
+- **The switch is retroactive.** `invoicing_settings.public_invoice_links` (Instellingen →
+  Facturatie, on by default) is checked *before* the token is compared, so unticking it
+  withdraws links that are already on paper — the only useful meaning of an off switch for a
+  credential the agency cannot collect back.
+
+**What is deliberately *not* mitigated, and why.** There is **no rate limit on token guessing**,
+because at 256 bits guessing is not a threat model — an attacker managing ten thousand attempts
+a second for a century covers about 2⁻¹⁹⁷ of the space, and a limiter there would only add a
+knob that reads as protection. The one bound worth being aware of is different: `/pdf` renders
+through WeasyPrint on every call, so a holder of a *valid* token can spend CPU by looping it.
+That is a resource question rather than a disclosure one (they may read that document), the page
+itself frames the cheap HTML and only an explicit download reaches the PDF, and it is called out
+here so that the day it matters, the fix is a render cache keyed on
+`(invoice, template, updated_at)` rather than a scramble.
+
+Staff see the link on the invoice screen (`InvoiceRead.public_url`, detail read only) so they
+can hand it over when a client rings up. It is empty for an external login: a client is already
+looking at the document, and a bearer token on their own screen is a thing to forward by
+accident. The surface is excluded from the MCP tool map for the same reason `/auth` is — a route
+that authenticates *itself* does not travel `require_context`, which is the proxy's whole safety
+argument.
 
 ## The client-facing mails are the tenant's to write (`emails.py`)
 
@@ -740,7 +823,28 @@ it is:
   same distinction the line's own label draws — betalen against bekijken — about a picture
   nobody needs told is scannable, and under the address it reads as belonging to the address.
   With the line off it is the only thing saying the code is worth pointing a phone at, and it
-  prints.
+  prints. A tenant who writes their own caption (`qr_caption_i18n`) always gets theirs: they put
+  it there on purpose, and they know whether they have a provider connected.
+- **The QR is fully configurable, and the rule that made it safe grew rather than went**
+  (#305, on top of #269). `qr_style` is now `brand` (accent + logo, the default and unchanged) ·
+  `plain` (mono) · `custom`, and `custom` unlocks `qr_color`, `qr_background`, `qr_logo`
+  (`brand` / `none` / an uploaded `qr_logo_file_id`) and the caption. #269 shipped no picker on
+  the argument that "letting a tenant type a hex here would be offering them a way to print an
+  invoice nobody's phone can read" — right about the danger, wrong about the remedy. What kept
+  a pale accent scannable was never the absence of a field, it was `readable_dark`; so that
+  became **`readable_pair`**, which judges both colours together, and the editor gained a live
+  preview of the actual code plus a sentence explaining any substitution. Three refusals, and
+  each falls back to black-on-white **as a pair**: too little contrast between them (nudging
+  only the ink leaves a mid-grey panel that passes a ratio and still loses a camera), a "light"
+  side that is not light (`MIN_LIGHT_LUMINANCE` — an inverted code clears every contrast check
+  and scans worse everywhere, so "no dark mode" is now a number instead of a missing option),
+  and a "dark" side that is the lighter of the two. `qr_appearance` (`render/context.py`) is the
+  single resolution, read by the document, the mail's PNG *and* the editor's preview — which
+  also fixed a quieter #269 bug: the mail drew the org's brand colour unconditionally, so a
+  template set to `plain` printed mono on paper and mailed a coloured code. One more mechanism
+  worth knowing: segno's SVG writer omits light modules entirely (that is why the file is
+  small), so a tinted background there is a full-bleed `<rect>` of ours behind the symbol, while
+  the PNG can just be handed a `light` colour.
 - **A rule that styles an inline element does nothing, and the QR is the scar.**
   `.payment-qr-code { width: 24mm; height: 24mm }` sat on an `<a>`, which is inline: width and
   height do not apply, the svg's `100%` resolved against the paragraph instead, and the code

@@ -410,6 +410,37 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   a 402 there would drop money that has already left someone's bank account and no retry would
   ever fix it (the provider's retries would 402 too). Gate what the agency *does*; never gate the
   recording of what has already happened to them.
+- **A link on paper needs a page a stranger can open** (#304, `docs/INVOICING.md`). #268 pointed
+  the invoice's QR at the client portal and called it safe because "anyone else lands on a
+  sign-in screen". True, and answering the wrong question: the portal is a licensed product an
+  agency buys *per client*, so most clients hold no login, and the sentence really read
+  *everyone* lands on a sign-in screen — #253's control that always refuses, printed on paper and
+  posted. So an issued invoice carries `public_token` (`secrets.token_urlsafe(32)`) and
+  `/invoice/<token>` opens that one document with no session. Three rules generalise. **A
+  session-less reader is expressed in the machinery that already exists, never in a bespoke
+  one**: the context is a client-portal session (`is_portal`, `company_scope` of that one
+  company, two `:own` permissions), so the horizon, the draft rule and #266's `:any` fences all
+  apply by construction rather than by this file remembering — the tempting shortcut,
+  `system_context`, holds `*`. **A credential in a path segment must never travel in a
+  `Referer`**, and the app's `strict-origin-when-cross-origin` default is not enough, because it
+  still sends the whole URL same-origin; every public response says `no-referrer` and
+  `noindex`. And **an off switch for a credential you cannot collect back has to be
+  retroactive** — the flag is read before the token is compared, so unticking it withdraws links
+  already on desks. The public shape is hand-written (`PublicInvoiceRead`), because a subset
+  expressed as an omission leaks the next field somebody adds.
+- **A silent field is worse than a refused one, and that is an argument *for* the field** (#305).
+  #269 shipped the QR with no colour picker, reasoning that a hex box "would be offering them a
+  way to print an invoice nobody's phone can read". Right about the danger and wrong about what
+  was holding it back: the guarantee was never the missing field, it was `readable_dark`
+  replacing an unscannable accent. What was actually missing was a way to *see* that rule fire.
+  So the picker exists now, the rule grew into `readable_pair` (both colours judged together,
+  substituted **as a pair** — half-correcting produces a code that passes a ratio and still
+  loses a camera; and "no dark mode" became a luminance floor rather than an absent option), and
+  the editor renders the real code from the unsaved config and says in words when a combination
+  was replaced. Reach for *show the constraint working* before *remove the control*. Its sibling
+  finding is the ordinary one: `qr_appearance` is now the single resolution read by the document,
+  the mail and the preview alike — before it, the mail drew the org's brand colour
+  unconditionally, so a template set to `plain` printed mono on paper and mailed a coloured code.
 
 ## 11. Working agreement (for Claude Code)
 

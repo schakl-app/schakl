@@ -332,6 +332,35 @@ is `:any` and not the floor precisely because it spends an outbound provider cal
 press: a client has no use for it, and leaving it at the floor would have put a rate-costed
 external call behind a button on a client-reachable page.
 
+### The return from a checkout is a third layer (#304)
+
+The sentence above — *"a client has no use for it, their status arrives by callback"* — was the
+one thing in this design that turned out to be wrong, and it was wrong in front of the person
+paying. **Mollie's callback is asynchronous and makes no ordering promise against the browser
+redirect**, and it documents this. So the page a payer returns to had already read the invoice
+before anything told us: it said *open* to somebody whose money had just left, and the only
+control on the screen that could fix it was `sync`, which they cannot hold.
+
+`refresh_pending` is the layer between the callback and the hourly cron. The API stamps
+`?return=1` on the URL it hands the provider; the landing asks once server-side (so it works
+with no JavaScript) and the page then polls a few times while an attempt is in flight. Both the
+signed-in route and the public one call the *same* method, so the bound cannot drift between
+them:
+
+- **Non-final attempts only.** A final status is final; asking again returns what is stored.
+- **One provider call per attempt per five seconds**, so a page polling every two seconds is
+  free after the first hit and a public POST cannot be turned into an amplifier.
+- **Counted on its own `refreshed_at`, not on `synced_at`.** That reuse looks obvious and breaks
+  the feature: `synced_at` is written by the *create* as well, so a payer returning inside the
+  window was told there was nothing to ask about the payment they had just made — the one case
+  this exists for was the one case it skipped. A webhook and the cron leave `refreshed_at`
+  alone for the mirror reason: neither is a caller whose rate needs bounding, and a well-timed
+  callback would otherwise suppress the payer's own first press.
+- **`:own` at the floor**, unlike `sync`. This is not the operator's repair action, it is the
+  payer finding out what happened to their own money, and it spends nothing when nothing is in
+  flight. The public sibling is `license_exempt` for the callback's reason: a 402 would hide
+  money that has already moved from the person who moved it.
+
 ## 8. Permissions (CLAUDE.md §15)
 
 `invoicing.payment.link` — **scoped**, `ROLE_ADMIN` by default at `:any`, `ROLE_CLIENT` by
@@ -379,9 +408,9 @@ for the same shape of reason.)
 
 ## 9. Every way a payer is invited in, and why they all lead to one door
 
-**Four surfaces offer a payer a way in, and every one of them points at the invoice's page in
-the client portal.** Never at a provider checkout URL. `app/modules/invoicing/paylinks.py` is
-the single function that says so, which is the only thing keeping four surfaces from drifting:
+**Four surfaces offer a payer a way in, and every one of them points at the invoice's own page
+here.** Never at a provider checkout URL. `app/modules/invoicing/paylinks.py` is the single
+function that says so, which is the only thing keeping four surfaces from drifting:
 
 | surface | what it is | configured where |
 |---|---|---|
@@ -390,12 +419,11 @@ the single function that says so, which is the only thing keeping four surfaces 
 | the reminder mail's CTA | `{link}` on the `invoicing.reminder` kind | Instellingen → E-mail |
 | the document's QR + pay line | blocks `payment_qr` / `payment_link` | the invoice template |
 
-Four reasons the destination is the portal and not the checkout, and only the first is the
+Four reasons the destination is a page of ours and not the checkout, and only the first is the
 obvious one:
 
-- **A checkout URL is a bearer credential.** Printed on paper or forwarded in a mail, it hands
-  whoever picks it up the ability to look at — and settle — somebody else's bill. The portal
-  link goes through the login #193 already established.
+- **A checkout URL is a bearer credential that spends money.** Printed on paper or forwarded in
+  a mail, it hands whoever picks it up a live, pre-filled payment.
 - **A checkout expires and an invoice does not.** iDEAL dies in fifteen minutes, a card in
   thirty (`docs/MOLLIE.md` §7). A *reminder* mailed three weeks later would carry a URL that
   had been dead for most of a month.
@@ -410,14 +438,34 @@ obvious one:
   an error.
 
 So a provider's checkout URL exists in exactly one place — on the intent row, handed to the
-payer by the portal at the moment they press. It never travels by mail or on paper.
+payer at the moment they press. It never travels by mail or on paper.
 
-### What the code looks like, and why that is a style and not a colour picker
+### Which page of ours (#304)
+
+Until #304 the answer was *the client portal*, and the argument above said so: "the portal link
+goes through the login #193 already established". That was true and it was answering the wrong
+question — the portal is a licensed product bought per client (`docs/PORTAL.md`), so most
+clients hold no login, and for them the QR resolved to a sign-in screen for an account they do
+not have.
+
+`invoice_pay_url` now prefers the invoice's **public** address (`/invoice/<token>`,
+`docs/INVOICING.md` §"De publieke factuurlink") and falls back to the portal page for a document
+that has no token — a draft, or an org that switched the feature off. Every bullet above
+survives word for word: the token is not a checkout, it does not expire, it reflects a part
+payment or a credit note, it carries the tenant's branding, and it is what keeps "one open
+checkout per invoice" true. Somebody who *does* hold a portal login still gets the portal.
+
+The provider is handed `?return=1` on that URL, which is how the landing page knows it is a
+return and may spend one call asking whether the money arrived (§7). Without it, every ordinary
+view of an invoice with a stale open intent would do the same.
+
+### What the code looks like
 
 The QR is **branded by default** (`TemplateConfig.qr_style = "brand"`): the tenant's accent in
 the modules, their logo in the middle, so the code on a client's invoice is recognisably the
-agency's rather than a generic black square. `plain` is the escape hatch — monochrome printing,
-or a logo that does not survive being seven modules across.
+agency's rather than a generic black square. `plain` is monochrome printing's escape hatch, and
+`custom` (#305) is a real colour picker — see `docs/INVOICING.md` for the fields and for why the
+guarantee below is what makes offering one safe.
 
 Four rules in `render/qr.py` decide whether it actually scans, and each is a way to get this
 wrong that looks fine in a preview:
@@ -429,11 +477,19 @@ wrong that looks fine in a preview:
   count, never in pixels, so it holds at 24mm on paper and at 132px in a mail.
 - **A light quiet patch sits behind it**, snapped to whole modules. A transparent logo would
   otherwise leave live modules showing through, and noise decodes worse than uniform damage.
-- **The dark colour must stay dark** (`readable_dark`): below 4.5:1 against white the accent is
-  replaced by near-black. A brand colour is chosen to sit beside a logo, not to be binarized by
-  a phone camera, and a pale mint makes a code that is beautiful on screen and unreadable in the
-  room — where nobody can squint harder. There is deliberately **no field to type a QR colour
-  into**: it would be a way to print an invoice a client's phone cannot read.
+- **The two colours must contrast, and the dark one must be the darker** (`readable_pair`).
+  Below 4.5:1 the pair is replaced by black-on-white — *as a pair*, because nudging only the ink
+  leaves a mid-grey panel that passes a ratio and still loses a phone camera. An inverted pair
+  is refused too, on `MIN_LIGHT_LUMINANCE` rather than on contrast: white on charcoal is 16:1
+  and scans worse everywhere. A brand colour is chosen to sit beside a logo, not to be binarized
+  by a camera, and a pale mint makes a code that is beautiful on screen and unreadable in the
+  room, where nobody can squint harder.
+
+  #269 concluded from this that there must be **no field to type a QR colour into**. #305
+  reversed that, and the reasoning is worth keeping: the guarantee was never the missing field,
+  it was this function. What was missing was a way for the tenant to *see* it fire — so the
+  editor now renders the real code from the unsaved config and says in words when a combination
+  was substituted. Offer the field, keep the rule, show the rule working.
 
 Both formats come out of one encode: an inline `<svg>` for the document (the renderer's CSP
 allows `img-src data:` and nothing else, so the logo travels as a data URI) and a **PNG** for
