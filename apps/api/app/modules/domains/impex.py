@@ -187,6 +187,7 @@ DOMAIN_IMPEX = ImpexDescriptor(
             data_type="select",
             clearable=False,
             options=tuple(status.value for status in DomainStatus),
+            option_label_key="domains.status.{option}",
             aliases=("statuts", "state"),
         ),
         ImpexColumn(

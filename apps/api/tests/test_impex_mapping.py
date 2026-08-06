@@ -152,7 +152,9 @@ async def test_inspect_reads_the_file_and_suggests_a_mapping(client_for) -> None
 
         columns = {column["index"]: column for column in report["columns"]}
         assert columns[0]["header"] == "Klantnummer"
-        assert (columns[0]["suggested_key"], columns[0]["match"]) == ("client_number", "alias")
+        # ``label``, not ``alias``: "Klantnummer" is this column's own nl label, and a label
+        # outranks a hand-written alias because §8 keeps it in step with what the UI displays.
+        assert (columns[0]["suggested_key"], columns[0]["match"]) == ("client_number", "label")
         assert columns[1]["suggested_key"] == "name"
         assert columns[2]["suggested_key"] == "city"
         assert columns[4]["suggested_key"] == "contact_first_name"
@@ -670,3 +672,175 @@ async def test_a_mapped_import_never_crosses_tenants(client_for) -> None:
     async with client_for(b.host) as c:
         items = (await c.get("/api/v1/companies", headers=await auth_cookie(b.user))).json()
         assert len(items["items"]) == 1
+
+
+# --------------------------------------------------------------------------- #
+# Recognising a header, and a select cell, in the tenant's own language
+#
+# Both used to be stricter than the rest of the engine in a way nothing justified: the
+# exact-key check ran on the **raw** header while only the alias check folded case, so a
+# column called "Status" matched neither branch; and a ``select`` compared its cell to the
+# options byte for byte while a ``bool`` two lines away already read "Ja"/"Nee". A domain
+# register an agency keeps by hand says "Status" and "Parked", and every row of it failed.
+#
+# The widening follows the §8 catalogs rather than a second hand-written list of spellings, so
+# a column and an option are recognised in every locale the instance ships as soon as their
+# labels exist — which §8 already requires in the same change. It forgives *spelling*, never
+# vocabulary: an unknown status is still a row error.
+# --------------------------------------------------------------------------- #
+async def test_a_header_matches_its_key_whatever_the_case(client_for) -> None:
+    t = await make_tenant("impex-hdr-case")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        report = (
+            await c.post(
+                "/api/v1/impex/domain/inspect",
+                files=_file(
+                    _csv([["Naam", "Status", "REDIRECT_URL"], ["a.nl", "active", ""]])
+                ),
+                headers=headers,
+            )
+        ).json()
+    by_index = {column["index"]: column for column in report["columns"]}
+    assert (by_index[1]["suggested_key"], by_index[1]["match"]) == ("status", "key")
+    assert (by_index[2]["suggested_key"], by_index[2]["match"]) == ("redirect_url", "key")
+
+
+async def test_a_header_matches_the_column_label_in_any_locale(client_for) -> None:
+    """No alias declares "Startdatum" or "Afgesproken prijs" — they are the nl labels."""
+    t = await make_tenant("impex-hdr-label")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        report = (
+            await c.post(
+                "/api/v1/impex/domain/inspect",
+                files=_file(
+                    _csv(
+                        [
+                            ["Startdatum", "Afgesproken prijs", "Registrant"],
+                            ["2026-01-01", "12,50", ""],
+                        ]
+                    )
+                ),
+                headers=headers,
+            )
+        ).json()
+    suggested = {column["index"]: column["suggested_key"] for column in report["columns"]}
+    assert suggested == {0: "start_date", 1: "price_override", 2: "registry_contact"}
+    assert {column["match"] for column in report["columns"]} == {"label"}
+
+
+async def test_a_select_cell_is_read_case_insensitively_and_stored_canonical(
+    client_for,
+) -> None:
+    t = await make_tenant("impex-select-case")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        assert (
+            await c.post("/api/v1/companies", json={"name": "Acme"}, headers=headers)
+        ).status_code == 201
+        report = (
+            await c.post(
+                "/api/v1/impex/domain/import",
+                params={"dry_run": "false"},
+                files=_file(
+                    _csv(
+                        [
+                            ["name", "company", "status"],
+                            ["een.nl", "Acme", "Parked"],
+                            ["twee.nl", "Acme", "ACTIVE"],
+                        ]
+                    )
+                ),
+                headers=headers,
+            )
+        ).json()
+        assert (report["error_count"], report["creates"]) == (0, 2), report
+        items = (await c.get("/api/v1/domains", headers=headers)).json()["items"]
+    assert {d["name"]: d["status"] for d in items} == {
+        "een.nl": "parked",
+        "twee.nl": "active",
+    }
+
+
+async def test_a_select_cell_may_be_the_options_label_in_any_locale(client_for) -> None:
+    """"Geparkeerd" is what a Dutch sheet says; ``parked`` is what gets stored."""
+    t = await make_tenant("impex-select-nl")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        assert (
+            await c.post("/api/v1/companies", json={"name": "Acme"}, headers=headers)
+        ).status_code == 201
+        report = (
+            await c.post(
+                "/api/v1/impex/domain/import",
+                params={"dry_run": "false"},
+                files=_file(
+                    _csv(
+                        [
+                            ["name", "company", "status"],
+                            ["een.nl", "Acme", "Geparkeerd"],
+                            ["twee.nl", "Acme", "Doorverwijzing"],
+                        ]
+                    )
+                ),
+                headers=headers,
+            )
+        ).json()
+        assert (report["error_count"], report["creates"]) == (0, 2), report
+        items = (await c.get("/api/v1/domains", headers=headers)).json()["items"]
+    assert {d["name"]: d["status"] for d in items} == {
+        "een.nl": "parked",
+        "twee.nl": "redirect",
+    }
+
+
+async def test_a_cell_that_is_no_option_at_all_is_still_a_row_error(client_for) -> None:
+    t = await make_tenant("impex-select-bad")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        assert (
+            await c.post("/api/v1/companies", json={"name": "Acme"}, headers=headers)
+        ).status_code == 201
+        report = (
+            await c.post(
+                "/api/v1/impex/domain/import",
+                params={"dry_run": "true"},
+                files=_file(
+                    _csv(
+                        [["name", "company", "status"], ["een.nl", "Acme", "Geparkeerdd"]]
+                    )
+                ),
+                headers=headers,
+            )
+        ).json()
+    assert report["errors"] == [
+        {"row": 1, "field": "status", "message_key": "impex.errors.invalid_option"}
+    ]
+
+
+def test_no_select_vocabulary_is_ambiguous_once_folded() -> None:
+    """Folding must not make two options — or an option and a sibling's label — one cell.
+
+    The coercion is only safe because no vocabulary collides under ``_normalise``; a module
+    that later adds an option colliding with a sibling, or a translation that happens to read
+    like another option's value, would silently import the wrong one. Far cheaper to assert
+    here than to find in a tenant's register.
+    """
+    from app.config import settings
+    from app.core.impex.service import _normalise, _select_vocabulary
+    from app.registry import registry
+
+    for module in registry.enabled(settings.enabled_modules):
+        for descriptor in module.impex:
+            for column in descriptor.columns:
+                if column.data_type != "select":
+                    continue
+                where = f"{descriptor.entity_type}.{column.key}"
+                folded = [_normalise(option) for option in column.options]
+                assert len(set(folded)) == len(folded), f"{where}: options collide when folded"
+                vocabulary = _select_vocabulary(column.options, column.option_label_key)
+                for option in column.options:
+                    assert vocabulary[_normalise(option)] == option, (
+                        f"{where}: a label shadows the option {option!r}"
+                    )

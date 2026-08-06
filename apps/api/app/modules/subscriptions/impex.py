@@ -252,12 +252,14 @@ SUBSCRIPTION_IMPEX = ImpexDescriptor(
             data_type="select",
             clearable=False,
             options=tuple(status.value for status in SubscriptionStatus),
+            option_label_key="subscriptions.status.{option}",
         ),
         ImpexColumn(
             "interval",
             data_type="select",
             clearable=False,
             options=tuple(interval.value for interval in SubscriptionInterval),
+            option_label_key="subscriptions.interval.{option}",
         ),
         # The tenant-defined category (#142), referenced by its org-unique key.
         ImpexColumn(
@@ -485,6 +487,7 @@ SUBSCRIPTION_TEMPLATE_IMPEX = ImpexDescriptor(
             data_type="select",
             clearable=False,
             options=tuple(interval.value for interval in SubscriptionInterval),
+            option_label_key="subscriptions.interval.{option}",
         ),
         ImpexColumn("interval_count", data_type="number", clearable=False),
         ImpexColumn("amount", data_type="number", aliases=("prijs", "bedrag", "price")),

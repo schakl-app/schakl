@@ -30,6 +30,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
+from functools import cache
 from typing import Any
 
 from fastapi.responses import Response
@@ -52,6 +53,7 @@ from app.core.phone import normalize_phone
 from app.core.region import is_valid_country, org_default_country
 from app.core.tenancy import RequestContext
 from app.errors import AppError
+from app.i18n import translations
 
 #: Page size for the export's batched fetch through the module's list service.
 EXPORT_PAGE_SIZE = 500
@@ -83,12 +85,35 @@ def _fingerprint(raw: bytes) -> str:
 
 
 def _normalise(header: str) -> str:
-    """Fold a header for alias matching: case, spacing and punctuation are not signal.
+    """Fold a header or a cell for recognition: case, spacing and punctuation are not signal.
 
     "Naam", "naam", "NAAM " and "Naam:" are one column to a human, and the mapping step is
     only ever *suggesting* — the strict key contract lives in :meth:`_header_columns`.
     """
     return re.sub(r"[^a-z0-9]+", "", header.strip().lower())
+
+
+@cache
+def _select_vocabulary(
+    options: tuple[str, ...], option_label_key: str | None
+) -> dict[str, str]:
+    """Folded cell → canonical option: every spelling of a ``select`` value we accept.
+
+    The canonical values are laid down **first** so a locale label can never shadow another
+    option's own value, then each locale's label for each option (§8's catalogs, read through
+    :func:`app.i18n.translations`). What is stored is always the canonical value, so a file that
+    said "Geparkeerd" and a file that said "parked" import identically and both export back as
+    ``parked`` — the round-trip rule is untouched, only the set of inputs it forgives is wider.
+
+    Cached on the arguments, which are the column's own frozen fields: the catalogs are
+    themselves ``lru_cache``d and an entity's option list does not change within a process.
+    """
+    vocabulary = {_normalise(option): option for option in options}
+    if option_label_key:
+        for option in options:
+            for label in translations(option_label_key.format(option=option)):
+                vocabulary.setdefault(_normalise(label), option)
+    return vocabulary
 
 _email_adapter: TypeAdapter[str] = TypeAdapter(EmailStr)
 
@@ -382,7 +407,7 @@ class ImpexService:
         self.ctx.require(d.write_permission)
         table = parse_source(raw, sheet=sheet, pasted=pasted, has_header=has_header)
         targets = await self._targets(d)
-        columns = self._suggest(table, targets)
+        columns = self._suggest(d, table, targets)
 
         suggested = {column.suggested_key for column in columns}
         return ImpexInspectReport(
@@ -605,24 +630,47 @@ class ImpexService:
             )
         return columns, errors
 
+    def _labels(self, d: ImpexDescriptor, target: _Target) -> list[str]:
+        """What this product calls this column, in every locale it ships.
+
+        A tenant's custom field carries its own ``label_i18n``; everything else is named in the
+        §8 catalogs under the same key the mapping step already displays. Reading them is what
+        makes recognition bilingual **by following the keys** rather than by a second list of
+        spellings — a new column is recognised in Dutch and English the moment its label lands
+        in ``messages/{en,nl}.json``, which §8 requires in that same change anyway.
+        """
+        if target.definition is not None:
+            return [str(v) for v in (target.definition.label_i18n or {}).values() if v]
+        if target.column is None:
+            return []
+        return translations(
+            target.column.label_key or f"impex.column.{d.entity_type}.{target.key}"
+        )
+
     def _suggest(
-        self, table: ParsedTable, targets: list[_Target]
+        self, d: ImpexDescriptor, table: ParsedTable, targets: list[_Target]
     ) -> list[ImpexSourceColumn]:
         """Pre-fill each file column with the target it most likely means.
 
-        Exact key first, then an alias or a label spelling. A guess is never silently applied
-        to an import: it fills the mapping step, which the user sees next to real sample cells
-        from their own file, and confirms or corrects.
+        Three pools, tried in that order and **global** rather than per column, so a certain
+        signal always beats a weaker one whichever column carries it: the stable key, then the
+        column's own label in any locale, then a hand-written alias. All three are folded — the
+        exact-key check used to be case-sensitive while only the alias check folded, so a header
+        spelled "Status" matched neither branch even though ``status`` is a column key.
+
+        A guess is never silently applied to an import: it fills the mapping step, which the user
+        sees next to real sample cells from their own file, and confirms or corrects.
         """
-        by_alias: dict[str, str] = {}
-        for target in targets:
-            if target.column and not target.column.readonly:
-                for alias in target.column.aliases:
-                    by_alias.setdefault(_normalise(alias), target.key)
-            if target.definition:
-                for label in (target.definition.label_i18n or {}).values():
-                    by_alias.setdefault(_normalise(str(label)), target.key)
         by_key = {target.key: target for target in targets}
+        writable = [t for t in targets if not self._readonly(t)]
+        by_folded: dict[str, tuple[str, str]] = {}
+        for kind, pool in (
+            ("key", [(t, t.key) for t in writable]),
+            ("label", [(t, la) for t in writable for la in self._labels(d, t)]),
+            ("alias", [(t, a) for t in writable if t.column for a in t.column.aliases]),
+        ):
+            for target, spelling in pool:
+                by_folded.setdefault(_normalise(spelling), (target.key, kind))
 
         columns: list[ImpexSourceColumn] = []
         claimed: set[str] = set()
@@ -633,10 +681,11 @@ class ImpexService:
             ]
             key: str | None = None
             match: str | None = None
+            folded = _normalise(header)
             if header in by_key:
                 key, match = header, "key"
-            elif _normalise(header) in by_alias:
-                key, match = by_alias[_normalise(header)], "alias"
+            elif folded in by_folded:
+                key, match = by_folded[folded]
             if key is not None and (key in claimed or self._readonly(by_key[key])):
                 # A second column claiming one target, or an export-only column: suggest
                 # nothing rather than a mapping that would have to be undone.
@@ -705,8 +754,14 @@ class ImpexService:
                     column, target.module if target.source == "extension" else None, cell
                 )
             elif column.data_type == "select":
-                if cell in column.options:
-                    values[column.target] = cell
+                # Folded, and against every locale's label as well as the value itself: the
+                # engine already reads "Ja"/"Nee" for a bool, and demanding the exact lowercase
+                # enum token here made every hand-made status column fail on "Active".
+                option = _select_vocabulary(
+                    column.options, column.option_label_key
+                ).get(_normalise(cell))
+                if option is not None:
+                    values[column.target] = option
                 else:
                     row.errors.append((column.key, "impex.errors.invalid_option"))
             elif column.data_type == "date":

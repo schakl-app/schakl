@@ -110,6 +110,7 @@ TASK_IMPEX = ImpexDescriptor(
             data_type="select",
             clearable=False,
             options=tuple(priority.value for priority in TaskPriority),
+            option_label_key="tasks.priority.{option}",
         ),
         ImpexColumn(
             "company",

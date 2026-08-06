@@ -117,8 +117,16 @@ class ImpexColumn:
     #: unchanged (round-trip) — and ignores its cells.
     readonly: bool = False
     #: i18n key for the mapping step's label; ``None`` → ``impex.column.<entity>.<key>``. The
-    #: **header** is always the stable key — this is only ever what a human is shown.
+    #: **header** is always the stable key — this is only ever what a human is shown. It is also
+    #: what the wizard *recognises* a header by, in every locale the instance ships, so a column
+    #: needs no hand-written ``aliases`` to be found by its own Dutch or English name.
     label_key: str | None = None
+    #: ``select`` only: where this column's **options** are named, as a template over the option
+    #: value (``"domains.status.{option}"``). An export always writes the canonical value and an
+    #: import always accepts it, but a sheet a human typed says "Geparkeerd" or "Parked", not
+    #: "parked" — so the coercion also accepts every locale's label for an option, and stores
+    #: the canonical value either way. ``None`` → only the values themselves (case-insensitively).
+    option_label_key: str | None = None
     #: ``phone`` only: the **values key** naming the country a *national* number in this row
     #: belongs to (companies: their own ``country``). ``None`` reads it in the org's country.
     #: Mirrors the owning service's own rule — the row's own country wins, the org's is the

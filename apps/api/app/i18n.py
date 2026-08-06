@@ -42,6 +42,24 @@ def resolve_locale(user_locale: str | None = None, org_default: str | None = Non
     return next(iter(catalogs), settings.default_locale)
 
 
+def translations(key: str) -> list[str]:
+    """Every locale's text for ``key``, deduplicated, in catalog order.
+
+    The inverse of :func:`translate`, and it exists for *recognition* rather than display: the
+    import wizard has to match a header or a cell a human typed against what this product calls
+    that thing — and the product calls it something different per locale. Reading the catalogs
+    means a column or an option is recognised in every language the instance ships the moment
+    §8's "add the key to every locale in the same change" rule is followed, with no second,
+    hand-maintained list of spellings to drift out of sync.
+    """
+    found: dict[str, None] = {}
+    for catalog in _catalogs().values():
+        text = catalog.get(key)
+        if text:
+            found.setdefault(text, None)
+    return list(found)
+
+
 def translate(key: str, locale: str | None = None, /, **params: object) -> str:
     """Translate ``key`` in ``locale`` (fallback: default locale, then the key itself)."""
     catalogs = _catalogs()
