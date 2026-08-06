@@ -29,6 +29,12 @@
 // full: the app has no delegation *chip* and no check timestamp (cloudflare.panel.checked_at is a
 // key nothing renders), so neither is drawn here.
 //
+// One more compression: the panel joins each nameserver list with ", " into a single wrapping
+// `dd`, and this draws them one per line. In a frame this narrow — the fact list is two columns
+// inside a 26em stage — a joined pair wraps mid-hostname, and two hostnames broken across three
+// ragged lines are harder to compare than two stacked ones, which is the entire job of that
+// column. The one-per-line treatment is the OXXA push box's, reproduced verbatim below.
+//
 // Compression, stated the way the other demos state theirs: the client's name rides in the page
 // subtitle. The real /domains/[id] header is the domain name plus an actions menu, and the client
 // is the domains.company row of the Details card — a card this demo leaves out, because the two
@@ -104,8 +110,11 @@ const t = {
       <span class="strong dm-panel">{t.cfTitle}</span>
       <span class="btn dm-btn dm-check">{t.cfCheck}</span>
     </div>
+    {/* Two lines, as the panel writes them: the zone name in body type, the account and the zone
+        status muted underneath (CloudflarePanel.svelte). */}
+    <div class="dm-zonename">{t.domain}</div>
     <div class="dm-zone muted">
-      <span>{t.domain} · {t.cfAccount} · </span>
+      <span>{t.cfAccount} · </span>
       <span class="dm-swap dm-swap--inline">
         <span class="dm-zs-pending">{t.zonePending}</span>
         <span class="dm-zs-active">{t.zoneActive}</span>
@@ -175,14 +184,23 @@ const t = {
 
 <style is:global>
   /* Every beat occupies the same space (nothing unmounts, it only fades), so one height covers
-     the whole loop. Measured in a browser on /features/integrations: the content is 31.3em at the
-     672px stage, and the frame leaves ~2.6em under the registrar card. */
-  .demo-dom .app { height: 35.8em; }
-  /* Narrower than this the panel's own sentences wrap onto extra lines and the same content
-     measures ~1.3em taller, which clipped the foot of the registrar card. Measured at container
-     widths 33.7em / 36.7em / 38.5em (viewports 360 / 480 / 540) before and after. */
+     the whole loop — but not one height for every *width*, because this panel is mostly prose in
+     a two-column fact list and the wrapping changes hard as the stage narrows. `.win` is
+     overflow:hidden, so a miss here is a silent cut, not a scrollbar.
+     All three numbers below were measured in Chromium at container widths 29.5 / 30.3 / 32 / 32.8
+     / 33.7 / 35.3 / 36.8 / 39.4 / 46.3 / 52.6 / 70.7em, in BOTH locales — Dutch wraps first — and
+     each carries ~1em over the worst case. */
+  .demo-dom .app { height: 37em; }
   @container (max-width: 44em) {
-    .demo-dom .app { height: 37.3em; }
+    .demo-dom .app { height: 39.5em; }
+  }
+  /* The band nobody thinks to test. At 30em the app frame's own container query swaps the 3.1em
+     icon rail for the 10.4em labelled sidebar, so the content column is at its narrowest of any
+     width *here* — narrower than at 320px, where the rail is still collapsed. Three sentences
+     (the delegation verdict, the OXXA success line, the issue bullet) each gain a line at once,
+     and the whole registrar card fell off the bottom. */
+  @container (min-width: 30em) and (max-width: 34em) {
+    .demo-dom .app { height: 46em; }
   }
   .demo-dom .screen { padding: 0.95em 1em; }
   .demo-dom .screen__head { margin-bottom: 0.7em; }
@@ -225,7 +243,8 @@ const t = {
   .demo-dom .dm-panel { font-size: 0.95em; }
   .demo-dom .dm-btn { padding: 0.35em 0.7em; font-size: 0.82em; }
   .demo-dom .dm-expires { font-size: 0.8em; }
-  .demo-dom .dm-zone { font-size: 0.8em; }
+  .demo-dom .dm-zonename { font-size: 0.9em; font-weight: 550; }
+  .demo-dom .dm-zone { font-size: 0.78em; }
 
   /* The comparison the panel exists for. */
   .demo-dom .dm-dl {
@@ -268,10 +287,11 @@ const t = {
     border-radius: 0.55em;
     padding: 0.45em 0.7em;
   }
+  /* Body colour, not amber: the panel confines the warning colour to the border and the wash, so
+     the heading reads as a heading rather than as a second alarm. */
   .demo-dom .dm-issues__h {
     font-size: 0.75em;
     font-weight: 650;
-    color: var(--amber-ink);
     margin-bottom: 0.15em;
   }
   .demo-dom .dm-issues ul {

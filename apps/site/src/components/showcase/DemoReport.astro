@@ -227,14 +227,17 @@ const figure = [
   /* Measured, not guessed. Two columns of real controls need more room than the single column
      did, and how much depends on how many rows wrap: below ~37em of frame each section header
      puts its two actions on a line of their own, above it they sit beside the title. Worst
-     measured case is 29.6em narrow and 27.6em wide, and each is set an em above that, so a
-     platform whose system font runs wider than this one can wrap one more row anywhere and
-     the chart at the foot of the document still clears the frame's bottom edge. Checked at
-     every viewport from a 360px phone (sidebar collapsed to its icon rail) through the 502px
-     tour column to the 672px feature page, in both locales. */
+     measured case is 29.6em narrow and 28.2em wide, and each is set above that, so a platform
+     whose system font runs wider than this one can wrap one more row anywhere and the chart at
+     the foot of the document still clears the frame's bottom edge.
+     The wide height starts at 39.5em and not at the 37em the section header switches on: between
+     those two the header has already pulled its actions up onto the title line while a section
+     block below it still wraps, so the content is briefly taller than either steady state. That
+     gap clipped the document's chart by ~1.2em at a 352px viewport. Re-measured at 280 / 300 /
+     320 / 328 / 336 / 344 / 352 / 360 / 375 / 390 / 414 / 480 / 540 / 640 / 700px. */
   .demo-rep .app { height: 30.8em; }
-  @container (min-width: 37em) {
-    .demo-rep .app { height: 28.8em; }
+  @container (min-width: 39.5em) {
+    .demo-rep .app { height: 29.4em; }
   }
 
   .demo-rep .rep-back { display: inline-flex; align-items: center; gap: 0.3em; font-size: 0.85em; margin-bottom: 0.5em; }

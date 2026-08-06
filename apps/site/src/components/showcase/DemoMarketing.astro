@@ -219,7 +219,23 @@ const channelMax = Math.max(...channels.map((c) => c.value));
      padding, and every narrower rendering has more room, not less. */
   /* Measured in a browser at both ends of the container query, not estimated: at 38.6em the
      channel list lost its last row to `.win`'s overflow. */
-  .demo-mkt .app { height: 39.7em; }
+  /* The frame grows with the chart, and the bands are in px because that is the thing that
+     actually varies. `.appui`'s font-size is `clamp(9.5px, 2.5cqi, 13px)`, so once the stage is
+     wide enough to saturate that clamp the type stops growing — while the trend chart, a
+     `width: 100%` SVG on a 720×200 viewBox, keeps getting taller in lockstep with the stage:
+     ~10em of chart in a 502px tour column against ~13.8em at 700px. An `.app` height frozen in em
+     therefore loses the acquisition list, then the chart's own x axis, as the page gets *wider* —
+     the opposite of where anyone looks for a clipping bug. Measured at 280-700px in both locales. */
+  .demo-mkt .app { height: 40.2em; }
+  @container (min-width: 520px) {
+    .demo-mkt .app { height: 42em; }
+  }
+  @container (min-width: 580px) {
+    .demo-mkt .app { height: 44.4em; }
+  }
+  @container (min-width: 660px) {
+    .demo-mkt .app { height: 46.2em; }
+  }
   .demo-mkt .screen__head { margin-bottom: 0.55em; align-items: flex-start; }
   .demo-mkt .mkt-period {
     flex: none;
