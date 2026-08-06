@@ -90,11 +90,30 @@ async def lifespan(app_: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     _load_enabled_modules()
 
+    # The interactive docs live under ``/api/``, not at FastAPI's default root paths. The edge
+    # routes ``/api/`` and ``/mcp`` here and everything else to the SSR web app, so ``/docs``,
+    # ``/redoc`` and ``/openapi.json`` resolved to the web app's 404 page in every deployment —
+    # the docs were not disabled, they were unroutable. Serving them from inside the one prefix
+    # that reaches this service is the fix, and it needs no edge change on an existing install.
+    docs_paths = (
+        {
+            "openapi_url": "/api/openapi.json",
+            "docs_url": "/api/docs",
+            "redoc_url": "/api/redoc",
+        }
+        if settings.api_docs_enabled
+        # Only the HTTP surface goes: ``app.openapi()`` builds the document from the route
+        # table and never reads ``openapi_url``, so the MCP tool builder below and
+        # scripts/gen-client.sh keep working on an instance that serves no docs at all.
+        else {"openapi_url": None, "docs_url": None, "redoc_url": None}
+    )
+
     app = FastAPI(
         title="schakl API",
         version=settings.version,
         description="Multi-tenant, modular, white-label agency operations platform.",
         lifespan=lifespan,
+        **docs_paths,
     )
     # Needed by the optional OIDC flow (Authlib stores state in the session); harmless otherwise.
     app.add_middleware(

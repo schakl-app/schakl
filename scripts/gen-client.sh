@@ -7,7 +7,10 @@
 #
 # Usage:
 #   scripts/gen-client.sh                 # export spec from the app, then generate
-#   OPENAPI_URL=http://api.localhost/openapi.json scripts/gen-client.sh   # fetch a running API
+#   OPENAPI_URL=http://api.localhost/api/openapi.json scripts/gen-client.sh   # fetch a running API
+#
+# The spec is served under /api/ — that is the prefix the edge routes to the API service
+# (infra/traefik/dynamic*.yml); FastAPI's root-level default was never reachable.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

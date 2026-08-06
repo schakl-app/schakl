@@ -467,6 +467,17 @@ Desktop/Code, agents) can work with the instance's data. Design rules:
   routes exist, so the generated surface already tracks per-tenant modules.
 - **Read-first is a key-minting decision:** a cautious instance mints read-only-scoped keys;
   the deny-by-default route permissions answer every call either way.
+- **A route the edge does not forward is a route nobody has.** Swagger UI, ReDoc and the
+  OpenAPI document live at `/api/docs`, `/api/redoc` and `/api/openapi.json`, not at FastAPI's
+  root-level defaults, because the edge routes exactly `/api/` and `/mcp` here and everything
+  else to the SSR web app (`infra/traefik/dynamic*.yml`). At the defaults the API reference had
+  never been reachable in *any* deployment — it resolved to the web app's 404 — and nothing
+  caught it, because every test that touches the spec calls `app.openapi()` in-process, which
+  is exactly the path the bug does not lie on. So the test pins the **paths**
+  (`tests/test_api_docs.py`), and the generalisation is worth keeping: when a surface is only
+  reachable through a proxy, assert the URL the proxy actually forwards, not the object behind
+  it. `SCHAKL_API_DOCS_ENABLED=false` drops the HTTP surface while leaving the in-process spec
+  that the tool builder and `scripts/gen-client.sh` both read.
 - **Moving target:** MCP evolves fast — the SDK is pinned (`fastmcp>=2.12,<3`) and tracks
   the spec; don't hardcode protocol details or well-known paths beyond what the SDK needs.
 

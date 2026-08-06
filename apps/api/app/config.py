@@ -222,6 +222,16 @@ class Settings(BaseSettings):
     # platform's API keys (per-key permission scopes, #20). Disable to remove the surface.
     mcp_enabled: bool = True
 
+    # --- Interactive API documentation ---
+    # Swagger UI, ReDoc and the OpenAPI document. They live under ``/api/`` rather than at
+    # the root because the edge routes exactly two prefixes to this service — ``/api/`` and
+    # ``/mcp`` (infra/traefik/dynamic*.yml) — and everything else to the SSR web app. At
+    # FastAPI's defaults (``/docs``, ``/redoc``, ``/openapi.json``) the docs were reachable
+    # only by talking to the container directly, which no deployment does. Set false to
+    # remove the surface: the spec still generates (the typed client and the MCP tool
+    # surface derive from it in-process), it is just not served over HTTP.
+    api_docs_enabled: bool = True
+
     # --- Entitlements / licensing (issue #137) ---
     # Ed25519 public key (base64url, raw 32 bytes) that license keys are verified against.
     # Verification is fully offline — a self-hosted box never needs our infrastructure to
