@@ -105,6 +105,15 @@ An open invoice carries an **Online betalingen** (online payments) card. As staf
 place. The state follows along (waiting, processing, authorised, paid, failed, expired, cancelled)
 and as soon as the provider confirms, the payment is booked onto the invoice by itself.
 
+The client can start in four places: the button in the portal, the button in the invoice mail, the
+one in the reminder, and the QR code with its pay-online line on the document itself. All four land
+in the same place — the invoice's own page in the client portal — and never on the provider's
+checkout: such an address is a bearer credential on paper, it expires within a quarter of an hour
+while the invoice does not, and two valid ways into one debt produce double payments. The button in
+the mail is stricter than the link on the document: it appears only when a provider is connected
+*and* the invoice is still collectable. With no provider connected, exactly the mail that went out
+before goes out now.
+
 You connect your own account at *Instellingen → Mollie*: **Account toevoegen**, then a name, an
 optional supplier, and your API key from the Mollie dashboard. Live or test is derived from the key
 itself, and **Betaalmethoden** lists what Mollie itself reports back. Test payments run the whole

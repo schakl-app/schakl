@@ -101,6 +101,15 @@ Op een openstaande factuur staat de kaart **Online betalingen**. Als medewerker 
 status loopt mee (Wacht op betaling, In verwerking, Gereserveerd, Betaald, Mislukt, Verlopen,
 Geannuleerd) en zodra de provider bevestigt, wordt de betaling vanzelf op de factuur geboekt.
 
+De klant kan op vier plekken beginnen: de knop in het portaal, de knop in de factuurmail, die in
+de herinnering, en de QR-code met de betaalregel op het document zelf. Alle vier komen op dezelfde
+plek uit, de factuurpagina in het klantportaal, en nooit op de betaalpagina van de provider: zo'n
+adres is een sleutel op papier, het verloopt binnen een kwartier terwijl de factuur blijft staan,
+en twee geldige ingangen naar één schuld leveren dubbele betalingen op. De knop in de mail is
+strenger dan de link op het document: die verschijnt alleen als er een provider gekoppeld is én de
+factuur nog te innen is. Is er geen provider gekoppeld, dan gaat exact dezelfde mail de deur uit
+als voorheen.
+
 Je koppelt je eigen account onder *Instellingen → Mollie*: **Account toevoegen**, dan een naam,
 eventueel een leverancier, en je API-sleutel uit het Mollie-dashboard. Live of test wordt uit de
 sleutel zelf afgeleid, en **Betaalmethoden** toont wat Mollie zelf terugmeldt. Testbetalingen
