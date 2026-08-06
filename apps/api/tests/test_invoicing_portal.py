@@ -17,6 +17,9 @@ pair, which is the only part of this that cannot be observed on a fresh tenant.
 
 from __future__ import annotations
 
+import io
+import zipfile
+
 from sqlalchemy import select
 
 from app.config import settings
@@ -164,6 +167,52 @@ async def test_client_reads_only_own_companies_issued_invoices(client_for) -> No
         # The owner still sees all three — "nothing leaked" must not mean "nothing matched".
         staff = await c.get("/api/v1/invoicing/invoices", headers=headers)
         assert staff.json()["total"] == 3
+
+
+async def test_the_bulk_archive_is_not_a_way_past_the_clause(client_for) -> None:
+    """The zip download (#307) is a *read*, so it answers to the same repository as the rest.
+
+    It takes a list of ids straight from the caller, which is exactly the shape #285 names as a
+    leak (an entity-addressed surface): asked for a draft and another client's invoice, it must
+    hand back neither — and asked for **only** those, it must not hand back an empty archive
+    that quietly means "you may ask".
+    """
+    t = await make_tenant("inv-portal-zip")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await _seed(c, headers)
+        mine = (
+            await c.post("/api/v1/companies", json={"name": "Mijn BV"}, headers=headers)
+        ).json()["id"]
+        theirs = (
+            await c.post("/api/v1/companies", json={"name": "Andere BV"}, headers=headers)
+        ).json()["id"]
+        ours_open = await _invoice(c, headers, mine, issue=True)
+        ours_draft = await _invoice(c, headers, mine, issue=False)
+        their_open = await _invoice(c, headers, theirs, issue=True)
+        portal = await _portal_login(c, headers, "inv-portal-zip", mine)
+
+        everything = [ours_open["id"], ours_draft["id"], their_open["id"]]
+        res = await c.get(
+            "/api/v1/invoicing/invoices/pdf", params={"ids": everything}, headers=portal
+        )
+        assert res.status_code == 200, res.text
+        with zipfile.ZipFile(io.BytesIO(res.content)) as archive:
+            assert archive.namelist() == [f"{ours_open['number']}.pdf"]
+
+        forbidden = await c.get(
+            "/api/v1/invoicing/invoices/pdf",
+            params={"ids": [ours_draft["id"], their_open["id"]]},
+            headers=portal,
+        )
+        assert forbidden.status_code == 404
+
+        # The control: the agency gets all three, so "nothing leaked" is not "nothing matched".
+        staff = await c.get(
+            "/api/v1/invoicing/invoices/pdf", params={"ids": everything}, headers=headers
+        )
+        with zipfile.ZipFile(io.BytesIO(staff.content)) as archive:
+            assert len(archive.namelist()) == 3
 
 
 async def test_client_company_panel_and_summary_hide_drafts(client_for) -> None:

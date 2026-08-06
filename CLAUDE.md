@@ -997,6 +997,14 @@ validation, activity line, events and custom-field rules that fifty visits to th
   same act, repeated*. A bulk edit is the second kind. Unlike impex it **does** carry its
   module's `license_write_gate`: a bulk write must not be the one way an uncovered module can
   still be written to.
+- **A bulk action that hands back a *file* belongs to the module, not here** (#307). Core's whole
+  contract is `BulkActionResult` — "37 done, 3 skipped, and here is why" — and a zip cannot carry
+  that; what the file *is* (a rendered invoice) is knowledge core may not have, and the whole cost
+  of the batch is the rendering. So `GET /invoicing/invoices/pdf?ids=…` is an ordinary module route
+  reached through `BulkBar`'s existing `items` seam, and it is a **GET** because a read must
+  survive an expired licence (`license_write_gate` reads the method) and because a download is a
+  navigation, not a click handler. The thing worth lifting later is `app/core/documents/` — which
+  quotes and reports already share — never a `download_row` on the descriptor.
 - **An entity with no import shape still gets a bulk delete.** `impex` is optional; a descriptor
   that names its `entity`, its model, its delete permission and its service call is complete.
   Deleting needs no column vocabulary, and requiring one would have excluded the two entities

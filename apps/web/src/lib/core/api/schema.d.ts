@@ -4319,6 +4319,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoicing/invoices/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Invoices Zip
+         * @description A selection of invoices as one zip of PDFs — the bulk half of ``/{invoice_id}/pdf``.
+         *
+         *     **A GET, and that is load-bearing twice over.** It is a read: past a licence's expiry a
+         *     module goes read-only, not gone, and ``license_write_gate`` reads the method — a POST here
+         *     would 402 an agency out of its own paperwork at exactly the moment it wants to hand it to
+         *     an accountant. It is also idempotent and cacheable-in-principle, which a download is.
+         *
+         *     Ids the caller may not read are **absent**, not an error (``InvoiceService.by_ids``); an
+         *     empty result is a 404, because "here is your archive of nothing" is not an answer. Drafts
+         *     print like they do one at a time — the list offers this only for documents that exist, the
+         *     same rule its row menu follows, and this route has no second opinion about it.
+         */
+        get: operations["download_invoices_zip_api_v1_invoicing_invoices_pdf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoicing/invoices/{invoice_id}": {
         parameters: {
             query?: never;
@@ -31438,6 +31468,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InvoiceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_invoices_zip_api_v1_invoicing_invoices_pdf_get: {
+        parameters: {
+            query: {
+                /** @description The invoices to pack, by id — the list screen's ✎ selection (#307). */
+                ids: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

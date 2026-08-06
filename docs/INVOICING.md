@@ -619,6 +619,36 @@ service._render_inputs ─┬─▶ context.build_context ──▶ engine.rende
   because then they are the statement. The reader's question at the foot of an invoice is how
   much VAT; only a document carrying several rates also has to answer which.
 
+### A selection prints as one archive (#307)
+
+`GET /invoicing/invoices/pdf?ids=…` is the bulk half of `/invoices/{id}/pdf`: the invoices
+ticked in the list's ✎ mode come back as one zip, each entry filed under the number the single
+download would have given it. Handing a month of invoices to an accountant was otherwise a
+click per document. Four decisions hold it up, and none of them is about zip files.
+
+- **It is a `GET`, twice over on purpose.** It is a read, and `license_write_gate` keys off the
+  method — past a licence's expiry a module goes read-only, not gone, so a `POST` here would
+  have locked an agency out of its own paperwork at the moment it wants to file it. It is also
+  what lets the bulk bar's control be a real `<a href>` rather than a click handler that sets
+  `location` (docs/UX.md).
+- **The selection rides the scoped repository** (`InvoiceService.by_ids`, one query for the
+  batch). An id this caller may not read is therefore **absent** from the archive rather than a
+  403 that would confirm whose invoice it is, a client's login gets its own issued documents and
+  no drafts through the very same clause the list obeys (#266, #285), and a selection that
+  resolves to nothing is a 404 — an empty zip is not an answer.
+- **Nothing in it is per row.** The seller block, the brand and the logo bytes are one read for
+  the whole batch (`_render_shared`), the design is memoised per template id, and the lines are
+  `_attach`'s grouped read — so a five-invoice archive issues exactly the statements a
+  one-invoice archive does, which is what `test_invoicing_archive.py` pins. Resolving the org
+  half inside `_render_inputs` is right for one document and is three round trips per document
+  for fifty.
+- **It caps at `MAX_ARCHIVE_DOCUMENTS` (50), declared on the route.** Every entry is a full
+  WeasyPrint layout, so two hundred is a request no proxy will wait out and one with no progress
+  to show for it; fifty is the pager's default page size, so "tick the page, download it" fits
+  exactly. `MAX_IMPORT_ROWS`' reasoning: a cap is what keeps a synchronous batch honest until it
+  is a background job. The web mirrors the number to *say* so (`invoicing/types.ts`) rather than
+  letting the user press a control that will 422.
+
 ### What a template may rearrange (`render/blocks.py`)
 
 A template carries a **layout**: an ordered list of blocks, each toggleable, each with its own

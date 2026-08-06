@@ -86,6 +86,18 @@ _READ = "invoicing.invoice.read"
 #: alone does not.
 _MODULE = "any"
 
+#: The most documents one archive may hold (#307).
+#:
+#: Deliberately **not** the bulk selection's own 200 (``core.bulk.schemas.MAX_BULK_IDS``):
+#: every entry here is a full WeasyPrint layout, tens of milliseconds on a developer's machine
+#: and several times that on the small VPS an agency self-hosts on, so two hundred of them is a
+#: request no proxy in front of this will wait out — and one with no progress to show for it.
+#: Fifty is the pager's default page size, so "tick the page, download it" is exactly what fits,
+#: and it keeps the id list comfortably inside a URL. ``MAX_IMPORT_ROWS``' reasoning applied to
+#: the other synchronous batch: a cap is what keeps this path honest until archives are a
+#: background job (issue #77's sibling).
+MAX_ARCHIVE_DOCUMENTS = 50
+
 
 # --- settings ----------------------------------------------------------------- #
 @router.get(
@@ -472,6 +484,43 @@ async def list_invoices(
     return Page(
         items=[InvoiceRead.model_validate(i) for i in items],
         total=total, limit=limit, offset=offset,
+    )
+
+
+@router.get(
+    "/invoices/pdf",
+    dependencies=[require_permission(_READ)],
+)
+async def download_invoices_zip(
+    ids: list[uuid.UUID] = Query(
+        ...,
+        min_length=1,
+        max_length=MAX_ARCHIVE_DOCUMENTS,
+        description="The invoices to pack, by id — the list screen's ✎ selection (#307).",
+    ),
+    ctx: RequestContext = Depends(require_context),
+) -> Response:
+    """A selection of invoices as one zip of PDFs — the bulk half of ``/{invoice_id}/pdf``.
+
+    **A GET, and that is load-bearing twice over.** It is a read: past a licence's expiry a
+    module goes read-only, not gone, and ``license_write_gate`` reads the method — a POST here
+    would 402 an agency out of its own paperwork at exactly the moment it wants to hand it to
+    an accountant. It is also idempotent and cacheable-in-principle, which a download is.
+
+    Ids the caller may not read are **absent**, not an error (``InvoiceService.by_ids``); an
+    empty result is a 404, because "here is your archive of nothing" is not an answer. Drafts
+    print like they do one at a time — the list offers this only for documents that exist, the
+    same rule its row menu follows, and this route has no second opinion about it.
+    """
+    service = InvoiceService(ctx)
+    invoices = await service.by_ids(ids)
+    if not invoices:
+        raise AppError("not_found", "errors.not_found", status_code=404)
+    content, filename = await service.documents_zip(invoices, "invoice")
+    return Response(
+        content=content,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

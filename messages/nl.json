@@ -4585,6 +4585,7 @@
   "bulk.select": "Rijen selecteren",
   "bulk.select_done": "Selecteren stoppen",
   "invoicing.bulk.delete_message": "{count} facturen verwijderen? Alleen concepten kunnen weg; een verstuurde factuur is een genummerd document en wordt gecrediteerd. De rest blijft staan en wordt gemeld.",
+  "invoicing.bulk.download_limit": "Maximaal {count} facturen per download; vink een aantal rijen uit.",
   "interactions.bulk.delete_message": "{count} contactmomenten verwijderen? Hun bijlagen en deelnemers gaan mee.",
   "interactions.bulk.done_delete": "{count} verwijderd",
   "invoicing.email.pay_button": "Nu betalen",

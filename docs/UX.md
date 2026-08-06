@@ -330,6 +330,17 @@
     forty-nine that worked), and a UI that swallowed that would be claiming work it did not do.
     The eligible-subset filter is still only UX: the API re-checks every row, so the menu may
     narrow the batch but never widens it.
+  - **A bulk action that produces a file is a link, and a limit it can exceed says so** (#307).
+    The invoices list's Download hands over the ticked invoices as one zip, and it is an `<a
+    href>` with `data-sveltekit-reload` — a download is a *navigation*, so middle-click and
+    "save as" work and there is no handler pretending to be one (the `ImpexBar` rule, applied to
+    a selection). Two things separate it from the buttons beside it. Its subset follows the same
+    rule as everything else here — a draft has no document, exactly as in the row menu, so it is
+    excluded and the count says so — but a **cap** is not a subset: over the fifty the API will
+    render, "Download (50)" would state a number and still leave *which* fifty to chance, so the
+    control refuses and names the limit (`BulkAction.disabledReason`) instead. And it needs no
+    write permission at all: the page's own read is the gate, which is what lets a client
+    download their own invoices in one go and is why the ✎ appears for a reader on this list.
   - **A field you did not touch is not sent** (`core/bulk/BulkEditDialog`). The edit dialog opens
     blank over a selection that disagrees with itself — twelve domains at four registrars — so an
     empty control can only honestly mean "leave each row's own alone". Reading it as "empty them

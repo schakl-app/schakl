@@ -19,7 +19,9 @@ The decisions, where they are enforced:
 from __future__ import annotations
 
 import asyncio
+import io
 import uuid
+import zipfile
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -372,6 +374,52 @@ async def _load_background(
     except (TypeError, ValueError):
         return None, None
     return await load_org_image(ctx, file_id, what="document background")
+
+
+class _RenderShared:
+    """The org-level half of a render, resolved **once** for a whole batch (#307).
+
+    Every field here answers the same for every document the same org prints: the seller
+    block, the brand name and colour, the logo bytes. Resolving them inside
+    ``_render_inputs`` is right for one document and quietly quadratic for fifty — a
+    settings query, an org-settings query and a storage read of *the same logo* per invoice,
+    which is exactly the shape docs/PERFORMANCE.md asks you to count before writing.
+
+    A template's config and its background image genuinely differ per document, so those are
+    **memoised by template id** rather than fixed: a batch drawn from one template pays for
+    it once, a mixed batch pays per design and never per row.
+    """
+
+    def __init__(
+        self,
+        *,
+        seller: dict[str, Any],
+        brand_name: str,
+        primary_color: str | None,
+        logo: bytes | None,
+        logo_content_type: str | None,
+    ) -> None:
+        self.seller = seller
+        self.brand_name = brand_name
+        self.primary_color = primary_color
+        self.logo = logo
+        self.logo_content_type = logo_content_type
+        self.configs: dict[uuid.UUID | None, dict[str, Any]] = {}
+        self.backgrounds: dict[uuid.UUID | None, tuple[bytes | None, str | None]] = {}
+
+
+def _zip_documents(jobs: Sequence[tuple[str, dict[str, Any]]]) -> bytes:
+    """Render every document and pack it — one thread hop for the batch, not one per file.
+
+    Pure CPU over inputs the caller has already resolved: nothing in here may touch the
+    session, which is what lets :meth:`_DocumentService.documents_zip` hand the pooled
+    connection back for the duration.
+    """
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, inputs in jobs:
+            archive.writestr(name, render_document_pdf(**inputs))
+    return buffer.getvalue()
 
 
 async def _ensure_template(ctx: RequestContext, template_id: uuid.UUID) -> None:
@@ -889,7 +937,42 @@ class _DocumentService:
         """
         return self.ctx.is_portal
 
-    async def _render_inputs(self, doc: Any, kind: str) -> dict[str, Any]:
+    async def _render_shared(self) -> _RenderShared:
+        """The identity every document of this org prints with. One read of each (#307)."""
+        settings_row = await self.settings.row()
+        org_settings = await self.ctx.session.scalar(
+            select(OrgSettings).where(OrgSettings.org_id == self.ctx.org.id)
+        )
+        logo, logo_type = await load_brand_logo(self.ctx, org_settings)
+        return _RenderShared(
+            seller=settings_row.company_details or {},
+            brand_name=(org_settings.brand_name if org_settings else None) or self.ctx.org.name,
+            primary_color=org_settings.primary_color if org_settings else None,
+            logo=logo,
+            logo_content_type=logo_type,
+        )
+
+    async def _template_render_inputs(
+        self, template_id: uuid.UUID | None, shared: _RenderShared
+    ) -> tuple[dict[str, Any], tuple[bytes | None, str | None]]:
+        """This document's design and its background bytes, memoised per template id."""
+        if template_id not in shared.configs:
+            config: dict[str, Any] = {}
+            if template_id is not None:
+                template = await self.ctx.session.scalar(
+                    self.ctx.repo(DocumentTemplate)
+                    .scoped_select()
+                    .where(DocumentTemplate.id == template_id)
+                )
+                if template is not None:
+                    config = template.config or {}
+            shared.configs[template_id] = config
+            shared.backgrounds[template_id] = await _load_background(self.ctx, config)
+        return shared.configs[template_id], shared.backgrounds[template_id]
+
+    async def _render_inputs(
+        self, doc: Any, kind: str, *, shared: _RenderShared | None = None
+    ) -> dict[str, Any]:
         """Everything the renderer needs, resolved here rather than there.
 
         White-label identity — logo bytes, brand colour, brand name — is loaded at this
@@ -897,33 +980,25 @@ class _DocumentService:
         4). The template resolves as the document's own and nothing implied when it has none,
         so the paper a client receives and the preview on screen are the same design; they
         are in fact the same HTML.
+
+        ``shared`` is what a batch passes so the org half is read once rather than per
+        document; a single render leaves it out and pays exactly what it always did.
         """
-        settings_row = await self.settings.row()
-        config: dict[str, Any] = {}
-        if doc.template_id is not None:
-            template = await self.ctx.session.scalar(
-                self.ctx.repo(DocumentTemplate)
-                .scoped_select()
-                .where(DocumentTemplate.id == doc.template_id)
-            )
-            if template is not None:
-                config = template.config or {}
-        org_settings = await self.ctx.session.scalar(
-            select(OrgSettings).where(OrgSettings.org_id == self.ctx.org.id)
+        shared = shared or await self._render_shared()
+        config, (background, background_type) = await self._template_render_inputs(
+            doc.template_id, shared
         )
-        logo, logo_type = await load_brand_logo(self.ctx, org_settings)
-        background, background_type = await _load_background(self.ctx, config)
         return {
             "kind": kind,
             "doc": doc,
             "lines": list(doc.lines),
-            "seller": settings_row.company_details or {},
+            "seller": shared.seller,
             "config": config,
             "brand": DocumentBrand(
-                name=(org_settings.brand_name if org_settings else None) or self.ctx.org.name,
-                primary_color=org_settings.primary_color if org_settings else None,
-                logo=logo,
-                logo_content_type=logo_type,
+                name=shared.brand_name,
+                primary_color=shared.primary_color,
+                logo=shared.logo,
+                logo_content_type=shared.logo_content_type,
                 background=background,
                 background_content_type=background_type,
             ),
@@ -989,6 +1064,12 @@ class _DocumentService:
         """
         return render_document_html(**await self._render_inputs(doc, kind))
 
+    @staticmethod
+    def _document_filename(doc: Any, kind: str) -> str:
+        """What one printed document is called — its number, or its id while it has none."""
+        prefix = "offerte" if kind == "quote" else "factuur"
+        return f"{doc.number or f'{prefix}-{doc.id}'}.pdf"
+
     async def document_pdf(self, doc: Any, kind: str) -> tuple[bytes, str]:
         """The same document, printed. Returns the bytes and a filename.
 
@@ -998,8 +1079,41 @@ class _DocumentService:
         """
         inputs = await self._render_inputs(doc, kind)
         content = await asyncio.to_thread(lambda: render_document_pdf(**inputs))
-        prefix = "offerte" if kind == "quote" else "factuur"
-        return content, f"{doc.number or f'{prefix}-{doc.id}'}.pdf"
+        return content, self._document_filename(doc, kind)
+
+    async def documents_zip(self, docs: Sequence[Any], kind: str) -> tuple[bytes, str]:
+        """A selection of documents as one archive. Returns the bytes and a filename (#307).
+
+        The same PDFs :meth:`document_pdf` hands out one at a time — literally the same call,
+        so an archived invoice and a downloaded one can never be two different documents.
+
+        Two things make it a batch rather than a loop. The org half of every render is
+        resolved once (:class:`_RenderShared`), and the whole render runs in **one** thread
+        hop with the pooled DB connection handed back: every query is finished by then and
+        the layouts are pure CPU over rows already in memory, so holding a connection through
+        seconds of typesetting would drain the pool for nothing (docs/PERFORMANCE.md, the
+        rule ``release_db`` states for slow external calls). Nothing inside that block may
+        touch the session — the models carry no lazy relationships and the session does not
+        expire on commit, which is what makes that safe here.
+        """
+        shared = await self._render_shared()
+        jobs: list[tuple[str, dict[str, Any]]] = []
+        taken: dict[str, int] = {}
+        for doc in docs:
+            name = self._document_filename(doc, kind)
+            # A number is unique per org and a draft falls back to its own id, so a collision
+            # needs two rows that cannot exist. Still numbered rather than argued: a zip with
+            # a repeated entry name keeps whichever came last, silently.
+            seen = taken.get(name, 0)
+            taken[name] = seen + 1
+            if seen:
+                name = f"{name[: -len('.pdf')]}-{seen + 1}.pdf"
+            jobs.append((name, await self._render_inputs(doc, kind, shared=shared)))
+        today = await org_today(self.ctx)
+        prefix = "offertes" if kind == "quote" else "facturen"
+        async with self.ctx.release_db():
+            content = await asyncio.to_thread(_zip_documents, jobs)
+        return content, f"{prefix}-{today.isoformat()}.zip"
 
     async def _default_tax_rate_id(self, settings_row: InvoicingSettings) -> uuid.UUID | None:
         """The rate a line without one gets: the configured default, else the catalog's
@@ -1120,6 +1234,36 @@ class InvoiceService(_DocumentService):
         invoice = await self.repo.get_or_404(invoice_id)
         await self._attach([invoice], payments=True)
         return invoice
+
+    async def by_ids(self, ids: Sequence[uuid.UUID]) -> Sequence[Invoice]:
+        """A selection, in the order it was asked for — one query, never one per id (#307).
+
+        Through ``self.repo``, which is what makes tenant isolation, the company horizon and
+        the portal's no-drafts rule true here without a second check of any of them. An id
+        this caller may not read is therefore simply **absent** rather than a 404 that would
+        confirm the row exists — the same answer ``get`` gives, applied to a batch.
+
+        ``payments`` stays off — deliberately, and not as a shortcut. ``get`` loads them for the
+        *detail screen*; the printed document reads ``paid_total``, ``credited_total`` and
+        ``applied_total``, which are **columns** (#290's rule), so an archived invoice is
+        byte-identical to the one ``/{id}/pdf`` hands over without the payment rows behind it.
+        ``test_invoicing_archive`` pins that against an invoice that has been part-paid, which is
+        the case where a lighter read would have shown.
+        """
+        unique = list(dict.fromkeys(ids))
+        if not unique:
+            return []
+        found = {
+            invoice.id: invoice
+            for invoice in (
+                await self.ctx.session.execute(
+                    self.repo.scoped_select().where(Invoice.id.in_(unique))
+                )
+            ).scalars()
+        }
+        items = [found[i] for i in unique if i in found]
+        await self._attach(items)
+        return items
 
     async def for_company(self, company_id: uuid.UUID, *, limit: int = 8) -> Sequence[Invoice]:
         stmt = (

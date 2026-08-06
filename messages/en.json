@@ -4585,6 +4585,7 @@
   "bulk.select": "Select rows",
   "bulk.select_done": "Stop selecting",
   "invoicing.bulk.delete_message": "Delete {count} invoices? Only drafts can go — an issued invoice is a numbered document and is cancelled instead. The rest are reported and left alone.",
+  "invoicing.bulk.download_limit": "Up to {count} invoices per download; deselect some rows.",
   "interactions.bulk.delete_message": "Delete {count} contact moments? Their attachments and participants go with them.",
   "interactions.bulk.done_delete": "{count} deleted",
   "invoicing.email.pay_button": "Pay now",
