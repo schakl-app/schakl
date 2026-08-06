@@ -53,6 +53,7 @@ and their web counterparts — currently:
 - `apps/web/src/routes/(app)/domains/`
 - `apps/web/src/routes/(app)/interactions/`
 - `apps/web/src/routes/(app)/invoices/`
+- `apps/web/src/routes/invoice/`
 - `apps/web/src/routes/(app)/leave/`
 - `apps/web/src/routes/(app)/marketing/`
 - `apps/web/src/routes/(app)/projects/`
@@ -85,8 +86,9 @@ AGPL-3.0 terms it was published under; this license governs all later versions.
 a `sku` carries a marker on its API directory and its web counterpart, every marked directory
 appears in the list above, every listed directory exists and is marked, and all markers read
 alike. Route directories are the part no rule can derive from a module name — `invoicing`
-covers `routes/(app)/invoices/`, `.../quotes/` and `.../settings/invoicing/` — so adding a
-screen to a licensed module is a judgement, and the check only keeps it honest once made.
+covers `routes/(app)/invoices/`, `.../quotes/`, `.../settings/invoicing/` and the public
+`routes/invoice/` (#304), which is not even under `(app)` — so adding a screen to a licensed
+module is a judgement, and the check only keeps it honest once made.
 
 ## Grant
 
