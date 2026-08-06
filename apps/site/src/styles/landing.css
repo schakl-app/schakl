@@ -27,6 +27,50 @@
   box-sizing: border-box;
 }
 
+/* ---------------------------------------------------------------------------
+   Scroll reveal.
+
+   Three conditions gate the hidden start state, and all three are load-bearing:
+   `.has-js` (set synchronously in <head>) so a reader without JavaScript gets the
+   finished page rather than a blank one; the reduced-motion query so a reader who
+   asked for less motion gets the same; and the class itself, so nothing animates
+   that did not opt in. The observer only ever *adds* `.is-in` — content never
+   leaves once it has arrived, because re-hiding a paragraph the reader scrolled
+   back to is the animation everyone hates.
+   --------------------------------------------------------------------------- */
+[data-reveal] {
+  --reveal-shift: 1.25rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .has-js [data-reveal] {
+    opacity: 0;
+    transform: translateY(var(--reveal-shift));
+    /* `border-color` rides along because this rule *replaces* the transition a card declares
+       for itself — `.has-js [data-reveal]` outranks `.feature-card` — and without it every
+       hover border on a revealed card would snap instead of fading. */
+    transition:
+      opacity 0.62s cubic-bezier(0.16, 1, 0.3, 1),
+      transform 0.62s cubic-bezier(0.16, 1, 0.3, 1),
+      border-color 0.18s ease;
+    transition-delay: var(--reveal-delay, 0ms);
+    will-change: opacity, transform;
+  }
+  .has-js [data-reveal].is-in {
+    opacity: 1;
+    transform: none;
+    /* Once it has arrived, transform goes back to interaction speed: the same property carries
+       the reveal (slow, once) and the hover lift (fast, repeatedly), and 620 ms of hover reads
+       as lag. The delay is dropped for the same reason. */
+    transition:
+      opacity 0.62s cubic-bezier(0.16, 1, 0.3, 1),
+      transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+      border-color 0.18s ease;
+    transition-delay: 0ms;
+    will-change: auto;
+  }
+}
+
 body {
   margin: 0;
   background: var(--bg);

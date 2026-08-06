@@ -22,6 +22,11 @@ import DemoCustomFields from './showcase/DemoCustomFields.astro';
 import DemoRoles from './showcase/DemoRoles.astro';
 import DemoSubscriptions from './showcase/DemoSubscriptions.astro';
 import DemoAssets from './showcase/DemoAssets.astro';
+import DemoInvoice from './showcase/DemoInvoice.astro';
+import DemoMarketing from './showcase/DemoMarketing.astro';
+import DemoReport from './showcase/DemoReport.astro';
+import DemoDomain from './showcase/DemoDomain.astro';
+import DemoAssistant from './showcase/DemoAssistant.astro';
 
 interface Props {
   locale: 'nl' | 'en';
@@ -43,6 +48,11 @@ const demos: Record<string, any> = {
   roles: DemoRoles,
   subscriptions: DemoSubscriptions,
   assets: DemoAssets,
+  invoice: DemoInvoice,
+  marketing: DemoMarketing,
+  report: DemoReport,
+  domain: DemoDomain,
+  assistant: DemoAssistant,
 };
 const Demo = feature.demo ? demos[feature.demo] : null;
 

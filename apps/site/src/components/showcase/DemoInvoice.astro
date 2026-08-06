@@ -1,0 +1,269 @@
+---
+// Demo — "Invoicing + online payment". An invoice built from three kinds of line (hours, a
+// subscription period, a domain renewal), then the payment card: press the link, the client
+// pays on the provider's checkout, and the provider's confirmation books it here by itself.
+//
+// Base frame = paid, per the motion contract in showcase.css: with JavaScript off or reduced
+// motion on, this rests on the meaningful "after" state — an invoice that has been settled.
+//
+// Anything whose *text* changes (the status chip, the outstanding amount, the three payment
+// states) is rendered as all its variants stacked in one grid cell, cross-faded with opacity.
+// Animating `display` in @keyframes would be shorter, but it is a discrete property whose flip
+// point across browsers is not something a marketing page should be betting on — and the
+// failure mode is two numbers drawn on top of each other.
+import AppFrame from './AppFrame.astro';
+import Icon from './Icon.astro';
+import { eur, type Locale } from './labels.ts';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const t = {
+  number: locale === 'nl' ? 'Factuur 2026-0184' : 'Invoice 2026-0184',
+  client: 'Bakkerij De Vries',
+  open: 'Open',
+  paid: locale === 'nl' ? 'Betaald' : 'Paid',
+  bandHours: locale === 'nl' ? 'Uren' : 'Hours',
+  bandSubs: locale === 'nl' ? 'Abonnementen' : 'Subscriptions',
+  bandDomains: locale === 'nl' ? 'Domeinen' : 'Domains',
+  subtotal: locale === 'nl' ? 'Subtotaal' : 'Subtotal',
+  vat: locale === 'nl' ? 'Btw 21%' : 'VAT 21%',
+  total: locale === 'nl' ? 'Totaal' : 'Total',
+  outstanding: locale === 'nl' ? 'Openstaand' : 'Outstanding',
+  payCard: locale === 'nl' ? 'Online betalingen' : 'Online payments',
+  payBtn: locale === 'nl' ? 'Betaallink' : 'Payment link',
+  waiting: locale === 'nl' ? 'Wacht op betaling' : 'Waiting for payment',
+  booked: locale === 'nl' ? 'Betaald, geboekt' : 'Paid, booked',
+  via: 'iDEAL · Mollie',
+};
+
+const lines = [
+  {
+    band: t.bandHours,
+    desc: locale === 'nl' ? 'Uren september' : 'Hours, September',
+    qty: locale === 'nl' ? '12,5 u × € 95' : '12.5 h × € 95',
+    amount: 1187.5,
+  },
+  {
+    band: t.bandSubs,
+    desc: locale === 'nl' ? 'Hosting Business · sep 2026' : 'Hosting Business · Sep 2026',
+    qty: locale === 'nl' ? '1 periode' : '1 period',
+    amount: 25,
+  },
+  {
+    band: t.bandDomains,
+    desc: locale === 'nl' ? 'devries.nl · verlenging' : 'devries.nl · renewal',
+    qty: locale === 'nl' ? '1 × € 12,50' : '1 × € 12.50',
+    amount: 12.5,
+  },
+];
+---
+
+<AppFrame
+  locale={locale}
+  active="invoices"
+  nav={['dashboard', 'companies', 'projects', 'time', 'subscriptions', 'domains', 'invoices', 'quotes']}
+  class="demo-inv"
+>
+  <div class="screen__head">
+    <div>
+      <div class="screen__title">{t.number}</div>
+      <div class="screen__sub">{t.client}</div>
+    </div>
+    <span class="inv-swap inv-swap--status">
+      <span class="chip inv-chip-open">{t.open}</span>
+      <span class="chip inv-chip-paid">{t.paid}</span>
+    </span>
+  </div>
+
+  <table class="tbl inv-tbl">
+    <tbody>
+      {
+        lines.map((l) => (
+          <>
+            <tr class="inv-band">
+              <td colspan="2">{l.band}</td>
+            </tr>
+            <tr>
+              <td>
+                <div class="inv-desc">{l.desc}</div>
+                <div class="muted inv-qty">{l.qty}</div>
+              </td>
+              <td class="num tnum">{eur(locale, l.amount, 2)}</td>
+            </tr>
+          </>
+        ))
+      }
+    </tbody>
+  </table>
+
+  <div class="inv-totals">
+    <div><span class="muted">{t.subtotal}</span><span class="tnum">{eur(locale, 1225, 2)}</span></div>
+    <div><span class="muted">{t.vat}</span><span class="tnum">{eur(locale, 257.25, 2)}</span></div>
+    <div class="inv-grand">
+      <span class="strong">{t.total}</span><span class="strong tnum">{eur(locale, 1482.25, 2)}</span>
+    </div>
+    <div class="inv-out">
+      <span class="muted">{t.outstanding}</span>
+      <span class="inv-swap inv-swap--out">
+        <span class="tnum inv-due">{eur(locale, 1482.25, 2)}</span>
+        <span class="tnum inv-nil">{eur(locale, 0, 2)}</span>
+      </span>
+    </div>
+  </div>
+
+  <div class="card inv-pay">
+    <div class="inv-pay__h">
+      <span class="strong">{t.payCard}</span>
+      <span class="muted inv-pay__via">{t.via}</span>
+    </div>
+    <span class="inv-swap inv-swap--pay">
+      <span class="btn btn--brand inv-btn"><Icon name="creditCard" size={0.9} />{t.payBtn}</span>
+      <span class="chip chip--pending inv-wait">{t.waiting}</span>
+      <span class="chip chip--ok inv-done"><Icon name="check" size={0.8} />{t.booked}</span>
+    </span>
+  </div>
+
+  <div class="stagefade"></div>
+</AppFrame>
+
+<style is:global>
+  /* Tall on purpose: three line bands, a totals block and the payment card is what this demo is
+     *about*, and `.win` clips whatever does not fit. Measured, not guessed — at 38em the payment
+     card sits inside the frame at every width the container query produces. */
+  .demo-inv .app { height: 38em; }
+
+  /* One cell, every variant stacked in it. The cell sizes to the widest child, so nothing on
+     the row moves when the state changes. */
+  .demo-inv .inv-swap {
+    display: inline-grid;
+    justify-items: end;
+  }
+  .demo-inv .inv-swap > * {
+    grid-area: 1 / 1;
+  }
+  .demo-inv .inv-swap--pay {
+    justify-items: start;
+  }
+
+  /* base = paid: only the settled variant is visible */
+  .demo-inv .inv-chip-open,
+  .demo-inv .inv-due,
+  .demo-inv .inv-btn,
+  .demo-inv .inv-wait {
+    opacity: 0;
+  }
+  .demo-inv .inv-chip-paid,
+  .demo-inv .inv-nil,
+  .demo-inv .inv-done {
+    opacity: 1;
+  }
+
+  .demo-inv .inv-chip-paid {
+    color: var(--done);
+    border-color: color-mix(in srgb, var(--done) 40%, transparent);
+    background: color-mix(in srgb, var(--done) 12%, transparent);
+  }
+  .demo-inv .inv-due { color: var(--over-ink); font-weight: 650; }
+  .demo-inv .inv-nil { color: var(--done); font-weight: 650; }
+
+  .demo-inv .inv-tbl td { padding: 0.4em 0.55em; }
+  .demo-inv .inv-band td {
+    padding-top: 0.7em;
+    font-size: 0.78em;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--mu);
+    border-bottom: 0;
+  }
+  .demo-inv .inv-desc { font-weight: 550; }
+  .demo-inv .inv-qty { font-size: 0.85em; }
+
+  .demo-inv .inv-totals {
+    margin-top: 0.8em;
+    margin-left: auto;
+    width: 15em;
+    max-width: 100%;
+    font-size: 0.9em;
+  }
+  .demo-inv .inv-totals > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1em;
+    padding: 0.2em 0.55em;
+  }
+  .demo-inv .inv-grand {
+    border-top: 1px solid var(--bd);
+    margin-top: 0.25em;
+    padding-top: 0.4em !important;
+  }
+  .demo-inv .inv-out {
+    margin-top: 0.15em;
+    border-radius: 0.4em;
+    background: var(--sf);
+  }
+
+  .demo-inv .inv-pay { margin-top: 0.9em; padding: 0.8em 1em; }
+  .demo-inv .inv-pay__h {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.6em;
+    margin-bottom: 0.6em;
+  }
+  .demo-inv .inv-pay__via { font-size: 0.82em; }
+  .demo-inv .inv-btn { padding: 0.4em 0.75em; font-size: 0.86em; }
+
+  .demo-inv .stagefade {
+    position: absolute;
+    inset: 0;
+    background: var(--sf);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 30;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    /* Playing, the demo starts from an open invoice and walks back to the resting frame. */
+    .demo-inv.is-playing .inv-chip-open { animation: inv-before 11s infinite; }
+    .demo-inv.is-playing .inv-due { animation: inv-before 11s infinite; }
+    .demo-inv.is-playing .inv-chip-paid { animation: inv-after 11s infinite; }
+    .demo-inv.is-playing .inv-nil { animation: inv-after 11s infinite; }
+    .demo-inv.is-playing .inv-btn { animation: inv-btn 11s infinite; }
+    .demo-inv.is-playing .inv-wait { animation: inv-wait 11s infinite; }
+    .demo-inv.is-playing .inv-done { animation: inv-after 11s infinite; }
+    .demo-inv.is-playing .stagefade { animation: inv-veil 11s infinite; }
+  }
+
+  /* Everything that is true only *before* the provider confirms. */
+  @keyframes inv-before {
+    0%, 55% { opacity: 1; }
+    59%, 100% { opacity: 0; }
+  }
+  /* …and everything true only after. */
+  @keyframes inv-after {
+    0%, 55% { opacity: 0; transform: translateY(0.2em); }
+    62%, 100% { opacity: 1; transform: none; }
+  }
+  /* The link button: present, pressed at 20%, then handed over to the waiting chip. */
+  @keyframes inv-btn {
+    0%, 17% { opacity: 1; transform: none; }
+    20% { opacity: 1; transform: scale(0.95); }
+    23% { opacity: 1; transform: none; }
+    26%, 100% { opacity: 0; transform: none; }
+  }
+  /* Waiting: the client is on the provider's checkout. This is the one step that genuinely
+     takes an unknown amount of real time, so it is the longest beat in the loop. */
+  @keyframes inv-wait {
+    0%, 25% { opacity: 0; }
+    29%, 54% { opacity: 1; }
+    58%, 100% { opacity: 0; }
+  }
+  @keyframes inv-veil {
+    0%, 93% { opacity: 0; }
+    97%, 100% { opacity: 1; }
+  }
+</style>

@@ -37,6 +37,11 @@ const themeCss = `:root{--brand-accent:${settings.colors.accent};--brand-accent-
 // is /nl); a stored choice from the switcher always wins. Only the homepage auto-routes, so a
 // shared deep link keeps its explicit locale. Runs in <head> before render to avoid a flash.
 const autoRouteScript = `(function(){try{var p=location.pathname;var enHome=p==='/';var nlHome=p==='/nl'||p==='/nl/';if(!enHome&&!nlHome)return;var s=null;try{s=localStorage.getItem('schakl:lang')}catch(e){}var pn=(navigator.languages||[navigator.language||'']).some(function(l){return l.toLowerCase().indexOf('nl')===0});var w=s||(pn?'nl':'en');if(w==='nl'&&enHome){location.replace('/nl/'+location.search+location.hash)}else if(w==='en'&&nlHome){location.replace('/'+location.search+location.hash)}}catch(e){}})();`;
+
+// Marks the document as scripted, in <head>, before the first paint. The scroll-reveal styles
+// hang off this class so a reader with JavaScript off is never served an invisible page — the
+// hidden start state simply never applies, and every section is there on load.
+const hasJsScript = `document.documentElement.classList.add('has-js');`;
 ---
 
 <html lang={locale}>
@@ -49,6 +54,7 @@ const autoRouteScript = `(function(){try{var p=location.pathname;var enHome=p===
     <link rel="alternate" hreflang="en" href={new URL(enAlt, Astro.site)} />
     <link rel="alternate" hreflang="nl" href={new URL(nlAlt, Astro.site)} />
     <link rel="alternate" hreflang="x-default" href={new URL(enAlt, Astro.site)} />
+    <script is:inline set:html={hasJsScript} />
     <script is:inline set:html={autoRouteScript} />
     <style set:html={themeCss}></style>
   </head>
@@ -108,5 +114,40 @@ const autoRouteScript = `(function(){try{var p=location.pathname;var enHome=p===
         </p>
       </div>
     </footer>
+
+    <script>
+      // Reveal on scroll. One observer for the whole page; each element unobserves itself the
+      // moment it lands, so a long page costs nothing after the first pass. Anything already
+      // in view when the script runs is revealed immediately rather than waiting for a scroll
+      // that may never come — a visitor who lands mid-page must not meet a blank screen.
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+      const targets = Array.from(document.querySelectorAll<HTMLElement>('[data-reveal]'));
+
+      if (!targets.length) {
+        // nothing to do
+      } else if (reduce.matches || !('IntersectionObserver' in window)) {
+        targets.forEach((el) => el.classList.add('is-in'));
+      } else {
+        const io = new IntersectionObserver(
+          (entries) => {
+            for (const e of entries) {
+              if (!e.isIntersecting) continue;
+              e.target.classList.add('is-in');
+              io.unobserve(e.target);
+            }
+          },
+          // A little below the fold, so the transition has finished by the time the element
+          // is properly in the reader's eye rather than starting under their nose.
+          { rootMargin: '0px 0px -8% 0px', threshold: 0.05 },
+        );
+        targets.forEach((el) => io.observe(el));
+        // Flipping reduced-motion on mid-session must not strand whatever is still hidden.
+        reduce.addEventListener('change', (ev) => {
+          if (!ev.matches) return;
+          io.disconnect();
+          targets.forEach((el) => el.classList.add('is-in'));
+        });
+      }
+    </script>
   </body>
 </html>

@@ -15,6 +15,13 @@ interface Props {
   /** Extra class + inline style on the .appui root (white-label demo morphs --b here). */
   class?: string;
   style?: string;
+  /**
+   * Which sidebar items to draw, in order. The real app's nav is per-tenant (only enabled
+   * modules contribute an item), so a demo about invoicing showing a sidebar without
+   * "Facturen" would be less faithful, not more neutral. Eight is the practical ceiling —
+   * the frame is a fixed height and a ninth item pushes Instellingen off the bottom.
+   */
+  nav?: string[];
 }
 const {
   locale,
@@ -24,19 +31,41 @@ const {
   url = 'app.atlas.nl',
   class: cls = '',
   style,
+  nav: navKeys,
 } = Astro.props;
 const l = labels[locale];
 
-const nav = [
-  { key: 'dashboard', icon: 'dashboard', label: l.navDashboard },
-  { key: 'companies', icon: 'clients', label: l.navCompanies },
-  { key: 'contacts', icon: 'contacts', label: l.navContacts },
-  { key: 'projects', icon: 'projects', label: l.navProjects },
-  { key: 'tasks', icon: 'tasks', label: l.navTasks },
-  { key: 'time', icon: 'time', label: l.navTime },
-  { key: 'leave', icon: 'leave', label: l.navLeave },
-  { key: 'subscriptions', icon: 'subscriptions', label: l.navSubscriptions },
+const ALL: Record<string, { icon: string; label: string }> = {
+  dashboard: { icon: 'dashboard', label: l.navDashboard },
+  companies: { icon: 'clients', label: l.navCompanies },
+  contacts: { icon: 'contacts', label: l.navContacts },
+  projects: { icon: 'projects', label: l.navProjects },
+  tasks: { icon: 'tasks', label: l.navTasks },
+  time: { icon: 'time', label: l.navTime },
+  leave: { icon: 'leave', label: l.navLeave },
+  subscriptions: { icon: 'subscriptions', label: l.navSubscriptions },
+  invoices: { icon: 'invoicing', label: l.navInvoices },
+  quotes: { icon: 'files', label: l.navQuotes },
+  domains: { icon: 'globe', label: l.navDomains },
+  marketing: { icon: 'chart', label: l.navMarketing },
+  reports: { icon: 'report', label: l.navReports },
+  interactions: { icon: 'interactions', label: l.navInteractions },
+};
+
+const DEFAULT_NAV = [
+  'dashboard',
+  'companies',
+  'contacts',
+  'projects',
+  'tasks',
+  'time',
+  'leave',
+  'subscriptions',
 ];
+
+const nav = (navKeys ?? DEFAULT_NAV)
+  .map((key) => ({ key, ...ALL[key] }))
+  .filter((item) => item.icon);
 ---
 
 <div class={`appui ${cls}`} style={style} aria-hidden="true">

@@ -1,0 +1,375 @@
+---
+// Demo — "Domains, Cloudflare & the registrar". A domain detail page (/domains/[id]) showing the
+// two entity panels that together answer "is this domain actually pointing where we think it is":
+// the Cloudflare panel's nameserver comparison ("Cloudflare verwacht" beside "Publieke DNS
+// antwoordt") and the OXXA registrar panel, whose push box opens pre-filled with the pair
+// Cloudflare expects. That composition is the point of the two modules.
+//
+// The story is deliberately *not* magic, because the product isn't: schakl pushes the delegation
+// to the registrar, the registry publishes it in its own time, and the panel only changes its
+// mind when somebody presses "Controleren bij Cloudflare" and it goes and looks. So the loop is
+// push → wait → check → resolved, with a long, visibly empty wait in the middle. The panel
+// reports drift; it never silently repairs it.
+//
+// Base frame = delegated, per the motion contract in showcase.css: with JavaScript off or reduced
+// motion on this rests on the meaningful "after" state — public DNS answering with Cloudflare's
+// pair, the panel's verdict reading that the nameservers point at Cloudflare, no attention list,
+// and the registrar showing when the change was sent.
+//
+// Anything whose *text* changes is rendered as all its variants stacked in one grid cell and
+// cross-faded with opacity (the DemoInvoice technique). `display` is never animated: it is a
+// discrete property whose flip point across browsers is not something a marketing page should be
+// betting on, and the failure mode is two nameservers drawn on top of each other.
+//
+// Strings: verbatim from messages/nl.json + messages/en.json wherever the app has them —
+// cloudflare.panel.expected_nameservers / .observed_nameservers / .delegated / .not_delegated /
+// .check, cloudflare.zone_status.pending / .active, cloudflare.issues.title, cloudflare.issue.
+// nameservers_not_delegated, oxxa.panel.title / .expires / .pushed_at, oxxa.push.title / .submit /
+// .success. The panel's verdict is one line of plain text and both of its sentences are here in
+// full: the app has no delegation *chip* and no check timestamp (cloudflare.panel.checked_at is a
+// key nothing renders), so neither is drawn here.
+//
+// Compression, stated the way the other demos state theirs: the client's name rides in the page
+// subtitle. The real /domains/[id] header is the domain name plus an actions menu, and the client
+// is the domains.company row of the Details card — a card this demo leaves out, because the two
+// panels below are its whole subject. The status chip that used to sit in this header is gone for
+// the same reason: in the app the status is a Details row, never a green badge beside the title.
+import AppFrame from './AppFrame.astro';
+import Icon from './Icon.astro';
+import { sample, type Locale } from './labels.ts';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const nl = locale === 'nl';
+
+// Cloudflare hands a zone a two-name pair like this; the previous host is a placeholder rather
+// than a real company's real nameservers, which would be a claim this page can't check.
+const CF_NS = ['bea.ns.cloudflare.com', 'cody.ns.cloudflare.com'];
+const OLD_NS = ['ns1.hostingpartner.nl', 'ns2.hostingpartner.nl'];
+
+const t = {
+  domain: sample.clientWebsite,
+  client: sample.clientName,
+  // — Cloudflare panel
+  cfTitle: 'Cloudflare',
+  cfAccount: 'Atlas',
+  cfCheck: nl ? 'Controleren bij Cloudflare' : 'Check at Cloudflare',
+  zonePending: nl ? 'Wacht op nameservers' : 'Waiting for nameservers',
+  zoneActive: nl ? 'Actief' : 'Active',
+  expected: nl ? 'Cloudflare verwacht' : 'Cloudflare expects',
+  observed: nl ? 'Publieke DNS antwoordt' : 'Public DNS answers',
+  // The panel's verdict, both halves verbatim (cloudflare.panel.not_delegated / .delegated).
+  notDelegated: nl
+    ? 'Nameservers wijzen nog niet naar Cloudflare. Wijzig ze bij de registrar.'
+    : 'Nameservers do not point at Cloudflare yet. Change them at the registrar.',
+  delegated: nl
+    ? 'Nameservers wijzen naar Cloudflare'
+    : 'Nameservers point at Cloudflare',
+  issuesTitle: nl ? 'Aandachtspunten' : 'Points of attention',
+  issue1: nl
+    ? 'Publieke DNS wijst nog ergens anders heen dan naar Cloudflare.'
+    : 'Public DNS still points somewhere else than Cloudflare.',
+  // — Registrar (OXXA) panel
+  oxxaTitle: 'Registrar (OXXA)',
+  expires: nl ? 'Verloopt 14-03-2027' : 'Expires 14-03-2027',
+  pushTitle: nl ? 'Nameservers wijzigen bij OXXA' : 'Change nameservers at OXXA',
+  send: nl ? 'Versturen naar OXXA' : 'Send to OXXA',
+  sent: nl
+    ? 'Nameservers gewijzigd bij OXXA. Het register publiceert ze meestal binnen een paar uur.'
+    : 'Nameservers changed at OXXA. The registry usually publishes them within a few hours.',
+  pushedAt: nl ? 'Verstuurd 6 aug 10:12' : 'Sent 6 Aug 10:12',
+};
+---
+
+<AppFrame
+  locale={locale}
+  active="domains"
+  nav={['dashboard', 'companies', 'contacts', 'projects', 'tasks', 'domains', 'invoices', 'subscriptions']}
+  class="demo-dom"
+>
+  <!-- The domain's own name and the actions menu beside it, which is the whole header in the app. -->
+  <div class="screen__head">
+    <div>
+      <div class="screen__title">{t.domain}</div>
+      <div class="screen__sub">{t.client}</div>
+    </div>
+    <span class="muted dm-actions"><Icon name="dots" size={1} /></span>
+  </div>
+
+  <!-- Cloudflare panel: what the page stored, and what a check last found. -->
+  <div class="card dm-card">
+    <div class="dm-card__h">
+      <span class="strong dm-panel">{t.cfTitle}</span>
+      <span class="btn dm-btn dm-check">{t.cfCheck}</span>
+    </div>
+    <div class="dm-zone muted">
+      <span>{t.domain} · {t.cfAccount} · </span>
+      <span class="dm-swap dm-swap--inline">
+        <span class="dm-zs-pending">{t.zonePending}</span>
+        <span class="dm-zs-active">{t.zoneActive}</span>
+      </span>
+    </div>
+
+    <dl class="dm-dl">
+      <div class="dm-fact">
+        <dt>{t.expected}</dt>
+        <dd>
+          {CF_NS.map((ns) => <div>{ns}</div>)}
+        </dd>
+      </div>
+      <div class="dm-fact">
+        <dt>{t.observed}</dt>
+        <!-- Both answers share one cell, so the column never reflows as the check changes its
+             mind and the two labels stay on one line each. -->
+        <dd class="dm-swap dm-swap--start">
+          <div class="dm-ns-old">
+            {OLD_NS.map((ns) => <div>{ns}</div>)}
+          </div>
+          <div class="dm-ns-new">
+            {CF_NS.map((ns) => <div>{ns}</div>)}
+          </div>
+        </dd>
+      </div>
+    </dl>
+
+    <!-- The verdict: one line of plain text under the comparison, which is how the panel states
+         it. Colour marks the failing state only — amber while the delegation is wrong, muted once
+         it is right. Both sentences share one cell, so the line never reflows. -->
+    <div class="dm-swap dm-swap--block dm-verdict">
+      <p class="dm-vd dm-vd--no">{t.notDelegated}</p>
+      <p class="dm-vd dm-vd--yes">{t.delegated}</p>
+    </div>
+
+    <!-- The attention list exists only while something is actually wrong; it fades rather than
+         unmounts, so the card keeps one height across the whole loop. -->
+    <div class="dm-issues">
+      <div class="dm-issues__h">{t.issuesTitle}</div>
+      <ul>
+        <li>{t.issue1}</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Registrar panel: the box opens on the pair Cloudflare expects, which is the whole reason
+       the two modules know about each other. -->
+  <div class="card dm-card dm-oxxa">
+    <div class="dm-card__h">
+      <span class="strong dm-panel">{t.oxxaTitle}</span>
+      <span class="muted dm-expires">{t.expires}</span>
+    </div>
+    <div class="field__label dm-push__h">{t.pushTitle}</div>
+    <div class="dm-nsbox">
+      {CF_NS.map((ns) => <div>{ns}</div>)}
+    </div>
+    <div class="dm-swap dm-swap--start dm-push__act">
+      <span class="btn btn--brand dm-btn dm-send">{t.send}</span>
+      <span class="dm-sent">{t.sent}</span>
+      <span class="muted dm-pushed">{t.pushedAt}</span>
+    </div>
+  </div>
+
+  <div class="stagefade"></div>
+</AppFrame>
+
+<style is:global>
+  /* Every beat occupies the same space (nothing unmounts, it only fades), so one height covers
+     the whole loop. Measured in a browser on /features/integrations: the content is 31.3em at the
+     672px stage, and the frame leaves ~2.6em under the registrar card. */
+  .demo-dom .app { height: 35.8em; }
+  /* Narrower than this the panel's own sentences wrap onto extra lines and the same content
+     measures ~1.3em taller, which clipped the foot of the registrar card. Measured at container
+     widths 33.7em / 36.7em / 38.5em (viewports 360 / 480 / 540) before and after. */
+  @container (max-width: 44em) {
+    .demo-dom .app { height: 37.3em; }
+  }
+  .demo-dom .screen { padding: 0.95em 1em; }
+  .demo-dom .screen__head { margin-bottom: 0.7em; }
+
+  /* One cell, every variant stacked in it, so nothing on the row moves when the state changes. */
+  .demo-dom .dm-swap { display: grid; }
+  .demo-dom .dm-swap > * { grid-area: 1 / 1; }
+  .demo-dom .dm-swap--inline { display: inline-grid; justify-items: start; }
+  .demo-dom .dm-swap--start { justify-items: start; }
+  .demo-dom .dm-swap--block { align-items: stretch; }
+
+  /* base = delegated: only the resolved variant is visible */
+  .demo-dom .dm-zs-pending,
+  .demo-dom .dm-ns-old,
+  .demo-dom .dm-vd--no,
+  .demo-dom .dm-issues,
+  .demo-dom .dm-send,
+  .demo-dom .dm-sent {
+    opacity: 0;
+  }
+  .demo-dom .dm-zs-active,
+  .demo-dom .dm-ns-new,
+  .demo-dom .dm-vd--yes,
+  .demo-dom .dm-pushed {
+    opacity: 1;
+  }
+
+  /* The ActionsMenu trigger: the only control the real page header carries. */
+  .demo-dom .dm-actions { display: inline-flex; align-items: center; margin-top: 0.15em; }
+
+  .demo-dom .dm-card { padding: 0.75em 0.9em; }
+  .demo-dom .dm-oxxa { margin-top: 0.65em; }
+  .demo-dom .dm-card__h {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6em;
+    margin-bottom: 0.35em;
+  }
+  .demo-dom .dm-panel { font-size: 0.95em; }
+  .demo-dom .dm-btn { padding: 0.35em 0.7em; font-size: 0.82em; }
+  .demo-dom .dm-expires { font-size: 0.8em; }
+  .demo-dom .dm-zone { font-size: 0.8em; }
+
+  /* The comparison the panel exists for. */
+  .demo-dom .dm-dl {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5em 0.9em;
+    margin: 0.65em 0 0;
+  }
+  .demo-dom .dm-fact { min-width: 0; }
+  .demo-dom .dm-dl dt {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.35em;
+    font-size: 0.75em;
+    color: var(--mu);
+    margin-bottom: 0.15em;
+  }
+  .demo-dom .dm-dl dd {
+    margin: 0;
+    font-size: 0.82em;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+  /* The verdict line: `text-xs`, muted when delegated and amber when it is not — the app's own
+     single colour decision on this panel. */
+  .demo-dom .dm-verdict { margin-top: 0.5em; }
+  .demo-dom .dm-vd {
+    margin: 0;
+    font-size: 0.78em;
+    line-height: 1.45;
+  }
+  .demo-dom .dm-vd--yes { color: var(--mu); }
+  .demo-dom .dm-vd--no { color: var(--amber-ink); }
+
+  .demo-dom .dm-issues {
+    margin-top: 0.6em;
+    border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+    background: var(--amber-bg);
+    border-radius: 0.55em;
+    padding: 0.45em 0.7em;
+  }
+  .demo-dom .dm-issues__h {
+    font-size: 0.75em;
+    font-weight: 650;
+    color: var(--amber-ink);
+    margin-bottom: 0.15em;
+  }
+  .demo-dom .dm-issues ul {
+    margin: 0;
+    padding-left: 1.1em;
+    list-style: disc;
+    font-size: 0.8em;
+    line-height: 1.45;
+  }
+  /* The push box, pre-filled with what Cloudflare expects. */
+  .demo-dom .dm-push__h { margin-top: 0.15em; }
+  .demo-dom .dm-nsbox {
+    border: 1px solid var(--bd);
+    border-radius: 0.55em;
+    background: var(--rz);
+    padding: 0.35em 0.6em;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.78em;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+  .demo-dom .dm-push__act { margin-top: 0.55em; min-height: 1.9em; align-items: center; }
+  .demo-dom .dm-sent { font-size: 0.8em; color: var(--done); line-height: 1.45; }
+  .demo-dom .dm-pushed { font-size: 0.8em; }
+
+  .demo-dom .stagefade {
+    position: absolute;
+    inset: 0;
+    background: var(--sf);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 30;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    /* Playing, the demo starts from a domain that is not delegated yet and walks back to the
+       resting frame: push at OXXA, wait for the registry, check at Cloudflare, resolved. */
+    .demo-dom.is-playing .dm-zs-pending,
+    .demo-dom.is-playing .dm-ns-old,
+    .demo-dom.is-playing .dm-vd--no,
+    .demo-dom.is-playing .dm-issues {
+      animation: dm-before 11s infinite;
+    }
+    .demo-dom.is-playing .dm-zs-active,
+    .demo-dom.is-playing .dm-ns-new,
+    .demo-dom.is-playing .dm-vd--yes {
+      animation: dm-after 11s infinite;
+    }
+    .demo-dom.is-playing .dm-send { animation: dm-send 11s infinite; }
+    .demo-dom.is-playing .dm-sent { animation: dm-waiting 11s infinite; }
+    .demo-dom.is-playing .dm-pushed { animation: dm-pushed 11s infinite; }
+    .demo-dom.is-playing .dm-check { animation: dm-press 11s infinite; }
+    .demo-dom.is-playing .stagefade { animation: dm-veil 11s infinite; }
+  }
+
+  /* Everything that is true only *before* public DNS has caught up. The two halves hand over
+     rather than dissolve into each other: these are dense blocks of text in the same place, and
+     a long crossfade of two paragraphs reads as a rendering bug, not as a transition. */
+  @keyframes dm-before {
+    0%, 55% { opacity: 1; }
+    59%, 100% { opacity: 0; }
+  }
+  /* …and everything true only after the check found the new delegation. */
+  @keyframes dm-after {
+    0%, 59% { opacity: 0; transform: translateY(0.25em); }
+    65%, 100% { opacity: 1; transform: none; }
+  }
+  /* "Versturen naar OXXA": present, pressed at 18%, then handed over to the result line. */
+  @keyframes dm-send {
+    0%, 15% { opacity: 1; transform: none; }
+    18% { opacity: 1; transform: scale(0.95); }
+    21% { opacity: 1; transform: none; }
+    24%, 100% { opacity: 0; transform: none; }
+  }
+  /* The registrar accepted it; the registry still has to publish. */
+  @keyframes dm-waiting {
+    0%, 22% { opacity: 0; }
+    27%, 40% { opacity: 1; }
+    45%, 100% { opacity: 0; }
+  }
+  /* The registrar's own timestamp settles on the *push*, not on the Cloudflare check. The two
+     panels keep separate clocks on purpose: from here until 59% the registrar half is finished
+     while the Cloudflare half still reads "not delegated", which is exactly the state an agency
+     sits in for hours — the push landed, the registry has not published yet. Sharing dm-after
+     would have made the registrar look like it was waiting on a button pressed in another panel. */
+  @keyframes dm-pushed {
+    0%, 43% { opacity: 0; }
+    48%, 100% { opacity: 1; }
+  }
+  /* Nothing here updates itself: the panel changes its mind only when it is asked to go and look,
+     so the press comes first and the answer follows it. */
+  @keyframes dm-press {
+    0%, 46% { transform: none; }
+    49% { transform: scale(0.95); }
+    52%, 100% { transform: none; }
+  }
+  @keyframes dm-veil {
+    0%, 93% { opacity: 0; }
+    97%, 100% { opacity: 1; }
+  }
+</style>

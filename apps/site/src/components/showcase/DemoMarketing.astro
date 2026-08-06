@@ -1,0 +1,448 @@
+---
+// Demo — "Marketing dashboard". One client's Analytics / Search Console numbers, read out of
+// schakl's own database (the nightly sync already ran, so this screen costs Google nothing):
+// the KPI tiles with their period-over-period delta, the one shared trend chart under them, and
+// the GA4 acquisition split as a bar list.
+//
+// Fidelity notes, so the compression is on the record:
+//   · Every string is the verbatim catalog value — marketing.tab.title, marketing.range.30d,
+//     marketing.source.{ga4,gsc}, marketing.metric.{sessions,clicks,position,conversions},
+//     marketing.health.ok, marketing.vs_previous, marketing.channels_title (messages/nl.json +
+//     en.json). This demo keeps its own locale table rather than labels.ts because every string
+//     on it comes from one module's namespace; nl and en are both complete here.
+//   · The screen is MarketingSourceSection.svelte's own order and shapes: a tile is label /
+//     value / signed % and nothing else (:344-352, with the selected tile carrying `border-brand
+//     bg-surface`, :340-342), under the tiles one shared TrendChart for the selected metric
+//     (:359-367), and under that the acquisition split — a `bg-brand` bar in a `bg-surface`
+//     track (:369-389). All of it inside the section's own raised card (:128-132). There is no
+//     per-tile sparkline anywhere in the product: Sparkline.svelte has exactly one caller
+//     (MarketingCompanyPanel.svelte:274), once per source beside a four-number grid.
+//   · The chart is TrendChart.svelte's geometry verbatim (720×200, the same padding, the same
+//     `10^floor(log10(max))` tick rounding, the same zero-based y axis), computed at build time
+//     so the page ships plain path data and no runtime. Only the *type* sizes are scaled up
+//     from the component's `text-[10px]` and `stroke-width="2"`: this frame is a miniature of a
+//     1440px window, so 10 user units would render at 5px beside 13px body text.
+//   · Compressions, all of them deliberate: the app's five range tabs
+//     (MarketingDashboard.svelte:207-211) are drawn as the active pill alone, which is what fits
+//     beside the title; `t.o.v. vorige periode` is written once under it instead of inside each
+//     of four narrow tiles; and the tiles span two sources where the app gives each source its
+//     own section — the pairing /overview/marketing puts in one row (Sessies · Kliks · Gem.
+//     positie · Conversies). The chip row names the client's linked accounts the way that same
+//     overview's sources cell does, and carries the connection-health badge
+//     (MarketingCompanyPanel.svelte:223-227) on Google Analytics, the source that owns both the
+//     charted metric and the channel split — one badge, because a second one wraps the row at
+//     the frame's narrowest width.
+//   · Gem. positie is `lower_is_better`, so its −1,8% is green. That is the product's rule
+//     (format.ts deltaView), not a mistake: an average position that falls has improved.
+//
+// Base frame = the finished dashboard, per the motion contract in showcase.css: deltas up,
+// trend drawn, bars at full width. The animation only replays how it arrives.
+import AppFrame from './AppFrame.astro';
+import { dayMonth, num, sample, type Locale } from './labels.ts';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const nl = locale === 'nl';
+const t = {
+  title: 'Marketing', // marketing.tab.title
+  range: nl ? 'Laatste 30 dagen' : 'Last 30 days', // marketing.range.30d
+  ga4: 'Google Analytics', // marketing.source.ga4
+  gsc: 'Search Console', // marketing.source.gsc
+  healthOk: nl ? 'Gesynchroniseerd' : 'Synced', // marketing.health.ok
+  sessions: nl ? 'Sessies' : 'Sessions', // marketing.metric.sessions
+  clicks: nl ? 'Kliks' : 'Clicks', // marketing.metric.clicks
+  position: nl ? 'Gem. positie' : 'Avg. position', // marketing.metric.position
+  conversions: nl ? 'Conversies' : 'Conversions', // marketing.metric.conversions
+  vsPrevious: nl ? 't.o.v. vorige periode' : 'vs previous period', // marketing.vs_previous
+  channels: nl ? 'Acquisitiekanalen' : 'Acquisition channels', // marketing.channels_title
+};
+
+// Thirty daily sessions — a real month, weekends included. They total the tile above the chart
+// (18.420), because a trend that disagrees with the number it is the trend *of* is worse than
+// no trend at all. The other three tiles' values are the same month's totals (3.184 kliks,
+// 214 conversies) and average (12,6).
+const sessions = [
+  571, 553, 633, 555, 632, 380, 355, 650, 583, 653, 602, 612, 418, 464, 637, 661, 738, 801, 744,
+  446, 515, 671, 826, 729, 709, 711, 467, 532, 743, 829,
+];
+// The window those thirty days are: the range pill's own last-30-days, ending yesterday.
+const firstDay = '2026-09-07';
+const lastDay = '2026-10-06';
+
+// TrendChart.svelte's geometry, verbatim: 720×200, a zero-based y axis whose top tick is the
+// max rounded up to its own leading digit, gridlines at 0 / half / top.
+const W = 720;
+const H = 200;
+const PAD = { top: 12, right: 12, bottom: 22, left: 52 };
+const plotW = W - PAD.left - PAD.right;
+const plotH = H - PAD.top - PAD.bottom;
+const max = Math.max(...sessions, 1);
+const step = Math.pow(10, Math.floor(Math.log10(max || 1)));
+const axisTop = Math.max(Math.ceil(max / step) * step, 1);
+const x = (i: number) => PAD.left + (i / (sessions.length - 1)) * plotW;
+const y = (v: number) => PAD.top + plotH - (v / axisTop) * plotH;
+const ticks = [0, axisTop / 2, axisTop].map((v) => ({ label: num(locale, v), y: y(v) }));
+const linePoints = sessions.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+const areaPath =
+  `M ${x(0).toFixed(1)},${(PAD.top + plotH).toFixed(1)} ` +
+  sessions.map((v, i) => `L ${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ') +
+  ` L ${x(sessions.length - 1).toFixed(1)},${(PAD.top + plotH).toFixed(1)} Z`;
+
+// deltaView(): a signed percentage, and a tone that flips for a lower-is-better metric. The
+// minus is whatever the locale's own formatter writes — only the plus is ours, exactly as
+// format.ts does it.
+const pct = (n: number) => `${n > 0 ? '+' : ''}${num(locale, n, 1)}%`;
+const kpis = [
+  // `selected` is the tile the chart below is following — src.primary_metric until the reader
+  // clicks another tile, which is why exactly one tile is outlined in brand.
+  { label: t.sessions, value: num(locale, 18420), delta: pct(12.4), tone: 'up', selected: true },
+  { label: t.clicks, value: num(locale, 3184), delta: pct(8.1), tone: 'up', selected: false },
+  { label: t.position, value: num(locale, 12.6, 1), delta: pct(-1.8), tone: 'up', selected: false },
+  { label: t.conversions, value: num(locale, 214), delta: pct(-4.2), tone: 'down', selected: false },
+];
+
+// GA4's own default channel group names, which the API hands over untranslated — and they add
+// up to the sessions tile above.
+const channels = [
+  { name: 'Organic Search', value: 8240 },
+  { name: 'Direct', value: 4010 },
+  { name: 'Paid Search', value: 2980 },
+  { name: 'Referral', value: 1860 },
+  { name: 'Organic Social', value: 1330 },
+];
+const channelMax = Math.max(...channels.map((c) => c.value));
+---
+
+<AppFrame
+  locale={locale}
+  active="marketing"
+  nav={['dashboard', 'companies', 'projects', 'tasks', 'time', 'marketing', 'reports', 'invoices']}
+  class="demo-mkt"
+>
+  <div class="screen__head">
+    <div>
+      <div class="screen__title">{t.title}</div>
+      <div class="screen__sub">{sample.clientName}</div>
+    </div>
+    <!-- The active range pill, and under it the comparison every delta below is against —
+         the app writes that phrase once per tile, which four narrow tiles cannot hold. -->
+    <div class="mkt-period">
+      <span class="mkt-range">{t.range}</span>
+      <span class="mkt-vs muted">{t.vsPrevious}</span>
+    </div>
+  </div>
+
+  <!-- The linked accounts, with the connection-health badge on the one this section is about. -->
+  <div class="mkt-sources">
+    <span class="chip">{t.ga4}</span>
+    <span class="chip chip--ok mkt-health">{t.healthOk}</span>
+    <span class="chip">{t.gsc}</span>
+  </div>
+
+  <!-- One source section: tiles, the trend of the selected tile, the acquisition split. -->
+  <div class="card mkt-section">
+    <div class="mkt-kpis">
+      {
+        kpis.map((k) => (
+          <div class={`mkt-tile${k.selected ? ' is-selected' : ''}`}>
+            <div class="mkt-tile__label muted">{k.label}</div>
+            <div class="mkt-tile__val tnum">{k.value}</div>
+            <div class={`mkt-delta tnum mkt-delta--${k.tone}`}>{k.delta}</div>
+          </div>
+        ))
+      }
+    </div>
+
+    <div class="mkt-trend">
+      <div class="mkt-h">{t.sessions}</div>
+      <svg class="mkt-chart" viewBox={`0 0 ${W} ${H}`} aria-hidden="true">
+        {
+          ticks.map((tick) => (
+            <>
+              <line
+                class="mkt-chart__grid"
+                x1={PAD.left}
+                x2={W - PAD.right}
+                y1={tick.y}
+                y2={tick.y}
+              />
+              <text class="mkt-chart__ax" x={PAD.left - 8} y={tick.y + 5} text-anchor="end">
+                {tick.label}
+              </text>
+            </>
+          ))
+        }
+        <path class="mkt-chart__area" d={areaPath} />
+        <polyline
+          class="mkt-chart__line"
+          points={linePoints}
+          pathLength="1"
+          stroke-linejoin="round"
+        />
+        <text class="mkt-chart__ax" x={PAD.left} y={H - 6} text-anchor="start">
+          {dayMonth(locale, firstDay)}
+        </text>
+        <text class="mkt-chart__ax" x={W - PAD.right} y={H - 6} text-anchor="end">
+          {dayMonth(locale, lastDay)}
+        </text>
+      </svg>
+    </div>
+
+    <div class="mkt-h">{t.channels}</div>
+    <ul class="mkt-bars">
+      {
+        channels.map((c) => (
+          <li class="mkt-bar">
+            <span class="mkt-bar__name muted">{c.name}</span>
+            <span class="mkt-bar__track">
+              <span
+                class="mkt-bar__fill"
+                style={`--w:${((c.value / channelMax) * 100).toFixed(1)}%`}
+              ></span>
+            </span>
+            <span class="mkt-bar__val tnum">{num(locale, c.value)}</span>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+
+  <div class="stagefade"></div>
+</AppFrame>
+
+<style is:global>
+  /* Measured, not guessed. The trend keeps TrendChart's 720×200 aspect, so this screen's height
+     is governed by its *widest* rendering (672px at the 13px font cap, where the plot alone is
+     10.3em); measuring at that width leaves the fifth channel bar clear of the frame's bottom
+     padding, and every narrower rendering has more room, not less. */
+  /* Measured in a browser at both ends of the container query, not estimated: at 38.6em the
+     channel list lost its last row to `.win`'s overflow. */
+  .demo-mkt .app { height: 39.7em; }
+  .demo-mkt .screen__head { margin-bottom: 0.55em; align-items: flex-start; }
+  .demo-mkt .mkt-period {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.2em;
+  }
+
+  /* The trend's blue is a dataviz colour, deliberately NOT the tenant brand (TrendChart.svelte
+     says so): a client's own accent must never decide whether a trend reads as a trend. Both
+     theme values are the component's own, so the pair is theme-safe. */
+  .demo-mkt {
+    --trend: #2563eb;
+  }
+  @media (prefers-color-scheme: dark) {
+    .demo-mkt {
+      --trend: #3b82f6;
+    }
+  }
+  :root[data-theme='dark'] .demo-mkt {
+    --trend: #3b82f6;
+  }
+
+  /* head: the active range pill (bg-brand text-white in the app) */
+  .demo-mkt .mkt-range {
+    flex: none;
+    padding: 0.3em 0.75em;
+    border-radius: 0.5em;
+    background: var(--b);
+    color: var(--b-ink);
+    font-size: 0.85em;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .demo-mkt .mkt-sources {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35em;
+    margin-bottom: 0.6em;
+  }
+  .demo-mkt .mkt-vs {
+    font-size: 0.78em;
+    white-space: nowrap;
+  }
+  /* The health badge is smaller than the name beside it in the same ratio the app uses
+     (text-[10px] against text-xs). */
+  .demo-mkt .mkt-health {
+    font-size: 0.68em;
+    font-weight: 600;
+  }
+
+  .demo-mkt .mkt-section {
+    padding: 0.85em;
+  }
+
+  .demo-mkt .mkt-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.5em;
+    margin-bottom: 0.75em;
+  }
+  .demo-mkt .mkt-tile {
+    min-width: 0;
+    border: 1px solid var(--bd);
+    border-radius: 0.6em;
+    padding: 0.5em 0.55em 0.45em;
+  }
+  /* The tiles are buttons; the selected one is what the chart below is charting. */
+  .demo-mkt .mkt-tile.is-selected {
+    border-color: var(--b);
+    background: var(--sf);
+  }
+  /* Wraps rather than ellipsizes: the app's tile label is a plain `text-xs` paragraph, so
+     "Gem. positie" takes a second line in a narrow tile instead of losing its end. */
+  .demo-mkt .mkt-tile__label {
+    font-size: 0.78em;
+  }
+  .demo-mkt .mkt-tile__val {
+    font-size: 1.2em;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    line-height: 1.25;
+  }
+  .demo-mkt .mkt-delta {
+    font-size: 0.78em;
+    font-weight: 550;
+  }
+  .demo-mkt .mkt-delta--up {
+    color: var(--done);
+  }
+  .demo-mkt .mkt-delta--down {
+    color: var(--over-ink);
+  }
+
+  /* section headings: the app's `text-sm font-medium` above the chart and the channel list */
+  .demo-mkt .mkt-h {
+    font-size: 0.9em;
+    font-weight: 550;
+    margin-bottom: 0.25em;
+  }
+  .demo-mkt .mkt-trend {
+    margin-bottom: 0.8em;
+  }
+  .demo-mkt .mkt-chart {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  .demo-mkt .mkt-chart__grid {
+    stroke: var(--bd);
+    stroke-width: 1;
+  }
+  /* 16 user units, not the component's 10: at this frame's scale 10 would render at 5px. */
+  .demo-mkt .mkt-chart__ax {
+    fill: var(--mu);
+    font-size: 16px;
+    font-variant-numeric: tabular-nums;
+  }
+  .demo-mkt .mkt-chart__area {
+    fill: var(--trend);
+    opacity: 0.12;
+  }
+  .demo-mkt .mkt-chart__line {
+    fill: none;
+    stroke: var(--trend);
+    stroke-width: 3;
+    /* pathLength="1" normalises the dash units, so the draw is one keyframe. */
+    stroke-dasharray: 1;
+    stroke-dashoffset: 0;
+  }
+
+  .demo-mkt .mkt-bars {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.32em;
+  }
+  .demo-mkt .mkt-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.6em;
+    font-size: 0.8em;
+  }
+  .demo-mkt .mkt-bar__name {
+    width: 8em;
+    flex: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .demo-mkt .mkt-bar__track {
+    flex: 1;
+    min-width: 0;
+    height: 0.55em;
+    border-radius: 999px;
+    background: var(--sf);
+    overflow: hidden;
+  }
+  .demo-mkt .mkt-bar__fill {
+    display: block;
+    height: 100%;
+    width: var(--w);
+    border-radius: 999px;
+    background: var(--b);
+  }
+  .demo-mkt .mkt-bar__val {
+    width: 3.4em;
+    flex: none;
+    text-align: right;
+  }
+
+  .demo-mkt .stagefade {
+    position: absolute;
+    inset: 0;
+    background: var(--sf);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 30;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    /* Each element carries its own keyframes rather than one shared set plus a delay: a delayed
+       animation is still running when the loop wraps, and the reset would land after the veil
+       had already lifted. Staggering inside the percentages keeps all four in one phase. */
+    .demo-mkt.is-playing .mkt-tile:nth-child(1) .mkt-delta { animation: mkt-delta1 10s infinite; }
+    .demo-mkt.is-playing .mkt-tile:nth-child(2) .mkt-delta { animation: mkt-delta2 10s infinite; }
+    .demo-mkt.is-playing .mkt-tile:nth-child(3) .mkt-delta { animation: mkt-delta3 10s infinite; }
+    .demo-mkt.is-playing .mkt-tile:nth-child(4) .mkt-delta { animation: mkt-delta4 10s infinite; }
+
+    .demo-mkt.is-playing .mkt-chart__line { animation: mkt-draw 10s infinite; }
+    .demo-mkt.is-playing .mkt-chart__area { animation: mkt-fill 10s infinite; }
+
+    .demo-mkt.is-playing .mkt-bar:nth-child(1) .mkt-bar__fill { animation: mkt-bar1 10s infinite; }
+    .demo-mkt.is-playing .mkt-bar:nth-child(2) .mkt-bar__fill { animation: mkt-bar2 10s infinite; }
+    .demo-mkt.is-playing .mkt-bar:nth-child(3) .mkt-bar__fill { animation: mkt-bar3 10s infinite; }
+    .demo-mkt.is-playing .mkt-bar:nth-child(4) .mkt-bar__fill { animation: mkt-bar4 10s infinite; }
+    .demo-mkt.is-playing .mkt-bar:nth-child(5) .mkt-bar__fill { animation: mkt-bar5 10s infinite; }
+
+    .demo-mkt.is-playing .stagefade { animation: mkt-veil 10s infinite; }
+  }
+
+  /* 1. each tile's period-over-period delta rises into place */
+  @keyframes mkt-delta1 { 0%, 4% { opacity: 0; transform: translateY(0.35em); } 11%, 100% { opacity: 1; transform: none; } }
+  @keyframes mkt-delta2 { 0%, 7% { opacity: 0; transform: translateY(0.35em); } 14%, 100% { opacity: 1; transform: none; } }
+  @keyframes mkt-delta3 { 0%, 10% { opacity: 0; transform: translateY(0.35em); } 17%, 100% { opacity: 1; transform: none; } }
+  @keyframes mkt-delta4 { 0%, 13% { opacity: 0; transform: translateY(0.35em); } 20%, 100% { opacity: 1; transform: none; } }
+
+  /* 2. then the selected tile's trend draws itself across the month */
+  @keyframes mkt-draw { 0%, 22% { stroke-dashoffset: 1; } 44%, 100% { stroke-dashoffset: 0; } }
+  @keyframes mkt-fill { 0%, 24% { opacity: 0; } 50%, 100% { opacity: 0.12; } }
+
+  /* 3. and the acquisition split grows from zero. Width, not scaleX: a scaled bar squashes its
+        own rounded cap, and width is what the real component sets. */
+  @keyframes mkt-bar1 { 0%, 52% { width: 0; } 62%, 100% { width: var(--w); } }
+  @keyframes mkt-bar2 { 0%, 55% { width: 0; } 65%, 100% { width: var(--w); } }
+  @keyframes mkt-bar3 { 0%, 58% { width: 0; } 68%, 100% { width: var(--w); } }
+  @keyframes mkt-bar4 { 0%, 61% { width: 0; } 71%, 100% { width: var(--w); } }
+  @keyframes mkt-bar5 { 0%, 64% { width: 0; } 74%, 100% { width: var(--w); } }
+
+  @keyframes mkt-veil { 0%, 92% { opacity: 0; } 96%, 100% { opacity: 1; } }
+</style>

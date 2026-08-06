@@ -1,0 +1,456 @@
+---
+// Demo — "The monthly client report". A recreation of apps/web/src/routes/(app)/reports/[id]:
+// the review screen, where you read what the client will read, fix it, and send it. The status
+// walks the document's real lifecycle — Concept → Wordt gemaakt → Klaar om na te kijken →
+// Verstuurd — and the document fills itself in while it is being made.
+//
+// The screen is two halves, exactly as the real one is (`grid lg:grid-cols-2`): the editable
+// prose on the left, one block per section with the "met de hand aangepast" marker and the
+// "Opnieuw schrijven" action, and on the right the document itself — the same artefact the PDF
+// prints. Three things about that order are the product, not decoration. The *figure* is drawn
+// before the prose, because a report freezes every number it prints first and the text is then
+// written about that snapshot: the tables and the paragraphs agree by construction. The
+// reviewer then rewrites one paragraph by hand, and the document on the right changes with it.
+// And nothing sends itself — the send button is the last thing pressed, by a person.
+//
+// Base frame = sent, per the motion contract in showcase.css: with JavaScript off or reduced
+// motion on, this rests on the meaningful "after" state — a finished document that went out,
+// published in the client portal.
+//
+// Anything whose *text* changes (the status chip, the two labels that flip once the report has
+// gone out, the paragraph the reviewer rewrites) is rendered as all its variants stacked in one
+// grid cell and cross-faded with opacity, the technique DemoInvoice establishes. `display` is
+// never animated.
+//
+// Deliberate compressions, all of them about *which controls are drawn*, never about their
+// wording:
+//   · The app hides its write controls once a report is sent — `canEdit` goes false, so the
+//     pencil and "Opnieuw schrijven" disappear, "Opnieuw genereren" disappears, and the delete
+//     icon disappears the moment `sent_at` is set. Drawing that literally would leave the
+//     resting frame showing none of what this screen is *for*, so the demo keeps the review
+//     surface drawn at rest and only flips the two labels the app flips ("Naar de klant sturen"
+//     → "Opnieuw versturen", "In het portaal publiceren" → "Uit het portaal halen"). The delete
+//     icon is simply left out: at rest it genuinely does not exist.
+//   · The same at the other end of the lifecycle: the app renders no Pdf link until there is a
+//     PDF and no send button until the report is ready, and disables publish while it is still
+//     a draft. The demo draws all three from the start and dims them until they apply, because
+//     three controls appearing one by one would reflow the header under the reader's eye.
+//   · Pressing the pencil opens a textarea in the app. The demo draws the press and its result
+//     — the rewritten paragraph and the "met de hand aangepast" marker — and not the textarea.
+//   · Prose is drawn as bars, never as filler sentences: a bar reads as "a paragraph" without
+//     pretending to be a sentence the product wrote.
+import AppFrame from './AppFrame.astro';
+import Icon from './Icon.astro';
+import { labels, type Locale } from './labels.ts';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const l = labels[locale];
+const t = {
+  client: 'Studio Noord',
+  period: locale === 'nl' ? 'september 2026' : 'September 2026',
+};
+
+// Ragged right edges, so a block reads as text. Each paragraph owns a run of line numbers, and
+// the same run is used in the editor and on the sheet — it is the same paragraph, in the two
+// places the screen shows it.
+const proseSummary = ['96%', '88%', '57%']; // rep-ln--1…3
+const proseTraffic = ['94%', '99%', '46%']; // rep-ln--4…6, as the model drafted it
+const proseTrafficEdited = ['87%', '96%', '63%']; // rep-ln--4…6, after the reviewer's rewrite
+const proseConversions = ['93%', '71%']; // rep-ln--7…8
+
+// Four channels, this period against the comparison period — the shape every section prints.
+const figure = [
+  [74, 59],
+  [96, 82],
+  [45, 53],
+  [62, 38],
+];
+---
+
+<AppFrame
+  locale={locale}
+  active="reports"
+  nav={['dashboard', 'companies', 'projects', 'time', 'marketing', 'reports', 'invoices', 'subscriptions']}
+  class="demo-rep"
+>
+  <div class="rep-back muted"><Icon name="arrowLeft" size={0.8} />{l.navReports}</div>
+
+  <div class="screen__head rep-head">
+    <div class="rep-headmain">
+      <div class="rep-titlerow">
+        <span class="screen__title">{t.client}</span>
+        <span class="rep-swap">
+          <span class="chip rep-st-draft">{l.repStDraft}</span>
+          <span class="chip rep-chip-gen rep-st-gen">
+            <span class="rep-pulse"></span>{l.repStGenerating}
+          </span>
+          <span class="chip chip--warn rep-st-ready">{l.repStReady}</span>
+          <span class="chip chip--ok rep-st-sent"><Icon name="check" size={0.8} />{l.repStSent}</span>
+        </span>
+      </div>
+      <div class="screen__sub">{t.period} · {l.repAudienceClient}</div>
+    </div>
+
+    <div class="rep-actions">
+      <span class="btn rep-btn rep-gate"><Icon name="download" size={0.8} />{l.repPdf}</span>
+      <span class="btn rep-btn"><Icon name="refreshCw" size={0.8} />{l.repRegenerate}</span>
+      <span class="btn btn--brand rep-btn rep-gate rep-send">
+        <Icon name="send" size={0.8} />
+        <span class="rep-swap rep-swap--send">
+          <span class="rep-lbl-1">{l.repSend}</span>
+          <span class="rep-lbl-2">{l.repSendAgain}</span>
+        </span>
+      </span>
+    </div>
+  </div>
+
+  <div class="rep-grid">
+    <div class="rep-prose">
+      <section class="rep-ed">
+        <header class="rep-ed__h">
+          <span class="rep-ed__t">{l.repSummary}</span>
+          <span class="rep-ed__acts">
+            <span class="btn rep-rewrite"><Icon name="sparkles" size={0.7} />{l.repRewrite}</span>
+            <span class="rep-pencil"><Icon name="pencil" size={0.75} /></span>
+          </span>
+        </header>
+        <div class="rep-body">
+          {proseSummary.map((w, i) => <i class={`rep-ln rep-ln--${i + 1}`} style={`width:${w}`} />)}
+        </div>
+      </section>
+
+      <section class="rep-ed">
+        <header class="rep-ed__h">
+          <span class="rep-ed__t">{l.repSectionTraffic}</span>
+          <span class="rep-edited">{l.repEdited}</span>
+          <span class="rep-ed__acts">
+            <span class="btn rep-rewrite"><Icon name="sparkles" size={0.7} />{l.repRewrite}</span>
+            <span class="rep-pencil rep-pencil--2"><Icon name="pencil" size={0.75} /></span>
+          </span>
+        </header>
+        <div class="rep-swapbody">
+          <div class="rep-body rep-body--ai">
+            {proseTraffic.map((w, i) => <i class={`rep-ln rep-ln--${i + 4}`} style={`width:${w}`} />)}
+          </div>
+          <div class="rep-body rep-body--edited">
+            {
+              proseTrafficEdited.map((w, i) => (
+                <i class={`rep-ln rep-ln--${i + 4}`} style={`width:${w}`} />
+              ))
+            }
+          </div>
+        </div>
+      </section>
+
+      <section class="rep-ed">
+        <header class="rep-ed__h">
+          <span class="rep-ed__t">{l.repSectionConversions}</span>
+          <span class="rep-ed__acts">
+            <span class="btn rep-rewrite"><Icon name="sparkles" size={0.7} />{l.repRewrite}</span>
+            <span class="rep-pencil"><Icon name="pencil" size={0.75} /></span>
+          </span>
+        </header>
+        <div class="rep-body">
+          {
+            proseConversions.map((w, i) => (
+              <i class={`rep-ln rep-ln--${i + 7}`} style={`width:${w}`} />
+            ))
+          }
+        </div>
+      </section>
+    </div>
+
+    <div class="rep-doc">
+      <div class="rep-doc__h">
+        <span class="rep-doc__t"><Icon name="eye" size={0.85} />{l.repPreview}</span>
+        <span class="btn rep-pub rep-gate">
+          <span class="rep-swap rep-swap--pub">
+            <span class="rep-lbl-1">{l.repPublish}</span>
+            <span class="rep-lbl-2">{l.repUnpublish}</span>
+          </span>
+        </span>
+      </div>
+
+      <div class="rep-page">
+        <div class="rep-page__head">
+          <div class="rep-page__title">{l.repDocument}</div>
+          <div class="rep-page__meta">{t.client} · {t.period}</div>
+        </div>
+
+        {/* The summary is a wash block with an accent rule and a small accent heading; a
+            section is a plain heading with the same rule. Both from the shipped design,
+            apps/api/app/modules/reporting/render/designs/standard.css. */}
+        <div class="rep-sum">
+          <div class="rep-sum__h">{l.repSummary}</div>
+          <div class="rep-body">
+            {proseSummary.map((w, i) => <i class={`rep-ln rep-ln--${i + 1}`} style={`width:${w}`} />)}
+          </div>
+        </div>
+
+        <div class="rep-sec">
+          <div class="rep-sec__h">{l.repSectionTraffic}</div>
+          {/* Narrative above the chart, the order standard.body.html prints them in. */}
+          <div class="rep-swapbody">
+            <div class="rep-body rep-body--ai">
+              {proseTraffic.map((w, i) => <i class={`rep-ln rep-ln--${i + 4}`} style={`width:${w}`} />)}
+            </div>
+            <div class="rep-body rep-body--edited">
+              {
+                proseTrafficEdited.map((w, i) => (
+                  <i class={`rep-ln rep-ln--${i + 4}`} style={`width:${w}`} />
+                ))
+              }
+            </div>
+          </div>
+          <div class="rep-fig">
+            {
+              figure.map(([now, before]) => (
+                <span class="rep-grp">
+                  <span class="rep-bar" style={`height:${now}%`} />
+                  <span class="rep-bar rep-bar--cmp" style={`height:${before}%`} />
+                </span>
+              ))
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stagefade"></div>
+</AppFrame>
+
+<style is:global>
+  /* Measured, not guessed. Two columns of real controls need more room than the single column
+     did, and how much depends on how many rows wrap: below ~37em of frame each section header
+     puts its two actions on a line of their own, above it they sit beside the title. Worst
+     measured case is 29.6em narrow and 27.6em wide, and each is set an em above that, so a
+     platform whose system font runs wider than this one can wrap one more row anywhere and
+     the chart at the foot of the document still clears the frame's bottom edge. Checked at
+     every viewport from a 360px phone (sidebar collapsed to its icon rail) through the 502px
+     tour column to the 672px feature page, in both locales. */
+  .demo-rep .app { height: 30.8em; }
+  @container (min-width: 37em) {
+    .demo-rep .app { height: 28.8em; }
+  }
+
+  .demo-rep .rep-back { display: inline-flex; align-items: center; gap: 0.3em; font-size: 0.85em; margin-bottom: 0.5em; }
+
+  /* The head wraps the way the app's does (`flex-wrap items-start justify-between`): at this
+     width the three actions take a line of their own under the title. */
+  .demo-rep .rep-head { align-items: flex-start; flex-wrap: wrap; gap: 0.5em; margin-bottom: 0.7em; }
+  .demo-rep .rep-headmain { min-width: 0; }
+  .demo-rep .rep-titlerow { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5em; }
+  .demo-rep .rep-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 0.35em; margin-left: auto; }
+  .demo-rep .rep-btn { padding: 0.35em 0.5em; font-size: 0.74em; }
+  /* Narrow frames: the three actions would take a second row of their own, which costs more
+     than the notch of type does. (After the rule above, or it loses on source order.) */
+  @container (max-width: 37em) {
+    .demo-rep .rep-btn { padding: 0.3em 0.45em; font-size: 0.6em; }
+  }
+
+  /* One cell, every variant stacked in it, so nothing on the row reflows as the state changes. */
+  .demo-rep .rep-swap { display: inline-grid; justify-items: start; }
+  .demo-rep .rep-swap > * { grid-area: 1 / 1; }
+
+  /* base = sent: only the settled variant of each swap is visible */
+  .demo-rep .rep-st-draft,
+  .demo-rep .rep-st-gen,
+  .demo-rep .rep-st-ready,
+  .demo-rep .rep-lbl-1,
+  .demo-rep .rep-body--ai { opacity: 0; }
+  .demo-rep .rep-st-sent,
+  .demo-rep .rep-lbl-2,
+  .demo-rep .rep-body--edited { opacity: 1; }
+
+  /* "Wordt gemaakt" wears the app's blue; the other three map onto the shared chip variants. */
+  .demo-rep .rep-chip-gen {
+    color: var(--b2);
+    border-color: color-mix(in srgb, var(--b2) 42%, transparent);
+    background: color-mix(in srgb, var(--b2) 12%, transparent);
+  }
+  .demo-rep .rep-pulse { width: 0.42em; height: 0.42em; border-radius: 50%; background: currentColor; flex: none; }
+
+  /* Two columns, as `grid lg:grid-cols-2` on the real screen. This is the only two-column
+     layout in the tour, so the subtree is set one notch down: the app's own two columns are
+     narrower than its single-column screens, and at the frame's width that is the difference
+     between drawing the real controls and having to drop one. */
+  .demo-rep .rep-grid {
+    font-size: 0.84em;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.8em;
+    align-items: start;
+  }
+
+  /* --- left: one editable block per section ------------------------------------------- */
+  .demo-rep .rep-ed {
+    border: 1px solid var(--bd);
+    border-radius: 0.6em;
+    background: var(--rz);
+    padding: 0.5em 0.55em;
+  }
+  .demo-rep .rep-ed + .rep-ed { margin-top: 0.5em; }
+  .demo-rep .rep-ed__h { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3em; margin-bottom: 0.4em; }
+  .demo-rep .rep-ed__t { font-size: 0.8em; font-weight: 650; }
+  .demo-rep .rep-edited {
+    border-radius: 999px; background: var(--sf); color: var(--mu);
+    padding: 0.05em 0.45em; font-size: 0.6em; white-space: nowrap;
+  }
+  .demo-rep .rep-ed__acts { display: flex; align-items: center; gap: 0.25em; margin-left: auto; flex: none; }
+  .demo-rep .rep-rewrite { padding: 0.2em 0.42em; border-radius: 0.45em; font-size: 0.62em; gap: 0.22em; }
+  .demo-rep .rep-pencil {
+    display: grid; place-items: center; flex: none;
+    width: 1.4em; height: 1.4em; border-radius: 0.4em; color: var(--mu);
+  }
+
+  /* --- right: the document itself ------------------------------------------------------ */
+  .demo-rep .rep-doc__h {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 0.3em; margin-bottom: 0.4em;
+  }
+  .demo-rep .rep-doc__t { display: flex; align-items: center; gap: 0.35em; font-size: 0.8em; font-weight: 650; }
+  .demo-rep .rep-doc__t svg { color: var(--mu); }
+  /* margin-left:auto keeps it on the right when the row is too narrow to hold both and the
+     button drops to its own line — where `justify-content` alone would left-align it. */
+  .demo-rep .rep-pub { margin-left: auto; padding: 0.2em 0.42em; border-radius: 0.45em; font-size: 0.62em; }
+
+  /* The sheet: framed exactly like the real preview pane, and the same artefact the PDF
+     prints. */
+  .demo-rep .rep-page {
+    border: 1px solid var(--bd);
+    border-radius: 0.7em;
+    background: var(--rz);
+    padding: 0.7em 0.8em;
+  }
+  .demo-rep .rep-page__head { padding-bottom: 0.45em; margin-bottom: 0.55em; border-bottom: 1px solid var(--bd); }
+  .demo-rep .rep-page__title { font-weight: 700; font-size: 0.98em; letter-spacing: -0.01em; }
+  .demo-rep .rep-page__meta { color: var(--mu); font-size: 0.78em; }
+
+  .demo-rep .rep-sum {
+    border-left: 2px solid var(--b);
+    border-radius: 0 0.3em 0.3em 0;
+    background: var(--sf);
+    padding: 0.4em 0.5em;
+    margin-bottom: 0.65em;
+  }
+  .demo-rep .rep-sum__h {
+    font-size: 0.68em; font-weight: 700; letter-spacing: 0.07em;
+    text-transform: uppercase; color: var(--b); margin-bottom: 0.3em;
+  }
+  .demo-rep .rep-sec__h {
+    border-left: 2px solid var(--b);
+    padding-left: 0.4em;
+    font-size: 0.86em; font-weight: 700; letter-spacing: -0.01em;
+    margin-bottom: 0.4em;
+  }
+
+  .demo-rep .rep-ln {
+    display: block; height: 0.4em; border-radius: 999px;
+    background: color-mix(in srgb, var(--mu) 38%, transparent);
+    transform-origin: left center;
+  }
+  .demo-rep .rep-ln + .rep-ln { margin-top: 0.3em; }
+  /* The paragraph the reviewer rewrites: both versions stacked in one cell, so the block never
+     changes height and the two are never legibly drawn on top of each other. */
+  .demo-rep .rep-swapbody { display: grid; }
+  .demo-rep .rep-swapbody > * { grid-area: 1 / 1; }
+
+  .demo-rep .rep-fig {
+    display: flex; align-items: flex-end; gap: 0.6em;
+    height: 2.4em; margin-top: 0.55em;
+    padding-bottom: 0.2em; border-bottom: 1px solid var(--bd);
+  }
+  .demo-rep .rep-grp { flex: 1; height: 100%; display: flex; align-items: flex-end; gap: 0.16em; }
+  .demo-rep .rep-bar { flex: 1; border-radius: 0.2em 0.2em 0 0; background: var(--b); transform-origin: bottom center; }
+  .demo-rep .rep-bar--cmp { background: color-mix(in srgb, var(--mu) 32%, transparent); }
+
+  .demo-rep .stagefade { position: absolute; inset: 0; background: var(--sf); opacity: 0; pointer-events: none; z-index: 30; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    /* Playing, the demo starts from an empty draft and walks back to the resting frame.
+       One 12s clock for everything, so the status chip and the document can never disagree. */
+    .demo-rep.is-playing .rep-st-draft { animation: rep-draft 12s infinite; }
+    .demo-rep.is-playing .rep-st-gen { animation: rep-gen 12s infinite; }
+    .demo-rep.is-playing .rep-st-ready { animation: rep-ready 12s infinite; }
+    .demo-rep.is-playing .rep-st-sent { animation: rep-sent 12s infinite; }
+    .demo-rep.is-playing .rep-pulse { animation: rep-pulse 1.1s ease-in-out infinite; }
+
+    /* The numbers are frozen first, then the prose is written about them. */
+    .demo-rep.is-playing .rep-bar { animation: rep-figure 12s infinite; }
+    .demo-rep.is-playing .rep-ln--1 { animation: rep-l1 12s infinite; }
+    .demo-rep.is-playing .rep-ln--2 { animation: rep-l2 12s infinite; }
+    .demo-rep.is-playing .rep-ln--3 { animation: rep-l3 12s infinite; }
+    .demo-rep.is-playing .rep-ln--4 { animation: rep-l4 12s infinite; }
+    .demo-rep.is-playing .rep-ln--5 { animation: rep-l5 12s infinite; }
+    .demo-rep.is-playing .rep-ln--6 { animation: rep-l6 12s infinite; }
+    .demo-rep.is-playing .rep-ln--7 { animation: rep-l7 12s infinite; }
+    .demo-rep.is-playing .rep-ln--8 { animation: rep-l8 12s infinite; }
+
+    /* Nothing can be published or sent until there is something to read. */
+    .demo-rep.is-playing .rep-gate { animation: rep-enable 12s infinite; }
+
+    /* Read it, rewrite one paragraph by hand, publish it, and only then send it. */
+    .demo-rep.is-playing .rep-pencil--2 { animation: rep-press-pencil 12s infinite; }
+    .demo-rep.is-playing .rep-body--ai { animation: rep-draft-text 12s infinite; }
+    .demo-rep.is-playing .rep-body--edited { animation: rep-edited-text 12s infinite; }
+    .demo-rep.is-playing .rep-edited { animation: rep-edited-mark 12s infinite; }
+    .demo-rep.is-playing .rep-pub { animation: rep-enable 12s infinite, rep-press-pub 12s infinite; }
+    .demo-rep.is-playing .rep-send { animation: rep-enable 12s infinite, rep-press-send 12s infinite; }
+    .demo-rep.is-playing .rep-swap--pub .rep-lbl-1 { animation: rep-pub-before 12s infinite; }
+    .demo-rep.is-playing .rep-swap--pub .rep-lbl-2 { animation: rep-pub-after 12s infinite; }
+    .demo-rep.is-playing .rep-swap--send .rep-lbl-1 { animation: rep-send-before 12s infinite; }
+    .demo-rep.is-playing .rep-swap--send .rep-lbl-2 { animation: rep-send-after 12s infinite; }
+
+    .demo-rep.is-playing .stagefade { animation: rep-veil 12s infinite; }
+  }
+
+  /* --- the four statuses, cross-faded in one cell -------------------------------------
+     The hand-off is one loop percent (~0.12s): long enough not to flicker, short enough that
+     two labels are never legibly stacked on each other. The arriving chip rises into place. */
+  @keyframes rep-draft { 0%, 7% { opacity: 1; } 8%, 100% { opacity: 0; } }
+  @keyframes rep-gen {
+    0%, 7% { opacity: 0; transform: translateY(0.15em); }
+    8%, 40% { opacity: 1; transform: none; }
+    41%, 100% { opacity: 0; transform: none; }
+  }
+  @keyframes rep-ready {
+    0%, 40% { opacity: 0; transform: translateY(0.15em); }
+    41%, 70% { opacity: 1; transform: none; }
+    71%, 100% { opacity: 0; transform: none; }
+  }
+  @keyframes rep-sent {
+    0%, 70% { opacity: 0; transform: translateY(0.15em); }
+    71%, 100% { opacity: 1; transform: none; }
+  }
+  @keyframes rep-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+
+  /* --- the document being made: the figure first, then the prose, line by line --------- */
+  @keyframes rep-figure { 0%, 11% { transform: scaleY(0); } 16%, 100% { transform: scaleY(1); } }
+  @keyframes rep-l1 { 0%, 17% { transform: scaleX(0); } 20%, 100% { transform: scaleX(1); } }
+  @keyframes rep-l2 { 0%, 19.6% { transform: scaleX(0); } 22.6%, 100% { transform: scaleX(1); } }
+  @keyframes rep-l3 { 0%, 22.2% { transform: scaleX(0); } 25.2%, 100% { transform: scaleX(1); } }
+  @keyframes rep-l4 { 0%, 24.8% { transform: scaleX(0); } 27.8%, 100% { transform: scaleX(1); } }
+  @keyframes rep-l5 { 0%, 27.4% { transform: scaleX(0); } 30.4%, 100% { transform: scaleX(1); } }
+  @keyframes rep-l6 { 0%, 30% { transform: scaleX(0); } 33%, 100% { transform: scaleX(1); } }
+  @keyframes rep-l7 { 0%, 32.6% { transform: scaleX(0); } 35.6%, 100% { transform: scaleX(1); } }
+  @keyframes rep-l8 { 0%, 35.2% { transform: scaleX(0); } 38.2%, 100% { transform: scaleX(1); } }
+
+  /* --- the deliberate part: fix one paragraph, publish it, and only then send it -------- */
+  @keyframes rep-enable { 0%, 40% { opacity: 0.45; } 44%, 100% { opacity: 1; } }
+  @keyframes rep-press-pencil { 0%, 47% { transform: none; } 49% { transform: scale(0.88); } 51%, 100% { transform: none; } }
+  @keyframes rep-draft-text { 0%, 50% { opacity: 1; } 53%, 100% { opacity: 0; } }
+  @keyframes rep-edited-text { 0%, 50% { opacity: 0; } 53%, 100% { opacity: 1; } }
+  @keyframes rep-edited-mark { 0%, 52% { opacity: 0; } 55%, 100% { opacity: 1; } }
+  @keyframes rep-press-pub { 0%, 57% { transform: none; } 59% { transform: scale(0.95); } 61%, 100% { transform: none; } }
+  @keyframes rep-pub-before { 0%, 60% { opacity: 1; } 61%, 100% { opacity: 0; } }
+  @keyframes rep-pub-after { 0%, 60% { opacity: 0; } 61%, 100% { opacity: 1; } }
+  @keyframes rep-press-send { 0%, 67% { transform: none; } 69% { transform: scale(0.95); } 71%, 100% { transform: none; } }
+  @keyframes rep-send-before { 0%, 70% { opacity: 1; } 71%, 100% { opacity: 0; } }
+  @keyframes rep-send-after { 0%, 70% { opacity: 0; } 71%, 100% { opacity: 1; } }
+
+  @keyframes rep-veil { 0%, 92% { opacity: 0; } 96%, 100% { opacity: 1; } }
+</style>

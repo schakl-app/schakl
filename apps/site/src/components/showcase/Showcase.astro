@@ -12,6 +12,9 @@ import DemoBudgetBurn from './DemoBudgetBurn.astro';
 import DemoTasks from './DemoTasks.astro';
 import DemoLeave from './DemoLeave.astro';
 import DemoWhiteLabel from './DemoWhiteLabel.astro';
+import DemoInvoice from './DemoInvoice.astro';
+import DemoReport from './DemoReport.astro';
+import DemoMarketing from './DemoMarketing.astro';
 
 interface Item {
   demo: string;
@@ -35,7 +38,12 @@ const demos: Record<string, any> = {
   tasks: DemoTasks,
   leave: DemoLeave,
   whiteLabel: DemoWhiteLabel,
+  invoice: DemoInvoice,
+  report: DemoReport,
+  marketing: DemoMarketing,
 };
+// A row whose demo key has no component is dropped rather than rendered empty: the CMS can name
+// a demo that does not exist yet, and a missing recreation must not take the narration with it.
 const rows = items.filter((it) => demos[it.demo]);
 ---
 
