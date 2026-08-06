@@ -55,7 +55,7 @@ from app.modules.marketing.service import (
     resolve_seranking_key,
 )
 from app.modules.marketing.sources import source_for
-from app.registry import AUDIENCE_INTERNAL, ReportSectionSpec, ReportWindow
+from app.registry import AUDIENCE_BOTH, AUDIENCE_INTERNAL, ReportSectionSpec, ReportWindow
 
 logger = logging.getLogger("schakl.marketing")
 
@@ -514,12 +514,19 @@ async def _site_audit(ctx: RequestContext, window: ReportWindow) -> dict[str, An
     }
 
 
+#: Every data section is contributed to **both** documents, and only the audit is withheld.
+#: The two reports are about the same month and read the same numbers; what makes them
+#: different is the prompt, not the data. Marking these ``client``-only left the internal
+#: analysis with one section to reason over — it could tell a marketer about the site audit and
+#: nothing about the traffic, the rankings or the conversions, which is most of what they need
+#: and all of what the workflow this replaces gave them.
 MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
     ReportSectionSpec(
         key="marketing.traffic_channels",
         title_key="reporting.section.traffic_channels",
         brief_key="reporting.brief.traffic_channels",
         provider=_traffic_channels,
+        audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
         position=10,
     ),
@@ -528,6 +535,7 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         title_key="reporting.section.search_engines",
         brief_key="reporting.brief.search_engines",
         provider=_split_section("organic_sources", "share", 10),
+        audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
         position=20,
     ),
@@ -536,6 +544,7 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         title_key="reporting.section.rankings",
         brief_key="reporting.brief.rankings",
         provider=_rankings,
+        audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
         position=30,
     ),
@@ -544,6 +553,7 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         title_key="reporting.section.search_console",
         brief_key="reporting.brief.search_console",
         provider=_search_console,
+        audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
         position=40,
     ),
@@ -552,6 +562,7 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         title_key="reporting.section.referral",
         brief_key="reporting.brief.referral",
         provider=_split_section("referral_sources", None, MAX_TABLE_ROWS),
+        audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
         position=50,
     ),
@@ -560,6 +571,7 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         title_key="reporting.section.social",
         brief_key="reporting.brief.social",
         provider=_split_section("social_sources", "grouped", 10),
+        audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
         position=60,
     ),
@@ -568,6 +580,7 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         title_key="reporting.section.conversions",
         brief_key="reporting.brief.conversions",
         provider=_conversions,
+        audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
         position=70,
     ),
@@ -576,6 +589,7 @@ MARKETING_REPORT_SECTIONS: list[ReportSectionSpec] = [
         title_key="reporting.section.ai_search",
         brief_key="reporting.brief.ai_search",
         provider=_ai_search,
+        audience=AUDIENCE_BOTH,
         requires_permission="marketing.metrics.read",
         position=80,
     ),

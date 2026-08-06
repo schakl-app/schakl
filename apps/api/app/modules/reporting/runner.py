@@ -276,7 +276,7 @@ async def _tone(
         )
         if tone is not None:
             return tone
-    return await session.scalar(
+    default = await session.scalar(
         select(ReportTone)
         .where(
             ReportTone.org_id == org.id,
@@ -285,3 +285,11 @@ async def _tone(
         )
         .limit(1)
     )
+    if default is not None:
+        return default
+    # Nobody has opened Instellingen → Rapportage yet, so the seeded house voice does not exist
+    # and this run would write in no particular voice at all. Seed it here rather than let the
+    # *first* report — the one somebody judges the feature by — come out toneless.
+    from app.modules.reporting.service import ToneService
+
+    return await ToneService(SystemContext(org=org, session=session)).ensure_default()

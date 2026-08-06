@@ -117,12 +117,24 @@ def test_a_layout_reorders_and_disables_but_never_hides_a_new_section() -> None:
 
 
 def test_the_internal_analysis_and_the_client_document_are_different_documents() -> None:
+    """Same numbers, different lens — and exactly one section withheld.
+
+    What separates the two documents is the *prompt*, not the data: the internal analysis has
+    to reason over the traffic, the rankings and the conversions to be worth anything. Only
+    the audit is client-withheld — a list of somebody's technical faults is working material,
+    and reading it as a deliverable has the client fixing our to-do list.
+    """
     client = {s.key for s in generate.enabled_sections(ReportAudience.CLIENT.value, None)}
     internal = {s.key for s in generate.enabled_sections(ReportAudience.INTERNAL.value, None)}
-    # The audit is working material: a list of a client's technical faults is not a
-    # deliverable, and reading it as one has the client fixing our to-do list.
+
     assert "marketing.site_audit" in internal
     assert "marketing.site_audit" not in client
+    # Everything else reaches both. An internal analysis that could only see the audit was
+    # blind to most of what the marketer needs.
+    assert client - {"marketing.site_audit"} <= internal
+    for key in ("marketing.traffic_channels", "marketing.rankings", "marketing.conversions"):
+        assert key in internal, key
+        assert key in client, key
 
 
 # --------------------------------------------------------------------------------------- #
