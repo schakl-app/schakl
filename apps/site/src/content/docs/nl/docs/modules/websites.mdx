@@ -1,0 +1,102 @@
+---
+title: Websites
+description: "De site die op een domein staat: op @ of www, wie hem technisch beheert en op welk hostingaccount hij draait."
+sidebar:
+  order: 14
+---
+
+import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Niet elk domein is een website. De websitesmodule legt vast wélke van je domeinen echt een site
+dragen: op het hoofddomein of op `www`, wie hem technisch beheert en op welk hostingaccount hij
+draait. Eén website per domein, en dat domein bepaalt meteen van welke klant de site is.
+
+## Waar je het vindt
+
+In het hoofdmenu onder **Domeinen & websites → Websites**. Dat overzicht is de lijst; de
+detailpagina van een site is de **domeinpagina**, waar de website een eigen blok
+"Website" heeft. Elke rij in het overzicht linkt daar dan ook naartoe. Op een klantpagina staat
+het paneel **Websites** met de sites van die klant, hun host en hun hostingaccount.
+
+## Een website aanmaken
+
+Omdat een website altijd aan een domein hangt, begint aanmaken met dat domein.
+
+- **Domein.** De keuzelijst toont alleen domeinen die nog geen site hebben. Bestaat het domein
+  nog niet, typ het dan in de lijst: het volledige aanmaakformulier voor een domein opent in een
+  dialoog en de nieuwe domeinnaam staat daarna meteen geselecteerd.
+- **Host.** `@ (root)` of `www`. Dit is waar de site woont, niet waar hij naartoe omleidt.
+- **Technisch beheerder.** Geen vrij tekstveld maar een verwijzing: het bureau, de klant, een
+  medewerker of een contactpersoon. Standaard het bureau.
+- **Hosting.** Het hostingaccount waarop de site draait. Ook hier kun je vanuit de keuzelijst
+  een compleet nieuw hostingaccount aanmaken; het wordt na opslaan automatisch geselecteerd.
+- **Uptime-monitoring.** Een schakelaar, zichtbaar als groene pil in de kolom *Uptime*.
+
+Bewerken kan op twee plekken: via het ⋯-menu achter een regel in de lijst, of op de domeinpagina
+zelf in het blok Website. Verwijderen zit in datzelfde ⋯-menu.
+
+<Aside type="caution">
+Uptime-monitoring is op dit moment een vastgelegd gegeven, geen actieve bewaking: schakl. pollt
+de site niet zelf en stuurt er geen melding over. Gebruik de schakelaar om vast te leggen welke
+sites bewaakt horen te worden; je kunt de lijst erop sorteren.
+</Aside>
+
+## Het overzicht
+
+De lijst is de gedeelde tabel met je eigen kolomkeuze en serverzijdige sortering: **Website**
+(de domeinnaam, of `www.domein`), **Klant**, **Hosting**, **Technisch beheerder**, **Uptime** en
+**Aangemaakt**, plus je eigen velden. De klant en de hosting zijn sorteerbaar; de technisch
+beheerder niet, omdat dat vier verschillende soorten partij kan zijn.
+
+Naast de kolommenkiezer staan **Export/Import** en de **✎** die de selectievakjes aanzet. In
+bulk verplaats je een selectie naar een ander hostingaccount (of maak je dat veld leeg) en zet
+je uptime-monitoring aan of uit. Bulk verwijderen kan ook; de domeinen zelf blijven staan.
+
+De technisch beheerder ontbreekt bewust in de bulkbewerking. Zo'n verwijzing heeft geen "laat
+deze met rust"-stand, dus over een selectie zou hij altijd vooringevuld verschijnen en per
+ongeluk iedereen overschrijven.
+
+## Import en export
+
+Een website wordt bijgewerkt op de domeinnaam waar hij op staat. Een geëxporteerd bestand dat je
+bewerkt en terugzet raakt dus dezelfde rijen in plaats van te botsen. De kolommen zijn `domain`
+(verplicht en niet te wijzigen op een bestaande rij), `root` (`@` of `www`), `hosting`,
+`technical_owner` en `uptime_enabled`. De klant gaat wel mee naar buiten maar is niet te
+schrijven: die volgt uit het domein.
+
+## Rechten
+
+| Recht | Standaard bij |
+| --- | --- |
+| `websites.website.read` | Beheerder, Medewerker, Klant |
+| `websites.website.write` | Beheerder |
+| `websites.website.delete` | Beheerder |
+
+Aan te passen per rol onder *Instellingen → Rollen*. Een collega die tot een deel van de klanten
+beperkt is, ziet alleen de websites van die klanten; de klant van een site is die van zijn
+domein. Wil je niet dat een klantlogin het menu Websites ziet, haal dan `websites.website.read`
+bij de rol *Klant* weg.
+
+Het aanmaken van een website vraagt ook leesrecht op domeinen: zonder domein om aan te koppelen
+is er niets te kiezen.
+
+## Goed om te weten
+
+- Eén site per domein. Een domein dat al een site heeft, staat niet meer in de keuzelijst.
+- Een website verwijderen laat het domein staan. Een *domein* verwijderen neemt de website wel
+  mee.
+- Het domein van een bestaande site kun je niet wisselen, ook niet via een import: het domein
+  ís de identiteit van de website.
+- De hosting mag leeg blijven. Dat is een eerlijke stand voor een site waarvan je (nog) niet
+  vastlegt waar hij draait.
+- Websites hebben ook eigen velden. Definieer ze onder *Instellingen → Aangepaste velden* voor het
+  type website; ze verschijnen in het formulier en als kolom in de lijst.
+- Websites is een gelicentieerde module met een eigen sku. Verloopt de licentie, dan wordt de
+  lijst alleen-lezen; exporteren blijft werken en er gaat niets verloren.
+
+<CardGrid>
+  <LinkCard title="Domeinen" href="/nl/docs/modules/domains/" description="Het register waar elke website aan hangt." />
+  <LinkCard title="Hosting" href="/nl/docs/modules/hosting/" description="De accounts waar je websites op draaien." />
+  <LinkCard title="Klanten" href="/nl/docs/modules/companies/" description="Het klantdossier waar het paneel Websites staat." />
+  <LinkCard title="Licenties" href="/nl/docs/admin/licenses/" description="Websites is een gelicentieerde module." />
+</CardGrid>

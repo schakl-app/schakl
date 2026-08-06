@@ -1,6 +1,6 @@
 ---
 title: Installation
-description: Installing schakl. with Docker Compose — requirements, environment variables, the first-run wizard and hostnames.
+description: "Installing schakl. with Docker Compose: requirements, environment variables, the first-run wizard and hostnames."
 sidebar:
   order: 1
 ---
@@ -64,8 +64,8 @@ Also pin `SCHAKL_TAG` to an exact version (e.g. `1.2.3`) instead of `latest` —
 
 A request resolves to an organization in exactly two ways: a **verified custom domain**,
 or `<slug>.<SCHAKL_BASE_DOMAIN>`. An unknown hostname is a 404 — there is deliberately no
-fallback to "the only organization". Add another domain later under *Settings → Branding →
-Custom domain*; it activates after DNS TXT verification.
+fallback to "the only organization". Add another domain later under *Instellingen → Eigen domein*
+(Settings → Custom domain); it activates after DNS TXT verification.
 
 ## Health endpoints
 
@@ -73,4 +73,4 @@ Custom domain*; it activates after DNS TXT verification.
 | --- | --- | --- |
 | `GET /health` | none | liveness — cheap, never touches the database |
 | `GET /health/ready` | none | readiness — checks Postgres, Redis and migrations without leaking details |
-| `GET /api/v1/system/info` | owner/admin | the *Settings → System* screen: versions, migration state, worker heartbeat |
+| `GET /api/v1/system/info` | Owner/Administrator | the *Instellingen → Systeeminformatie* (Settings → System information) screen: versions, migration state, worker heartbeat |

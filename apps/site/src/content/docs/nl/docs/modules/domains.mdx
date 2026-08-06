@@ -1,0 +1,157 @@
+---
+title: Domeinen
+description: "Het domeinregister van je bureau: registrar, DNS, e-mail, jaarlijkse verlengingen en de vraag welke domeinen je doorbelast."
+sidebar:
+  order: 13
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+De domeinenmodule is het register van elk domein dat je voor een klant beheert: wie de
+registrar is, waar de DNS staat, of er e-mail op draait, wanneer de verlenging valt en wat
+die verlenging kost. Wat de publieke DNS erover zegt, haalt schakl. er elke dag zelf bij.
+
+## Waar je het vindt
+
+In het hoofdmenu onder **Domeinen & websites → Domeinen**. Boven de lijst staan twee
+tabbladen: *Domeinen* en *TLD-tarieven*. Dat tweede tabblad is ook het scherm achter
+*Instellingen → Domeinen* ("TLD-tarieven voor jaarlijkse verlengingsfacturen"). Op elke
+klantpagina staat het paneel **Domeinen** met de domeinen van die klant, hun prijs per jaar
+en hun eerstvolgende verlenging.
+
+## Een domein vastleggen
+
+**Nieuw domein** opent één formulier:
+
+- **Domeinnaam.** Wat je plakt wordt teruggebracht tot het kale domein: van
+  `https://WWW.Example.NL/pagina` blijft `example.nl` over. Protocol, `www.`, poort en pad
+  verdwijnen, ook bij een import.
+- **Startdatum.** Wanneer de registratie begon. Hier hangt de jaarlijkse verlengingsfactuur
+  aan.
+- **Afwijkende prijs.** Een prijsafspraak voor dít domein, die het TLD-tarief opzij zet. Laat
+  je het leeg, dan staat het tarief van de extensie als hint onder het veld.
+- **Facturatie.** Op een nieuw domein ingeklapt (met de gekozen antwoorden in de kop), bij het
+  bewerken open. Hierin staan "Wel factureren / Niet factureren / Volg het register" en
+  **Automatisch factureren**.
+- **Klant**, **Status** (Actief, Doorverwijzing, Geparkeerd, Verlopen, Inactief) en, alleen bij
+  status Doorverwijzing, **Doorverwijzen naar**.
+- **Registrar** en **DNS-provider** uit je eigen providerlijst (*Instellingen → Providers*), en
+  een **Registratiecontact**: het bureau, de klant, een medewerker of een contactpersoon.
+- **E-mail actief**; staat die aan, dan verschijnen **E-mailprovider** en **E-mailcontact**.
+
+Elke keuzelijst biedt "＋ toevoegen": een klant, contactpersoon of provider die nog niet
+bestaat maak je aan zonder het formulier te verlaten.
+
+## Wat de DNS zelf vertelt
+
+Op de domeinpagina staat naast de gegevens een kaart **DNS** met **Nameservers**,
+**MX-records**, **DNSSEC** en **Laatst gecontroleerd**. Dat is een gewone publieke
+DNS-bevraging, dus je hebt er geen account bij de registrar voor nodig en het werkt voor elk
+domein. Een nachtelijke taak ververst alle domeinen van alle organisaties; een nieuw domein
+wordt meteen na het opslaan één keer opgehaald, zodat er nooit "Nooit" staat. De knop
+**Verversen** doet het ter plekke opnieuw.
+
+DNSSEC kent drie antwoorden: Ja, Nee en **Onbekend**. Onbekend betekent dat de vraag niet
+beantwoord kon worden, niet dat DNSSEC uitstaat.
+
+## Verlengen: de datum, de prijs en de factuur
+
+De startdatum bepaalt de verlengingsdatum: schakl. neemt de eerstvolgende verjaardag die nog
+komt, dus een domein dat je jaren geleden registreerde begint bij zijn volgende jaardag en
+nooit met terugwerkende kracht. Een nachtelijke taak zet die datum een jaar vooruit en geeft
+facturatie een regel `Domeinverlenging <naam> (<periode>)`. Hoe ver die factuur automatisch
+komt, bepaal je per domein met **Automatisch factureren** (of laat je op de instelling van de
+organisatie staan). Verlengingen die nog nergens op staan, kies je in de factuureditor onder
+*Nog te factureren domeinverlengingen*.
+
+De prijs komt van het tabblad **TLD-tarieven**: één jaarprijs per extensie, met historie.
+
+<Steps>
+
+1. Open *Domeinen → TLD-tarieven* (of *Instellingen → Domeinen*).
+2. **Prijs instellen** vraagt om de **TLD**, de **Prijs per jaar** en **Geldig vanaf**. Vandaag
+   wijzigt direct, een datum in de toekomst plant de wijziging in.
+3. Voor een ronde verhoging: **Prijsverhoging**, met *Percentage erbij*, *Vast bedrag erbij* of
+   *Nieuw bedrag instellen*, een **Bereik** (alle TLD's of één) en een **Ingangsdatum**.
+4. **Voorbeeld** toont per TLD huidig → nieuw en hoeveel domeinen het raakt. Pas **Doorvoeren**
+   schrijft de nieuwe prijzen weg.
+
+</Steps>
+
+<Aside type="caution">
+Al opgestelde facturen behouden hun bedrag. De prijshistorie is de bron: een factuur wordt
+geprijsd op het tarief dat gold op de factuurdatum, niet op het tarief van vandaag.
+</Aside>
+
+## Wel factureren, niet factureren, of het register volgen
+
+Een domeinlijst bevat namen die jij verlengt én namen die de klant zelf registreerde en die
+jij alleen ergens naartoe wijst. Alleen het register van een registrar weet het verschil, dus
+het veld **Facturatie** kent drie antwoorden:
+
+| Keuze | Wat er gebeurt |
+| --- | --- |
+| Wel factureren | De jaarlijkse verlenging wordt bij de klant in rekening gebracht. |
+| Niet factureren | Wij brengen er niets voor in rekening. |
+| Volg het register | Factureren als een gekoppeld register zegt dat wij de registratie houden. |
+
+Bij "Volg het register" staat er een zin bij die vertelt wie besliste, bijvoorbeeld "Staat in
+het register van OXXA, dus dit domein wordt gefactureerd" of "Er is nog geen register
+gekoppeld, dus dit domein wordt gefactureerd".
+
+<Aside type="caution">
+Alleen een register dat werkelijk is uitgelezen mag beperken wat je factureert; opgeslagen
+inloggegevens zijn niet genoeg. Zonder gekoppeld register verandert er dus niets aan wat je al
+factureerde. Zodra een register wél is opgehaald, stoppen de domeinen die het niet houdt met
+automatisch factureren. De OXXA-koppeling is geschreven op basis van de officiële
+API-documentatie en is nooit tegen een echt OXXA-account uitgeprobeerd.
+</Aside>
+
+## Lijst, export en bulk
+
+De lijst is de gedeelde tabel: je kiest zelf je kolommen (Domeinnaam, Klant, Status, Registrar,
+DNS-provider, DNSSEC, E-mail actief, Volgende verlenging, Prijs, Gefactureerd, Aangemaakt, plus
+je eigen velden) en sorteert erop. Naast de kolommenkiezer staan **Export/Import** en de **✎**
+die selectievakjes aanzet. In bulk wijzig je Status, Klant, Registrar, DNS-provider,
+E-mailprovider en Facturatie; dat laatste veld leegmaken betekent "Register volgen".
+
+Een import werkt bij op domeinnaam, genormaliseerd, dus een geëxporteerd bestand dat je bewerkt
+en terugzet raakt dezelfde rijen. De domeinnaam zelf is niet in bulk te wijzigen: die *is* het
+record. Nameservers, DNSSEC, MX, de volgende verlengingsdatum en de uiteindelijke prijs gaan
+alleen mee naar buiten. De TLD-tarieven zijn een eigen importbestand.
+
+Onder aan de domeinpagina staat de **activiteit**: wie wat wanneer wijzigde.
+
+## Rechten
+
+| Recht | Standaard bij |
+| --- | --- |
+| `domains.domain.read` | Beheerder, Medewerker, Klant |
+| `domains.domain.write` | Beheerder |
+| `domains.domain.delete` | Beheerder |
+| `domains.tld_price.read` | Beheerder, Medewerker |
+| `domains.tld_price.manage` | Beheerder |
+
+Aan te passen per rol onder *Instellingen → Rollen*. Een collega of portaallogin die tot een
+deel van de klanten beperkt is, ziet alleen de domeinen van die klanten. Wil je niet dat een
+klantlogin het menu Domeinen ziet, haal dan `domains.domain.read` bij de rol *Klant* weg.
+
+## Goed om te weten
+
+- Alleen de statussen Actief, Doorverwijzing en Geparkeerd verlengen. Verlopen en Inactief
+  krijgen geen verlengingsdatum en dus geen factuur.
+- Staat er geen prijs (geen TLD-tarief en geen afwijkende prijs), dan wordt er niets opgesteld
+  en blijft de verlenging openstaan. Zodra je een prijs voor die extensie instelt, wordt er
+  alsnog vanaf de oorspronkelijke datum gefactureerd; er gaat nooit stilzwijgend een jaar
+  verloren.
+- Een domein verwijderen neemt de website die erop staat mee. Het omgekeerde niet: een website
+  verwijderen laat het domein staan.
+- Status **Doorverwijzing** is op zichzelf een label. De omleiding zelf richt je in via de
+  Cloudflare-koppeling.
+
+<CardGrid>
+  <LinkCard title="Websites" href="/nl/docs/modules/websites/" description="De site die op een domein staat: @ of www, technisch beheer en hosting." />
+  <LinkCard title="Hosting" href="/nl/docs/modules/hosting/" description="De gedeelde hostingaccounts waar je websites op draaien." />
+  <LinkCard title="Import & export" href="/nl/docs/modules/import-export/" description="Hoe een bestand wordt ingelezen, gecontroleerd en teruggeschreven." />
+  <LinkCard title="Licenties" href="/nl/docs/admin/licenses/" description="Domeinen is een gelicentieerde module." />
+</CardGrid>

@@ -1,0 +1,161 @@
+---
+title: AI-assistentie
+description: "Eén AI-account voor het hele platform: je eigen provider en sleutel, vier functies die je los aanzet, een maandbudget met een meter, en spraak naar tekst."
+sidebar:
+  order: 28
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+schakl. heeft geen eigen AI-dienst en verkoopt geen tegoeden. Je koppelt je eigen account bij
+Anthropic, OpenAI of een server die de OpenAI-API spreekt, en elke AI-functie in het platform
+loopt via die ene sleutel, dat ene budget en die ene verbruiksmeter. Staat er niets ingesteld,
+dan zie je nergens in de app een AI-knop.
+
+## Waar je het vindt
+
+- *Instellingen → AI*, in de groep **Communicatie & koppelingen**: provider, sleutel, model,
+  functies, huisstijl, budget, spraak en verbruik.
+- De **Assistent**: het sterretje rechtsboven in de balk, op elke pagina.
+- De **Schrijfhulp**: het sterretje in de werkbalk van elk tekstveld met opmaak.
+- De **Urenhulp**: het veld **Snel toevoegen** boven het urenformulier op *Uren*.
+- **Brief me** en **AI-rapport**: twee knoppen op de klantpagina.
+
+AI valt onder de commerciële licentie; zie [Licenties](/nl/docs/admin/licenses/).
+
+## Instellen
+
+<Steps>
+1. Open *Instellingen → AI*. Daarvoor heb je het recht **AI-instellingen beheren** nodig, dat
+   standaard bij beheerders ligt.
+
+2. Kies bij **Provider** Anthropic, OpenAI of **OpenAI-compatibel (eigen server)**. Die laatste
+   is alles wat de OpenAI-chat-API spreekt op een adres van jezelf.
+
+3. Plak je sleutel bij **API-sleutel**. Hij wordt versleuteld opgeslagen en nooit teruggetoond:
+   een volgende keer staat er "Er is een sleutel opgeslagen; laat leeg om die te behouden", en
+   leeg laten bewaart hem.
+
+4. Vul **Basis-URL** alleen in bij OpenAI-compatibel (bijvoorbeeld `https://ai.example.com/v1`).
+   Opslaan zonder geeft een foutmelding op dat veld.
+
+5. Laat **Model** leeg voor de standaard van de provider, of typ er zelf een. Het veld is vrije
+   tekst, zodat een nieuw model geen nieuwe versie van schakl. vraagt; **Modellen ophalen** haalt
+   de actuele lijst bij je provider op als suggesties.
+
+6. Vink onder **Functies** aan wat je wilt gebruiken, vul eventueel **Huisstijl** en
+   **Maandelijks tokenbudget** in, en druk op **Opslaan**.
+
+7. Druk op **Verbinding testen**. Die doet een klein verzoek met de opgeslagen instellingen;
+   mislukt hij, dan staat de foutmelding van de provider er letterlijk bij.
+</Steps>
+
+## De vier functies
+
+Elke functie is een eigen vinkje met daarnaast **Eigen model (optioneel)**. Zo kun je een snel
+model op de urenhulp zetten en het uitgebreidere model laten staan voor schrijfwerk.
+
+**Assistent.** Het sterretje in de bovenbalk opent het zijpaneel **Assistent**, waar je vragen
+stelt over je eigen klanten, projecten, taken en uren ("Hoeveel uur schreef ik deze week?"). Op
+een klant-, project- of taakpagina neemt hij die pagina mee, dus "deze klant" klopt. Onder het
+antwoord staan bronchips die doorlinken naar de records waar het vandaan komt. De assistent is
+met opzet alleen-lezen: hij zoekt op en antwoordt, hij maakt en wijzigt nooit iets. En hij ziet
+alleen wat jij zelf mag zien.
+
+**Schrijfhulp.** In elk tekstveld met opmaak (klant, contactpersoon, project, taak, contactmoment,
+factuur- en offerteteksten, taak- en abonnementssjablonen, en eigen velden van het type lange
+tekst) staat een sterretje met: Verbeteren, Inkorten, Uitbreiden, Spelling & grammatica, Zakelijke
+toon, Informele toon, Vertalen naar Nederlands, Vertalen naar Engels en Schrijf uit. Het resultaat
+verschijnt eerst apart, waarna jij **Vervangen** of **Invoegen** kiest. Wat je bij **Huisstijl**
+invult (maximaal 4000 tekens, bijvoorbeeld "schrijf informeel, spreek de lezer aan met je, houd
+zinnen kort") gaat bij elke schrijfopdracht mee.
+
+**Urenhulp.** Op *Uren* typ je één regel in **Snel toevoegen**, bijvoorbeeld "gisteren
+14:00-16:30 website Jansen, homepage overleg". De server zoekt je eigen klanten, projecten en
+taken erbij en vult daarmee het formulier in; opslaan doe jij. **Vul mijn dag aan** vergelijkt je
+rooster met je goedgekeurde verlof en wat je al schreef, en stelt voor het gat conceptregels voor
+op basis van taken waar je die dag aantoonbaar aan werkte. Ook daar wordt zonder jouw klik niets
+opgeslagen.
+
+**Briefing & rapporten.** Op een klantpagina vat **Brief me** de recente activiteit rond die
+klant samen, met bronchips. **AI-rapport** schrijft een maandrapport als concept dat je in de
+editor bijwerkt en als record bewaart. Dit is de lichte variant in de kern; de volledige
+rapportage met huisstijl-pdf, planning en verzending is de
+[rapportagemodule](/nl/docs/modules/reporting/).
+
+## Inspreken in plaats van typen
+
+Spraak naar tekst vraagt een eigen sleutel, want Anthropic (de standaardprovider) heeft geen
+transcriptiedienst. In *Instellingen → AI* staat daarvoor het blok **Spraak naar tekst**:
+
+- **Spraakaanbieder**: *Uit*, OpenAI of OpenAI-compatibel (eigen server). Anthropic staat er met
+  opzet niet tussen, want die instelling zou nooit kunnen werken. Op *Uit* wordt je chatprovider
+  gebruikt, wat alleen lukt als dat OpenAI of een compatibele server is.
+- **API-sleutel voor spraak**, **Basis-URL** (alleen bij compatibel), **Spraakmodel** (leeg is
+  `whisper-1`) en **Maandbudget audio (seconden)**. Audio wordt in seconden geteld en niet in
+  tokens, en heeft daarom een eigen budget.
+
+Daarna verschijnt op *Uren* naast **Snel toevoegen** een microfoon: **Inspreken**, spreken,
+**Opname stoppen**, en de uitgeschreven tekst komt in het veld te staan. Dat nakijken is het hele
+punt: Nederlandse eigennamen zijn precies wat een spraakherkenner verkeerd verstaat, en "Janssen"
+in plaats van "Jansen" levert stilletjes geen klant op.
+
+De microfoon wordt alleen getekend als alle vier waar zijn: er is een spraakdienst ingesteld,
+**Urenhulp** staat aan, jij mag uren schrijven, en de browser mag opnemen. Dat laatste kan alleen
+op `https://`. Een opname duurt maximaal 60 seconden; te lang of een niet-ondersteund formaat is
+een nette foutmelding en nooit een half uitgeschreven regel.
+
+## Budget en verbruik
+
+**Maandelijks tokenbudget** is een zachte grens per kalendermaand; leeg betekent onbeperkt. Het
+paneel **Verbruik** toont deze maand per functie het aantal verzoeken en tokens, met een balk die
+op 80% oranje wordt ("Meer dan 80% van het maandbudget is verbruikt.") en op 100% rood. Zit je
+eroverheen, dan meldt de app "Het maandelijkse AI-budget is bereikt." met een knop **Toch
+doorgaan**, zodat een dringende vraag niet strandt op een grens die jijzelf hebt gezet.
+
+Van het verbruik worden alleen aantallen en labels vastgelegd. De tekst van een vraag of een
+antwoord wordt nergens in schakl. bewaard.
+
+## Rechten
+
+| Recht | Wat het opent | Standaard bij |
+| --- | --- | --- |
+| `ai.use` | AI-functies gebruiken: assistent, schrijfhulp, urenhulp, briefings en inspreken | Beheerder, Medewerker |
+| `ai.settings.manage` | *Instellingen → AI*: provider, sleutel, functies, budget, test en verbruik | Beheerder |
+| `time.entry.write` | Extra vereist om te kunnen inspreken, want de tekst wordt een urenregistratie | Beheerder, Medewerker (eigen registraties) |
+
+Klanten met een portaallogin krijgen `ai.use` niet, en dat is opzettelijk: AI leest juist over de
+records heen waar een klantrol van weggehouden wordt.
+
+## Goed om te weten
+
+- **Een net omgezette functie kan er een halve minuut over doen** voordat collega's hem zien. De
+  lijst met actieve functies wordt kort gecachet.
+- **De modelnaam is vrije tekst**, dus een typefout wordt geen validatiefout maar een foutmelding
+  van de provider bij het eerste gebruik. **Verbinding testen** haalt dat naar voren.
+- **Relatieve datums in de urenhulp kloppen met jouw dag**: ze worden opgelost in de tijdzone van
+  de organisatie én tegen de dag die je op dat moment bekijkt, niet tegen de klok van de server.
+- **Zegt je zin niets over facturabel, dan blijft het veld leeg** en wint de instelling van het
+  project. Er wordt nooit stilzwijgend "niet facturabel" ingevuld.
+- **Namen worden letterlijk gezocht.** "Jansn" vindt niets. Wat je de afgelopen dertig dagen zelf
+  boekte weegt mee, dus de klant van dinsdag wordt meestal wél herkend.
+- **Inspreken werkt nu alleen in het veld Snel toevoegen** op *Uren*, nergens anders.
+- **AI-configuratie verwijderen** onderaan de pagina haalt elke AI-functie weg tot er een nieuwe
+  sleutel staat. De verbruikshistorie blijft bewaard.
+- **Bij een verlopen licentie stopt het genereren**, terwijl het instellingenscherm en de
+  verbruikshistorie leesbaar blijven.
+
+<Aside type="caution" title="Wissel de encryptiesleutel niet zonder de API-sleutel opnieuw in te vullen">
+De provider-sleutels staan versleuteld opgeslagen met de encryptiesleutel van de installatie
+(`SCHAKL_ENCRYPTION_KEY`, anders `SCHAKL_SECRET_KEY`). Verandert die zonder dat je de sleutels
+opnieuw invult, dan is het opgeslagen geheim niet meer te ontcijferen en leest de organisatie
+zonder waarschuwing als "AI is nog niet ingesteld". Plak in dat geval de sleutels opnieuw in
+*Instellingen → AI*.
+</Aside>
+
+## Verder lezen
+
+- [Uren](/nl/docs/modules/time/): het scherm waar de urenhulp en de microfoon staan.
+- [Rapportage](/nl/docs/modules/reporting/): de volledige klantrapportage, die dezelfde
+  AI-instellingen gebruikt.
+- [Licenties](/nl/docs/admin/licenses/): wat er gebeurt als de licentie verloopt.

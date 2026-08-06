@@ -1,0 +1,134 @@
+---
+title: Modules
+description: "Welke onderdelen van het platform deze werkomgeving gebruikt: aanzetten, uitzetten, en wat een licentie daarmee te maken heeft."
+sidebar:
+  order: 3
+---
+
+import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Niet elk bureau gebruikt alles. Onder *Instellingen → Modules* bepaal je welke onderdelen van
+het platform in deze werkomgeving zichtbaar zijn. Wat je uitzet verdwijnt uit het menu, van het
+klantdossier en uit Instellingen, zonder dat er ook maar één regel gegevens verdwijnt.
+
+## Waar je het vindt
+
+*Instellingen → Modules* (`/settings/modules`), in de groep **Werkruimte**. Je ziet één vinkje
+per module die op deze installatie is meegeleverd, en daaronder **Opslaan**. Het scherm is er
+voor wie het recht "Huisstijl en modules wijzigen" heeft; standaard zijn dat de eigenaar en de
+beheerder.
+
+Staat een module die je verwacht er niet tussen? Dan draait hij niet op deze installatie.
+*Instellingen → Systeeminformatie* toont onder **Ingeschakelde modules** wat er op de
+installatie zelf is geïnstalleerd.
+
+## Wat je op het scherm ziet
+
+Er zijn drie soorten regels:
+
+- **Klanten** draagt het label **Altijd aan** en is niet uit te vinken. Vrijwel alles in
+  schakl. hangt aan een klant, dus die module is de spil en blijft staan.
+- Een gelicentieerde module waarvoor geen geldige sleutel is geïnstalleerd, draagt het label
+  **Licentie vereist** en is niet aan te vinken. De toelichting erbij: "Deze module vereist een
+  licentiesleutel. Installeer er een onder Instellingen → Licentie en schakel de module daarna
+  hier in."
+- Alle overige modules vink je gewoon aan of uit.
+
+Opslaan geldt voor de hele lijst tegelijk: wat aangevinkt staat gaat aan, wat niet aangevinkt
+staat gaat uit.
+
+## Wat uitschakelen precies doet
+
+Het scherm zegt het zelf: een uitgeschakelde module verdwijnt overal uit beeld, maar de
+gegevens blijven bewaard, en weer inschakelen herstelt alles. Concreet gebeurt dit:
+
+- het menu-item verdwijnt uit de zijbalk;
+- het paneel van die module verdwijnt van het klantdossier;
+- het instellingenscherm van die module verdwijnt uit *Instellingen*;
+- de dashboardtegels van die module zijn niet meer te kiezen op *Instellingen → Dashboard*;
+- de e-mailsjablonen van die module staan niet meer in *Instellingen → E-mail*;
+- een rapportagesectie die de module bijdraagt komt niet meer in nieuwe rapportages. Al
+  gegenereerde rapportages houden hun eigen momentopname en veranderen niet.
+
+Er wordt niets verwijderd. Zet je de module later weer aan, dan staat alles er weer zoals je
+het achterliet.
+
+<Aside type="caution" title="Uitzetten is geen rechtenmaatregel">
+Modules bepalen wat er voor iedereen in beeld is, niet wie wat mag. Wil je dat een bepaalde
+medewerker de uren of de facturen niet ziet, regel dat dan onder *Instellingen → Rollen*.
+</Aside>
+
+## Modules die elkaar nodig hebben
+
+Het platform controleert dit niet voor je, dus het is goed om te weten welke combinaties
+logisch zijn:
+
+| Module | Heeft in de praktijk nodig |
+| --- | --- |
+| Websites | Domeinen: een website hoort altijd bij een domein |
+| Cloudflare, OXXA | Domeinen: beide werken op de domeinen uit dat register |
+| Mollie | Facturatie: de betaallink hoort bij een factuur |
+| Marketing | Google Workspace voor de Google-bronnen (GA4, Search Console, Ads) |
+
+<Aside type="caution" title="Mollie en OXXA zijn nog niet op een echt account beproefd">
+Beide koppelingen zijn geschreven op basis van de officiële documentatie van de leverancier,
+maar nog nooit tegen een live account gedraaid. Zet ze aan met dat in gedachten en controleer
+de eerste betaling en de eerste registeruitlezing met de hand.
+</Aside>
+
+## Licentie en modules
+
+Klanten, Contactpersonen, Taken en Meldingen horen bij de vrij te gebruiken kern. Alle andere
+modules zijn gelicentieerd. Wat een sleutel dekt en hoe je er een installeert, staat op
+[Licenties](/nl/docs/admin/licenses/).
+
+Twee dingen komen op dit scherm samen:
+
+- **Een nieuwe gelicentieerde module aanzetten** kan alleen als een geldige sleutel of de
+  proefperiode hem dekt. Anders is het vinkje al geblokkeerd, en het opslaan meldt "Deze module
+  vereist een licentie."
+- **Een module die al aan staat en waarvan de licentie verloopt, blijft aan staan.** Hij wordt
+  alleen-lezen: lezen, zoeken en exporteren blijven werken, wijzigen niet. Het vinkje blijft
+  bewust bedienbaar, zodat je de module alsnog kunt uitzetten als je hem niet meer gebruikt.
+
+Elders in de app zie je hetzelfde terug als een vergrendelde knop. Klik je erop, dan opent de
+dialoog "… ontgrendelen". Ben je de instantie-eigenaar, dan staat daar een knop **Naar
+licentie-instellingen**; ben je dat niet, dan lees je wie je erover moet aanspreken.
+
+<Aside type="tip">
+AI-assistentie en de MCP-server staan niet op dit scherm. Ze zijn geen module maar een
+platformonderdeel, met hun eigen schermen: *Instellingen → AI* en *Instellingen →
+Service-accounts*. Op de licentiepagina tellen ze wel gewoon mee.
+</Aside>
+
+## Bij de installatie
+
+De eerste-keer-wizard (*Installatie instellen*) heeft dezelfde keuze onder het kopje
+**Modules**. Wat je daar aanvinkt is enkel de startsituatie; daarna verander je het zonder
+gevolgen op dit scherm.
+
+## Rechten
+
+| Recht | Wat het geeft | Standaard bij |
+| --- | --- | --- |
+| `settings.branding.write` | Huisstijl en modules wijzigen | Eigenaar, Beheerder |
+
+Het is één recht voor beide schermen: wie modules mag aanzetten, mag ook de huisstijl
+aanpassen. Het installeren van een licentiesleutel valt hier niet onder; dat kan alleen de
+instantie-eigenaar.
+
+## Goed om te weten
+
+- Een module uitzetten raakt je rollen niet aan. De rechten blijven staan en gelden weer zodra
+  je de module opnieuw aanzet.
+- Een module die met een update meekomt, verschijnt vanzelf in deze lijst en staat uit tot
+  iemand hem hier aanvinkt. Er verandert dus nooit iets aan je werkomgeving door alleen bij te
+  werken.
+- Wil je een module wel gebruiken maar niet in de zijbalk hebben, of onder een andere naam, dan
+  is *Instellingen → Navigatie* de juiste plek. Uitzetten is een zwaarder middel dan nodig.
+
+<CardGrid>
+  <LinkCard title="Licenties" href="/nl/docs/admin/licenses/" description="De licentiesleutel, de proefperiode en wat er gebeurt als een licentie verloopt." />
+  <LinkCard title="Installeren" href="/nl/docs/admin/installation/" description="De installatie opzetten en de eerste-keer-wizard doorlopen." />
+  <LinkCard title="Klanten" href="/nl/docs/modules/companies/" description="De module die altijd aan staat, en waar de panelen van alle andere samenkomen." />
+</CardGrid>

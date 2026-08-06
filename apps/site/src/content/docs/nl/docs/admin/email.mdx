@@ -1,0 +1,144 @@
+---
+title: Uitgaande e-mail
+description: "Instellen hoe schakl. mail verstuurt: een eigen SMTP-server of Brevo, SendGrid of SMTP2GO, plus de handtekening en de sjablonen per taal."
+sidebar:
+  order: 5
+---
+
+import { Aside, CardGrid, LinkCard, Steps } from '@astrojs/starlight/components';
+
+schakl. verstuurt zelf mail: een uitnodiging aan een collega, een wachtwoordherstel, een
+factuur, een offerte, een betalingsherinnering, een maandrapportage en de meldingen die je
+per e-mail wilt ontvangen. Je koppelt daarvoor één keer een transport, en elke uitgaande
+mail vertrekt daarna onder jullie eigen merknaam, logo en kleur.
+
+## Waar je het vindt
+
+*Instellingen → E-mail*, in de groep **Communicatie & koppelingen**. Het hele scherm zit
+achter het recht `settings.email.manage` (standaard alleen beheerders), ook het lezen: de
+configuratie bevat API-sleutels en SMTP-wachtwoorden.
+
+Bovenaan staat wat er op dit moment daadwerkelijk verstuurt: **Actief: Brevo** (of welke
+provider dan ook) met daaronder **Verstuurd als naam (adres)**, of **Nog niet ingesteld** met
+een oranje stip.
+
+## Een provider kiezen
+
+| Provider | Wat je invult |
+| --- | --- |
+| Eigen SMTP-server | SMTP-server, Poort (587), Beveiliging (STARTTLS / SSL/TLS / Geen), Gebruikersnaam, Wachtwoord |
+| Brevo | API-sleutel |
+| SendGrid | API-sleutel |
+| SMTP2GO | API-sleutel |
+| Inbegrepen e-mail | niets; alleen zichtbaar als de beheerder van de installatie dit heeft aangezet |
+
+De drie diensten lopen via hun officiële HTTP-API, niet via hun SMTP-relay. Dat scheelt
+twee dingen: een foutmelding komt terug als leesbare tekst in plaats van als een SMTP-dialoog,
+en uitgaand verkeer over 443 werkt op hosts waar poort 587 dichtstaat.
+
+**Afzendernaam** en **Afzenderadres** zijn verplicht; **Antwoordadres** is optioneel. Sleutels
+en wachtwoorden worden versleuteld opgeslagen en nooit teruggegeven aan de browser: in het
+veld staat daarna alleen "Opgeslagen; laat leeg om te behouden".
+
+## De testmail
+
+<Steps>
+
+1. Vul de velden in en klik **Opslaan**.
+
+2. Klik **Verstuur testmail**. De testmail gaat naar je eigen e-mailadres en gebruikt de
+   **opgeslagen** instellingen, dus opslaan vóór testen is geen formaliteit.
+
+3. Bij succes lees je "Testmail verzonden; controleer je inbox". Mislukt het, dan toont het
+   scherm de foutmelding van de provider zelf ("Versturen mislukt: …"). Dat is precies waar
+   de knop voor bestaat: een afgewezen inlog of een geblokkeerd afzenderadres staat er
+   letterlijk.
+
+</Steps>
+
+## Handtekening
+
+Het veld **E-mailhandtekening** neemt HTML aan (het voorbeeld in het veld is
+`<p>Met vriendelijke groet,<br>{name}</p>`). Wat je hier zet komt automatisch onder
+**elke** uitgaande mail; er is geen tweede plek waar je dit per soort mail hoeft te
+herhalen. De HTML wordt op de server opgeschoond, zowel bij opslaan als bij versturen.
+Leeg laten betekent geen handtekening.
+
+Logo, merknaam en kleur waarin de mail wordt verpakt komen uit *Instellingen → Huisstijl*.
+De interne naam van de organisatie wordt nooit in een mail gebruikt, en de naam schakl.
+komt in geen enkele verstuurde mail voor.
+
+## E-mailsjablonen
+
+Onder de transportinstellingen staat de sectie **E-mailsjablonen**: per soort mail en per
+taal een **Onderwerp** en een **HTML-inhoud**. Boven de sectie kies je de taal die je
+bewerkt; elke vertaling is optioneel.
+
+| Soort mail | Van | Beschikbare variabelen |
+| --- | --- | --- |
+| Uitnodiging | kern | `{brand}` `{name}` `{link}` |
+| Wachtwoord herstellen | kern | `{brand}` `{name}` `{link}` |
+| Factuur versturen | facturatie | `{brand}` `{number}` `{company}` `{contact}` `{total}` `{date}` `{due_date}` `{reference}` |
+| Offerte versturen | facturatie | zoals de factuur, met `{valid_until}` in plaats van `{due_date}` |
+| Betalingsherinnering | facturatie | zoals de factuur, plus `{outstanding}` en `{days}` |
+| Maandrapportage | rapportage | `{brand}` `{client}` `{contact}` `{period}` `{sender_name}` `{link}` |
+
+De lijst volgt de modules die jouw organisatie aan heeft staan: zet je facturatie uit, dan
+verdwijnen die drie mails hier ook. Per kaart zie je een badge **Aangepast** of **Standaard
+in gebruik**, een uitklapbare **Toon het ingebouwde standaardsjabloon** en een knop
+**Verstuur test** die een realistisch voorbeeld naar je eigen adres stuurt. Maak je beide
+velden weer leeg, dan valt die mail terug op het ingebouwde sjabloon.
+
+Onderaan het scherm staat **Configuratie verwijderen**; de bevestiging zegt er eerlijk bij
+dat uitgaande e-mail daarna uit staat.
+
+## Inbegrepen e-mail (beheerder van de installatie)
+
+Wil je als beheerder een transport meeleveren dat organisaties zonder eigen instellingen
+gebruiken, zet dan `SCHAKL_INSTANCE_EMAIL_ENABLED=true`, kies
+`SCHAKL_INSTANCE_EMAIL_PROVIDER` (`smtp`, `brevo`, `sendgrid` of `smtp2go`), vul
+`SCHAKL_INSTANCE_EMAIL_FROM` en `SCHAKL_INSTANCE_EMAIL_FROM_NAME`, en daarnaast óf de
+SMTP-variabelen (`_HOST`, `_PORT`, `_SECURITY`, `_USERNAME`, `_PASSWORD`) óf
+`SCHAKL_INSTANCE_EMAIL_API_KEY`. Pas dan verschijnt de knop **Inbegrepen e-mail** in het
+providerlijstje.
+
+<Aside type="caution" title="Het afzenderadres is dan niet het jouwe">
+Bij inbegrepen e-mail vertrekt de mail vanaf het adres van de installatie (SPF en DKIM horen
+bij dat domein), weergegeven met jullie merknaam. Wil je jullie eigen domein in de
+afzenderregel, dan configureer je een eigen transport.
+</Aside>
+
+## Rechten
+
+| Recht | Wat het opent | Standaard |
+| --- | --- | --- |
+| `settings.email.manage` | *Instellingen → E-mail*: transport lezen, opslaan en verwijderen, testmail, sjablonen | Beheerder |
+| `settings.branding.write` | *Instellingen → Huisstijl*: logo, merknaam en kleur waarin elke mail wordt verpakt | Beheerder |
+
+## Goed om te weten
+
+- **"Opgeslagen" en "actief" zijn twee verschillende antwoorden.** Een organisatie die op
+  inbegrepen e-mail draait heeft niets opgeslagen en verstuurt toch prima. Kijk dus naar de
+  regel "Actief: …" bovenaan, niet naar het formulier eronder.
+- **Meldingsmails zijn niet aanpasbaar.** Alleen de soorten die in de sjabloonsectie staan
+  kun je herschrijven; de meldingen uit *Instellingen → Standaardmeldingen* niet.
+- **Er is geen afleverdashboard.** schakl. houdt geen bounces bij, controleert je SPF of DKIM
+  niet en heeft geen blokkeerlijst. Wat er met een verzonden mail gebeurt lees je in het
+  dashboard van je provider.
+- **Elke variabele lost altijd op**, desnoods naar een lege tekst; een niet-ingevulde
+  `{reference}` belandt dus nooit letterlijk in de inbox van je klant.
+- **De taal van een mail** is die van de ontvanger, anders de standaardtaal van de
+  organisatie, anders Nederlands. Datums staan Europees (dd-mm-jjjj).
+- **De HTML van een mail is bewust ouderwets**: geneste tabellen, stijlen inline, 600 px
+  breed en geen webfonts. Dat is geen slordigheid maar de enige opmaak die het in Outlook en
+  Gmail overleeft; houd je eigen sjablonen in dezelfde stijl.
+- Is er niets ingesteld, dan mislukt een verzending met de melding "E-mail is nog niet
+  geconfigureerd (Instellingen → E-mail)".
+
+## Verder lezen
+
+<CardGrid>
+  <LinkCard title="Meldingen" description="Welke gebeurtenissen per e-mail uitgaan." href="/nl/docs/modules/notifications/" />
+  <LinkCard title="Facturatie" description="De drie mails die je klant leest." href="/nl/docs/modules/invoicing/" />
+  <LinkCard title="Bestandsopslag" description="Waar bijlagen en logo's landen." href="/nl/docs/admin/storage/" />
+</CardGrid>

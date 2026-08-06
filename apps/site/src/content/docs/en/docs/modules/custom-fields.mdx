@@ -1,0 +1,118 @@
+---
+title: Custom fields
+description: "Define your own typed fields on clients, contacts, projects and more, without a line of code."
+sidebar:
+  order: 21
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Every agency tracks something slightly different: a segment, a contract number, the account
+manager on the client's side, or simply a "newsletter" tick. Custom fields let you add those
+yourself, with a real type behind them. They then show up on the form, in the list's column
+picker and in your exports, automatically.
+
+## Where to find it
+
+*Instellingen → Aangepaste velden* (Settings → Custom fields), in the "Gegevens & keuzelijsten"
+(Data & lists) group. Across the top sits a row of tabs, one per kind of record that accepts
+custom fields. Clients, contacts and projects are always there; which others you see depends on
+the modules you have switched on.
+
+## Creating a field
+
+<Steps>
+1. Pick the tab for the kind of record the field belongs to.
+2. Under **Nieuw aangepast veld** (New custom field), fill in the **Label**. The language toggle
+   top right switches between Dutch and English. Translations are optional: a missing language
+   falls back to the other one.
+3. Choose a **Type**.
+4. For *Keuzelijst* (Select) and *Meervoudige keuze* (Multi-select) an **Opties** (Options) box
+   appears. One option per line, written as `value|Label`.
+5. Tick **Verplicht** (Required) if the field must always be filled in.
+6. **Positie** (Position) is a number that sets the order; a lower number sits higher up the form.
+7. Press **Aanmaken** (Create).
+</Steps>
+
+You never type the **Sleutel** (Key) yourself. It is derived from the label and shown in the
+table beside the field. It is the name the value is stored under, and the column heading you get
+back in an export.
+
+## The types
+
+| Type | What it holds |
+| --- | --- |
+| Tekst (Text) | One line of plain text |
+| Lange tekst (Long text) | Several lines in the rich-text editor, formatting and @/# mentions included |
+| Getal (Number) | A number; anything that is not one is refused |
+| Ja / nee (Yes / no) | A tick box |
+| Datum (Date) | A date, with a date picker |
+| Datum & tijd (Date & time) | A date with a time on it |
+| Keuzelijst (Select) | Exactly one of your own options |
+| Meervoudige keuze (Multi-select) | Zero or more of your own options, as tick boxes |
+| E-mailadres (Email) | An address, validated |
+| URL | A web address, validated |
+| Telefoon (Phone) | One line of text, in a telephone input |
+
+In a select list the **value** (left of the `|`) is what gets stored and the **label** (right) is
+what people see. You can change a label later without breaking anything; the stored values stay
+correct.
+
+## Where the fields turn up
+
+- On the form where you create or edit that record, ordered by **Positie**, with a red asterisk
+  on a required field.
+- On a contact's page and a project's page the filled-in values are also shown among the details.
+- In the **Kolommen** (Columns) popover of Klanten, Contactpersonen, Projecten, Domeinen and
+  Websites. They are off by default, so you switch on the ones you want. You cannot sort on a
+  custom field, so those columns carry no sort control either.
+- As a column in export and import, using the key as the heading.
+
+## Editing, switching off and deleting
+
+Each row in the table carries the ⋯ menu, with **Bewerken** (Edit), **Deactiveren** (Deactivate,
+or **Activeren** to switch it back on) and **Verwijderen** (Delete).
+
+Editing covers the label, the options, *Verplicht* and the position. The key and the type are
+shown with a padlock: "De sleutel ligt vast na aanmaken" and "Het type ligt vast na aanmaken" —
+the key and the type are fixed once the field exists. That is deliberate: otherwise already
+stored values would no longer match their own field. If you need a different type, create a new
+field.
+
+**Deactiveren** takes the field out of forms and lists without throwing anything away; the row
+then greys out in the table and the action becomes **Activeren**.
+
+<Aside type="caution">
+**Verwijderen** is not the same as deactivating. The screen says so outright: "Dit veld
+verwijderen? Opgeslagen waarden gaan verloren." — deleting the field loses the values stored in
+it. If you only want it out of sight, use Deactiveren.
+</Aside>
+
+## Permissions
+
+| Permission | What it opens | Default |
+| --- | --- | --- |
+| `settings.customfields.read` | Seeing and filling in the fields on forms and in lists | Administrator, Member, Client |
+| `settings.customfields.write` | The screen itself: creating, editing, deactivating and deleting fields | Administrator |
+
+Both are set per role under *Instellingen → Rollen* (Settings → Roles). Without the write
+permission, the Aangepaste velden card is not drawn in Instellingen at all.
+
+## Good to know
+
+- **Required is enforced on every save**, imports included. If you make an existing field
+  required later, you will notice: a record where it is still empty cannot be saved again until
+  it is filled in.
+- An import that carries no column for a custom field leaves the existing values alone. Only what
+  you send is overwritten.
+- Labels are your organisation's data, not our translations. Everyone sees the label in the
+  language they work in; failing that the other language, and failing that the key.
+- If a kind of record has no tab on this screen, it does not accept custom fields (yet).
+
+## Read next
+
+<CardGrid>
+  <LinkCard title="Clients" description="The client file where your own fields appear on the form." href="/en/docs/modules/companies/" />
+  <LinkCard title="Import & export" description="Your own fields travel as columns, keyed by their key." href="/en/docs/modules/import-export/" />
+  <LinkCard title="Roles and permissions" description="Where you decide who may manage fields." href="/en/docs/modules/roles/" />
+</CardGrid>

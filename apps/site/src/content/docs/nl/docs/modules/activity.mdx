@@ -1,0 +1,110 @@
+---
+title: Activiteit
+description: "Het spoor onder elk record: wie wijzigde wat, en wanneer. Automatisch bijgehouden en niet te wissen."
+sidebar:
+  order: 23
+---
+
+import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+"Wie heeft dit klantnummer veranderd?" en "sinds wanneer staat deze klant op inactief?" zijn
+vragen die je op een dinsdagmiddag krijgt, niet vragen waar je vooraf iets voor inricht. Daarom
+houdt schakl. op elk record dat kan wijzigen vanzelf een spoor bij: de naam, de wijziging en het
+tijdstip. Je hoeft niets aan te zetten.
+
+## Waar je het vindt
+
+Onderaan de pagina van het record, in het blok **Activiteit**. Geschiedenis hangt onder het werk,
+nooit ertussen. Je vindt het blok vandaag op:
+
+- de klantpagina;
+- de projectpagina;
+- de pagina van een contactpersoon;
+- de domeinpagina;
+- een factuur en een offerte.
+
+Een taak heeft een eigen, uitgebreider spoor op de taakpagina, met daarin ook reacties en
+statuswissels.
+
+## Wat er in staat
+
+Elke regel is één zin met een naam ervoor, plus de datum en tijd eronder. Bijvoorbeeld:
+
+- **Sanne de Vries** heeft dit aangemaakt
+- **Jan Bakker** wijzigde Status: Prospect → Klant, Verantwoordelijke
+- **Sanne de Vries** voegde "offerte-2026.pdf" toe
+
+Bij een wijziging zie je het veld met de oude en de nieuwe waarde. Waarden worden getoond zoals ze
+horen: een status in gewone taal, een datum Europees, een ja/nee als Ja of Nee. Verwijst een veld
+naar een persoon of een klant, dan wordt alleen de veldnaam genoemd (bijvoorbeeld
+"Verantwoordelijke"), want een technisch nummer zegt niemand iets.
+
+Het spoor volgt de **definitievelden** van een record: de naam, het klantnummer, de status, de
+verantwoordelijke, de factuurgegevens, budgetten, begin- en einddatum en dergelijke. Vrije
+notitievelden en aangepaste velden staan er bewust niet in.
+
+Naast wijzigingen komen er ook gebeurtenissen op te staan die de modules zelf melden: een
+document toegevoegd, een logo geüpload, een factuur definitief gemaakt, verstuurd of betaald, een
+betalingsherinnering, een contactmoment vastgelegd, een Cloudflare-omleiding ingesteld,
+portaaltoegang gegeven of ingetrokken.
+
+## Lezen en uitklappen
+
+Het blok toont de drie nieuwste regels; met **Alle … tonen** klap je de rest uit. Er worden
+maximaal tien regels geladen. Zijn dat er precies tien, dan staat eronder "De 10 meest recente
+worden getoond", zodat je nooit een selectie voor het hele verhaal aanziet.
+
+## Namen die blijven kloppen
+
+De naam in het spoor wordt vastgelegd op het moment van de wijziging. Vertrekt die collega later
+en verwijder je het account, dan blijft zijn werk op zijn naam staan; er komt alleen
+"(verwijderd)" achter. Staat er helemaal geen naam, dan heeft het systeem zelf iets gedaan,
+bijvoorbeeld een nachtelijke taak.
+
+## Ingelogd als iemand anders
+
+Log je als bureaumedewerker in als de contactpersoon van een klant, dan draait die sessie echt
+als die klant. Wijzig je in die tijd iets, dan zou het spoor zonder meer "de klant deed dit"
+zeggen, en dat is precies het feit dat ontbreekt. Daarom komt jouw naam er als geel label naast
+te staan: *via Jan Bakker*, met de toelichting "Jan Bakker was op dat moment ingelogd als deze
+gebruiker".
+
+Ook het begin en einde van zo'n sessie komen op het spoor van de contactpersoon: "logde in als …"
+en "beëindigde de sessie als …".
+
+## Rechten
+
+| Recht | Wat het doet | Standaard |
+| --- | --- | --- |
+| `activity.read` | Het activiteitenlogboek inzien | Beheerder, Medewerker, Klant |
+
+Alleen dat recht is niet genoeg. Om het spoor van een record te zien moet je dat record ook zelf
+mogen lezen: voor een klant is dat `companies.company.read`, voor een project
+`projects.project.read`, enzovoort. En je moet de klant erachter binnen je klantgroepen hebben;
+valt het record daarbuiten, dan is er simpelweg geen activiteitenblok.
+
+Een klantlogin ziet het spoor nooit. Het portaal toont dashboards en documenten, geen intern
+werkspoor.
+
+<Aside type="caution">
+Het spoor is niet te bewerken en niet te wissen, ook niet door een eigenaar. Er is geen knop voor
+en dat is de bedoeling: een geschiedenis die je kunt aanpassen is geen geschiedenis. Het spoor
+blijft ook bestaan als het record zelf wordt verwijderd.
+</Aside>
+
+## Goed om te weten
+
+- Een bewerking waarbij je niets verandert, levert geen regel op. Alleen echte wijzigingen worden
+  vastgelegd.
+- De regel wordt in dezelfde beweging opgeslagen als de wijziging zelf. Loopt het opslaan stuk,
+  dan komt er ook geen regel te staan die iets beweert dat niet is gebeurd.
+- Ook een wijziging via een import of een bulkbewerking komt op het spoor, met de naam van degene
+  die het bestand of de selectie verwerkte.
+
+## Verder lezen
+
+<CardGrid>
+  <LinkCard title="Klanten" description="Het klantdossier, met de activiteit onderaan." href="/nl/docs/modules/companies/" />
+  <LinkCard title="Rollen en rechten" description="Wie het spoor mag inzien, en van welke klanten." href="/nl/docs/modules/roles/" />
+  <LinkCard title="Klantportaal" description="Inloggen als een klant, en wat dat op het spoor doet." href="/nl/docs/modules/portal/" />
+</CardGrid>

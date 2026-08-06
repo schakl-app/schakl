@@ -1,0 +1,132 @@
+---
+title: Modules
+description: "Which parts of the platform this workspace uses: switching them on and off, and how a license fits into that."
+sidebar:
+  order: 3
+---
+
+import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Not every agency uses everything. *Instellingen → Modules* (Settings → Modules) decides which
+parts of the platform are visible in this workspace. What you switch off disappears from the
+menu, from the client record and from Settings, without a single row of data going anywhere.
+
+## Where to find it
+
+*Instellingen → Modules* (`/settings/modules`), in the **Werkruimte** (Workspace) group. You
+get one checkbox per module this installation ships, with **Opslaan** (Save) underneath. The
+screen is there for anyone holding the "Huisstijl en modules wijzigen" (Change branding and
+enabled modules) permission; by default that is the owner and the administrator.
+
+Missing a module you expected? Then it is not part of this installation.
+*Instellingen → Systeeminformatie* (Settings → System information) lists what the installation
+itself carries under **Ingeschakelde modules** (Enabled modules).
+
+## What the screen shows
+
+Three kinds of row:
+
+- **Klanten** (Clients) carries the label **Altijd aan** (Always on) and cannot be unticked.
+  Almost everything in schakl. hangs off a client, so that module is the hub and stays.
+- A licensed module with no valid key installed carries the label **Licentie vereist** (License
+  required) and cannot be ticked. The note beside it reads: "Deze module vereist een
+  licentiesleutel. Installeer er een onder Instellingen → Licentie en schakel de module daarna
+  hier in." (This module requires a license key. Install one under Settings → License, then
+  enable it here.)
+- Every other module is a plain tick box.
+
+Saving applies to the whole list at once: what is ticked goes on, what is not ticked goes off.
+
+## What switching a module off actually does
+
+The screen says it itself: a disabled module disappears from view everywhere but keeps its
+data, and switching it back on restores everything. Concretely:
+
+- its item disappears from the sidebar;
+- its panel disappears from the client record;
+- its settings screen disappears from *Instellingen*;
+- its dashboard tiles can no longer be chosen under *Instellingen → Dashboard*;
+- its e-mail templates are no longer listed under *Instellingen → E-mail*;
+- a report section it contributes no longer appears in new reports. Reports already generated
+  keep their own snapshot and do not change.
+
+Nothing is deleted. Switch the module back on later and everything is there exactly as you left
+it.
+
+<Aside type="caution" title="Switching off is not an access control">
+Modules decide what is on screen for everybody, not who may do what. If one employee should not
+see the hours or the invoices, that belongs under *Instellingen → Rollen* (Settings → Roles).
+</Aside>
+
+## Modules that lean on each other
+
+The platform does not check this for you, so it is worth knowing which combinations make sense:
+
+| Module | Needs in practice |
+| --- | --- |
+| Websites | Domeinen (Domains): a website always belongs to a domain |
+| Cloudflare, OXXA | Domeinen: both work on the domains in that register |
+| Mollie | Facturatie (Invoicing): the payment link belongs to an invoice |
+| Marketing | Google Workspace for the Google sources (GA4, Search Console, Ads) |
+
+<Aside type="caution" title="Mollie and OXXA have not been exercised against a live account">
+Both integrations were written from the vendor's official documentation and have never been run
+against a real credential. Switch them on with that in mind, and check the first payment and the
+first register read by hand.
+</Aside>
+
+## Licensing and modules
+
+Klanten (Clients), Contactpersonen (Contacts), Taken (Tasks) and Meldingen (Notifications)
+are part of the freely usable core. Every other module is licensed. What a key covers and how you install one is on
+[Licenses](/en/docs/admin/licenses/).
+
+Two things meet on this screen:
+
+- **Enabling a licensed module for the first time** only works while a valid key or the trial
+  period covers it. Otherwise the checkbox is already blocked, and saving reports "This module
+  requires a license."
+- **A module that is already on stays on when its license expires.** It becomes read-only:
+  reading, searching and exporting keep working, changing does not. The checkbox stays usable on
+  purpose, so you can still switch the module off if you have stopped using it.
+
+Elsewhere in the app the same thing shows up as a locked button. Clicking it opens the
+"Unlock …" dialog. If you are the instance owner it offers **Naar licentie-instellingen** (Go to
+license settings); if you are not, it tells you who to ask instead.
+
+<Aside type="tip">
+AI assistance and the MCP server are not on this screen. They are platform capabilities rather
+than modules and have their own screens: *Instellingen → AI* and *Instellingen →
+Service-accounts* (Service accounts). They do appear on the license page like everything else.
+</Aside>
+
+## During installation
+
+The first-run wizard (*Installatie instellen*, Set up this installation) offers the same choice
+under the heading **Modules**. What you tick there is only the starting point; you change it
+afterwards on this screen with no consequences.
+
+## Permissions
+
+| Permission | What it grants | Held by default |
+| --- | --- | --- |
+| `settings.branding.write` | Change branding and enabled modules | Owner, Administrator |
+
+It is one permission for both screens: whoever may switch modules on may also change the
+branding. Installing a license key is not part of it — only the instance owner can do that.
+
+## Good to know
+
+- Switching a module off leaves your roles untouched. The permissions stay as they were and
+  apply again the moment the module comes back on.
+- A module that arrives with an update shows up in this list by itself and stays off until
+  somebody ticks it here. Upgrading alone therefore never changes your workspace.
+- If you want a module but not in the sidebar, or under a different name, *Instellingen →
+  Navigatie* (Settings → Navigation) is the right place. Switching it off is a heavier
+  instrument than you need.
+
+<CardGrid>
+  <LinkCard title="Licenses" href="/en/docs/admin/licenses/" description="The license key, the trial period and what happens when a license expires." />
+  <LinkCard title="Installation" href="/en/docs/admin/installation/" description="Standing the installation up and working through the first-run wizard." />
+  <LinkCard title="Clients" href="/en/docs/modules/companies/" description="The module that is always on, and where every other module's panel lands." />
+</CardGrid>

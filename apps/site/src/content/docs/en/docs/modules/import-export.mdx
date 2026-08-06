@@ -1,16 +1,17 @@
 ---
 title: Import & export
-description: "Move clients, contacts, projects, tasks, timesheets and subscriptions in and out of schakl. as CSV, Excel or a pasted table."
+description: "Move clients, contacts, projects, tasks, timesheets, subscriptions, domains, websites and hosting in and out of schakl. as CSV, Excel or a pasted table."
 sidebar:
-  order: 2
+  order: 26
 ---
 
 You never have to retype anything. If your clients live in a spreadsheet, a bookkeeping package
 or an old system, you bring them across in one go: pick a file or paste a table, say what each
 column means, and see exactly what will happen before it happens.
 
-Everything sits together under *Settings → Import & export*. The client and contact lists carry
-the same buttons, where the export follows the filters you have applied.
+Everything sits together under *Instellingen → Import & export* (Settings → Import & export). The
+lists themselves carry the same buttons, beside their column picker, where the export follows the
+filters you have applied.
 
 ## What you can import
 
@@ -54,11 +55,21 @@ differs per type:
 | --- | --- |
 | Clients | client number, otherwise the name |
 | Contacts | e-mail address |
-| Projects, subscriptions | name |
+| Projects | project name; the client column matches by name |
+| Subscriptions | subscription name; a changed amount extends the price history |
+| Subscription types | the type's key |
+| Standard subscriptions | name |
+| Domains | the domain name, normalised (a pasted URL is reduced to its root first) |
+| Websites | the domain the site sits on; the client comes from that domain |
+| Hosting | name |
+| Domain rates | always added; a row for a date that already exists is corrected in place |
 | Tasks, timesheets | always created |
 
 For clients the number outranks the name: a client you renamed lands on itself instead of
 arriving as a second company. If your file carries both, you can choose which one is used.
+
+Where the table says "always created" there is no honest key to update on: task titles and time
+entries legitimately repeat. Exporting works for all of these either way.
 
 ## Check first, then import
 
@@ -78,7 +89,7 @@ in bulk.
 
 ## Permissions
 
-Bulk import and export is a permission of its own, set per role under *Settings → Roles*, on top
+Bulk import and export is a permission of its own, set per role under *Instellingen → Rollen* (Settings → Roles), on top
 of the ordinary read or write permission for the type itself. A client with a portal login can
 therefore never pull a list. If some columns are missing for you, you do not have write
 permission on the module that contributes them.

@@ -1,0 +1,144 @@
+---
+title: Uren
+description: "Urenregistratie: de timer, handmatige registraties, de weekstaat en de weg van een geboekt uur naar een factuur."
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Uren is waar je vastlegt waar je tijd heen ging en waar het bureau ziet wat daarvan facturabel
+is. Een registratie hangt aan een klant, een project en eventueel een taak; vanaf dat punt
+rekenen projectbudgetten, retainers en facturen ermee.
+
+## Waar je het vindt
+
+**Uren** in het hoofdmenu is je eigen week. Het teamwerk zit onder **Overzicht**: de tabbladen
+*Uren* (het Urenoverzicht), *Productiviteit* en *Omzet*. De klantpagina en de projectpagina
+dragen elk een paneel **Uren**. De enige instelling is *Instellingen → Uren-typen*.
+
+## De timer
+
+Rechtsboven staan **Omschrijving**, **Klant**, **Project** en de knop **▶ Starten**. De lopende
+timer blijft met een tikkende teller zichtbaar, waar je in de app ook heen gaat; **Stoppen**
+schrijft de registratie weg. Er loopt er maar één per persoon: start je een nieuwe timer, dan
+wordt de lopende automatisch gestopt en opgeslagen.
+
+## Een registratie met de hand
+
+Naast de dag staat het formulier **Nieuwe registratie** met **Van**, **Tot** en **Pauze** (in
+minuten), plus **Datum**, **Klant**, **Project**, **Taak**, **Omschrijving** en **Type**. Het veld
+**Duur** begrijpt `1:30`, `90m` of `1,5` en blijft synchroon met de tijden: pas je **Tot** aan dan
+verandert de duur mee, typ je een duur dan verschuift **Tot**. Staat **Tot** op of vóór **Van**,
+dan loopt de registratie door naar de volgende dag, zodat werk over middernacht niet in tweeën
+hoeft.
+
+Kies je een project, dan verschijnt eronder **Beschikbare uren**: verbruikt tegenover budget deze
+periode, met een balk en wat er nog over is. Komt dat budget uit een retainer, dan staat erbij uit
+welke afspraak.
+
+Half ingevuld werk blijft staan. Het formulier bewaart per dag automatisch een **Concept**,
+zichtbaar als chip boven het formulier en als oranje stipje op het dagtabje; met **Verwerpen**
+gooi je het weg. Een concept telt nergens in mee: niet in totalen, niet in goedkeuring, niet in
+facturatie.
+
+### Facturabel volgt het project
+
+Een nieuwe registratie erft **Standaard facturabel** van het gekozen project. Een project dat door
+een actief abonnement met inbegrepen uren wordt gedekt, start op **Niet facturabel**: die uren
+zijn al betaald. Raak je de knop zelf aan, dan volgt het formulier jouw keuze en overschrijft een
+latere projectwissel die niet meer.
+
+## De weekstaat
+
+Onder de dag staat de **Weekstaat**: één regel per combinatie klant / project / taak, met
+dagtotalen en een weektotaal. Bovenin kies je **Volledige week** of **Werkweek (ma–vr)**; die
+keuze wordt als persoonlijke voorkeur bewaard. Goedgekeurd verlof krijgt een eigen regel
+**Verlof** en telt nooit in de gewerkte totalen mee: verlof wordt nooit als urenregistratie
+geschreven.
+
+## Snel toevoegen en inspreken
+
+Staat onder *Instellingen → AI* de functie **Urenhulp** aan, dan verschijnt boven de dag het veld
+**Snel toevoegen**: typ er `gisteren 14:00-16:30 website Jansen, homepage overleg` in en het
+formulier wordt ingevuld. Daarnaast staat **Vul mijn dag aan**, dat suggesties doet voor het
+verschil tussen je rooster en wat er al geboekt is. Is bovendien **Spraak naar tekst** ingesteld,
+dan kun je de regel via de microfoonknop inspreken. In alle gevallen vult de AI alleen het
+formulier in; er wordt niets opgeslagen tot jij op **Opslaan** klikt.
+
+## Goedkeuren en factureren
+
+*Overzicht → Uren* is de teamlijst. Je filtert op medewerker, klant, project, periode en type, en
+met de statuspillen op **Goed te keuren**, **Goedgekeurd**, **Te factureren** en **Gefactureerd**.
+De totalen onderaan gelden over de hele filterselectie, niet over de zichtbare pagina.
+
+Vink rijen aan en gebruik **Goedkeuren**, **Goedkeuring ongedaan maken** of **Markeren als
+gefactureerd**. Factureren impliceert goedkeuring: een regel die je op gefactureerd zet wordt
+meteen goedgekeurd, en draai je de goedkeuring van een gefactureerde regel terug, dan gaat de
+facturatie mee.
+
+<Aside type="caution">
+Een goedgekeurde registratie zit op slot voor iedereen zonder het recht *Uren goedkeuren*. Je
+krijgt de melding "Goedgekeurde uren zijn vergrendeld"; vraag een beheerder om de correctie.
+</Aside>
+
+## Rapportages
+
+*Overzicht → Productiviteit* zet per medewerker de uren, het facturabele aandeel en het aantal
+actieve dagen naast elkaar. *Overzicht → Omzet* toont de omzet per maand, dit jaar tegenover vorig
+jaar, en de grootste klanten. Facturabele uren worden daar gerekend tegen het **uurtarief van de
+medewerker die ze boekte**: het veld *Uurtarief* op de persoon onder *Instellingen → Team &
+gebruikers*, en anders het *Standaard uurtarief* onder *Instellingen → Verlof*. Uren van iemand
+zonder tarief tellen niet mee in het bedrag.
+
+## Uren-typen instellen
+
+<Steps>
+1. Ga naar *Instellingen → Uren-typen*.
+2. Klik **Nieuw type** en vul een label in het Nederlands en het Engels in. De sleutel wordt uit
+   het label afgeleid en verandert daarna niet meer.
+3. Sla op. Het type verschijnt als veld **Type** op het urenformulier en als filter op het
+   Urenoverzicht.
+</Steps>
+
+**Werk** en **E-mail** staan er standaard in. Een type dat al gebruikt is kun je niet verwijderen;
+deactiveer het, dan verdwijnt het uit de keuzelijst terwijl de geschiedenis klopt.
+
+## Rechten
+
+Per rol in te stellen onder *Instellingen → Rollen*.
+
+| Recht | Wat het geeft | Standaard bij |
+| --- | --- | --- |
+| `time.entry.read` | Urenregels bekijken | Beheerder (van iedereen), Medewerker (alleen eigen) |
+| `time.entry.write` | Uren schrijven en bewerken | Beheerder (van iedereen), Medewerker (alleen eigen) |
+| `time.entry.approve` | Uren goedkeuren, en goedgekeurde uren bewerken | Beheerder |
+| `time.entry.invoice` | Uren op gefactureerd zetten | Beheerder |
+| `time.report.read` | Urenoverzicht en rapportages bekijken | Beheerder |
+| `time.entry_type.read` | Uren-typen bekijken | Beheerder, Medewerker |
+| `time.entry_type.manage` | Uren-typen beheren | Beheerder |
+
+De rol Eigenaar heeft alles. Import en export vragen daarnaast `impex.export` en `impex.import`,
+standaard alleen bij Beheerder.
+
+## Goed om te weten
+
+- **Export en import staan op het Uren-scherm zelf**, beperkt tot de week die je bekijkt. Een
+  import maakt regels aan op jouw eigen urenstaat; goedkeuring en facturatie zijn alleen
+  exportkolommen. Zie [Import & export](/nl/docs/modules/import-export/).
+- **Maandagochtend gaat er een herinnering** naar iedereen die de vorige week niets registreerde.
+  Wie die hele week goedgekeurd verlof had, wordt overgeslagen.
+- **Een concept dat 30 dagen niet is aangeraakt wordt opgeruimd.**
+- **Vanuit een contactmoment boek je meteen uren** met het vinkje "Voeg aan mijn uren toe"; klant,
+  project en onderwerp gaan mee.
+- Uren is een gelicentieerde module: loopt de licentie af, dan blijft alles leesbaar en
+  exporteerbaar, maar schrijven kan niet meer.
+
+## Verder lezen
+
+<CardGrid>
+  <LinkCard title="Projecten" description="Het urenbudget waar de balk Beschikbare uren tegenaan rekent." href="/nl/docs/modules/projects/" />
+  <LinkCard title="Abonnementen" description="Retainers met inbegrepen uren: waar het urenbudget van een project vandaan komt." href="/nl/docs/modules/subscriptions/" />
+  <LinkCard title="Facturatie" description="Wat er met goedgekeurde, facturabele uren gebeurt." href="/nl/docs/modules/invoicing/" />
+  <LinkCard title="Import & export" description="Urenstaten in en uit een spreadsheet." href="/nl/docs/modules/import-export/" />
+</CardGrid>

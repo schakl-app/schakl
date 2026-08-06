@@ -55,6 +55,11 @@ export default defineConfig({
           autogenerate: { directory: 'docs/modules' },
         },
         {
+          label: 'Koppelingen',
+          translations: { en: 'Integrations' },
+          autogenerate: { directory: 'docs/integrations' },
+        },
+        {
           label: 'Beheer',
           translations: { en: 'Administration' },
           autogenerate: { directory: 'docs/admin' },

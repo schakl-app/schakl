@@ -1,37 +1,54 @@
 ---
 title: What is schakl.?
-description: A self-hosted, white-label platform for agency operations — clients, projects, hours, leave and tasks in one modular web app.
+description: "A self-hosted, white-label platform for agency operations: clients, projects, hours, leave, invoices, marketing figures and reports in one modular web app."
 ---
 
 import { CardGrid, LinkCard } from '@astrojs/starlight/components';
 
-**schakl.** is a self-hosted platform for agencies: clients, contacts, projects, hours,
-leave and tasks in one fast web app that also installs as an app on your phone (PWA). You
-run it on your own server, under your own brand and domain.
+**schakl.** is a self-hosted platform for agencies. Clients, contacts, projects, hours, leave,
+tasks, domains, invoices, marketing figures and monthly reports live in one fast web app that also
+installs as an app on your phone (PWA). You run it on your own server, under your own brand and
+your own domain.
 
 ## The client is the centre
 
-Everything in schakl. attaches to the **client**: contacts, projects, domains, websites,
-hosting, hours and agreements. The client page shows a panel per topic — disable a module
-and its panel disappears. One page keeps giving the whole picture, however large your
-installation grows.
+Everything in schakl. attaches to the **client**: contacts, projects, domains, websites, hosting,
+hours, touchpoints, agreements, invoices and reports. The client page shows a panel per topic —
+disable a module and its panel disappears. One page keeps giving you the whole picture, however
+large your installation grows.
 
 ## Modular from the core
 
-Every capability is a **module** you enable or disable per organization (*Settings →
-Modules*). Each module brings its own screens, permissions and settings. What you don't
-use, you never see.
+Every capability is a **module** you enable or disable per organisation (*Instellingen → Modules*,
+Settings → Modules). Each module brings its own screens, permissions and settings. What you do not
+use, you never see: not in the menu, not on the client page and not in the permission list.
+
+The core is open source (AGPL). Some modules run on a licence key; when it expires the module goes
+read-only and you lose nothing. See [Licences](/en/docs/admin/licenses/).
 
 ## Your language, your brand
 
-The whole app defaults to Dutch, with English built in; an extra language is one
-translation file. Logo, colors, brand name and custom domain live under *Settings →
-Branding* — no rebuild required.
+The whole app defaults to Dutch, with English built in; an extra language is one translation file.
+Brand name, logo, favicon, colours and your own domain are set under *Instellingen → Huisstijl*
+(Settings → Branding), and no rebuild is required. That same branding carries into your invoices,
+your reports and every mail that goes out.
 
-## Read on
+## Where to start
 
 <CardGrid>
   <LinkCard title="Installation" description="From Docker Compose to the first-run wizard." href="/en/docs/admin/installation/" />
-  <LinkCard title="Upgrades & backups" description="New versions, migrations, and what to safeguard." href="/en/docs/admin/upgrades/" />
-  <LinkCard title="Module: Clients" description="The hub of the platform — the client file." href="/en/docs/modules/companies/" />
+  <LinkCard title="Switching modules on and off" description="What you enable, and what an expired licence does." href="/en/docs/admin/modules/" />
+  <LinkCard title="Roles and permissions" description="Who may do what, and who sees which clients." href="/en/docs/modules/roles/" />
+  <LinkCard title="Clients" description="The hub of the platform — the client file." href="/en/docs/modules/companies/" />
+  <LinkCard title="Invoicing" description="Invoices and quotes built from the hours, agreements and domains they bill." href="/en/docs/modules/invoicing/" />
+  <LinkCard title="Integrations" description="Mollie, Cloudflare, OXXA, Google Workspace and your own scripts." href="/en/docs/integrations/" />
 </CardGrid>
+
+## How this documentation is laid out
+
+- **Modules**: one page per thing you can switch on, from Clients to AI assistance. Each says where
+  to find it, what you do with it, which permissions govern it, and what to know before it surprises
+  you.
+- **Integrations**: what schakl. does with outside services, and exactly what to fill in where.
+- **Administration**: installing, upgrading, licences, e-mail, storage, single sign-on and
+  two-factor verification.

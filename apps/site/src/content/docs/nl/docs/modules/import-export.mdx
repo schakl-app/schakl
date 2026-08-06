@@ -1,16 +1,16 @@
 ---
 title: Import & export
-description: "Klanten, contactpersonen, projecten, taken, uren en abonnementen in en uit schakl. met CSV, Excel of een geplakte tabel."
+description: "Klanten, contactpersonen, projecten, taken, urenstaten, abonnementen, domeinen, websites en hosting in en uit schakl. met CSV, Excel of een geplakte tabel."
 sidebar:
-  order: 2
+  order: 26
 ---
 
 Je hoeft niets over te typen. Heb je je klanten in een spreadsheet, een boekhoudpakket of een
 oud systeem staan, dan breng je ze in één keer binnen: je kiest een bestand of plakt een tabel,
 je geeft aan wat elke kolom betekent, en je ziet vooraf precies wat er gaat gebeuren.
 
-Alles staat bij elkaar onder *Instellingen → Import & export*. Op de lijsten van klanten en
-contactpersonen zitten dezelfde knoppen, waarbij de export je huidige filters volgt.
+Alles staat bij elkaar onder *Instellingen → Import & export*. Op de lijsten zelf zitten dezelfde
+knoppen, naast de kolommenkiezer, waarbij de export je huidige filters volgt.
 
 ## Wat je kunt importeren
 
@@ -56,18 +56,28 @@ verschilt per soort:
 | --- | --- |
 | Klanten | klantnummer, anders de naam |
 | Contactpersonen | e-mailadres |
-| Projecten, abonnementen | naam |
-| Taken, uren | altijd nieuw |
+| Projecten | projectnaam; de klantkolom matcht op naam |
+| Abonnementen | abonnementsnaam; een gewijzigd bedrag breidt de prijshistorie uit |
+| Abonnementstypes | de sleutel van het type |
+| Standaardabonnementen | naam |
+| Domeinen | de domeinnaam, genormaliseerd (een geplakte URL wordt eerst teruggebracht tot het hoofddomein) |
+| Websites | het domein waar de site op staat; de klant komt van dat domein |
+| Hosting | naam |
+| Domeintarieven | altijd toegevoegd; een regel voor een datum die al bestaat wordt ter plekke gecorrigeerd |
+| Taken, urenstaten | altijd nieuw |
 
 Bij klanten telt het klantnummer zwaarder dan de naam: een klant die je hebt hernoemd komt zo
 op zichzelf terecht en niet als tweede klant binnen. Bevat je bestand allebei, dan kun je zelf
 kiezen waarop er wordt herkend.
 
+Waar "altijd nieuw" staat is er geen eerlijke sleutel om op bij te werken: taaktitels en
+urenregels mogen legitiem herhalen. Exporteren kan bij al deze soorten wel gewoon.
+
 ## Eerst controleren, dan importeren
 
-**Controleren** rekent de hele import door zonder iets op te slaan: hoeveel records er nieuw
-zijn, hoeveel er worden bijgewerkt, en welke rijen een fout bevatten, met het rijnummer erbij
-zoals je het in je spreadsheet telt. Pas na een schone controle kun je op **Importeren**
+**Bestand controleren** rekent de hele import door zonder iets op te slaan: hoeveel records er
+nieuw zijn, hoeveel er worden bijgewerkt, en welke rijen een fout bevatten, met het rijnummer
+erbij zoals je het in je spreadsheet telt. Pas na een schone controle kun je op **Importeren**
 klikken.
 
 Een import is alles of niets. Zit er een fout in, dan wordt er niets opgeslagen, ook niet de

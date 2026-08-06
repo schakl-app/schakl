@@ -1,0 +1,133 @@
+---
+title: Marketing sources
+description: "What Google Analytics, Search Console, Google Ads and SE Ranking each need, and what every source contributes to the client dashboard."
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+The marketing module reads four sources, and each has its own requirements: three ride an
+employee's Google connection, one rides a single API key held by the whole agency. This page is
+about the linking itself. What you then see on the dashboard is covered under
+[Marketing](/en/docs/modules/marketing/).
+
+## Where to find it
+
+- The **Marketing** panel on the client page, via ⋯ → **Bewerken** (Edit): this is where you link
+  accounts per client.
+- *Instellingen → Marketing* (Settings → Marketing): the **Google Ads-ontwikkelaarstoken** (Google
+  Ads developer token) and the **SE Ranking API-sleutel** (SE Ranking API key).
+- *Instellingen → Google Workspace*: the OAuth client three of the four sources ride on. See
+  [Google Workspace](/en/docs/integrations/google-workspace/).
+
+## The four sources
+
+| Source | What you link | What you prepare first | What it gives you |
+| --- | --- | --- | --- |
+| Google Analytics | a GA4 property | Analytics Admin API **and** Analytics Data API | Sessions, Users, New users, Key events, Conversions, Engagement, Revenue |
+| Search Console | a verified site (domain or URL prefix) | Search Console API | Clicks, Impressions, CTR, Average position |
+| Google Ads | a client account, never a manager account | Google Ads API and a developer token | Cost, Clicks, Impressions, Conversions, Conversion value |
+| SE Ranking | a project | one API key for the agency | Average position, Top 3, Top 10, Top 30, Ranking and Tracked keywords |
+
+You enable the APIs in the Google Cloud project of your own OAuth client, under **APIs & Services
+→ Library**.
+
+## Linking the three Google sources
+
+<Steps>
+1. In your Cloud project, enable four APIs: **Google Analytics Admin API**, **Google Analytics
+   Data API**, **Google Search Console API** and **Google Ads API**. Enable only the Data API and
+   the property picker stays empty while everything else looks configured.
+
+2. Create a developer token in the **API Center** of your Google Ads manager account and enter it
+   under *Instellingen → Marketing* in **Google Ads-ontwikkelaarstoken**. It is stored encrypted
+   and never returned; leave the field empty later to keep it.
+
+3. Connect your own Google account under *Instellingen → Mijn account* (Settings → My account),
+   card **Google-account**, button **Google koppelen** (Connect Google). If you may manage
+   marketing links, Analytics, Search Console and Ads are folded into that same consent: one trip
+   through Google's screen.
+
+4. Open a client, use the ⋯ menu on the **Marketing** panel and choose **Bewerken** (Edit). Pick an
+   account in **Analytics-property**, **Search Console-site** and **Ads-account**. If the client
+   has more than one website, first choose under **Koppelen aan website** (Link to website) which
+   site the link belongs to; otherwise it stays on **Hele klant** (Whole client).
+</Steps>
+
+A picker shows what **your** connection can reach at Google, not what the agency holds. If it stays
+empty it says why: no Google account yet (with a **Google koppelen** link), missing scopes
+(**Google opnieuw koppelen**, reconnect), or for Ads that a developer token is still needed. If a
+colleague already reaches that source, it names them.
+
+Several links per source per client are allowed: a client with two sites gets two Search Console
+links and two properties, each attached to its own website.
+
+## SE Ranking
+
+SE Ranking works differently from the three Google sources: no OAuth, no personal connection, but
+one **SE Ranking API-sleutel** for the whole agency under *Instellingen → Marketing*. Every client
+project is linked to that one key, so keyword positions, the site audit and AI-search visibility
+all work at once. Without a key schakl. says a key is needed; if SE Ranking rejects it, it says
+that too.
+
+<Aside type="caution" title="SE Ranking: the key, but not yet the screens">
+The account pickers on the client page currently offer Google Analytics, Search Console and Google
+Ads only. The SE Ranking figures end up in the keyword-positions, site-audit and
+AI-search-visibility chapters of the [monthly report](/en/docs/modules/reporting/). Two things
+about this connection have also never been exercised against a live key: the exact
+`Authorization` header scheme and the path the project list is read from. Both are taken from SE
+Ranking's own documentation.
+</Aside>
+
+## What happens after you link
+
+A new link gets a one-off backfill of a little over thirteen months, so the sparklines and the
+year-on-year comparison work straight away. After that, a nightly job collects the daily figures
+and re-pulls the last week while it is there: Search Console only finalises its numbers two to
+three days later, and attribution in Analytics and Ads keeps moving for a few days as well. Late
+figures therefore correct themselves.
+
+Every link carries its state visibly: **Gesynchroniseerd** (Synced), **Eerste synchronisatie
+loopt** (First sync running), **Synchronisatiefout** (Sync error) or **Verbinding verbroken**
+(Connection lost), with **Laatst gesynchroniseerd** (Last synced) beside it. It also names whose
+Google account the link runs through.
+
+Unlinking erases nothing. The link is deactivated and the collected history stays; linking the same
+property again switches it back on.
+
+## Permissions
+
+| Permission | What it opens | Default roles |
+| --- | --- | --- |
+| `marketing.link.manage` | Create and remove links, and *Instellingen → Marketing* | Administrator |
+| `marketing.metrics.read` | View the figures (panel, tab, portal tile) | Administrator, Member, Client |
+| `marketing.overview.read` | The cross-client overview | Administrator |
+| `google.connection.manage` | Connect your own Google account | Administrator, Member |
+
+Set these per role under *Instellingen → Rollen* (Settings → Roles).
+
+## Good to know
+
+- **A link runs through one colleague's Google account.** When that person leaves, the client's
+  numbers stop arriving until somebody else links them again.
+- **Manager accounts (MCC) are expanded.** Google reports direct grants only, so schakl. walks the
+  hierarchy and offers the client accounts underneath. The manager account itself is never
+  selectable, because Google refuses metric queries against one. An Ads link created before this
+  was added does not know its manager account: remove it and pick the account again.
+- **Google sunsets old versions of the Ads API** about a year after release, and from that day
+  every request is refused. It looks like a broken module. The fix is to update schakl.; in an
+  emergency the administrator can pin a current version on the server.
+- **The developer token belongs in the screen, not in the server settings.** If it only exists in
+  the server environment, *Instellingen → Marketing* says so and you can still store it in the
+  database instead.
+- **An expired licence makes the module read-only**: linking, unlinking and the settings refuse,
+  and the nightly sync stands down. The figures already collected stay visible.
+
+## Read next
+
+- [Marketing](/en/docs/modules/marketing/): the dashboard, the layout the client sees and the
+  cross-client overview.
+- [Google Workspace](/en/docs/integrations/google-workspace/): the OAuth client and the per-employee
+  connection.
+- [Reporting](/en/docs/modules/reporting/): the monthly report that uses these figures.

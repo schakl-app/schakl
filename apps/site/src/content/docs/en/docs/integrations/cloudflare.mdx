@@ -1,0 +1,177 @@
+---
+title: Cloudflare
+description: "DNS, domain-wide redirects and Pages for your clients' domains, through your own Cloudflare accounts."
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+The Cloudflare integration puts a client domain's DNS, the redirect on it and the Pages project
+behind it on the domain page itself, so you no longer keep a second tab open beside schakl. The
+**Doorverwijzing** (redirect) status on a domain used to be nothing but a label; this turns it
+into a real Redirect Rule that schakl. creates, reads back and watches.
+
+## Where to find it
+
+The accounts live under *Instellingen → Cloudflare* (Settings → Cloudflare, "API-tokens, zones
+en Pages-projecten per account"), in the **Communicatie & koppelingen** (Communication &
+integrations) group. The day-to-day work is on the domain page: *Domeinen & websites → Domeinen*
+(Domains & websites → Domains), open a domain, and there is the **Cloudflare** panel, with the
+*Registrar (OXXA)* panel below it. The module deliberately adds no menu item: Cloudflare is not a
+place you go, it is something a domain has.
+
+Cloudflare is a licensed module. Switch it on under *Instellingen → Modules* (Settings →
+Modules); the licence key goes in under *Instellingen → Licentie* (Settings → Licence).
+
+## The API token
+
+One row per Cloudflare account you work with: your agency usually has one, and some clients bring
+their own. Mint the token in Cloudflare's own dashboard (*My Profile → API Tokens → Create
+Token*, a custom token) and tick what you need:
+
+| Cloudflare permission | Needed for |
+| --- | --- |
+| Zone → Zone → **Read** | listing and adopting zones (the minimum) |
+| Zone → DNS → **Edit** | the DNS table, the export, and the records a redirect needs |
+| Zone → Dynamic Redirect → **Edit** | reading and writing the domain-wide redirect |
+| Zone → Page Rules → **Read** | optional: recognising a legacy forwarding page rule as a conflict |
+| Account → Zone → **Edit** | optional: creating a zone that does not exist yet |
+| Account → Cloudflare Pages → **Read/Edit** | optional: Pages projects and hostname linking |
+| Account → Domain Registration → **Read** | optional: the Registrar list, and therefore the billing decision |
+
+<Aside type="caution">
+Never use the legacy Global API Key. The field asks for a scoped token and refuses the unscoped
+key on purpose.
+</Aside>
+
+<Steps>
+
+1. Go to *Instellingen → Cloudflare* and press **Account toevoegen** (Add account). Fill in
+   **Naam** (what you recognise this account by, e.g. the client's name), paste the
+   **API-token**, optionally pick a **Leveranciersregel** (Provider row) from your own list
+   (*Instellingen → Providers*, kind DNS) and leave **In gebruik** (In use) on.
+2. Press **Token controleren** (Check token). Under **Wat dit token mag** (What this token may
+   do) you get what it can actually reach: *Token is geldig*, *Account uitlezen*, *Zones
+   uitlezen*, *Pages-projecten uitlezen*, *Registrar-domeinen uitlezen*. Anything you did not
+   grant reads "niet toegekend" (not granted) here, rather than showing up three screens away as
+   an error under a button.
+3. If the token sees more than one Cloudflare account, fill in **Cloudflare-account-ID**. With
+   one account that field is filled in for you.
+4. Press **Zones ophalen** (Fetch zones). That single action pulls the zones, the Pages projects
+   *and* the Registrar list, and reports how many zones were fetched and how many matched a
+   domain.
+5. Tidy up the rest in the **Zones** table with **Aan domein koppelen** (Link to domain) or
+   **Ontkoppelen** (Unlink), a **Zone zoeken** (Search zone) box and an **Alleen
+   niet-gekoppelde** (Unlinked only) filter. Automatic matching goes by domain name; whatever
+   did not match is listed rather than hidden.
+
+</Steps>
+
+## Connecting a domain
+
+The domain page carries **Koppelen aan Cloudflare** (Connect to Cloudflare). schakl. looks for an
+existing zone first and only creates one if there is none; when you are taking over a client's
+existing setup, tick **Alleen een bestaande zone koppelen** (Adopt an existing zone only).
+
+The panel then shows **Cloudflare verwacht** (Cloudflare expects, the nameservers Cloudflare
+assigned) beside **Publieke DNS antwoordt** (Public DNS answers), with a verdict: "Nameservers
+wijzen naar Cloudflare" or "Nameservers wijzen nog niet naar Cloudflare. Wijzig ze bij de
+registrar." **Controleren bij Cloudflare** (Check at Cloudflare) is the only action that actually
+goes and looks; the panel itself draws from stored data and keeps rendering when Cloudflare is
+down. What a check finds comes back under **Aandachtspunten** (Points of attention): a zone
+still waiting or paused, a redirect changed or removed at Cloudflare, something else on the zone
+already redirecting, a missing proxied record, or a domain that exists in more than one account.
+
+## The domain-wide redirect
+
+In the **Domeinbrede omleiding** (Domain-wide redirect) section you fill in **Omleiden naar**
+(Redirect to — a full address such as `https://nieuwesite.nl`), **Soort omleiding** (Kind of
+redirect: 301 permanent, 302 temporary, 307 or 308), **Pad meenemen** (Keep the path),
+**Querystring meenemen** (Keep the query string), **Ook www en andere subdomeinen omleiden**
+(Redirect www and other subdomains too) and **Records toevoegen die de omleiding nodig heeft**
+(Add the records the redirect needs). **Omleiding opslaan** also sets the domain's own status to
+*Doorverwijzing* with the target address on it.
+
+<Aside type="caution">
+A redirect rule only fires for traffic that actually reaches Cloudflare. If the domain has no
+*proxied* record it receives none: the rule saves neatly, Cloudflare's dashboard shows it as
+active, and nothing happens. So leave **Records toevoegen die de omleiding nodig heeft** on —
+schakl. then places Cloudflare's documented placeholder record for the domain itself and for
+`www`, and never touches an existing record. If somebody greys the cloud later, the check reports
+it.
+</Aside>
+
+A redirect pointing back at the domain itself is refused: Cloudflare would save it happily and
+the client's site would redirect forever. Whether it is a loop depends on the subdomains tick —
+`klant.nl → nieuw.klant.nl` is sensible with subdomains off and a loop with them on. If another
+redirect rule or a legacy page rule already sits on the zone, you get **Andere omleidingen op
+deze zone** (Other redirects on this zone): conflicts are reported, never resolved, because
+schakl. will not reorder or delete somebody else's rule. Account-level Bulk Redirects are not
+inspected at all, so if you use those, both your bulk redirect and this rule will apply.
+
+## DNS records and Pages
+
+The DNS table (**DNS-records tonen**, Show DNS records) is read live from Cloudflare and stored
+nowhere: a copy would be wrong within minutes. You add and edit A, AAAA, CNAME, TXT, MX, NS, SRV
+and CAA records with **Type**, **Naam**, **Waarde** (Value), **TTL** (or Automatisch),
+**Via Cloudflare** (proxied), **Prioriteit** and a **Notitie**. Export is available as a zone file
+or as CSV.
+
+Under **Cloudflare Pages** you pick a **Project** and optionally a **Hostnaam** (leave it blank
+for the domain itself) and press **Aan project koppelen** (Link to project). If the zone is here,
+schakl. registers the hostname on the project *and* writes the CNAME. If DNS lives elsewhere the
+registration still happens and pointing the hostname at the project's `pages.dev` address is
+yours to do; until then Cloudflare keeps the hostname on "pending". The hostname must be the
+domain or a subdomain of it, because that link is what tells schakl. which client it belongs to.
+
+## Who pays for the name
+
+A zone is not a registration. Cloudflare will happily answer DNS for a domain the client
+registered themselves and renews themselves, which is precisely the domain you must never
+invoice. Only the **Registrar list** knows the difference: it has its own token permission and
+its own "when was this last read" timestamp. So set a domain's **Facturatie** (Billing) field to
+**Volg het register** (Follow the register) and you get the sentence "Staat in het register van
+Cloudflare Registrar, dus dit domein wordt gefactureerd" (it is in the Cloudflare Registrar
+register, so this domain is invoiced), or the opposite. As long as no register has been read,
+everything bills exactly as it always did.
+
+<Aside type="caution">
+The Registrar half has never been exercised against a live Cloudflare Registrar account. Every
+field is parsed defensively, but check the list yourself after the first sync before you rely on
+it for invoicing.
+</Aside>
+
+## Permissions
+
+| Permission | Covers | Default |
+| --- | --- | --- |
+| `cloudflare.settings.manage` | add, rotate, verify, delete and sync an account; also what opens the settings screen | Administrator (Administrator) |
+| `cloudflare.dns.read` | the zone list, DNS records and export, the status report, the account picker | Administrator (Administrator) |
+| `cloudflare.zone.manage` | create or adopt a zone, edit DNS, set or remove the redirect, link Pages | Administrator (Administrator) |
+
+Editable per role under *Instellingen → Rollen* (Settings → Roles). None of the three is ever
+given to the *Klant* (client) role. They are separate from `domains.domain.write` on purpose:
+that one edits *our record of* a domain, these edit its live DNS.
+
+## Good to know
+
+- There is no background job. **Zones ophalen** is a button, and nothing refreshes the zones, the
+  Pages projects or the Registrar list by itself.
+- There is no webhook and no callback URL: beyond minting the token, nothing has to be configured
+  in Cloudflare.
+- schakl. never picks an account for you. The same domain name may legally exist in several
+  accounts, so when it is ambiguous the connect is refused and you choose. A zone created in the
+  wrong account cannot be moved, only deleted and recreated.
+- Deleting an account wipes the fetched zones, redirects and Pages links from schakl. and changes
+  nothing at Cloudflare.
+- The zone table on the settings screen shows at most 200 zones and has no pager. An account
+  holding more will not show them all on that screen.
+- Past a lapsed licence, reading, exporting and the status report keep working; only changes are
+  blocked.
+
+<CardGrid>
+  <LinkCard title="OXXA" href="/en/docs/integrations/oxxa/" description="The registrar half: expiry dates and moving nameservers." />
+  <LinkCard title="Domains" href="/en/docs/modules/domains/" description="The domain register, renewals and the Facturatie field." />
+  <LinkCard title="Licences" href="/en/docs/admin/licenses/" description="Cloudflare is a licensed module." />
+</CardGrid>

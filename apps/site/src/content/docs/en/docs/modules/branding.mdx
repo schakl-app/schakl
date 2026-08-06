@@ -1,0 +1,113 @@
+---
+title: Branding
+description: "Your agency's brand name, logo, favicon, app icon and colours, plus the workspace's language, timezone, currency and country."
+sidebar:
+  order: 24
+---
+
+import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+schakl. carries your agency's name, not ours. One screen holds the brand name, logo, favicon,
+app icon and colours, and beside them the language, timezone, currency and country of your
+organisation. Everything applies from the next page load, for everyone in the workspace; nothing
+is rebuilt and nothing restarts.
+
+## Where to find it
+
+*Instellingen → Huisstijl* (Settings → Branding), in the group **Werkruimte** (Workspace). The
+"Zoek een instelling" (Find a setting) box also finds it on words like "logo", "favicon",
+"kleur", "tijdzone" or "valuta". It is one form with one **Opslaan** (Save) and two named
+halves: **Merk** (Brand) and **Regio & formaat** (Region & format). A **Voorbeeld** (Preview)
+panel beside the form follows along while you pick colours.
+
+## Merk (Brand)
+
+- **Merknaam** (Brand name, required). It appears at the top of the sidebar, on the login
+  screen, in the browser tab title, as the name of the installed app, in the header of every
+  outgoing e-mail, and on your invoices, quotes and reports wherever there is no logo.
+- **Merknaam naast het logo tonen** (Show the brand name next to the logo). Leave it off and the
+  sidebar carries the logo alone, and the tab title drops the brand prefix.
+- **Titel browsertabblad** (Browser tab title). A template with `{page}` (the page name,
+  required) and optionally `{brand}`. A live preview sits under the field, and the screen tells
+  you a template is wrong before you save. Leave it empty for the default: *Brand · Page*.
+- **Logo**. Shown in the sidebar, on the login screen, in the header of outgoing mail and on the
+  PDF documents schakl. generates.
+- **Favicon**. The browser tab icon.
+- **App-icoon** (App icon). A square image of at least 512×512 px (PNG, JPEG or WebP). This
+  becomes the home-screen icon when somebody installs the app; schakl. derives the 192 and 512
+  sizes itself, including the "maskable" variant Android crops to a circle. The favicon stays
+  the tab icon.
+- **Primaire kleur** (Primary colour) and **Accentkleur** (Accent colour). The primary colour is
+  what the app paints with: buttons, links, the active menu item, badges, and the browser's own
+  checkboxes and date pickers. The same colour is the theme and splash colour of the installed
+  app, the colour of the brand name in the e-mail header, and the fallback colour of your
+  documents.
+
+The three image fields share one picker: a thumbnail with **Bestand kiezen** (Choose file) or
+**Vervangen** (Replace), and **Verwijderen** (Remove). To point at an asset you already host,
+open **Een gehoste URL gebruiken** (Point at a hosted URL instead) and paste the URL.
+
+## Regio & formaat (Region & format)
+
+- **Standaardtaal** (Default language): Dutch or English, for everyone who has not chosen for
+  themselves.
+- **Tijdzone** (Timezone): event times are shown in this zone for everyone in the workspace.
+- **Land** (Country): where the organisation operates. Used to read a phone number written
+  without a country code, and as the default for a new client.
+- **Valuta** (Currency): all amounts are shown in this currency for everyone.
+
+## Where your branding turns up again
+
+| Where | What it takes over |
+| --- | --- |
+| Login screen | Logo and brand name, before anyone is signed in |
+| Outgoing e-mail | Logo and brand name in the primary colour, wrapped around every mail the platform sends |
+| Invoices, quotes and reports | Logo, brand name and the primary colour as a fallback |
+| Installed app (PWA) | Name, app icon, theme and background colour |
+| Client portal | The same workspace, so the same branding |
+
+## Custom domain
+
+At the bottom of the screen sits an **Eigen domein** (Custom domain) card with its current
+status. Setting it up happens in its own guided wizard (*Instellingen → Eigen domein*): prove
+ownership with a TXT record first, then DNS and the TLS certificate. That is deliberately a
+separate screen rather than a field on this form.
+
+## Permissions
+
+| Permission | What it opens | Default |
+| --- | --- | --- |
+| `settings.branding.write` | *Instellingen → Huisstijl* and *Instellingen → Modules* | Administrator |
+| `settings.domain.write` | *Instellingen → Eigen domein* | Administrator |
+
+An owner holds everything. An administrator can also hand the key out on its own: somebody with
+only `settings.branding.write` sees exactly those two cards in Instellingen and nothing else.
+Uploading an image also needs the ordinary upload permission (`files.file.write`), and only
+images are accepted here.
+
+## Good to know
+
+<Aside type="caution">
+What you upload here is publicly readable. The logo, favicon and app icon must render on the
+login screen before a session exists, so they are served without a login on your organisation's
+address. Do not put anything here that must not leave the building.
+</Aside>
+
+- Changes apply from the next page load, for everyone. Nobody has to sign out.
+- In dark mode your brand colours are lightened automatically if their contrast against the dark
+  background would be too low. The hue is preserved, so your colour stays recognisable and you
+  never have to supply a second set.
+- The first-run wizard at `/setup` already asks for the brand name, colours and language. This
+  screen is where you change them afterwards.
+- The background image and accent colour of your invoice and quote template are not here but
+  under *Instellingen → Facturatie* (Settings → Invoicing). That template falls back to your
+  primary colour as long as you leave its own accent empty.
+- A client's logo is a different thing from your own branding. You set it on the client's own
+  page, and it is shown there and on that client's portal dashboard.
+
+## Read next
+
+<CardGrid>
+  <LinkCard title="Files" description="Where uploaded files end up and who may see them." href="/en/docs/modules/files/" />
+  <LinkCard title="Client portal" description="Your clients sign in to your brand, not ours." href="/en/docs/modules/portal/" />
+</CardGrid>

@@ -1,0 +1,93 @@
+---
+title: Hosting
+description: "De gedeelde hostingaccounts waar je websites op draaien: naam, provider, IP-adres en wie verantwoordelijk is."
+sidebar:
+  order: 15
+---
+
+import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Een hostingaccount is de plek waar een website draait. Bureaus hergebruiken dezelfde servers
+en pakketten voor meerdere klanten, dus hosting is in schakl. een eigen lijst die je één keer
+bijhoudt en waar websites naar verwijzen.
+
+## Waar je het vindt
+
+Onder *Instellingen → Hosting* ("Gedeelde hostingaccounts waar je websites op draaien").
+Hosting staat bewust niet in het hoofdmenu en heeft geen paneel op de klantpagina: die pagina
+toont de **websites** van de klant, en elke website noemt zelf zijn hostingaccount.
+
+<Aside type="tip">
+Kom je van een oudere versie: de lijst stond vroeger op `/hosting`. Opgeslagen bladwijzers naar
+dat adres werken niet meer; gebruik *Instellingen → Hosting*.
+</Aside>
+
+## Een account vastleggen
+
+**Nieuwe hosting** opent een dialoog met vijf velden:
+
+- **Naam.** Verplicht, en het enige veld waarop een import bijwerkt. Kies iets dat je herkent
+  en niet twee keer gebruikt.
+- **Klant.** Optioneel, en dat is het punt: een account zonder klant is gedeelde infrastructuur
+  die je voor meerdere klanten gebruikt. Leeg is hier een echt antwoord, geen ontbrekend
+  gegeven.
+- **Provider.** Uit je eigen providerlijst (*Instellingen → Providers*), met "＋ toevoegen" om
+  er ter plekke een aan te maken.
+- **IP-adres.** Vrij tekstveld, breed genoeg voor IPv6.
+- **Verantwoordelijke.** Een verwijzing in plaats van een naam die je intypt: het bureau, een
+  klant, een medewerker of een contactpersoon.
+
+Daaronder staan je eigen velden voor het type hosting, als je die hebt gedefinieerd onder
+*Instellingen → Aangepaste velden*.
+
+De lijst toont per regel de naam, de provider, het IP-adres en de klant, met een ⋯-menu voor
+**Bewerken** en **Verwijderen**. Onderaan staat de pager: de lijst toont nooit stiekem alleen
+het begin.
+
+## Vanuit een website aanmaken
+
+Je hoeft hier niet eerst langs. In het websiteformulier opent de keuzelijst **Hosting** met
+"＋ toevoegen" precies dezelfde dialoog, inclusief alle velden hierboven. Sla je op, dan staat
+het nieuwe account meteen geselecteerd bij de website waar je mee bezig was.
+
+## Import en export
+
+Naast de knop **Nieuwe hosting** staat de Export/Import-balk. Een import werkt bij op de
+**naam**. De kolommen zijn `name` (verplicht), `company`, `provider`, `ip_address` en `contact`.
+
+Twee bijzonderheden:
+
+- **Een lege `company` ontkoppelt echt.** Bij de meeste entiteiten laat een lege cel het veld
+  met rust, maar hier betekent leeg "gedeelde infrastructuur", dus die keuze wordt uitgevoerd.
+- **Twee accounts met dezelfde naam zijn een fout, geen gok.** Anders dan bij domeinen is de
+  naam van een hostingaccount niet uniek in de database. Komt een naam twee keer voor, dan
+  meldt de controle die rij als dubbelzinnig in plaats van er een te kiezen.
+
+Zie [Import & export](/nl/docs/modules/import-export/) voor hoe controleren en inlezen werkt.
+
+## Rechten
+
+| Recht | Standaard bij |
+| --- | --- |
+| `hosting.hosting.read` | Beheerder, Medewerker, Klant |
+| `hosting.hosting.write` | Beheerder |
+| `hosting.hosting.delete` | Beheerder |
+
+Aan te passen per rol onder *Instellingen → Rollen*. Het kaartje *Hosting* in Instellingen
+verschijnt alleen voor wie `hosting.hosting.read` heeft. Voor het exporteren of importeren van
+de lijst heb je daarnaast het aparte bulkrecht nodig.
+
+## Goed om te weten
+
+- Een hostingaccount verwijderen verwijdert geen websites. De websites die eraan hingen houden
+  gewoon een leeg hostingveld, wat je in de lijst Websites terugziet.
+- Hetzelfde geldt voor een provider: verdwijnt die uit *Instellingen → Providers*, dan blijft
+  het hostingaccount bestaan met een leeg providerveld.
+- Hosting is een gelicentieerde module met een eigen sku. Verloopt de licentie, dan wordt de
+  lijst alleen-lezen; exporteren blijft werken en er gaat niets verloren.
+
+<CardGrid>
+  <LinkCard title="Websites" href="/nl/docs/modules/websites/" description="De sites die naar een hostingaccount verwijzen." />
+  <LinkCard title="Domeinen" href="/nl/docs/modules/domains/" description="Het register waar elke website aan hangt." />
+  <LinkCard title="Licenties" href="/nl/docs/admin/licenses/" description="Wat er gebeurt als een licentie verloopt." />
+</CardGrid>

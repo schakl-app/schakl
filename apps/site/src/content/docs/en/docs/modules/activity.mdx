@@ -1,0 +1,108 @@
+---
+title: Activity trail
+description: "The paper trail under every record: who changed what, and when. Kept automatically and impossible to erase."
+sidebar:
+  order: 23
+---
+
+import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+"Who changed this client number?" and "since when has this client been inactive?" are questions
+that arrive on a Tuesday afternoon, not things you set up in advance. So schakl. keeps a trail on
+every record that can change: the name, the change and the timestamp. There is nothing to switch
+on.
+
+## Where to find it
+
+At the bottom of the record's own page, in the **Activiteit** (Activity) block. History sits under
+the work, never between it. Today the block appears on:
+
+- the client page;
+- the project page;
+- a contact's page;
+- the domain page;
+- an invoice and a quote.
+
+A task carries its own, richer trail on the task page, including comments and status moves.
+
+## What it says
+
+Each line is one sentence with a name in front of it and the date and time underneath. For
+example:
+
+- **Sanne de Vries** heeft dit aangemaakt (created this)
+- **Jan Bakker** wijzigde Status: Prospect → Klant, Verantwoordelijke (changed Status and
+  Responsible)
+- **Sanne de Vries** voegde "offerte-2026.pdf" toe (attached a file)
+
+For a change you see the field with its old and new value. Values are rendered for what they are:
+a status in plain words, a date European, a yes/no as Ja or Nee. Where a field points at a person
+or a client, only the field name is named ("Verantwoordelijke"), because a technical id tells
+nobody anything.
+
+The trail follows a record's **definition fields**: name, client number, status, the responsible
+person, the billing details, budgets, start and end dates and the like. Free-text notes and
+custom fields are deliberately left out of it.
+
+Alongside changes, the modules report their own milestones here too: a document added, a logo
+uploaded, an invoice issued, sent or paid, a payment reminder, a contact moment logged, a
+Cloudflare redirect set, portal access granted or revoked.
+
+## Reading and expanding
+
+The block shows the three newest lines; **Alle … tonen** (Show all …) expands the rest. At most
+ten lines are loaded. If there are exactly ten, a line underneath says "De 10 meest recente worden
+getoond" — showing the 10 most recent — so you never mistake a sample for the whole story.
+
+## Names that stay right
+
+The name in the trail is recorded at the moment of the change. If that colleague leaves later and
+you remove the account, their work stays attributed to them; it simply reads "(verwijderd)"
+afterwards. No name at all means the system itself acted, for instance a nightly job.
+
+## Signed in as somebody else
+
+When an agency staff member signs in as a client's contact person, that session genuinely runs as
+the client. Anything changed during it would read as "the client did this", which is exactly the
+fact that is missing. So your name is put beside it as an amber label: *via Jan Bakker*, with the
+explanation "Jan Bakker was op dat moment ingelogd als deze gebruiker" — Jan Bakker was signed in
+as this user at the time.
+
+The start and end of such a session land on the contact's own trail as well: "logde in als …" and
+"beëindigde de sessie als …".
+
+## Permissions
+
+| Permission | What it does | Default |
+| --- | --- | --- |
+| `activity.read` | View the activity trail | Administrator, Member, Client |
+
+That permission alone is not enough. To see a record's trail you must also be allowed to read the
+record itself: `companies.company.read` for a client, `projects.project.read` for a project, and
+so on. And the client behind it must be inside your client groups; where it is not, there is
+simply no activity block.
+
+A client portal login never sees the trail. The portal shows dashboards and documents, not the
+agency's internal working history.
+
+<Aside type="caution">
+The trail cannot be edited or cleared, not even by an owner. There is no button for it, and that
+is the point: a history you can rewrite is not a history. The trail also survives the deletion of
+the record it describes.
+</Aside>
+
+## Good to know
+
+- An edit that changes nothing produces no line. Only real changes are recorded.
+- The line is saved in the same movement as the change itself. If the save fails, no line is left
+  behind claiming something that never happened.
+- A change made through an import or a bulk edit lands on the trail too, under the name of
+  whoever processed the file or the selection.
+
+## Read next
+
+<CardGrid>
+  <LinkCard title="Clients" description="The client file, with the activity trail at the bottom." href="/en/docs/modules/companies/" />
+  <LinkCard title="Roles and permissions" description="Who may read the trail, and for which clients." href="/en/docs/modules/roles/" />
+  <LinkCard title="Client portal" description="Signing in as a client, and what that does to the trail." href="/en/docs/modules/portal/" />
+</CardGrid>

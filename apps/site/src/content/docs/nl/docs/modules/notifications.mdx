@@ -1,0 +1,154 @@
+---
+title: Meldingen
+description: "De bel, de inbox en waar meldingen naartoe gaan: per gebeurtenis in-app, per e-mail of naar je eigen Slack, Teams of webhook."
+sidebar:
+  order: 20
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Een bureau draait op dingen die anderen doen: een taak komt bij een collega terecht, een project
+loopt door zijn budget heen, iemand vraagt verlof aan, je urenregistratie is vrijdag nog leeg.
+schakl. maakt daar een bel van die je ook echt leest, en laat iedereen per gebeurtenis kiezen of het
+daarnaast nog in de mailbox of in Slack terechtkomt, en of dat meteen gebeurt of in één overzicht per
+dag.
+
+## Waar je het vindt
+
+- De **bel** in de bovenbalk, op elk scherm, met het aantal ongelezen meldingen.
+- **Meldingen**, de volledige lijst, via "Alles bekijken" in de bel.
+- *Instellingen → Meldingen* (onder "Mijn instellingen"): jouw eigen instellingen en jouw eigen
+  kanalen. Iedereen heeft dit scherm.
+- *Instellingen → Standaardmeldingen* (groep "Communicatie & koppelingen"): wat iedereen overneemt,
+  plus de gedeelde kanalen van de organisatie. Alleen voor beheerders.
+
+## De bel en de lijst
+
+De bel toont je meest recente ongelezen meldingen, met **Alles gelezen**, **Meldingsinstellingen** en
+**Alles bekijken**. Het scherm *Meldingen* toont de kolommen **Melding**, **Onderwerp**, **Door** en
+**Wanneer**, gegroepeerd per dag (Vandaag, Gisteren). Je filtert op **Alles** of **Ongelezen** en op
+type (Taak, Project, Klant, Verlof, Urenregistratie, Contactmoment). Per rij kun je **Markeer als
+gelezen** en weer terug, en bovenaan staat **Alles als gelezen markeren**.
+
+## Waarvoor je een melding krijgt
+
+Er zijn eenentwintig gebeurtenissen, gegroepeerd zoals in het instellingenscherm:
+
+| Groep | Bijvoorbeeld |
+| --- | --- |
+| Taken (8) | Iemand @noemt me in een reactie |
+| Projecten (3) | Een project verbruikt zijn budget |
+| Klanten (3) | Een klant verandert van status |
+| Verlof (3) | Iemand vraagt verlof aan |
+| Uren (2) | Mijn urenregistratie is nog leeg |
+| Contactmomenten (2) | Een e-mail wacht op mijn beoordeling |
+
+Daarnaast kan een automatiseringsregel een melding sturen. Die staat niet in de tabel hieronder: een
+regel zet je uit in de regel zelf.
+
+## De tabel: wie krijgt wat, en wanneer
+
+Onder *Instellingen → Meldingen* staat bij **Per gebeurtenis** één rij per gebeurtenis, met:
+
+- **In-app**: een vinkje **Aan**, een **Bezorging** en een **Vertraging (min)**.
+- **E-mail**: een **Bezorging** en een **Vertraging (min)**.
+- Eén kolom per kanaal dat je zelf hebt gekoppeld.
+- **Waarde van**: waar deze rij zijn waarde vandaan haalt, als **Standaard**, **Organisatie** of
+  **Eigen instelling**. Met **Terug naar overgenomen** haal je jouw eigen afwijking weer weg.
+
+Bezorging is steeds **Uit**, **Direct**, **Elk uur**, **Dagelijks overzicht** of **Wekelijks
+overzicht**. Boven elke kanaalkolom zet "Alles instellen…" die hele kolom in één keer; **Alle e-mail
+instellen op** doet dat voor de e-mailkolom.
+
+<Aside type="caution">
+Alles buiten de app is een deelverzameling van in-app. Zet je het vinkje **Aan** van een rij uit, dan
+verlaat die gebeurtenis de app niet meer, wat er ook in de kolom E-mail of in een kanaalkolom staat.
+Dit is veruit de meest voorkomende reden voor "er komt niets binnen". Bij een gedeeld kanaal geldt
+dezelfde regel op de **organisatie**-rij: komt de gebeurtenis bij niemand in de app binnen, dan
+bereikt hij het kanaal ook niet.
+</Aside>
+
+Standaard staat in-app alles aan. Een korte lijst komt meteen binnen (toewijzingen, @vermeldingen,
+te late taken, ingeplande taken en alle drie de verlofgebeurtenissen); de rest komt in het dagelijkse
+overzicht van 08:00 uur, op de klok van je organisatie (*Instellingen → Huisstijl → Tijdzone*).
+E-mail staat overal uit tot iemand hem aanzet.
+
+Onder **Algemeen** staan **Bijna verlopen (dagen)** (standaard 3), **Stille uren vanaf** / **tot**,
+en het **E-mailschema**: de **Tijd** en de **Dag** waarop jouw dagelijkse en wekelijkse
+e-mailoverzichten vertrekken.
+
+<Aside type="caution">
+Stille uren worden wel bewaard, maar nog niet toegepast. Het scherm zegt dat er zelf bij. Reken er
+dus niet op dat er 's nachts niets binnenkomt.
+</Aside>
+
+## Een eigen kanaal koppelen
+
+<Steps>
+1. Ga naar *Instellingen → Meldingen* → **Kanalen** → **Kanaal toevoegen**.
+2. Geef het een **Naam** en kies de soort.
+3. Plak wat de aanbieder je geeft; schakl. rekent het zelf om.
+4. Druk op **Testen**. Bij succes leest het "Testbericht afgeleverd"; anders zie je de foutmelding van
+   de aanbieder zelf.
+5. Stel bij **Wanneer de digests van dit kanaal vertrekken** het uur en de dag in voor de bundels van
+   dit kanaal.
+6. Ga terug naar de tabel en zet in de nieuwe kolom een bezorging op de gebeurtenissen die je erheen
+   wilt sturen.
+</Steps>
+
+| Soort | Wat je plakt |
+| --- | --- |
+| E-mail | een e-mailadres; gaat via het e-mailtransport van je organisatie |
+| Slack | de URL van een Incoming Webhook voor dat kanaal |
+| Microsoft Teams | de URL van een Incoming Webhook-connector op dat kanaal |
+| Google Chat | de webhook-URL van de space |
+| Discord | de webhook-URL uit kanaalinstellingen → Integraties |
+| Telegram | een **Bot-token** van @BotFather en het **Chat-ID** |
+| Webhook | een http(s)-URL; elke melding wordt er als JSON naartoe gePOST |
+| E-mail (Apprise) / Overig (Apprise-URL) | een kale Apprise-URL, voor alles wat Apprise verder ondersteunt |
+
+Een vers gekoppeld kanaal blijft stil tot je het in de tabel routeert. Dat is expres: een kanaal
+koppelen mag niet vanzelf iemands telefoon laten piepen.
+
+## Organisatiebreed instellen
+
+*Instellingen → Standaardmeldingen* heeft dezelfde tabel, maar dan als de standaard die iedereen
+overneemt zolang hij zelf niets aanpast. Op datzelfde scherm koppel je de **gedeelde kanalen**: het
+Slack- of Teams-kanaal van het team, een groepsmailbox, een webhook naar je eigen flow. Elk daarvan
+krijgt een eigen kolom, dus "#crm krijgt nieuwe klanten meteen en de rest één keer per dag" is gewoon
+in te stellen.
+
+## Rechten
+
+| Recht | Wat het opent | Standaard |
+| --- | --- | --- |
+| `notifications.notification.read` | De bel, de lijst en je eigen voorkeuren lezen | Iedereen |
+| `notifications.notification.write` | Als gelezen markeren en je eigen voorkeuren opslaan | Iedereen |
+| `notifications.channels.manage_own` | Je eigen kanalen koppelen | Beheerder en Medewerker |
+| `notifications.defaults.manage` | *Instellingen → Standaardmeldingen* | Beheerder |
+| `notifications.channels.manage` | De gedeelde kanalen van de organisatie | Beheerder |
+
+Een gedeeld kanaal routeren vraagt beide beheerdersrechten tegelijk: wat er in het teamkanaal
+terechtkomt is een beslissing van de organisatie, niet van wie er als laatste zijn eigen scherm
+opende.
+
+## Goed om te weten
+
+- Inloggegevens en webhook-URL's worden versleuteld opgeslagen en nooit meer getoond; je ziet alleen
+  een afgeschermde weergave. Een webhook naar een privé- of lokaal adres wordt geweigerd.
+- Lukt een bezorging niet, dan blijft de hele bundel staan met de fout van de aanbieder erbij, en
+  wordt het opnieuw geprobeerd met steeds langere tussenpozen. Een half verstuurd overzicht bestaat
+  niet.
+- De soort **E-mail** loopt via het e-mailtransport van je organisatie (*Instellingen → E-mail*) en
+  doet dus niets zolang dat niet is ingesteld.
+- Wordt het onderwerp opgelost (een verlofaanvraag beslist, een e-mail beoordeeld), dan verdwijnt de
+  melding erover bij iedereen die hem nog niet had geopend.
+- Meldingen horen bij de kern en hebben geen licentiesleutel nodig. Er is geen sms, geen pushmelding
+  en geen snooze; sms bestaat alleen als tweede factor bij het inloggen.
+
+## Verder lezen
+
+<CardGrid>
+  <LinkCard title="Automatisering" description="Regels die zelf meldingen kunnen sturen." href="/nl/docs/modules/automation/" />
+  <LinkCard title="Klantportaal" description="Ook een klantlogin heeft zijn eigen inbox." href="/nl/docs/modules/portal/" />
+</CardGrid>

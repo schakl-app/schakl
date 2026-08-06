@@ -1,0 +1,153 @@
+---
+title: Google Workspace
+description: "Connect Calendar, Drive and Gmail with your own Google Cloud OAuth client, and switch it on per employee."
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Your agency already lives in Google Workspace: the meetings are in Google Calendar, the
+deliverables in a shared drive, and the client history in your colleagues' mailboxes. The Google
+Workspace module pulls those three into the client record instead of asking anyone to work
+differently.
+
+## Where to find it
+
+- *Instellingen → Google Workspace* (Settings → Google Workspace, in the group **Communicatie &
+  koppelingen**, Communication & integrations): the agency-wide configuration, with the OAuth
+  client, the surfaces, the Drive layout and the Gmail policy.
+- *Instellingen → Mijn account* (Settings → My account), card **Google-account**: where each
+  employee connects themselves.
+- After that you see it in **Agenda** (Calendar, as the source **Google Agenda**), in the
+  **Drive** panel on the client, project and task pages, and in **Interacties** (Interactions).
+
+Google Workspace is a licensed module; under *Instellingen → Modules* it is called **Google
+Workspace**. See [Licenses](/en/docs/admin/licenses/).
+
+## Your own Google Cloud project
+
+Every agency registers its own OAuth client. That is not a detour, it is the point: a consent
+screen set to **Internal** (your own Workspace domain only) may ask for the heavy scopes this
+module needs, reading Gmail and full Drive access, without going through Google's verification
+process.
+
+<Steps>
+1. Create one Google Cloud project for your agency. Under **APIs & Services → Credentials**,
+   register an **OAuth 2.0 Client ID** of type **Web application**, and set the consent screen to
+   **Internal**.
+
+2. In that same project, enable the APIs you will use (**APIs & Services → Library**): Google
+   Calendar API, Google Drive API and Gmail API. If you also use the marketing module, see
+   [Marketing sources](/en/docs/integrations/marketing-sources/) — that one needs four more.
+
+3. Open *Instellingen → Google Workspace*. At the top sits the read-only **Redirect-URI** field
+   with a **Kopiëren** (Copy) button. Paste that value into your OAuth client under **Authorized
+   redirect URIs**. Google matches it exactly, so never retype it by hand.
+
+4. Fill in **Client-ID** and **Clientgeheim** (client secret) and save. The secret is stored
+   encrypted; leave the field empty on a later save to keep the stored one.
+
+5. Under **Onderdelen** (Surfaces) tick what you use: **Agenda**, **Drive**, **Gmail**. Only what
+   is ticked here will be asked of your employees.
+</Steps>
+
+### Drive layout
+
+Fill in **Gedeelde Drive-ID** (shared drive ID), **Bovenliggende map voor klantmappen (ID)** (parent
+folder for client folders) and optionally **Sjabloonmap (ID)** (template folder). These are the raw
+folder IDs from the Drive URL; there is no folder picker yet. Under **Automatiseringsaccount**
+(automation account) pick a colleague who has already connected: the background work runs as that
+person. With **Maak automatisch een map voor elke nieuwe klant** every new client gets its own
+folder, shaped from the template. For clients that already existed there is **Mappen voor bestaande
+klanten** with the button **Mappen aanmaken** (create folders), which also adopts an existing
+folder of the same name.
+
+### Gmail policy
+
+Under **Nieuwe gekoppelde e-mails** (newly matched e-mails) you choose between "Eigenaar keurt goed
+voordat de inhoud wordt vastgelegd" (the owner approves before the content is stored, the default)
+and "Direct vastleggen, inclusief inhoud" (store immediately, content included).
+**Vervolgberichten in een gekoppeld gesprek** decides the same thing for a follow-up in a thread
+already filed against a client. **Ook e-mail tussen collega's oppikken** (also pick up
+colleague-to-colleague mail) is off; internal mail always waits for review regardless. Reviewing
+itself is described under [Interactions](/en/docs/modules/interactions/).
+
+## Every employee connects themselves
+
+Go to *Instellingen → Mijn account*, card **Google-account**, and press **Google koppelen**
+(Connect Google). Above the button, "Koppelen geeft toegang tot:" lists exactly what is being
+asked for. If Gmail is on, there is a checkbox **Koppel ook mijn mailbox (Gmail)**; if you also use
+marketing and may manage links, the marketing scopes ride along in the same consent.
+
+Once connected, the card shows the connected Google address, the badge **Gekoppeld** (connected)
+or **Aandacht nodig** (needs attention), the toggle **Registreer mijn e-mail in het CRM** (log my
+e-mail in the CRM), the field **Uitgesloten Gmail-label** (messages carrying that Gmail label are
+never logged) and **Google-account ontkoppelen** (disconnect). Disconnecting revokes the access at
+Google; anything already logged stays.
+
+<Aside type="caution" title="Signing in with Google is not the same as connecting">
+Signing in through Google (single sign-on) and **Google koppelen** are two separate grants. Even
+in an agency that requires Google sign-in, every employee still has to press this button
+separately.
+</Aside>
+
+## What the three surfaces do
+
+**Calendar.** The **Agenda** screen gains the source **Google Agenda** with your own events. They
+are read from schakl.'s own copy, never fetched live from Google. In the other direction, approved
+leave is written into your own Google Calendar as "Verlof: (leave type)" with the per-day hours in
+the notes, and a planned task as "Taak: (title)". Withdraw the request, reject it or remove the
+block and the event disappears again.
+
+**Drive.** The client, project and task pages carry a **Drive** panel. You browse the client's
+folder with your own Drive permissions, create subfolders with **Nieuwe map**, upload files
+straight from the browser, and attach existing files with **Koppelen aan dit record** (link to this
+record). **Ontkoppelen** removes only the link: the file in Drive is left untouched.
+
+**Gmail.** Every five minutes the opted-in mailboxes are checked. Messages where a participant is a
+known contact land as "to review" under **Interacties**; only after the mailbox owner approves is
+the content fetched and shared with the team. schakl. never sends mail through Gmail; outgoing mail
+uses the transport under *Instellingen → E-mail*.
+
+## Permissions
+
+| Permission | What it opens | Default roles |
+| --- | --- | --- |
+| `google.settings.manage` | Manage the Google integration, including **Mappen aanmaken** | Administrator |
+| `google.connection.manage` | Connect your own Google account | Administrator, Member |
+| `google.calendar.read` | View Google Calendar events | Administrator, Member |
+| `google.drive.read` | Browse Drive files | Administrator, Member |
+| `google.drive.write` | Link and upload Drive files | Administrator, Member |
+
+Set these per role under *Instellingen → Rollen* (Settings → Roles).
+
+## Good to know
+
+- **The redirect URI follows your own hostname.** Move the workspace to a different domain and the
+  new URI has to be registered on the OAuth client again, or Google refuses the connect.
+- **The first Gmail poll fetches nothing.** It only records the starting point: existing mail is
+  not imported retroactively. If a mailbox goes roughly a week without a poll, it starts from a new
+  point and the gap is skipped.
+- **The calendar only writes one way.** Leave and planned tasks go out to Google; Google events
+  come back read-only. Changing an event in Google changes nothing in schakl.
+- **Drive links are references.** schakl. never holds the bytes. Delete a file in Drive and the
+  link points at nothing.
+- **Automatic client folders quietly do nothing** unless all of it lines up: Drive on, the
+  checkbox ticked, an automation account chosen, and a reachable parent folder or shared drive.
+- **An error from Google has two causes and two cures.** If the API is not switched on in your
+  Cloud project, reconnecting does not help and is deliberately not offered. If the scopes are
+  missing, reconnecting is exactly the fix; the card flips to **Aandacht nodig** and the owner is
+  notified once.
+- **Leave the Client-ID empty** and the workspace falls back to the server environment's client.
+  You are then talking to Google as the operator of that server, and enabling APIs in your own
+  Cloud project changes nothing. Nothing on the screen makes this visible.
+- **Do not rotate the server key casually.** If the administrator rotates
+  `SCHAKL_ENCRYPTION_KEY`, every stored connection lapses and everybody has to connect again.
+
+## Read next
+
+- [Marketing sources](/en/docs/integrations/marketing-sources/): the same connection, now for
+  Analytics, Search Console and Ads.
+- [Interactions](/en/docs/modules/interactions/): the timeline the matched e-mail lands on.
+- [Leave](/en/docs/modules/leave/): the leave that gets written into Google Calendar.

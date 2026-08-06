@@ -1,0 +1,149 @@
+---
+title: Google Workspace
+description: "Agenda, Drive en Gmail koppelen met een eigen Google Cloud OAuth-client, en per medewerker aanzetten."
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Je bureau werkt al in Google Workspace: de afspraken staan in Google Agenda, de opleveringen in
+een gedeelde Drive en de klantgeschiedenis in de mailboxen van je collega's. De module Google
+Workspace haalt die drie naar het klantdossier toe, in plaats van iedereen te vragen anders te
+gaan werken.
+
+## Waar je het vindt
+
+- *Instellingen → Google Workspace* (in de groep **Communicatie & koppelingen**): de instelling
+  voor het hele bureau, met de OAuth-client, de onderdelen, de Drive-indeling en het Gmail-beleid.
+- *Instellingen → Mijn account*, kaart **Google-account**: hier koppelt elke medewerker zichzelf.
+- Daarna zie je het terug in **Agenda** (de bron **Google Agenda**), in het paneel **Drive** op de
+  klant-, project- en taakpagina, en in **Interacties**.
+
+Google Workspace is een gelicentieerde module; onder *Instellingen → Modules* heet hij
+**Google Workspace**. Zie [Licenties](/nl/docs/admin/licenses/).
+
+## Je eigen Google Cloud-project
+
+Elk bureau registreert zijn eigen OAuth-client. Dat is geen omweg maar de kern van de opzet: een
+toestemmingsscherm dat op **Internal** staat (alleen je eigen Workspace-domein) mag de zware
+rechten vragen die deze module nodig heeft, namelijk Gmail lezen en volledige Drive-toegang,
+zonder het verificatietraject van Google.
+
+<Steps>
+1. Maak één Google Cloud-project voor je bureau. Registreer onder **APIs & Services → Credentials**
+   een **OAuth 2.0 Client ID** van het type **Web application**, en zet het toestemmingsscherm op
+   **Internal**.
+
+2. Zet in datzelfde project de API's aan die je gaat gebruiken (**APIs & Services → Library**):
+   Google Calendar API, Google Drive API en Gmail API. Gebruik je ook de marketingmodule, kijk
+   dan bij [Marketingbronnen](/nl/docs/integrations/marketing-sources/); die vraagt om nog vier
+   API's.
+
+3. Open *Instellingen → Google Workspace*. Bovenaan staat het alleen-lezen veld **Redirect-URI**
+   met de knop **Kopiëren**. Plak die waarde bij je OAuth-client onder **Authorized redirect
+   URIs**. Google vergelijkt hem letterlijk, dus typ hem niet zelf over.
+
+4. Vul **Client-ID** en **Clientgeheim** in en sla op. Het geheim wordt versleuteld opgeslagen;
+   laat het veld bij een volgende keer opslaan leeg om het bewaarde geheim te behouden.
+
+5. Vink onder **Onderdelen** aan wat je gebruikt: **Agenda**, **Drive**, **Gmail**. Alleen wat
+   hier aan staat, wordt straks aan je medewerkers gevraagd.
+</Steps>
+
+### Drive-indeling
+
+Vul **Gedeelde Drive-ID**, **Bovenliggende map voor klantmappen (ID)** en eventueel **Sjabloonmap
+(ID)** in. Dat zijn de ruwe map-ID's uit de Drive-URL; een mapkiezer is er nog niet. Kies bij
+**Automatiseringsaccount** een al gekoppelde collega: het achtergrondwerk draait onder diens
+toegang. Met **Maak automatisch een map voor elke nieuwe klant** krijgt elke nieuwe klant zijn
+eigen map, gevormd naar het sjabloon. Voor klanten die er al waren is er **Mappen voor bestaande
+klanten** met de knop **Mappen aanmaken**; die koppelt een bestaande map met dezelfde naam alsnog.
+
+### Gmail-beleid
+
+Bij **Nieuwe gekoppelde e-mails** kies je tussen "Eigenaar keurt goed voordat de inhoud wordt
+vastgelegd" (standaard) en "Direct vastleggen, inclusief inhoud". **Vervolgberichten in een
+gekoppeld gesprek** bepaalt hetzelfde voor een volgend bericht in een gesprek dat al aan een klant
+hangt. **Ook e-mail tussen collega's oppikken** staat uit; interne e-mail wacht hoe dan ook altijd
+op beoordeling. Het beoordelen zelf staat bij
+[Contactmomenten](/nl/docs/modules/interactions/).
+
+## Elke medewerker koppelt zichzelf
+
+Ga naar *Instellingen → Mijn account*, kaart **Google-account**, en klik **Google koppelen**.
+Boven de knop staat onder "Koppelen geeft toegang tot:" precies wat er gevraagd wordt. Staat Gmail
+aan, dan is er het vinkje **Koppel ook mijn mailbox (Gmail)**; gebruik je ook marketing en mag je
+koppelingen beheren, dan zitten de marketingrechten in dezelfde toestemming.
+
+Na het koppelen toont de kaart het gekoppelde Google-adres, de badge **Gekoppeld** of **Aandacht
+nodig**, de schakelaar **Registreer mijn e-mail in het CRM**, het veld **Uitgesloten Gmail-label**
+(berichten met dat label worden nooit vastgelegd) en **Google-account ontkoppelen**. Ontkoppelen
+trekt de toegang bij Google in; wat al is vastgelegd blijft staan.
+
+<Aside type="caution" title="Inloggen met Google is niet hetzelfde als koppelen">
+Aanmelden via Google (single sign-on) en **Google koppelen** zijn twee losse toestemmingen. Ook in
+een bureau dat verplicht met Google inlogt, moet elke medewerker deze knop nog apart indrukken.
+</Aside>
+
+## Wat de drie onderdelen doen
+
+**Agenda.** In het scherm **Agenda** komt de bron **Google Agenda** erbij, met je eigen afspraken.
+Die worden uit schakl.'s eigen kopie gelezen, niet live bij Google opgehaald. Andersom wordt
+goedgekeurd verlof naar je eigen Google Agenda geschreven, als "Verlof: (verloftype)" met de uren
+per dag in de notities, en een ingeplande taak als "Taak: (titel)". Wordt de aanvraag ingetrokken,
+afgewezen of het blok verwijderd, dan verdwijnt de afspraak weer.
+
+**Drive.** Op de klant-, project- en taakpagina staat het paneel **Drive**. Je bladert daar door de
+map van de klant met jouw eigen Drive-rechten, maakt met **Nieuwe map** submappen, uploadt
+bestanden rechtstreeks en koppelt bestaande bestanden met **Koppelen aan dit record**.
+**Ontkoppelen** haalt alleen de koppeling weg: het bestand in Drive blijft onaangeroerd.
+
+**Gmail.** Elke vijf minuten worden de aangemelde mailboxen nagelopen. Berichten waarvan een
+deelnemer een bekende contactpersoon is, komen als "te beoordelen" op de lijst bij **Interacties**;
+pas na goedkeuring door de eigenaar van de mailbox wordt de inhoud opgehaald en met het team
+gedeeld. schakl. verstuurt nooit e-mail via Gmail; uitgaande post loopt via *Instellingen →
+E-mail*.
+
+## Rechten
+
+| Recht | Wat het opent | Standaard bij |
+| --- | --- | --- |
+| `google.settings.manage` | Google-integratie beheren, inclusief **Mappen aanmaken** | Beheerder |
+| `google.connection.manage` | Eigen Google-account koppelen | Beheerder, Medewerker |
+| `google.calendar.read` | Google Agenda-afspraken bekijken | Beheerder, Medewerker |
+| `google.drive.read` | Drive-bestanden bekijken | Beheerder, Medewerker |
+| `google.drive.write` | Drive-bestanden koppelen en uploaden | Beheerder, Medewerker |
+
+Per rol in te stellen onder *Instellingen → Rollen*.
+
+## Goed om te weten
+
+- **De Redirect-URI volgt je eigen hostnaam.** Verhuis je de werkomgeving naar een ander domein,
+  dan moet de nieuwe URI opnieuw bij de OAuth-client worden geregistreerd, anders weigert Google
+  het koppelen.
+- **De eerste Gmail-polling haalt niets op.** Die legt alleen het startpunt vast: bestaande mail
+  wordt niet met terugwerkende kracht ingelezen. Blijft een mailbox ongeveer een week
+  onaangeroerd, dan begint hij opnieuw bij het startpunt en wordt het gat overgeslagen.
+- **De agenda schrijft één kant op.** Verlof en ingeplande taken gaan naar Google; Google-afspraken
+  komen alleen ter inzage terug. Een afspraak die je in Google wijzigt, verandert niets in schakl.
+- **Drive-koppelingen zijn verwijzingen.** schakl. bewaart de bestanden niet zelf. Verwijder je een
+  bestand in Drive, dan wijst de koppeling nergens meer naar.
+- **Automatische klantmappen doen niets** zolang niet alles klopt: Drive aan, het vinkje aan, een
+  automatiseringsaccount gekozen en een bereikbare hoofdmap of gedeelde Drive.
+- **Een foutmelding van Google heeft twee oorzaken en twee oplossingen.** Staat de API niet aan in
+  je Cloud-project, dan helpt opnieuw koppelen niet en wordt het ook niet aangeboden. Ontbreken de
+  rechten, dan is opnieuw koppelen wél de oplossing; de kaart springt dan op **Aandacht nodig** en
+  de eigenaar krijgt eenmalig een melding.
+- **Laat je Client-ID leeg**, dan valt de werkomgeving terug op de client van de serveromgeving.
+  Je praat dan als de beheerder van die server met Google, en API's aanzetten in je eigen
+  Cloud-project verandert niets. Dat is nergens in het scherm te zien.
+- **Draai de serversleutel niet zomaar om.** Roteert de beheerder `SCHAKL_ENCRYPTION_KEY`, dan
+  vervallen alle opgeslagen koppelingen en moet iedereen opnieuw koppelen.
+
+## Verder lezen
+
+- [Marketingbronnen](/nl/docs/integrations/marketing-sources/): dezelfde koppeling, nu voor
+  Analytics, Search Console en Ads.
+- [Contactmomenten](/nl/docs/modules/interactions/): de tijdlijn waar de gematchte e-mail op landt.
+- [Verlof](/nl/docs/modules/leave/): het verlof dat naar Google Agenda wordt geschreven.

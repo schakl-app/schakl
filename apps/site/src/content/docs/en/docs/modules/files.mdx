@@ -1,0 +1,109 @@
+---
+title: Files
+description: "Where attachments, logos and documents live in schakl., what you may upload, and who is allowed to open a file."
+sidebar:
+  order: 25
+---
+
+import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+There is no "Files" screen. A file always hangs off the record it belongs to: the quote on the
+project, the screenshot on the task, the contract on the employee. schakl. stores those files
+itself and serves them through the API, so a file carries exactly the same protection as the
+record under it. A link to an attachment therefore does nothing for someone who is not signed
+in to your organisation. The one exception is your branding assets: the logo, favicon and app
+icon have to render on the login screen, so they are served without a login.
+
+## Where to find it
+
+| Where | What you upload there |
+| --- | --- |
+| Project page, **Documenten** (Documents) block | Quotes, deliverables, anything belonging to the project |
+| Task page, **Links & bijlagen** (Links & attachments) block | Attachments on one task; uploading happens in edit mode |
+| Client page, **Logo** field | The client's own mark |
+| *Instellingen → Mijn account* (Settings → My account) | **Foto uploaden** (Upload photo): your own profile picture |
+| *Instellingen → Huisstijl* (Settings → Branding) | Your agency's logo, favicon and app icon |
+| *Instellingen → Facturatie* (Settings → Invoicing) | The background image of your document template |
+| **Mijn pagina** (My page, from your profile menu) | Documents in the [employee dossier](/en/docs/modules/hr/) |
+
+schakl. also stores files without you doing anything: images inside the body of a received
+e-mail, and the PDF of a generated report.
+
+## Uploading and deleting
+
+The **Documenten** block has one button, **Bestand uploaden** (Upload file). Pick a file and it
+uploads immediately; there is no separate save step. Each row shows the filename, its size and a
+⋯ menu with **Verwijderen** (Delete), which asks to confirm: "Dit bestand verwijderen? Dit kan
+niet ongedaan worden gemaakt." (Delete this file? This cannot be undone.)
+
+A task carries the same block under **Links & bijlagen**, and only staff see it. On a project, a
+client with a portal login sees the list but gets no upload button and no delete.
+
+## What may go in
+
+The defaults are **10 MB** per file, and only these types:
+
+- images: PNG, JPEG, WebP, GIF, SVG and ICO
+- PDF
+- plain text and CSV
+- ZIP
+- Word and Excel
+
+What is missing is missing on purpose: PowerPoint, video and audio are refused by default. When
+an upload fails the screen says why: "Dit bestandstype is niet toegestaan" (This file type is
+not allowed) or "Dit bestand is te groot" (This file is too large). Both limits are instance
+settings (`SCHAKL_UPLOAD_MAX_BYTES` and `SCHAKL_UPLOAD_ALLOWED_TYPES`), so whoever runs the
+server can widen them; there is no button for it inside the app.
+
+Images and PDFs open in a new tab; everything else downloads. SVG always downloads even though
+it is an image, and that is a deliberate security choice.
+
+## Permissions
+
+| Permission | What it gives | Default |
+| --- | --- | --- |
+| `files.file.write` | Uploading and deleting attachments, and your own profile picture | Administrator and Member |
+| none required | Opening a file belonging to your own organisation | Anyone signed in |
+
+Reading needs no permission of its own, which does not mean everything is open to everyone. The
+record's visibility decides: someone who may not see the task, project or client gets the same
+answer on the file as on the record itself, namely "not found".
+
+A few places carry their own permission instead of `files.file.write`:
+
+- a **client's logo** falls under `companies.company.write`;
+- **branding assets** additionally require `settings.branding.write`, and accept images only;
+- **personnel documents** need `hr.document.manage` to add, and can only be opened by the
+  employee themselves or by someone with dossier rights;
+- your **profile picture** is yours: nobody else can delete it.
+
+## Good to know
+
+<Aside type="caution">
+The database and the file storage belong together. Restore a database backup without the
+matching storage and the file records still exist while their contents do not, and the app
+reports: "De registratie van dit bestand bestaat, maar de inhoud ontbreekt in de opslag." (This
+file's record exists but its contents are missing from storage.) Always back up both together.
+</Aside>
+
+- **The same file costs storage once.** schakl. recognises identical content within your
+  organisation. Attach the same PDF to ten tasks and it sits on disk once. That is why a
+  signature image at the bottom of five hundred received e-mails is not kept five hundred times.
+- **Deleting does not free disk space immediately.** The record goes at once, but the bytes are
+  reclaimed by a nightly maintenance job, and only once nothing references them any more. No
+  screen reports your storage usage.
+- One record lists at most 200 attachments.
+- Images that are part of an e-mail's body belong to that text and therefore do not appear among
+  the attachments. They render inside the message itself.
+- Files live on your own installation. There is no Google Drive integration for attachments yet;
+  the task screen says so itself.
+- Whoever runs the installation chooses where the bytes live: a disk volume or S3-compatible
+  object storage. Nothing changes for the people using the app. See
+  [File storage](/en/docs/admin/storage/).
+
+## Read next
+
+<CardGrid>
+  <LinkCard title="Branding" description="Your agency's logo, favicon and app icon." href="/en/docs/modules/branding/" />
+  <LinkCard title="File storage" description="Where the bytes land, the limits and the nightly maintenance." href="/en/docs/admin/storage/" />
+</CardGrid>

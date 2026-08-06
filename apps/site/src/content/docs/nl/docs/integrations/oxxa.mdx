@@ -1,0 +1,175 @@
+---
+title: OXXA
+description: "Het OXXA-register uitlezen: verloopdatums, verhuisslot, houder en delegatie, plus het verzetten van nameservers."
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Een domeinrecord weet wat de publieke DNS antwoordt, maar niet wanneer het domein verloopt, of
+het verhuisslot aanstaat, wat het register werkelijk gedelegeerd heeft of wie de houder is. Die
+vier feiten vraagt deze koppeling op bij OXXA. Daarnaast doet ze precies één schrijfactie: de
+nameservers van een domein verzetten, waarmee de overstap naar Cloudflare af is.
+
+<Aside type="caution">
+Deze koppeling is nooit tegen een echt OXXA-account uitgeprobeerd. Ze is geschreven op basis van
+de officiële API-documentatie van OXXA (v1.2) en elk veld wordt behoedzaam gelezen, maar er was
+geen inloggegeven om het mee te toetsen. Beschouw een groen instellingenscherm dus als bewijs dat
+de inloggegevens kloppen en niet meer dan dat, en controleer bij de eerste synchronisatie zelf of
+de verloopdatums en de nameservers overeenkomen met wat je in het OXXA-portaal ziet.
+</Aside>
+
+## Waar je het vindt
+
+De resellerlogins staan onder *Instellingen → OXXA* ("Resellerlogins, het domeinregister en
+nameservers"), in de groep **Communicatie & koppelingen**. Het werk per domein staat op de
+domeinpagina: *Domeinen & websites → Domeinen*, open een domein, en daar staat het paneel
+**Registrar (OXXA)**, direct onder het Cloudflare-paneel. De module voegt bewust geen menu-item
+toe: een registrar is geen plek waar je heen gaat, het is iets wat een domein heeft.
+
+OXXA is een gelicentieerde module. Schakel hem in onder *Instellingen → Modules*; de
+licentiesleutel voer je in onder *Instellingen → Licentie*.
+
+## Inrichten
+
+<Steps>
+
+1. Ga naar *Instellingen → OXXA* en druk op **Account toevoegen**. Vul **Naam**,
+   **API-gebruiker** en **API-wachtwoord** in, kies eventueel een **Leveranciersregel** uit je
+   eigen lijst (*Instellingen → Providers*, soort Registrar) en laat **In gebruik** aan staan.
+   Het wachtwoord wordt versleuteld opgeslagen en nooit meer getoond; laat het veld leeg om het
+   opgeslagen wachtwoord te behouden.
+2. Druk op **Inloggegevens controleren**. schakl. haalt dan het **Saldo** van het
+   resellergedeelte op en de **Extensies** waarop dit account mag werken. Dit is verplicht: zonder
+   die extensielijst kan schakl. een domeinnaam niet in een naam en een extensie splitsen en
+   weigert elke verdere actie.
+3. Druk op **Register ophalen**. De melding leest hoeveel domeinen zijn opgehaald, hoeveel er aan
+   een domein in schakl. gekoppeld zijn en hoeveel zonder koppeling bleven.
+4. Bekijk de tabel **OXXA-register** op hetzelfde scherm. Gebruik **Domein zoeken** en het filter
+   **Alleen niet-gekoppelde**.
+
+</Steps>
+
+<Aside type="tip">
+Die niet-gekoppelde rijen zijn meestal de waardevolste uitkomst van de eerste synchronisatie:
+domeinen die je bij OXXA betaalt en verlengt, maar waarvan schakl. geen record heeft en waarvoor
+dus ook niemand een factuur krijgt. De hint zegt het in het scherm zelf: "Staat wel in het
+register bij OXXA, maar is geen domein in schakl."
+</Aside>
+
+Vervang je later het wachtwoord, dan vervallen de extensielijst, het saldo en het moment van
+controleren. Een oude melding "Gecontroleerd" kan dus nooit spreken namens een wachtwoord dat
+niemand getest heeft.
+
+## Wat het paneel per domein laat zien
+
+| Veld | Wat het is |
+| --- | --- |
+| **Verloopt** | de vervaldatum volgens het register |
+| **Houder** | de registrant, zoals OXXA hem meldt |
+| **Verhuisslot** | of het domein tegen verhuizing beveiligd is |
+| **Automatisch verlengen** | of het register zelf verlengt |
+| **DNSSEC** | Ja, Nee of Onbekend |
+| **Nameservergroep** | de groep bij OXXA waar de delegatie in zit |
+| **Nameservers** | wat het register gedelegeerd heeft |
+
+Alles daarvan komt uit opgeslagen gegevens, zodat de domeinpagina blijft werken als OXXA eruit
+ligt. **Controleren bij OXXA** leest dit ene domein opnieuw uit; dat is ook de enige actie die de
+houder en DNSSEC ophaalt, want dat kost per domein een extra bevraging. Daaronder staan de
+**Aandachtspunten** in gewone taal: dit domein verloopt binnenkort (vanaf 60 dagen van tevoren)
+of is verlopen, het verhuisslot staat uit, automatisch verlengen staat uit, het register heeft
+andere nameservers dan wij verstuurd hebben, de nameservergroep bestaat niet meer, de publieke
+DNS is nog niet bij, de laatste wijziging is mislukt, het register is nog nooit opgehaald, of dit
+domein staat niet in het register.
+
+## Nameservers verzetten
+
+In de sectie **Nameservers wijzigen bij OXXA** vul je twee tot zes nameservers in en druk je op
+**Versturen naar OXXA**. Elke nameserver moet een punt bevatten; een kale naam wordt geweigerd,
+want OXXA zou hem accepteren en de delegatie breken.
+
+De knop **Nameservers van Cloudflare gebruiken** vult het vak met het paar dat het
+Cloudflare-paneel erboven verwacht. Dat is de hele bedoeling van deze module, en de volgorde is
+opzettelijk in twee stappen:
+
+<Steps>
+
+1. Cloudflare-paneel: **Koppelen aan Cloudflare**. Dat koppelt of maakt de zone en legt de
+   toegewezen nameservers vast.
+2. OXXA-paneel: **Nameservers van Cloudflare gebruiken**, dan **Versturen naar OXXA**.
+3. Wachten. "Nameservers gewijzigd bij OXXA. Het register publiceert ze meestal binnen een paar
+   uur." Stond de delegatie al goed, dan lees je "OXXA had deze nameservers al; er is niets
+   gewijzigd".
+
+</Steps>
+
+Er is bewust geen knop die beide stappen tegelijk doet: zo zie je precies wat er verstuurd wordt
+voordat het verstuurd is, meldt elke stap zijn eigen uitkomst, en laat een mislukte tweede stap
+een afgeronde eerste stap achter in plaats van een halve toestand. Mislukt het versturen, dan
+blijven de ingevulde nameservers staan en hoef je bij een nieuwe poging niets over te typen. En
+zolang de publieke DNS nog met de oude nameservers antwoordt, is "Publieke DNS antwoordt nog met
+andere nameservers dan het register heeft" de normale toestand, geen fout.
+
+<Aside type="caution">
+OXXA kent geen nameserverlijst per domein: nameservers zitten in een **groep**, en die groep is
+een gedeeld object. Wie een groep wijzigt, verzet elk domein dat die groep gebruikt. schakl.
+maakt daarom altijd een eigen groep aan (`schakl-` plus een code die uit de nameservers zelf
+volgt) of hergebruikt precies dezelfde, en wijzigt nooit een bestaande groep. Twee gevolgen:
+omdat Cloudflare per zone een ander nameserverpaar toewijst, krijg je ongeveer één `schakl-`
+groep per gekoppeld domein, en die groepen blijven staan. En bestaat er al een `schakl-`groep met
+dezelfde naam maar met andere nameservers, dan is die met de hand aangepast en wordt het
+versturen geweigerd. Opnieuw proberen helpt dan niet; dat los je in het OXXA-portaal op.
+</Aside>
+
+## Wie betaalt voor de naam
+
+Een uitgelezen register beantwoordt de geldvraag: welke domeinen verleng jij, en mag je dus
+doorbelasten. Zet het veld **Facturatie** op een domein op **Volg het register**, dan verschijnt
+de zin "Staat in het register van OXXA, dus dit domein wordt gefactureerd", of het
+tegenovergestelde. Zolang er geen register is opgehaald, factureert alles precies zoals het altijd
+deed; pas een register dat werkelijk geantwoord heeft mag beperken wat er op de factuur komt. Een
+domein dat het register verlaat (verhuisd of verlopen) houdt zijn regel, zodat vastligt wat er
+ooit verstuurd is, maar telt niet meer mee als domein dat jij houdt.
+
+## Rechten
+
+| Recht | Waarvoor | Standaard bij |
+| --- | --- | --- |
+| `oxxa.settings.manage` | een resellerlogin toevoegen, vervangen, controleren of verwijderen; opent ook het instellingenscherm | Beheerder |
+| `oxxa.registrar.sync` | het register ophalen en lezen, de status van één domein lezen, een domein verversen, het account kiezen | Beheerder |
+| `oxxa.registrar.manage` | de nameservers van een domein verzetten (het enige dat hier iets buiten schakl. wijzigt) | Beheerder |
+
+Aan te passen per rol onder *Instellingen → Rollen*. Geen van de drie gaat ooit naar de rol
+*Klant*. Dat `oxxa.registrar.sync` het instellingenscherm níét opent is opzet: handelen via een
+inloggegeven en dat inloggegeven vervangen zijn verschillende dingen. De tabel op het
+instellingenscherm wordt zonder `oxxa.registrar.sync` dan ook niet opgehaald, zodat het scherm
+nooit ten onrechte suggereert dat het register leeg is.
+
+## Goed om te weten
+
+- Er is geen achtergrondtaak. **Register ophalen** is een knop. Een register verandert langzaam,
+  en een taak die ongevraagd regels wegschrijft zou een leesfout stilzwijgend over het hele
+  register verspreiden.
+- Er is geen webhook en geen callback-URL: buiten het hebben van reseller-API-gegevens hoef je
+  bij OXXA niets in te stellen.
+- Heb je meer dan één actief OXXA-account, dan vraagt elke actie die de registrar bereikt welk
+  account je bedoelt. Deze module kiest nooit zelf.
+- Drie nameserverfeiten bestaan naast elkaar en zijn niet hetzelfde: wat de publieke DNS
+  antwoordt, wat het register gedelegeerd heeft en wat wij verstuurd hebben. Een verschil wordt
+  gemeld, nooit stilzwijgend rechtgetrokken.
+- De **Houder** wordt getoond, niet toegepast. schakl. maakt er geen partij van en vergelijkt hem
+  niet met je eigen registratiecontact: één OXXA-contacthandle hangt vaak aan tientallen domeinen,
+  dus een verkeerde koppeling zou de hele reeks misplaatsen.
+- Domeinen zoeken op beschikbaarheid, registreren, verhuizen, verlengen, DNSSEC schrijven en de
+  houder wijzigen zitten bewust niet in deze koppeling. Die geven geld uit of zijn onomkeerbaar.
+- Een account verwijderen wist het opgehaalde register uit schakl. en verandert niets bij OXXA.
+- Bij een verlopen licentie blijven het opgeslagen register, de verloopdatums en het statusrapport
+  gewoon leesbaar; alleen wijzigen wordt geblokkeerd. Een verlopen licentie verbergt dus nooit dat
+  het domein van een klant afloopt.
+
+<CardGrid>
+  <LinkCard title="Cloudflare" href="/nl/docs/integrations/cloudflare/" description="De zone, de DNS en de domeinbrede omleiding waar deze delegatie naartoe wijst." />
+  <LinkCard title="Domeinen" href="/nl/docs/modules/domains/" description="Het domeinregister, de verlengingen en het veld Facturatie." />
+  <LinkCard title="Licenties" href="/nl/docs/admin/licenses/" description="OXXA is een gelicentieerde module." />
+</CardGrid>

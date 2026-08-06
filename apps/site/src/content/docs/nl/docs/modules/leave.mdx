@@ -1,0 +1,153 @@
+---
+title: Verlof
+description: "Verlof aanvragen en goedkeuren, saldi die vervallen, werkroosters, feestdagen en vrije tijd."
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Verlof gaat over je eigen medewerkers, niet over klanten. Hoeveel uren een aanvraag kost, rekent
+de server uit het werkrooster van die medewerker op die specifieke dag; niet uit een vuistregel
+als "een dag is acht uur".
+
+## Waar je het vindt
+
+**Verlof** staat in het hoofdmenu (`/leave`). Wie mag goedkeuren ziet twee tabbladen: *Mijn
+verlof* en *Team*. De organisatiebrede inrichting zit onder *Instellingen → Verlof*; het contract,
+de werkweek en de vrije tijd van één medewerker onder *Instellingen → Team & gebruikers → ⋯ →
+Dienstverband* (en in het ⋯-menu van de teamlijst).
+
+Verlof is een gelicentieerde module en wordt aangezet onder *Instellingen → Modules*.
+
+## Een aanvraag indienen
+
+Op *Mijn verlof* staan je saldi, je eigen aanvragen en de knop **Verlof aanvragen**. Je kiest het
+**Type**, de **Eerste dag** en de **Laatste dag**. Met **Deel van een dag** verschijnen **Van** en
+**Tot**; laat je er één leeg, dan geldt het begin of het einde van de werkdag.
+
+Terwijl je typt rekent de server mee: het aantal **Uren**, het equivalent in werkdagen, en een
+uitsplitsing per dag met de reden waarom een dag niets kost (*feestdag*, *geen werkdag*, *buiten
+werktijd*). Vraag je meer dan je saldo, dan waarschuwt het formulier en kun je gewoon indienen;
+de manager beslist en ziet het tekort terug op de goedkeuringslijst. Een fiatteur kan met **Uren
+handmatig instellen** afwijken van het rooster, en dat wordt op zijn of haar naam vastgelegd.
+
+## Goedkeuren
+
+*Verlof → Team* opent met **Goed te keuren**. Per aanvraag zie je de uren, wat er van het jaarsaldo
+overblijft en of het saldo wordt overschreden. **Goedkeuren** en **Afwijzen** kunnen per rij of
+over een selectie; bij afwijzen kun je een reden opgeven. Een aanvraag die na goedkeuring is
+gewijzigd komt terug met het label *Bewerkt, opnieuw ter goedkeuring*. **Verlof registreren** legt
+verlof vast op naam van een collega, bijvoorbeeld een ziekmelding. Daaronder staan de saldi en
+aanvragen van het hele team per jaar.
+
+## Saldi, groepen en verval
+
+Verloftypen met dezelfde **balansgroep** tonen de medewerker één getal. Standaard zijn dat
+*Wettelijke vakantie* (4 weken per jaar, meenemen vervalt na 6 maanden) en *Bovenwettelijke
+vakantie* (1 week, 60 maanden), samen zichtbaar als **Vakantieverlof**. De potjes blijven apart,
+dus het onderscheid en de verschillende vervaltermijnen blijven bestaan. Opnemen gaat in het
+voordeel van de medewerker: eerst uit het potje dat het eerst vervalt. De saldokaart meldt wat
+binnenkort vervalt en wat al vervallen is.
+
+Jaarsaldi worden afgeleid uit het contract en herrekend zodra dat contract verandert. Een saldo
+dat je onder *Instellingen → Verlof → Contract & saldi* met de hand zette, is gemarkeerd als
+**Handmatig** en wordt daarbij nooit overschreven.
+
+## Werkweek, contract en vrije tijd
+
+De **Dienstverband**-wizard heeft drie stappen: *Contract* (begin, einde of doorlopend,
+contracturen per week), *Werkweek* (per weekdag een werkvenster met een willekeurig aantal
+pauzevensters, plus een kopieerknop naar de andere werkdagen) en *Vrije tijd*. Uren per week wordt
+afgeleid uit het rooster, nooit ingetypt. Een gewijzigd contract is een nieuwe regel en geen
+bewerking; **Beëindigen** legt alleen de einddatum vast, zodat verlof van vorig jaar geprijsd
+blijft tegen het rooster van toen.
+
+De derde stap stelt de vraag die niets kan afleiden: hoe krijgt deze medewerker de uren onder de
+voltijdnorm? *Als vrije tijd om zelf in te plannen*, *Vast in het rooster* (er wordt niets
+opgebouwd), of *Een afgesproken aantal uren*. Bij de eerste keuze plaats je meteen een patroon:
+een **aantal dagen per jaar** (gespreid op dezelfde weekdag, schuivend langs feestdagen zodat het
+aantal klopt) of een **vast ritme** ("elke twee weken vrijdag"). Die dagen komen als vooraf
+goedgekeurd verlof op de agenda, en de kaart **Vrije tijd** op *Mijn verlof* toont per dag
+**Verplaatsen** of **Annuleren**.
+
+<Aside type="caution">
+Verlaag je een contract, dan kan het saldo kleiner worden dan wat er al op de agenda staat. Die
+dagen worden nooit stilzwijgend geschrapt: de wizard noemt ze en biedt **Dagen terugnemen** aan.
+</Aside>
+
+## Inrichten
+
+<Steps>
+
+1. **Verloftypen**: naam per taal, kleur, betaald, telt mee voor een saldo, vereist goedkeuring,
+   weken per jaar, vervaltermijn, balansgroep en weergave in de agenda (*Hele dag* of *Per uur*).
+   Er staan er zes klaar, waaronder *Ziek* (geen goedkeuring, geen saldo).
+
+2. **Standaard werkrooster**: de week die iedereen zonder eigen rooster volgt. Standaard
+   08:30–17:00 met pauze van 12:30 tot 13:00, dus 8 uur per dag.
+
+3. **Goedkeuringsbeleid**: zelfgoedkeuring staat uit, dus een eigen aanvraag gaat naar de andere
+   fiatteurs. Een organisatie met één fiatteur mag zichzelf altijd beheren.
+
+4. **Terugkerende vrije tijd**: hoe ver vooruit vrije dagen worden ingepland bij een contract voor
+   onbepaalde tijd. Een contract met einddatum wordt tot die datum gevuld.
+
+5. **Uurtarief**: het standaardtarief voor iedereen zonder eigen tarief.
+
+6. **Feestdagen**: klik op de importknop (die noemt het jaar) en zet uit wat jullie wél werken.
+   In december vult een achtergrondtaak het volgende jaar aan.
+
+</Steps>
+
+<Aside type="caution">
+Zet een feestdag die jullie werken (Goede Vrijdag bijvoorbeeld) **uit** in plaats van hem te
+verwijderen. Uitzetten houdt de dag buiten elke berekening en overleeft de volgende import; een
+verwijderde dag komt gewoon terug.
+</Aside>
+
+## Elders in het platform
+
+Goedgekeurd verlof verschijnt als eigen rij **Verlof** op de weekstaat bij Uren en telt nooit als
+gewerkte tijd. In de Agenda zijn *Verlof (team)* en *Feestdagen* twee aparte feeds; een dag
+verslepen verplaatst de aanvraag, waarna de server de uren herrekent en zo nodig opnieuw om
+goedkeuring vraagt. Op het dashboard staan drie widgets: je eigen saldo, de wachtrij die op jou
+wacht, en wie er vandaag niet is. Met de Google Workspace-koppeling aan spiegelt goedgekeurd
+verlof naar de eigen Google Agenda van de medewerker.
+
+## Rechten
+
+| Recht | Standaard |
+| --- | --- |
+| `leave.request.read` | Medewerker: eigen · Beheerder: iedereen |
+| `leave.request.write` | Medewerker: eigen · Beheerder: iedereen |
+| `leave.request.approve` | Beheerder |
+| `leave.entitlement.read` | Medewerker: eigen · Beheerder: iedereen |
+| `leave.entitlement.write` | Beheerder |
+| `leave.type.write` | Beheerder (opent *Instellingen → Verlof*) |
+| `leave.profile.manage` | Beheerder (roosters en contracten) |
+| `leave.holiday.write` | Beheerder |
+| `leave.rate.read` | Medewerker: eigen · Beheerder: iedereen |
+| `leave.rate.write` | Beheerder |
+
+Het uurtarief staat bewust los van `leave.profile.manage`: iemand mag roosters beheren zonder
+salarisgegevens te zien. Rollen stel je in onder *Instellingen → Rollen*.
+
+## Goed om te weten
+
+- Verlof in het verleden kan alleen iemand vastleggen of wijzigen die verlof van anderen mag
+  schrijven (een beheerder). Staat zelfgoedkeuring uit, dan is ook diens eigen verleden
+  vergrendeld.
+- Een goedgekeurde aanvraag wordt nooit met terugwerkende kracht herrekend. Een feestdag die je
+  later toevoegt herschrijft dus geen saldo van vorig jaar.
+- Overlappende aanvragen en periodes zonder geroosterde uren worden geweigerd, niet opgeslagen.
+- Alleen de Nederlandse feestdagenkalender wordt gegenereerd. Voor een ander land voeg je de dagen
+  met de hand toe.
+- Verlof kent geen import of export: records met een goedkeuring horen aangevraagd te worden.
+- De wachtrij *Goed te keuren* pagineert niet; die lijst is bedoeld om leeg te maken.
+
+<CardGrid>
+  <LinkCard title="Personeelsdossier" href="/nl/docs/modules/hr/" description="Contract, verlofsaldo en documenten op de persoonlijke pagina." />
+  <LinkCard title="Uren" href="/nl/docs/modules/time/" description="De weekstaat waarop goedgekeurd verlof als eigen rij verschijnt." />
+  <LinkCard title="Licenties" href="/nl/docs/admin/licenses/" description="Wat een licentiesleutel dekt en wat er gebeurt als hij verloopt." />
+</CardGrid>

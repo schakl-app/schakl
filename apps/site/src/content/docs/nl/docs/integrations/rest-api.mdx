@@ -1,0 +1,143 @@
+---
+title: REST API
+description: "Alles wat de app doet loopt via één REST API. Met een eigen API-sleutel roep je hem zelf aan, met precies de rechten die je die sleutel geeft."
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+De webapp van schakl. praat nooit rechtstreeks met de database: elk scherm haalt zijn gegevens op
+via dezelfde REST API. Die API staat ook voor jou open. Je maakt een sleutel aan, vinkt aan wat die
+sleutel mag, en je script, je n8n-flow of je koppeling met een ander pakket kan aan de slag, onder
+dezelfde rechten en dezelfde afscherming als een medewerker in het scherm.
+
+## Waar je het vindt
+
+- **De interactieve referentie**: `https://<jouw-adres>/api/docs` (Swagger UI). Daarnaast
+  `https://<jouw-adres>/api/redoc` en het document zelf op `https://<jouw-adres>/api/openapi.json`.
+- **Persoonlijke sleutels**: *Instellingen → Mijn account*, blok **API-sleutels**.
+- **Sleutels voor automatisering**: *Instellingen → Service-accounts* (groep "Team & toegang").
+
+De referentie staat bewust onder `/api/`: de reverse proxy stuurt alleen `/api/` en `/mcp` naar de
+API-container en al het andere naar de webapp. Op `/docs` kom je dus op de 404-pagina van de app
+terecht.
+
+## Twee soorten sleutels
+
+| | Persoonlijke sleutel | Service-account |
+| --- | --- | --- |
+| Waar | *Instellingen → Mijn account* | *Instellingen → Service-accounts* |
+| Handelt als | jou | een eigen account zonder persoon erachter |
+| Rechten | jouw actuele rechten, beperkt tot de scopes van de sleutel | precies de aangevinkte scopes |
+| Bij een rolwijziging | de sleutel krimpt met je mee | ongewijzigd |
+| Als de maker vertrekt | de sleutel stopt met werken | blijft werken |
+
+Voor iets wat je zelf even nodig hebt is een persoonlijke sleutel prima. Alles wat blijvend draait
+(n8n, een nachtelijk script, een koppeling) hoort in een service-account: dat overleeft de
+medewerker die het ooit aanzette.
+
+## Een sleutel aanmaken
+
+<Steps>
+1. Ga naar *Instellingen → Mijn account* en zoek het blok **API-sleutels**. Voor automatisering ga
+   je in plaats daarvan naar *Instellingen → Service-accounts*, maak je met **Service-account
+   toevoegen** eerst een account aan en klik je daarna op **Nieuwe sleutel**.
+2. Vul een **Naam** in (bijvoorbeeld "n8n-automatisering"). Die naam is het enige waaraan je de
+   sleutel later terugkent.
+3. Kies bij **Verloopt op** een datum, of laat het veld leeg voor een sleutel die nooit verloopt.
+   Een datum mag maximaal een jaar vooruit liggen en niet in het verleden.
+4. Vink onder **Scopes** aan wat de sleutel mag. Er moet er minstens één aan. De lijst toont alleen
+   rechten die je zelf hebt: een sleutel kan nooit meer verlenen dan de maker bezit.
+5. Klik **Sleutel aanmaken** en kopieer de sleutel meteen.
+</Steps>
+
+<Aside type="caution">
+De sleutel wordt **één keer** getoond, direct na het aanmaken. Daarna toont schakl. alleen nog
+`schakl_<voorvoegsel>_********`; het geheim is niet opnieuw op te vragen. Kwijt is kwijt: intrekken
+en een nieuwe maken.
+</Aside>
+
+## Aanroepen
+
+Stuur de sleutel mee als `Authorization: Bearer …` of als `X-API-Key: …`. Alle eindpunten staan
+onder `/api/v1/`.
+
+```bash
+curl -H "Authorization: Bearer schakl_…" \
+  "https://<jouw-adres>/api/v1/companies?limit=50"
+```
+
+Gebruik het **eigen adres van je organisatie**, dus je gekoppelde domein of
+`<slug>.<basisdomein>`. Sleutels horen bij één organisatie: een sleutel die op een andere hostnaam
+wordt aangeboden bestaat daar simpelweg niet.
+
+### Lijsten
+
+Lijst-eindpunten werken met `limit` en `offset` en antwoorden met
+`{ "items": [...], "total": 0, "limit": 50, "offset": 0 }`. Een aantal lijsten kent daarnaast
+`count=false`: heb je het totaal niet nodig, dan scheelt dat een telling per aanroep. Of een
+eindpunt hem aanbiedt, zie je in de referentie op `/api/docs`.
+
+### Fouten
+
+Elke fout heeft dezelfde vorm:
+
+```json
+{ "error": { "code": "not_found", "message": "errors.not_found" } }
+```
+
+`message` is een vertaalsleutel, geen zin in het Nederlands of Engels: de app vertaalt hem zelf. Bij
+een validatiefout komt er een `fields` bij, met per veld zo'n sleutel.
+
+| Status | Wat er aan de hand is |
+| --- | --- |
+| 401 | Onbekende, ingetrokken of verlopen sleutel, of de verkeerde hostnaam. Nooit een 403, zodat het antwoord niet verklapt dat een sleutel bestaat |
+| 403 | De sleutel mist de scope die dit eindpunt vraagt |
+| 404 | Bestaat niet, of valt buiten wat deze sleutel mag zien |
+| 422 | Validatiefout, met `fields` erbij |
+| 429 | Meer dan 600 aanroepen in een minuut met dezelfde sleutel |
+| 402 | Een schrijfactie op een module waarvan de licentie niet meer dekt |
+
+## n8n en andere flows
+
+Voor n8n is er geen aparte koppeling nodig: dit *is* de koppeling. Een HTTP Request-node met de
+header `Authorization: Bearer schakl_…` naar `https://<jouw-adres>/api/v1/…` doet alles wat een
+scherm ook kan. Doe dat met een service-account, niet met de persoonlijke sleutel van degene die de
+flow bouwde.
+
+De andere kant op, dus schakl. die jouw flow aanroept, regel je met de actie **Webhook aanroepen**
+in [Automatisering](/nl/docs/modules/automation/).
+
+## Rechten
+
+| Recht | Wat het opent | Standaard |
+| --- | --- | --- |
+| `apikeys.personal.manage` | Eigen API-sleutels beheren | Beheerder, Medewerker |
+| `apikeys.service_account.manage` | Serviceaccounts beheren | Beheerder |
+
+Daarbovenop bepaalt de sleutel zelf wat hij mag: elke aangevinkte scope is een gewoon recht uit
+dezelfde catalogus als *Instellingen → Rollen*.
+
+## Goed om te weten
+
+- Een sleutel ziet nooit meer dan zijn eigenaar. Werkt iemand met een beperkte klantselectie, dan
+  geldt die beperking ook voor zijn sleutel.
+- **Intrekken** stopt een sleutel per direct. Een service-account verwijderen trekt al zijn sleutels
+  in. Verliest de eigenaar van een persoonlijke sleutel zijn lidmaatschap, dan werkt de sleutel niet
+  meer.
+- 600 aanroepen per minuut per sleutel. Ruim voor automatisering, en een plafond als een sleutel
+  ooit uitlekt.
+- `/api/docs` en `/api/redoc` halen hun opmaak van een publieke CDN. Op een server zonder
+  internettoegang blijft die pagina leeg; `/api/openapi.json` werkt dan gewoon.
+- Wil je de referentie helemaal niet aanbieden, dan zet je op de server
+  `SCHAKL_API_DOCS_ENABLED=false`. De API zelf blijft daarmee volledig werken.
+- Van gelicentieerde modules blijven lezen en exporteren altijd werken; alleen schrijven antwoordt
+  met 402 zodra de licentie niet meer dekt. Zie [Licenties](/nl/docs/admin/licenses/).
+
+## Verder lezen
+
+<CardGrid>
+  <LinkCard title="MCP-server" description="Dezelfde API, maar dan als gereedschap voor een AI-client." href="/nl/docs/integrations/mcp/" />
+  <LinkCard title="Automatisering" description="Regels die zelf webhooks naar jouw flow sturen." href="/nl/docs/modules/automation/" />
+</CardGrid>

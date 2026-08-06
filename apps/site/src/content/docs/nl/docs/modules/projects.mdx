@@ -1,0 +1,133 @@
+---
+title: Projecten
+description: "Projecten: opdrachten met een uren- en geldbudget, een verbrandingsbalk, toegewezen medewerkers en een eigen takenlijst."
+sidebar:
+  order: 4
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Een project is een opdracht van een klant met een budget eraan. Het is het ding waar uren op
+geschreven worden, waar taken aan hangen en waar je kunt zien of je nog binnen de afspraak
+zit voordat de maand voorbij is.
+
+## Waar je het vindt
+
+**Projecten** in het hoofdmenu. Elke klant heeft daarnaast een paneel **Projecten** op zijn
+klantdossier, met een **＋ Nieuw project** dat de klant alvast invult. Projecten is een
+gelicentieerde module: onder *Instellingen → Modules* zet je hem aan, en *Instellingen →
+Licentie* bepaalt of hij gedekt is.
+
+## Een project aanmaken
+
+De velden die het gedrag van een project bepalen:
+
+| Veld | Wat het doet |
+| --- | --- |
+| **Klant** | Waar het project onder hangt; leeg mag ook (intern werk) |
+| **Toegewezen medewerkers** | Eén **Verantwoordelijke** plus zo veel anderen als je wilt |
+| **Status** | Actief, On hold, Afgerond of Gearchiveerd |
+| **Budget (uren)** | Het urenbudget waartegen geboekte uren afgezet worden |
+| **Budgetperiode** | Hele project, Per maand, Per week of Per dag |
+| **Budget (bedrag)** | Het geldbudget, in de valuta van je organisatie |
+| **Standaard facturabel** | Bepaalt hoe nieuwe urenregistraties op dit project beginnen |
+| **Startdatum** / **Einddatum** | Vrij in te vullen |
+
+Bij het aanmaken erft het project de **Verantwoordelijke van de klant** als zijn eigen
+Verantwoordelijke, niet de hele lijst medewerkers die op die klant staat. Die
+Verantwoordelijke is ook de standaard toegewezene van nieuwe taken op dit project.
+
+De **omschrijving** is een rijke-tekstveld: je kunt er collega's in @noemen en met `#` naar
+andere taken verwijzen.
+
+## De budgetbalk
+
+De **Budgetperiode** bepaalt wat "geboekt" betekent. Bij *Hele project* telt alles mee vanaf
+het begin; bij *Per maand* begint de teller op de eerste van de maand opnieuw, bij *Per week*
+op maandag en bij *Per dag* elke dag. De grens ligt op **middernacht in de tijdzone van je
+organisatie** (*Instellingen → Huisstijl*), niet in UTC: een uur dat om 23:30 op 31 januari
+geboekt wordt, telt in januari.
+
+Op de projectpagina staat *Geboekt deze maand* (of week, dag, of gewoon *Geboekt*) met de
+balk eronder. De balk stopt bij 100%, het getal niet: een project dat op 140% staat leest ook
+als 140%. Op de lijst zie je dezelfde cijfers in de kolom **Beschikbare uren**.
+
+Wie de juiste rechten heeft, krijgt daaronder **Facturabele waarde** en **Kosten
+(medewerkerstarieven)**. Elk uur wordt geprijsd tegen het tarief van degene die het schreef;
+uren van mensen zonder tarief worden apart genoemd en niet meegerekend. Er is geen tarief op
+projectniveau.
+
+<Aside type="tip">
+Toegewezen medewerkers krijgen een melding zodra een actief project met urenbudget door de
+**75%** en door de **100%** gaat: één keer per budgetperiode, dus een maandbudget waarschuwt
+volgende maand opnieuw. Aan of uit zet je dat per persoon onder *Instellingen → Meldingen*.
+</Aside>
+
+## Uren uit een abonnement
+
+Koppel je een project aan een lopend abonnement met **Inbegrepen uren** (in de module
+Abonnementen, veld *Gekoppelde projecten*), dan komt het urenbudget uit die afspraak. Meerdere
+abonnementen tellen bij elkaar op. Het veld **Budget (uren)** wordt dan grijs, de budgetperiode
+staat vast op *Per maand*, en er staat **Uren uit abonnement** bij met de naam van het
+abonnement erachter.
+
+<Aside type="caution">
+Zodra een project aan een abonnement wordt gekoppeld, gaat **Standaard facturabel** uit: werk
+waar een abonnement al voor betaalt, factureer je niet nog een keer. Het blijft een standaard,
+geen slot; je kunt hem terugzetten voor meerwerk, en per urenregistratie beslist degene die
+schrijft alsnog zelf. De wijziging komt in het activiteitenspoor van het project te staan.
+</Aside>
+
+## Op de projectpagina
+
+- **Taken**: de to-do-lijst van het project. Regel toevoegen, afvinken en met de greep
+  ⋮⋮ herordenen. Het aantal klaar/totaal staat rechtsboven.
+- **Documenten**: bestanden uploaden, downloaden en verwijderen; elke upload komt in het
+  activiteitenspoor.
+- **Contactmoment vastleggen** in de kop, als de module Contactmomenten aan staat: het project
+  en zijn klant zijn dan al ingevuld.
+- Panelen van andere modules: **Uren**, **Contactmomenten** en **Abonnementen**.
+- Onderaan het **activiteitenspoor**: wie wat wanneer wijzigde, met de oude en de nieuwe waarde.
+
+## De lijst
+
+Zoeken, filteren op klant en de knop **Mijn projecten** (alleen projecten waar jij op staat).
+Kolommen kies je zelf; die keuze is persoonlijk en blijft bewaard. Sorteren kan op naam, status,
+toegewezen medewerker, budget en de datums.
+
+Met de ✎ zet je de selectievakjes aan en pas je een selectie in één keer aan: **status**,
+**klant** en **standaard facturabel**. Budgetten staan er bewust niet bij: een budget is per
+project afgesproken. Verwijderen kan vanuit dezelfde selectie.
+
+Een import herkent een bestaand project aan zijn **naam** en werkt het bij; de rest wordt
+aangemaakt. De kolom `company` matcht op de exacte klantnaam. Zie
+[Import & export](/nl/docs/modules/import-export/).
+
+## Rechten
+
+| Recht | Standaard bij |
+| --- | --- |
+| `projects.project.read` | Beheerder, Medewerker, Klant |
+| `projects.project.write` | Beheerder |
+| `projects.project.delete` | Beheerder |
+
+De eigenaarsrol heeft alles. Je stelt het per rol in onder *Instellingen → Rollen*. De
+bedragen op de projectpagina hangen aan twee andere rechten: *Urenoverzicht en rapportages
+bekijken* (`time.report.read`) én *Uurtarieven bekijken* voor iedereen
+(`leave.rate.read:any`). Zonder allebei zie je de urenbalk wel en de bedragen niet.
+
+## Goed om te weten
+
+- **Een verwijderd project neemt niets mee.** Taken en urenregistraties blijven staan en raken
+  alleen hun projectkoppeling kwijt.
+- **De budgetbalk telt de uren van het hele team**, niet alleen die van jou.
+- **Eigen velden** kun je per project toevoegen onder *Instellingen → Aangepaste velden*; ze
+  verschijnen in het formulier, op de pagina en in de export.
+- Op het **Dashboard** staat de widget **Projectbudgetten**: de budgetprojecten met de hoogste
+  verbranding.
+
+## Verder lezen
+
+- [Taken](/nl/docs/modules/tasks/): het bord waar het werk van een project op landt
+- [Klanten](/nl/docs/modules/companies/): het dossier waar het projectpaneel op staat
+- [Import & export](/nl/docs/modules/import-export/)

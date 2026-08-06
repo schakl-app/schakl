@@ -37,7 +37,7 @@ Vier variabelen zijn verplicht en hebben géén default:
 | `SCHAKL_BASE_DOMAIN` | basisdomein; de app is bereikbaar op `app.<basisdomein>` |
 
 Pin daarnaast `SCHAKL_TAG` op een exacte versie (bijv. `1.2.3`) in plaats van `latest`;
-zie [Updaten & back-ups](/docs/admin/upgrades/).
+zie [Updaten & back-ups](/nl/docs/admin/upgrades/).
 
 ## Eerste start
 
@@ -64,8 +64,7 @@ zie [Updaten & back-ups](/docs/admin/upgrades/).
 Een verzoek komt op precies twee manieren bij een organisatie uit: via een **geverifieerd
 eigen domein**, of via `<slug>.<SCHAKL_BASE_DOMAIN>`. Een onbekende hostnaam is een 404;
 er is bewust géén terugval naar "de enige organisatie". Een extra domein koppel je later
-onder *Instellingen → Huisstijl → Eigen domein*; het wordt actief na een DNS
-TXT-verificatie.
+onder *Instellingen → Eigen domein*; het wordt actief na een DNS TXT-verificatie.
 
 ## Health-endpoints
 
@@ -73,4 +72,4 @@ TXT-verificatie.
 | --- | --- | --- |
 | `GET /health` | geen | liveness: goedkoop, raakt de database niet |
 | `GET /health/ready` | geen | readiness: controleert Postgres, Redis en migraties, zonder details prijs te geven |
-| `GET /api/v1/system/info` | eigenaar/beheerder | het scherm *Instellingen → Systeem*: versies, migratiestand, worker-heartbeat |
+| `GET /api/v1/system/info` | Eigenaar/Beheerder | het scherm *Instellingen → Systeeminformatie*: versies, migratiestand, worker-heartbeat |

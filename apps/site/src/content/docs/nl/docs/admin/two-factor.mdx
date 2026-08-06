@@ -1,0 +1,135 @@
+---
+title: Tweestapsverificatie
+description: "Een tweede stap op het inloggen met wachtwoord: een authenticator-app, tien back-upcodes, eventueel sms, en een reset door een beheerder als iemand zijn telefoon kwijt is."
+sidebar:
+  order: 8
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Tweestapsverificatie zet een tweede stap op het inloggen met een wachtwoord, zodat een gelekt of
+hergebruikt wachtwoord niet genoeg is om bij klantgegevens, facturen en hostinggegevens te komen.
+Iedereen stelt het zelf in, in ongeveer twee minuten.
+
+## Waar je het vindt
+
+Instellen doe je op *Instellingen → Mijn account*, in de sectie **Mijn instellingen**, bij het blok
+**Tweestapsverificatie**. Daar is geen recht voor nodig: het is je eigen account.
+
+Resetten voor iemand anders doe je op *Instellingen → Team & gebruikers*.
+
+<Aside type="caution" title="Niet zichtbaar bij verplichte SSO">
+Staat *Single sign-on verplichten* aan voor je organisatie, dan verdwijnt het hele blok, ook het
+instellen. Bij een federatieve sessie regelt je identiteitsprovider de tweede stap. Zie
+[Single sign-on](/nl/docs/admin/sso/).
+</Aside>
+
+## Instellen
+
+<Steps>
+
+1. Ga naar *Instellingen → Mijn account* en klik bij **Tweestapsverificatie** op
+   **Tweestapsverificatie instellen**.
+
+2. Scan de QR-code met je authenticator-app. Kan die app niet scannen, gebruik dan de
+   **Handmatige sleutel** die ernaast staat. In je app verschijnt het account onder de merknaam van
+   je organisatie (die van *Instellingen → Huisstijl*), niet onder een productnaam.
+
+3. Typ de code uit de app in het veld **6-cijferige code** en klik op **Verifiëren en inschakelen**.
+   Pas die bevestiging zet tweestapsverificatie echt aan; wil je toch niet, klik dan op
+   **Instellen annuleren**.
+
+4. Daarna verschijnen eenmalig tien codes onder **Back-upcodes**, met een knop **Codes kopiëren**.
+   Bewaar ze op een veilige plek: elke code werkt precies één keer en ze worden nooit opnieuw
+   getoond.
+
+</Steps>
+
+Op de pagina staat vanaf dat moment "Tweestapsverificatie staat aan" met daaronder hoeveel
+back-upcodes je nog over hebt.
+
+## Inloggen
+
+Na je wachtwoord volgt een tweede scherm: **Verificatie in twee stappen**, met de vraag om de
+6-cijferige code uit je authenticator-app. Onder het veld staan schakelaars naar
+**Gebruik een back-upcode** en terug naar **Gebruik je authenticator-app**.
+
+Er is bewust geen "vertrouw dit apparaat": elke aanmelding met wachtwoord vraagt om een code.
+
+## Back-upcodes vervangen
+
+Onder **Nieuwe back-upcodes** op *Instellingen → Mijn account* maak je een nieuwe set aan. Dat kost
+een actuele code uit je authenticator-app: alleen een gestolen sessie mag nooit genoeg zijn om
+herstelcodes aan te maken. De oude codes vervallen daarmee allemaal.
+
+Uitzetten gaat met **Uitzetten**, en dat kost je wachtwoord.
+
+## Sms-codes
+
+Als aanvulling kun je aanmeldcodes ook per sms ontvangen. Het blok **Sms-codes** staat op dezelfde
+pagina, direct onder tweestapsverificatie:
+
+1. Vul bij **Telefoonnummer** een nummer in internationaal formaat in, bijvoorbeeld `+31612345678`.
+2. Klik op **Verificatiecode versturen** en typ de ontvangen code in.
+3. Klik op **Nummer verifiëren**. Weghalen kan later met **Nummer verwijderen**.
+
+Bij het inloggen verschijnt dan een extra knop: **Sms een code naar mijn telefoon**. Sms is nooit een
+losse factor: het is een aanvulling op een werkende authenticator-app, dus je account blijft altijd
+beveiligd als je het nummer weghaalt.
+
+<Aside type="caution" title="Sms bestaat alleen als de beheerder van de installatie het inricht">
+Zonder ingerichte sms-gateway is de optie nergens zichtbaar; probeer je het toch, dan volgt
+"Sms-codes zijn niet beschikbaar op deze installatie." Het is instellingniveau, geen instelling van
+je organisatie: een bureau op een gedeelde server kan dit niet zelf aanzetten. De beheerder zet op de
+API-container `SCHAKL_SMS_GATEWAY_URL` (en optioneel `SCHAKL_SMS_GATEWAY_TOKEN` en
+`SCHAKL_SMS_GATEWAY_SENDER`). schakl. stuurt daar een JSON-bericht naartoe met het nummer en de
+tekst; die tekst staat in de taal van de ontvanger. De drie variabelen staan al klaar in
+`infra/compose.portainer.yml`; in de andere compose-bestanden voeg je ze zelf toe.
+</Aside>
+
+## Telefoon kwijt
+
+De back-upcodes zijn de weg die je zelf kunt lopen. Lukt dat niet, dan reset een beheerder het:
+
+1. Ga naar *Instellingen → Team & gebruikers*. Bij mensen met tweestapsverificatie staat het label
+   **2FA aan**.
+2. Open het ⋯-menu op die regel en kies **Tweestapsverificatie resetten**.
+3. Bevestig. Het account gaat terug naar aanmelden met alleen een wachtwoord, totdat de persoon het
+   opnieuw instelt.
+
+De reset wist de hele inschrijving: de sleutel, de back-upcodes en een eventueel sms-nummer. Er wordt
+nooit een geheim uitgelezen. Elke reset komt op het audit-spoor van je organisatie te staan. De optie
+staat er alleen bij mensen die tweestapsverificatie daadwerkelijk aan hebben, en nooit op je eigen
+regel.
+
+## Rechten
+
+| Recht | Wat het opent | Standaard |
+| --- | --- | --- |
+| `members.member.write` | *Instellingen → Team & gebruikers*: uitnodigen, wijzigen, verwijderen, en **Tweestapsverificatie resetten** | Alleen Beheerder (Eigenaar heeft alles) |
+
+Zelf instellen, nieuwe back-upcodes maken, sms toevoegen en zelf uitzetten vragen géén recht: dat is
+je eigen account. Rechten stel je per rol in onder *Instellingen → Rollen*.
+
+## Goed om te weten
+
+- **Je kunt tweestapsverificatie (nog) niet organisatiebreed verplichten.** Iedereen zet het zelf
+  aan; er is geen schakelaar die het voor het hele team afdwingt.
+- **Geen tweede stap op SSO-logins.** Verplicht je single sign-on, dan is het hele blok weg en regelt
+  je provider de MFA.
+- Na **8 mislukte pogingen** gaat de factor 15 minuten op slot, ongeacht hoe je verifieert.
+- Het tweede scherm bij het inloggen is **5 minuten geldig**. Daarna kom je terug bij het wachtwoord,
+  niet in een doodlopende lus.
+- Een al gebruikte code uit je app kun je niet nog eens gebruiken binnen dezelfde 30 seconden.
+- Een sms-code is 6 cijfers, 10 minuten geldig, 5 pogingen, één keer bruikbaar, en je kunt pas na 30
+  seconden een nieuwe aanvragen.
+- Je tweede factor hoort bij **jou**, niet bij een organisatie: hij volgt je naar elke organisatie
+  waar je lid van bent. Een reset door een beheerder wist hem dus overal. Op een gewone installatie
+  met één organisatie is dat hetzelfde.
+- **API-sleutels en MCP staan hier los van**: die hebben hun eigen sleutel met eigen rechten en geen
+  wachtwoord.
+
+<CardGrid>
+  <LinkCard title="Single sign-on" href="/nl/docs/admin/sso/" description="Inloggen via je eigen identiteitsprovider, en het wachtwoordlogin uitzetten." />
+  <LinkCard title="Installeren" href="/nl/docs/admin/installation/" description="De stack en de omgevingsvariabelen van je installatie." />
+</CardGrid>

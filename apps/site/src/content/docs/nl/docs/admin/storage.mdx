@@ -1,0 +1,142 @@
+---
+title: Bestandsopslag
+description: "Waar geüploade bestanden landen: het volume op de host of een S3-bucket, de uploadlimieten en het nachtelijke onderhoud."
+sidebar:
+  order: 6
+---
+
+import { Aside, CardGrid, LinkCard, Steps } from '@astrojs/starlight/components';
+
+Alles wat je in schakl. uploadt (bijlagen, logo's, profielfoto's, pdf's) wordt als los bestand
+opgeslagen, buiten de database. Waar dat gebeurt kies je bij de installatie: op een volume op
+de host, of in een S3-compatibele bucket.
+
+## Waar je het vindt
+
+Nergens in de app: er is geen instellingenscherm voor opslag, geen quotum en geen
+verbruikscijfer. Het is instantieconfiguratie, via omgevingsvariabelen op de containers `api`
+**en** `worker` (beide moeten dezelfde opslag zien).
+
+Bestanden zelf kom je wel op vaste plekken tegen:
+
+- **Documenten** op een projectpagina en op een taakpagina, met de knop *Bestand uploaden*
+- het **logo** van een klant op het klantdossier
+- je eigen profielfoto onder *Instellingen → Mijn account → Foto uploaden*
+- *Instellingen → Huisstijl*: **Logo**, **Favicon** en **App-icoon**
+- de achtergrondafbeelding van facturen onder *Instellingen → Facturatie*
+- documenten in een personeelsdossier
+- afbeeldingen uit binnengekomen e-mail
+
+## Twee backends
+
+| | Volume (standaard) | S3-compatibel |
+| --- | --- | --- |
+| `SCHAKL_STORAGE_BACKEND` | `local` | `s3` |
+| Waar | het Docker-volume `storage-data`, gekoppeld op `SCHAKL_STORAGE_PATH` (`/data/storage`) | Hetzner Object Storage, MinIO, Scaleway, AWS |
+| Back-up | snapshot van het volume | versioning en lifecycle-regels op de bucket |
+
+Voor S3 zet je daarnaast `SCHAKL_STORAGE_S3_ENDPOINT`, `_REGION`, `_BUCKET`,
+`_ACCESS_KEY_ID` en `_SECRET_ACCESS_KEY`; optioneel `_KEY_PREFIX` (nest alles onder een
+voorvoegsel) en `_FORCE_PATH_STYLE` (standaard aan, veilig voor MinIO).
+
+<Steps>
+
+1. Maak een bucket aan en een sleutel die **alleen** bij die bucket kan.
+
+2. Zet de variabelen op `api` én `worker` en redeploy.
+
+3. Laat het volume `storage-data` staan zolang er nog bestanden op staan. Overschakelen is
+   een **omschakeling, geen verhuizing**: alleen nieuwe uploads gaan naar de bucket, oudere
+   bestanden blijven vanaf het volume geserveerd. Per bestand wordt onthouden waar het staat.
+
+</Steps>
+
+De bucket blijft privé: er komt geen publieke ACL of bucket-policy aan te pas, elk byte gaat
+nog steeds via de API en dus via de rechten en de organisatiescheiding. Terugschakelen kan
+altijd: haal de variabelen weg en nieuwe uploads landen weer op het volume. Bestanden die in
+de bucket stonden geven dan een duidelijke foutmelding tot de configuratie terug is.
+
+<Aside type="caution" title="Een bucket of voorvoegsel wijzigen maakt bestanden onbereikbaar">
+Objecten die onder de oude bucket of het oude `_KEY_PREFIX` zijn geschreven vindt de app niet
+meer terug (net zoals bij het verplaatsen van `SCHAKL_STORAGE_PATH`). Verhuis de objecten
+eerst, of laat de oude configuratie staan.
+</Aside>
+
+Gevoelige waarden kun je uit een bestand lezen in plaats van uit een variabele, wat een Docker
+secret is: `SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY_FILE=/run/secrets/…`. Een `_FILE` dat niet
+leesbaar of leeg is laat de container bewust niet starten.
+
+## Uploadlimieten
+
+| Variabele | Standaard |
+| --- | --- |
+| `SCHAKL_UPLOAD_MAX_BYTES` | 10 MB |
+| `SCHAKL_UPLOAD_ALLOWED_TYPES` | een JSON-lijst: PNG, JPEG, WebP, GIF, SVG, ICO, pdf, platte tekst, csv, zip, Word en Excel (oud en nieuw) |
+
+Wat erbuiten valt wordt geweigerd met "Dit bestandstype is niet toegestaan." of "Dit bestand
+is te groot." Wil je meer toestaan, dan vervang je de hele lijst.
+
+## Dezelfde bytes, één keer opgeslagen
+
+schakl. slaat identieke bestandsinhoud per organisatie één keer op. Het logo in de handtekening
+van een leverancier dat op vijfhonderd binnengekomen mails meekomt kost dus één object in
+plaats van vijfhonderd. Je merkt er verder niets van: elk bestand blijft een eigen regel met
+een eigen naam.
+
+Eén gevolg is wél zichtbaar: **een bestand verwijderen maakt niet meteen ruimte vrij.** Dat
+gebeurt in het nachtelijke onderhoud van de `worker`, dagelijks om 03:15 UTC:
+
+- **Opvouwen**: bestanden van vóór deze werkwijze worden per organisatie in batches van
+  `SCHAKL_STORAGE_FOLD_BATCH` (standaard 500) gehasht en samengevoegd. Een installatie met een
+  grote achterstand loopt daardoor in een paar nachten bij, niet in één keer tijdens een
+  upgrade.
+- **Opruimen**: inhoud waar geen enkel bestand meer naar verwijst wordt pas opgeruimd nadat
+  hij `SCHAKL_STORAGE_BLOB_GRACE_HOURS` (standaard 24 uur) ongebruikt is geweest. Dat venster
+  is meteen de reddingsboei: binnen die tijd is "ik heb het verkeerde bestand verwijderd" nog
+  te herstellen zonder een back-up terug te zetten.
+
+<Aside type="caution" title="Terugrollen naar een oudere versie? Verwijder dan geen bestanden">
+Een oudere versie van schakl. kent het gedeelde-inhoud-model niet en verwijdert bij een
+bestandsverwijdering het object onvoorwaardelijk. Verwijder je terwijl je teruggerold bent een
+bestand dat inhoud deelt met een ander bestand, dan verdwijnt het voor allebei. Lezen en
+draaien op een oudere versie is verder veilig; alleen verwijderen niet.
+</Aside>
+
+## Rechten
+
+| Recht | Wat het geeft | Standaard |
+| --- | --- | --- |
+| `files.file.write` | bestanden uploaden en verwijderen | Beheerder en Medewerker (niet Klant) |
+
+Het ophalen van een bestand vraagt geen apart recht: elke ingelogde gebruiker mag bestanden
+van de eigen organisatie ophalen. Daaronder gelden de gewone grenzen: de organisatiescheiding,
+en voor wie tot bepaalde klantgroepen beperkt is ook die grens. Een klantlogo en een
+personeelsdossierdocument hebben een extra slot en antwoorden met "niet gevonden" in plaats
+van met een foutmelding die verraadt dat het bestand bestaat. Alleen huisstijlbestanden (het
+logo op het inlogscherm, de favicon, het app-icoon) zijn zonder inloggen op te halen.
+
+## Goed om te weten
+
+- **Back-up de bestanden samen met de database.** Een teruggezette database zonder het volume
+  verwijst naar bestanden die er niet meer zijn; een volume zonder database is losse bytes.
+  Zie [Updaten & back-ups](/nl/docs/admin/upgrades/).
+- **Twee foutmeldingen wijzen op een opslagprobleem, niet op een kapot bestand.** "De
+  registratie van dit bestand bestaat, maar de inhoud ontbreekt in de opslag" betekent meestal
+  een teruggezette database zonder volume, of dat `api` en `worker` niet hetzelfde volume
+  delen. "Dit bestand is opgeslagen in een opslag-backend die niet op deze installatie is
+  geconfigureerd" betekent dat de S3-instellingen ontbreken of gewijzigd zijn.
+- **Identieke inhoud wordt nooit over organisaties heen gedeeld**, alleen binnen één
+  organisatie. Dat is een bewuste keuze: anders zou het opruimen van een vertrokken
+  organisatie de bestanden van een andere kunnen meenemen.
+- **Tijdens een migratie naar S3 staan dezelfde bytes soms op twee plekken.** Dat is geen fout
+  in de telling: het volume en de bucket zijn twee losse opslagplaatsen.
+- **Nergens in de app staat hoeveel opslag je gebruikt.** Ook *Instellingen →
+  Systeeminformatie* toont dat niet; kijk in je bucket of op de host.
+
+## Verder lezen
+
+<CardGrid>
+  <LinkCard title="Installeren" description="De stack, de variabelen en de eerste start." href="/nl/docs/admin/installation/" />
+  <LinkCard title="Updaten & back-ups" description="Nieuwe versies en wat je veiligstelt." href="/nl/docs/admin/upgrades/" />
+  <LinkCard title="Uitgaande e-mail" description="Het transport waarmee schakl. mail verstuurt." href="/nl/docs/admin/email/" />
+</CardGrid>

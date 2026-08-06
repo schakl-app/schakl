@@ -1,0 +1,116 @@
+---
+title: Client portal
+description: "Give a client's contact person their own login into your app: their own dashboard, their own invoices and their own reports."
+sidebar:
+  order: 18
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+The client portal gives a client's contact person their own login into your own app, under your own
+branding. That person sees the marketing overview you composed for them, their own company's
+invoices and the reports you published. Everything else stays invisible — not because somebody
+remembered to tick a box, but because the link to their company is what decides what they can ask
+for at all.
+
+## Where to find it
+
+There is no settings screen of its own. The button sits on the person: *Contactpersonen* (Contacts) →
+open the contact → the **Klantportaal** (Client portal) card. Under *Instellingen → Modules*
+(Settings → Modules) the module is called "Klantportaal".
+
+## Inviting someone
+
+<Steps>
+1. Make sure the contact is linked to at least one client. That link is exactly what they will be
+   able to see.
+2. Make sure they have an e-mail address of their own. Without one you cannot invite: "Deze
+   contactpersoon heeft een e-mailadres nodig voordat je kunt uitnodigen."
+3. Press **Uitnodigen voor portaal** (Invite to portal). An account is created, given the *Klant*
+   (Client) role, linked to this contact, and a mail in your own branding goes out with a link to
+   set a password.
+4. From then on the card shows a status: **Geen toegang** (No access), **Uitgenodigd** (Invited),
+   **Actief** (Active) or **Uitgeschakeld** (Disabled). While the status is "Uitgenodigd" a
+   **Uitnodiging opnieuw versturen** (Resend invite) button appears too.
+</Steps>
+
+<Aside type="caution">
+The invitation mail rides your organisation's e-mail transport (*Instellingen → E-mail*). If that is
+not configured yet, the access is still created but the mail is not sent, and the card says so in as
+many words. Configure e-mail, then resend the invitation.
+
+An e-mail address that already belongs to an existing account (a colleague's, or an account in
+another organisation) is refused. A portal login needs an address of its own.
+</Aside>
+
+## What the client sees
+
+The client signs in at the same web address, in the same branding, and lands on **Jouw dashboard**
+(Your dashboard): a widget board they arrange themselves. With more than one company they get a
+company switcher at the top, showing the selected company's own logo.
+
+- **Marketing**: the overview your agency composed for them. They may move or drop tiles, but never
+  add anything you did not expose.
+- **Facturen** (Invoices): only their own companies' invoices, with status and the same PDF you send
+  out. An invoice with status *Concept* (Draft) is never visible to them.
+- **Rapportages** (Reports): published reports only.
+- **Taken** (Tasks): commenting on their own tasks.
+
+That is the whole write surface: comments on their own tasks, the layout of their own dashboard and
+menu, and their own notifications. Nothing else.
+
+## Switching access off again
+
+**Toegang uitschakelen** (Disable access) switches the login off without throwing anything away: the
+account, the link and the history all survive, and the button then reads **Toegang opnieuw
+inschakelen** (Re-enable access). There is deliberately no button that deletes a portal login.
+
+## Signing in as this contact
+
+When a client says "I can't find the report", you do not have to guess. The same card carries
+**Inloggen als deze contactpersoon** (Sign in as this contact). You confirm first, then land on the
+client's own dashboard for half an hour.
+
+- Your own session stays open; it is not replaced.
+- A banner sits on every screen: `{you} is ingelogd als {client}`, with a **Stoppen** (Stop) button.
+- The session can never do more than you can yourself. If you are seeing less than the client does,
+  the banner says so: "u ziet minder dan zij: alleen wat uw eigen rechten toelaten".
+- The start and the end land on the contact's own activity trail ("logde in als …", "beëindigde de
+  sessie als …"), and anything you change meanwhile carries your name beside the client's.
+
+If you are already signed in as somebody else, you have to stop that first.
+
+## Permissions
+
+| Permission | What it opens | Default |
+| --- | --- | --- |
+| `members.member.write` | The whole Klantportaal card: invite, resend, disable | Administrator |
+| `portal.login.impersonate` | "Inloggen als de portaallogin van een klant" | Administrator |
+
+Both are set per role under *Instellingen → Rollen* (Settings → Roles). Signing in as a client never
+follows automatically from managing their login: those are two different acts. Somebody without
+`members.member.write` does not see the card at all.
+
+The invited client gets the shipped **Klant** (Client) role: read access to their own data, plus commenting
+on their own tasks.
+
+## Good to know
+
+- The client portal is a **licensed module**. Without a valid licence, **Uitnodigen voor portaal**
+  renders with a padlock and the badge "Niet inbegrepen" (Not included), opening a dialog that
+  explains what to do on this deployment. Existing client logins keep working throughout: an expired
+  licence makes the module read-only, not gone.
+- A client login linked to no company sees nothing at all, whatever its role holds. *Instellingen →
+  Team & gebruikers* (Settings → Team & users) therefore badges such an account **Ziet geen klanten**
+  (Sees no clients).
+- Contacts are the only kind of portal subject today.
+- A contact outside your own client groups does not exist for you: you get "not found" rather than
+  "no access".
+
+## Read next
+
+<CardGrid>
+  <LinkCard title="Contacts" description="The address book the Klantportaal card sits on." href="/en/docs/modules/contacts/" />
+  <LinkCard title="Clients" description="The client record the contacts hang off." href="/en/docs/modules/companies/" />
+  <LinkCard title="Notifications" description="The bell, the inbox and where notifications go." href="/en/docs/modules/notifications/" />
+</CardGrid>

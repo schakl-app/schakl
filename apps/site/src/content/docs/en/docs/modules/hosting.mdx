@@ -1,0 +1,92 @@
+---
+title: Hosting
+description: "The shared hosting accounts your websites run on: name, provider, IP address and who is responsible."
+sidebar:
+  order: 15
+---
+
+import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+A hosting account is where a website actually runs. Agencies reuse the same servers and packages
+across several clients, so in schakl. hosting is a list of its own that you maintain once and
+that websites point at.
+
+## Where to find it
+
+Under *Instellingen → Hosting* (Settings → Hosting), "Gedeelde hostingaccounts waar je websites
+op draaien". Hosting deliberately has no main-menu item and no panel on the client page: that
+page shows the client's **websites**, and each website names its own hosting account.
+
+<Aside type="tip">
+Coming from an older version: the list used to live at `/hosting`. Saved bookmarks to that
+address no longer work; use *Instellingen → Hosting*.
+</Aside>
+
+## Recording an account
+
+**Nieuwe hosting** (New hosting) opens a dialog with five fields:
+
+- **Naam** (Name). Required, and the only field an import matches on. Pick something you
+  recognise and do not use twice.
+- **Klant** (Client). Optional, and that is the point: an account with no client is shared
+  infrastructure you use across clients. Empty is a real answer here, not a missing one.
+- **Provider.** From your own provider list (*Instellingen → Providers*), with "＋ toevoegen" to
+  create one on the spot.
+- **IP-adres** (IP address). A free text field, wide enough for IPv6.
+- **Verantwoordelijke** (Responsible). A reference rather than a name you type: the agency, a
+  client, an employee or a contact person.
+
+Below those sit your own custom fields for the hosting type, if you have defined any under
+*Instellingen → Aangepaste velden* (Settings → Custom fields).
+
+Each row in the list shows the name, the provider, the IP address and the client, with a ⋯ menu
+for **Bewerken** (Edit) and **Verwijderen** (Delete). The pager sits underneath: the list never
+quietly shows only its first page as if it were everything.
+
+## Creating one from a website
+
+You do not have to come here first. In the website form, the **Hosting** picker's
+"＋ toevoegen" opens exactly this dialog, with all of the fields above. Save, and the new account
+is already selected on the website you were working on.
+
+## Import and export
+
+The Export/Import bar sits beside the **Nieuwe hosting** button. An import matches on the
+**name**. The columns are `name` (required), `company`, `provider`, `ip_address` and `contact`.
+
+Two things behave differently here:
+
+- **An empty `company` really does detach.** On most entities an empty cell leaves the field
+  alone, but here empty means "shared infrastructure", so that choice is carried out.
+- **Two accounts with the same name are an error, not a guess.** Unlike a domain, a hosting
+  account's name is not unique in the database. If a name occurs twice, the check reports that
+  row as ambiguous instead of picking one.
+
+See [Import & export](/en/docs/modules/import-export/) for how checking and importing work.
+
+## Permissions
+
+| Permission | Held by default |
+| --- | --- |
+| `hosting.hosting.read` | Administrator, Member, Client |
+| `hosting.hosting.write` | Administrator |
+| `hosting.hosting.delete` | Administrator |
+
+Editable per role under *Instellingen → Rollen* (Settings → Roles). The *Hosting* card in
+Settings only appears for holders of `hosting.hosting.read`. Exporting or importing the list
+additionally needs the separate bulk permission.
+
+## Good to know
+
+- Deleting a hosting account deletes no websites. The sites that pointed at it simply keep an
+  empty hosting field, which you can see in the Websites list.
+- The same goes for a provider: remove one from *Instellingen → Providers* and the hosting
+  account stays, with an empty provider field.
+- Hosting is a licensed module with its own sku. If the licence lapses the list becomes
+  read-only; exporting keeps working and nothing is lost.
+
+<CardGrid>
+  <LinkCard title="Websites" href="/en/docs/modules/websites/" description="The sites that point at a hosting account." />
+  <LinkCard title="Domains" href="/en/docs/modules/domains/" description="The register every website hangs off." />
+  <LinkCard title="Licenses" href="/en/docs/admin/licenses/" description="What happens when a license expires." />
+</CardGrid>

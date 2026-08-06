@@ -1,0 +1,119 @@
+---
+title: Integrations
+description: "Where schakl. talks to outside services: payments, domains, Google, marketing figures and your own scripts, each with your own account."
+sidebar:
+  order: 0
+---
+
+import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+schakl. runs on your own server and talks from there to the services your agency already uses:
+your payment provider, your registrar, your DNS, Google Workspace, your marketing sources and
+your own scripts. Every integration uses **your own account at that service**. The key or token
+is stored encrypted against your organisation in the database rather than in a configuration
+file on the server, and you can replace or remove it at any time.
+
+## Where to find it
+
+Everything you connect lives under *Instellingen* (Settings), in the group **Communicatie &
+koppelingen** (Communication & integrations): E-mail, Standaardmeldingen (notification defaults),
+Google Workspace, AI, Marketing, Rapportage (Reporting), Cloudflare, OXXA and Mollie. Keys for
+your own scripts sit apart from those: personal keys under *Instellingen → Mijn account* (Settings
+→ My account), section **API-sleutels** (API keys), and keys that outlive somebody's departure
+under *Instellingen → Service-accounts* (Settings → Service accounts).
+
+If an integration is not listed, its module is switched off or not licensed; that is settled under
+*Instellingen → Modules*. The search box at the top of Settings also matches the words you would
+actually type when something goes wrong, such as "ideal", "webhook" or "nameservers".
+
+## Available, beta or roadmap
+
+Integrations are not all equally far along, and each one says where it stands. Three words, with
+exactly these meanings:
+
+| Status | What it means |
+| --- | --- |
+| **Available** | You can connect it today, and it has been exercised end to end against the service itself. |
+| **Beta** | It ships and is connectable, but the code has never met a real account at that provider: it is built from the vendor's official API documentation and tested against a stand-in cut from it. |
+| **On the roadmap** | There is nothing to connect yet. Those get no page here. |
+
+<Aside type="caution" title="What beta means in practice">
+A beta integration proves that our code agrees with the vendor's documentation, not that it
+agrees with their servers. So run a rehearsal of your own — a test key, or a single domain —
+before you send clients or money through it. Today **Mollie** and **OXXA** are beta.
+
+**SE Ranking** is a separate case and does not fit that definition: it was written against SE
+Ranking's live API and those responses are pinned in our tests. Two things about it have never
+been tried with a real key: the exact `Authorization` header scheme and the path the project
+list is fetched from. Both come from SE Ranking's documentation, so start there with a single
+project too.
+</Aside>
+
+## The integrations
+
+<CardGrid>
+  <LinkCard
+    title="Mollie (beta)"
+    href="/en/docs/integrations/mollie/"
+    description="Let clients pay an open invoice online with iDEAL, cards, Bancontact or PayPal; the confirmed payment becomes a payment line on that invoice by itself."
+  />
+  <LinkCard
+    title="Cloudflare"
+    href="/en/docs/integrations/cloudflare/"
+    description="Read your clients' zones and DNS records, and put a real mechanism behind the domain status Doorverwijzing (redirect)."
+  />
+  <LinkCard
+    title="OXXA (beta)"
+    href="/en/docs/integrations/oxxa/"
+    description="Pull the register from your registrar — expiry date, lock and nameservers — and write nameservers back."
+  />
+  <LinkCard
+    title="Google Workspace"
+    href="/en/docs/integrations/google-workspace/"
+    description="Calendar, Drive and Gmail, connected per organisation with your own OAuth client and switched on per employee."
+  />
+  <LinkCard
+    title="Marketing sources"
+    href="/en/docs/integrations/marketing-sources/"
+    description="Google Analytics, Search Console, Google Ads and SE Ranking as figures per client, on the client file and in your reports."
+  />
+  <LinkCard
+    title="REST API"
+    href="/en/docs/integrations/rest-api/"
+    description="Anything the app can do, a script can too: one typed API with permissions per key."
+  />
+  <LinkCard
+    title="MCP server"
+    href="/en/docs/integrations/mcp/"
+    description="The same API as a toolset for AI clients, with the same permissions per key."
+  />
+</CardGrid>
+
+## Good to know
+
+- **A key is a permission, not a preference.** Who may configure an integration is set per role
+  under *Instellingen → Rollen* (Settings → Roles), separately from who may see the data it
+  produces. A client with a portal login can never reach a connection screen.
+- **You connect per organisation, not per installation.** There is deliberately no environment
+  variable to put a Mollie or Cloudflare key in: it belongs to the organisation that uses it.
+- **What comes from outside is kept as an observation.** The integrations that mirror state
+  outside schakl. (Cloudflare and OXXA) store separately what schakl. set itself and what it last
+  found at the service, so "somebody changed this in the provider's dashboard" becomes visible
+  instead of being silently overwritten.
+- **Deleting a connected account changes nothing at that service.** What the integration already
+  produced, such as payments received, stays where it belongs.
+
+## Read next
+
+<CardGrid>
+  <LinkCard
+    title="Invoicing"
+    href="/en/docs/modules/invoicing/"
+    description="The module an online payment lands in."
+  />
+  <LinkCard
+    title="Domains"
+    href="/en/docs/modules/domains/"
+    description="The register and the zone that Cloudflare and OXXA fill."
+  />
+</CardGrid>
