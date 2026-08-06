@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Pre-commit hook — run the repo's cheap lint gates locally so drift never reaches CI.
 #
-# Two gates, each mirroring its CI step exactly and each scoped to what the commit stages:
+# Three gates, each mirroring its CI step exactly and each scoped to what the commit stages:
 #
 #   apps/api/**.py   → ruff  (.github/workflows/ci.yml → API job → "Ruff")
 #                        cd apps/api && uv run ruff check app tests
@@ -14,6 +14,13 @@
 #                      whole-tree and instant, so it also catches a form your commit didn't
 #                      touch — which is the point: it has shipped three times.
 #
+#   LICENSE · a module __init__ → license:check  (→ Commercial license markers job)
+#                        node scripts/license-check.mjs
+#                      Catches a licensed module whose directories do not say so. Adding
+#                      `sku=` to a descriptor is the whole of "this module is paid for", and
+#                      the markers and LICENSE-COMMERCIAL.md are paperwork that has to follow
+#                      it — `reporting` shipped without any of it and nobody noticed.
+#
 # Activation is automatic after `pnpm install` (root package.json "prepare"), or once by hand:
 #     git config core.hooksPath .githooks
 #
@@ -24,6 +31,11 @@ set -euo pipefail
 # Staged (Added/Copied/Modified) files. `|| true` so "no match" (grep exit 1) doesn't trip `set -e`.
 staged_py=$(git diff --cached --name-only --diff-filter=ACM -- apps/api | grep '\.py$' || true)
 staged_svelte=$(git diff --cached --name-only --diff-filter=ACM -- apps/web | grep '\.svelte$' || true)
+# Any staged change that can move the commercial boundary: a marker, the list itself, or the
+# `__init__.py` a `sku=` is declared in. `ACMD` and not `ACM` — *deleting* a marker is the
+# change most worth catching.
+staged_license=$(git diff --cached --name-only --diff-filter=ACMD \
+  -- '*LICENSE' 'LICENSE-COMMERCIAL.md' 'apps/api/app/modules/*/__init__.py' || true)
 
 if [ -n "$staged_py" ]; then
   if ! command -v uv >/dev/null 2>&1; then
@@ -48,6 +60,17 @@ if [ -n "$staged_svelte" ]; then
     echo >&2
     echo "pre-commit: a form would blank what the user just saved — this would go red in CI." >&2
     echo "            Read:   docs/UX.md, \"Saving must never blank the form\"" >&2
+    echo "            Bypass (not recommended): git commit --no-verify" >&2
+    exit 1
+  fi
+fi
+
+if [ -n "$staged_license" ]; then
+  echo "pre-commit: license:check…"
+  if ! node scripts/license-check.mjs; then
+    echo >&2
+    echo "pre-commit: the commercial boundary and the files disagree — this would go red in CI." >&2
+    echo "            Read:   LICENSE-COMMERCIAL.md, \"Covered directories\"" >&2
     echo "            Bypass (not recommended): git commit --no-verify" >&2
     exit 1
   fi

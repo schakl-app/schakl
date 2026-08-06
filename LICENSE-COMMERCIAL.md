@@ -81,6 +81,13 @@ published in repository history **before** this file was introduced — or, for 
 added to this list later, before the commit that added it — remains available under the
 AGPL-3.0 terms it was published under; this license governs all later versions.
 
+`pnpm license:check` (CI and pre-commit) enforces the correspondence: a module that declares
+a `sku` carries a marker on its API directory and its web counterpart, every marked directory
+appears in the list above, every listed directory exists and is marked, and all markers read
+alike. Route directories are the part no rule can derive from a module name — `invoicing`
+covers `routes/(app)/invoices/`, `.../quotes/` and `.../settings/invoicing/` — so adding a
+screen to a licensed module is a judgement, and the check only keeps it honest once made.
+
 ## Grant
 
 Subject to a valid schakl license key issued by the copyright holder, you are granted a
