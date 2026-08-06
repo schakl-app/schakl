@@ -3,11 +3,9 @@ import { fail, redirect } from "@sveltejs/kit";
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
+import { resolvePaging } from "$lib/core/table/paging";
 
 import type { Actions, PageServerLoad } from "./$types";
-
-/** One page of the register is plenty to look at; the search is how you find the rest. */
-const REGISTER_LIMIT = 100;
 
 /**
  * Instellingen → OXXA (issue #296): the reseller logins and the register they pull.
@@ -30,6 +28,10 @@ export const load: PageServerLoad = async (event) => {
   const q = event.url.searchParams.get("q")?.trim() || null;
   const unmatched = event.url.searchParams.get("unmatched") === "1";
   const mayRead = can(event.locals.user, "oxxa.registrar.sync");
+  // A reseller register runs to thousands of names, so the search is *a* way to find one and the
+  // pager is the other. It carries no saved size — this screen keeps no column layout to hang one
+  // on — so `?size=` lasts the visit (`paging.ts`).
+  const paging = resolvePaging(event.url);
 
   const [accounts, providers, register] = await Promise.all([
     api.GET("/api/v1/oxxa/accounts"),
@@ -40,8 +42,8 @@ export const load: PageServerLoad = async (event) => {
       ? api.GET("/api/v1/oxxa/domains", {
           params: {
             query: {
-              limit: REGISTER_LIMIT,
-              offset: 0,
+              limit: paging.limit,
+              offset: paging.offset,
               // `linked=false` is the one worth looking at: domains the agency renews that no
               // schakl record — and therefore no invoice — knows about.
               ...(unmatched ? { linked: false } : {}),
@@ -57,6 +59,7 @@ export const load: PageServerLoad = async (event) => {
     providers: (providers.data ?? []).map((p) => ({ id: p.id, name: p.name })),
     register: register?.data?.items ?? [],
     registerTotal: register?.data?.total ?? 0,
+    paging,
     mayReadRegister: mayRead,
     q: q ?? "",
     unmatched,

@@ -3,6 +3,7 @@ import { fail } from "@sveltejs/kit";
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
+import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { LEAVE_COLUMNS, LEAVE_TABLE_ID } from "$lib/modules/leave/columns";
 import { requestBody } from "$lib/modules/leave/request";
@@ -29,6 +30,7 @@ export const load: PageServerLoad = async (event) => {
   const pref = readTablePref(prefs, LEAVE_TABLE_ID);
   const resolved = resolveColumns(LEAVE_COLUMNS, pref);
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
+  const paging = resolvePaging(event.url, pref);
 
   // Types + contract hours come from the /leave layout load; only the year data changes here.
   // #265: the combined per-group balances — statutory + extra-statutory vacation roll up into one
@@ -39,7 +41,7 @@ export const load: PageServerLoad = async (event) => {
   const [groups, requests, freeTime] = await Promise.all([
     api.GET("/api/v1/leave/balance/groups", { params: { query: { year } } }),
     api.GET("/api/v1/leave/requests", {
-      params: { query: { year, limit: 100, offset: 0, sort } },
+      params: { query: { year, limit: paging.limit, offset: paging.offset, sort } },
     }),
     api.GET("/api/v1/leave/free-time", { params: { query: { year } } }),
   ]);
@@ -48,9 +50,10 @@ export const load: PageServerLoad = async (event) => {
     currentYear: currentYear(),
     groups: groups.data ?? [],
     requests: requests.data?.items ?? [],
-    // A weekly free-day pattern alone is ~52 requests a year, so the 100 cap is reachable; the
-    // page says "N van M" rather than silently showing a prefix that reads as everything.
+    // A weekly free-day pattern alone is ~52 requests a year, so one page is routinely not the
+    // whole year — hence a real pager rather than a prefix that reads as everything.
     requestsTotal: requests.data?.total ?? 0,
+    paging,
     freeTime: freeTime.data ?? null,
     table: { pref, sort: sort ?? null, widths: resolved.widths },
   };

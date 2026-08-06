@@ -12,6 +12,7 @@
   import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import I18nLocaleSwitcher from "$lib/core/ui/I18nLocaleSwitcher.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import { LABEL_COLORS, labelDotClass } from "$lib/core/ui/colors";
@@ -608,6 +609,7 @@
       {#if editType}
         <input type="hidden" name="id" value={editType.id} />
       {/if}
+      <I18nLocaleSwitcher />
       {#key editType?.id ?? "new"}
         <I18nTextField
           label={t("common.label_field")}
@@ -822,6 +824,7 @@
       {#if editHoliday}
         <input type="hidden" name="id" value={editHoliday.id} />
       {/if}
+      <I18nLocaleSwitcher />
       <div>
         <label class="mb-1 block text-xs font-medium text-text-muted" for="holiday-date">
           {t("settings.leave.holiday_date")}

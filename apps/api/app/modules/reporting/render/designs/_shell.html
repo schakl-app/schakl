@@ -1,0 +1,80 @@
+{#
+  The page every report design sits inside: A4 geometry, the type stack, the tenant's palette
+  as custom properties, and the INTERN band an internal analysis carries.
+
+  Why the furniture lives here and not in each design: a tenant's own template renders in this
+  shell too (`custom.html`), so "bring your own HTML" means writing the *content* of a report,
+  not re-deriving page margins and a colour scale. It also means a custom design cannot lose
+  the "not for the client" marking on an internal document, which is the one piece of chrome
+  that must never be a design decision.
+
+  The same HTML is what the browser previews and what WeasyPrint prints, so screen-only
+  affordances go in `@media screen`; nothing is conditional on which consumer asked.
+#}
+<!doctype html>
+<html lang="{{ locale }}">
+  <head>
+    <meta charset="utf-8" />
+    <title>{{ title }}</title>
+    <style>
+      @page {
+        size: A4;
+        margin: 14mm 14mm 18mm 14mm;
+      }
+
+      :root {
+        --accent: {{ accent }};
+        --ink: #171717;
+        --muted: #737373;
+        --rule: #e5e5e5;
+        --wash: #fafafa;
+        --up: #15803d;
+        --up-wash: #f0fdf4;
+        --down: #b91c1c;
+        --down-wash: #fef2f2;
+      }
+
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        font-family: Inter, "Helvetica Neue", Arial, sans-serif;
+        font-size: 9.5pt;
+        line-height: 1.55;
+        color: var(--ink);
+        background: #fff;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      h1, h2, h3 { font-weight: 700; }
+
+      table { width: 100%; border-collapse: collapse; }
+      th, td { text-align: left; }
+      td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+      .page-break { break-before: page; }
+      .keep { break-inside: avoid; }
+
+      .internal-band {
+        display: inline-block;
+        background: var(--down);
+        color: #fff;
+        padding: 3px 10px;
+        border-radius: 3px;
+        font-size: 7.5pt;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      @media screen {
+        body { padding: 14mm; max-width: 210mm; margin: 0 auto; }
+      }
+    </style>
+    <style>{% block design_css %}{% endblock %}</style>
+    {% if custom_css %}<style>{{ custom_css | css }}</style>{% endif %}
+  </head>
+  <body>
+    {% block body %}{% endblock %}
+  </body>
+</html>

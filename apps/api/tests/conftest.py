@@ -61,9 +61,13 @@ _DOMAIN_TABLES = (
     "subscription_links, subscription_lines, subscription_prices, subscriptions, "
     "subscription_templates, subscription_types, "
     "invoicing_external_refs, invoice_time_entries, invoice_subscription_periods, "
-    "invoice_payments, quote_lines, "
+    "invoice_payments, invoice_payment_intents, quote_lines, "
     "invoice_lines, quotes, invoices, invoicing_settings, invoicing_templates, "
     "invoicing_products, invoicing_tax_rates, "
+    # `reports` carries no FK to `companies` on purpose (a report outlives the client it
+    # describes, §16), so nothing cascades it — without naming it here its rows would survive
+    # into the next test. `report_profiles` precedes the templates and tones it points at.
+    "reports, report_profiles, report_templates, report_tones, reporting_settings, "
     "marketing_metrics_daily, marketing_links, marketing_company_settings, marketing_settings, "
     "interactions, interaction_kinds, "
     "calendar_event_links, google_calendar_events, google_calendar_channels, "
@@ -71,11 +75,12 @@ _DOMAIN_TABLES = (
     "cloudflare_pages_links, cloudflare_pages_projects, cloudflare_redirects, "
     "cloudflare_zones, cloudflare_accounts, "
     "oxxa_domains, oxxa_accounts, "
+    "mollie_accounts, "
     "websites, hosting, domain_tld_prices, domains, providers, "
     "time_entry_drafts, time_entries, time_entry_types, tasks, projects, contacts, contact_types, "
     "custom_field_definitions, "
     "membership_company_groups, company_group_members, company_groups, hr_documents, "
-    "files, activity_log, dashboard_prefs, nav_prefs, user_prefs, companies, "
+    "files, file_blobs, activity_log, dashboard_prefs, nav_prefs, user_prefs, companies, "
     "api_keys, service_accounts, "
     "email_settings, org_email_templates, org_auth_settings, org_sso_provisions, "
     "role_audit_log, membership_roles, role_permissions, roles, memberships, org_settings, "
@@ -86,7 +91,7 @@ _ENABLED_MODULES = [
     "hr",
     "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
     "domains", "hosting", "websites", "subscriptions", "invoicing", "automation",
-    "interactions", "google", "marketing", "cloudflare", "oxxa",
+    "interactions", "google", "marketing", "cloudflare", "oxxa", "mollie",
 ]
 
 

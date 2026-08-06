@@ -15,6 +15,9 @@ export type BillableSubscription = components["schemas"]["BillableSubscription"]
 export type BillableDomain = components["schemas"]["BillableDomain"];
 export type PeriodOffer = components["schemas"]["PeriodOffer"];
 export type Outstanding = components["schemas"]["OutstandingRead"];
+/** One online-payment attempt (#267). Per *attempt*, never per invoice: a checkout expires in
+ *  minutes and clients abandon them, so an invoice legitimately collects several. */
+export type PaymentIntent = components["schemas"]["InvoicePaymentIntentRead"];
 export type UnbilledEntry = components["schemas"]["UnbilledEntry"];
 export type AutoInvoiceMode = components["schemas"]["AutoInvoiceMode"];
 

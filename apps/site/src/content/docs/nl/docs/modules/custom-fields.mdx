@@ -1,0 +1,120 @@
+---
+title: Aangepaste velden
+description: "Definieer je eigen getypte velden op klanten, contactpersonen, projecten en meer, zonder een regel code."
+sidebar:
+  order: 21
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Elk bureau houdt net iets anders bij: een segment, een contractnummer, de accountmanager aan de
+kant van de klant, of gewoon een vinkje "nieuwsbrief". Met aangepaste velden zet je die gegevens
+er zelf bij, met een echt type erachter. Ze verschijnen daarna vanzelf op het formulier, in de
+kolommenkiezer van de lijst en in je export.
+
+## Waar je het vindt
+
+*Instellingen → Aangepaste velden*, in de groep "Gegevens & keuzelijsten". Bovenaan het scherm
+staat een rij tabbladen: één per soort record dat aangepaste velden accepteert. Klanten,
+contactpersonen en projecten staan er altijd bij; welke andere je ziet hangt af van de modules
+die je aan hebt staan.
+
+## Een veld aanmaken
+
+<Steps>
+1. Kies bovenaan het tabblad van het soort record waar het veld op moet komen.
+2. Vul onder **Nieuw aangepast veld** het **Label** in. Met de taalknop rechtsboven wissel je
+   tussen Nederlands en Engels. Vertalingen zijn optioneel: een ontbrekende taal valt terug op de
+   andere.
+3. Kies een **Type**.
+4. Bij *Keuzelijst* en *Meervoudige keuze* verschijnt een vak **Opties**. Eén optie per regel,
+   geschreven als `waarde|Label`.
+5. Vink **Verplicht** aan als het veld altijd ingevuld moet zijn.
+6. **Positie** is een getal dat de volgorde bepaalt; een lager getal komt hoger in het formulier
+   te staan.
+7. Druk op **Aanmaken**.
+</Steps>
+
+De **Sleutel** vul je niet zelf in. Die wordt afgeleid uit het label en staat daarna in de tabel
+naast het veld. Het is de naam waaronder de waarde wordt opgeslagen, en de kolomkop die je in een
+export terugziet.
+
+## De types
+
+| Type | Wat erin past |
+| --- | --- |
+| Tekst | Eén regel platte tekst |
+| Lange tekst | Meerdere regels in de tekstverwerker, inclusief opmaak en @- en #-vermeldingen |
+| Getal | Een getal; wat geen getal is wordt geweigerd |
+| Ja / nee | Een vinkje |
+| Datum | Een datum, met datumkiezer |
+| Datum & tijd | Een datum met tijdstip |
+| Keuzelijst | Precies één van je eigen opties |
+| Meervoudige keuze | Nul of meer van je eigen opties, als aankruisvakjes |
+| E-mailadres | Een adres, gecontroleerd op geldigheid |
+| URL | Een webadres, gecontroleerd op geldigheid |
+| Telefoon | Eén regel tekst, in een invoerveld voor telefoonnummers |
+
+Bij een keuzelijst is de **waarde** (links van de `|`) wat wordt opgeslagen en het **label**
+(rechts) wat je ziet. Een label kun je later gerust aanpassen; de opgeslagen waarden blijven
+kloppen.
+
+## Waar de velden terugkomen
+
+- Op het formulier waarin je dat record aanmaakt of bewerkt, in de volgorde van **Positie**, met
+  een rood sterretje bij een verplicht veld.
+- Op de pagina van een contactpersoon en van een project staan de ingevulde waarden ook los bij
+  de gegevens.
+- In de **Kolommen**-popover van Klanten, Contactpersonen, Projecten, Domeinen en Websites. Ze
+  staan standaard uit; je zet ze zelf aan. Sorteren op een aangepast veld kan niet, dus die
+  kolommen krijgen ook geen sorteerknop.
+- Als kolom in export en import, met de sleutel als kolomkop.
+
+## Wijzigen, uitzetten en verwijderen
+
+Achter elke regel in de tabel staat het ⋯ menu met **Bewerken**, **Deactiveren** (of
+**Activeren**) en **Verwijderen**.
+
+Bij bewerken pas je het label, de opties, *Verplicht* en de positie aan. De sleutel en het type
+staan met een slotje: "De sleutel ligt vast na aanmaken" en "Het type ligt vast na aanmaken". Dat
+is met opzet, want anders zouden al opgeslagen waarden niet meer bij hun eigen veld horen. Wil je
+toch een ander type, maak dan een nieuw veld aan.
+
+**Deactiveren** haalt het veld weg uit formulieren en lijsten zonder iets weg te gooien; de regel
+staat daarna lichter in de tabel en de actie heet **Activeren**.
+
+<Aside type="caution">
+**Verwijderen** is iets anders dan deactiveren. Het scherm zegt het letterlijk: "Dit veld
+verwijderen? Opgeslagen waarden gaan verloren." Wil je een veld alleen uit beeld halen, gebruik
+dan Deactiveren.
+</Aside>
+
+## Rechten
+
+| Recht | Wat het opent | Standaard |
+| --- | --- | --- |
+| `settings.customfields.read` | De velden zien en invullen op formulieren en in lijsten | Beheerder, Medewerker, Klant |
+| `settings.customfields.write` | Het scherm zelf: velden aanmaken, wijzigen, deactiveren en verwijderen | Beheerder |
+
+Beide stel je per rol in onder *Instellingen → Rollen*. Wie het schrijfrecht niet heeft, ziet de
+kaart Aangepaste velden helemaal niet in Instellingen staan.
+
+## Goed om te weten
+
+- **Verplicht wordt afgedwongen bij elke opslag**, ook bij een import. Zet je een bestaand veld
+  later op verplicht, dan merk je dat: een record waar het nog leeg is, kan pas weer worden
+  opgeslagen als het is ingevuld.
+- Een import die geen kolom voor een aangepast veld bevat, laat de bestaande waarden met rust.
+  Alleen wat je meestuurt, wordt overschreven.
+- Labels zijn gegevens van jouw organisatie, geen vertalingen van ons. Iedereen ziet het label in
+  de taal waarin hij werkt; is die er niet, dan de andere taal, en anders de sleutel.
+- Staat een soort record niet als tabblad in dit scherm, dan accepteert het (nog) geen aangepaste
+  velden.
+
+## Verder lezen
+
+<CardGrid>
+  <LinkCard title="Klanten" description="Het klantdossier waar je eigen velden op het formulier verschijnen." href="/nl/docs/modules/companies/" />
+  <LinkCard title="Import & export" description="Je eigen velden reizen als kolom mee, met de sleutel als kop." href="/nl/docs/modules/import-export/" />
+  <LinkCard title="Rollen en rechten" description="Waar je bepaalt wie velden mag beheren." href="/nl/docs/modules/roles/" />
+</CardGrid>

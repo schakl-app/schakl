@@ -52,6 +52,10 @@ class MarketingSource(StrEnum):
     GA4 = "ga4"  # Google Analytics 4 property
     GSC = "gsc"  # Search Console site
     GADS = "gads"  # Google Ads account
+    #: SE Ranking project (#300) — rankings, the site audit and AI-search visibility. The
+    #: first source that is not Google, which is why the adapter protocol carries an ``auth``
+    #: kind: this one rides one API key per *agency*, not a per-user OAuth grant.
+    SERANKING = "seranking"
 
 
 class MarketingLink(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
@@ -200,3 +204,7 @@ class MarketingSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Bas
     #: Fernet-encrypted (``app.core.crypto``); never returned to a client — the API only reports
     #: whether it is configured, mirroring the Google client secret.
     ads_developer_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: The agency's SE Ranking API key (#300), same treatment. One key per agency covers every
+    #: client project, which is why it belongs here and not on the link: an agency holds one
+    #: SE Ranking account and links each client's project out of it.
+    seranking_api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -1,0 +1,173 @@
+{
+  "slug": "mollie",
+  "name": "Mollie",
+  "order": 10,
+  "category": "payments",
+  "status": "beta",
+  "lucide": "creditCard",
+  "mark": {
+    "monogram": "M",
+    "color": "#0B7AC6"
+  },
+  "tagline": {
+    "nl": "Facturen online laten betalen met iDEAL",
+    "en": "Let clients pay invoices online with iDEAL"
+  },
+  "summary": {
+    "nl": "Koppel het Mollie-account dat je bureau al heeft, en elke openstaande factuur krijgt een betaallink: iDEAL, Bancontact, kaart, SEPA-incasso of PayPal, precies wat in jouw Mollie-profiel aanstaat. De klant betaalt op de betaalpagina van Mollie en wat hier terugkomt is alleen een id, dus schakl. raakt nooit kaartgegevens aan. De bevestigde betaling wordt een gewone betaalregel op de factuur, zonder dat iemand hem overtypt.",
+    "en": "Connect the Mollie account your agency already has and every open invoice gains a payment link: iDEAL, Bancontact, cards, SEPA direct debit or PayPal, whatever your Mollie profile has switched on. The payer goes to Mollie's own checkout and what comes back here is an id, so schakl. never touches card data and carries no PCI scope. The confirmed payment becomes an ordinary payment line on the invoice, with nobody retyping it."
+  },
+  "highlights": {
+    "nl": [
+      "Live of test wordt afgeleid uit de sleutel zelf, nooit ingevuld",
+      "Betaalmethoden worden bij Mollie uitgelezen, niet hier een tweede keer ingesteld",
+      "Een controle elk uur repareert wat een gemiste melding liet liggen"
+    ],
+    "en": [
+      "Live or test is derived from the key's own prefix, never entered",
+      "Payment methods are read back from Mollie, not configured a second time here",
+      "An hourly reconcile repairs whatever a missed callback left behind"
+    ]
+  },
+  "where": {
+    "nl": "Instellingen → Mollie, plus de kaart Online betalingen op een factuur.",
+    "en": "Instellingen → Mollie (Settings → Mollie), plus the Online betalingen (Online payments) card on an invoice."
+  },
+  "docs": "/docs/integrations/mollie/",
+  "page": {
+    "lead": {
+      "nl": "Mollie is de eerste betaalprovider die schakl. spreekt. Je koppelt je eigen account, geeft één adres vrij op je edge, en de rest gebeurt op de factuur zelf.",
+      "en": "Mollie is the first payment provider schakl. speaks. You connect your own account, open one path on your edge, and the rest happens on the invoice itself."
+    },
+    "requirements": {
+      "nl": [
+        "Een Mollie-account waarin de betaalmethoden aanstaan die je wilt aanbieden. Welke dat zijn, blijft een keuze in het Mollie-dashboard.",
+        "Een API-sleutel uit dat dashboard, onder Developers → API keys. Een testsleutel begint met test_, een live sleutel met live_.",
+        "De modules Facturatie en Mollie aan onder Instellingen → Modules, en dekking op je licentie via Instellingen → Licentie: het zijn allebei gelicentieerde modules. Een verse installatie heeft eerst veertien dagen speling.",
+        "Een host die vanaf internet bereikbaar is. Mollie weigert localhost, dus een lokale ontwikkelbak kan geen meldingen ontvangen.",
+        "Beheerrechten om mollie.settings.manage en invoicing.payment.link toe te kennen."
+      ],
+      "en": [
+        "A Mollie account with the payment methods you want to offer switched on. Which ones those are stays a choice in the Mollie dashboard.",
+        "An API key from that dashboard, under Developers → API keys. A test key starts with test_, a live key with live_.",
+        "The Facturatie and Mollie modules switched on under Instellingen → Modules, and licence cover via Instellingen → Licentie: both are licensed modules. A fresh install gets a fourteen-day grace window first.",
+        "A host reachable from the internet. Mollie rejects localhost, so a local dev box cannot receive callbacks.",
+        "Admin rights to grant mollie.settings.manage and invoicing.payment.link."
+      ]
+    },
+    "steps": {
+      "nl": [
+        "Haal je API-sleutel op in het Mollie-dashboard: <strong>Developers</strong> → <strong>API keys</strong>. Een testsleutel begint met <code>test_</code>, een live sleutel met <code>live_</code>; het zijn volledig gescheiden datasets.",
+        "Ken in <strong>Instellingen → Rollen</strong> het recht <code>mollie.settings.manage</code> toe. Standaard heeft alleen admin het, en de rol <code>client</code> nooit.",
+        "Ga naar <strong>Instellingen → Mollie</strong> en druk op <strong>Account toevoegen</strong>. Vul een <strong>Naam</strong> in waaraan je dit account herkent en plak de <strong>API-sleutel</strong>. Bij opslaan wordt de sleutel meteen geverifieerd.",
+        "Lees het resultaat. <strong>Modus</strong> toont Live of Test, afgeleid uit de sleutel zelf. <strong>Betaalmethoden</strong> toont wat Mollie terugmeldt: staat iDEAL er niet bij, dan staat het bij Mollie uit en niet hier. Een geweigerde sleutel toont <strong>Probleem met de sleutel</strong> met de tekst van Mollie erbij.",
+        "Kopieer het <strong>Meldingsadres</strong> en geef dat pad vrij op je edge. Staat er een toegangsproxy voor (bijvoorbeeld Cloudflare Zero Trust), maak dan een bypass-regel voor precies dat ene pad. Anders komen betalingen wel binnen bij Mollie, maar worden ze hier niet geboekt.",
+        "Oefen met de testsleutel: open een verzonden, openstaande factuur, druk in de kaart <strong>Online betalingen</strong> op <strong>Betaallink</strong>, doorloop de betaalpagina en forceer een eindstatus op het testscherm van Mollie.",
+        "Zet daarna de live sleutel erin, of voeg hem toe als tweede account en zet het testaccount op <strong>Niet in gebruik</strong>. Let op: een sleutel vervangen maakt een nieuw <strong>Meldingsadres</strong> aan, dus werk je edge-regel bij."
+      ],
+      "en": [
+        "Get your API key from the Mollie dashboard: <strong>Developers</strong> → <strong>API keys</strong>. A test key starts <code>test_</code> and a live key <code>live_</code>; they are fully isolated datasets.",
+        "Grant <code>mollie.settings.manage</code> in <strong>Instellingen → Rollen</strong> (Settings → Roles). Only admin holds it by default, and the <code>client</code> role never does.",
+        "Open <strong>Instellingen → Mollie</strong> (Settings → Mollie) and press <strong>Account toevoegen</strong> (Add account). Fill in a <strong>Naam</strong> (Name) you will recognise this account by and paste the <strong>API-sleutel</strong> (API key). On save the key is verified immediately.",
+        "Read the result. <strong>Modus</strong> (Mode) shows Live or Test, derived from the key's own prefix. <strong>Betaalmethoden</strong> (Payment methods) lists what Mollie reported back: if iDEAL is missing, it is switched off at Mollie and not here. A rejected key shows <strong>Probleem met de sleutel</strong> (Problem with the key) with Mollie's own words.",
+        "Copy the <strong>Meldingsadres</strong> (Notification address) and allow that path on your edge. If an access proxy sits in front (Cloudflare Zero Trust, for instance), add a bypass rule for that one path only. Otherwise payments are collected at Mollie and never booked here.",
+        "Rehearse with the test key: open an issued, open invoice, press <strong>Betaallink</strong> (Payment link) on the <strong>Online betalingen</strong> card, walk through the checkout and force a final status on Mollie's test screen.",
+        "Then move to the live key, or add it as a second account and set the test one to <strong>Niet in gebruik</strong> (Not in use). Note that replacing a key mints a new <strong>Meldingsadres</strong>, so update your edge rule."
+      ]
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "De betaling landt zelf op de factuur",
+          "en": "The payment lands on the invoice by itself"
+        },
+        "body": {
+          "nl": "Mollie stuurt bij elke statuswijziging één veld terug: het id van de betaling. Dat is een aanwijzing, geen feit. schakl. haalt de betaling daarna zelf op met jouw sleutel, en pas dat antwoord bepaalt status, bedrag, methode en betaalmoment. Alleen 'paid' schrijft een betaalregel, en die regel is dezelfde als wanneer een boekhouder hem had ingevoerd; de factuurstatus, de herinneringen en de boekhoudexport lopen dus vanzelf mee.",
+          "en": "Mollie posts one field on every status change: the id of the payment. That is a hint, never a fact. schakl. then fetches the payment itself with your credential, and only that answer decides status, amount, method and paid-at. Only 'paid' writes a payment line, and it is the same line a bookkeeper's manual entry would write, so the invoice status, the reminder cron and the accounting export all follow on their own."
+        },
+        "bullets": {
+          "nl": [
+            "Gereserveerd (authorized) telt niet als betaald: geld dat vaststaat is nog geen geld dat binnen is",
+            "De kaart op de factuur toont de stand: Wacht op betaling, In verwerking, Betaald, Mislukt, Verlopen",
+            "Mollie kan een melding niet opnieuw sturen; daarvoor bestaan de knop Status ophalen en de controle die elk uur draait"
+          ],
+          "en": [
+            "Reserved (authorized) does not count as paid: money held is not money captured",
+            "The card on the invoice shows the state: awaiting payment, processing, paid, failed, expired",
+            "Mollie cannot re-trigger a webhook on request, which is why the Status ophalen button and the hourly reconcile exist"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Geen kaartgegevens, geen tweede plek om methodes te kiezen",
+          "en": "No card data, and no second place to pick methods"
+        },
+        "body": {
+          "nl": "De betaler wordt doorgestuurd naar de betaalpagina van Mollie en komt terug op zijn eigen factuurpagina in het klantportaal, wat de uitkomst ook is. Welke methodes daar staan blijft een instelling in het Mollie-dashboard; het scherm hier meldt alleen wat Mollie antwoordde. schakl. pint bewust geen methode vast, zodat de keuzelijst van Mollie blijft staan en een mislukte poging met een andere methode kan worden overgedaan.",
+          "en": "The payer is redirected to Mollie's hosted checkout and returns to their own invoice page in the client portal, whatever the outcome. Which methods appear there stays a setting in Mollie's dashboard; the screen here only reports what Mollie answered. schakl. deliberately does not pin a method, so Mollie's own picker stays intact and a failed attempt can be retried with something else."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Test en live naast elkaar",
+          "en": "Test and live side by side"
+        },
+        "body": {
+          "nl": "Een sleutel is hier een rij en geen enkelvoudige instelling, juist zodat een testsleutel en een live sleutel tegelijk kunnen bestaan. Een testbetaling doorloopt de hele lus en stopt dan: er wordt niets geboekt en de kaart zegt 'Testbetaling: niet geboekt op deze factuur.' Die modus staat op de poging zelf, dus een sleutel later omzetten maakt een oude testbetaling nooit alsnog echt. En er wordt nooit voor je gekozen: zonder actief account weigert de knop, met twee actieve accounts vraagt hij welke, en alleen een live sleutel wint het van een testsleutel.",
+          "en": "A credential is a row here rather than a single setting, precisely so a test key and a live key can exist at once. A test payment runs the whole loop and then stops: nothing is booked and the card reads 'Testbetaling: niet geboekt op deze factuur' (test payment, not booked on this invoice). The mode is stored on the attempt, so rotating a key later can never make an old test payment real. And nothing ever picks a credential for you: with no active account the button refuses, with two it asks which, and only a live key outranks a test one."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Bèta: wat je zelf eerst naloopt",
+          "en": "Beta: what to check yourself first"
+        },
+        "body": {
+          "nl": "Deze koppeling is geschreven op de officiële API-documentatie van Mollie en getest tegen een nabootsing die uit datzelfde document is geknipt. Dat bewijst dat de code het met de documentatie eens is, niet met Mollie. Een groen instellingenscherm zegt dus dat je sleutel geldig is en verder niets. Draai een proefrun met de testsleutel voordat je er een klant op zet: Mollie heeft daarvoor testkaarten en bedragen die een specifieke fout afdwingen, en in testmodus werkt alleen euro.",
+          "en": "This integration is written from Mollie's official API reference and tested against a stand-in cut from that same document. That proves the code agrees with the documentation, not with Mollie. A green settings screen therefore tells you your key is valid and nothing more. Do a rehearsal on the test key before pointing a client at it: Mollie provides test cards and magic amounts that force a specific failure, and test mode supports euro only."
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "key": "mollie.settings.manage",
+        "nl": "Mollie-accounts toevoegen, verifiëren, vervangen en verwijderen, en het instellingenscherm lezen. Standaard alleen admin, nooit de rol client.",
+        "en": "Add, verify, rotate and remove Mollie accounts, and read the settings screen. Admin only by default, never the client role."
+      },
+      {
+        "key": "invoicing.payment.link",
+        "nl": "Een betaling starten vanaf een factuur. Gescopeerd: admin krijgt :any, de rol client krijgt :own, zodat een klant alleen zijn eigen factuur kan betalen.",
+        "en": "Start a payment from an invoice. Scoped: admin gets :any and the seeded client role gets :own, so a client can only pay their own invoice."
+      },
+      {
+        "key": "invoicing.payment.write",
+        "nl": "Een betaling met de hand boeken. Standaard alleen admin en bewust niet iets wat een klant heeft; online staat niet in de lijst met handmatige betaalwijzen.",
+        "en": "Register a payment by hand. Admin only by default and deliberately not something a client holds; online is not in the closed set of manual payment methods."
+      },
+      {
+        "key": "settings.providers.read",
+        "nl": "Optioneel. Zonder dit recht is de keuzelijst Leverancier verborgen in plaats van leeg.",
+        "en": "Optional. Without it the Leverancier (Supplier) picker is hidden rather than offered empty."
+      }
+    ],
+    "limits": {
+      "nl": [
+        "Geen terugbetalingen en geen terugboekingen: geld terugsturen doe je in het Mollie-dashboard.",
+        "Geen incassomachtigingen, herhaalbetalingen of abonnementen aan de kant van Mollie.",
+        "Geen Payment Links en geen Profiles API; twee sleutels herken je aan je eigen Naam en de waargenomen betaalmethoden.",
+        "Nog geen ondertekende meldingen (X-Mollie-Signature): dat vraagt een tweede gegeven uit het Mollie-dashboard en is een apart traject.",
+        "Een account verwijderen verandert niets bij Mollie, en de betaalpogingen blijven op hun factuur staan.",
+        "Geen aparte betalingenmodule en geen lijst van betalingen los van de factuur die ze vereffenen."
+      ],
+      "en": [
+        "No refunds and no chargebacks: sending money back happens in Mollie's dashboard.",
+        "No mandates, recurring payments or Mollie-side subscriptions.",
+        "No Payment Links API and no Profiles API; you tell two keys apart by your own Naam and the observed method list.",
+        "No signed webhooks yet (X-Mollie-Signature): that needs a second credential from Mollie's dashboard and is its own piece of work.",
+        "Deleting an account changes nothing at Mollie, and the attempts it opened stay on their invoices.",
+        "No separate payments module and no list of payments detached from the invoice they settle."
+      ]
+    }
+  }
+}

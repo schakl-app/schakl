@@ -1,0 +1,149 @@
+---
+title: Rollen en rechten
+description: "Bepaal per rol wie wat mag, met een aparte instelling voor wiens gegevens het geldt en wie welke klanten ziet."
+sidebar:
+  order: 22
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Een stagiair mag uren schrijven maar geen facturen zien; je officemanager beheert het team maar
+zit niet in de marketingcijfers. In schakl. leg je dat vast in rollen die je zelf samenstelt: een
+rol is een lijstje aangevinkte rechten, en iemand mag precies wat zijn rollen samen toestaan.
+
+## Waar je het vindt
+
+Drie schermen, alle drie in de groep "Team & toegang":
+
+- *Instellingen → Rollen*: de rollen zelf en hun rechten.
+- *Instellingen → Team & gebruikers*: wie welke rol heeft.
+- *Instellingen → Klantgroepen*: welke klanten iemand überhaupt ziet. Dat is een andere vraag; zie
+  verderop.
+
+## Hoe het optelt
+
+Het scherm zegt het in één zin: "Bepaal wie wat mag. De rechten van een gebruiker zijn de
+optelsom van al hun rollen." Iemand mag dus meerdere rollen hebben, en krijgt alles wat één van
+die rollen toestaat. Er wordt niets stilzwijgend afgeleid: een recht dat je niet aanvinkt, wordt
+geweigerd.
+
+## De vier meegeleverde rollen
+
+| Rol | Wat de omschrijving zegt |
+| --- | --- |
+| **Eigenaar** | "Volledige toegang tot alles." |
+| **Beheerder** | "Beheert het bureau, de medewerkers en alle gegevens." |
+| **Medewerker** | "Leest mee, werkt aan eigen taken, uren en verlof." |
+| **Klant** | "Externe klantgebruiker: alleen lezen." |
+
+Deze vier heten systeemrollen. Ze kunnen niet worden verwijderd en hun sleutel ligt vast, maar de
+rechten stel je zelf in. Op één na: de Eigenaar houdt altijd alles. Het scherm legt uit waarom:
+"De eigenaar heeft altijd alle rechten. Daardoor blijft een fout elders herstelbaar."
+
+Beheerder start met elk recht dat er is, maar als een uitgeschreven lijst in plaats van een
+blanco cheque. Je kunt er dus vinkjes uithalen, bijvoorbeeld om facturatie bij één persoon te
+houden.
+
+## Een rol aanpassen
+
+<Steps>
+1. Open *Instellingen → Rollen* en klik op de rol.
+2. Bovenaan staan **Naam** en **Omschrijving**, per taal in te vullen met de taalknop ernaast.
+3. Daaronder staat **Rechten**: een uitklapbaar blok per module. Per blok kun je in één keer
+   **Alles aanvinken** of **Wissen**.
+4. Onderaan staat één **Opslaan** voor het hele scherm.
+</Steps>
+
+De sleutel van de rol staat naast de naam in een grijs kadertje. Die is vast en verandert nooit
+mee met de naam.
+
+## Uit, Alleen eigen, Van iedereen
+
+De meeste rechten zijn een vinkje. Bij sommige staan in plaats daarvan drie keuzes: **Uit**,
+**Alleen eigen** en **Van iedereen**, met de uitleg "Op wiens gegevens dit van toepassing is."
+Dat is er omdat "mag uren bewerken" twee heel verschillende dingen kan betekenen.
+
+Zo werkt het onder meer bij *Urenregels bekijken*, *Uren schrijven en bewerken*, *Taken bewerken*,
+*Taken inplannen*, *Verlofaanvragen bekijken*, *Verlof aanvragen en bewerken*, *Contactmomenten
+vastleggen en bewerken*, *Uurtarieven bekijken* en *Personeelsdossier bekijken*. Bij al die
+rechten staat een Medewerker standaard op *Alleen eigen* en een Beheerder op *Van iedereen*.
+
+Bij *Facturen bekijken* ligt het anders: daar staat de Beheerder op *Van iedereen* en de rol Klant
+op *Alleen eigen*, want een klant hoort alleen zijn eigen facturen op te halen.
+
+<Aside type="tip">
+*Van iedereen* dekt altijd ook *Alleen eigen*. Je hoeft ze dus nooit allebei te geven.
+</Aside>
+
+## Een eigen rol maken
+
+Druk op **Nieuwe rol** en typ alleen een naam; de sleutel wordt daaruit afgeleid en ligt daarna
+vast. De nieuwe rol begint leeg, dus je vinkt zelf aan wat hij mag.
+
+Handiger is vaak **Dupliceren** in het ⋯ menu naast een bestaande rol: dat neemt de rechten van
+die rol over in een nieuwe. Zo maak je bijvoorbeeld een "Senior medewerker" die net iets meer mag
+dan Medewerker, zonder de meegeleverde rol zelf te verruimen. Dupliceer je de Eigenaar, dan begin
+je alsnog leeg: zijn "alles" is geen recht dat je kunt uitdelen.
+
+## Rollen toewijzen
+
+Onder *Instellingen → Team & gebruikers* klap je een teamlid open. Daar staat **Rollen** met een
+vinkje per rol, daaronder **Effectieve rechten** (de opgetelde lijst, met per recht de gekozen
+reikwijdte) en één knop **Rollen opslaan**.
+
+## Zichtbaarheid per klant is een andere vraag
+
+Rechten bepalen *wat* iemand mag; klantgroepen bepalen *over welke klanten*. Onder *Instellingen →
+Klantgroepen*: "Beperk welke klanten een teamlid kan zien. Een lid zonder groepen ziet elke klant."
+
+- Een groep is een setje klanten. Vink je een teamlid aan bij één of meer groepen, dan ziet hij
+  alleen de klanten van die groepen.
+- Wie aan geen enkele groep is toegewezen, ziet gewoon alles.
+- "Eigenaren worden nooit beperkt."
+- Een beperkt teamlid krijgt in *Team & gebruikers* het label **Beperkte zichtbaarheid**.
+
+<Aside type="caution">
+Een ontbrekend recht en een klant buiten je groepen voelen op het scherm hetzelfde: je krijgt
+"Niet gevonden". Zegt een collega "ik kan klant X niet vinden", kijk dan naar allebei. Meer
+rechten geven lost een te smalle klantgroep niet op.
+</Aside>
+
+## Je kunt jezelf niet buitensluiten
+
+Elke wijziging die niemand meer zou overlaten die rollen kan beheren, wordt geweigerd: "Dit is de
+laatste rol die rollen kan beheren; de organisatie zou zichzelf buitensluiten." Dat geldt voor
+het uitvinken van het recht, voor het verwijderen van de rol en voor het weghalen van de rol bij
+de laatste persoon die hem heeft.
+
+Ook mag niemand zonder rol achterblijven: "Elke gebruiker moet minstens één rol houden."
+
+## Rechten
+
+| Recht | Wat het opent | Standaard |
+| --- | --- | --- |
+| `settings.roles.manage` | *Instellingen → Rollen*: rollen en rechten beheren | Beheerder |
+| `members.member.read` | *Instellingen → Team & gebruikers* bekijken | Beheerder |
+| `members.member.write` | Uitnodigen, wijzigen, verwijderen en rollen opslaan | Beheerder |
+| `companies.group.manage` | *Instellingen → Klantgroepen* | Beheerder |
+
+De Eigenaar heeft ze alle vier via zijn "alles".
+
+## Goed om te weten
+
+- Zet je later een module aan, dan brengt die zijn eigen rechten mee. Die worden één keer
+  toegevoegd aan de meegeleverde rollen, zodat een nieuwe module niet meteen onzichtbaar is voor
+  je medewerkers. Rollen die je zelf hebt gemaakt krijgen ze niet: die vink je zelf aan.
+- Een recht dat je hebt uitgevinkt blijft uitgevinkt. Er wordt nooit iets teruggezet.
+- Knoppen die je toch niet mag gebruiken worden niet getekend. Zie je een scherm zonder de
+  bewerkknop die een collega wel heeft, dan is dat een rolverschil.
+- De rol **Klant** is de rol van een externe login. Wie die rol heeft, ziet standaard alleen de
+  klanten waaraan hij gekoppeld is; is hij aan niets gekoppeld, dan ziet hij niets en zet *Team &
+  gebruikers* er het label **Ziet geen klanten** bij.
+
+## Verder lezen
+
+<CardGrid>
+  <LinkCard title="Klantportaal" description="De login voor de contactpersoon van je klant, met de rol Klant." href="/nl/docs/modules/portal/" />
+  <LinkCard title="Activiteit" description="Wie wat wanneer wijzigde, op elk record." href="/nl/docs/modules/activity/" />
+  <LinkCard title="Aangepaste velden" description="Je eigen velden, en wie ze mag beheren." href="/nl/docs/modules/custom-fields/" />
+</CardGrid>

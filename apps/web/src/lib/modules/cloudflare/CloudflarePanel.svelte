@@ -13,12 +13,18 @@
    * `cloudflare.zone.manage`, base key. A domain page is client-reachable through the portal,
    * and none of this is a client's to touch.
    *
+   * The zone decides what *this* Cloudflare account can be asked about the domain, so the
+   * redirect and the DNS table live behind it. **Pages does not**: a custom hostname is
+   * registered on a project, and the project names its own account (`docs/CLOUDFLARE.md` §6).
+   * It therefore renders whether or not the domain is connected here.
+   *
    * **Host contract:** `?/cfConnect`, `?/cfCheck`, `?/cfSaveRedirect`, `?/cfRemoveRedirect`,
    * `?/cfLinkPages`, `?/cfUnlinkPages` plus the DNS actions used by `CloudflareDns` (spread
    * `cloudflareActions`).
    */
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
+  import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -55,6 +61,16 @@
   const zone = $derived(status?.zone ?? null);
   const redirect = $derived(status?.redirect ?? null);
   const issues = $derived(status?.issues ?? []);
+
+  // What the page draws is what schakl stored, so the one thing it cannot leave unsaid is how
+  // old that is: "no conflicts" from a check that ran in March is not the same sentence as
+  // "no conflicts" from one that ran a minute ago, and without a date they read identically.
+  // It sits with the button that changes it, in both branches that have one.
+  const checked = $derived(
+    status?.checked_at
+      ? t("cloudflare.panel.checked_at", { when: fmtDateTime(status.checked_at) })
+      : t("cloudflare.panel.never_checked"),
+  );
 
   const inputClass =
     "w-full min-w-0 rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand";
@@ -135,11 +151,14 @@
         {zone.account_name ?? ""} · {zoneStatus(zone.status)}
       </p>
     </div>
-    <form method="POST" action="?/cfCheck" use:enhance={busy.wrap("check")}>
-      <Button variant="secondary" size="xs" loading={busy.is("check")} disabled={busy.active}>
-        {t("cloudflare.panel.check")}
-      </Button>
-    </form>
+    <div class="flex flex-none flex-col items-end gap-1">
+      <form method="POST" action="?/cfCheck" use:enhance={busy.wrap("check")}>
+        <Button variant="secondary" size="xs" loading={busy.is("check")} disabled={busy.active}>
+          {t("cloudflare.panel.check")}
+        </Button>
+      </form>
+      <p class="text-xs text-text-muted">{checked}</p>
+    </div>
   </div>
 
   <dl class="mt-3 grid gap-3 text-sm sm:grid-cols-2">
@@ -322,9 +341,35 @@
     {/if}
   </section>
 
-  <!-- Cloudflare Pages ----------------------------------------------------------------- -->
+  <!-- DNS ------------------------------------------------------------------------------- -->
+  <CloudflareDns zoneId={zone.id} zoneName={zone.name} {canManage} />
+{/if}
+
+<!-- Cloudflare Pages -----------------------------------------------------------------------
+     Outside the zone branch on purpose. A Pages custom hostname is registered on a *project*,
+     which is an account-level thing: the API resolves the account from the project and only
+     writes the CNAME when this domain happens to have a zone here. Drawn inside the connected
+     branch, the feature read as "you cannot serve this domain from Pages" for every domain
+     whose DNS lives elsewhere — and hid the links of a domain whose zone was later unlinked,
+     leaving rows nothing on this page could remove. -->
+{#if zone || status?.pages_links?.length || (canManage && panel.projects.length > 0)}
   <section class="mt-5 border-t border-border pt-4">
-    <h3 class="text-sm font-medium text-text">{t("cloudflare.pages.title")}</h3>
+    <div class="flex flex-wrap items-baseline justify-between gap-2">
+      <h3 class="text-sm font-medium text-text">{t("cloudflare.pages.title")}</h3>
+      <!-- The zone branch has its own "check" button, and a domain whose DNS lives elsewhere
+           is not inside it — so without this the one case Pages exists for could never
+           refresh. The action is the same one; only the button is duplicated. -->
+      {#if !zone && status?.pages_links?.length}
+        <div class="flex flex-none flex-col items-end gap-1">
+          <form method="POST" action="?/cfCheck" use:enhance={busy.wrap("check")}>
+            <Button variant="secondary" size="xs" loading={busy.is("check")} disabled={busy.active}>
+              {t("cloudflare.pages.check")}
+            </Button>
+          </form>
+          <p class="text-xs text-text-muted">{checked}</p>
+        </div>
+      {/if}
+    </div>
     {#if status?.pages_links?.length}
       <ul class="mt-2 space-y-1 text-sm">
         {#each status.pages_links as link (link.id)}
@@ -333,6 +378,18 @@
               {link.hostname}
               <span class="text-text-muted">→ {link.project_name ?? ""}</span>
               {#if link.status}<span class="text-xs text-text-muted">({link.status})</span>{/if}
+              <!-- Drift, and where the row came from. A link the sync adopted is one nobody
+                   here created, so saying so is the difference between "who added this?" and
+                   a row that looks like somebody's mistake. -->
+              {#if link.missing_at}
+                <span class="block text-xs text-amber-600">
+                  {t("cloudflare.pages.missing", { when: fmtDateTime(link.missing_at) })}
+                </span>
+              {:else if link.discovered_at}
+                <span class="block text-xs text-text-muted">
+                  {t("cloudflare.pages.discovered")}
+                </span>
+              {/if}
             </span>
             {#if canManage}
               <Button
@@ -358,6 +415,19 @@
       <p class="mt-2 text-sm text-text-muted">{t("cloudflare.pages.empty")}</p>
     {/if}
 
+    <!-- The issues box lives inside the connected branch, so a domain with no zone would get no
+         word at all that the refresh could not run. A check that silently did nothing reads as
+         "everything is fine", which is the one thing it does not know. -->
+    {#if status?.unavailable?.includes("pages")}
+      <p class="mt-2 text-xs text-amber-600">
+        {t("cloudflare.unavailable.title", { items: t("cloudflare.unavailable.pages") })}
+      </p>
+    {/if}
+
+    {#if !zone}
+      <p class="mt-2 text-xs text-text-muted">{t("cloudflare.pages.no_zone_hint")}</p>
+    {/if}
+
     {#if canManage}
       {#if panel.projects.length === 0}
         <p class="mt-2 text-xs text-text-muted">{t("cloudflare.pages.no_projects")}</p>
@@ -372,7 +442,14 @@
             <label class={labelClass} for="cf-project">{t("cloudflare.pages.project")}</label>
             <select id="cf-project" name="project_id" class={inputClass}>
               {#each panel.projects as project (project.id)}
-                <option value={project.id}>{project.name}</option>
+                <!-- The account is named only where the tenant has more than one: two accounts
+                     may each hold a project called "site", and the account is what decides
+                     which Cloudflare this hostname is registered at. -->
+                <option value={project.id}>
+                  {panel.accounts.length > 1 && project.account_name
+                    ? `${project.name} · ${project.account_name}`
+                    : project.name}
+                </option>
               {/each}
             </select>
           </div>
@@ -381,7 +458,7 @@
             <input
               id="cf-hostname"
               name="hostname"
-              placeholder={zone.name}
+              placeholder={status?.domain_name ?? ""}
               class={inputClass}
             />
           </div>
@@ -398,9 +475,6 @@
       {/if}
     {/if}
   </section>
-
-  <!-- DNS ------------------------------------------------------------------------------- -->
-  <CloudflareDns zoneId={zone.id} zoneName={zone.name} {canManage} />
 {/if}
 
 <ConfirmDialog

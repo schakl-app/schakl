@@ -3,16 +3,21 @@
 
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
+  import BulkBar from "$lib/core/bulk/BulkBar.svelte";
+  import BulkResult from "$lib/core/bulk/BulkResult.svelte";
+  import BulkToggle from "$lib/core/bulk/BulkToggle.svelte";
   import { editHref } from "$lib/core/edit-intent";
   import { fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
+  import { resetPage } from "$lib/core/table/paging";
   import { navLabel, pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import Pagination from "$lib/core/ui/Pagination.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import { INVOICE_COLUMNS } from "$lib/modules/invoicing/columns";
   import DocTabs from "$lib/modules/invoicing/DocTabs.svelte";
@@ -32,8 +37,21 @@
   let deleteId = $state("");
   let confirmDelete = $state(false);
 
+  // --- bulk (the ✎ selection mode in the toolbar) ----------------------------
+  // Delete only, and deliberately: everything else an invoice has is money or its place in a
+  // lifecycle, and a status moves by *doing* something — issuing, sending, recording a payment
+  // — each with its own rules. Clearing out a batch of drafts is the real want, and the API
+  // allows drafts only (`app/modules/invoicing/bulk.py`), so a mixed selection comes back as
+  // "3 verwijderd · 5 overgeslagen" naming why rather than refusing the lot.
+  let selecting = $state(false);
+  let bulkSelected = $state<string[]>([]);
+  const bulkConfig = $derived({
+    deletePermission: "invoicing.invoice.delete",
+    deleteMessage: t("invoicing.bulk.delete_message", { count: bulkSelected.length }),
+  });
+
   function setFilter(key: string, value: string) {
-    const url = new URL(page.url);
+    const url = resetPage(new URL(page.url));
     if (value) url.searchParams.set(key, value);
     else url.searchParams.delete(key);
     void goto(url, { keepFocus: true, noScroll: true });
@@ -164,24 +182,33 @@
       >{t(`invoicing.status.${status}`)}</button
     >
   {/each}
-  <ColumnPicker
-    all={table.pickerColumns}
-    visible={table.visibleKeys}
-    sort={table.sort}
-    onchange={table.onColumnsChange}
-    onsort={table.onSort}
-  />
+  <!-- The list's own controls, pushed right: the filters read left-to-right, what you can *do*
+       with the list sits at the far end, and that is the same on every list here. -->
+  <div class="ml-auto flex flex-wrap items-center gap-2">
+    <ColumnPicker
+      all={table.pickerColumns}
+      visible={table.visibleKeys}
+      sort={table.sort}
+      onchange={table.onColumnsChange}
+      onsort={table.onSort}
+    />
+    <!-- Last in the toolbar, always: it is the only control here that changes what the *rows*
+         do rather than what the list shows, so it sits after Kolommen rather than among the
+         list's own controls. Pressing it opens the selection strip above the table. -->
+    <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
+  </div>
 </div>
 
 {#snippet numberCell(invoice: Invoice)}
   <a
     href="/invoices/{invoice.id}"
     data-sveltekit-preload-data="hover"
-    class="font-medium text-text hover:text-brand"
+    class="flex min-w-0 items-center gap-1 font-medium text-text hover:text-brand"
   >
-    {invoice.number ?? t("invoicing.status.draft")}
+    <span class="truncate">{invoice.number ?? t("invoicing.status.draft")}</span>
     {#if invoice.kind === "credit_note"}
-      <span class="ml-1 rounded bg-surface px-1 text-xs text-text-muted"
+      <!-- `shrink-0`: the badge is what the row is *about*; the number truncates before it. -->
+      <span class="shrink-0 rounded bg-surface px-1 text-xs text-text-muted"
         >{t("invoicing.kind.credit_note")}</span
       >
     {/if}
@@ -189,7 +216,9 @@
 {/snippet}
 
 {#snippet companyCell(invoice: Invoice)}
-  <a href="/companies/{invoice.company_id}" class="text-text-muted hover:text-brand"
+  <!-- `block`, because `overflow` does not apply to an inline box: a bare `truncate` here
+       would set `nowrap` and nothing else, and a long client name would spill into the dates. -->
+  <a href="/companies/{invoice.company_id}" class="block truncate text-text-muted hover:text-brand"
     >{invoice.company_name}</a
   >
 {/snippet}
@@ -211,12 +240,17 @@
 {#snippet statusCell(invoice: Invoice)}
   {@const state = docStatus(invoice)}
   {#if state.tone === "danger"}
+    <!-- `inline-block max-w-full`, so the chip keeps its shrink-to-fit shape and still clips:
+         "Geannuleerd" is wider than the 120px column allows. -->
     <span
-      class="rounded-md bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/40 dark:text-red-300"
+      class="inline-block max-w-full truncate rounded-md bg-red-100 px-2 py-0.5 align-middle text-xs font-medium text-red-700 dark:bg-red-900/40 dark:text-red-300"
       >{t(state.key)}</span
     >
   {:else}
-    <span class="rounded-md bg-surface px-2 py-0.5 text-xs text-text-muted">{t(state.key)}</span>
+    <span
+      class="inline-block max-w-full truncate rounded-md bg-surface px-2 py-0.5 align-middle text-xs text-text-muted"
+      >{t(state.key)}</span
+    >
   {/if}
 {/snippet}
 
@@ -235,7 +269,7 @@
 {/snippet}
 
 {#snippet referenceCell(invoice: Invoice)}
-  <span class="text-text-muted">{invoice.reference ?? "—"}</span>
+  <span class="block truncate text-text-muted">{invoice.reference ?? "—"}</span>
 {/snippet}
 
 {#snippet remindersCell(invoice: Invoice)}
@@ -305,6 +339,10 @@
   <p class="mb-3 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
 {/if}
 
+<BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
+
+<BulkResult result={form?.bulkResult} />
+
 <DataTable
   rows={data.invoices}
   columns={table.columns}
@@ -314,8 +352,17 @@
   actions={rowActions}
   {mobileRow}
   empty={emptyState}
+  selectable={selecting}
+  bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}
+/>
+
+<Pagination
+  total={data.total}
+  page={data.paging.page}
+  limit={data.paging.limit}
+  onsize={table.onPageSize}
 />
 
 <ConfirmDialog

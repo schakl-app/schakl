@@ -1,0 +1,862 @@
+---
+// Demo — "The assistant, on your own key" (#127). A client page with the AI slide-over open:
+// the sparkles in the top bar opens it, it inherits the record you were looking at as a chip,
+// you ask one question, it looks the answer up and cites the records it read.
+//
+// Three things the frame is careful to be true about:
+//   · The assistant is READ-ONLY. It answers; it never creates or changes a record. Nothing in
+//     this panel is a write control — the only button is "send".
+//   · It cites. Every answer ends in source chips that deep-link back to the record
+//     (`sourceHref` in apps/web/src/lib/core/ai/index.ts), and the disclaimer under the
+//     composer is the app's own verbatim sentence about exactly that.
+//   · With no provider configured, none of this renders at all — not the sparkles in the top
+//     bar, not the panel. "Off means invisible" (docs/AI.md); an unconfigured tenant is never
+//     nagged. So the demo shows a tenant that *has* configured one, and shows the whole thing.
+// The question is one the real tool surface can answer: projects.for_company /
+// projects.budget_status report logged-vs-budget hours for the current budget period.
+//
+// Base frame = asked, answered, cited (motion contract in showcase.css): with JavaScript off
+// or reduced motion on, this rests on the completed conversation.
+//
+// The tool line under the question is the catalog string whole, ellipsis included
+// ("Zoekt in projecten…"), and carries nothing else: AssistantPanel.svelte renders toolLabel()
+// into a bare italic paragraph, with no spinner and no animated dots. An earlier version of this
+// demo trimmed the ellipsis and bounced three dots after it, which was the one string on the
+// screen the app does not say.
+//
+// Text that changes between states is stacked in one grid cell and cross-faded (DemoInvoice's
+// .inv-swap technique): the empty state under the conversation, the thinking line under the
+// first answer paragraph, the typed question under the placeholder. Nothing in the panel ever
+// changes height, so no beat can shove another one around.
+//
+// The typing is a cover that slides right off the text, with the caret as its own left border —
+// so the caret is exactly at the last revealed character whatever the font measures, and the
+// text itself is real text and never a CSS string trick.
+import AppFrame from './AppFrame.astro';
+import Icon from './Icon.astro';
+import { labels, sample, type Locale } from './labels.ts';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const l = labels[locale];
+const nl = locale === 'nl';
+const u = l.hoursUnit;
+const project1 = sample.projectName[locale];
+const project2 = nl ? 'SEO-onderhoud' : 'SEO maintenance';
+const project3 = nl ? 'Onderhoud' : 'Maintenance';
+
+// Every string below is the app's own (messages/nl.json + en.json, keys ai.assistant.*,
+// companies.*, projects.*) except the client's data and the assistant's answer.
+const t = {
+  panel: nl ? 'Assistent' : 'Assistant',
+  intro: nl
+    ? 'Vraag naar je eigen klanten, projecten, taken en uren. Antwoorden noemen hun bronnen.'
+    : 'Ask about your own clients, projects, tasks and hours. Answers name their sources.',
+  suggest1: nl
+    ? 'Vat de recente activiteit van deze klant samen'
+    : 'Summarise the recent activity for this client',
+  suggest2: nl
+    ? 'Hoeveel uur zit er deze maand in deze klant?'
+    : 'How many hours went into this client this month?',
+  question: nl
+    ? 'Welke projecten van deze klant staan over budget?'
+    : 'Which projects of this client are over budget?',
+  // The same sentence, split where it wraps in a two-row composer, so it can be typed line
+  // by line instead of all at once.
+  typed1: nl ? 'Welke projecten van deze' : 'Which projects of this',
+  typed2: nl ? 'klant staan over budget?' : 'client are over budget?',
+  // ai.assistant.searching_projects, ellipsis and all: toolLabel() renders the catalog value
+  // verbatim into one plain italic line, with no spinner or dots beside it.
+  searching: nl ? 'Zoekt in projecten…' : 'Searching projects…',
+  placeholder: nl ? 'Stel een vraag…' : 'Ask a question…',
+  disclaimer: nl
+    ? 'AI-antwoorden kunnen fouten bevatten; de bronchips tonen waar ze vandaan komen.'
+    : 'AI answers can be wrong; the source chips show where they came from.',
+  lead: nl
+    ? 'Twee projecten staan deze maand boven hun urenbudget:'
+    : 'Two projects are over their hour budget this month:',
+  over1: nl ? `48 van 40 ${u} (120%)` : `48 of 40 ${u} (120%)`,
+  over2: nl ? `23 van 20 ${u} (115%)` : `23 of 20 ${u} (115%)`,
+  projects: nl ? 'Projecten' : 'Projects',
+  newProject: nl ? 'Nieuw project' : 'New project',
+  brief: 'Brief me',
+  report: nl ? 'AI-rapport' : 'AI report',
+  budgetShort: (h: number) => `${h}${u} budget`,
+};
+
+// The company page's Projecten panel, which is exactly the panel the answer is about: the two
+// it names are on this list, and every row carries the budget the answer measures against.
+const panelProjects = [
+  { name: project1, budget: 40 },
+  { name: project2, budget: 20 },
+  { name: project3, budget: 10 },
+  { name: nl ? 'Webshop koppeling' : 'Webshop integration', budget: 24 },
+];
+---
+
+<AppFrame
+  locale={locale}
+  active="companies"
+  nav={['dashboard', 'companies', 'contacts', 'projects', 'tasks', 'time', 'leave', 'invoices']}
+  class="demo-ai"
+>
+  {/* ---- the page underneath: a client detail page ---- */}
+  <div class="ai-back muted"><Icon name="chevronDown" size={0.8} class="ai-rot" />{l.clients}</div>
+
+  <div class="ai-head">
+    <div>
+      <div class="ai-title">
+        <span class="screen__title">{sample.clientName}</span>
+        <span class="chip chip--ok">{l.stActive}</span>
+      </div>
+      <div class="screen__sub ai-site">{sample.clientWebsite} ↗</div>
+    </div>
+    <div class="ai-acts">
+      <span class="btn ai-act"><Icon name="sparkles" size={0.85} />{t.brief}</span>
+      <span class="btn ai-act"><Icon name="sparkles" size={0.85} />{t.report}</span>
+    </div>
+  </div>
+
+  <div class="card ai-card">
+    <div class="strong ai-card__h">{t.projects}</div>
+    <ul class="ai-projects">
+      {
+        panelProjects.map((p) => (
+          <li>
+            <span class="ai-projects__n">{p.name}</span>
+            <span class="muted ai-projects__m">
+              {t.budgetShort(p.budget)} · {l.projActive}
+            </span>
+          </li>
+        ))
+      }
+    </ul>
+    <span class="ai-newproject">＋ {t.newProject}</span>
+  </div>
+
+  {/* ---- the slide-over: scrim over the whole app, panel docked right ---- */}
+  <div class="ai-scrim"></div>
+
+  <aside class="ai-panel">
+    <div class="ai-panel__h">
+      <span class="strong">{t.panel}</span>
+      <span class="muted ai-close">✕</span>
+    </div>
+
+    <div class="ai-thread">
+      <div class="ai-stack">
+        {/* empty state: what the panel shows the moment it opens */}
+        <div class="ai-empty">
+          <p class="ai-empty__p muted"><Icon name="sparkles" size={0.9} />{t.intro}</p>
+          <span class="ai-suggest">{t.suggest1}</span>
+          <span class="ai-suggest">{t.suggest2}</span>
+        </div>
+
+        {/* the conversation */}
+        <div class="ai-convo">
+          <div class="ai-bubble">{t.question}</div>
+
+          <div class="ai-answer">
+            <div class="ai-swap">
+              <p class="ai-blk ai-blk1">{t.lead}</p>
+              <p class="ai-think">{t.searching}</p>
+            </div>
+            <ul class="ai-ul">
+              <li class="ai-blk ai-blk2">
+                <strong>{project1}</strong>: <span class="ai-fig">{t.over1}</span>
+              </li>
+              <li class="ai-blk ai-blk3">
+                <strong>{project2}</strong>: <span class="ai-fig">{t.over2}</span>
+              </li>
+            </ul>
+            <div class="ai-sources">
+              <span class="chip ai-src ai-src1">{project1}</span>
+              <span class="chip ai-src ai-src2">{project2}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ai-composer">
+      <span class="chip ai-ctx">{sample.clientName}<Icon name="x" size={0.7} /></span>
+      <div class="ai-row">
+        <div class="ai-box">
+          <div class="ai-boxstack">
+            <span class="input__ph ai-ph">{t.placeholder}</span>
+            <span class="ai-typed">
+              <span class="ai-line"><span class="ai-line__t">{t.typed1}</span><span
+                  class="ai-cover ai-cover1"></span></span>
+              <span class="ai-line"><span class="ai-line__t">{t.typed2}</span><span
+                  class="ai-cover ai-cover2"></span></span>
+            </span>
+          </div>
+        </div>
+        <span class="ai-send"><Icon name="sendHorizontal" size={0.95} /></span>
+      </div>
+      <p class="ai-disclaim muted">{t.disclaimer}</p>
+    </div>
+  </aside>
+
+  <div class="stagefade"></div>
+</AppFrame>
+
+<style is:global>
+  .demo-ai .app {
+    height: 29em;
+    /* The slide-over covers the app, not just the content area — SlideOver.svelte is
+       `fixed inset-0` in the real app, so the sidebar and top bar dim with everything else.
+       Making .screen static hands the containing block to .app; an absolutely positioned
+       child then escapes .screen's overflow clip while the page content underneath keeps it. */
+    position: relative;
+  }
+  .demo-ai .screen {
+    position: static;
+  }
+
+  /* ---- the client page underneath ---------------------------------------- */
+  .demo-ai .ai-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25em;
+    font-size: 0.85em;
+    margin-bottom: 0.5em;
+  }
+  .demo-ai .ai-back .ai-rot {
+    transform: rotate(90deg);
+  }
+  .demo-ai .ai-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5em;
+    margin-bottom: 0.9em;
+  }
+  .demo-ai .ai-title {
+    display: flex;
+    align-items: center;
+    gap: 0.55em;
+  }
+  .demo-ai .ai-site {
+    margin-top: 0.1em;
+  }
+  .demo-ai .ai-acts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35em;
+  }
+  .demo-ai .ai-act {
+    padding: 0.3em 0.6em;
+    font-size: 0.8em;
+    color: var(--mu);
+  }
+  .demo-ai .ai-card {
+    padding: 0.8em 1em;
+  }
+  .demo-ai .ai-card__h {
+    margin-bottom: 0.5em;
+  }
+  .demo-ai .ai-projects {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .demo-ai .ai-projects li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6em;
+    padding: 0.38em 0;
+    border-top: 1px solid var(--bd);
+  }
+  .demo-ai .ai-projects li:first-child {
+    border-top: 0;
+  }
+  /* The strip of page left of the slide-over is narrow on purpose — a name that outgrows it
+     is cut with an ellipsis rather than wrapped, exactly as the real panel does. */
+  .demo-ai .ai-projects__n {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.88em;
+    font-weight: 550;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .demo-ai .ai-projects__m {
+    font-size: 0.78em;
+    white-space: nowrap;
+  }
+  .demo-ai .ai-newproject {
+    display: inline-block;
+    margin-top: 0.55em;
+    font-size: 0.78em;
+    color: var(--b);
+  }
+
+  /* ---- the slide-over ----------------------------------------------------- */
+  /* neutral-900/40, exactly as SlideOver.svelte dims: a translucent black reads as a dim in
+     both themes, which is why this one raw colour is not a theme bug. */
+  .demo-ai .ai-scrim {
+    position: absolute;
+    inset: 0;
+    background: rgba(23, 23, 23, 0.42);
+    z-index: 10;
+  }
+  .demo-ai .ai-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 16em;
+    max-width: 62%;
+    z-index: 11;
+    display: flex;
+    flex-direction: column;
+    background: var(--rz);
+    border-left: 1px solid var(--bd);
+    /* In em, not px: the frame's font-size is fluid (clamp 9.5-13px), so a pixel shadow is the
+       same weight on a 360px phone as on a 540px column while everything around it has scaled.
+       Black rather than navy, because showcase.css swaps its own --shadow to black in dark mode
+       and a light-theme navy would read as a blue haze there. */
+    box-shadow: -0.9em 0 2.3em -1.4em rgba(0, 0, 0, 0.5);
+  }
+  .demo-ai .ai-panel__h {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6em;
+    padding: 0.6em 0.8em;
+    border-bottom: 1px solid var(--bd);
+    font-size: 0.95em;
+  }
+  .demo-ai .ai-close {
+    font-size: 0.85em;
+  }
+  .demo-ai .ai-thread {
+    flex: 1;
+    min-height: 0;
+    padding: 0.8em;
+    overflow: hidden;
+  }
+
+  /* The empty state and the conversation share one cell, so the panel never resizes. */
+  .demo-ai .ai-stack {
+    display: grid;
+    align-items: start;
+  }
+  .demo-ai .ai-stack > * {
+    grid-area: 1 / 1;
+  }
+
+  .demo-ai .ai-empty {
+    opacity: 0; /* base = answered, so the empty state is the "before" half */
+  }
+  .demo-ai .ai-empty__p {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4em;
+    margin: 0 0 0.7em;
+    font-size: 0.82em;
+    line-height: 1.4;
+  }
+  .demo-ai .ai-empty__p svg {
+    flex: none;
+    margin-top: 0.15em;
+  }
+  .demo-ai .ai-suggest {
+    display: block;
+    border: 1px solid var(--bd);
+    border-radius: 0.5em;
+    padding: 0.4em 0.6em;
+    margin-bottom: 0.45em;
+    font-size: 0.82em;
+    line-height: 1.35;
+  }
+
+  .demo-ai .ai-bubble {
+    margin-left: 1.4em;
+    background: var(--sf);
+    border-radius: 0.5em;
+    padding: 0.4em 0.6em;
+    font-size: 0.85em;
+    line-height: 1.4;
+  }
+  .demo-ai .ai-answer {
+    margin-top: 0.8em;
+    font-size: 0.85em;
+    line-height: 1.45;
+  }
+  .demo-ai .ai-swap {
+    display: grid;
+    align-items: start;
+  }
+  .demo-ai .ai-swap > * {
+    grid-area: 1 / 1;
+  }
+  .demo-ai .ai-blk {
+    margin: 0;
+  }
+  /* text-xs italic text-text-muted, which is the whole of AssistantPanel's tool line. */
+  .demo-ai .ai-think {
+    margin: 0;
+    font-size: 0.85em;
+    font-style: italic;
+    color: var(--mu);
+    opacity: 0; /* base = the answer has arrived, so the tool line is gone */
+  }
+  .demo-ai .ai-ul {
+    margin: 0.35em 0 0;
+    padding-left: 1.05em;
+  }
+  .demo-ai .ai-ul li {
+    margin-top: 0.15em;
+  }
+  /* A figure is one thing to read: "48 van 40 u (120%)" never breaks across two lines. */
+  .demo-ai .ai-fig {
+    white-space: nowrap;
+  }
+  .demo-ai .ai-sources {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3em;
+    margin-top: 0.6em;
+  }
+  .demo-ai .ai-src {
+    font-size: 0.76em;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ---- composer ----------------------------------------------------------- */
+  .demo-ai .ai-composer {
+    border-top: 1px solid var(--bd);
+    padding: 0.6em 0.7em;
+  }
+  .demo-ai .ai-ctx {
+    background: var(--sf);
+    font-size: 0.76em;
+    gap: 0.25em;
+    margin-bottom: 0.45em;
+  }
+  .demo-ai .ai-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.4em;
+  }
+  .demo-ai .ai-box {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid var(--bd);
+    border-radius: 0.55em;
+    padding: 0.35em 0.55em;
+  }
+  /* Two rows, like the real textarea — so the box never grows as the question is typed. */
+  .demo-ai .ai-boxstack {
+    display: grid;
+    align-items: start;
+    justify-items: start;
+    min-height: 2.4em;
+  }
+  .demo-ai .ai-boxstack > * {
+    grid-area: 1 / 1;
+  }
+  .demo-ai .ai-ph {
+    font-size: 0.8em;
+    line-height: 1.45;
+  }
+  .demo-ai .ai-typed {
+    font-size: 0.8em;
+    line-height: 1.45;
+    color: var(--tx);
+    opacity: 0; /* base = sent, so the composer is empty again */
+  }
+  .demo-ai .ai-line {
+    position: relative;
+    display: block;
+    white-space: nowrap;
+  }
+  /* The cover hides what has not been typed yet; its left border is the caret, so the caret
+     lands exactly on the last revealed character whatever the font measures. */
+  .demo-ai .ai-cover {
+    position: absolute;
+    top: -0.05em;
+    bottom: -0.05em;
+    left: 0;
+    right: -0.6em;
+    background: var(--rz);
+    border-left: 1px solid transparent;
+  }
+  .demo-ai .ai-send {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 1.9em;
+    height: 1.9em;
+    border-radius: 0.55em;
+    background: var(--b);
+    color: var(--b-ink);
+    opacity: 0.4; /* base = empty composer, so send is disabled, exactly as in the app */
+  }
+  .demo-ai .ai-disclaim {
+    margin: 0.45em 0 0;
+    font-size: 0.7em;
+    line-height: 1.35;
+  }
+
+  .demo-ai .stagefade {
+    position: absolute;
+    inset: 0;
+    background: var(--sf);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 30;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    /* 12s: open · type · send · look up · answer · cite · rest. */
+    .demo-ai.is-playing .topbar__icon:first-child {
+      animation: ai-spark 12s infinite;
+    }
+    .demo-ai.is-playing .ai-scrim {
+      animation: ai-scrim 12s infinite;
+    }
+    .demo-ai.is-playing .ai-panel {
+      animation: ai-slide 12s infinite;
+    }
+    .demo-ai.is-playing .ai-empty {
+      animation: ai-empty 12s infinite;
+    }
+    .demo-ai.is-playing .ai-ph {
+      animation: ai-ph 12s infinite;
+    }
+    .demo-ai.is-playing .ai-typed {
+      animation: ai-typed 12s infinite;
+    }
+    .demo-ai.is-playing .ai-box {
+      animation: ai-focus 12s infinite;
+    }
+    .demo-ai.is-playing .ai-cover1 {
+      animation: ai-type1 12s steps(24, end) infinite;
+    }
+    .demo-ai.is-playing .ai-cover2 {
+      animation: ai-type2 12s steps(24, end) infinite;
+    }
+    .demo-ai.is-playing .ai-send {
+      animation: ai-send 12s infinite;
+    }
+    .demo-ai.is-playing .ai-bubble {
+      animation: ai-bubble 12s infinite;
+    }
+    .demo-ai.is-playing .ai-think {
+      animation: ai-think 12s infinite;
+    }
+    .demo-ai.is-playing .ai-blk1 {
+      animation: ai-blk1 12s infinite;
+    }
+    .demo-ai.is-playing .ai-blk2 {
+      animation: ai-blk2 12s infinite;
+    }
+    .demo-ai.is-playing .ai-blk3 {
+      animation: ai-blk3 12s infinite;
+    }
+    .demo-ai.is-playing .ai-src1 {
+      animation: ai-src1 12s infinite;
+    }
+    .demo-ai.is-playing .ai-src2 {
+      animation: ai-src2 12s infinite;
+    }
+    .demo-ai.is-playing .stagefade {
+      animation: ai-veil 12s infinite;
+    }
+  }
+
+  /* The spark in the top bar is what opens the panel. */
+  @keyframes ai-spark {
+    0%,
+    0.5% {
+      transform: none;
+      color: var(--mu);
+    }
+    2% {
+      transform: scale(1.2);
+      color: var(--b);
+    }
+    5%,
+    100% {
+      transform: none;
+      color: var(--mu);
+    }
+  }
+  @keyframes ai-scrim {
+    0%,
+    1% {
+      opacity: 0;
+    }
+    7%,
+    100% {
+      opacity: 1;
+    }
+  }
+  /* Transform only, never opacity: a slide-over that fades in lets you read the page straight
+     through it, and the real one arrives opaque from off the right edge (.win clips it). */
+  @keyframes ai-slide {
+    0%,
+    1% {
+      transform: translateX(100%);
+    }
+    8%,
+    100% {
+      transform: none;
+    }
+  }
+  /* The empty state is what the panel opens on, and it goes when the question is sent.
+     Sending is instant, so these three cut rather than cross-fade: overlapping them for even
+     150ms draws the placeholder straight through the question it is replacing. */
+  @keyframes ai-empty {
+    0%,
+    4% {
+      opacity: 0;
+    }
+    8%,
+    30.6% {
+      opacity: 1;
+    }
+    31.2%,
+    100% {
+      opacity: 0;
+    }
+  }
+  @keyframes ai-ph {
+    0%,
+    8.5% {
+      opacity: 1;
+    }
+    9%,
+    31.2% {
+      opacity: 0;
+    }
+    31.3%,
+    100% {
+      opacity: 1;
+    }
+  }
+  @keyframes ai-typed {
+    0%,
+    8.5% {
+      opacity: 0;
+    }
+    9%,
+    31.1% {
+      opacity: 1;
+    }
+    31.2%,
+    100% {
+      opacity: 0;
+    }
+  }
+  @keyframes ai-focus {
+    0%,
+    8.5% {
+      border-color: var(--bd);
+    }
+    9%,
+    31% {
+      border-color: var(--b);
+    }
+    33%,
+    100% {
+      border-color: var(--bd);
+    }
+  }
+  /* left: 0 = nothing typed yet; left: 100% = the whole line is out and the caret sits after
+     its last character. The reset at the end happens while .ai-typed is already invisible. */
+  @keyframes ai-type1 {
+    0%,
+    8.9% {
+      left: 0;
+      border-left-color: transparent;
+    }
+    9% {
+      left: 0;
+      border-left-color: var(--b);
+    }
+    19.5% {
+      left: 100%;
+      border-left-color: var(--b);
+    }
+    20% {
+      left: 100%;
+      border-left-color: transparent;
+    }
+    98% {
+      left: 100%;
+      border-left-color: transparent;
+    }
+    100% {
+      left: 0;
+      border-left-color: transparent;
+    }
+  }
+  @keyframes ai-type2 {
+    0%,
+    19.4% {
+      left: 0;
+      border-left-color: transparent;
+    }
+    19.5% {
+      left: 0;
+      border-left-color: var(--b);
+    }
+    30% {
+      left: 100%;
+      border-left-color: var(--b);
+    }
+    30.6% {
+      left: 100%;
+      border-left-color: transparent;
+    }
+    98% {
+      left: 100%;
+      border-left-color: transparent;
+    }
+    100% {
+      left: 0;
+      border-left-color: transparent;
+    }
+  }
+  /* Disabled while the composer is empty, pressed on send — the app's own two states. */
+  @keyframes ai-send {
+    0%,
+    9% {
+      opacity: 0.4;
+      transform: none;
+    }
+    10%,
+    30% {
+      opacity: 1;
+      transform: none;
+    }
+    31% {
+      opacity: 1;
+      transform: scale(0.88);
+    }
+    33%,
+    100% {
+      opacity: 0.4;
+      transform: none;
+    }
+  }
+  @keyframes ai-bubble {
+    0%,
+    31.2% {
+      opacity: 0;
+      transform: translateY(0.4em);
+    }
+    34%,
+    100% {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  /* The tool line: it is up while the assistant is reading projects, and gone the moment the
+     first text arrives. */
+  @keyframes ai-think {
+    0%,
+    35% {
+      opacity: 0;
+    }
+    38%,
+    46% {
+      opacity: 1;
+    }
+    49%,
+    100% {
+      opacity: 0;
+    }
+  }
+  /* The answer arrives in the order it was written. */
+  @keyframes ai-blk1 {
+    0%,
+    47% {
+      opacity: 0;
+      transform: translateY(0.25em);
+    }
+    50%,
+    100% {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes ai-blk2 {
+    0%,
+    51% {
+      opacity: 0;
+      transform: translateY(0.25em);
+    }
+    54%,
+    100% {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes ai-blk3 {
+    0%,
+    55% {
+      opacity: 0;
+      transform: translateY(0.25em);
+    }
+    58%,
+    100% {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  /* The citations land last: the answer is only finished once it says where it came from. */
+  @keyframes ai-src1 {
+    0%,
+    62% {
+      opacity: 0;
+      transform: scale(0.9);
+    }
+    65% {
+      opacity: 1;
+      transform: scale(1.05);
+    }
+    67%,
+    100% {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes ai-src2 {
+    0%,
+    64% {
+      opacity: 0;
+      transform: scale(0.9);
+    }
+    67% {
+      opacity: 1;
+      transform: scale(1.05);
+    }
+    69%,
+    100% {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes ai-veil {
+    0%,
+    92% {
+      opacity: 0;
+    }
+    96%,
+    100% {
+      opacity: 1;
+    }
+  }
+</style>

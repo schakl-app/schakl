@@ -1,0 +1,133 @@
+---
+title: Marketingbronnen
+description: "Wat Google Analytics, Search Console, Google Ads en SE Ranking elk nodig hebben, en wat elke bron aan het klantdashboard bijdraagt."
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+De marketingmodule leest vier bronnen, en die stellen elk hun eigen eisen: drie rijden op de
+Google-koppeling van een medewerker, één op één API-sleutel van het hele bureau. Deze pagina gaat
+over het koppelen zelf. Wat je vervolgens op het dashboard ziet, staat bij
+[Marketing](/nl/docs/modules/marketing/).
+
+## Waar je het vindt
+
+- Het paneel **Marketing** op de klantpagina, via ⋯ → **Bewerken**: hier leg je de koppelingen per
+  klant.
+- *Instellingen → Marketing*: het **Google Ads-ontwikkelaarstoken** en de **SE Ranking
+  API-sleutel**.
+- *Instellingen → Google Workspace*: de OAuth-client waar drie van de vier bronnen op rijden. Zie
+  [Google Workspace](/nl/docs/integrations/google-workspace/).
+
+## De vier bronnen
+
+| Bron | Wat je koppelt | Wat je vooraf klaarzet | Wat het oplevert |
+| --- | --- | --- | --- |
+| Google Analytics | een GA4-property | Analytics Admin API **én** Analytics Data API | Sessies, Gebruikers, Nieuwe gebruikers, Belangrijke gebeurtenissen, Conversies, Betrokkenheid, Omzet |
+| Search Console | een geverifieerde site (domein of URL-prefix) | Search Console API | Kliks, Vertoningen, CTR, Gem. positie |
+| Google Ads | een klantaccount, nooit een beheerdersaccount | Google Ads API en een ontwikkelaarstoken | Uitgaven, Kliks, Vertoningen, Conversies, Conversiewaarde |
+| SE Ranking | een project | één API-sleutel voor het bureau | Gem. positie, Top 3, Top 10, Top 30, Scorende en Gevolgde zoekwoorden |
+
+De API's zet je aan in het Google Cloud-project van je eigen OAuth-client, onder **APIs & Services
+→ Library**.
+
+## De drie Google-bronnen koppelen
+
+<Steps>
+1. Zet in je Cloud-project vier API's aan: **Google Analytics Admin API**, **Google Analytics Data
+   API**, **Google Search Console API** en **Google Ads API**. Zet je alleen de Data API aan, dan
+   blijft de property-keuzelijst leeg terwijl al het andere ingesteld lijkt.
+
+2. Maak in het **API-center** van je Google Ads-beheerdersaccount een ontwikkelaarstoken aan en vul
+   het onder *Instellingen → Marketing* in bij **Google Ads-ontwikkelaarstoken**. Het wordt
+   versleuteld opgeslagen en nooit teruggegeven; laat het veld later leeg om het te behouden.
+
+3. Koppel je eigen Google-account onder *Instellingen → Mijn account*, kaart **Google-account**,
+   knop **Google koppelen**. Mag je marketingkoppelingen beheren, dan zitten Analytics, Search
+   Console en Ads in diezelfde toestemming: één keer door het scherm van Google.
+
+4. Open een klant, klik ⋯ op het paneel **Marketing** en kies **Bewerken**. Kies een account in
+   **Analytics-property**, **Search Console-site** en **Ads-account**. Heeft de klant meer dan één
+   website, kies dan eerst bij **Koppelen aan website** aan welke site de koppeling hangt; anders
+   blijft hij op **Hele klant** staan.
+</Steps>
+
+Een keuzelijst toont wat **jouw** koppeling bij Google kan bereiken, niet wat het bureau heeft.
+Blijft er iets leeg, dan zegt de lijst waarom: nog geen Google-account (met de knop **Google
+koppelen**), ontbrekende rechten (**Google opnieuw koppelen**), of bij Ads dat er nog een
+ontwikkelaarstoken nodig is. Heeft een collega de bron al bereikbaar, dan staat erbij wie dat is.
+
+Meerdere koppelingen per bron per klant mogen: een klant met twee sites krijgt twee
+Search Console-koppelingen en twee properties, elk aan zijn eigen website gehangen.
+
+## SE Ranking
+
+SE Ranking werkt anders dan de drie Google-bronnen: geen OAuth, geen persoonlijke koppeling, maar
+één **SE Ranking API-sleutel** voor het hele bureau onder *Instellingen → Marketing*. Elk
+klantproject wordt daaraan gekoppeld, zodat zoekwoordposities, de website-audit en de
+zichtbaarheid in AI-zoekresultaten overal tegelijk werken. Zonder sleutel meldt schakl. dat er een
+sleutel nodig is; weigert SE Ranking hem, dan zegt schakl. dat ook.
+
+<Aside type="caution" title="SE Ranking: de sleutel wel, de schermen nog niet">
+De keuzelijsten op de klantpagina bieden op dit moment alleen Google Analytics, Search Console en
+Google Ads. De SE Ranking-cijfers komen terecht in de hoofdstukken zoekwoordposities,
+website-audit en zichtbaarheid in AI-zoekresultaten van de
+[maandrapportage](/nl/docs/modules/reporting/). Twee dingen aan deze koppeling zijn bovendien nooit
+tegen een echte sleutel uitgeprobeerd: de precieze opzet van de `Authorization`-header en het pad
+waarop de projectenlijst wordt opgehaald. Beide komen uit de documentatie van SE Ranking.
+</Aside>
+
+## Wat er na het koppelen gebeurt
+
+Een nieuwe koppeling krijgt eenmalig een inhaalslag van ruim dertien maanden, zodat de sparklines
+en de vergelijking met vorig jaar meteen kloppen. Daarna haalt een nachtelijke taak de dagcijfers
+op en herhaalt daarbij de laatste week: Search Console levert zijn definitieve cijfers pas na twee
+tot drie dagen, en toeschrijving bij Analytics en Ads schuift ook nog wat na. Late cijfers
+corrigeren zich zo vanzelf.
+
+Elke koppeling draagt zichtbaar haar toestand: **Gesynchroniseerd**, **Eerste synchronisatie
+loopt**, **Synchronisatiefout** of **Verbinding verbroken**, met **Laatst gesynchroniseerd** erbij.
+Er staat ook bij via wiens Google-account de koppeling loopt.
+
+Ontkoppelen wist niets. De koppeling wordt gedeactiveerd en de opgehaalde historie blijft staan;
+dezelfde property opnieuw koppelen zet hem weer aan.
+
+## Rechten
+
+| Recht | Wat het opent | Standaard bij |
+| --- | --- | --- |
+| `marketing.link.manage` | Koppelingen leggen en verbreken, en *Instellingen → Marketing* | Beheerder |
+| `marketing.metrics.read` | De cijfers bekijken (paneel, tabblad, portaaltegel) | Beheerder, Medewerker, Klant |
+| `marketing.overview.read` | Het overzicht over alle klanten | Beheerder |
+| `google.connection.manage` | Je eigen Google-account koppelen | Beheerder, Medewerker |
+
+Per rol in te stellen onder *Instellingen → Rollen*.
+
+## Goed om te weten
+
+- **Een koppeling loopt via het Google-account van één collega.** Vertrekt die collega, dan stopt
+  de aanvoer voor die klant tot iemand anders de koppeling opnieuw legt.
+- **Beheerdersaccounts (MCC) worden uitgeklapt.** Google levert alleen directe toegangen; schakl.
+  loopt de hiërarchie na en biedt de onderliggende klantaccounts aan. Het beheerdersaccount zelf is
+  nooit kiesbaar, want Google weigert daar cijfers over te geven. Een Ads-koppeling die van vóór
+  deze uitbreiding stamt, kent zijn beheerdersaccount nog niet: verbreek hem en kies het account
+  opnieuw.
+- **Google zet oude versies van de Ads API uit**, ongeveer een jaar na uitgave, en vanaf dat moment
+  weigert elk verzoek. Dat ziet eruit als een kapotte module. De oplossing is schakl. bijwerken;
+  in noodgevallen kan de beheerder de versie op de server met een instelling terugzetten.
+- **Het ontwikkelaarstoken hoort in het scherm, niet in de serverinstellingen.** Staat het alleen
+  in de omgeving van de server, dan meldt *Instellingen → Marketing* dat en kun je het alsnog in
+  de database opslaan.
+- **Bij een verlopen licentie gaat de module alleen-lezen**: koppelen, ontkoppelen en de
+  instellingen weigeren, en de nachtelijke synchronisatie staat stil. De al opgehaalde cijfers
+  blijven zichtbaar.
+
+## Verder lezen
+
+- [Marketing](/nl/docs/modules/marketing/): het dashboard, de indeling die de klant ziet en het
+  overzicht over alle klanten.
+- [Google Workspace](/nl/docs/integrations/google-workspace/): de OAuth-client en de koppeling per
+  medewerker.
+- [Rapportage](/nl/docs/modules/reporting/): de maandrapportage die deze cijfers gebruikt.

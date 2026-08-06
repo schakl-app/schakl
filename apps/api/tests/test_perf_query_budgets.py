@@ -176,10 +176,13 @@ async def _member_of(t, slug: str, *, role: str = "member"):
 _MEMBER_REQUEST_BUDGET = 8
 
 #: Statements a populated company's panel composition may issue, end to end (request context
-#: included). Measured, not guessed — see the umbrella test at the bottom of this file. Thirteen
+#: included). Measured, not guessed — see the umbrella test at the bottom of this file. Fourteen
 #: panel providers run in sequence on one session, so the hub's cost is the *sum* of theirs;
 #: this is the number that stops it growing one panel at a time.
-_PANELS_BUDGET = 40
+#:
+#: 40 -> 41 when `reporting` (#300) added the fourteenth panel: one `SELECT … FROM reports`,
+#: which is the deliberate raise this comment asks for rather than a budget quietly slipping.
+_PANELS_BUDGET = 41
 
 
 async def test_a_staff_request_never_queries_contacts_to_learn_it_is_staff(

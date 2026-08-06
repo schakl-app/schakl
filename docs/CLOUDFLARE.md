@@ -101,6 +101,16 @@ because they need account-level scopes and make per-zone drift detection much ha
 question. `GET /domains/{id}/status` reads stored rows only — a domain page must not wait on an
 outside API to render (`docs/PERFORMANCE.md`), and must still render when Cloudflare is down.
 
+**A stored answer has to say how old it is.** That is the price of the cheap read, and the panel
+was not paying it: "geen conflicten" from a check that ran in March and one that ran a minute ago
+are the same sentence, and only one of them means anything. `checked_at` is the newest of the
+observations the report is *assembled* from — `zones.last_synced_at`, the redirect's
+`last_checked_at`, each Pages link's — and never a stamp taken when the request ends. Every probe
+fails softly and separately, so a check can come back having read nothing at all, and "gecontroleerd
+zojuist" over that report is the one thing it does not know. Reading it off the rows also makes it
+the single number both branches of the panel need: a domain served from Pages with its DNS
+elsewhere has a check button and no zone.
+
 The report's `issues` are stable keys the client resolves to `cloudflare.issue.*`:
 
 | key | what it found |
@@ -124,7 +134,77 @@ Account-level **Bulk Redirects** are deliberately not inspected: enumerating lis
 one hostname is expensive and needs account scopes most tokens will not have. An agency using
 them will see our rule and their bulk redirect both apply — worth knowing.
 
-## 6. Registrar — who *pays* for the name (#298)
+## 6. Pages — a hostname on a project, not on a zone
+
+A Pages custom hostname is registered on the **project**, and a project belongs to an
+**account**. That is the whole reason this surface does not wait on a zone: `link_pages_project`
+resolves the account from `payload.project_id`, and the zone is consulted only for the second
+half of the job.
+
+Both halves matter, and doing only the first is the failure worth naming: Cloudflare leaves a
+custom domain at *pending* forever while nothing resolves to `<project>.pages.dev`, which reads
+as a Cloudflare problem and is not. So linking registers the hostname **and** writes the CNAME
+when the domain has a zone here (`_ensure_pages_cname`, never over an existing record). When it
+has no zone, the registration still happens and pointing DNS is the agency's to do at whatever
+provider holds the domain — the panel says so rather than hiding the control.
+
+The hostname must be the domain or a subdomain of it
+(`errors.cloudflare_hostname_not_in_domain`). Not a formatting rule:
+`cloudflare_pages_links.domain_id` is what gives a link its client (#285), so accepting another
+client's hostname here would file it under the wrong company.
+
+**The panel drew all of this inside the connected branch, and that was wrong.** A domain whose
+DNS lives elsewhere is exactly the domain an agency serves from Pages, so the feature read as
+"this domain cannot be served from Pages" for the case it exists to cover; and unlinking a zone
+hid links that nothing on the domain page could then remove. The project picker names the
+account whenever the tenant holds more than one, which is §3's rule in miniature: two accounts
+may each hold a project called `site`, and nothing else on the row says which Cloudflare this
+hostname lands in.
+
+### The link button was the table's only writer, and that was the same mistake one layer down
+
+Every other half of this module reconciles; Pages did not. `cloudflare_pages_links` was written
+once, by the button, and never looked at again — so `status` was frozen at whatever Cloudflare
+answered in the second the link was made. A hostname that finished provisioning read *pending*
+forever, one deleted in Cloudflare's own dashboard read as linked, `last_checked_at` described a
+check that never ran a second time, and a placeholder attached in that dashboard before schakl
+ever saw the account was invisible here. `list_pages_domains` had existed on the client the whole
+time with **no callers**. Two paths now use it, and they answer different questions.
+
+**A sync discovers.** `_sync_pages_projects` reads what each project serves and
+`_reconcile_pages_links` files it: a hostname that matches a domain record is **adopted**
+(`discovered_at`), one that matches nothing is counted and left alone — inventing a domain row
+would put a name under a client who never asked for it — and a link the project no longer serves
+is marked `missing_at`, never deleted. Adoption is safe *because* it writes nothing at
+Cloudflare: it records what is already true there, which is the same posture "connect" takes when
+it adopts an existing zone rather than creating one. Matching is longest-suffix
+(`_host_candidates`), so a tenant holding both `klant.nl` and `shop.klant.nl` never gets
+`www.shop.klant.nl` filed under the parent — the wrong client's page. Cloudflare embeds a
+project's custom domains in the project object, so the normal path costs no extra call; a payload
+without the key falls back to one call per project, capped at `PAGES_DOMAIN_SCAN_LIMIT` and
+**reported as a warning** when the cap bites, never silently truncated (§17).
+
+**A check refreshes.** `_refresh_pages_links` runs from `domain_status(live=True)` — one call per
+distinct project, statuses and error messages written back, sibling hostnames of *this* domain
+adopted. It sits outside the `zone is not None` branch for the reason the panel does: a Pages
+hostname hangs off the project's account, so inside it the one domain whose DNS lives elsewhere
+could never refresh at all. Which also means the panel needs a check control that a domain with
+no zone can reach — the connected branch's button is not reachable from there.
+
+Three rules hold the reconcile up, and none of them is about Pages.
+
+- **"We did not look" and "it is gone" are different answers.** A project whose hostname list
+  could not be read (a token without Pages, an account with no `cf_account_id`) is named in
+  `unavailable` and leaves *every* link on it untouched. Only a project that actually answered
+  may mark anything missing.
+- **Drift is reported, never resolved.** A missing link keeps its row and shows
+  `cloudflare.issue.pages_missing`; re-linking is what clears it, and that is a person's
+  decision. Deleting the row on one empty probe would erase the only record that the hostname
+  was ever ours.
+- **`missing_at` keeps the *first* time it went missing.** "Since when" is the question an agency
+  asks; restamping it every check answers "just now" forever.
+
+## 7. Registrar — who *pays* for the name (#298)
 
 A zone is not a registration, and this section exists because the difference is money. Cloudflare
 will happily answer DNS for a domain the client registered at their own registrar and renews
@@ -184,7 +264,7 @@ Run these the day a real Registrar account exists (`docs/OXXA.md` §1's discipli
    only the first sets `registrar_synced_at`, and that difference decides whether the register is
    allowed to narrow invoicing at all.
 
-## 7. Permissions (§15)
+## 8. Permissions (§15)
 
 | key | covers |
 |---|---|
@@ -203,7 +283,7 @@ each declares `__company_horizon_clause__` (#285 failure mode 1), and the one cr
 `domains` states the horizon predicate in exactly one place, `CloudflareService._domain_or_404`
 (failure mode 3).
 
-## 8. Errors
+## 9. Errors
 
 `message` in the error envelope is always an i18n key (§9), so Cloudflare's own text never goes
 in it — it is not translatable. Where the operation still commits (verify, sync, check) the text
@@ -215,7 +295,7 @@ Worth knowing: a **malformed** credential answers `400/6003`, not `401` — Clou
 header before it looks the token up. That code is mapped to `errors.cloudflare_token_rejected`,
 or the message would point at Cloudflare rather than at the token the admin just pasted.
 
-## 9. Testing
+## 10. Testing
 
 `tests/cloudflare_fake.py` is a stateful stand-in installed through `client.set_transport` — the
 only network seam. A test sets up "the zone already redirects" by writing the rule into the fake's
@@ -223,7 +303,7 @@ only network seam. A test sets up "the zone already redirects" by writing the ru
 Nothing in the suite touches the network, and a test that forgot to install the fake fails loudly
 on connect rather than quietly hitting `api.cloudflare.com`.
 
-## 10. What is not here
+## 11. What is not here
 
 The **registrar half of #278** — OXXA sync, and the write path that pushes a connected zone's
 nameservers back to the registrar so "Connect to Cloudflare" becomes one action instead of two.

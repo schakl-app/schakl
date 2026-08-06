@@ -10,6 +10,7 @@ import {
   createProviderAction,
 } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
+import { resolvePaging } from "$lib/core/table/paging";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -25,6 +26,9 @@ export const load: PageServerLoad = async (event) => {
   // A settings screen guards itself (#19); the API enforces the permission too.
   if (!can(event.locals.user, "hosting.hosting.read")) throw redirect(303, "/settings");
   const api = apiFor(event);
+  // Only the hosting list itself pages. The lookups below it are picker fodder — they feed
+  // comboboxes, and a picker's answer to "too many to load" is search, not a second page.
+  const paging = resolvePaging(event.url);
   const [
     hosting,
     companies,
@@ -35,7 +39,9 @@ export const load: PageServerLoad = async (event) => {
     companyDefinitions,
     contactDefinitions,
   ] = await Promise.all([
-    api.GET("/api/v1/hosting", { params: { query: { limit: 200, offset: 0 } } }),
+    api.GET("/api/v1/hosting", {
+      params: { query: { limit: paging.limit, offset: paging.offset } },
+    }),
     api.GET("/api/v1/companies", {
       params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
     }),
@@ -59,6 +65,7 @@ export const load: PageServerLoad = async (event) => {
   return {
     hosting: hosting.data?.items ?? [],
     total: hosting.data?.total ?? 0,
+    paging,
     companies: lookupItems(companies, "companies").map((c) => ({ id: c.id, name: c.name })),
     providers: providers.data ?? [],
     employees: members.data ?? [],

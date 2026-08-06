@@ -3,6 +3,11 @@
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
+  import type { components } from "$lib/core/api/schema";
+  import BulkBar from "$lib/core/bulk/BulkBar.svelte";
+  import BulkToggle from "$lib/core/bulk/BulkToggle.svelte";
+  import BulkResult from "$lib/core/bulk/BulkResult.svelte";
+  import type { BulkFieldDef } from "$lib/core/bulk/types";
   import { fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
@@ -15,6 +20,7 @@
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import Pagination from "$lib/core/ui/Pagination.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import ProviderQuickCreate from "$lib/core/ui/ProviderQuickCreate.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
@@ -71,6 +77,86 @@
     confirmDelete = true;
   }
 
+  // --- bulk (the ✎ selection mode in the toolbar) --------------------------------------
+  // The register is where one shared value over a long list is the normal case: a portfolio
+  // moves to another registrar, a client's names are pointed at a new DNS or mail provider, a
+  // batch changes hands, or somebody finally decides which of them we invoice. The name is
+  // deliberately absent — it *is* the record. Mirrors `apps/api/app/modules/domains/bulk.py`;
+  // labels are the import's, so the two surfaces that name the same column never differ.
+  let selecting = $state(false);
+  let bulkSelected = $state<string[]>([]);
+
+  // Typed off the generated client so a status the API dropped stops compiling here.
+  const DOMAIN_STATUSES: components["schemas"]["DomainStatus-Input"][] = [
+    "active",
+    "redirect",
+    "parked",
+    "expired",
+    "inactive",
+  ];
+
+  // The pickers reuse the lists the section layout already loaded for the create form, so the
+  // dialog costs no request of its own (docs/PERFORMANCE.md). Providers are filtered per slot
+  // by kind, exactly as `DomainForm` does — a registrar is never offered as a mail provider.
+  const providerOptions = (kind: string) =>
+    data.providers.filter((p) => p.kind === kind).map((p) => ({ value: p.id, label: p.name }));
+
+  // Derived, not a const: a quick-create from the create modal refreshes `companies` and
+  // `providers` mid-life, and the newly made row has to be pickable here too.
+  const bulkFields: BulkFieldDef[] = $derived([
+    {
+      key: "status",
+      label: t("impex.column.domain.status"),
+      type: "select",
+      options: DOMAIN_STATUSES.map((status) => ({
+        value: status,
+        label: t(`domains.status.${status}`),
+      })),
+    },
+    {
+      key: "company",
+      label: t("impex.column.domain.company"),
+      type: "fk",
+      options: data.companies.map((company) => ({ value: company.id, label: company.name })),
+    },
+    {
+      key: "registrar_provider",
+      label: t("impex.column.domain.registrar_provider"),
+      type: "fk",
+      options: providerOptions("registrar"),
+    },
+    {
+      key: "dns_provider",
+      label: t("impex.column.domain.dns_provider"),
+      type: "fk",
+      options: providerOptions("dns"),
+    },
+    {
+      key: "email_provider",
+      label: t("impex.column.domain.email_provider"),
+      type: "fk",
+      options: providerOptions("email"),
+    },
+    {
+      key: "invoiceable",
+      label: t("impex.column.domain.invoiceable"),
+      type: "bool",
+      // The one clearable field here (#298): emptying it is not "do not invoice", it hands the
+      // decision back to the register — so the tick says that instead of reading as a blank.
+      clearable: true,
+      clearLabel: t("domains.bulk.invoiceable_auto"),
+    },
+  ]);
+  // One configuration, spread into the ✎ in the toolbar and the strip above the table: they
+  // render in different places and must never disagree about what this list can do.
+  const bulkConfig = $derived({
+    fields: bulkFields,
+    writePermission: "domains.domain.write",
+    deletePermission: "domains.domain.delete",
+    deleteMessage: t("domains.bulk.delete_message", { count: bulkSelected.length }),
+    fieldErrors: form?.bulkFields ?? null,
+  });
+
   // The tenant's custom fields join the built-ins as selectable columns with no code here (#24).
   // Layout resolution and persistence are the shared table layout's job.
   const allColumns = $derived([
@@ -99,30 +185,36 @@
 </script>
 
 {#snippet nameCell(domain: Domain)}
-  <a href="/domains/{domain.id}" class="font-medium text-text hover:text-brand">{domain.name}</a>
+  <a href="/domains/{domain.id}" class="block truncate font-medium text-text hover:text-brand"
+    >{domain.name}</a
+  >
 {/snippet}
 
 {#snippet companyCell(domain: Domain)}
-  <span class="text-text-muted">{domain.company_name}</span>
+  <span class="block truncate text-text-muted">{domain.company_name}</span>
 {/snippet}
 
 {#snippet statusCell(domain: Domain)}
-  <span class="rounded-md bg-surface px-2 py-0.5 text-xs text-text-muted">
+  <!-- `inline-block`, not `block`: the pill has to hug its label rather than paint across the
+       whole cell, and an inline box would ignore the truncate entirely. -->
+  <span
+    class="inline-block max-w-full truncate rounded-md bg-surface px-2 py-0.5 text-xs text-text-muted"
+  >
     {t(`domains.status.${domain.status}`)}
   </span>
 {/snippet}
 
 {#snippet registrarCell(domain: Domain)}
-  <span class="text-text-muted">{domain.registrar_provider_name ?? "—"}</span>
+  <span class="block truncate text-text-muted">{domain.registrar_provider_name ?? "—"}</span>
 {/snippet}
 
 {#snippet dnsCell(domain: Domain)}
-  <span class="text-text-muted">{domain.dns_provider_name ?? "—"}</span>
+  <span class="block truncate text-text-muted">{domain.dns_provider_name ?? "—"}</span>
 {/snippet}
 
 {#snippet dnssecCell(domain: Domain)}
   <!-- Three states, like the detail page: never checked ≠ off (#92). -->
-  <span class="text-text-muted">
+  <span class="block truncate text-text-muted">
     {domain.dnssec == null
       ? t("domains.dns.unknown")
       : domain.dnssec
@@ -132,7 +224,9 @@
 {/snippet}
 
 {#snippet emailCell(domain: Domain)}
-  <span class="text-text-muted">{domain.email_enabled ? t("common.yes") : t("common.no")}</span>
+  <span class="block truncate text-text-muted"
+    >{domain.email_enabled ? t("common.yes") : t("common.no")}</span
+  >
 {/snippet}
 
 {#snippet renewalCell(domain: Domain)}
@@ -151,10 +245,12 @@
 {#snippet invoiceableCell(domain: Domain)}
   <!-- The resolved answer (#298). "Volgt register" is the interesting one: it says the
        decision is the register's, so the row changes when the register does. -->
-  <span class="text-text-muted">
-    {domain.invoiceable_effective ? t("common.yes") : t("common.no")}
+  <span class="flex min-w-0 items-center gap-1 overflow-hidden text-text-muted">
+    <!-- The answer is two letters and is what the column is for, so it never gives way; the
+         badge behind it is the part that ellipsizes when the column is dragged narrow. -->
+    <span class="shrink-0">{domain.invoiceable_effective ? t("common.yes") : t("common.no")}</span>
     {#if domain.invoiceable == null}
-      <span class="ml-1 rounded-md bg-surface px-1.5 py-0.5 text-xs">
+      <span class="min-w-0 truncate rounded-md bg-surface px-1.5 py-0.5 text-xs">
         {t("domains.invoiceable.from_register")}
       </span>
     {/if}
@@ -182,7 +278,7 @@
   <!-- A phone gets the concept's row, not a sideways-scrolling grid (docs/UX.md). -->
   <div class="flex items-center gap-3">
     <a href="/domains/{domain.id}" class="min-w-0 flex-1">
-      <span class="font-medium text-text">{domain.name}</span>
+      <span class="block truncate font-medium text-text">{domain.name}</span>
       <span class="mt-0.5 block truncate text-sm text-text-muted">{domain.company_name}</span>
     </a>
     <span class="shrink-0 rounded-md bg-surface px-2 py-0.5 text-xs text-text-muted">
@@ -237,7 +333,15 @@
     onchange={table.onColumnsChange}
     onsort={table.onSort}
   />
+  <!-- Last in the toolbar, always: it is the only control here that changes what the *rows*
+         do rather than what the list shows, so it sits after Kolommen rather than among the
+         list's own controls. Pressing it opens the selection strip above the table. -->
+  <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
 </div>
+
+<BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
+
+<BulkResult result={form?.bulkResult} />
 
 <DataTable
   rows={data.domains}
@@ -250,8 +354,17 @@
   actions={canDelete ? rowActions : undefined}
   {mobileRow}
   empty={emptyState}
+  selectable={selecting}
+  bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}
+/>
+
+<Pagination
+  total={data.total}
+  page={data.paging.page}
+  limit={data.paging.limit}
+  onsize={table.onPageSize}
 />
 
 {#if canWrite}

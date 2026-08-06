@@ -1,7 +1,7 @@
 {
   "name": "Websites, domeinen en hosting",
   "slug": "assets",
-  "order": 80,
+  "order": 110,
   "icon": "🌐",
   "lucide": "assets",
   "demo": "assets",
@@ -10,21 +10,21 @@
     "en": "Websites, domains & hosting"
   },
   "description": {
-    "nl": "Domeinen, websites en hostingaccounts hangen aan de klant, met registrar en provider die je ter plekke aanmaakt.",
-    "en": "Domains, websites and hosting accounts attach to the client, with registrar and provider you create on the spot."
+    "nl": "Domeinen, websites en hostingaccounts hangen aan de klant, met publieke DNS, Cloudflare en het register van je registrar op dezelfde pagina.",
+    "en": "Domains, websites and hosting accounts attach to the client, with public DNS, Cloudflare and your registrar's register on the same page."
   },
   "page": {
     "eyebrow": {
-      "nl": "Hosting & domeinen",
-      "en": "Hosting & domains"
+      "nl": "Domeinen & websites",
+      "en": "Domains & websites"
     },
     "title": {
       "nl": "Elk domein waar het thuishoort",
       "en": "Every domain where it belongs"
     },
     "lead": {
-      "nl": "Domeinen, websites en hostingaccounts hangen aan de klant, met registrar en provider erbij. Eén keten per klant: het domein, de eventuele website en de hosting waar die op draait.",
-      "en": "Domains, websites and hosting accounts attach to the client, registrar and provider included. One chain per client: the domain, its optional website, and the hosting it runs on."
+      "nl": "Domeinen, websites en hostingaccounts hangen aan de klant: één keten van naam tot server. Op de domeinpagina staan naast elkaar wat publieke DNS antwoordt, wat Cloudflare verwacht en wat het register van je registrar zegt. En dat register beslist mee over de factuur, zodat je alleen de domeinen in rekening brengt die je ook echt verlengt.",
+      "en": "Domains, websites and hosting accounts attach to the client: one chain from name to server. The domain page puts what public DNS answers, what Cloudflare expects and what your registrar's register says side by side. And that register has a say in the invoice, so you bill only the domains you actually renew."
     },
     "sections": [
       {
@@ -33,30 +33,20 @@
           "en": "The chain, per client"
         },
         "body": {
-          "nl": "De online infrastructuur van een klant is een vaste keten: domein, eventueel een website, en de hosting waarop die draait. Alle drie hangen aan het bedrijf en verschijnen als panelen op de klanthub, zodat je op één pagina ziet wat waar staat. Nieuwe soorten koppelen (denk aan SSL of extra assets) is een module erbij, geen verbouwing van de klantpagina.",
-          "en": "A client's online infrastructure is a fixed chain: domain, optionally a website, and the hosting it runs on. All three attach to the company and surface as panels on the client hub, so one page shows what sits where. Adding new attachable types (SSL, extra assets) is a module, not a rebuild of the client page."
+          "nl": "De online infrastructuur van een klant is een vaste keten: het domein, eventueel een website, en de hosting waarop die draait. Alle drie hangen aan de klant en verschijnen als panelen op de klantpagina, zodat je op één plek ziet wat waar staat. Een domein heeft hooguit één website, op de root (@) of op www, met een technisch beheerder die je bij naam vastlegt: jouw bureau, de klant, een medewerker of een contactpersoon. Hosting is een eigen entiteit (Instellingen → Hosting) en mag zonder klant staan, want gedeelde infrastructuur is een echte toestand en geen ontbrekend veld. Alle drie nemen je eigen extra velden over, houden een activiteitenspoor bij van wie wat wanneer wijzigde, en reizen als spreadsheet heen en terug, met bulk bewerken over een hele selectie.",
+          "en": "A client's online infrastructure is a fixed chain: the domain, optionally a website, and the hosting it runs on. All three attach to the client and surface as panels on the client page, so one place shows what sits where. A domain gets at most one website, on the root (@) or on www, with a technical owner recorded by name: your agency, the client, an employee or a contact person. Hosting is its own entity (Instellingen → Hosting) and may sit without a client, because shared infrastructure is a real state rather than a missing field. All three inherit your own extra fields, keep an activity trail of who changed what and when, and travel to a spreadsheet and back, with bulk editing across a whole selection."
         },
         "bullets": {
           "nl": [
-            "Domein: registrar, DNS-provider, status en registratiecontact",
-            "Website: op de root (@) of op www, wijst naar een hostingaccount",
-            "Hosting: eigen provider, IP-adres en een verantwoordelijke"
+            "Domein: klant, status, startdatum, registrar-, DNS- en e-mailprovider, registratie- en e-mailcontact",
+            "Website: op @ of www, gekoppeld aan een hostingaccount, met per site een uptime-vlag",
+            "Hosting: provider, IP-adres en een verantwoordelijke; geen klant betekent gedeeld"
           ],
           "en": [
-            "Domain: registrar, DNS provider, status and registry contact",
-            "Website: on the root (@) or www, points at a hosting account",
-            "Hosting: its own provider, IP address and a responsible owner"
+            "Domain: client, status, start date, registrar, DNS and e-mail provider, registry and e-mail contact",
+            "Website: on @ or www, linked to a hosting account, with an uptime flag per site",
+            "Hosting: provider, IP address and a responsible owner; no client means shared"
           ]
-        }
-      },
-      {
-        "heading": {
-          "nl": "Registrar en provider erbij",
-          "en": "Registrar and provider, on the spot"
-        },
-        "body": {
-          "nl": "Elk domein wijst naar een registrar en een DNS-provider uit je eigen catalogus; hosting wijst naar zijn provider. Staat een naam er nog niet tussen, dan typ je die in de picker en maak je hem meteen aan (＋ toevoegen), zonder het formulier te verlaten. De catalogus beheer je één keer onder Instellingen, daarna kiest iedereen eruit.",
-          "en": "Every domain points at a registrar and a DNS provider from your own catalogue; hosting points at its provider. If a name isn't there yet, you type it into the picker and create it on the spot (＋ add), without leaving the form. You curate the catalogue once under Instellingen, and everyone picks from it after that."
         }
       },
       {
@@ -65,40 +55,110 @@
           "en": "DNS that keeps itself current"
         },
         "body": {
-          "nl": "Voor elk domein leest een gewone resolver de publieke DNS uit: nameservers, DNSSEC en MX-records. Dat werkt voor élk domein, niet alleen voor de partijen waarmee we koppelen. Een nieuw domein wordt meteen na aanmaken opgehaald en daarna dagelijks vernieuwd, zodat de pagina klopt zonder dat iemand op verversen drukt. Een onbereikbaar domein leest als 'geen gegevens' en breekt nooit de rest van de batch.",
-          "en": "For every domain a plain resolver reads public DNS: nameservers, DNSSEC and MX records. That works for every domain, not only the registrars we integrate with. A new domain is fetched right after you add it and refreshed daily after that, so the page stays right without anyone pressing refresh. An unreachable domain reads as \"no data\" and never breaks the rest of the batch."
+          "nl": "Voor elk domein leest een gewone resolver de publieke DNS uit: nameservers, DNSSEC en MX-records. Dat werkt voor élk domein, niet alleen voor de partijen waarmee we koppelen. Een nieuw domein wordt meteen na aanmaken opgehaald en daarna elke nacht ververst, zodat de pagina klopt zonder dat iemand erop drukt; de knop Verversen staat er wel, voor het moment vlak na een wijziging. Een onbereikbaar domein leest als 'geen gegevens' en breekt nooit de rest van de batch. Plak je een hele URL in het naamveld, dan wordt die teruggebracht tot de kale domeinnaam: 'https://WWW.Example.NL/pagina' wordt example.nl, ook bij een import, zodat je geen tweede rij krijgt voor een domein dat je al had.",
+          "en": "For every domain a plain resolver reads public DNS: nameservers, DNSSEC and MX records. That works for every domain, not only the parties we integrate with. A new domain is fetched right after you add it and refreshed every night, so the page stays right without anyone pressing anything; the Verversen button is there anyway, for the moment just after a change. An unreachable domain reads as \"no data\" and never breaks the rest of the batch. Paste a whole URL into the name field and it is reduced to the bare domain: \"https://WWW.Example.NL/pagina\" becomes example.nl, on import too, so you never get a second row for a domain you already had."
         },
         "bullets": {
           "nl": [
             "Nameservers, precies zoals ze publiek staan",
-            "DNSSEC: aan, uit, of (nog) onbekend",
+            "DNSSEC: ja, nee, of (nog) onbekend, want 'nooit gecontroleerd' is niet 'uit'",
             "MX-records op prioriteit, zodat je ziet waar de mail heen gaat"
           ],
           "en": [
             "Nameservers, exactly as they resolve in public DNS",
-            "DNSSEC: on, off, or not-yet-known",
+            "DNSSEC: yes, no, or not-yet-known — \"never checked\" is not \"off\"",
             "MX records in priority order, so you see where mail goes"
           ]
         }
       },
       {
         "heading": {
-          "nl": "Websites met een technisch eigenaar",
-          "en": "Websites with a technical owner"
+          "nl": "Cloudflare hoort bij het domein, niet bij een tweede tabblad",
+          "en": "Cloudflare belongs to the domain, not to a second browser tab"
         },
         "body": {
-          "nl": "Een domein krijgt hooguit één website, op de root (@) of op www, met een technisch eigenaar: standaard jouw bureau, of een externe partij als een klant het zelf beheert. De website wijst naar de hosting waarop hij draait, zodat de hele keten van naam tot server op één plek klopt. Hosting is bovendien een eigen entiteit: gedeelde infrastructuur laat je zonder klant staan en hangt niet geforceerd aan één bedrijf.",
-          "en": "A domain gets at most one website, on the root (@) or on www, with a technical owner: your agency by default, or an outside party when a client runs it themselves. The website points at the hosting it runs on, so the whole chain from name to server lines up in one place. Hosting is its own entity too: shared infrastructure stays without a client rather than being forced onto one company."
+          "nl": "Cloudflare-accounts zijn rijen onder Instellingen → Cloudflare en geen installatie-instelling: je bureau heeft er zelf een en sommige klanten brengen de hunne mee. Je plakt een scoped API-token (versleuteld opgeslagen, nooit teruggegeven) en drukt op Token controleren; dat scherm schrijft op wat het token daadwerkelijk mag, dus een ontbrekend recht leest daar als 'niet toegekend' in plaats van drie schermen verderop als een knop die het niet doet. Zones ophalen haalt in één handeling de zones, de Pages-projecten en de Cloudflare Registrar-lijst binnen, en meldt hoeveel er aan een domein gekoppeld konden worden; wat niet matcht wordt getoond en niet verstopt. Op het domein zelf koppelt 'Koppelen aan Cloudflare' eerst een bestaande zone en maakt er alleen een aan als die er niet is, met een optie 'Alleen een bestaande zone koppelen' voor het overnemen van de inrichting van een klant. Het paneel zet 'Cloudflare verwacht' naast 'Publieke DNS antwoordt' en zegt in één zin of de nameservers al goed wijzen.",
+          "en": "Cloudflare accounts are rows under Instellingen → Cloudflare, not one setting per installation: your agency has its own and some clients bring theirs. You paste a scoped API token (stored encrypted, never handed back) and press Token controleren; that screen writes down what the token may actually do, so a missing scope reads there as \"niet toegekend\" instead of surfacing three screens away as a button that doesn't work. Zones ophalen pulls the zones, the Pages projects and the Cloudflare Registrar list in one action and reports how many could be matched to a domain; whatever didn't match is shown rather than hidden. On the domain itself, \"Koppelen aan Cloudflare\" adopts an existing zone first and only creates one when there is none, with an \"Alleen een bestaande zone koppelen\" option for taking over a client's existing setup. The panel puts \"Cloudflare verwacht\" beside \"Publieke DNS antwoordt\" and says in one sentence whether the nameservers already point the right way."
+        },
+        "bullets": {
+          "nl": [
+            "DNS-records live uit Cloudflare: A, AAAA, CNAME, TXT, MX, NS, SRV en CAA, met TTL, proxy en notitie",
+            "Een zone exporteren als zonebestand of als CSV, rechtstreeks vanaf het paneel",
+            "Cloudflare Pages: een hostnaam aan een project koppelen, ook als de DNS ergens anders staat",
+            "Drie losse rechten, zodat naar DNS kijken iets anders is dan DNS wijzigen"
+          ],
+          "en": [
+            "DNS records read live from Cloudflare: A, AAAA, CNAME, TXT, MX, NS, SRV and CAA, with TTL, proxying and a note",
+            "Export a zone as a BIND zone file or as CSV, straight from the panel",
+            "Cloudflare Pages: link a hostname to a project, even when DNS lives elsewhere",
+            "Three separate permissions, so looking at DNS is not the same act as changing it"
+          ]
         }
       },
       {
         "heading": {
-          "nl": "Jouw velden, jouw spoor",
-          "en": "Your fields, your trail"
+          "nl": "Een omleiding met een mechanisme erachter",
+          "en": "A redirect with a mechanism behind it"
         },
         "body": {
-          "nl": "Domeinen, websites en hosting nemen je eigen extra velden over, per tenant in te stellen, dus wat jouw bureau bijhoudt past er zonder maatwerk in. Elke wijziging landt in de activiteitenlog: wie, wat, wanneer. Alles staat onder jouw merk, met je data onder controle en netjes per organisatie gescheiden, gebundeld in de navigatie onder 'Hosting & domeinen'.",
-          "en": "Domains, websites and hosting inherit your own extra fields, configurable per tenant, so whatever your agency tracks fits without custom code. Every change lands in the activity trail: who, what, when. It all runs under your brand, with your data under your control and cleanly separated per organisation, grouped in the navigation under \"Hosting & domains\"."
+          "nl": "'Doorverwijzing' was jarenlang alleen een statuslabel: het domein stond op doorverwijzen en het echte werk gebeurde ergens anders. Nu is het een Redirect Rule die schakl. zelf op de Cloudflare-zone zet, met doel-URL en het soort omleiding erbij; bij een permanente staat een waarschuwing, want browsers onthouden die. Standaard zet schakl. de records erbij die de omleiding nodig heeft, want een regel op een zone zonder proxied record vuurt nooit af: dat is precies de storing die eruitziet als een Cloudflare-probleem en het niet is. 'Controleren bij Cloudflare' gaat vervolgens kijken en benoemt wat het vindt, in gewone zinnen: de regel is in het Cloudflare-dashboard gewijzigd (met welke velden afwijken), hij is weg, hij is nooit verstuurd, de zone staat gepauzeerd, of een andere regel gaat er misschien eerst overheen. Conflicten worden gemeld en nooit stilletjes opgelost; de regel van iemand anders raakt schakl. niet aan.",
+          "en": "\"Doorverwijzing\" was a status label for years: the domain said redirect and the actual work happened somewhere else. Now it is a Redirect Rule schakl. puts on the Cloudflare zone itself, with the target URL and the kind of redirect beside it — a permanent one carries a warning, because browsers remember it. By default schakl. adds the records the redirect needs, because a rule on a zone with no proxied record never fires: that is exactly the failure that looks like a Cloudflare problem and isn't one. \"Controleren bij Cloudflare\" then goes and looks, and names what it finds in plain sentences: the rule was changed in the Cloudflare dashboard (with which fields differ), it is gone, it was never pushed, the zone is paused, or another rule may win first. Conflicts are reported and never quietly resolved; schakl. does not touch somebody else's rule."
+        },
+        "bullets": {
+          "nl": [
+            "301, 302, 307 of 308, met pad en querystring naar keuze mee",
+            "Ook www en andere subdomeinen, met de records die de omleiding nodig heeft erbij",
+            "Een omleiding die in zijn eigen bereik terugwijst wordt geweigerd, niet opgeslagen"
+          ],
+          "en": [
+            "301, 302, 307 or 308, carrying the path and query string if you want",
+            "www and other subdomains too, with the records the redirect needs added alongside",
+            "A redirect pointing back into its own match set is refused, not saved"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Het register weet wat DNS niet weet",
+          "en": "The register knows what DNS cannot"
+        },
+        "body": {
+          "nl": "Publieke DNS vertelt je waar een domein heen wijst; het vertelt je niet wanneer het afloopt, of het verhuisslot aanstaat, wie de houder is, of wat de registry werkelijk gedelegeerd heeft. Die vier feiten komen uit het register van je registrar. Voor OXXA bewaar je resellerlogins onder Instellingen → OXXA, haal je het hele register in één aanroep op, en staat op de domeinpagina het paneel Registrar (OXXA) met Verloopt, Houder, Verhuisslot, Automatisch verlengen, DNSSEC en de nameservers, plus aandachtspunten in gewone taal: dit domein verloopt binnenkort, het verhuisslot staat uit, het register heeft andere nameservers dan wij verstuurd hebben. De waardevolste uitkomst van de eerste synchronisatie staat achter het filter 'Alleen niet-gekoppelde': domeinen die je elk jaar betaalt en waarvan schakl. (en dus je factuur) geen weet had. En 'Nameservers wijzigen bij OXXA' haalt de laatste handmatige stap uit de Cloudflare-overdracht: het vak opent voorgevuld met de nameservers die Cloudflare verwacht, en een tweede keer versturen verandert niets en zegt dat ook.",
+          "en": "Public DNS tells you where a domain points; it does not tell you when it expires, whether the transfer lock is on, who the registrant is, or what the registry has actually delegated. Those four facts come from your registrar's register. For OXXA you keep reseller logins under Instellingen → OXXA, pull the whole register in one call, and get a Registrar (OXXA) panel on the domain page with Verloopt, Houder, Verhuisslot, Automatisch verlengen, DNSSEC and the nameservers, plus warnings in plain language: this domain expires soon, the transfer lock is off, the register holds different nameservers than the ones we pushed. The most valuable outcome of the first sync sits behind the \"Alleen niet-gekoppelde\" filter: domains you pay for every year that schakl. — and therefore your invoice — knew nothing about. And \"Nameservers wijzigen bij OXXA\" removes the last manual step from the Cloudflare hand-off: the box opens pre-filled with the nameservers Cloudflare expects, and pushing the same ones twice changes nothing and says so."
+        },
+        "bullets": {
+          "nl": [
+            "Wat het register gedelegeerd heeft, wat wij verstuurd hebben en wat publieke DNS antwoordt zijn drie aparte gegevens; verschil wordt gemeld, nooit overschreven",
+            "Nameservergroepen zijn bij OXXA gedeelde objecten, dus schakl. maakt er een aan en bewerkt er nooit een van iemand anders",
+            "Eerlijk erbij: de OXXA-koppeling is geschreven op OXXA's eigen API-documentatie en heeft nog niet tegen een echte resellerlogin gedraaid; hetzelfde geldt voor de Registrar-helft van Cloudflare"
+          ],
+          "en": [
+            "What the register delegated, what we pushed and what public DNS answers are three separate facts; a difference is reported, never overwritten",
+            "Nameserver groups are shared objects at OXXA, so schakl. creates one and never edits somebody else's",
+            "Stated plainly: the OXXA integration is written from OXXA's own API documentation and has not yet run against a live reseller login — the same holds for the Cloudflare Registrar half"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Alleen factureren wat je echt verlengt",
+          "en": "Bill only the domains you actually renew"
+        },
+        "body": {
+          "nl": "De domeinlijst van een bureau is een mengsel: namen die jij elk jaar verlengt en namen die de klant zelf registreerde en jou alleen vroeg ze ergens heen te wijzen. Alleen een register kan die twee uit elkaar houden; een zone kan het niet, want Cloudflare beantwoordt de DNS van genoeg domeinen die het niet houdt. Daarom is Facturatie op een domein driewaardig, met een zin eronder die zegt welk register besloot ('Staat in het register van OXXA, dus dit domein wordt gefactureerd'), en verandert er niets zolang er geen register is opgehaald: een installatie die vandaag domeinen factureert, factureert morgen precies dezelfde. Wat er in rekening komt volgt de TLD-tarieven met prijshistorie, waar een prijsverhoging eerst als voorbeeld per extensie te zien is en pas daarna wordt geschreven; een nachtelijke run schuift elk domein een jaar op en zet de verlengingsregel op een conceptfactuur. Domeinen, websites, hosting, Cloudflare en OXXA zijn uitbreidingsmodules: de kern van schakl. is open source (AGPL) en modules als deze draaien op een licentiesleutel die je invoert onder Instellingen → Licentie; verloopt die, dan worden ze alleen-lezen, zodat het register, de verloopdatums en de waarschuwingen leesbaar blijven terwijl er niets meer naar buiten geschreven wordt.",
+          "en": "An agency's domain list is a mixture: names you renew every year and names the client registered themselves and merely asked you to point somewhere. Only a register can tell those apart; a zone cannot, because Cloudflare answers DNS for plenty of domains it does not hold. So Facturatie on a domain is three-state, with a line underneath naming which register decided (\"Staat in het register van OXXA, dus dit domein wordt gefactureerd\"), and nothing changes while no register has been read: an installation that invoices domains today invoices exactly the same ones tomorrow. What gets charged follows the TLD rates with their price history, where an increase is shown as a preview per extension before anything is written; a nightly run rolls each domain a year forward and puts the renewal line on a draft invoice. Domains, websites, hosting, Cloudflare and OXXA are extension modules: the core of schakl. is open source (AGPL) and modules like these run on a licence key entered under Instellingen → Licentie; when it lapses they go read-only, so the register, the expiry dates and the warnings stay readable while nothing is written outward any more."
+        },
+        "bullets": {
+          "nl": [
+            "Wel factureren: de jaarlijkse verlenging gaat naar de klant",
+            "Niet factureren: de klant registreerde het domein zelf, wij brengen er niets voor in rekening",
+            "Volg het register: het register beslist, en de kolom Gefactureerd zet er 'volgens register' bij"
+          ],
+          "en": [
+            "Wel factureren: the yearly renewal goes to the client",
+            "Niet factureren: the client registered it themselves and we charge nothing for it",
+            "Volg het register: the register decides, and the Gefactureerd column prints \"volgens register\" beside the answer"
+          ]
         }
       }
     ]

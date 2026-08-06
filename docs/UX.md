@@ -142,6 +142,15 @@
   save button); `LinkField` posts per chip, because there each link is its own record.
   **"Mine" filters match any assignee, never only the primary** — otherwise the feature is
   invisible to everyone but the owner.
+  **A picker that builds a list keeps its list open** (`keepOpenOnSelect`): the chip appears, the
+  field empties, and the next name is one click away. Closing after each pick was not merely
+  brisk — it was a **dead end**, because the only thing that opened the list was the input's
+  `focus` event, and the mouse never left the input to fire another one. Adding three people to a
+  contactmoment meant click-away-click-back twice, on a control that looked broken while it did
+  it. The general half of that fix stands under every picker, single-value ones included:
+  **clicking the field opens the list, whether or not it was already focused** — a closed dropdown
+  under a focused cursor is a state the user has no gesture for. Everything else about a single
+  pick is unchanged: it still closes, because there the pick *is* the answer.
 - **One person, one shape: `PersonChip` — avatar *and* name, together.** Read-only surfaces that
   show people (list cells, detail headers) render every person the same way through `Assignees`:
   the verantwoordelijke first in the plain text colour, the rest muted. Naming the first person in
@@ -233,6 +242,43 @@
     the rows you happen to hold sorts the wrong set. A header is clickable only when the API can
     order by that column (`sortKey`, not `sortable`) — a header that claims to sort and doesn't is
     worse than a quiet one. Derived and custom-field columns are honest about this.
+  - **A declared column width is a width, not a hint — so the grid never scrolls sideways.** The
+    table is `table-fixed`. Under the browser's default auto layout a `width` is only advice: the
+    used width is `max(width, min-content)`, and every cell here truncates with `white-space:
+    nowrap`, which makes a column's min-content its whole unbroken line. `overflow: hidden` does
+    not reduce that — it clips only once a definite width exists, which auto layout never gives —
+    so the interacties table asked for 1210 px, laid out at 1423, and scrolled sideways on any
+    laptop while its ellipsis never appeared and the resize handle wrote a number the layout was
+    ignoring. A fixed layout makes all three true at once. Two obligations come with it, because
+    a fixed layout cannot invent slack: **exactly one column carries no width and absorbs the
+    rest**, and **every other column a list shows by default needs a sensible width**, because
+    the ones without share the remainder equally — eleven equal columns is its own kind of wrong.
+    The absorbing column is the `primary` one by default, which is right wherever the identity
+    column is also the long one; a list where it is not says so with `flex` (an invoice is
+    identified by a number 130 px wide, and the widest thing on its row is the client). A list whose trailing ⋯ cell holds more than the ⋯ says so
+    with `actionsWidth`; a column no longer widens to its content, it paints over its neighbour.
+    And a `truncate` span must be `block`: `overflow` does not apply to an inline box, so a bare
+    one sets `nowrap` and nothing else, and spills instead of ellipsizing.
+  - **Every list ends in a pager, and the pager is the address bar** (`core/ui/Pagination.svelte`,
+    docs/PERFORMANCE.md). A list is where the whole set lives, so it never shows a prefix of
+    itself: the bar states the honest range ("51–100 van 812"), offers **25 / 50 / 100 / 200** per
+    page, and appears only once there is more than one page — a pager over nine rows is
+    decoration. Three things it must keep being:
+    - **Links, not buttons.** `<a href="?page=3">` is what gives the back button, middle-click,
+      preload-on-hover and a page you can send someone. Opening a client from page 4 and coming
+      back to page 1 was the bug; the URL carrying the view is the fix, and SvelteKit restores
+      the scroll position on top of it.
+    - **Reset by every filter.** Search, a status pill, a client picker, a re-sort — each drops
+      `?page=` (`resetPage`), because page 7 of the old filter is usually nothing at all in the
+      new one, and an empty page reads as "the filter found nothing".
+    - **A saved size, a per-visit page.** How many rows you want is a personal preference and
+      rides in `prefs.tables.<list>.page_size` beside the column layout (UX Principle 6, never an
+      org setting). *Which* page you are on is not a preference at all — it belongs to the URL,
+      or two tabs would fight over one number.
+    On a phone the numbered pages give way to "Pagina 2 van 17" with prev/next: twelve tap
+    targets six pixels apart is not a control. And because a page is a slice, a **group heading
+    inside one counts the slice** — a sectioned list says so out loud rather than letting
+    "Acme (2)" read as the whole answer.
   - **Every sort is reachable from the Kolommen menu, not only from a header.** Below `sm` there
     *are* no headers, so a header-only sort is a sort mobile users don't have. The menu is the one
     surface both sizes share: each sortable column carries an ↕ that cycles ascending → descending →
@@ -249,16 +295,63 @@
     opens the shared wizard, and both controls check the bulk permission *and* the entity's own
     before they render, mirroring the two gates the API declares. Instellingen → Import & export
     stays as the overview of what can travel at all; it is never the only way in.
+  - **Acting on several rows is a mode, and the ✎ is how you enter it** (`core/bulk/BulkToggle`
+    + `core/bulk/BulkBar`). A list is for reading, so there are **no checkboxes until someone
+    asks for them**: pressing ✎ is what turns the list into something you are editing. Pressing
+    it again puts the list back and drops whatever was picked — a selection nobody can see must
+    not survive to be acted on by the next thing that opens. Where each half lives is the rest of
+    the rule:
+    - **The ✎ is the last control in the toolbar, on every list**, after Kolommen. It is the only
+      one there that changes what the *rows* do rather than what the list shows, so it sits apart
+      from them rather than among them — and a list whose Export/Kolommen cluster is not already
+      right-aligned gets `ml-auto` so the ✎ lands in the same place everywhere.
+    - **The actions are their own strip, above the table** — the brand-tinted frame this app uses
+      for a live selection, holding the count on the left and the buttons on the right. They are
+      not more toolbar: Export changes what you *get*, Verwijderen changes what *is*. Rendering
+      them inline made the toolbar reflow every time the mode opened and made the new controls
+      read as more list chrome.
+    - They are **disabled until something is ticked**, with the reason in the title, because in
+      this mode the buttons are the point and hiding them would leave a mode whose purpose is
+      invisible. When the user holds neither the entity's write nor its delete, the ✎ is not
+      drawn at all — there is no mode to enter.
+
+    Two earlier shapes were wrong and are worth naming: a bar that appeared *as you ticked* moved
+    the table down mid-gesture, walking the rows away from the cursor on a list you tick
+    top-down; and a permanently visible checkbox gutter made every reader pay for a writer's
+    feature.
   - **A bulk action says what it will actually do, and reports what it did** (#299). A selection
     is rarely uniform — the interacties list mixes still-pending emails with reviewed ones, and
-    someone else's mailbox with your own — so each button in the `selection` bar acts on **its
-    own eligible subset** and carries that count whenever it is smaller than the selection
-    ("Goedkeuren (2)" over eight rows). A button that silently did less than it said is the
+    someone else's mailbox with your own — so each button acts on **its own eligible
+    subset** and carries that count whenever it is smaller than the selection ("Goedkeuren (2)"
+    over eight rows), and is disabled at zero. A button that silently did less than it said is the
     failure this prevents. Afterwards the page states the honest outcome — "6 goedgekeurd · 2
-    overgeslagen", with the distinct reasons — because the API reports ineligible rows instead
-    of rolling the good ones back (raising mid-batch would undo the forty-nine that worked), and
-    a UI that swallowed that would be claiming work it did not do. The eligible-subset filter is
-    still only UX: the API re-checks every row, so the bar may narrow the batch but never widens it.
+    overgeslagen", with the distinct reasons (`core/bulk/BulkResult`) — because the API reports
+    ineligible rows instead of rolling the good ones back (raising mid-batch would undo the
+    forty-nine that worked), and a UI that swallowed that would be claiming work it did not do.
+    The eligible-subset filter is still only UX: the API re-checks every row, so the menu may
+    narrow the batch but never widens it.
+  - **A field you did not touch is not sent** (`core/bulk/BulkEditDialog`). The edit dialog opens
+    blank over a selection that disagrees with itself — twelve domains at four registrars — so an
+    empty control can only honestly mean "leave each row's own alone". Reading it as "empty them
+    all" would wipe, on every row the user never looked at, exactly the value they had not thought
+    about. **Clearing is therefore a separate, deliberate tick**, offered only where the field can
+    be cleared at all, and labelled with what clearing *means* where "empty" understates it — a
+    domain with no invoicing decision follows its register (#298), it is not "not invoiced". The
+    same rule decides which controls may appear here: every one of them needs an "unchanged"
+    state, which is why there is no party picker (it always holds a type) and why a yes/no field
+    is a two-option type-ahead rather than a checkbox (which is always either ticked or not).
+  - **Selecting the rows has to be cheaper than acting on them.** A bulk bar over a queue of forty
+    auto-matched emails is worth nothing if reaching it costs forty clicks, so **shift extends the
+    selection** from the last row ticked to the clicked one, and it does so from the row as well as
+    from its checkbox — a reviewer reaching for a range must never be answered with a detail modal.
+    The span takes the state the clicked row is moving to, and it walks the **visible** order only:
+    a range that quietly swept up rows inside a collapsed section is how a bulk reject reaches an
+    email nobody read. The gutter **cell** is the checkbox's hit area, not the 16 px box in it —
+    every list here opens the record on a row click, so a near-miss was not "nothing happened", it
+    was the wrong dialog over the tick the user meant. Two browser details make or break that pair
+    and are commented at the seam: a stretched `<label>` is also what keeps the near-miss out of the
+    row handler, and the click is handled *on* the label because chrome suppresses a label's
+    forward-to-its-control the moment shift turns the click into a text-selection gesture.
   - **A hidden column costs nothing.** An expensive column (the budget roll-up) is an opt-in
     aggregate: the page's `load` asks the API for it only when the column is visible. This is why
     column metadata is a plain module and the cell renderers are snippets — a server load can read
@@ -535,6 +628,16 @@
   Any consumer that must show the words *without* the markup — a notification excerpt, an email, a
   PDF, a `DataTable` cell — flattens to plain text first (the API's `markdown_to_plaintext`); it
   never truncates raw markdown by character count, which severs a link mid-`()`.
+  **A received e-mail renders through the same component, and only because the API converted it**
+  (`interactions.body_markdown`, `docs/GOOGLE.md`). The condition is the whole rule: text a
+  *sender* wrote is not markdown, so a plain-text mail keeps its plain-text branch — rendering it
+  as markdown would turn their `*sterretjes*` into italics and swallow `[iets]`. Two things ride
+  that distinction. `Markdown` grows an `images` prop, on **only** here, which draws
+  `![alt](file:<uuid>)` — an e-mail's own `cid:` parts, already downloaded, served from our
+  storage — and nothing else: a remote `<img>` in a mail is a tracking pixel, the API drops it at
+  conversion, and no other surface may fetch a picture at all. And the marker is a **stored
+  marker, not a URL**, like `mention:` and `crm://`: the renderer resolves it, so no API path is
+  frozen into a body and a consumer that draws no images ignores it.
 
 ## Navigation
 
@@ -623,11 +726,35 @@
   ship complete in both locales; the *tenant's own* labels (leave types, contact types, custom
   fields, e-mail templates, roles, …) never demand both languages — one language is enough and
   a missing locale falls back to the other at render time. Editors use the shared
-  `core/ui/I18nTextField` — **one field with an NL/EN switcher, never two side-by-side
-  inputs** — which posts every locale (`label_nl`/`label_en`) so form actions stay unchanged,
-  and deliberately carries no `required` (a required attribute on a hidden locale input blocks
-  the submit invisibly). The e-mail template editor follows the same switch-a-language shape
-  with its per-locale forms.
+  `core/ui/I18nTextField` — **one field, never two side-by-side inputs** — which posts every
+  locale (`label_nl`/`label_en`) so form actions stay unchanged, and deliberately carries no
+  `required` (a required attribute on a hidden locale input blocks the submit invisibly).
+- **One language switcher per surface, at the top — never one per field** (owner feedback,
+  2026-08-05). *Which* language you are typing in is a fact about the whole screen, not about a
+  label, so it is chosen once: `core/ui/I18nLocaleSwitcher` goes at the top of the page, card or
+  dialog, and every translatable field under it follows the shared choice in
+  `core/i18n-edit.svelte.ts`. The rule is what the old shape argued for at the wrong scale — a
+  switcher beside each label is right for one field and absurd for a dozen, and Instellingen →
+  Navigatie proved it by drawing one per nav item plus one per group, each flipped by hand to
+  write the English column. Consequences worth knowing:
+  - **The choice is a module singleton, not a context.** A dialog opened from a page is its own
+    component tree, so a provider would have to be threaded into every modal holding a label
+    field; and carrying the choice across screens is exactly what someone filling in the English
+    column of six settings pages wants. It persists in `localStorage`, is never written on the
+    server, and opens on the reader's own UI language.
+  - **A page and the dialog it opens may each render one** — they share the state, so they cannot
+    disagree, and a dialog that covers its page still carries the control it needs.
+  - **The locales come from the catalog, not from a hardcoded pair.** `editLocales()` derives them
+    from Paraglide's `locales`, so a third language is still just a JSON file (CLAUDE.md §8); a
+    surface whose languages come from *data* (the mail templates, one row per `(kind, locale)`)
+    passes its own list and `resolveEditLocale` narrows the shared choice to it.
+  - **Fields carry no language chrome of their own** — no tab strip, no "NL" prefix, no `(nl)` in
+    the label. The switcher above says which language this is; repeating it per row is the noise
+    the rule exists to remove. What a field *may* show is the value it would fall back to, as its
+    placeholder.
+  - **This applies to hand-rolled per-locale editors too**, not just `I18nTextField`: the invoice
+    template editor (field labels + the three text blocks), the mail templates, and the marketing
+    dashboard's tile and key-event names all read the same shared locale.
 - Branding (logo, colors, brand name incl. hide-name option, favicon) is runtime, per
   tenant, via Huisstijl — never hardcoded. Charts use their own validated, colorblind-safe
   palette (see the dataviz procedure), not the tenant color.
@@ -647,6 +774,11 @@
   prune rather than a list to choose from, and nothing on screen said where the lines had come
   from. What replaced it is the shape to copy — the section states what is waiting ("12"), and
   a picker adds only what was ticked. Offer the count, never the contents.
+- **A per-field control for a page-level decision.** Every translatable label carried its own
+  NL/EN switcher, so Instellingen → Navigatie drew a dozen of them and writing the English column
+  meant flipping each one, in order, by hand — and the marketing tile editor answered the same
+  question by stacking both languages in every tile. Neither is a field-level choice: ask once, at
+  the top of the surface, and let the fields follow (`I18nLocaleSwitcher`, under i18n & theming).
 - **A per-row field that can only be filled in one way.** The invoice line editor asked for a
   *unit* on every line, including the hours ones, where the only correct answer is "uur" — and
   for a *type*, which is just the section the line already sits in. Both were dropped: derive
@@ -750,6 +882,14 @@
   products, templates, settings and custom-field lookups exist for `DocumentForm` alone, so they
   now hang off `canWrite`. That was five wasted round-trips for every read-only viewer before it
   was a leak, and the client's invoice page went from eight API calls to two.
+  The **pay control** (epic #269) is the same rule at the other end of the scale: it is a write
+  a client legitimately holds, so it gates on `can(user, "invoicing.payment.link")` — base key,
+  because a client holds `:own` — and never on `isPortal`, which would have drawn it for a
+  restricted staff member who cannot start one and hidden it from the person it exists for.
+  Whether it can be *spent* is a second question, and `InvoiceRead.online_payment` answers it
+  without letting the client read which provider accounts the agency has connected: a padlock
+  the viewer can do nothing about is worse than no button, and the account list itself sits at
+  `:any` (`docs/PAYMENTS.md` §8).
 - **A refusal that hides which of the two gates fired.** Permissions say *may they*, the company
   horizon says *which rows exist for them* (CLAUDE.md §15), and out-of-horizon deliberately answers
   `404 errors.not_found` so a get-by-id can't leak existence. Correct — but a `client`-role login
@@ -764,8 +904,20 @@
 - Taking `.date()` of a UTC instant to name a local day. Amsterdam's midnight is 22:00 UTC the day
   *before* in summer, so a monthly budget reported its period as starting 30 June. Half the year the
   bug is invisible, which is why it is pinned on a fixed date rather than on `today`.
-- A totals row summed from `rows`. The page holds 200 of a longer set, so it prints the total *of
-  the page* — which looks exactly like the right answer. Totals come from the API.
+- A totals row summed from `rows`. The page holds one slice of a longer set, so it prints the
+  total *of the page* — which looks exactly like the right answer. Totals come from the API.
+- **A list that shows the first N and calls it the list.** Every index asked for 200 rows at
+  `offset: 0` and stopped, so a tenant who outgrew the cap got a prefix indistinguishable from
+  the whole answer, and row 201 was reachable only by guessing a narrow enough search. Two
+  screens had grown their own prev/next by hand; twelve had nothing. They all share one pager
+  now (`core/ui/Pagination.svelte`), and the reason it is shared is that the interesting parts —
+  the URL carrying the page so the back button works, every filter resetting it, the size saved
+  per user — are exactly the parts a hand-rolled copy leaves out.
+- **A filter applied in the browser.** The clients list narrowed `data.companies` by status in
+  the page. That was survivable only while the page *was* the list: against a paged list it
+  filters the fifty rows you happen to hold and reports a total counted over all of them. The
+  API already took `status` — the export was sending it. If an API cannot filter it, that is a
+  missing query parameter, not a licence to filter the slice.
 - **A flex or grid item without `min-w-0`.** Its `min-width` defaults to `auto`, so it is sized by
   its widest descendant instead of by the row. The shell's content column had no `min-w-0`, so one
   over-wide page did not scroll or clip — it *grew the shell*: `<body>` laid out at 716 px on a

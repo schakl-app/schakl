@@ -376,6 +376,66 @@ expires open quotes past `valid_until`.
 Every send, reminder, payment, issue, cancel and credit lands in the activity trail (§16),
 so a disputed invoice's history reads back in one place.
 
+## Online payments (epic #269 — `payments.py`, `docs/PAYMENTS.md`)
+
+A client can pay an open invoice on a payment provider's hosted checkout, and the payment lands
+back on the invoice by itself. The architecture is provider-independent and lives in
+**`docs/PAYMENTS.md`**; `docs/MOLLIE.md` is the first (and today only) implementation. What
+belongs *here* is the part invoicing owns:
+
+- **A confirmed payment writes an ordinary `InvoicePayment` row** — `method="online"`,
+  `intent_id` set — through the same `_settle` a bookkeeper's manual entry goes through. So
+  `paid_total`, the status flip, `invoice.paid`, the reminders cron, the accounting export and
+  the company panel all needed no change and none of them knows a provider was involved.
+  `PaymentWrite.method` stays a closed `Literal` **without** `online`: nobody may hand-register
+  a payment as though a provider had confirmed it.
+- **`invoice_payment_intents` is one row per *attempt*, not per invoice.** An invoice
+  legitimately collects several (iDEAL expires in fifteen minutes; clients abandon and retry),
+  which is exactly why it is not an `ExternalRef` — that table's one-row-per-local-record key
+  would let a late callback for attempt #1 settle against attempt #2.
+- **The amount is never the caller's.** `InvoicePaymentIntentCreate` carries no amount field;
+  the server charges `outstanding_of(invoice)`, recomputed at creation, and refuses an invoice
+  that is not `open` or has nothing left to pay.
+- **`status` is the provider's word and `settled_at` is ours.** `paid` with no `settled_at` —
+  the money arrived and the ledger write did not happen — is a real, visible, repairable state,
+  and an hourly per-org cron plus a manual **Check status** button exist to repair it.
+- **Two permissions, and a client holds one of them.** `invoicing.payment.link` is scoped
+  (`:own` for the `client` role, `:any` for admins) and is *not* `invoicing.payment.write`:
+  starting a checkout settles nothing, while registering a payment is a bookkeeping claim.
+  `InvoiceRead.online_payment` is the boolean the portal draws its pay button from — it never
+  gets to read which accounts the agency has connected.
+- **Every invitation to pay leads to the portal, never to a checkout URL** — the invoice mail's
+  button and the reminder's, the document's QR (#268) and its pay-online line, and the portal's
+  own button. `paylinks.py` is the one function that says so, and four surfaces pointing at one
+  door is what makes "one open checkout per invoice" true: a checkout URL is a bearer credential,
+  it expires in minutes while the invoice does not, and a client holding both a mailed link and
+  a portal button can pay the same debt twice. The mail's button is the strict one — it appears
+  only when a provider is connected and the invoice is collectable, so an instance without
+  payments sends the mail it always sent (`docs/PAYMENTS.md` §9).
+
+## The client-facing mails are the tenant's to write (`emails.py`)
+
+The invoice, quote and reminder mails are **customisable kinds** (`invoicing.invoice`,
+`invoicing.quote`, `invoicing.reminder`), contributed on the module descriptor and edited per
+locale in Instellingen → E-mail like the auth mails already were (#161 tier 2, `docs/EMAIL.md`).
+They are the mails an agency's *clients* read, and until now the one piece of outgoing text
+nobody could reword — an agency that had spent a week on its invoice design was still dunning
+in ours.
+
+- **A missing override changes nothing.** No schema, no migration, no behaviour: the built-in
+  catalog text is the fallback, so an instance that upgrades sends exactly what it sent before.
+- **Both paths honour it**, request (`/send`, `/remind`) and cron (`jobs.py`) alike. Customising
+  only the manual send would customise the exception: every dunning mail an agency actually
+  sends comes off the schedule, and the auto-send pass mails the invoices too.
+- **The document's locale decides**, for the words *and* the template lookup, so a German
+  invoice reads a German override or a German default and never a mix.
+- **The plaintext part is always the catalog summary.** A tenant's HTML may say whatever it
+  likes; the client still receives the number, the amount and the due date.
+- The variables are per kind (`{number}`, `{company}`, `{contact}`, `{total}`, `{date}`,
+  `{due_date}`, `{reference}`, plus `{valid_until}` on a quote and `{outstanding}` / `{days}`
+  on a reminder) and the editor's test send previews them against the **same fabricated
+  document** the PDF template editor draws — same currency, numbers that add up.
+
 ## Accounting (#31's seam, shipped ahead of the first live provider)
 
 - **UBL 2.1 export** (`ubl.py`, `GET /invoices/{id}/ubl`): standards-shaped XML (EN 16931
@@ -606,10 +666,40 @@ it is:
   built around, and a long one grows past it. Pinning the band to the foot of the sheet would
   need the page's height, which no block in normal flow can ask for without risking a break of
   its own.
+- **How to pay is one box.** The QR (#268) and the pay-online line (#269) are body blocks in
+  `classic`'s stack; here they are drawn by hand *inside* the payment card, under a rule —
+  bank transfer above, one gesture below. Left in the loop they landed centimetres lower, in
+  the open middle of the sheet, with the reader's eye crossing the line table to get from the
+  IBAN to the code that is an alternative to it. The card takes them through `{% call %}`
+  (`payment_card` renders `caller()` if it has one), so `classic` is untouched and a tenant
+  branching from either still gets the plain card. With `payment_box` switched off the strip
+  still prints, on its own: the left column is where this design puts how to settle the
+  invoice, box or no box, and hanging the pair off the card would have made `payment_box` a
+  silent third switch on both of them.
+- **The QR's caption stands down beside the pay-online line.** "Scan om te betalen" draws the
+  same distinction the line's own label draws — betalen against bekijken — about a picture
+  nobody needs told is scannable, and under the address it reads as belonging to the address.
+  With the line off it is the only thing saying the code is worth pointing a phone at, and it
+  prints.
+- **A rule that styles an inline element does nothing, and the QR is the scar.**
+  `.payment-qr-code { width: 24mm; height: 24mm }` sat on an `<a>`, which is inline: width and
+  height do not apply, the svg's `100%` resolved against the paragraph instead, and the code
+  printed the full width of the sheet — in both designs, in the preview and in the PDF alike,
+  running the sample to three pages. Every test read the markup, and the markup was right. So
+  the anchor is `inline-block` now and the guard measures the **laid-out box** through
+  WeasyPrint (`_boxes` in `tests/test_invoicing_render.py`): anything about size or arrangement
+  has to ask the layout, because the HTML is not the document.
+- **The printed URL is never set in `micro`.** That class uppercases, and a URL path is
+  case-sensitive: what reached the paper was `HTTPS://…/INVOICES/6F1A…`, against a route that
+  is `/invoices/[id]`. The one reader the printed address exists for is the one who cannot
+  click it, and they were being handed a 404. The assertion is on the *rendered* text, since
+  the markup carried the right characters throughout.
 - **Density is part of the design.** The sample — three line kinds with subtotals, two VAT
   rates, a partial payment, a footer — prints on one sheet, and a test says so, because that
   sample *is* the editor's preview. It ran to two once, with the totals stranded alone on the
-  second.
+  second. That test is bound to the **default** layout on purpose: the card, the code and the
+  line all ship off, and switching every optional block on at once still costs a second sheet
+  — buying that back would mean making every ordinary invoice tighter than the paper it models.
 
 The background is **opt-in**: a template stored before it existed has no `background` key, and
 reading that as "yes please" would have put a mark behind every invoice every tenant had
@@ -647,5 +737,13 @@ shipped design renders from.
 - **A live accounting provider** is a new module registering an `AccountingProvider`;
   credentials encrypted per tenant (the email-settings pattern), sync state in
   `external_refs`. See #31 for the SnelStart scope.
-- **E-invoicing networks (Peppol), payment-provider webhooks** are follow-ups; the seams
-  (the rendered document, UBL, payments as first-class rows) are where they attach.
+- **A payment provider** is a new module implementing `app.core.payments.PaymentProvider` and
+  registering an account resolver — nothing in `invoicing` changes, and nothing in it may name
+  the provider. The seam, the five callback gates, the idempotency pair (a row lock plus the
+  partial unique index on `invoice_payments (org_id, intent_id)`) and a step-by-step checklist
+  for adding Stripe or Adyen are in **`docs/PAYMENTS.md`** §11; `docs/MOLLIE.md` is the worked
+  example. One webhook route serves every provider
+  (`POST /invoicing/payments/webhook/{provider}/{token}`) — do not add a second, and do not
+  believe a callback body: the authenticated re-fetch is the authentication.
+- **E-invoicing networks (Peppol)** are a follow-up; the seams (the rendered document, UBL,
+  payments as first-class rows) are where they attach.

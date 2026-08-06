@@ -1,4 +1,5 @@
 /** Shared parsing for the sidebar-layout editor's posted payload (#169). */
+import { locales } from "$lib/paraglide/runtime";
 
 /** A tenant's per-locale label (locale → text); matches the API's `{[locale]: string}` shape. */
 export type NavLabel = Record<string, string>;
@@ -16,10 +17,14 @@ export function parseNavItems(raw: FormDataEntryValue | null): { key: string; hi
   }
 }
 
-/** Collect a tenant label from the I18nTextField inputs `<base>_nl` / `<base>_en`; empties drop. */
+/**
+ * Collect a tenant label from the I18nTextField inputs `<base>_<locale>`; empties drop.
+ * Over the app's configured locales, not a hardcoded pair — the field posts one input per locale
+ * it offers, so a locale added to the catalog would otherwise be typed in and silently dropped.
+ */
 function collectLabel(form: FormData, base: string): NavLabel | undefined {
   const label: NavLabel = {};
-  for (const locale of ["nl", "en"] as const) {
+  for (const locale of locales) {
     const text = String(form.get(`${base}_${locale}`) ?? "").trim();
     if (text) label[locale] = text;
   }

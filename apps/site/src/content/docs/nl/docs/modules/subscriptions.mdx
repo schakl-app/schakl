@@ -1,0 +1,154 @@
+---
+title: Abonnementen
+description: "Terugkerende klantafspraken: prijs met historie, inbegrepen uren, factuurcyclus, standaardabonnementen en een prijsverhoging in bulk."
+sidebar:
+  order: 8
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Een abonnement is een terugkerende afspraak met een klant: hosting, onderhoud, een SEO-retainer.
+Het legt vast wat het kost, hoe vaak het factureert en hoeveel uren erin zitten, en het beantwoordt
+de vraag wat er maandelijks doorloopt.
+
+## Waar je het vindt
+
+**Abonnementen** in het hoofdmenu. Boven de sectie staan tabbladen: de lijst zelf,
+**Standaardabonnementen** en **Abonnementstypes**. Die twee zie je alleen met de bijbehorende
+beheerrechten; *Instellingen → Abonnementen* leidt naar hetzelfde scherm. De klantpagina en de
+projectpagina dragen elk een paneel **Abonnementen**.
+
+Bovenaan de lijst staan **Maandelijks terugkerende inkomsten**, **Jaarlijks terugkerende
+inkomsten** en het aantal **Actieve abonnementen**. Eronder filter je op klant, op status en op je
+eigen typen.
+
+## Een abonnement aanmaken
+
+<Steps>
+1. Klik **Nieuw abonnement**, eventueel na een keuze bij **Vanuit standaardabonnement**: dat vult
+   het formulier voor.
+2. Vul **Naam**, **Klant** en **Type** in.
+3. Zet **Status** (Concept, Actief, Gepauzeerd of Opgezegd), **Interval** (Maandelijks, Per
+   kwartaal of Jaarlijks), **Bedrag**, **Inbegrepen uren** en de **Startdatum**.
+4. Kies bij **Automatisch factureren** hoe ver de facturatie zelf gaat, of laat het op *Instelling
+   van de organisatie volgen*.
+5. Koppel bij **Gekoppelde projecten** de projecten waarvan de uren tegen de bundel tellen.
+</Steps>
+
+Een nieuw abonnement staat standaard op **Actief**. De **Volgende factuur** wordt dan zelf afgeleid
+(startdatum plus één periode) en is pas in het bewerkformulier zichtbaar en aan te passen. Een
+abonnement dat via een import binnenkomt krijgt bewust de status **Concept**, zodat een bulkimport
+niet stilzwijgend gaat factureren.
+
+## De prijs heeft een geschiedenis
+
+Het **Bedrag** is geen veld dat je overschrijft: elke prijswijziging voegt een regel toe met een
+ingangsdatum. Daardoor wordt een factuur van vorig jaar nooit met terugwerkende kracht herprijsd,
+en rekent de factuurcyclus met de prijs die op de factuurdatum gold.
+
+Voor een ronde prijsverhoging gebruik je **Prijsverhoging** boven de lijst, of *Prijs verhogen* in
+het ⋯-menu van een rij. Je kiest de **Aanpassing** (percentage erbij, vast bedrag erbij, of een
+nieuw bedrag instellen), een **Ingangsdatum** en het **Bereik**: alle abonnementen, één type, één
+abonnement of één standaardabonnement. Optioneel werk je de prijzen van de standaardabonnementen
+mee bij. Je krijgt eerst een **Voorbeeld** met per abonnement het huidige en het nieuwe bedrag; pas
+bij **Doorvoeren** wordt er iets geschreven. Opgezegde abonnementen worden overgeslagen, ook als je
+er direct op richt.
+
+<Aside type="caution">
+Bulk bewerken kan status, type en klant aanpassen, maar bewust niet de prijs. Een prijs gaat altijd
+via **Prijsverhoging**, want die kent een ingangsdatum en respecteert de historie.
+</Aside>
+
+## Inbegrepen uren en projecten
+
+Bij **Gekoppelde projecten** koppel je de projecten waarop het werk voor deze afspraak geboekt
+wordt. Dat heeft twee gevolgen:
+
+- Het project haalt zijn **urenbudget** uit de afspraak in plaats van uit een eigen veld. Het
+  budgetveld op het project is dan op slot en meldt "Uren komen van abonnement". Dekken meerdere
+  afspraken hetzelfde project, dan worden ze opgeteld.
+- Werk op zo'n project staat standaard op **Niet facturabel**: de retainer betaalt het al.
+
+Een niet-maandelijkse afspraak wordt naar de maand omgerekend: 30 inbegrepen uren per kwartaal
+geven het project 10 uur per maand, en de budgetperiode wordt maandelijks. Alleen **actieve**
+abonnementen met inbegrepen uren tellen mee. Op de projectpagina laat het paneel **Abonnementen**
+zien wat er deze periode van de bundel verbruikt is en of je eroverheen zit.
+
+## De factuurcyclus
+
+Eén keer per dag kijkt schakl. welke **actieve** abonnementen hun **Volgende factuur** bereikt
+hebben. Voor elk daarvan wordt de periode klaargezet met de prijs die op die datum gold, en schuift
+de volgende factuurdatum één periode door. Wat er vervolgens gebeurt, hangt af van **Automatisch
+factureren**:
+
+| Niveau | Wat er gebeurt |
+| --- | --- |
+| Uit | Er wordt niets aangemaakt; de periode blijft openstaan en je voegt hem zelf toe in de factuureditor. |
+| Concept klaarzetten | Er verschijnt een conceptfactuur; jij controleert en verstuurt. |
+| Klaarzetten en definitief maken | De factuur krijgt ook nummer en vervaldatum, maar wordt niet gemaild. |
+| Klaarzetten, definitief maken en mailen | De factuur gaat met pdf naar de klant zonder tussenkomst. |
+
+De cyclus schuift altijd door, ook op *Uit*: een periode die niemand factureerde blijft openstaan
+en wordt in de factuureditor aangeboden, dus je verliest hem niet. Een concept, een gepauzeerde en
+een opgezegde afspraak factureren niet.
+
+## Standaardabonnementen en typen
+
+Een **standaardabonnement** is een voorbeeld waarmee je het aanmaakformulier voorvult, zoals
+"Hosting Basis, € 25 per maand, 1 uur inbegrepen". Je maakt ze op het tabblad
+*Standaardabonnementen*, of je slaat een bestaande afspraak op via **Opslaan als
+standaardabonnement** in het ⋯-menu. Ze leggen ook de **Opzegtermijn (dagen)** vast. Hernoem je een
+standaardabonnement, dan gaan de abonnementen die die naam nog dragen mee en meldt het scherm
+hoeveel dat er waren; geef je een abonnement een eigen naam, dan volgt het niet langer. De prijs
+van een standaardabonnement aanpassen verandert nooit de prijs van een bestaand abonnement.
+
+**Abonnementstypes** zijn je eigen categorieën (hosting, onderhoud, SEO), met een label per taal,
+een volgorde en een actief/inactief-schakelaar. Belangrijker: een type draagt **taaksjablonen bij
+activatie**. De eerste keer dat een abonnement van dat type actief wordt, worden die taken op de
+klant aangemaakt. Dat gebeurt precies één keer per afspraak, dus pauzeren en hervatten levert geen
+tweede onboarding op.
+
+## Notities met variabelen
+
+Het veld **Notities** kent variabelen die als token bewaard blijven en pas bij het tonen worden
+ingevuld: `{{company_name}}`, `{{subscription_name}}`, `{{type}}`, `{{amount}}`, `{{interval}}`,
+`{{included_hours}}`, `{{start_date}}` en `{{brand_name}}`. Tijdens het bewerken staat er een
+**Voorbeeld** onder het veld. In een standaardabonnement werken ze ook: daar worden ze ingevuld op
+elk abonnement dat het gebruikt.
+
+## Rechten
+
+Per rol in te stellen onder *Instellingen → Rollen*.
+
+| Recht | Wat het geeft | Standaard bij |
+| --- | --- | --- |
+| `subscriptions.subscription.read` | Abonnementen bekijken | Beheerder |
+| `subscriptions.subscription.write` | Abonnementen beheren | Beheerder |
+| `subscriptions.subscription.delete` | Abonnementen verwijderen | Beheerder |
+| `subscriptions.type.manage` | Abonnementstypes beheren | Beheerder |
+| `subscriptions.template.manage` | Standaardabonnementen beheren | Beheerder |
+
+Lezen staat bewust niet standaard bij Medewerker: wat een klant betaalt is commercieel gevoelig. Je kunt
+het per rol verruimen. De rol Eigenaar heeft alles.
+
+## Goed om te weten
+
+- **Een abonnement verwijderen neemt de prijshistorie en de factuurregels mee.** Wil je alleen
+  stoppen met factureren, zet de status dan op *Gepauzeerd* of *Opgezegd*: de afspraak en haar
+  geschiedenis blijven bestaan.
+- **Op de klantpagina blijft het paneel Abonnementen leeg** voor wie geen leesrecht heeft, in plaats
+  van een foutmelding te geven.
+- **Import en export kennen drie lijsten**: abonnementen (bijgewerkt op naam), abonnementstypes (op
+  sleutel) en standaardabonnementen (op naam). Factuurregels en project- of taakkoppelingen zitten
+  er bewust niet in. Zie [Import & export](/nl/docs/modules/import-export/).
+- Abonnementen is een gelicentieerde module: loopt de licentie af, dan blijft alles leesbaar en
+  exporteerbaar, maar schrijven kan niet meer.
+
+## Verder lezen
+
+<CardGrid>
+  <LinkCard title="Uren" description="Waar de uren geboekt worden die tegen de inbegrepen uren tellen." href="/nl/docs/modules/time/" />
+  <LinkCard title="Projecten" description="Het project dat zijn urenbudget uit de afspraak haalt." href="/nl/docs/modules/projects/" />
+  <LinkCard title="Facturatie" description="Wat er met een vervallen periode gebeurt." href="/nl/docs/modules/invoicing/" />
+  <LinkCard title="Import & export" description="Abonnementen, typen en standaardabonnementen in en uit een spreadsheet." href="/nl/docs/modules/import-export/" />
+</CardGrid>

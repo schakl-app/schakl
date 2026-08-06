@@ -8,7 +8,6 @@ outside the caller's own dossier (see ``app/core/storage/router.py``).
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from datetime import datetime
 
@@ -16,13 +15,12 @@ from fastapi import APIRouter, Depends, Query, Request, UploadFile
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 
-from app.config import settings
 from app.core.activity import ActivityService
 from app.core.auth.models import User
 from app.core.permissions.deps import require_permission
-from app.core.storage.backend import StorageUnavailableError, get_storage, storage_for
 from app.core.storage.models import StoredFile
 from app.core.storage.router import _file_response
+from app.core.storage.service import drop_file, write_file
 from app.core.tenancy import RequestContext, require_context
 from app.errors import AppError
 from app.modules.hr.models import DOCUMENT_CATEGORIES, HrDocument
@@ -102,41 +100,16 @@ async def upload_document(
     member = await ctx.session.scalar(select(User.id).where(User.id == user_id))
     if member is None:
         raise AppError("not_found", "errors.not_found", status_code=404)
-    content_type = file.content_type or "application/octet-stream"
-    if content_type not in settings.upload_allowed_types:
-        raise AppError(
-            "validation",
-            "errors.upload_type",
-            status_code=422,
-            fields={"file": "errors.upload_type"},
-        )
-    file.file.seek(0, 2)
-    size = file.file.tell()
-    file.file.seek(0)
-    if size > settings.upload_max_bytes:
-        raise AppError(
-            "validation",
-            "errors.upload_too_large",
-            status_code=413,
-            fields={"file": "errors.upload_too_large"},
-        )
-    file_id = uuid.uuid4()
-    key = f"{ctx.org.id}/{file_id}"
-    if settings.storage_backend == "s3":
-        async with ctx.release_db():
-            await asyncio.to_thread(get_storage().put, key, file.file)
-    else:
-        await asyncio.to_thread(get_storage().put, key, file.file)
-    stored = await ctx.repo(StoredFile).create(
-        id=file_id,
-        backend=settings.storage_backend,
-        storage_key=key,
-        filename=(file.filename or "document")[:255],
-        content_type=content_type,
-        size_bytes=size,
+    # Type allow-list, size ceiling and the de-duplicated write live in the storage core; the
+    # *permission* is this route's own (`hr.document.manage`), which is why this is not
+    # `FileService`.
+    stored = await write_file(
+        ctx,
+        filename=file.filename or "document",
+        content_type=file.content_type or "application/octet-stream",
+        stream=file.file,
         entity_type=_ENTITY_TYPE,
         entity_id=user_id,
-        created_by_user_id=ctx.user.id,
     )
     actor = ctx.user.full_name or ctx.user.email
     row = await ctx.repo(HrDocument).create(
@@ -167,12 +140,8 @@ async def delete_document(
     target = row.user_id
     await ctx.repo(HrDocument).delete(row)
     if stored is not None:
-        stored_key, stored_backend = stored.storage_key, stored.backend
-        await ctx.repo(StoredFile).delete(stored)
-        try:
-            await asyncio.to_thread(storage_for(stored_backend).delete, stored_key)
-        except StorageUnavailableError:
-            pass  # orphaned space, never a blocked removal
+        # Never delete the object by key here: two dossier entries may be the same signed PDF.
+        await drop_file(ctx, stored)
     await ActivityService(ctx).record("hr_dossier", target, "document_removed", payload)
 
 

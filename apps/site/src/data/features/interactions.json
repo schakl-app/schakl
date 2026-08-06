@@ -1,7 +1,7 @@
 {
   "name": "Contactmomenten",
   "slug": "interactions",
-  "order": 60,
+  "order": 80,
   "icon": "💬",
   "lucide": "messages",
   "demo": "interactions",
@@ -75,8 +75,8 @@
           "en": "Yours until you share it"
         },
         "body": {
-          "nl": "Wat nog op beoordeling wacht is van jou alleen: te-beoordelen regels zijn privé voor de eigenaar tot ze zijn goedgekeurd, zodat een half gematchte inbox niet meteen het hele team bereikt. Op het klantdossier verschijnt het paneel Contactmomenten met de tijdlijn, en op je dashboard een widget met wat er nog op je wacht.",
-          "en": "What is still awaiting review is yours alone: needs-review rows are private to their owner until approved, so a half-matched inbox does not reach the whole team at once. The client record shows the Interactions panel with the timeline, and your dashboard shows a widget with what is still waiting on you."
+          "nl": "Wat nog op beoordeling wacht is van jou alleen: te-beoordelen regels zijn privé voor de eigenaar tot ze zijn goedgekeurd, zodat een half gematchte inbox niet meteen het hele team bereikt. Op het klantdossier verschijnt het paneel Contactmomenten met de tijdlijn, en op je dashboard een widget met wat er nog op je wacht. Contactmomenten is een uitbreidingsmodule: de kern van schakl. is open source (AGPL) en modules als deze draaien op een licentiesleutel die de beheerder invoert onder Instellingen → Licentie; verloopt die, dan wordt de module alleen-lezen en blijft de hele tijdlijn leesbaar. De Gmail-, Agenda- en Drive-kant is een tweede uitbreidingsmodule (Google Workspace) met een eigen licentie, dus je kunt contactmomenten met de hand bijhouden zonder Google, of allebei aanzetten.",
+          "en": "What is still awaiting review is yours alone: needs-review rows are private to their owner until approved, so a half-matched inbox does not reach the whole team at once. The client record shows the Interactions panel with the timeline, and your dashboard shows a widget with what is still waiting on you. Contactmomenten is an extension module: the core of schakl. is open source (AGPL) and modules like this one run on a licence key the administrator installs under Instellingen → Licentie; when it lapses the module goes read-only and the whole timeline stays readable. The Gmail, Calendar and Drive side is a second extension module — Google Workspace — with a licence of its own, so you can keep interactions by hand without Google, or switch both on."
         }
       }
     ]

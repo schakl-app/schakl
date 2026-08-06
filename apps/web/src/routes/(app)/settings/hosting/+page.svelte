@@ -11,6 +11,7 @@
   import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
+  import Pagination from "$lib/core/ui/Pagination.svelte";
   import ProviderQuickCreate from "$lib/core/ui/ProviderQuickCreate.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
@@ -123,6 +124,8 @@
     </ul>
   {/if}
 </section>
+
+<Pagination total={data.total} page={data.paging.page} limit={data.paging.limit} />
 
 <Modal bind:open={showModal} title={editing ? t("hosting.edit") : t("hosting.new")}>
   {#key editing?.id ?? "new"}

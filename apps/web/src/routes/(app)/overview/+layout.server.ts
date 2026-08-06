@@ -12,7 +12,7 @@ export const load: LayoutServerLoad = async (event) => {
   // (the time report, or — epic #134 — the marketing overview). Each subpage re-guards its own.
   if (
     !can(event.locals.user, "time.report.read") &&
-    !can(event.locals.user, "marketing.report.read")
+    !can(event.locals.user, "marketing.overview.read")
   ) {
     throw redirect(303, "/");
   }

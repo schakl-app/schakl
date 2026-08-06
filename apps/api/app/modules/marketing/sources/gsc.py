@@ -15,6 +15,7 @@ from urllib.parse import quote
 from app.modules.google.oauth import SCOPE_SEARCH_CONSOLE
 from app.modules.marketing.models import MarketingSource
 from app.modules.marketing.sources.base import (
+    AUTH_GOOGLE,
     AccountOption,
     DailyMetrics,
     DrilldownRow,
@@ -37,6 +38,7 @@ def _num(raw: Any) -> float:
 
 class GSCAdapter:
     source = MarketingSource.GSC.value
+    auth = AUTH_GOOGLE
     scope = SCOPE_SEARCH_CONSOLE
     drilldowns = ("top_queries", "top_pages", "movers")
 

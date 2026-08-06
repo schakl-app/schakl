@@ -1,7 +1,7 @@
 {
   "name": "Wit-label en meertalig",
   "slug": "whitelabel",
-  "order": 120,
+  "order": 240,
   "icon": "🎨",
   "lucide": "palette",
   "demo": "whiteLabel",
@@ -11,7 +11,7 @@
   },
   "description": {
     "nl": "Jouw logo, kleuren en domein door de hele app, zonder rebuild. Nederlands als standaard, Engels ingebouwd, meer talen zijn één bestand.",
-    "en": "Your logo, colors and domain throughout the app — no rebuild. Dutch by default, English built in, more languages are one file away."
+    "en": "Your logo, colours and domain throughout the app — no rebuild. Dutch by default, English built in, more languages are one file away."
   },
   "page": {
     "eyebrow": {
@@ -33,8 +33,8 @@
           "en": "Brand as a setting, not a build"
         },
         "body": {
-          "nl": "Je merknaam, logo, favicon en kleuren staan in Instellingen en worden op de eerste render toegepast via CSS-variabelen. Verander een kleur en de hele app kleurt mee: de zijbalk, de primaire knop, de telchip, de burn-balk, de focusring. Er is niets te compileren en niets te deployen; je klanten zien jouw studio, niet ons.",
-          "en": "Your brand name, logo, favicon and colours live in Settings and apply on first render through CSS variables. Change a colour and the whole app follows: the sidebar mark, the primary button, the count chip, the burn bar, the focus ring. Nothing compiles and nothing deploys; your clients see your studio, not ours."
+          "nl": "Je merknaam, logo, favicon en kleuren staan onder Instellingen → Huisstijl en worden op de eerste render toegepast via CSS-variabelen. Verander een kleur en de hele app kleurt mee: de zijbalk, de primaire knop, de telchip, de burn-balk, de focusring. Er is niets te compileren en niets te deployen; je klanten zien jouw studio, niet ons.",
+          "en": "Your brand name, logo, favicon and colours live under Instellingen → Huisstijl (Settings → Branding) and apply on first render through CSS variables. Change a colour and the whole app follows: the sidebar mark, the primary button, the count chip, the burn bar, the focus ring. Nothing compiles and nothing deploys; your clients see your studio, not ours."
         },
         "bullets": {
           "nl": [
@@ -93,6 +93,26 @@
         "body": {
           "nl": "Wit-label stopt niet bij het scherm. Uitnodigingen, meldingen en gegenereerde PDF's dragen hetzelfde logo en dezelfde kleuren als de app. Tijdstempels verschijnen in de tijdzone van jouw organisatie, zodat een rapport of een afspraak leest zoals jij hem bedoelt.",
           "en": "White-label doesn't stop at the screen. Invitations, notifications and generated PDFs carry the same logo and colours as the app. Timestamps show in your organisation's timezone, so a report or an appointment reads exactly as you meant it."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Als app op de telefoon",
+          "en": "As an app on the phone"
+        },
+        "body": {
+          "nl": "schakl. is installeerbaar op een telefoon of een bureaublad, en het app-manifest wordt bij elke aanvraag uit jouw huisstijl opgebouwd. Het pictogram op het thuisscherm, de naam eronder en de kleur van het opstartscherm zijn dus de jouwe. Upload je een vierkant app-icoon, dan worden daar de formaten 192 en 512 uit gemaakt, ook in de maskable-variant zodat Android het netjes rond of vierkant uitsnijdt in plaats van er een witte rand omheen te zetten. Geen app store, geen aparte build, geen tweede plek om je merk bij te werken.",
+          "en": "schakl. installs on a phone or a desktop, and the app manifest is built from your branding on every request. So the icon on the home screen, the name under it and the splash colour are yours. Upload a square app icon and the 192 and 512 sizes are cut from it, in the maskable variant too, so Android crops it cleanly instead of framing it in white. No app store, no separate build, no second place to update your brand."
+        },
+        "bullets": {
+          "nl": [
+            "Geen eigen icoon geüpload? Dan wordt je favicon gebruikt, en anders het standaardicoon van de installatie",
+            "De klant die het op zijn telefoon zet, ziet jouw studio staan"
+          ],
+          "en": [
+            "No icon of your own uploaded? Your favicon is used, and failing that the install's default",
+            "A client who puts it on their phone sees your studio on the home screen"
+          ]
         }
       }
     ]

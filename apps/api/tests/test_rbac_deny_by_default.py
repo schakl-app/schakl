@@ -74,6 +74,12 @@ _EXEMPT_OPERATIONS = frozenset(
         # authenticates with our own per-channel token and 404s anything that doesn't match
         # (docs/GOOGLE.md — webhooks map back to org + connection via our own channel token).
         ("post", "/api/v1/google/calendar/webhook"),
+        # Payment-provider callbacks, same shape and the same reasons (epic #269): no session,
+        # no tenant hostname — the org rides in a token we minted, the secret is compared in
+        # constant time, and the status is taken from an authenticated re-fetch rather than
+        # from the body. Everything unrecognised answers a bare 404, which is what this sweep
+        # sees. docs/PAYMENTS.md holds the five gates in order.
+        ("post", "/api/v1/invoicing/payments/webhook/{provider}/{token}"),
     }
 )
 

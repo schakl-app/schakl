@@ -4,6 +4,10 @@
   import { page } from "$app/state";
   import { Pencil, Trash2 } from "@lucide/svelte";
 
+  import BulkBar from "$lib/core/bulk/BulkBar.svelte";
+  import BulkToggle from "$lib/core/bulk/BulkToggle.svelte";
+  import BulkResult from "$lib/core/bulk/BulkResult.svelte";
+  import type { BulkFieldDef } from "$lib/core/bulk/types";
   import { editHref } from "$lib/core/edit-intent";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
@@ -14,6 +18,7 @@
   import { navLabel, pageTitle } from "$lib/core/title";
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
+  import { resetPage } from "$lib/core/table/paging";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Assignees from "$lib/core/ui/Assignees.svelte";
   import Button from "$lib/core/ui/Button.svelte";
@@ -21,6 +26,7 @@
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import HoursCell from "$lib/core/ui/HoursCell.svelte";
+  import Pagination from "$lib/core/ui/Pagination.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
   import { COMPANY_COLUMNS, HOURS_COLUMN } from "$lib/modules/companies/columns";
@@ -51,6 +57,34 @@
   const canWrite = $derived(can(page.data.user, "companies.company.write"));
   const canDelete = $derived(can(page.data.user, "companies.company.delete"));
 
+  // --- bulk (the ✎ selection mode in the toolbar) ----------------------------
+  // Only the status: everything else on a client is a fact about *that* client, and a control
+  // that wrote one across a selection would exist purely to be misfired. Mirrors
+  // `apps/api/app/modules/companies/bulk.py`; labels are the import's, so the two surfaces
+  // that name the same column can never name it differently.
+  let selecting = $state(false);
+  let bulkSelected = $state<string[]>([]);
+  const bulkFields: BulkFieldDef[] = [
+    {
+      key: "status",
+      label: t("impex.column.company.status"),
+      type: "select",
+      options: COMPANY_STATUSES.map((status) => ({
+        value: status,
+        label: t(`companies.status.${status}`),
+      })),
+    },
+  ];
+  // One configuration, spread into the ✎ in the toolbar and the strip above the table: they
+  // render in different places and must never disagree about what this list can do.
+  const bulkConfig = $derived({
+    fields: bulkFields,
+    writePermission: "companies.company.write",
+    deletePermission: "companies.company.delete",
+    deleteMessage: t("companies.bulk.delete_message", { count: bulkSelected.length }),
+    fieldErrors: form?.bulkFields ?? null,
+  });
+
   // --- columns ---------------------------------------------------------------
   // The tenant's custom fields join the built-ins as selectable columns with no code here — that
   // is the whole point of the descriptor list (#24). Everything else — resolving the saved
@@ -79,23 +113,17 @@
     reloadOn: [HOURS_COLUMN],
   });
 
-  const filtered = $derived(
-    data.statusFilter
-      ? data.companies.filter((c) => c.status === data.statusFilter)
-      : data.companies,
-  );
-
+  // Every filter here is the API's — a browser-side one narrows the page you happen to hold, not
+  // the list — and every one of them resets to page 1 (`paging.ts`).
   function setStatusFilter(status: string) {
-    const url = new URL(page.url);
+    const url = resetPage(new URL(page.url));
     if (status && status !== data.statusFilter) url.searchParams.set("status", status);
     else url.searchParams.delete("status");
     void goto(url, { keepFocus: true, noScroll: true });
   }
 
-  // Unlike the status pills, "my clients" is filtered server-side — the list is paginated, so a
-  // client-side filter would only ever narrow the page you happen to be on.
   function toggleMine() {
-    const url = new URL(page.url);
+    const url = resetPage(new URL(page.url));
     if (data.mine) url.searchParams.delete("mine");
     else url.searchParams.set("mine", "1");
     void goto(url, { keepFocus: true, noScroll: true });
@@ -109,7 +137,8 @@
 </script>
 
 {#snippet nameCell(company: Company)}
-  <a href="/companies/{company.id}" class="font-medium text-text hover:text-brand">{company.name}</a
+  <a href="/companies/{company.id}" class="block truncate font-medium text-text hover:text-brand"
+    >{company.name}</a
   >
 {/snippet}
 
@@ -117,7 +146,9 @@
   <!-- Tabular figures so a column of numbers lines up; an unnumbered client reads as a dash
        rather than as an empty cell you cannot tell from a loading one. -->
   {#if company.client_number}
-    <span class="font-mono text-sm tabular-nums text-text-muted">{company.client_number}</span>
+    <span class="block truncate font-mono text-sm tabular-nums text-text-muted"
+      >{company.client_number}</span
+    >
   {:else}
     <span class="text-text-muted">—</span>
   {/if}
@@ -125,26 +156,36 @@
 
 {#snippet websiteCell(company: Company)}
   {#if company.website}
-    <span class="truncate text-text-muted">{company.website}</span>
+    <span class="block truncate text-text-muted">{company.website}</span>
   {:else}<span class="text-text-muted">—</span>{/if}
 {/snippet}
 
 {#snippet phoneCell(company: Company)}
   {#if company.phone}
-    <a href="tel:{company.phone}" class="text-text-muted hover:text-brand"
+    <a href="tel:{company.phone}" class="block truncate text-text-muted hover:text-brand"
       >{formatPhone(company.phone)}</a
     >
   {:else}<span class="text-text-muted">—</span>{/if}
 {/snippet}
 
 {#snippet statusCell(company: Company)}
-  <span class="rounded-full px-2.5 py-0.5 text-xs font-medium {statusPillClass(company.status)}">
+  <!-- `inline-block`, so the pill keeps its shrink-to-fit shape and still clips: the longest
+       label ("Gearchiveerd") is wider than the 120px column allows. -->
+  <span
+    class="inline-block max-w-full truncate rounded-full px-2.5 py-0.5 text-xs font-medium
+      {statusPillClass(company.status)}"
+  >
     {t(`companies.status.${company.status}`)}
   </span>
 {/snippet}
 
 {#snippet assigneesCell(company: Company)}
-  <Assignees assignees={company.assignees ?? []} members={data.members} />
+  <!-- Assignees is an `inline-flex`, and an inline box shrink-to-fits to its content rather than
+       to the column: it needs a block flex parent before its own `min-w-0` can shrink the chip
+       and let the name truncate. -->
+  <div class="flex min-w-0 items-center overflow-hidden">
+    <Assignees assignees={company.assignees ?? []} members={data.members} />
+  </div>
 {/snippet}
 
 {#snippet hoursCell(company: Company)}
@@ -179,7 +220,7 @@
   <!-- A phone gets the concept's row, not a sideways-scrolling grid (docs/UX.md). -->
   <div class="flex items-center gap-3">
     <a href="/companies/{company.id}" class="min-w-0 flex-1">
-      <span class="font-medium text-text">{company.name}</span>
+      <span class="block truncate font-medium text-text">{company.name}</span>
       {#if table.visibleKeys.includes("hours") && company.hours}
         <span class="mt-0.5 block text-xs"><HoursCell hours={company.hours} /></span>
       {:else if company.website}
@@ -276,6 +317,10 @@
       onchange={table.onColumnsChange}
       onsort={table.onSort}
     />
+    <!-- Last in the toolbar, always: it is the only control here that changes what the *rows*
+         do rather than what the list shows, so it sits after Kolommen rather than among the
+         list's own controls. Pressing it opens the selection strip above the table. -->
+    <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
   </div>
 </div>
 
@@ -331,8 +376,12 @@
   {/if}
 {/if}
 
+<BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
+
+<BulkResult result={form?.bulkResult} />
+
 <DataTable
-  rows={filtered}
+  rows={data.companies}
   columns={table.columns}
   sort={table.sort}
   widths={table.widths}
@@ -342,8 +391,17 @@
   actions={canWrite || canDelete ? rowActions : undefined}
   {mobileRow}
   empty={emptyState}
+  selectable={selecting}
+  bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}
+/>
+
+<Pagination
+  total={data.total}
+  page={data.paging.page}
+  limit={data.paging.limit}
+  onsize={table.onPageSize}
 />
 
 <ConfirmDialog

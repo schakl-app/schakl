@@ -1,15 +1,15 @@
 import { redirect } from "@sveltejs/kit";
 
+import { bulkDeleteAction } from "$lib/core/bulk/actions.server";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
+import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { interactionActions } from "$lib/modules/interactions/actions.server";
 import { INTERACTION_COLUMNS, INTERACTIONS_TABLE_ID } from "$lib/modules/interactions/columns";
 
 import type { Actions, PageServerLoad } from "./$types";
-
-const PAGE_SIZE = 50;
 
 /**
  * The Interacties page (#168): every interaction the viewer may see — team-visible logged
@@ -41,7 +41,7 @@ export const load: PageServerLoad = async (event) => {
       ? ownerParam
       : undefined;
   const mine = !everyone && !owner;
-  const offset = Math.max(0, Number(params.get("offset") ?? 0) || 0);
+  const paging = resolvePaging(event.url, pref);
   // Date navigation (#238): `from`/`to` are org-local calendar days; the week switcher and
   // month filter are just fast ways of writing this one range into the URL.
   const isoDay = (value: string | null) =>
@@ -58,8 +58,8 @@ export const load: PageServerLoad = async (event) => {
   const list = await api.GET("/api/v1/interactions", {
     params: {
       query: {
-        limit: PAGE_SIZE,
-        offset,
+        limit: paging.limit,
+        offset: paging.offset,
         q,
         kind,
         status: pending ? "pending" : undefined,
@@ -75,8 +75,7 @@ export const load: PageServerLoad = async (event) => {
   return {
     items: list.data?.items ?? [],
     total: list.data?.total ?? 0,
-    offset,
-    limit: PAGE_SIZE,
+    paging,
     canReadAll,
     filters: {
       q: q ?? "",
@@ -102,6 +101,13 @@ export const actions: Actions = {
     await saveTablePref(event, INTERACTIONS_TABLE_ID, parseTablePref(form));
     return { tableSaved: true };
   },
+
+  /**
+   * Bulk delete, the one generic action a contact moment takes (there is nothing on one worth
+   * setting across a selection, so no `bulkUpdate`). The three review actions are the module's
+   * own and live in `interactionActions` below.
+   */
+  bulkDelete: (event) => bulkDeleteAction(event, "interaction"),
 
   // The page's own `createCompany` / `createProject` are gone: both now ride in
   // `interactionActions` as `createInteractionCompany` / `createInteractionProject`, so every

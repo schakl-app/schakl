@@ -1,0 +1,132 @@
+---
+title: Automatisering
+description: "Regels van het type: als dit gebeurt en aan deze voorwaarden voldoet, voer dan deze acties uit. Met een uitvoerlog van elke keer dat het gebeurde."
+sidebar:
+  order: 19
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Automatisering is het handwerk dat je niet meer zelf hoeft te doen: wordt een klant actief, dan
+staan de onboardingtaken er meteen; verandert een project van status, dan krijgt de projectleider een
+melding; komt er een taak binnen, dan gaat er een bericht naar je eigen flow. Een regel bestaat uit
+drie delen: een **trigger**, eventueel een paar **voorwaarden** en een lijstje **acties**.
+
+## Waar je het vindt
+
+*Instellingen → Automatisering* (groep "Modules & werkprocessen"). Daar staat de regellijst met per
+regel een schakelaar **Ingeschakeld**, de knop **Nieuwe regel** en een link naar het **Uitvoerlog**.
+
+## Een regel bouwen
+
+<Steps>
+1. **Nieuwe regel** en geef hem een **Naam**. Die naam komt later terug in het uitvoerlog en in de
+   meldingen die de regel verstuurt, dus schrijf op wat hij doet.
+2. Kies een **Trigger**: de gebeurtenis waarop deze regel reageert.
+3. Vul eventueel **Voorwaarden** in. Geen voorwaarden betekent: de regel vuurt altijd.
+4. Zet er **Acties** onder, in de volgorde waarin ze moeten lopen.
+5. Zet **Ingeschakeld** aan. Een uitgeschakelde regel wordt niet geëvalueerd.
+</Steps>
+
+### Triggers
+
+| Trigger | Vuurt wanneer |
+| --- | --- |
+| Een taak wordt aangemaakt | een taak wordt aangemaakt, ook door een sjabloon of een andere regel |
+| Een taak verandert van status | de status van een taak wijzigt |
+| Een taak wordt toegewezen | een taak aan iemand wordt toegewezen |
+| Een klant wordt toegevoegd | er een nieuwe klant is aangemaakt |
+| Een klant verandert van status | de status van een klant wijzigt |
+| Een project verandert van status | de status van een project wijzigt |
+
+<Aside type="caution">
+In de lijst staan ook **Uptime-monitoring van een website wordt aan- of uitgezet** en **Een domein
+verandert van status**. Je kunt er vandaag een regel op instellen, maar die gebeurtenissen worden nog
+niet uitgezonden: zo'n regel blijft dus stil. Gebruik ze pas als dat in de release-aantekeningen
+staat.
+</Aside>
+
+### Voorwaarden
+
+Een voorwaarde is een rij van drie: **Veld**, een operator en **Waarde**. Het veld typ je zelf; je
+kunt elke kolom van het record gebruiken (`status`, `priority`, `name`) en elk gegeven dat de
+gebeurtenis zelf meestuurt (bij een statuswijziging bijvoorbeeld `from` en `to`).
+
+| Operator | Betekenis |
+| --- | --- |
+| is gelijk aan / is niet gelijk aan | exacte vergelijking |
+| is één van | de waarde staat in een lijst; scheid de waarden met komma's |
+| bevat | de tekst komt erin voor |
+| is groter dan / is kleiner dan | vergelijking van getallen of datums |
+
+Bij meerdere rijen kies je **Alle voorwaarden moeten kloppen** of **Minstens één voorwaarde moet
+kloppen**. Wie iets ingewikkelders nodig heeft, zet **Geavanceerd: voorwaarden als JSON bewerken**
+aan en schrijft geneste `all`/`any`-bomen, met directe controle op geldige JSON. Er is bewust nergens
+een veld waarin je code kunt zetten: voorwaarden zijn beschrijvend, nooit uitvoerbaar.
+
+### Acties
+
+Acties lopen op volgorde. Vijf soorten zijn ingebouwd:
+
+- **Taak aanmaken**: uit een **Taaksjabloon**, of één losse taak met een **Taaktitel**. Vuurde de
+  regel op een klant, dan komt de taak vanzelf bij die klant te staan.
+- **Taakstatus wijzigen**: zet de taak op een **Nieuwe status**.
+- **Taak toewijzen**: kies bij **Toewijzen aan** de collega.
+- **Melding sturen**: kies **Ontvangers** en typ je eigen **Bericht**. Het verschijnt in hun inbox
+  als `Automatisering "{regel}": {bericht}`.
+- **Webhook aanroepen**: de **Webhook-URL** krijgt de gebeurtenis, het recordtype, het record-id en
+  de gegevens als JSON toegestuurd. Met **Wachten op bevestiging** mislukt de uitvoering tenzij het
+  endpoint met 2xx antwoordt en niet `{"ok": false}` teruggeeft.
+
+Een regel zonder acties matcht en logt netjes, maar doet niets.
+
+### Testen voordat je hem aanzet
+
+**Testrun** evalueert je regel tegen een bestaand **Record-ID**. Je ziet of de voorwaarden kloppen en
+welke acties zouden vuren. Er wordt niets uitgevoerd.
+
+## Het uitvoerlog
+
+*Instellingen → Automatisering → Uitvoerlog* toont elke keer dat een regel vuurde, met **Wanneer**,
+**Regel**, **Trigger**, **Status**, de **Stappen** en de **Fout**. Je kunt filteren op één regel.
+
+De status is **In wachtrij**, **Bezig**, **Geslaagd**, **Mislukt** of **Overgeslagen**. Verwijder je
+een regel, dan blijft zijn uitvoergeschiedenis staan; de bevestiging zegt dat er ook bij.
+
+<Aside type="caution">
+Regels kunnen elkaar aanzetten: een regel maakt een taak aan, waardoor een regel op "Een taak wordt
+aangemaakt" vuurt. Na drie schakels stopt dat vanzelf, met in het log de melding "Overgeslagen:
+veroorzaakt door een keten van 3 automatiseringen (lusbeveiliging)". Twee regels kunnen elkaar dus
+niet eindeloos blijven triggeren.
+</Aside>
+
+## Rechten
+
+| Recht | Wat het opent | Standaard |
+| --- | --- | --- |
+| `automation.rule.read` | De regellijst en het scherm zelf | Beheerder |
+| `automation.rule.write` | Regels aanmaken, bewerken, verwijderen en testrunnen | Beheerder |
+| `automation.run.read` | Het uitvoerlog | Beheerder |
+
+Alle drie staan standaard alleen bij beheerders, en dat is expres: een regel kan taken aanmaken,
+collega's een melding sturen en externe webhooks aanroepen namens de hele organisatie. Wil je het
+breder trekken, dan doe je dat per rol onder *Instellingen → Rollen*.
+
+## Goed om te weten
+
+- Acties draaien in de achtergrondworker, niet in het scherm. Een trage webhook vertraagt het opslaan
+  van een taak dus nooit.
+- Een mislukte stap stopt de keten en zet de hele uitvoering op **Mislukt**. Er wordt niet half
+  toegepast en daarna gestopt.
+- Privé- en lokale adressen zijn als webhookdoel geblokkeerd. Draai je zelf een n8n op je eigen
+  netwerk, dan moet je beheerder dat expliciet toestaan op de server.
+- Twee keer exact dezelfde gebeurtenis op hetzelfde record levert één uitvoering op, geen twee.
+- Automatisering is een **gelicentieerde module**. Zonder geldige licentie wordt hij alleen-lezen:
+  bestaande regels blijven leesbaar, maar je kunt er geen meer opslaan.
+
+## Verder lezen
+
+<CardGrid>
+  <LinkCard title="Meldingen" description="Waar de meldingen van je regels terechtkomen." href="/nl/docs/modules/notifications/" />
+  <LinkCard title="Klanten" description="De klantstatus waar veel regels op reageren." href="/nl/docs/modules/companies/" />
+</CardGrid>

@@ -23,10 +23,12 @@ from app.core.ai.router import router as ai_router
 from app.core.apikeys.router import router as apikeys_router
 from app.core.auth.router import build_auth_router
 from app.core.auth.sso_router import router as sso_settings_router
+from app.core.bulk.router import build_bulk_router
 from app.core.customfields.router import router as customfields_router
 from app.core.dashboard import router as dashboard_router
 from app.core.demo import demo_guard_middleware
 from app.core.domains import router as domains_router
+from app.core.email.kinds import validate_email_kinds
 from app.core.email.router import router as email_settings_router
 from app.core.entitlements.router import router as license_router
 from app.core.entitlements.service import AI_SKU, MCP_SKU, LicenseGateASGI, license_write_gate
@@ -88,11 +90,30 @@ async def lifespan(app_: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     _load_enabled_modules()
 
+    # The interactive docs live under ``/api/``, not at FastAPI's default root paths. The edge
+    # routes ``/api/`` and ``/mcp`` here and everything else to the SSR web app, so ``/docs``,
+    # ``/redoc`` and ``/openapi.json`` resolved to the web app's 404 page in every deployment —
+    # the docs were not disabled, they were unroutable. Serving them from inside the one prefix
+    # that reaches this service is the fix, and it needs no edge change on an existing install.
+    docs_paths = (
+        {
+            "openapi_url": "/api/openapi.json",
+            "docs_url": "/api/docs",
+            "redoc_url": "/api/redoc",
+        }
+        if settings.api_docs_enabled
+        # Only the HTTP surface goes: ``app.openapi()`` builds the document from the route
+        # table and never reads ``openapi_url``, so the MCP tool builder below and
+        # scripts/gen-client.sh keep working on an instance that serves no docs at all.
+        else {"openapi_url": None, "docs_url": None, "redoc_url": None}
+    )
+
     app = FastAPI(
         title="schakl API",
         version=settings.version,
         description="Multi-tenant, modular, white-label agency operations platform.",
         lifespan=lifespan,
+        **docs_paths,
     )
     # Needed by the optional OIDC flow (Authlib stores state in the session); harmless otherwise.
     app.add_middleware(
@@ -144,6 +165,15 @@ def create_app() -> FastAPI:
     # After module loading on purpose: the impex routes are built per opted-in entity so each
     # one declares that entity's own read/write permission (issue #77, §15 deny-by-default).
     api.include_router(build_impex_router())
+    # Same reason, same shape: one bulk update + delete route per opted-in entity, each
+    # declaring that entity's own write/delete permission — and, unlike impex, each carrying
+    # its module's license gate, because a bulk write must not be the one way an uncovered
+    # module can still be written to (app/core/bulk/router.py).
+    api.include_router(build_bulk_router())
+    # Same reason, for the mails modules let a tenant rewrite: keys are stored data, so a
+    # collision or a badly namespaced one is a build break rather than a tenant discovering
+    # their invoice template rewriting somebody else's mail (app/core/email/kinds.py).
+    validate_email_kinds()
 
     # Cloud posture (epic #199, business-licensed): the tenant's service-access settings, the
     # console's instance additions (PIN claim, plans, instance API keys, /instance/me) and the

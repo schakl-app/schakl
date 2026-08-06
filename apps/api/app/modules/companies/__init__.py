@@ -7,6 +7,7 @@ into the shared registry. ``main.py`` imports it for each enabled module.
 from __future__ import annotations
 
 from app.core.scope import SCOPE_SOURCE_COMPANY_GROUPS, register_company_scope_resolver
+from app.modules.companies.bulk import COMPANY_BULK
 from app.modules.companies.groups import resolve_membership_company_scope
 from app.modules.companies.impex import COMPANY_IMPEX
 from app.modules.companies.mcp import COMPANY_MCP_TOOLS
@@ -29,6 +30,7 @@ module = ModuleDescriptor(
     permissions=COMPANY_PERMISSIONS,
     mcp_tools=COMPANY_MCP_TOOLS,
     impex=[COMPANY_IMPEX],
+    bulk=[COMPANY_BULK],
 )
 
 registry.register(module)

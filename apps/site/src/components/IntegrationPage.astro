@@ -1,0 +1,495 @@
+---
+// One integration's own page: what it does, what you need before you start, the steps, and
+// what it deliberately does not do. That last section is not modesty — an integrations page
+// that only lists capabilities is how an agency discovers, after connecting, that the thing
+// they actually needed was never in it.
+import SiteShell from './SiteShell.astro';
+import Icon from './showcase/Icon.astro';
+import IntegrationMark from './integrations/IntegrationMark.astro';
+import { statusLabel, betaNote, categories, type Locale } from '../lib/integrations.ts';
+import { localizeHref } from '../lib/links';
+import settings from '../data/settings/site.json';
+
+interface Props {
+  locale: Locale;
+  integration: any;
+  all: any[];
+}
+const { locale, integration: i, all } = Astro.props;
+const href = (h: string) => localizeHref(locale, h);
+
+const page = i.page ?? {};
+const pick = (o: any) => (o ? o[locale] : undefined);
+const lead = pick(page.lead) ?? i.summary[locale];
+const sections: any[] = page.sections ?? [];
+const cat = categories.find((c) => c.key === i.category);
+
+// Siblings in the same category first — somebody reading about OXXA is far more likely to want
+// Cloudflare next than Anthropic.
+const siblings = all.filter((x: any) => x.slug !== i.slug && x.category === i.category);
+const others = all.filter((x: any) => x.slug !== i.slug && x.category !== i.category).slice(0, 6);
+
+const t = {
+  back: locale === 'nl' ? 'Alle koppelingen' : 'All integrations',
+  need: locale === 'nl' ? 'Wat je nodig hebt' : 'What you need',
+  steps: locale === 'nl' ? 'Zo koppel je het' : 'How to connect it',
+  limits: locale === 'nl' ? 'Wat het bewust niet doet' : 'What it deliberately does not do',
+  perms: locale === 'nl' ? 'Rechten' : 'Permissions',
+  permsIntro:
+    locale === 'nl'
+      ? 'Geef deze rechten aan de rol die deze koppeling beheert (Instellingen → Rollen). Standaard alleen voor beheerders, en nooit voor de rol client.'
+      : 'Grant these to the role that manages this integration (Settings → Roles). Admin-only by default, and never to the client role.',
+  where: locale === 'nl' ? 'Waar je het vindt' : 'Where to find it',
+  docs: locale === 'nl' ? 'Lees de handleiding' : 'Read the guide',
+  moreInCat: locale === 'nl' ? 'Meer in deze categorie' : 'More in this category',
+  moreOther: locale === 'nl' ? 'Andere koppelingen' : 'Other integrations',
+  betaHead: locale === 'nl' ? 'Nog niet op een echte account gedraaid' : 'Not yet run against a real account',
+  betaNote: betaNote[locale],
+  plannedHead: locale === 'nl' ? 'Nog niet beschikbaar' : 'Not available yet',
+};
+const title = `${settings.brandName} · ${i.name}`;
+---
+
+<SiteShell locale={locale} title={title} description={lead}>
+  <article class="ip container">
+    <a class="ip__back" href={href('/integrations/')}>
+      <Icon name="arrowLeft" size={0.95} />{t.back}
+    </a>
+
+    <header class="ip__hero" data-reveal>
+      <IntegrationMark
+        slug={i.slug}
+        monogram={i.mark?.monogram ?? i.name.charAt(0)}
+        color={i.mark?.color}
+        lucide={i.lucide}
+        size={4}
+      />
+      <div class="ip__hero-copy">
+        <p class="ip__kicker">
+          {cat && (
+            <a href={href(`/integrations/#${cat.key}`)}>{locale === 'nl' ? cat.nl : cat.en}</a>
+          )}
+          <span class={`ix__badge ix__badge--${i.status}`}>{statusLabel[i.status][locale]}</span>
+        </p>
+        <h1>{i.name}</h1>
+        <p class="subtitle">{lead}</p>
+      </div>
+    </header>
+
+    {
+      i.status === 'beta' && (
+        <aside class="ip__note ip__note--beta" data-reveal>
+          <strong>{t.betaHead}</strong>
+          <p>{t.betaNote}</p>
+        </aside>
+      )
+    }
+    {
+      i.status === 'planned' && (
+        <aside class="ip__note ip__note--soon" data-reveal>
+          <strong>{t.plannedHead}</strong>
+          <p>{i.roadmapNote?.[locale] ?? lead}</p>
+        </aside>
+      )
+    }
+
+    {
+      page.requirements?.[locale]?.length > 0 && (
+        <section class="ip__block" data-reveal>
+          <h2>{t.need}</h2>
+          <ul class="check-list">
+            {page.requirements[locale].map((r: string) => (
+              <li>{r}</li>
+            ))}
+          </ul>
+        </section>
+      )
+    }
+
+    {
+      page.steps?.[locale]?.length > 0 && (
+        <section class="ip__block" data-reveal>
+          <h2>{t.steps}</h2>
+          <ol class="ip__steps">
+            {page.steps[locale].map((s: string, n: number) => (
+              <li>
+                <span class="ip__step-n">{n + 1}</span>
+                <span class="ip__step-body" set:html={s} />
+              </li>
+            ))}
+          </ol>
+        </section>
+      )
+    }
+
+    {
+      sections.length > 0 && (
+        <div class="ip__sections">
+          {sections.map((s: any) => (
+            <section class="ip__block" data-reveal>
+              <h2>{s.heading[locale]}</h2>
+              <p>{s.body[locale]}</p>
+              {s.bullets?.[locale]?.length > 0 && (
+                <ul class="check-list">
+                  {s.bullets[locale].map((b: string) => (
+                    <li>{b}</li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          ))}
+        </div>
+      )
+    }
+
+    {
+      page.permissions?.length > 0 && (
+        <section class="ip__block" data-reveal>
+          <h2>{t.perms}</h2>
+          <p class="ip__muted">{t.permsIntro}</p>
+          <ul class="ip__perms">
+            {page.permissions.map((p: any) => (
+              <li>
+                <code>{p.key}</code>
+                <span>{p[locale]}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )
+    }
+
+    {
+      page.limits?.[locale]?.length > 0 && (
+        <section class="ip__block ip__block--limits" data-reveal>
+          <h2>{t.limits}</h2>
+          <ul class="ip__limits">
+            {page.limits[locale].map((l: string) => (
+              <li>{l}</li>
+            ))}
+          </ul>
+        </section>
+      )
+    }
+
+    {
+      (i.where?.[locale] || i.docs) && (
+        <section class="ip__where" data-reveal>
+          {i.where?.[locale] && (
+            <p class="ip__where-line">
+              <Icon name="settings" size={1} />
+              <span>
+                <strong>{t.where}</strong> {i.where[locale]}
+              </span>
+            </p>
+          )}
+          {i.docs && (
+            <a class="button primary" href={href(i.docs)}>
+              {t.docs}
+            </a>
+          )}
+        </section>
+      )
+    }
+
+    {
+      siblings.length > 0 && (
+        <section class="ip__more">
+          <h2>{t.moreInCat}</h2>
+          <div class="ip__grid">
+            {siblings.map((s: any) => (
+              <a class="ip__link" href={href(`/integrations/${s.slug}`)}>
+                <IntegrationMark
+                  slug={s.slug}
+                  monogram={s.mark?.monogram ?? s.name.charAt(0)}
+                  color={s.mark?.color}
+                  size={1.9}
+                />
+                <span>{s.name}</span>
+                <Icon name="arrowRight" size={0.9} class="ip__link-arrow" />
+              </a>
+            ))}
+          </div>
+        </section>
+      )
+    }
+
+    {
+      others.length > 0 && (
+        <section class="ip__more">
+          <h2>{t.moreOther}</h2>
+          <div class="ip__grid">
+            {others.map((s: any) => (
+              <a class="ip__link" href={href(`/integrations/${s.slug}`)}>
+                <IntegrationMark
+                  slug={s.slug}
+                  monogram={s.mark?.monogram ?? s.name.charAt(0)}
+                  color={s.mark?.color}
+                  size={1.9}
+                />
+                <span>{s.name}</span>
+                <Icon name="arrowRight" size={0.9} class="ip__link-arrow" />
+              </a>
+            ))}
+          </div>
+        </section>
+      )
+    }
+  </article>
+</SiteShell>
+
+<style>
+  .ip {
+    max-width: 52rem;
+    padding-block: 2.5rem 4.5rem;
+  }
+  .ip__back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin-bottom: 2rem;
+  }
+  .ip__back:hover {
+    color: var(--text);
+  }
+  .ip__hero {
+    display: flex;
+    align-items: flex-start;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+  }
+  .ip__hero-copy {
+    flex: 1;
+    min-width: 16rem;
+  }
+  .ip__kicker {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin: 0 0 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .ip__hero h1 {
+    font-size: clamp(2rem, 5vw, 2.9rem);
+    font-weight: 700;
+  }
+  .ip__hero .subtitle {
+    margin-inline: 0;
+    margin-top: 0.75rem;
+  }
+
+  /* The badge styles are duplicated from IntegrationsPage rather than shared: Astro scopes
+     component styles, and a global rule for a badge would leak into the docs theme. */
+  .ip__kicker :global(.ix__badge),
+  .ix__badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.12rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+  }
+  .ix__badge--live {
+    color: #15803d;
+    background: color-mix(in srgb, #22c55e 16%, transparent);
+  }
+  .ix__badge--beta {
+    color: #b45309;
+    background: color-mix(in srgb, #f59e0b 18%, transparent);
+  }
+  .ix__badge--planned {
+    color: var(--muted);
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+  }
+  @media (prefers-color-scheme: dark) {
+    .ix__badge--live {
+      color: #4ade80;
+    }
+    .ix__badge--beta {
+      color: #fbbf24;
+    }
+  }
+
+  .ip__note {
+    margin-top: 2rem;
+    padding: 1.1rem 1.25rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--border);
+  }
+  .ip__note strong {
+    display: block;
+    margin-bottom: 0.3rem;
+  }
+  .ip__note p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.93rem;
+  }
+  .ip__note--beta {
+    border-color: color-mix(in srgb, #f59e0b 40%, transparent);
+    background: color-mix(in srgb, #f59e0b 8%, transparent);
+  }
+  .ip__note--soon {
+    background: var(--bg-soft);
+  }
+
+  .ip__block {
+    margin-top: 2.75rem;
+  }
+  .ip__block h2 {
+    font-size: clamp(1.3rem, 3vw, 1.6rem);
+    margin-bottom: 0.7rem;
+  }
+  .ip__block p {
+    margin: 0;
+  }
+  .ip__block .check-list {
+    margin-top: 1rem;
+  }
+  .ip__muted {
+    color: var(--muted);
+  }
+
+  .ip__steps {
+    list-style: none;
+    counter-reset: step;
+    margin: 1.25rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 1rem;
+  }
+  .ip__steps li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.9rem;
+  }
+  .ip__step-n {
+    display: grid;
+    place-items: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    flex: none;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--accent);
+    font-size: 0.82rem;
+    font-weight: 700;
+    margin-top: 0.1rem;
+  }
+  .ip__step-body :global(code) {
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: 0.3rem;
+    padding: 0.05rem 0.32rem;
+    font-size: 0.88em;
+  }
+  .ip__step-body :global(strong) {
+    font-weight: 650;
+  }
+
+  .ip__perms {
+    list-style: none;
+    margin: 1rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 0.6rem;
+  }
+  .ip__perms li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.6rem;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid var(--border);
+    border-radius: 0.55rem;
+  }
+  .ip__perms code {
+    font-size: 0.85rem;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .ip__perms span {
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+
+  .ip__limits {
+    list-style: none;
+    margin: 1rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 0.55rem;
+  }
+  .ip__limits li {
+    position: relative;
+    padding-left: 1.7rem;
+    color: var(--muted);
+  }
+  .ip__limits li::before {
+    content: '—';
+    position: absolute;
+    left: 0.25rem;
+    color: var(--muted);
+  }
+
+  .ip__where {
+    margin-top: 3rem;
+    padding: 1.75rem;
+    border: 1px solid var(--border);
+    border-radius: 0.9rem;
+    background: var(--bg-soft);
+  }
+  .ip__where-line {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    margin: 0 0 1.1rem;
+  }
+  .ip__where-line :global(svg) {
+    color: var(--accent);
+    flex: none;
+    margin-top: 0.25rem;
+  }
+
+  .ip__more {
+    margin-top: 3.5rem;
+  }
+  .ip__more h2 {
+    font-size: 1.2rem;
+    margin-bottom: 1rem;
+  }
+  .ip__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+    gap: 0.75rem;
+  }
+  .ip__link {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.7rem 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: 0.7rem;
+    color: var(--text);
+    font-weight: 550;
+    font-size: 0.95rem;
+  }
+  .ip__link:hover {
+    border-color: var(--accent);
+  }
+  .ip__link span {
+    flex: 1;
+  }
+  .ip__link-arrow {
+    color: var(--muted);
+  }
+</style>

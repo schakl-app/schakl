@@ -1,0 +1,153 @@
+{
+  "slug": "anthropic",
+  "name": "Anthropic",
+  "order": 60,
+  "category": "ai",
+  "status": "live",
+  "lucide": "sparkles",
+  "mark": {
+    "monogram": "A",
+    "color": "#D97757"
+  },
+  "tagline": {
+    "nl": "Claude achter je AI-functies, op jouw sleutel",
+    "en": "Claude behind your AI features, on your key"
+  },
+  "summary": {
+    "nl": "Je zet je eigen Anthropic-sleutel in Instellingen → AI; die wordt versleuteld opgeslagen en nooit teruggetoond. Vier functies staan los van elkaar aan of uit: Assistent, Schrijfhulp, Urenhulp en Briefing & rapporten. Een maandelijks tokenbudget met een meter houdt zichtbaar wat het kost.",
+    "en": "You put your own Anthropic key into Instellingen → AI (Settings → AI); it is stored encrypted and never played back. Four features switch on and off independently: Assistent, Schrijfhulp, Urenhulp and Briefing & rapporten. A monthly token budget with a live meter keeps the spend visible."
+  },
+  "highlights": {
+    "nl": [
+      "Eigen sleutel, versleuteld per organisatie, nooit teruggetoond",
+      "Vier functies apart te schakelen; standaardmodel claude-opus-5",
+      "Het verbruik telt aantallen, nooit de tekst van een prompt of antwoord"
+    ],
+    "en": [
+      "Your own key, encrypted per organisation, never played back",
+      "Four independently switchable features; default model claude-opus-5",
+      "Usage records counts only, never the text of a prompt or an answer"
+    ]
+  },
+  "where": {
+    "nl": "Instellingen → AI, plus de Assistent in de bovenbalk, de schrijfhulp in elk tekstveld met opmaak en Snel toevoegen op Uren.",
+    "en": "Instellingen → AI (Settings → AI), plus the Assistent slide-over in the top bar, the writing assist inside every rich-text field and Snel toevoegen (quick add) on Uren (Time)."
+  },
+  "docs": "/docs/modules/ai/",
+  "page": {
+    "lead": {
+      "nl": "schakl. praat rechtstreeks met Anthropic op de sleutel van jouw bureau. Er zit geen tussenpartij tussen jouw klantdata en de aanbieder, en je betaalt Anthropic zelf.",
+      "en": "schakl. talks to Anthropic directly, on your agency's own key. There is no middleman between your client data and the provider, and you pay Anthropic yourself."
+    },
+    "requirements": {
+      "nl": [
+        "Een Anthropic-account met een API-sleutel. Je rekent rechtstreeks met Anthropic af; er zijn geen credits van ons.",
+        "Het recht ai.settings.manage om de aanbieder in te stellen. Standaard alleen voor beheerders.",
+        "Een geldige licentie voor de AI-functies. Een verse installatie heeft eerst 14 dagen speling (SCHAKL_LICENSE_BOOTSTRAP_GRACE_DAYS).",
+        "SCHAKL_ENCRYPTION_KEY ingesteld op de server, of anders SCHAKL_SECRET_KEY: daarmee wordt de sleutel versleuteld opgeslagen."
+      ],
+      "en": [
+        "An Anthropic account with an API key. You settle with Anthropic directly; there are no credits from us.",
+        "The ai.settings.manage permission to configure the provider. Admin-only by default.",
+        "A valid licence for the AI features. A fresh install gets a 14-day grace window first (SCHAKL_LICENSE_BOOTSTRAP_GRACE_DAYS).",
+        "SCHAKL_ENCRYPTION_KEY set on the server, or otherwise SCHAKL_SECRET_KEY: that is what encrypts the stored key."
+      ]
+    },
+    "steps": {
+      "nl": [
+        "Maak in je Anthropic-console een API-sleutel aan voor deze installatie.",
+        "Open <strong>Instellingen → AI</strong> en zet <strong>Provider</strong> op <strong>Anthropic</strong>. Dat is ook de standaard van het formulier.",
+        "Plak de sleutel in <strong>API-sleutel</strong>. Het veld is schrijf-alleen: bij een latere opslag laat je het leeg om de bewaarde sleutel te houden.",
+        "Vul <strong>Model</strong> in of druk op <strong>Modellen ophalen</strong> om de actuele lijst bij Anthropic op te halen. De ingebouwde standaard is <code>claude-opus-5</code>.",
+        "Zet onder <strong>Functies</strong> aan wat je wilt gebruiken: Assistent, Schrijfhulp, Urenhulp, Briefing & rapporten. Elke functie mag met <strong>Eigen model (optioneel)</strong> een ander model krijgen.",
+        "Beschrijf bij <strong>Huisstijl</strong> hoe jullie schrijven (maximaal 4000 tekens); die tekst gaat mee in elke schrijfopdracht. Vul eventueel een <strong>Maandelijks tokenbudget</strong> in; leeg is ongelimiteerd.",
+        "Druk op <strong>Verbinding testen</strong> en geef daarna het recht <code>ai.use</code> aan de rollen die de functies mogen gebruiken, in <strong>Instellingen → Rollen</strong>."
+      ],
+      "en": [
+        "Create an API key for this installation in your Anthropic console.",
+        "Open <strong>Instellingen → AI</strong> (Settings → AI) and set <strong>Provider</strong> to <strong>Anthropic</strong>. It is also the form's default.",
+        "Paste the key into <strong>API-sleutel</strong> (API key). The field is write-only: on a later save, leave it blank to keep the stored key.",
+        "Fill in <strong>Model</strong>, or press <strong>Modellen ophalen</strong> (fetch models) to pull Anthropic's current list. The built-in default is <code>claude-opus-5</code>.",
+        "Under <strong>Functies</strong> (features), switch on what you want: Assistent, Schrijfhulp, Urenhulp, Briefing & rapporten. Each one can take a different model under <strong>Eigen model (optioneel)</strong>.",
+        "Describe how your agency writes under <strong>Huisstijl</strong> (house style, max 4000 characters); that text is prepended to every writing prompt. Optionally set a <strong>Maandelijks tokenbudget</strong> (monthly token budget); empty means unlimited.",
+        "Press <strong>Verbinding testen</strong> (test connection), then grant <code>ai.use</code> to the roles allowed to use the features, in <strong>Instellingen → Rollen</strong> (Settings → Roles)."
+      ]
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Vier functies, los van elkaar",
+          "en": "Four features, independently switchable"
+        },
+        "body": {
+          "nl": "Alle AI in de app loopt door dezelfde kern, dus één sleutel, één set schakelaars en één budget gelden overal tegelijk. Een bureau dat wel schrijfhulp wil maar geen chatassistent, zet precies dat aan.",
+          "en": "Every AI feature in the app runs through the same core, so one key, one set of toggles and one budget apply everywhere at once. An agency that wants writing help but no chat assistant switches on exactly that."
+        },
+        "bullets": {
+          "nl": [
+            "Assistent: een uitschuifpaneel via de bovenbalk dat op een klant-, project- of taakpagina die record overneemt, met bronnen als aanklikbare chips",
+            "Schrijfhulp: Verbeteren, Inkorten, Uitbreiden, Spelling & grammatica, Zakelijke of Informele toon, Vertalen, Schrijf uit; daarna Vervangen of Invoegen",
+            "Urenhulp: één regel in Snel toevoegen op Uren wordt een concept-urenregel, plus Vul mijn dag aan voor het gat tussen je rooster en wat je boekte",
+            "Briefing & rapporten: Brief me streamt een samenvatting van de recente activiteit van een klant, AI-rapport schrijft een maandconcept dat je bewerkt en opslaat"
+          ],
+          "en": [
+            "Assistent: a slide-over from the top bar that inherits the record on a company, project or task page, and cites its sources as clickable chips",
+            "Schrijfhulp: improve, shorten, expand, spelling & grammar, business or informal tone, translate, write out; then replace or insert",
+            "Urenhulp: one line in Snel toevoegen on Uren becomes a draft time entry, plus Vul mijn dag aan for the gap between your schedule and what you logged",
+            "Briefing & rapporten: Brief me streams a digest of a client's recent activity, AI-rapport drafts a monthly report you edit and save"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Wat er wordt bijgehouden, en wat niet",
+          "en": "What gets recorded, and what does not"
+        },
+        "body": {
+          "nl": "Het paneel Verbruik in Instellingen → AI toont per functie het aantal aanroepen en tokens van deze kalendermaand, met een balk die op 80% van het budget oranje wordt en op 100% rood. Wat er wordt weggeschreven zijn aantallen en labels: de tekst van een prompt of een antwoord komt er niet in voor.",
+          "en": "The Verbruik (usage) panel in Instellingen → AI shows this calendar month's requests and tokens per feature, with a bar that turns amber at 80% of the budget and red at 100%. What gets written down is counts and labels: the text of a prompt or a completion is never part of it."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Uit betekent onzichtbaar",
+          "en": "Off means invisible"
+        },
+        "body": {
+          "nl": "Staat er geen aanbieder ingesteld, dan wordt er nergens in de app een AI-knop getekend. Het product zeurt niet om een sleutel. Onderaan Instellingen → AI zet AI-configuratie verwijderen alles weer uit; de verbruiksgeschiedenis blijft staan. Let op dat een gewijzigde functielijst per organisatie ongeveer een halve minuut gecacht is, dus bij een collega kan het even duren voordat een net aangezette functie verschijnt.",
+          "en": "With no provider configured, no AI control is drawn anywhere in the app — the product does not nag for a key. At the bottom of Instellingen → AI, AI-configuratie verwijderen switches it all back off and keeps the usage history. Note that the enabled-feature list is cached per organisation for about thirty seconds, so a colleague may not see a just-enabled feature immediately."
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "key": "ai.settings.manage",
+        "nl": "Instellingen → AI beheren: aanbieder, sleutel, model, functies, huisstijl, budget, de testknop en de verbruiksmeter. Standaard alleen beheerder.",
+        "en": "Manage Instellingen → AI: provider, key, model, features, house style, budget, the test button and the usage meter. Admin-only by default."
+      },
+      {
+        "key": "ai.use",
+        "nl": "De AI-functies gebruiken. Staat standaard bij beheerder en medewerker, en is op elke AI-route vereist.",
+        "en": "Use the AI features. Granted to admin and member by default, and declared on every AI route."
+      }
+    ],
+    "limits": {
+      "nl": [
+        "Anthropic heeft geen transcriptie-endpoint. Dictaat op Uren vraagt daarom een eigen spraakaanbieder (OpenAI of een OpenAI-compatibele server) in dezelfde instellingen; de chatsleutel hergebruiken configureert hier niets.",
+        "De assistent is bewust alleen-lezen: hij beantwoordt vragen en maakt of wijzigt nooit een record.",
+        "De Urenhulp levert een concept dat het formulier invult. Er wordt nooit vanzelf een urenregel aangemaakt.",
+        "Modelnamen zijn vrije tekst, zodat een nieuw model geen release nodig heeft. Een typefout merk je pas als foutmelding van de aanbieder, niet als validatie.",
+        "Het maandbudget is een zachte grens voor mensen: bij het bereiken verschijnt Toch doorgaan. Aanroepen zonder gebruiker erachter stoppen wel hard.",
+        "Er is nog geen instelling voor reasoning-effort, en het antwoordplafond ligt vast op 8192 tokens."
+      ],
+      "en": [
+        "Anthropic has no transcription endpoint at all. Dictation on Uren therefore needs its own separate speech credential (OpenAI or an OpenAI-compatible server) in the same settings screen — reusing the chat key configures nothing here.",
+        "The assistant is read-only by design: it answers questions and never creates or changes a record.",
+        "The time assist returns a draft that prefills the form. It never creates a time entry on its own.",
+        "Model names are free text on purpose, so a new model needs no release. A typo surfaces as a provider error, never as a validation message.",
+        "The monthly budget is a soft cap for interactive use: on reaching it the UI offers Toch doorgaan (continue anyway). Non-interactive callers hard-stop.",
+        "There is no reasoning-effort setting yet, and the response ceiling is fixed at 8192 tokens."
+      ]
+    }
+  }
+}

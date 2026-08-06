@@ -121,6 +121,48 @@ with the picker searching the API as you type).
 "50 open" for a client with 300 — a wrong number, not a rounded one. Use
 `scoped_count_select()`.
 
+## A list screen pages; a panel caps and says so
+
+The two rules above are about *panels* — a section of somebody else's page, where the honest
+answer is a bounded slice plus a sentence admitting it. **A list screen is the opposite**: it is
+the place the whole set lives, so it may not be a sample of itself. Every one of them now pages
+(`$lib/core/table/paging.ts` + `$lib/core/ui/Pagination.svelte`).
+
+The rule this replaced was "ask for 200 and hope", and it failed the way truncation always fails:
+a tenant whose client list outgrew the cap got a *prefix* that looked exactly like the whole
+answer, and the only route to row 201 was guessing a narrow enough search term. Four properties
+hold the replacement up, and a new list gets all four or it is not done:
+
+1. **The URL is the view.** `?page=` (1-based, absent on page 1) and `?size=` fully describe the
+   slice on screen. That is what makes the back button land where the user left, a page
+   shareable, and SvelteKit's scroll restoration correct — and it is why the controls are `<a
+   href>`, never click handlers. "I opened a client from page 4 and came back to page 1" is the
+   bug this shape prevents.
+2. **The load resolves it, the API applies it.** `resolvePaging(event.url, pref)` in
+   `+page.server.ts` returns `{page, limit, offset}`; hand `limit`/`offset` straight to the
+   endpoint and return `paging` alongside `total`. Never slice in the browser.
+3. **Every filter, search and sort control drops `page`** (`resetPage`). Page 7 of the old filter
+   is usually nothing at all in the new one, and an empty page reads as "the filter found
+   nothing". `SearchInput` and `createTableLayout.onSort` already do it; a bespoke filter must.
+4. **The size is a personal default, not state.** `TablePref.page_size` (50 by default; 25 / 50 /
+   100 / 200 offered) is saved per user per list beside the column layout, and the URL overrides
+   it whenever it speaks. Storing the current *page* in the preference instead would make two
+   tabs fight over one number and break the back button outright. A screen with no table
+   preference to hang it on passes no `onsize` — the choice then lasts the visit, which is fine.
+
+Two consequences worth stating. **A filter that was applied in the browser is now a bug, not a
+shortcut**: the companies status pill filtered `data.companies` client-side, which was survivable
+only while the page *was* the list — against a paged list it narrows the fifty rows you happen to
+hold and reports a total counted over all of them. It moved to the API, where the export already
+sent it. And **a group count inside a paged list counts the page**, so a sectioned list says so
+(`contacts.groups_page_only`), exactly as a capped panel does.
+
+The exceptions are real but narrow, and each is an exception for a reason offset paging cannot
+serve: a **grouped inventory** (Cloudflare zones, listed under their account) would split a group
+across pages; a **grouped report with subtotals** (`/invoices/uninvoiced`) computes its totals
+over the whole set by design; an **approval queue** (`/leave/team`'s pending list) is meant to be
+emptied, and a second page of decisions waiting on you is a workload problem, not a paging one.
+
 ## Per-request overhead is pinned
 
 `require_context` resolves the membership, its effective permissions and "does it hold the client
@@ -290,6 +332,8 @@ makes every dev server start faster.
 - [ ] No 200-row fetch to show a handful; no heavy aggregate to render a label.
 - [ ] Aggregates are computed in SQL, and every hand-built one carries `horizon_condition()`.
 - [ ] Every unbounded read is capped, and every capped list's total is *counted*.
+- [ ] A **list screen** pages: `resolvePaging` in the load, `<Pagination>` under the table,
+      `resetPage` on every filter/search/sort control, and no filtering done in the browser.
 - [ ] No external HTTP call while holding the request's DB connection — `ctx.release_db()`
       around it, or move it behind the worker/cache entirely.
 - [ ] A `count_queries` budget test lands with it.

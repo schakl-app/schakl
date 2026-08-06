@@ -1,0 +1,154 @@
+---
+title: Notifications
+description: "The bell, the inbox and where notifications go: per event in-app, by e-mail, or to your own Slack, Teams or webhook."
+sidebar:
+  order: 20
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+An agency runs on things other people do: a task lands on a colleague, a project eats through its
+budget, somebody requests leave, your timesheet is still empty on Friday. schakl. turns those into a
+bell people actually read, and lets each person decide, per event, whether it also reaches their
+inbox or their Slack, and whether it arrives now or as one bundle a day.
+
+## Where to find it
+
+- The **bell** in the top bar, on every screen, with the unread count.
+- **Meldingen** (Notifications), the full list, via "Alles bekijken" (View all) in the bell.
+- *Instellingen → Meldingen* (Settings → Notifications), under "Mijn instellingen" (My settings):
+  your own preferences and your own channels. Every member has this screen.
+- *Instellingen → Standaardmeldingen* (Settings → Notification defaults), in the group "Communicatie
+  & koppelingen" (Communication & integrations): what everyone inherits, plus the organisation's
+  shared channels. Admins only.
+
+## The bell and the list
+
+The bell shows your most recent unread items, with **Alles gelezen** (Mark all read),
+**Meldingsinstellingen** (Notification settings) and **Alles bekijken**. The *Meldingen* screen has
+the columns **Melding** (Notification), **Onderwerp** (Subject), **Door** (By) and **Wanneer**
+(When), grouped per day (Vandaag, Gisteren). You filter on **Alles** / **Ongelezen** (All / Unread)
+and by record type (Taak, Project, Klant, Verlof, Urenregistratie, Contactmoment). Each row has
+**Markeer als gelezen** and back again; the top of the list carries **Alles als gelezen markeren**.
+
+## What you get told about
+
+There are twenty-one events, grouped the way the settings screen groups them:
+
+| Group | For example |
+| --- | --- |
+| Taken (8) | Someone @mentions me in a comment |
+| Projecten (3) | A project is eating its budget |
+| Klanten (3) | A client changes status |
+| Verlof (3) | Someone requests leave |
+| Uren (2) | My timesheet is still empty |
+| Contactmomenten (2) | An e-mail is waiting for my review |
+
+An automation rule can also send a notification. That one is not in the table below: you switch a
+rule off in the rule itself.
+
+## The matrix: who gets what, and when
+
+Under *Instellingen → Meldingen*, the section **Per gebeurtenis** (Per event) holds one row per
+event, with:
+
+- **In-app**: an **Aan** (On) tick, a **Bezorging** (Delivery) and a **Vertraging (min)** (Delay in
+  minutes).
+- **E-mail**: a **Bezorging** and a **Vertraging (min)**.
+- One column per channel you connected yourself.
+- **Waarde van** (Value from): where this row's value came from, as **Standaard** (Default),
+  **Organisatie** (Organisation) or **Eigen instelling** (Your setting). **Terug naar overgenomen**
+  (Reset to inherited) drops your own override again.
+
+Delivery is always **Uit** (Off), **Direct** (Immediately), **Elk uur** (Hourly), **Dagelijks
+overzicht** (Daily digest) or **Wekelijks overzicht** (Weekly digest). "Alles instellen…" (Set all…)
+above a channel column sets that whole column at once; **Alle e-mail instellen op** does it for the
+e-mail column.
+
+<Aside type="caution">
+Everything outside the app is a subset of in-app. Untick a row's **Aan** box and that event no longer
+leaves the app, whatever its E-mail column or any channel column says. This is by far the most common
+reason for "nothing arrived". For a shared channel the same rule applies to the **organisation**
+in-app row: if nobody receives it in the app, nothing reaches the room either.
+</Aside>
+
+By default everything is on in-app. A short list arrives immediately (assignments, @mentions, overdue
+tasks, tasks scheduled for you and all three leave events); the rest lands in the daily digest at
+08:00 on your organisation's own clock (*Instellingen → Huisstijl → Tijdzone*, Settings → Branding →
+Timezone). E-mail is off for every event until somebody switches it on.
+
+The **Algemeen** (General) section holds **Bijna verlopen (dagen)** (Due soon, in days; 3 by
+default), **Stille uren vanaf** / **tot** (Quiet hours from / until), and the **E-mailschema**
+(E-mail digest schedule): the **Tijd** (Time) and **Dag** (Day) your daily and weekly e-mail digests
+leave.
+
+<Aside type="caution">
+Quiet hours are stored but not yet applied. The screen says so itself. Do not rely on nothing
+arriving overnight.
+</Aside>
+
+## Connecting a channel of your own
+
+<Steps>
+1. Go to *Instellingen → Meldingen* → **Kanalen** (Channels) → **Kanaal toevoegen** (Add channel).
+2. Give it a **Naam** (Name) and pick the kind.
+3. Paste what the provider actually gives you; schakl. converts it for you.
+4. Press **Testen** (Test). On success it reads "Testbericht afgeleverd"; otherwise you see the
+   provider's own error.
+5. Set the hour and the weekday this channel's digests leave, on the channel itself.
+6. Go back to the matrix and set a delivery in the new column for the events you want sent there.
+</Steps>
+
+| Kind | What you paste |
+| --- | --- |
+| E-mail | an e-mail address; sent through your organisation's e-mail transport |
+| Slack | the URL of an Incoming Webhook for that channel |
+| Microsoft Teams | the URL of an Incoming Webhook connector on that channel |
+| Google Chat | the space's webhook URL |
+| Discord | the webhook URL from channel settings → Integrations |
+| Telegram | a **Bot-token** from @BotFather and the **Chat-ID** |
+| Webhook | an http(s) URL; every notification is POSTed there as JSON |
+| E-mail (Apprise) / Overig (Apprise-URL) | a bare Apprise URL, for anything else Apprise supports |
+
+A freshly connected channel stays silent until you route it in the matrix. That is deliberate:
+connecting a channel must not start buzzing somebody's phone on its own.
+
+## Setting it for the whole organisation
+
+*Instellingen → Standaardmeldingen* carries the same matrix, but as the default everyone inherits
+until they change it themselves. It is also where you connect the **shared channels**: the team's
+Slack or Teams channel, a group mailbox, a webhook into your own flow. Each gets its own column, so
+"#crm gets new clients immediately and everything else once a day" is simply something you set.
+
+## Permissions
+
+| Permission | What it opens | Default |
+| --- | --- | --- |
+| `notifications.notification.read` | The bell, the list and reading your own preferences | Everyone |
+| `notifications.notification.write` | Marking read and saving your own preferences | Everyone |
+| `notifications.channels.manage_own` | Connecting your own channels | Administrator and Member |
+| `notifications.defaults.manage` | *Instellingen → Standaardmeldingen* | Administrator |
+| `notifications.channels.manage` | The organisation's shared channels | Administrator |
+
+Routing a shared channel takes both admin permissions at once: what lands in the team channel is a
+decision the organisation makes, not whoever last opened their own settings.
+
+## Good to know
+
+- Credentials and webhook URLs are stored encrypted and never shown again; you only ever see a
+  redacted preview. A webhook aimed at a private or local address is refused.
+- If a delivery fails, the whole bundle stays pending with the provider's own error recorded on it,
+  and is retried at growing intervals. Half a digest sent is not a state that exists.
+- The **E-mail** kind rides your organisation's e-mail transport (*Instellingen → E-mail*), so it
+  does nothing until that is configured.
+- Resolving the underlying item resolves the notification: a decided leave request or a reviewed
+  e-mail stops asking, for everyone who never opened it.
+- Notifications are part of the core and need no licence key. There is no SMS, no push notification
+  and no snooze; SMS exists only as a second factor at sign-in.
+
+## Read next
+
+<CardGrid>
+  <LinkCard title="Automation" description="Rules that can send notifications themselves." href="/en/docs/modules/automation/" />
+  <LinkCard title="Client portal" description="A client login has its own inbox too." href="/en/docs/modules/portal/" />
+</CardGrid>

@@ -1,0 +1,173 @@
+{
+  "slug": "email-delivery",
+  "name": "E-mailbezorging",
+  "order": 80,
+  "category": "infrastructure",
+  "status": "live",
+  "lucide": "mail",
+  "mark": {
+    "monogram": "@",
+    "color": "#5A7D9A"
+  },
+  "tagline": {
+    "nl": "Elke mail onder je eigen merk de deur uit",
+    "en": "Every mail leaves under your own brand"
+  },
+  "summary": {
+    "nl": "Je kiest de verzender die je toch al betaalt: je eigen SMTP-server, of Brevo, SendGrid of SMTP2GO via hun eigen HTTP-API. Alles wat de app verstuurt (uitnodiging, wachtwoordherstel, factuur, offerte, herinnering, maandrapport) vertrekt verpakt in jouw logo, merknaam en kleur, met jouw handtekening eronder. De naam schakl. staat nergens in.",
+    "en": "You pick the transport you already pay for: your own SMTP server, or Brevo, SendGrid or SMTP2GO over their own HTTP APIs. Everything the app sends — an invite, a password reset, an invoice, a quote, a reminder, a monthly report — leaves wrapped in your logo, brand name and colour, with your signature underneath. The name schakl. appears nowhere in it."
+  },
+  "highlights": {
+    "nl": [
+      "Eigen SMTP, of Brevo, SendGrid en SMTP2GO over hun HTTP-API",
+      "Eén HTML-handtekening, op het verzendpunt onder elke uitgaande mail geplakt",
+      "Factuur, offerte, herinnering en rapport in je eigen woorden, per taal"
+    ],
+    "en": [
+      "Your own SMTP, or Brevo, SendGrid and SMTP2GO over their HTTP APIs",
+      "One HTML signature, appended at the send seam to every outgoing mail",
+      "Invoice, quote, reminder and report in your own words, per language"
+    ]
+  },
+  "where": {
+    "nl": "Instellingen → E-mail voor de verzender, de handtekening en de sjablonen; Instellingen → Huisstijl voor het logo, de merknaam en de kleur waarin elke mail wordt verpakt.",
+    "en": "Instellingen → E-mail (Settings → Email) for the transport, the signature and the templates; Instellingen → Huisstijl (Settings → Branding) for the logo, brand name and colour every mail is wrapped in."
+  },
+  "docs": "/docs/admin/email/",
+  "page": {
+    "lead": {
+      "nl": "Uitgaande e-mail is één instelling voor de hele organisatie: één verzender, één handtekening, één huisstijl. Wat je klant leest, herschrijf je in hetzelfde scherm.",
+      "en": "Outgoing mail is one setting for the whole organisation: one transport, one signature, one brand. What your client reads, you rewrite on the same screen."
+    },
+    "requirements": {
+      "nl": [
+        "Een API-sleutel bij Brevo, SendGrid of SMTP2GO, of de gegevens van je eigen SMTP-server: host, poort, beveiliging, gebruikersnaam en wachtwoord.",
+        "Een afzenderadres op een domein dat je mag gebruiken. SPF en DKIM regel je bij je provider; de app controleert ze niet.",
+        "Het recht settings.email.manage, dat standaard alleen bij beheerders zit.",
+        "Merknaam, logo en primaire kleur ingevuld onder Instellingen → Huisstijl: dat is de verpakking waarin de mail vertrekt."
+      ],
+      "en": [
+        "An API key at Brevo, SendGrid or SMTP2GO, or the details of your own SMTP server: host, port, security, username and password.",
+        "A sender address on a domain you are allowed to use. SPF and DKIM you arrange at your provider; the app does not check them.",
+        "The settings.email.manage permission, which by default sits with admins only.",
+        "Brand name, logo and primary colour filled in under Instellingen → Huisstijl (Settings → Branding): that is the wrapper the mail leaves in."
+      ]
+    },
+    "steps": {
+      "nl": [
+        "Ga naar <strong>Instellingen → E-mail</strong>, in de groep Communicatie &amp; koppelingen. Het hele scherm zit achter <code>settings.email.manage</code>, ook het lezen ervan: er staan API-sleutels en SMTP-wachtwoorden in.",
+        "Kies bij <strong>Provider</strong> je verzender: <strong>Eigen SMTP-server</strong>, <strong>Brevo</strong>, <strong>SendGrid</strong> of <strong>SMTP2GO</strong>. De keuze <strong>Inbegrepen e-mail</strong> verschijnt alleen als de beheerder van de installatie een verzender aanbiedt aan jouw organisatie.",
+        "Vul <strong>Afzendernaam</strong> en <strong>Afzenderadres</strong> in (allebei verplicht) en eventueel een <strong>Antwoordadres</strong>. Bij eigen SMTP komen daar <strong>SMTP-server</strong>, <strong>Poort</strong> (standaard 587), <strong>Beveiliging</strong> (STARTTLS, SSL/TLS of Geen), <strong>Gebruikersnaam</strong> en <strong>Wachtwoord</strong> bij; bij Brevo, SendGrid en SMTP2GO alleen een <strong>API-sleutel</strong>. Opgeslagen geheimen komen nooit terug uit de API; het veld leeg laten behoudt wat er staat.",
+        "Plak eventueel een <strong>E-mailhandtekening</strong>; HTML mag. Die wordt op het verzendpunt onder elke uitgaande mail gezet, zonder dat je hem per scherm hoeft te herhalen. Leeg laten betekent geen handtekening.",
+        "Sla op en druk op <strong>Verstuur testmail</strong>. Lukt het, dan lees je <strong>Testmail verzonden; controleer je inbox</strong>. Lukt het niet, dan krijg je de foutmelding van je provider zelf te zien, en daar is de knop voor.",
+        "Zet je huisstijl klaar onder <strong>Instellingen → Huisstijl</strong>: <strong>Merknaam</strong>, <strong>Merknaam naast het logo tonen</strong>, <strong>Logo</strong> en <strong>Primaire kleur</strong>. Dat is wat er om elke mail heen komt; de interne organisatienaam komt er nooit in.",
+        "Herschrijf de klantmails onderaan hetzelfde scherm, bij <strong>E-mailsjablonen</strong>. Per soort en per taal één kaart met <strong>Onderwerp</strong> en <strong>HTML-inhoud</strong>, de beschikbare variabelen erbij, een badge <strong>Aangepast</strong> of <strong>Standaard in gebruik</strong>, en een <strong>Verstuur test</strong> die een realistisch voorbeeld naar jezelf stuurt. Beide velden leegmaken zet die soort terug op het ingebouwde sjabloon."
+      ],
+      "en": [
+        "Open <strong>Instellingen → E-mail</strong> (Settings → Email), in the group Communicatie &amp; koppelingen. The whole screen sits behind <code>settings.email.manage</code>, including reading it: it holds API keys and SMTP passwords.",
+        "Pick your transport under <strong>Provider</strong>: <strong>Eigen SMTP-server</strong> (your own SMTP server), <strong>Brevo</strong>, <strong>SendGrid</strong> or <strong>SMTP2GO</strong>. The option <strong>Inbegrepen e-mail</strong> (included email) only appears when the operator of the installation offers a transport to your organisation.",
+        "Fill in <strong>Afzendernaam</strong> (sender name) and <strong>Afzenderadres</strong> (sender address) — both required — plus an optional <strong>Antwoordadres</strong> (reply-to). Own SMTP adds <strong>SMTP-server</strong>, <strong>Poort</strong> (587 by default), <strong>Beveiliging</strong> (STARTTLS, SSL/TLS or none), <strong>Gebruikersnaam</strong> and <strong>Wachtwoord</strong>; Brevo, SendGrid and SMTP2GO need only an <strong>API-sleutel</strong> (API key). Stored secrets never come back out of the API; leaving the field empty keeps what is there.",
+        "Optionally paste an <strong>E-mailhandtekening</strong> (email signature); HTML is allowed. It is appended at the single send seam to every outgoing mail, so you never repeat it per screen. Leave it blank for no signature.",
+        "Save, then press <strong>Verstuur testmail</strong> (send test mail). On success you read <strong>Testmail verzonden; controleer je inbox</strong>. On failure you get your provider's own error text, which is the whole point of the button.",
+        "Set the branding under <strong>Instellingen → Huisstijl</strong> (Settings → Branding): <strong>Merknaam</strong>, <strong>Merknaam naast het logo tonen</strong>, <strong>Logo</strong> and <strong>Primaire kleur</strong>. That is what wraps around every mail; the internal organisation name never appears in one.",
+        "Rewrite the client-facing mails at the bottom of the same screen, under <strong>E-mailsjablonen</strong> (email templates). One card per kind per language, with <strong>Onderwerp</strong> (subject) and <strong>HTML-inhoud</strong> (HTML body), the available variables listed beside them, an <strong>Aangepast</strong> / <strong>Standaard in gebruik</strong> badge, and a <strong>Verstuur test</strong> button that mails a realistic preview to you. Emptying both fields resets that kind to the built-in template."
+      ]
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Over HTTP, niet over poort 587",
+          "en": "Over HTTP, not over port 587"
+        },
+        "body": {
+          "nl": "Brevo, SendGrid en SMTP2GO worden aangesproken op hun officiële HTTP-API, niet op hun SMTP-relay. Dat scheelt twee keer: een JSON-foutmelding kun je lezen en een SMTP-dialoog niet, en uitgaand verkeer over 443 komt langs firewalls die 587 dichthouden. Wil je liever je eigen mailserver, dan kies je Eigen SMTP-server en vul je host, poort en beveiliging zelf in.",
+          "en": "Brevo, SendGrid and SMTP2GO are called on their official HTTP API, not on their SMTP relay. That pays off twice: a JSON error body is something you can read and an SMTP dialogue is not, and outbound traffic over 443 gets through firewalls that keep 587 shut. If you would rather use your own mail server, pick Eigen SMTP-server and fill in host, port and security yourself."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Welke verzender wint",
+          "en": "Which transport wins"
+        },
+        "body": {
+          "nl": "Per mail wordt in vaste volgorde gekozen. Let op het verschil tussen opgeslagen en actief: een organisatie op inbegrepen e-mail heeft niets opgeslagen en verstuurt prima. Het scherm zegt dan Actief: Inbegrepen e-mail, met daaronder wie de afzender is.",
+          "en": "Per mail the choice runs in a fixed order. Mind the difference between stored and active: an organisation on included email has nothing stored and sends perfectly well. The screen then reads Actief: Inbegrepen e-mail, with the resolved sender underneath."
+        },
+        "bullets": {
+          "nl": [
+            "Heb je een eigen verzender ingesteld, dan gaat alles daarlangs.",
+            "Zo niet, dan de verzender van de installatie, mits de beheerder die aanbiedt en jouw organisatie er recht op heeft.",
+            "Geen van beide: de mail vertrekt niet en meldt dat e-mail nog niet is ingesteld."
+          ],
+          "en": [
+            "If you have your own transport configured, everything goes through it.",
+            "If not, the installation's transport, provided the operator offers one and your organisation is entitled to it.",
+            "Neither: the mail does not leave and says email has not been configured yet."
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Wat je klant leest, schrijf je zelf",
+          "en": "What your client reads, you write yourself"
+        },
+        "body": {
+          "nl": "De sjabloon-editor toont alleen de soorten van de modules die jouw organisatie aan heeft staan, en elke soort staat er per taal in. Elke gedeclareerde variabele wordt altijd ingevuld, desnoods met niets: een losse {reference} belandt nooit in de inbox van een klant.",
+          "en": "The template editor only offers the kinds belonging to the modules your organisation has enabled, and each kind appears once per language. Every declared variable always resolves, to an empty string if it must, so a stray {reference} never lands in a client's inbox."
+        },
+        "bullets": {
+          "nl": [
+            "Kern: Uitnodiging en Wachtwoord herstellen, met {brand}, {name} en {link}.",
+            "Facturatie: factuur, offerte en herinnering, met onder meer nummer, bedrag, vervaldatum en openstaand saldo.",
+            "Rapportage: het maandrapport, met klant, periode, afzender en de link."
+          ],
+          "en": [
+            "Core: Uitnodiging (invite) and Wachtwoord herstellen (password reset), with {brand}, {name} and {link}.",
+            "Invoicing: invoice, quote and reminder, carrying number, total, due date and outstanding amount among others.",
+            "Reporting: the monthly report, with client, period, sender and the link."
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Ook gewoon leesbaar in Outlook",
+          "en": "Still readable in Outlook"
+        },
+        "body": {
+          "nl": "Elke mail gaat multipart de deur uit en het tekstdeel wordt als eerste geschreven: het staat op zichzelf en bevat elke link die de mail belooft. De HTML is expres ouderwets (tabellen, inline stijlen, 600 pixels breed, geen webfonts) omdat Gmail grote mails afkapt en Outlook met Word rendert. Bijlagen horen erbij: een verstuurde factuur neemt zijn eigen PDF mee. De taal is die van de ontvanger, anders die van de organisatie, anders Nederlands; datums staan Europees.",
+          "en": "Every mail goes out multipart and the plain-text part is composed first: it stands on its own and carries every link the mail promises. The HTML is deliberately old-fashioned — tables, inline styles, 600 pixels wide, no webfonts — because Gmail clips large mails and Outlook renders with Word. Attachments are part of it: a sent invoice carries its own PDF. The language is the recipient's, else the organisation's, else Dutch; dates print European."
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "key": "settings.email.manage",
+        "nl": "Het hele scherm Instellingen → E-mail: de verzender lezen, opslaan en verwijderen, een testmail sturen en de sjablonen bewerken. Standaard alleen beheerders, ook voor het lezen, want er staan sleutels en wachtwoorden in.",
+        "en": "The whole Instellingen → E-mail screen: reading, saving and deleting the transport, sending a test mail and editing the templates. Admins only by default, reading included, because it holds keys and passwords."
+      },
+      {
+        "key": "settings.branding.write",
+        "nl": "Instellingen → Huisstijl: het logo, de merknaam en de primaire kleur waarin elke uitgaande mail wordt verpakt. Standaard alleen beheerders.",
+        "en": "Instellingen → Huisstijl: the logo, brand name and primary colour every outgoing mail is wrapped in. Admins only by default."
+      }
+    ],
+    "limits": {
+      "nl": [
+        "Geen bezorgcijfers in de app: geen bounce-overzicht, geen SPF- of DKIM-controle en geen blokkeerlijst. Wat er met een mail gebeurde, lees je in het dashboard van je provider.",
+        "Alleen de soorten die in de sjabloon-editor staan zijn te herschrijven; notificatiemails vallen daarbuiten.",
+        "Op inbegrepen e-mail is de afzender het adres van de installatie, want SPF en DKIM horen bij het domein van de beheerder. Wil je je eigen domein in de afzender, stel dan je eigen verzender in.",
+        "Brevo, SendGrid en SMTP2GO lopen over hun HTTP-API; hun SMTP-relays worden niet aangesproken.",
+        "De HTML blijft expres ouderwets: geen flex of grid, geen webfonts, geen aparte donkere variant.",
+        "In sjabloonteksten wordt alleen {variabele} vervangen; er is geen enkelvoud- of meervoudlogica, dus schrijf een zin die met elk getal klopt."
+      ],
+      "en": [
+        "No delivery statistics in the app: no bounce overview, no SPF or DKIM checker and no suppression list. What happened to a mail, you read in your provider's own dashboard.",
+        "Only the kinds shown in the template editor can be reworded; notification mails are not among them.",
+        "On included email the sender is the installation's address, because SPF and DKIM belong to the operator's domain. To put your own domain in the From header, configure your own transport.",
+        "Brevo, SendGrid and SMTP2GO are used over their HTTP APIs; their SMTP relays are not called.",
+        "The HTML stays deliberately old-fashioned: no flex or grid, no webfonts, no separate dark-mode variant.",
+        "Template text only substitutes {variable}; there is no singular or plural logic, so word a sentence that reads correctly with any number in it."
+      ]
+    }
+  }
+}

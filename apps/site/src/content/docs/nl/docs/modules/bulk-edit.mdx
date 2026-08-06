@@ -1,0 +1,136 @@
+---
+title: Meerdere rijen tegelijk
+description: "Rijen aanvinken in een lijst en ze in één keer bewerken of verwijderen, met dezelfde controles als wanneer je elk record apart had geopend."
+sidebar:
+  order: 27
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Twaalf klanten archiveren, veertig domeinen die naar een andere registrar zijn verhuisd, een
+sprint die naar een collega gaat: dat is telkens één beslissing over een lange lijst. Je vinkt de
+rijen aan en past ze in één keer aan. Elke rij loopt daarbij door precies dezelfde controles en
+komt net zo goed in het activiteitenspoor als wanneer je het record zelf had geopend; er is geen
+tweede, kortere route naar de gegevens.
+
+## Waar je het vindt
+
+Op de werkbalk van een lijst, naast **Kolommen** en de knoppen Export en Import, staat een
+potloodje ✎ met de tooltip **Rijen selecteren**. Die knop is er alleen als je op die lijst ook
+echt iets mag: geen bewerk- en geen verwijderrecht betekent geen ✎.
+
+Lijsten die het vandaag hebben: **Klanten**, **Contactpersonen**, **Projecten**, **Taken**,
+**Websites**, **Domeinen** en **Abonnementen**. **Interacties** heeft dezelfde selectiemodus,
+maar met zijn eigen drie beoordelingsacties in plaats van een algemene bewerking.
+
+## Zo werkt het
+
+<Steps>
+1. Druk op ✎. De lijst krijgt vinkvakjes en naast de knop verschijnen **Bewerken** en
+   **Verwijderen**.
+2. Vink rijen aan. Het vakje in de kop selecteert alle rijen op deze pagina; met shift-klik
+   breid je de selectie uit vanaf de laatst aangevinkte rij. Naast de knoppen staat hoeveel er
+   geselecteerd zijn.
+3. Druk op **Bewerken**. Het venster **Selectie bewerken** opent leeg.
+4. Vul alleen in wat je wilt wijzigen en druk op **Toepassen op 12** (de knop noemt je eigen
+   aantal). Zolang je niets hebt ingevuld, blijft die knop uit.
+5. Boven de lijst verschijnt de uitkomst, bijvoorbeeld "37 bijgewerkt · 3 overgeslagen", met per
+   overgeslagen rij de reden erbij.
+6. Druk opnieuw op ✎ om de modus te verlaten. De selectie vervalt dan.
+</Steps>
+
+## Wat je leeg laat, blijft staan
+
+<Aside type="caution">
+Het venster opent leeg, ook als de aangevinkte rijen onderling verschillen. Een leeg veld
+betekent daarom altijd "laat elke rij zijn eigen waarde houden", nooit "maak dit overal leeg".
+Het venster zegt dat er zelf bij: "Geldt voor 12 records; wat je leeg laat, houdt per record de
+eigen waarde."
+</Aside>
+
+Leegmaken is dus een aparte, bewuste handeling: naast het veld staat dan een vinkje
+**Leegmaken**. Dat vinkje bestaat alleen bij velden waar leeg een echte toestand is, en het kan
+nooit tegelijk met een gekozen waarde aanstaan: kies je iets, dan gaat het vinkje uit, en
+andersom.
+
+## Wat je per lijst kunt instellen
+
+| Lijst | Velden |
+| --- | --- |
+| Klanten | Status |
+| Contactpersonen | klant |
+| Projecten | Status, klant, Standaard factureerbaar |
+| Taken | Status, Toegewezen aan, Prioriteit, Project, klant, Deadline (leegmaken kan) |
+| Websites | Hosting (leegmaken kan), Uptime-monitoring |
+| Domeinen | Status, klant, Registrar, DNS-provider, E-mailprovider, Factureren |
+| Abonnementen | Status, Type, klant |
+
+Bij **Domeinen** heet het leegmaken van *Factureren* niet voor niets **Register volgen**: leeg is
+daar geen lege waarde maar een derde antwoord, namelijk "laat het register beslissen".
+
+De lijst is expres kort. Wat één record definieert, staat er niet in: de naam van een klant of
+een domein, het adres van een contactpersoon, het budget van een project, de prijs van een
+abonnement. Een gedeelde waarde zou daar op bijna elke rij verkeerd zijn. Voor een prijswijziging
+over meerdere abonnementen bestaat een eigen functie, **Prijsverhoging**.
+
+## Verwijderen
+
+**Verwijderen** vraagt altijd om bevestiging, en die bevestiging zegt wat er meegaat. Zo staat er
+bij klanten: "12 klanten verwijderen? Alles wat eraan hangt gaat mee: contactpersonen, domeinen,
+abonnementen en facturen." Bij taken gaan reacties, checklists en urenregistraties mee;
+bij projecten blijven taken en uren juist bestaan, zonder project.
+
+## Als er iets niet kan
+
+Er zijn twee soorten problemen, en ze pakken bewust anders uit.
+
+- **Een waarde die niet klopt is van jou.** Een onbekende status of een klant die nergens op
+  slaat wordt vóóraf geweigerd, met de melding onder het betreffende veld. Er verandert dan niets,
+  op geen enkele rij. Dat is terecht: die waarde zou op alle rijen even fout zijn.
+- **Een rij die weigert is van zichzelf.** Die rij komt terug in de melding, de rest gaat gewoon
+  door. Voorbeelden: een taak waarvan de deadline naar later gaat en die daar een reden bij
+  vraagt, een status die een afsluitend contactmoment vereist, een project waarvan de uren van een
+  gekoppeld abonnement komen, of een taak die niet van jou is terwijl je alleen je eigen taken
+  mag bewerken.
+
+## Rechten
+
+Er is geen apart "bulk"-recht, en dat is een bewuste keuze: veertig records bewerken die je stuk
+voor stuk ook mocht bewerken, is dezelfde handeling, alleen vaker.
+
+| Actie | Recht | Standaard |
+| --- | --- | --- |
+| **Bewerken** | het gewone bewerkrecht van die lijst, bijvoorbeeld `domains.domain.write` | Beheerder |
+| **Verwijderen** | het gewone verwijderrecht, bijvoorbeeld `companies.company.delete` | Beheerder |
+| De drie acties op Interacties | `interactions.interaction.review` | Beheerder en Medewerker |
+
+Taken zijn de uitzondering: een medewerker heeft `tasks.task.write` op zijn **eigen** taken, ziet
+de ✎ dus wel, en krijgt de taken van collega's netjes als overgeslagen terug in plaats van dat de
+hele batch weigert.
+
+Draait een module op een licentie die is verlopen, dan weigert een bulkbewerking net zo goed als
+een gewone bewerking. Lezen blijft altijd werken.
+
+## Goed om te weten
+
+- **De selectie hoort bij de pagina.** Ga je naar de volgende pagina, of verander je een filter,
+  de zoekterm of de sortering, dan vervalt de selectie. Wil je meer rijen in één keer pakken, zet
+  dan eerst **Per pagina** onderaan de lijst hoger; je kunt kiezen uit 25, 50, 100 en 200.
+- Op **Interacties** heten de drie acties **Goedkeuren**, **Toewijzen…** en **Afwijzen**. Staat
+  er een getal achter een actie, dan kan die actie minder rijen aan dan je hebt aangevinkt, en
+  dat getal zegt hoeveel.
+- Elke bulkwijziging komt gewoon in het activiteitenspoor van het record terecht, met jouw naam
+  en het tijdstip erbij, precies zoals een wijziging via het formulier.
+- Een rij die buiten jouw klantgroepen valt, staat niet in de lijst en kan dus ook niet worden
+  aangevinkt.
+- Een bulkbewerking raakt alleen wat je hebt aangevinkt. Wil je rijen aanmaken of bijwerken vanuit
+  een bestand, dan is dat [import & export](/nl/docs/modules/import-export/), en dat werkt op een
+  andere manier: dat zoekt records op via een sleutel in je bestand.
+
+## Verder lezen
+
+<CardGrid>
+  <LinkCard title="Import & export" description="Dezelfde kolommen, maar dan met een bestand als bron." href="/nl/docs/modules/import-export/" />
+  <LinkCard title="Taken" description="De lijst waar bulkbewerking het meeste werk scheelt." href="/nl/docs/modules/tasks/" />
+  <LinkCard title="Rollen en rechten" description="Wie mag bewerken en verwijderen, per rol." href="/nl/docs/modules/roles/" />
+</CardGrid>

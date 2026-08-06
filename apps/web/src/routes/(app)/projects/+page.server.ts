@@ -1,11 +1,13 @@
 import { fail, redirect } from "@sveltejs/kit";
 
+import { bulkDeleteAction, bulkUpdateAction } from "$lib/core/bulk/actions.server";
 import { editHref } from "$lib/core/edit-intent";
 import { apiErrorKey } from "$lib/core/errors";
 import { t } from "$lib/core/i18n";
 import { impexAction } from "$lib/core/impex/actions.server";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
+import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { HOURS_COLUMN, PROJECT_COLUMNS, PROJECTS_TABLE_ID } from "$lib/modules/projects/columns";
 
@@ -31,14 +33,19 @@ export const load: PageServerLoad = async (event) => {
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
   const hours = resolved.columns.some((column) => column.key === HOURS_COLUMN);
 
+  const paging = resolvePaging(event.url, pref);
+
   // Only the URL-dependent read is here; the client picker, the definitions and the member
   // names come from the section layout, which does not rerun on filter/sort navigation (#290).
   const projects = await api.GET("/api/v1/projects", {
-    params: { query: { limit: 200, offset: 0, q, mine, sort, hours, company_id } },
+    params: {
+      query: { limit: paging.limit, offset: paging.offset, q, mine, sort, hours, company_id },
+    },
   });
   return {
     projects: projects.data?.items ?? [],
     total: projects.data?.total ?? 0,
+    paging,
     table: { pref, sort: sort ?? null, widths: resolved.widths },
     mine,
     companyFilter: company_id ?? "",
@@ -55,6 +62,10 @@ export const actions: Actions = {
     await saveTablePref(event, PROJECTS_TABLE_ID, parseTablePref(form));
     return { tableSaved: true };
   },
+
+  /** The ✎ menu's two actions, shared by every list that has one. */
+  bulkUpdate: (event) => bulkUpdateAction(event, "project"),
+  bulkDelete: (event) => bulkDeleteAction(event, "project"),
 
   /**
    * Create-then-edit (docs/UX.md Principle 3, same as tasks #230): a new project is created

@@ -159,9 +159,15 @@ async def upload_file(
 async def list_files(
     entity_type: str,
     entity_id: uuid.UUID,
+    include_inline: bool = False,
     ctx: RequestContext = Depends(require_context),
 ) -> list[StoredFileRead]:
-    """The files attached to one entity (a task's documents, a project's documents)."""
+    """The files attached to one entity (a task's documents, a project's documents).
+
+    ``include_inline`` also returns the files that are part of the entity's *body* — an
+    e-mail's ``cid:`` images. Off by default: they render inside the text, and listing them
+    beside the attachments put the sender's signature logo on every message.
+    """
     if entity_type == "company_logo" and ctx.company_scope is not None:
         # Same horizon rule as serving one (#191/#196).
         if entity_id not in ctx.company_scope:
@@ -176,7 +182,9 @@ async def list_files(
     # special case above predates the registry and stays as the cheaper direct answer.
     if not await entity_visible(ctx, entity_type, entity_id):
         return []
-    rows = await FileService(ctx).list_for(entity_type, entity_id)
+    rows = await FileService(ctx).list_for(
+        entity_type, entity_id, include_inline=include_inline
+    )
     return [StoredFileRead.model_validate(row) for row in rows]
 
 

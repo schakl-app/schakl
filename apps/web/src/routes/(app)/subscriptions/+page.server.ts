@@ -1,5 +1,6 @@
 import { fail, redirect } from "@sveltejs/kit";
 
+import { bulkDeleteAction, bulkUpdateAction } from "$lib/core/bulk/actions.server";
 import { apiErrorKey } from "$lib/core/errors";
 import { impexAction } from "$lib/core/impex/actions.server";
 import { can } from "$lib/core/permissions";
@@ -8,14 +9,13 @@ import { readAutoInvoiceMode } from "$lib/modules/invoicing/types";
 import { apiFor } from "$lib/core/session";
 import { createErrorKey, slugify } from "$lib/core/slug";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
+import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { SUBSCRIPTION_COLUMNS, SUBSCRIPTIONS_TABLE_ID } from "$lib/modules/subscriptions/columns";
 import { manageActions, parseLabelI18n } from "$lib/modules/subscriptions/manage.server";
 import { priceIncreaseActions } from "$lib/modules/subscriptions/priceincrease.server";
 
 import type { Actions, PageServerLoad } from "./$types";
-
-const BULK_STATUSES = ["draft", "active", "paused", "cancelled"] as const;
 
 function parseCustom(raw: FormDataEntryValue | null): Record<string, unknown> {
   try {
@@ -76,6 +76,7 @@ export const load: PageServerLoad = async (event) => {
   const typeFilter = event.url.searchParams.get("type") ?? undefined;
   const companyFilter = event.url.searchParams.get("company") || undefined;
   const statusFilter = event.url.searchParams.get("status") || undefined;
+  const paging = resolvePaging(event.url, pref);
 
   // The client/project pickers and the two custom-field sets come from the section layout, which
   // does not rerun on filter or sort navigation (#290).
@@ -83,8 +84,8 @@ export const load: PageServerLoad = async (event) => {
     api.GET("/api/v1/subscriptions", {
       params: {
         query: {
-          limit: 200,
-          offset: 0,
+          limit: paging.limit,
+          offset: paging.offset,
           sort,
           subscription_type_id: typeFilter,
           company_id: companyFilter,
@@ -107,6 +108,7 @@ export const load: PageServerLoad = async (event) => {
   return {
     subscriptions: subscriptions.data?.items ?? [],
     total: subscriptions.data?.total ?? 0,
+    paging,
     summary: summary.data ?? null,
     types: types.data ?? [],
     templates: templates.data ?? [],
@@ -132,46 +134,16 @@ export const actions: Actions = {
     return { tableSaved: true };
   },
 
-  /** Bulk status change (#153): a per-id fan-out — the single PATCH is the validation path,
-   *  so a bulk action can never do what a row edit could not. */
-  bulkStatus: async (event) => {
-    const form = await event.request.formData();
-    const status = String(form.get("status") ?? "");
-    const ids = form
-      .getAll("ids")
-      .flatMap((value) => String(value).split(","))
-      .map((value) => value.trim())
-      .filter(Boolean);
-    if (!ids.length || !BULK_STATUSES.includes(status as (typeof BULK_STATUSES)[number])) {
-      return fail(400, { error: "errors.required" });
-    }
-    const api = apiFor(event);
-    for (const subscription_id of ids) {
-      const { error } = await api.PATCH("/api/v1/subscriptions/{subscription_id}", {
-        params: { path: { subscription_id } },
-        body: { status: status as "active" },
-      });
-      if (error) return fail(400, { error: apiErrorKey(error).key });
-    }
-    return { bulkUpdated: ids.length };
-  },
-
-  bulkDelete: async (event) => {
-    const form = await event.request.formData();
-    const ids = form
-      .getAll("ids")
-      .flatMap((value) => String(value).split(","))
-      .map((value) => value.trim())
-      .filter(Boolean);
-    if (!ids.length) return fail(400, { error: "errors.required" });
-    const api = apiFor(event);
-    for (const subscription_id of ids) {
-      await api.DELETE("/api/v1/subscriptions/{subscription_id}", {
-        params: { path: { subscription_id } },
-      });
-    }
-    return { bulkDeleted: ids.length };
-  },
+  /**
+   * The ✎ menu's two actions, shared by every list that has one.
+   *
+   * These replace the hand-written pair this page used to own (#153): a per-id loop through the
+   * single-record endpoint, which stopped at the first refusal and reported only a count — so a
+   * batch was however far it got before it gave up, with no way to say which rows were skipped
+   * or why. The API's bulk endpoint does the whole selection and reports the leftovers.
+   */
+  bulkUpdate: (event) => bulkUpdateAction(event, "subscription"),
+  bulkDelete: (event) => bulkDeleteAction(event, "subscription"),
 
   create: async (event) => {
     const form = await event.request.formData();

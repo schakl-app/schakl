@@ -1,0 +1,141 @@
+---
+title: REST API
+description: "Everything the app does travels one REST API. With your own API key you call it yourself, carrying exactly the permissions you give that key."
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+The schakl. web app never talks to the database directly — every screen fetches its data through
+the same REST API. That API is open to you too. Mint a key, tick what the key may do, and your
+script, your n8n flow or your integration with another package can get to work, under the same
+permissions and the same tenant isolation as an employee on screen.
+
+## Where to find it
+
+- **The interactive reference**: `https://<your-host>/api/docs` (Swagger UI), plus
+  `https://<your-host>/api/redoc` and the document itself at
+  `https://<your-host>/api/openapi.json`.
+- **Personal keys**: *Instellingen → Mijn account* (Settings → My account), the **API-sleutels**
+  (API keys) block.
+- **Keys for automation**: *Instellingen → Service-accounts* (Settings → Service accounts), in the
+  "Team & toegang" (Team & access) group.
+
+The reference sits under `/api/` on purpose: the reverse proxy routes only `/api/` and `/mcp` to
+the API container and everything else to the web app. At `/docs` you land on the app's 404 page.
+
+## Two kinds of key
+
+| | Personal key | Service account |
+| --- | --- | --- |
+| Where | *Instellingen → Mijn account* | *Instellingen → Service-accounts* |
+| Acts as | you | an account of its own, with no person behind it |
+| Permissions | your live permissions intersected with the key's scopes | exactly the scopes ticked |
+| When your role changes | the key shrinks with you | unchanged |
+| When its creator leaves | the key stops working | keeps working |
+
+For something you need yourself for an afternoon, a personal key is fine. Anything that keeps
+running (n8n, a nightly script, an integration) belongs in a service account: that outlives the
+employee who once switched it on.
+
+## Minting a key
+
+<Steps>
+1. Go to *Instellingen → Mijn account* and find the **API-sleutels** block. For automation, go to
+   *Instellingen → Service-accounts* instead, create an account with **Service-account toevoegen**
+   (Add service account), then click **Nieuwe sleutel** (New key).
+2. Fill in a **Naam** (Name) — for example "n8n-automatisering". That name is the only thing you
+   will recognise the key by later.
+3. Pick a date under **Verloopt op** (Expires on), or leave it empty for a key that never expires.
+   A date may be at most a year ahead, and never in the past.
+4. Tick what the key may do under **Scopes**. At least one is required. The list only offers
+   permissions you hold yourself: a key can never grant more than its creator has.
+5. Press **Sleutel aanmaken** (Create key) and copy the key immediately.
+</Steps>
+
+<Aside type="caution">
+The key is shown **once**, right after it is created. After that schakl. only ever shows
+`schakl_<prefix>_********`; the secret cannot be retrieved. Lost is lost — revoke it and mint a
+new one.
+</Aside>
+
+## Calling it
+
+Send the key as `Authorization: Bearer …` or as `X-API-Key: …`. Every endpoint lives under
+`/api/v1/`.
+
+```bash
+curl -H "Authorization: Bearer schakl_…" \
+  "https://<your-host>/api/v1/companies?limit=50"
+```
+
+Use **your organisation's own address**: your linked domain, or `<slug>.<base domain>`. Keys belong
+to one organisation — a key presented on another organisation's hostname simply does not exist
+there.
+
+### Lists
+
+List endpoints take `limit` and `offset` and answer with
+`{ "items": [...], "total": 0, "limit": 50, "offset": 0 }`. If you do not need the total, pass
+`count=false` and save a count per call.
+
+### Errors
+
+Every error has the same shape:
+
+```json
+{ "error": { "code": "not_found", "message": "errors.not_found" } }
+```
+
+`message` is a translation key, not an English or Dutch sentence — the app translates it itself. A
+validation failure adds `fields`, with one such key per field.
+
+| Status | What it means |
+| --- | --- |
+| 401 | Unknown, revoked or expired key, or the wrong hostname. Never a 403, so the answer never confirms that a key exists |
+| 403 | The key lacks the scope this endpoint declares |
+| 404 | Does not exist, or falls outside what this key may see |
+| 422 | Validation failure, with `fields` alongside |
+| 429 | More than 600 calls in a minute on the same key |
+| 402 | A write against a module whose licence no longer covers it |
+
+## n8n and other flows
+
+n8n needs no separate connector: this *is* the connector. An HTTP Request node with the header
+`Authorization: Bearer schakl_…` pointed at `https://<your-host>/api/v1/…` does everything a screen
+does. Use a service account for it, not the personal key of whoever built the flow.
+
+The other direction — schakl. calling your flow — is the **Webhook aanroepen** (Call webhook)
+action in [Automation](/en/docs/modules/automation/).
+
+## Permissions
+
+| Permission | What it opens | Default |
+| --- | --- | --- |
+| `apikeys.personal.manage` | Manage own API keys | Administrator, Member |
+| `apikeys.service_account.manage` | Manage service accounts | Administrator |
+
+On top of that, the key itself decides what it may do: every ticked scope is an ordinary permission
+from the same catalogue as *Instellingen → Rollen* (Settings → Roles).
+
+## Good to know
+
+- A key never sees more than its owner. If someone works with a restricted client selection, that
+  restriction applies to their key too.
+- **Intrekken** (Revoke) stops a key immediately. Deleting a service account revokes all of its
+  keys. If the owner of a personal key loses their membership, the key stops working.
+- 600 calls per minute per key. Generous for automation, and a ceiling if a key ever leaks.
+- `/api/docs` and `/api/redoc` load their assets from a public CDN. On a server without internet
+  access that page stays blank; `/api/openapi.json` still works.
+- To not serve the reference at all, set `SCHAKL_API_DOCS_ENABLED=false` on the server. The API
+  itself keeps working in full.
+- On licensed modules, reading and exporting always keep working; only writes answer 402 once the
+  licence stops covering them. See [Licenses](/en/docs/admin/licenses/).
+
+## Read next
+
+<CardGrid>
+  <LinkCard title="MCP server" description="The same API, exposed as tools for an AI client." href="/en/docs/integrations/mcp/" />
+  <LinkCard title="Automation" description="Rules that push webhooks to your own flow." href="/en/docs/modules/automation/" />
+</CardGrid>

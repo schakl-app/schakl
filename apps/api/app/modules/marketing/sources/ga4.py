@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 from app.modules.google.oauth import SCOPE_ANALYTICS
 from app.modules.marketing.models import MarketingSource
 from app.modules.marketing.sources.base import (
+    AUTH_GOOGLE,
     AccountOption,
     DailyMetrics,
     DrilldownRow,
@@ -44,10 +45,29 @@ def _parse_ga4_date(value: str) -> date:
     return date(int(value[0:4]), int(value[4:6]), int(value[6:8]))
 
 
+#: The three channel groups a client report breaks out by *source* rather than by group —
+#: "which search engine", "which platform", "which site sent them". GA4 has no dimension for
+#: that, so each is ``sessionSource`` filtered to one ``sessionDefaultChannelGroup``.
+_SOURCE_SPLITS = {
+    "organic_sources": "Organic Search",
+    "social_sources": "Organic Social",
+    "referral_sources": "Referral",
+}
+
+
 class GA4Adapter:
     source = MarketingSource.GA4.value
+    auth = AUTH_GOOGLE
     scope = SCOPE_ANALYTICS
-    drilldowns = ("top_pages", "channels", "devices", "key_events")
+    drilldowns = (
+        "top_pages",
+        "channels",
+        "devices",
+        "key_events",
+        "organic_sources",
+        "social_sources",
+        "referral_sources",
+    )
 
     async def list_accounts(self, client: AsyncOAuth2Client) -> list[AccountOption]:
         options: list[AccountOption] = []
@@ -155,20 +175,40 @@ class GA4Adapter:
         metrics, dimension = spec
         if kind == "top_pages":
             dimension = "pagePath"
+        if kind in _SOURCE_SPLITS:
+            # A report's traffic tables carry more than sessions — the same seven columns the
+            # channel table shows, so a reader can compare a referrer with a channel.
+            metrics = [
+                "sessions",
+                "newUsers",
+                "totalUsers",
+                "screenPageViews",
+                "userEngagementDuration",
+                "engagementRate",
+                "keyEvents",
+            ]
+            dimension = "sessionSource"
         # eventName × keyEvents returns *every* event, non-key events reading 0 — request a
         # wider page so the real key events survive the zero-filter below.
-        limit = 50 if kind == "key_events" else 10
-        report = await self._run_report(
-            client,
-            external_id,
-            {
-                "dateRanges": [date_range],
-                "dimensions": [{"name": dimension}],
-                "metrics": [{"name": m} for m in metrics],
-                "limit": limit,
-                "orderBys": [{"metric": {"metricName": metrics[0]}, "desc": True}],
-            },
-        )
+        limit = 50 if kind == "key_events" else (25 if kind in _SOURCE_SPLITS else 10)
+        body: dict[str, Any] = {
+            "dateRanges": [date_range],
+            "dimensions": [{"name": dimension}],
+            "metrics": [{"name": m} for m in metrics],
+            "limit": limit,
+            "orderBys": [{"metric": {"metricName": metrics[0]}, "desc": True}],
+        }
+        if kind in _SOURCE_SPLITS:
+            body["dimensionFilter"] = {
+                "filter": {
+                    "fieldName": "sessionDefaultChannelGroup",
+                    "stringFilter": {
+                        "matchType": "EXACT",
+                        "value": _SOURCE_SPLITS[kind],
+                    },
+                }
+            }
+        report = await self._run_report(client, external_id, body)
         rows = [
             DrilldownRow(
                 label=row["dimensionValues"][0]["value"],

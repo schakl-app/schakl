@@ -1,6 +1,6 @@
 ---
 title: Upgrades & backups
-description: Rolling out new schakl. versions — image tags, automatic migrations, and the two things you safeguard.
+description: "Rolling out new schakl. versions: image tags, automatic migrations, and the two things you safeguard."
 sidebar:
   order: 2
 ---
@@ -38,5 +38,5 @@ volume without the database is loose bytes. Snapshot both at the same moment.
 ## The update check
 
 Once a day the worker asks the public GitHub API whether a newer stable release exists;
-*Settings → System* then shows a notice. **Nothing** about your installation is sent, and
+*Instellingen → Systeeminformatie* (Settings → System information) then shows a notice. **Nothing** about your installation is sent, and
 nothing ever updates automatically. Disable it with `SCHAKL_UPDATE_CHECK_ENABLED: "false"`.

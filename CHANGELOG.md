@@ -1,6 +1,277 @@
 # Changelog
 
-## Unreleased
+## v0.22.0 — 2026-08-06
+
+Online payments, a monthly client report, de-duplicated file storage, and paging on every list.
+
+### Online payments
+
+- **A client can now pay an invoice online, and the payment books itself.** Connect a Mollie
+  account under Instellingen, and an open invoice offers a hosted checkout with whatever methods
+  that account has enabled. What comes back is an ordinary payment on the
+  invoice, so the outstanding amount, the status flip, the reminder schedule and the accounting
+  export all behave exactly as they do for a payment a bookkeeper enters by hand. Nothing in
+  invoicing knows a provider was involved.
+- **The provider is a seam, not the feature.** Mollie is the first implementation and Stripe or
+  Adyen are a package rather than a rewrite — worth the one file it costs today, because the
+  alternative is rebuilding the settle path at the moment a live customer depends on it.
+- **Four ways in, one door.** The portal button, the invoice mail, the reminder and the QR on the
+  document all lead to the invoice's own page in the client portal, never to a provider's checkout
+  URL. A checkout URL is a bearer credential on paper, it expires in fifteen minutes while the
+  invoice does not, and mailing one alongside the portal button would give a client two valid ways
+  to settle one debt. The portal starts the checkout at the moment the client presses.
+- **The mail's pay button is deliberately stricter than the document's link**: no button unless a
+  provider is connected and the invoice can actually be collected. An installation with no
+  provider connected sends byte-for-byte the mail it sent before.
+- **The QR carries your own branding.** Your accent colour in the modules, your logo in the
+  middle, on the document and in the mail alike. It stays scannable by construction rather than by
+  preview: a logo raises the error correction, it covers at most a fifth of the code, a clean patch
+  sits behind it, and an accent too pale to read against white is printed near-black instead. There
+  is deliberately no field to type a QR colour into.
+- A payment that never reported back repairs itself: an hourly check per organisation, plus a
+  "check status" button on the invoice. A **test**-mode key follows the whole loop and settles
+  nothing, so an account left on a test key produces an obviously stuck screen rather than quietly
+  wrong revenue.
+- Starting a checkout is its own permission (`invoicing.payment.link`) rather than the one that
+  registers a payment: pressing "pay" settles nothing, while recording a payment is a bookkeeping
+  claim.
+- **This has not been run against a live Mollie account.** It is built from Mollie's published API
+  documentation and tested against fakes cut from that same document, which proves the code agrees
+  with the documentation and not with the provider. `docs/MOLLIE.md` lists what to check the day
+  you connect a real key.
+
+### Client reporting
+
+- **The monthly client report is a record, not a job output.** A new licensed module: one report
+  per client per month, drafted, reviewed, published and sent. Every number the document prints is
+  frozen on the report itself, which is what lets you reopen last March and see what was actually
+  sent, keeps the prose and the tables describing the same figures, and makes a re-run update the
+  document instead of mailing the client a second copy.
+- **Review is the default and auto-send is a choice you make per client.** The review screen puts
+  the editable prose on the left, one paragraph per section in print order, each with its own
+  rewrite that regenerates only that section; on the right is the document itself, the same
+  artefact the PDF prints. A paragraph you edited by hand is marked as such and survives a
+  regenerate.
+- **The voice is yours.** Your editorial rules — first person plural, the words you never use, no
+  advice in the client's document — live in a tone of voice you can read and change, not compiled
+  into the product. A banned phrase is checked after the text is generated rather than merely
+  requested, and lands on the report's warnings, which the agency sees and the client never does.
+  What is true about one customer lives on that customer, alongside their recipients and their
+  schedule.
+- **Sections come from the modules that own the data.** Marketing contributes traffic, search
+  engines, rankings, referral, social, conversions and AI-search visibility, plus a site audit that
+  stays internal. Adding a chapter is a change where the numbers live.
+- **A dashboard stops being a table on the other twenty-nine days of the month.** The insight
+  behind a monthly report is that a client cannot read an analytics table but can read the
+  sentence. That sentence now also appears on the marketing panel, the marketing tab and the
+  portal widget — the latest published report's paragraph for the section being drawn, dated, so
+  it never pretends to describe today. With reporting switched off or unlicensed, every one of
+  those screens renders exactly as before.
+- A client sees exactly their own published, client-facing reports: never a draft, never an
+  internal one, never another company's, on the list, the totals, the detail, the PDF and the
+  attachments alike.
+- Invoices, quotes and reports are now printed by one shared renderer instead of one per module.
+  Charts are inline vector rather than an image fetched from somewhere, so a client's figures never
+  travel in a URL.
+- The permission that gated the cross-client marketing overview is renamed to say so
+  (`marketing.overview.read`). It is applied automatically on upgrade and grants nobody anything
+  new.
+
+### Marketing
+
+- **SE Ranking joins Google Analytics, Search Console and Ads as a source.** Rankings, the site
+  audit and AI-search visibility — most of what a monthly client report is made of. It
+  authenticates with one organisation-wide API key rather than a per-user Google sign-in, so it is
+  configured or it is not; nobody is told to "reconnect your Google account" because an agency key
+  is missing.
+- Written against the live API rather than from memory, which caught three things a plausible
+  implementation gets wrong and each of which fails silently: positions are answered per search
+  engine, so a client tracking two engines would have reported half its keywords; position zero
+  means "not ranking" and averaged in reports a better position the worse a client does; and audit
+  findings are keyed by check code, so the obvious parse finds nothing and hands you a clean site.
+
+### Contactmomenten
+
+- **An e-mail keeps its formatting.** An HTML message was stripped to bare words — every list,
+  heading, link, emphasis and quote level gone — and drawn as pre-wrapped text. The message's own
+  HTML is now converted at the moment it arrives and rendered as it was written. Only mail that
+  actually had an HTML part is converted: text a sender typed stays the text they typed, so nobody's
+  asterisks silently become italics.
+- **A signature logo is part of the letter, not a paperclip.** An embedded image now renders in the
+  body and leaves the attachment list, where it used to appear as a chip on every mail that sender
+  ever sent. Remote images are dropped to their alt text, because a tracking pixel is an image and
+  drawing one reports back that you opened the mail.
+- **A logged call, meeting or note now shows what was written in it.** The timeline previewed
+  e-mails and nothing else: a phone call you had typed a paragraph into drew its title, its time
+  and then blank space, so the one thing worth reading was invisible until you opened the row.
+  Every contactmoment now carries a teaser of its own notes, on the record's timeline and in the
+  Interacties list alike — including the ones already logged, without anything having to be
+  converted.
+- **The subject is no longer required.** A call is titled by what it *is*, and every screen already
+  fell back to the kind ("Telefoongesprek") when there was no subject — Gmail and uploaded e-mails
+  have always arrived without one. Demanding a subject meant inventing a title before you could
+  write down what was said. Leave it empty and the field shows the title the row will carry; an
+  existing one can be cleared the same way.
+- **Opening a folded conversation and clicking an older message now works on the first click.** It
+  used to flicker, stay shut, and open on the second try.
+- **An e-mail waiting for review no longer defaults to your own company.** Most agencies keep
+  themselves in their own client list — it is where their own domains, hosting and invoices hang —
+  with their staff and their `info@`/`administratie@` address as contact people on it. Those
+  records date from the day the system was set up, so on any thread with a colleague in Cc they
+  were matched first and the mail was filed under the agency instead of the customer who actually
+  sent it. The customer is now looked for first: your own people and your own company rank last,
+  and among the rest the sender of an incoming message — or the addressee of one you sent — counts
+  for more than whoever was merely kept in Cc. Nothing to configure: which company is yours is
+  worked out from your own data. Mail purely between colleagues, if you log it, still lands on your
+  own company as before.
+
+### Lists, selection and paging
+
+- **Every list screen pages instead of showing the first two hundred rows and calling it the
+  list.** A client list that had outgrown the cap handed you a prefix that looked exactly like the
+  whole answer, with row 201 reachable only by guessing a search term narrow enough to pull it into
+  view. The page is in the address, so the back button lands where you left, a page can be sent to a
+  colleague, and the scroll position comes back with it. Changing a filter, a search or a sort
+  returns you to page one, because page 7 of the old filter is usually nothing at all in the new
+  one. How many rows you like is a personal preference saved beside your column layout (50 by
+  default; 25, 100 and 200 offered).
+- Paged: clients, contacten, domeinen, websites, projecten, taken, facturen, offertes, abonnementen,
+  verlof, verlof/team, interacties, meldingen, hosting, the OXXA register and automation runs. Three
+  screens are deliberately left whole and it is written down why: the Cloudflare zone inventory, the
+  uninvoiced-hours report whose subtotals span the entire set, and the verlof approval queue that
+  exists to be emptied.
+- **Acting on a selection is a mode now.** Every list carried a checkbox column whether or not
+  anyone was selecting, so every reader paid for a writer's feature. Press the pencil in the
+  toolbar — always the last control, on every list — and the checkboxes appear together with
+  Bewerken and Verwijderen in their own strip above the table. Press it again and the list goes
+  back to being a list. A bulk edit is the same edit fifty times: the same validation, the same
+  activity line, the same rules. A row that refuses says why, and the other forty-nine still land.
+- Draft invoices and mis-logged contactmomenten can be deleted in a batch. Neither can be
+  bulk-*edited*: an invoice is money with a lifecycle, and a contactmoment is the record of what was
+  said. Selecting a mix of invoices answers, for example, "3 verwijderd, 3 overgeslagen — alleen
+  concepten kunnen worden verwijderd".
+- **Selecting a run of rows takes one shift-click**, from the row as well as from its box, and
+  collapsed sections stay out of it. **The checkbox is no longer a 16-pixel target**: the whole
+  column it sits in ticks the row, so being a few pixels off no longer opens the record you were
+  trying to select.
+- **The tables stopped scrolling sideways.** A declared column width used to be advice only, so the
+  interacties grid asked for 1210 pixels, laid out at 1423 and scrolled on any laptop while its
+  truncation never appeared. Columns now hold their width, one absorbs the slack, and text
+  truncates instead of wrapping to five lines. Rows drop from around 120 pixels to about 55.
+- **A picker that builds a list keeps its list open.** Adding three people to a contactmoment cost
+  two trips through nowhere: the chip landed, the list vanished, and the only thing that reopened it
+  was leaving the field and coming back. Clicking the field now opens the list whether or not it was
+  already focused, and the six pickers that add to a list stay open between picks. A single pick
+  still closes, because there the pick is the answer.
+
+### Invoicing
+
+- **The mails your clients read are yours to write.** The invoice, the quote and the payment
+  reminder join the two sign-in mails in the template editor, so an agency that spent a week on its
+  invoice design is no longer dunning in our words. Both delivery paths honour it — the one you
+  press and the one on the schedule, which is where every reminder actually comes from — and the
+  text is taken in the language of the document it accompanies. Leave a template empty and the
+  built-in text is sent, exactly as before.
+- **Three fixes to how a document offers to be paid.** The QR printed the full width of the sheet
+  in the preview and the PDF alike, pushing the sample to three pages. The printed pay-link address
+  was set in the label style, which uppercases — and a URL path is case-sensitive, so the one reader
+  it exists for, the one who cannot click it, was being handed a 404. And the QR and the pay-online
+  line now sit inside the payment box under the bank details, a rule between them: transfer above,
+  one gesture below, rather than centimetres apart across the page.
+
+### Files and storage
+
+- **The same file is stored once.** A signature logo arriving on five hundred e-mails was five
+  hundred objects, and so was the PDF a client sends twice or a logo re-uploaded after a crop that
+  changed nothing. Identical content now shares one stored object per organisation — never across
+  organisations, because ending a tenancy deletes its storage outright and that must never reach
+  another tenant's bytes.
+- Deleting a file is immediate and no longer waits on the storage backend. A nightly job per
+  organisation folds older files into the shared shape and reclaims genuinely unreferenced content a
+  grace period later, so "I deleted the wrong file" stays a support question rather than a restore.
+  Nothing about reading or serving a file changed.
+
+### Writing in two languages
+
+- **One language switcher per screen instead of one per field.** Every translatable field carried
+  its own NL/EN toggle, which is right for one field and absurd for a dozen: filling in the English
+  column of Instellingen → Navigatie meant flipping fourteen switches by hand, in order. The choice
+  is now made once at the top of the page, card or dialog and every field below follows it — on the
+  settings dialogs, roles, custom fields, the navigation editor, the mail templates, the invoice
+  template editor and the marketing dashboard. It remembers what you chose and opens in your own
+  interface language. Nothing about what gets stored changes.
+
+### Domains and Cloudflare
+
+- **A Pages link is checked again instead of frozen at the moment it was made.** A hostname still
+  provisioning read "pending" forever, one deleted in Cloudflare's own dashboard still read as
+  linked, and a hostname attached there before schakl saw the account was invisible here. A sync now
+  discovers what each project actually serves and adopts what matches a domain you hold; a check
+  refreshes it. Drift is reported, never quietly resolved — a link the project no longer serves
+  keeps its row, with the date it first went missing, because "since when" is the question.
+- **A domain served from Pages no longer needs its DNS here.** A Pages hostname belongs to the
+  project, not to a zone, and the panel nonetheless hid the whole Pages section unless the domain's
+  DNS was managed in Cloudflare — precisely the case the feature exists for. It now says what it can
+  and cannot do, and the project picker names the account whenever you hold more than one.
+- **The panel says when the check it is showing ran.** "Geen conflicten" from a check in March and
+  one from a minute ago were the same sentence. The date comes from the observations the report is
+  built from, so a report assembled from nothing does not claim to be fresh.
+- **Adding a domain no longer opens with nine radio buttons about invoicing.** Both invoicing
+  decisions move into one disclosure that starts closed on a new domain and states, in its heading,
+  what the current defaults resolve to. Editing an existing domain still opens it.
+
+### Tasks
+
+- **The schedule picker stopped blanking what you had already typed.** Anyone who started typing
+  before the list of schedulable tasks arrived had the field cleared under them — a narrow window on
+  a fast connection and an ordinary one on a slow one, and it looked like losing focus rather than a
+  reload.
+
+### Deployment and operations
+
+- **A redeploy is no longer an outage.** Every cloud redeploy answered 500 for its whole duration,
+  on every page including sign-in: the API was pinned to a single replica that had to stop before
+  its replacement started, while the web app stayed up and kept serving straight into nothing. The
+  constraint was never "one replica" — it was "one migration at a time", which is now a database
+  lock taken by the migration itself. Two API replicas roll over one at a time, the loser of the
+  lock waits and then finds the schema already current, and the web app has a health check of its
+  own so it only takes traffic once it can actually answer.
+- **The API reference is reachable.** Swagger UI, ReDoc and the OpenAPI document sat at the root,
+  which no deployment routes to the API, so the reference resolved to the web app's 404 page in
+  every installation there has ever been. They are now at `/api/docs`, `/api/redoc` and
+  `/api/openapi.json`, which needs no change at your edge. `SCHAKL_API_DOCS_ENABLED=false` removes
+  the pages.
+
+### Website and documentation
+
+- **The manual caught up with the product**: 43 pages per language where there were six — one per
+  module you can switch on, one per integration worth a guide, and the administration set
+  (installing, upgrading, licences, modules, e-mail, storage, single sign-on, two-factor). They are
+  written as instructions: where the screen is, the real Dutch field names, the permission keys and
+  their defaults, and the thing that will otherwise bite you. Where the product has never met a live
+  credential, the page says so.
+- **The public site describes what actually ships**: 25 feature pages where there were eight
+  cards, an integrations page covering 22 connections in nine categories, and five more animated
+  recreations of the real screens. Every integration carries an honest status — connected and
+  exercised, shipping but never yet run against a live credential from that vendor, or planned —
+  because selling the middle one as available would be a claim the repository itself contradicts.
+- The content editor can sign in with GitHub, the site's own canonical addresses were corrected to
+  `schakl.dev`, and four new checks now fail the build for the four ways this site used to break
+  without anyone noticing.
+
+### Upgrade notes
+
+- **Seven migrations, all additive.** A self-hosted installation upgrades itself unattended as
+  usual; nothing is dropped, renamed or retyped.
+- **Cloud operators only**: the two-replica rolling update and the web health check depend on this
+  image. Do not apply them against an older tag — see `docs/DEPLOY.md`, "Rolling updates".
+- **Rolling back after file de-duplication has one caveat**: the previous release's delete removes
+  the stored bytes outright, which after this upgrade may be shared with other files. Reading and
+  serving are unaffected either way. `docs/STORAGE.md` has the detail.
+- If you have automation or bookmarks pointing at `/docs`, `/redoc` or `/openapi.json` on the API,
+  they move under `/api/`.
+- Reporting and Mollie are new licensed modules and are off until enabled. The renamed marketing
+  permission is rewritten for you on first start; roles and API keys keep exactly what they held.
 
 ## v0.21.0 — 2026-08-05
 

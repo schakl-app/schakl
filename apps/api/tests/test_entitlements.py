@@ -118,12 +118,19 @@ def test_paid_module_set_is_pinned() -> None:
         "invoicing": "invoicing",
         "leave": "leave",
         "marketing": "marketing",
+        # The payment provider (epic #269) is a paid integration like every other outside
+        # connection; the free CRM core never collects money.
+        "mollie": "mollie",
         "oxxa": "oxxa",
         # The client portal (#193, #296) is what an agency sells access to, not a property of
         # the address book — hence its own sku, and hence the locked invite control on an
         # instance that has not bought it.
         "portal": "portal",
         "projects": "projects",
+        # #300: generating, narrating and sending the periodic client report is a premium
+        # capability *on top of* `marketing` — a tenant can license the dashboards without
+        # buying the documents, which is the product ladder rather than a technical split.
+        "reporting": "reporting",
         "subscriptions": "subscriptions",
         "time": "time",
         "websites": "websites",

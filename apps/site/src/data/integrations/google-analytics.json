@@ -1,0 +1,184 @@
+{
+  "slug": "google-analytics",
+  "name": "Google Analytics 4",
+  "order": 50,
+  "category": "marketing",
+  "status": "live",
+  "lucide": "chart",
+  "mark": {
+    "monogram": "GA",
+    "color": "#E37400"
+  },
+  "tagline": {
+    "nl": "Sessies, kanalen en conversies per klant",
+    "en": "Sessions, channels and conversions per client"
+  },
+  "summary": {
+    "nl": "Je koppelt per klant een GA4-property op de klantpagina zelf. Elke nacht worden de dagcijfers opgehaald en in je eigen database bewaard, zodat het paneel, het tabblad en het overzicht laden zonder Google aan te roepen. De koppeling loopt over de Google-verbinding die iemand van je team al gelegd heeft; er komt geen tweede login bij.",
+    "en": "You link a GA4 property per client, on the client's own page. Every night the daily figures are pulled and stored in your own database, so the panel, the tab and the overview load without calling Google. The link runs on the Google connection a colleague already made, so there is no second login."
+  },
+  "highlights": {
+    "nl": [
+      "Sessies, gebruikers, nieuwe gebruikers, sleutelgebeurtenissen, betrokkenheid en omzet, per dag bewaard",
+      "Bij de eerste koppeling wordt ongeveer 13 maanden historie opgehaald",
+      "Uitsplitsingen naar toppagina's, kanalen, apparaten, sleutelgebeurtenissen en verwijzende bronnen"
+    ],
+    "en": [
+      "Sessions, users, new users, key events, engagement and revenue, stored per day",
+      "A first link backfills roughly 13 months of history",
+      "Drill-downs by top page, channel, device, key event and referring source"
+    ]
+  },
+  "where": {
+    "nl": "Klanten → de klant → paneel Marketing, plus het tabblad Marketing van die klant en Overzicht → Marketing.",
+    "en": "Klanten → de klant → paneel Marketing (Clients → the client → Marketing panel), plus that client's Marketing tab and Overzicht → Marketing (Overview → Marketing)."
+  },
+  "docs": "/docs/integrations/marketing-sources/",
+  "page": {
+    "lead": {
+      "nl": "Eén GA4-property per klant, gekoppeld op de klantpagina zelf. Wat er per dag uitkomt staat daarna in je eigen database, dus elke grafiek en elke vergelijking met de vorige periode wordt getekend zonder dat er een aanroep naar Google aan te pas komt.",
+      "en": "One GA4 property per client, linked on the client's own page. What comes out per day then lives in your own database, so every chart and every comparison with the previous period is drawn without a call to Google."
+    },
+    "requirements": {
+      "nl": [
+        "De module Marketing staat aan en is gelicentieerd voor deze werkomgeving (Instellingen → Modules)",
+        "Een Google Cloud-project met een OAuth-client, ingesteld onder Instellingen → Google Workspace",
+        "In datzelfde project staan zowel de Google Analytics Admin API als de Google Analytics Data API aan",
+        "Een Google-account met leestoegang tot de GA4-property, gekoppeld onder Instellingen → Mijn account",
+        "Het recht marketing.link.manage om accounts te mogen koppelen"
+      ],
+      "en": [
+        "The Marketing module is enabled and licensed for this workspace (Instellingen → Modules)",
+        "A Google Cloud project with an OAuth client, configured under Instellingen → Google Workspace",
+        "In that same project, both the Google Analytics Admin API and the Google Analytics Data API are switched on",
+        "A Google account with read access to the GA4 property, connected under Instellingen → Mijn account",
+        "The marketing.link.manage permission, to be allowed to link accounts"
+      ]
+    },
+    "steps": {
+      "nl": [
+        "Zet in het Google Cloud-project van je OAuth-client <strong>allebei</strong> de API's aan: de <strong>Google Analytics Admin API</strong> en de <strong>Google Analytics Data API</strong>. Alleen de Data API aanzetten laat de propertykiezer leeg, want property's opsommen is een Admin API-aanroep terwijl de rest van de module er ingesteld uitziet.",
+        "Ga naar <strong>Instellingen → Mijn account</strong> en koppel je Google-account. Er wordt één toestemming gevraagd voor Analytics, Search Console en Ads tegelijk, dus je loopt het consentscherm van Google één keer door in plaats van drie keer.",
+        "Open <strong>Klanten → de klant</strong> en klik in het paneel <strong>Marketing</strong> op bewerken.",
+        "Kies <strong>Account koppelen</strong>, zet de bron op <code>Analytics-property</code> en pak de property van deze klant uit de lijst.",
+        "Heeft de klant meerdere websites, kies dan bij <strong>Koppelen aan website</strong> de site waar de property bij hoort. Laat het op <strong>Hele klant</strong> staan als de property alles meet.",
+        "Klaar. De koppeling begint meteen aan een backfill van ongeveer 13 maanden; zolang die loopt staat er <strong>Eerste synchronisatie loopt</strong> op het paneel.",
+        "Daarna draait de synchronisatie elke nacht en haalt de laatste zeven dagen opnieuw op, zodat nagekomen of bijgestelde cijfers zichzelf corrigeren."
+      ],
+      "en": [
+        "In the Google Cloud project your OAuth client belongs to, switch on <strong>both</strong> APIs: the <strong>Google Analytics Admin API</strong> and the <strong>Google Analytics Data API</strong>. Enabling only the Data API leaves the property picker dead while the rest of the module looks configured, because listing properties is an Admin API call.",
+        "Go to <strong>Instellingen → Mijn account</strong> (Settings → My account) and connect your Google account. One consent covers Analytics, Search Console and Ads together, so you walk through Google's consent screen once instead of three times.",
+        "Open <strong>Klanten → de klant</strong> (Clients → the client) and click edit on the <strong>Marketing</strong> panel.",
+        "Choose <strong>Account koppelen</strong> (Link account), set the source to <code>Analytics-property</code> and pick this client's property from the list.",
+        "If the client has more than one website, use <strong>Koppelen aan website</strong> (Link to website) to say which site the property measures. Leave it on <strong>Hele klant</strong> (Whole client) if the property covers everything.",
+        "That's it. The link immediately starts a backfill of roughly 13 months; while it runs the panel reads <strong>Eerste synchronisatie loopt</strong> (first sync in progress).",
+        "From then on the sync runs nightly and re-pulls the last seven days, so late or restated figures correct themselves."
+      ]
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Wat er per dag bewaard wordt",
+          "en": "What gets stored per day"
+        },
+        "body": {
+          "nl": "Per gekoppelde property komt er één kleine rij per dag in je database. Daaruit tekenen het paneel, het tabblad en het cross-klantoverzicht hun cijfers, hun trendlijnen en hun vergelijking met de vorige periode, zonder Google aan te roepen. De valuta van de property gaat mee, zodat omzet gelabeld wordt in de munt waarin de property rapporteert.",
+          "en": "Each linked property adds one small row per day to your database. From that, the panel, the tab and the cross-client overview draw their figures, their trend lines and their comparison with the previous period, without calling Google. The property's own currency travels with it, so revenue is labelled in the currency the property reports in."
+        },
+        "bullets": {
+          "nl": [
+            "Sessies, gebruikers en nieuwe gebruikers",
+            "Sleutelgebeurtenissen, ook getoond onder de naam conversies",
+            "Betrokkenheid en omzet",
+            "De verdeling van sessies over de acquisitiekanalen"
+          ],
+          "en": [
+            "Sessions, users and new users",
+            "Key events, also shown under the name conversions",
+            "Engagement and revenue",
+            "Sessions split across the acquisition channels"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Uitsplitsingen komen live binnen",
+          "en": "Drill-downs are fetched live"
+        },
+        "body": {
+          "nl": "Alleen de dagtotalen gaan de database in. De uitsplitsingen worden op het moment zelf bij Google opgehaald voor de periode die je bekijkt en ongeveer een uur gecachet, zodat een klik op een tegel je warehouse niet laat groeien met pagina-adressen. Elke tabel heeft ook een knop om in Google Analytics zelf verder te kijken.",
+          "en": "Only the daily totals go into the database. Drill-downs are fetched from Google on the spot for the range you are looking at and cached for about an hour, so clicking a tile never grows your warehouse with page paths. Every table also carries a link out to Google Analytics for the real analysis."
+        },
+        "bullets": {
+          "nl": [
+            "Toppagina's en kanalen",
+            "Apparaten",
+            "Sleutelgebeurtenissen per gebeurtenisnaam",
+            "Organische zoekmachines, sociale platforms en verwijzende sites, elk apart"
+          ],
+          "en": [
+            "Top pages and channels",
+            "Devices",
+            "Key events per event name",
+            "Organic search engines, social platforms and referring sites, each on their own"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Wat de klant ziet bepaal jij",
+          "en": "You decide what the client sees"
+        },
+        "body": {
+          "nl": "Per klant leg je een indeling vast: welke tegels zichtbaar zijn, in welke volgorde ze staan, hoe ze heten in het Nederlands en het Engels, welke uitsplitsingen open mogen en welke metriek de grafiek standaard tekent. Sleutelgebeurtenissen kun je per klant helemaal uitzetten; ze verdwijnen dan uit het paneel, uit het tabblad, uit het overzicht en uit het antwoord van de API. Dezelfde indeling is wat een klant met een portaallogin te zien krijgt, en de secties van het maandrapport lezen eruit.",
+          "en": "Per client you fix a layout: which tiles are visible, in what order, what they are called in Dutch and English, which drill-downs may be opened and which metric the chart defaults to. Key events can be switched off entirely for one client — they then disappear from the panel, the tab, the overview and the API response. The same layout is what a client with a portal login sees, and the monthly report's sections read from it."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Een koppeling hoort bij een persoon",
+          "en": "A link belongs to a person"
+        },
+        "body": {
+          "nl": "Een koppeling synchroniseert via de Google-verbinding van één collega, en het paneel, het tabblad en de kiezer noemen wie dat is. Zonder die vermelding ziet de tweede medewerker een werkende koppeling zonder te weten van wie, koppelt Google nog een keer voor data die al binnenkomt, en merkt niemand dat de cijfers van een klant stoppen op de dag dat die persoon vertrekt. Valt de verbinding weg, dan gaat de koppeling slapen en vraagt om opnieuw koppelen. Ontkoppelen wist niets: de koppeling wordt inactief en de opgehaalde historie blijft staan, ook als je hem later opnieuw aanzet.",
+          "en": "A link syncs through one colleague's Google connection, and the panel, the tab and the picker all name who that is. Without it the second employee sees a working link with no hint whose it is, connects Google again for data that is already flowing, and nobody learns that a client's numbers stop the day that person leaves. If the connection goes away the link goes dormant and asks to be reconnected. Unlinking deletes nothing: the link is deactivated and the synced history stays, including when you switch it back on later."
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "key": "marketing.metrics.read",
+        "nl": "De marketingcijfers van een klant lezen: het paneel, het tabblad en de dashboardwidget. Standaard voor beheerder, medewerker en klantportaal.",
+        "en": "Read a client's marketing figures: the panel, the tab and the dashboard widget. Granted by default to admin, member and the client portal."
+      },
+      {
+        "key": "marketing.link.manage",
+        "nl": "Property's koppelen en ontkoppelen, de accountkiezer openen en de indeling per klant vastleggen. Standaard alleen beheerder.",
+        "en": "Link and unlink properties, open the account picker and fix the per-client layout. Admin only by default."
+      },
+      {
+        "key": "marketing.overview.read",
+        "nl": "Het cross-klantoverzicht onder Overzicht → Marketing, met één regel per gekoppelde klant. Standaard alleen beheerder.",
+        "en": "The cross-client grid under Overzicht → Marketing, one row per linked client. Admin only by default."
+      }
+    ],
+    "limits": {
+      "nl": [
+        "Er wordt niets teruggeschreven naar Google Analytics. De koppeling leest alleen.",
+        "Alleen dagtotalen worden bewaard. Uitsplitsingen worden per keer opgehaald, dus je ziet ervan wat Google op dat moment nog aanbiedt.",
+        "GA4 heet conversies tegenwoordig sleutelgebeurtenissen. schakl. vraagt sleutelgebeurtenissen op en toont ze onder allebei de namen; er wordt niets dubbel geteld.",
+        "Bedragen worden getoond in de valuta van de property zelf en nooit omgerekend.",
+        "Google Tag Manager is bewust geen bron: GTM heeft geen eigen cijfers en de gebeurtenissen die het afvuurt komen al via GA4 binnen.",
+        "Heeft je organisatie geen eigen OAuth-client onder Instellingen → Google Workspace staan, dan praat je met Google via het Cloud-project van de beheerder van de installatie. De API's aanzetten in je eigen project verandert dan niets."
+      ],
+      "en": [
+        "Nothing is written back to Google Analytics. The link only reads.",
+        "Only daily totals are stored. Drill-downs are fetched per request, so you see whatever Google still serves at that moment.",
+        "GA4 renamed conversions to key events. schakl. requests key events and shows them under both names; nothing is counted twice.",
+        "Amounts are shown in the property's own currency and are never converted.",
+        "Google Tag Manager is deliberately not a source: GTM has no metrics of its own, and the events it fires already arrive through GA4.",
+        "If your organisation has no OAuth client of its own under Instellingen → Google Workspace, you talk to Google through the installation operator's Cloud project — and enabling the APIs in your own project then changes nothing."
+      ]
+    }
+  }
+}

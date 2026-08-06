@@ -1,0 +1,257 @@
+---
+// The integrations hero: the platform in the middle, the services it speaks to around it, and
+// a pulse travelling down each spoke.
+//
+// Same motion contract as the product demos (showcase.css): the *base* state is the finished
+// picture — every node placed, every line drawn — so with JavaScript off or reduced motion on
+// this is a static diagram that still says what it means. The keyframes only run under
+// `.is-playing`, added by an IntersectionObserver when the hero is actually on screen.
+//
+// SVG for the spokes and DOM for the nodes on purpose: the lines need exact geometry, the
+// nodes need real text (the vendor names are content, not decoration).
+import IntegrationMark from './IntegrationMark.astro';
+
+interface Props {
+  locale: 'nl' | 'en';
+  /** Satellites, drawn clockwise from the top. Six reads as a ring; more crowds it. */
+  nodes: { slug?: string; monogram: string; color?: string; lucide?: string; name: string }[];
+  brand: string;
+}
+const { locale, nodes, brand } = Astro.props;
+
+// Six evenly spaced points on a circle, starting at the top. Computed here rather than
+// hand-written so the ring stays even if the node count changes.
+const R = 38; // % of the box half-size
+const placed = nodes.slice(0, 6).map((n, i, arr) => {
+  const angle = (Math.PI * 2 * i) / arr.length - Math.PI / 2;
+  return {
+    ...n,
+    x: 50 + Math.cos(angle) * R,
+    y: 50 + Math.sin(angle) * R,
+    /* Each spoke's pulse is offset so they never fire in unison — a synchronised ring reads as
+       a loading spinner rather than as traffic. */
+    delay: (i * 1.15).toFixed(2),
+  };
+});
+const hubLabel = locale === 'nl' ? 'jouw installatie' : 'your install';
+---
+
+<div class="ring" aria-hidden="true">
+  <svg class="ring__wires" viewBox="0 0 100 100" preserveAspectRatio="none">
+    {
+      placed.map((n) => (
+        <line class="ring__wire" x1="50" y1="50" x2={n.x} y2={n.y} />
+      ))
+    }
+    {
+      placed.map((n) => (
+        <line
+          class="ring__pulse"
+          x1="50"
+          y1="50"
+          x2={n.x}
+          y2={n.y}
+          style={`--pulse-delay:${n.delay}s`}
+        />
+      ))
+    }
+  </svg>
+
+  <div class="ring__hub">
+    <span class="ring__hub-dot">{brand.charAt(0).toUpperCase()}</span>
+    <span class="ring__hub-label">{hubLabel}</span>
+  </div>
+
+  {
+    placed.map((n, i) => (
+      <div
+        class="ring__node"
+        style={`left:${n.x}%;top:${n.y}%;--node-delay:${(i * 0.09).toFixed(2)}s`}
+      >
+        <IntegrationMark
+          slug={n.slug}
+          monogram={n.monogram}
+          color={n.color}
+          lucide={n.lucide}
+          size={2.6}
+        />
+        <span class="ring__node-name">{n.name}</span>
+      </div>
+    ))
+  }
+</div>
+
+<style>
+  .ring {
+    position: relative;
+    width: min(100%, 30rem);
+    aspect-ratio: 1;
+    margin-inline: auto;
+  }
+  .ring__wires {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+  .ring__wire {
+    stroke: var(--border);
+    stroke-width: 0.35;
+    vector-effect: non-scaling-stroke;
+  }
+  /* The pulse is one dash sliding along the same geometry as the wire beneath it. Drawing it
+     as a second line rather than animating the first keeps the wire visible the whole time. */
+  .ring__pulse {
+    stroke: var(--accent);
+    stroke-width: 0.7;
+    stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+    stroke-dasharray: 6 94;
+    stroke-dashoffset: 100;
+    opacity: 0;
+  }
+
+  .ring__hub {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.45rem;
+    z-index: 2;
+  }
+  .ring__hub-dot {
+    display: grid;
+    place-items: center;
+    width: 4.25rem;
+    height: 4.25rem;
+    border-radius: 1.3rem;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 800;
+    font-size: 1.7rem;
+    letter-spacing: -0.04em;
+    box-shadow: 0 10px 30px -12px color-mix(in srgb, var(--accent) 75%, transparent);
+  }
+  .ring__hub-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .ring__node {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+    z-index: 3;
+  }
+  .ring__node-name {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--muted);
+    white-space: nowrap;
+    background: var(--bg);
+    padding-inline: 0.3rem;
+    border-radius: 0.3rem;
+  }
+
+  @media (max-width: 520px) {
+    .ring__node-name {
+      font-size: 0.7rem;
+    }
+    .ring__hub-dot {
+      width: 3.25rem;
+      height: 3.25rem;
+      font-size: 1.3rem;
+      border-radius: 1rem;
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    /* Nodes settle into place once, on arrival — the ring is a diagram, not a carousel. */
+    .ring.is-playing .ring__node {
+      animation: ring-pop 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+      animation-delay: var(--node-delay);
+    }
+    .ring.is-playing .ring__hub-dot {
+      animation: ring-hub 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+    /* The pulses, however, keep running: they are the one thing on the page that says these
+       connections carry traffic rather than merely exist. */
+    .ring.is-playing .ring__pulse {
+      animation: ring-pulse 6.9s linear infinite;
+      animation-delay: var(--pulse-delay);
+    }
+  }
+
+  @keyframes ring-pop {
+    from {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.72);
+    }
+    to {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+  }
+  @keyframes ring-hub {
+    from {
+      opacity: 0;
+      transform: scale(0.8);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  @keyframes ring-pulse {
+    0% {
+      stroke-dashoffset: 100;
+      opacity: 0;
+    }
+    6% {
+      opacity: 1;
+    }
+    /* The dash reaches the node at 26%, then the spoke rests — traffic is bursty, and a
+       continuously travelling dot reads as a progress bar that never finishes. */
+    26% {
+      stroke-dashoffset: 40;
+      opacity: 1;
+    }
+    32%,
+    100% {
+      stroke-dashoffset: 40;
+      opacity: 0;
+    }
+  }
+</style>
+
+<script>
+  // Play only while on screen, never against a reduced-motion preference. Identical contract to
+  // Showcase.astro so the whole site has one answer to "when does something move".
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const rings = Array.from(document.querySelectorAll<HTMLElement>('.ring'));
+  if (rings.length && !reduce.matches && 'IntersectionObserver' in window) {
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) e.target.classList.toggle('is-playing', e.isIntersecting);
+      },
+      { threshold: 0.25 },
+    );
+    rings.forEach((r) => io.observe(r));
+    reduce.addEventListener('change', (ev) => {
+      if (!ev.matches) return;
+      io.disconnect();
+      rings.forEach((r) => r.classList.remove('is-playing'));
+    });
+  }
+</script>

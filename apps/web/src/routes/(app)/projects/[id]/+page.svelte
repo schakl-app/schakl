@@ -24,6 +24,7 @@
   import Modal from "$lib/core/ui/Modal.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import InteractionForm from "$lib/modules/interactions/InteractionForm.svelte";
+  import { PROJECT_STATUSES } from "$lib/modules/projects/status";
   import { terminalKeys } from "$lib/modules/tasks/statuses";
   import TaskRow from "$lib/modules/tasks/TaskRow.svelte";
 
@@ -66,7 +67,6 @@
     data.members.map((m) => ({ id: m.user_id, name: m.full_name || m.email })),
   );
 
-  const STATUSES = ["active", "on_hold", "completed", "archived"] as const;
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 
@@ -308,7 +308,7 @@
               >{t("projects.field.status")}</label
             >
             <select id="status" name="status" class={inputClass}>
-              {#each STATUSES as s (s)}
+              {#each PROJECT_STATUSES as s (s)}
                 <option value={s} selected={project.status === s}
                   >{t(`projects.status.${s}`)}</option
                 >

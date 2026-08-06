@@ -169,6 +169,7 @@
       {placeholder}
       allowEmpty={false}
       {onselect}
+      keepOpenOnSelect
       {oncreate}
       {onsearch}
       {searching}

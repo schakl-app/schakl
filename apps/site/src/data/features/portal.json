@@ -1,0 +1,139 @@
+{
+  "name": "Klantportaal",
+  "slug": "portal",
+  "order": 160,
+  "icon": "🚪",
+  "lucide": "portal",
+  "title": {
+    "nl": "Klantportaal",
+    "en": "Client portal"
+  },
+  "description": {
+    "nl": "Geef de contactpersoon van je klant een eigen login in jouw app: zijn dashboard, zijn rapportages, zijn facturen. Verder niets.",
+    "en": "Give your client's contact person their own login into your app: their dashboard, their reports, their invoices. Nothing else."
+  },
+  "page": {
+    "eyebrow": {
+      "nl": "Klantportaal",
+      "en": "Client portal"
+    },
+    "title": {
+      "nl": "De klant logt in bij jou",
+      "en": "The client signs in to your app"
+    },
+    "lead": {
+      "nl": "Een contactpersoon van je klant krijgt een login in jouw eigen, gemerkte app. Hij ziet het marketingoverzicht dat je voor hem hebt samengesteld, zijn gepubliceerde rapportages, zijn eigen verstuurde facturen en de taken waarop hij mag reageren. Al het andere is onzichtbaar omdat het nooit bij hem langskomt, niet omdat iemand een vinkje heeft onthouden.",
+      "en": "A contact person at your client gets a login into your own branded app. They see the marketing overview you composed for them, their published reports, their own issued invoices and the tasks they may comment on. Everything else is invisible because it never reaches them, not because somebody remembered a checkbox."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Uitnodigen vanaf de pagina van de persoon",
+          "en": "Invite from the person's own page"
+        },
+        "body": {
+          "nl": "Het portaal heeft geen eigen instellingenscherm en geen menu-item: je geeft toegang op de pagina van de contactpersoon zelf, op de kaart \"Klantportaal\". Eén knop maakt het account aan, geeft het de rol Klant en stuurt een uitnodiging in jouw huisstijl met een link om een wachtwoord te kiezen. De kaart toont daarna de status (Geen toegang, Uitgenodigd, Actief of Uitgeschakeld) en zolang de uitnodiging nog niet gebruikt is, staat er een knop om hem opnieuw te versturen. Twee dingen moeten kloppen voordat het kan: de contactpersoon heeft een e-mailadres en hangt aan minstens één klant, want juist die koppeling bepaalt wat hij straks ziet.",
+          "en": "The portal has no settings screen of its own and no nav item: you grant access on the contact person's own page, on the card \"Klantportaal\". One button creates the account, gives it the Klant role and sends a set-password invitation in your own branding. The card then shows a status (Geen toegang, Uitgenodigd, Actief or Uitgeschakeld), and while the invitation is still unused a button appears to send it again. Two things have to be true first: the contact needs an email address, and they must be linked to at least one client, because that link is exactly what decides what they will see."
+        },
+        "bullets": {
+          "nl": [
+            "Een adres dat al bij een bestaand account hoort, wordt geweigerd met uitleg; een portaallogin heeft een eigen adres nodig.",
+            "Is uitgaande e-mail nog niet ingesteld, dan zegt de kaart dat de toegang klaarstaat maar de mail niet weg kon.",
+            "Een klantlogin beheren is dezelfde bevoegdheid als een collega uitnodigen; wie die niet heeft, ziet de kaart helemaal niet."
+          ],
+          "en": [
+            "An address that already belongs to an existing account is refused with an explanation: a portal login needs its own address.",
+            "If outgoing email isn't configured yet, the card says the access is ready but the invitation could not be sent.",
+            "Managing a client login is the same capability as inviting a colleague; someone without it never sees the card at all."
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Wat de klant ziet",
+          "en": "What the client sees"
+        },
+        "body": {
+          "nl": "De klant logt in op dezelfde host, in dezelfde gemerkte schil, en landt op \"Jouw dashboard\": een widgetbord met het marketingoverzicht dat jij voor dat bedrijf hebt samengesteld en zijn laatst gepubliceerde rapportage. Hangt de contactpersoon aan meerdere bedrijven, dan staat er een bedrijfswisselaar boven; het logo van het bedrijf staat op het dashboard, terwijl jouw merk de schil blijft. Daarnaast opent hij zijn eigen verstuurde facturen, inclusief of ze te laat zijn, en downloadt hij dezelfde pdf die jij zou versturen. Wat er in het marketingoverzicht staat blijft jouw keuze: verborgen tegels verlaten de API niet, dus de klant herschikt alleen binnen wat je hebt vrijgegeven.",
+          "en": "The client signs in on the same host, in the same branded shell, and lands on \"Jouw dashboard\": a widget board carrying the marketing overview you composed for that company and their most recent published report. When the contact belongs to more than one company, a company switcher sits above it; the company's own logo appears on the dashboard while your brand stays in the shell. They can also open their own issued invoices, overdue status included, and download the same PDF you would send. What goes into the marketing overview stays your call — hidden tiles never leave the API, so the client only rearranges within what you exposed."
+        },
+        "bullets": {
+          "nl": [
+            "Nooit een conceptfactuur, nooit een factuur van een ander bedrijf.",
+            "Nooit een rapportage die nog niet gepubliceerd is.",
+            "Geen teamagenda, geen instellingen, geen taaksjablonen of checklistbibliotheek van het bureau."
+          ],
+          "en": [
+            "Never a draft invoice, never another company's invoice.",
+            "Never a report that has not been published.",
+            "No team calendar, no settings, no task templates or checklist library belonging to the agency."
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "De schrijfkant is met opzet klein",
+          "en": "The write surface is deliberately small"
+        },
+        "body": {
+          "nl": "Alles wat een klantlogin mag schrijven past in één zin: reacties op zijn eigen taken, de indeling van zijn eigen dashboard en menu, en zijn eigen berichtenbox. Verder niets. Dat komt niet doordat dit \"portaalschermen\" zijn, want het zijn dezelfde schermen die jouw team gebruikt. Elke knop die schrijft toetst zijn eigen recht bij de API, niet de vraag of de bezoeker toevallig een klant is; zo kan een detailpagina panelen en gedeelde rijen samenstellen zoals altijd, zonder dat er ergens een filter vergeten kan worden.",
+          "en": "Everything a client login may write fits in one sentence: comments on their own tasks, the layout of their own dashboard and menu, and their own notification inbox. Nothing else. That isn't because these are \"portal screens\" — they are the very screens your team uses. Every control that writes checks its own permission against the API rather than asking whether the visitor happens to be a client, so a detail page can compose panels and shared rows exactly as it always did, with no filter left to forget."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Uitschakelen is omkeerbaar",
+          "en": "Switching access off is reversible"
+        },
+        "body": {
+          "nl": "\"Toegang uitschakelen\" zet de login uit en verwijdert niets: het account, het lidmaatschap en de hele geschiedenis blijven staan, en de knop leest daarna \"Toegang opnieuw inschakelen\". Er is bewust geen knop om een login weg te gooien, want een spoor dat verdwijnt zodra iemand vertrekt is geen spoor. Een klantlogin die aan geen enkel bedrijf hangt, ziet niets, wat de rollen ook zeggen; Instellingen → Team & gebruikers merkt zo'n account met \"Ziet geen klanten\" en de klant zelf krijgt uitleg in plaats van een lege pagina. Zet je de hele module uit, dan stoppen alleen nieuwe uitnodigingen: bestaande sessies blijven precies zo ingeperkt als ze waren.",
+          "en": "\"Toegang uitschakelen\" turns the login off and deletes nothing: the account, the membership and the whole history stay, and the button then reads \"Toegang opnieuw inschakelen\". There is deliberately no button to delete a login, because a trail that vanishes the moment someone leaves is not a trail. A client login attached to no company sees nothing at all, whatever the roles say; Instellingen → Team & gebruikers badges such an account \"Ziet geen klanten\", and the client themselves gets an explanation instead of an empty page. Turn the whole module off and only new invitations stop: existing sessions stay exactly as contained as they were."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Inloggen als deze contactpersoon",
+          "en": "Sign in as this contact person"
+        },
+        "body": {
+          "nl": "Zegt een klant \"ik kan die rapportage niet vinden\", dan druk je op dezelfde kaart op \"Inloggen als deze contactpersoon\" en kijk je naar precies zijn scherm: hetzelfde dashboard, dezelfde bedrijven, dezelfde ontbrekende tegel. Je eigen sessie blijft open, want de machtiging is een eigen kortlopend cookie naast je gewone login; hij verloopt na een half uur en de installatie legt daar sowieso een harde bovengrens op. Op elk scherm staat een balk die vertelt wie er als wie is ingelogd, met een knop Stoppen, en na het stoppen sta je terug bij de contactpersoon waar je begon. Het is een eigen recht (\"Inloggen als de portaallogin van een klant\", standaard alleen voor beheerders) dat nooit vanzelf meekomt met het beheren van de login: iemand uitnodigen en iemand zíjn zijn twee verschillende dingen.",
+          "en": "When a client says \"I can't find that report\", you press \"Inloggen als deze contactpersoon\" on the same card and look at exactly their screen: the same dashboard, the same companies, the same missing tile. Your own session stays open, because the grant is its own short-lived cookie beside your normal login; it lapses after half an hour and the installation puts a hard ceiling on it regardless. A banner sits on every screen saying who is signed in as whom, with a Stoppen button, and stopping puts you back on the contact you started from. It is its own permission (\"Inloggen als de portaallogin van een klant\", admin-only by default) and it never comes along with managing the login: inviting someone and being them are two different acts."
+        },
+        "bullets": {
+          "nl": [
+            "De sessie is begrensd tot de doorsnede van wat de klant en jij allebei mogen, dus je ziet nooit meer dan je zelf al mocht zien.",
+            "Toont de sessie minder dan de klant zelf heeft, dan zegt de balk dat erbij; een half beeld zonder label liegt over andermans account.",
+            "In elkaar geschakelde sessies worden geweigerd, en stoppen lukt altijd, ook als de licentie verlopen is."
+          ],
+          "en": [
+            "The session is capped to the intersection of what the client and you each hold, so you never see more than you already could.",
+            "If the session shows less than the client actually has, the banner says so — an unlabelled partial view lies about someone else's account.",
+            "Nested sessions are refused, and stopping always works, even after a licence has lapsed."
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Alles landt in het spoor, en wat de module kost",
+          "en": "Everything lands in the trail, and what the module costs"
+        },
+        "body": {
+          "nl": "Elke draai aan de toegang staat op de activiteitenlijn van de contactpersoon, onder de naam van wie hem draaide: portaaltoegang gegeven, portaaltoegang ingetrokken, uitnodiging opnieuw verstuurd, plus het begin en het einde van elke keer dat er als hem is ingelogd. Wat je tijdens zo'n sessie schrijft, krijgt jouw naam ernaast, dus de klant wordt nooit als auteur genoteerd voor iets wat jij deed. Het klantportaal is een uitbreidingsmodule: de kern van schakl. is open source (AGPL) en modules als deze werken op een licentiesleutel die je installeert onder Instellingen → Licentie. Verloopt die, dan wordt de module alleen-lezen in plaats van weg: bestaande klantlogins blijven werken en houden hun beperking, alleen nieuwe uitnodigingen wachten op een nieuwe sleutel.",
+          "en": "Every flip of the access lands on the contact's activity trail under the name of whoever flipped it: portal access granted, portal access revoked, invitation resent, plus the start and the end of every session signed in as them. Anything you write during such a session carries your name beside it, so the client is never recorded as the author of something you did. The client portal is an extension module: the core of schakl. is open source (AGPL), and modules like this one run on a licence key you install under Instellingen → Licentie. When the key expires the module goes read-only rather than away — existing client logins keep working and keep their restriction, and only new invitations wait for a new key."
+        },
+        "bullets": {
+          "nl": [
+            "Ontbreekt het recht, dan is de kaart er niet; ontbreekt de licentie, dan staat er een slotje met uitleg, want een slot hoort alleen op iets dat je zelf kunt openen.",
+            "Op je eigen server wijst dat slotje naar Instellingen → Licentie, en alleen de eigenaar van de installatie ziet die knop.",
+            "Een verse installatie draait de eerste twee weken volledig, zodat je het portaal kunt uitproberen voordat je een sleutel koopt."
+          ],
+          "en": [
+            "Without the permission the card isn't there; without the licence it shows a padlock and an explanation, because a padlock belongs only on something you can open yourself.",
+            "On your own server that padlock points at Instellingen → Licentie, and only the owner of the installation sees that button.",
+            "A fresh install runs in full for the first two weeks, so you can try the portal before you buy a key."
+          ]
+        }
+      }
+    ]
+  }
+}

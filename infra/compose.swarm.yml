@@ -29,6 +29,13 @@ x-api-env: &api-env
   # Add `?ssl=require` if you terminate the private link over TLS.
   SCHAKL_DATABASE_URL: postgresql+asyncpg://${PGUSER:?}:${PGPASSWORD:?}@${PGHOST:?}:${PGPORT:-5432}/${PGDATABASE:-rdb}
 
+  # The pool is per replica, so api replicas × (size + overflow) plus the worker's must stay
+  # under the managed instance's max_connections. Set explicitly (the app default is 15/15) and
+  # halved because the API runs two replicas: 2 × (8 + 8) = 32, matching the single-replica
+  # 1 × (15 + 15) it replaces. Raise both together with API_REPLICAS, never one alone.
+  SCHAKL_DB_POOL_SIZE: ${SCHAKL_DB_POOL_SIZE:-8}
+  SCHAKL_DB_POOL_MAX_OVERFLOW: ${SCHAKL_DB_POOL_MAX_OVERFLOW:-8}
+
   SCHAKL_REDIS_URL: redis://redis:6379/0
 
   # --- Object storage (Scaleway nl-ams) --------------------------------------------------
@@ -122,19 +129,37 @@ services:
       start_period: 60s
     deploy:
       mode: replicated
-      # MUST stay 1. The entrypoint runs `alembic upgrade head` before serving
-      # (apps/api/docker-entrypoint.sh:11); two tasks booting together race the migration.
-      replicas: 1
+      # Two replicas, so a redeploy is not an outage. Was pinned to 1 + stop-first because the
+      # entrypoint migrates before serving and two tasks would race `alembic upgrade head` —
+      # leaving every redeploy with a window of ZERO API tasks, which the web app (start-first,
+      # so it stays up) turned into a 500 on every request. `alembic upgrade` now takes a
+      # Postgres advisory lock (apps/api/alembic/env.py), so the loser waits and then no-ops.
+      #
+      # Both replicas land on the manager and share the /configuration bind mount. That is safe:
+      # write_fragment() writes via mkstemp + os.replace (ingress.py), so the worst concurrent
+      # outcome is two identical renders of the same database state, one atomically replacing
+      # the other.
+      replicas: ${API_REPLICAS:-2}
       placement:
         constraints:
           - node.role == manager   # co-located with Traefik for the bind mount above
       restart_policy:
         condition: any
       update_config:
-        # stop-first, NOT start-first: never let an old and a new schema serve at once, and
-        # never run two migrations concurrently. Accepts a few seconds of downtime.
-        order: stop-first
+        # start-first: the new task boots, migrates, goes healthy, and only then is an old one
+        # retired — so something is always serving. Safe because destructive schema changes go
+        # out over two releases (docs/WORKFLOW.md, expand/contract), which is what lets old and
+        # new code share a schema for the length of the rollover.
+        order: start-first
+        parallelism: 1
+        # Must exceed the boot (pull + migration + lifespan reconcile); the 5s default would
+        # call the update good before the first task had migrated, so rollback would never fire.
+        monitor: 180s
+        delay: 10s
         failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        order: start-first
 
   worker:
     image: ghcr.io/schakl-app/schakl-api:${SCHAKL_TAG:?pin a release tag, e.g. 1.4.0}
@@ -165,14 +190,38 @@ services:
     networks:
       - proxy
       - internal
+    # `node -e`, not curl/wget: node:22-slim ships neither, and Node 22 has global fetch. Hits
+    # /healthz, which resolves no tenant and never calls the API — a probe that did would pull
+    # every web replica out of rotation during an API restart.
+    #
+    # Without it, `start-first` rotated new tasks in the moment the container was *running*,
+    # a second or two before the SSR server bound :3000 — a handful of 502s per deploy.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
     deploy:
       mode: replicated
-      replicas: 2      # stateless SSR; safe to scale
+      replicas: ${WEB_REPLICAS:-2}      # stateless SSR; safe to scale
       restart_policy:
         condition: any
       update_config:
         order: start-first
+        parallelism: 1
+        monitor: 60s
+        delay: 5s
         failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        order: start-first
 
   redis:
     image: redis:7-alpine

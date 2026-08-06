@@ -19,6 +19,27 @@
   are excluded.
 - **Kill switch:** `SCHAKL_MCP_ENABLED=false` removes the whole surface.
 
+## The human-readable reference lives under `/api/` too
+
+Swagger UI is at **`https://<tenant-host>/api/docs`**, ReDoc at `/api/redoc`, and the document
+itself at `/api/openapi.json` — the same spec the tool surface above is generated from.
+
+They are not at FastAPI's defaults, and the reason is the same one that puts MCP at `/mcp`:
+**the edge routes exactly two prefixes to the API service**, `/api/` and `/mcp`
+(`infra/traefik/dynamic*.yml`, `infra/compose.portainer.yml`), and everything else to the SSR
+web app. At the framework defaults the reference sat at `/docs`, `/redoc` and `/openapi.json`,
+which every deployment handed to SvelteKit — a route it does not have. So the API documentation
+was not disabled anywhere; it was **unroutable**, and the symptom was the web app's 404 page
+where the reference should have been. Serving it from inside the one prefix that reaches this
+service fixes it with no edge change on an existing install.
+
+`SCHAKL_API_DOCS_ENABLED=false` removes the HTTP surface. It does **not** remove the spec:
+`app.openapi()` builds the document from the route table and never reads `openapi_url`, so the
+tool builder above and `scripts/gen-client.sh` keep working on an instance that serves no docs
+at all. `apps/api/tests/test_api_docs.py` pins the paths rather than the mere existence of a
+document — a test that asserted `app.openapi()` returns something passed the entire time the
+reference was unreachable.
+
 ## Authentication: API keys (OAuth later)
 
 The server authenticates with the platform's **API keys** (#20) rather than running an OAuth

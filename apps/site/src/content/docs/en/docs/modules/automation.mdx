@@ -1,0 +1,135 @@
+---
+title: Automation
+description: "Rules of the shape: when this happens and these conditions hold, run these actions. With a run log of every time it fired."
+sidebar:
+  order: 19
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Automation is the handwork you stop doing yourself: a client becomes active and the onboarding tasks
+are already there, a project changes status and the lead is told, a task comes in and a message goes
+to your own flow. A rule has three parts: a **trigger**, optionally a few **conditions**, and a list
+of **actions**.
+
+## Where to find it
+
+*Instellingen → Automatisering* (Settings → Automation), in the group "Modules & werkprocessen"
+(Modules & workflows). It holds the rule list with an **Ingeschakeld** (Enabled) switch per rule, a
+**Nieuwe regel** (New rule) button and a link to the **Uitvoerlog** (Run log).
+
+## Building a rule
+
+<Steps>
+1. **Nieuwe regel**, then give it a **Naam** (Name). That name comes back in the run log and in the
+   notifications the rule sends, so write down what it does.
+2. Pick a **Trigger**: the event this rule reacts to.
+3. Optionally fill in **Voorwaarden** (Conditions). No conditions means the rule always fires.
+4. Add **Acties** (Actions) below it, in the order they should run.
+5. Switch **Ingeschakeld** on. A disabled rule is never evaluated.
+</Steps>
+
+### Triggers
+
+| Trigger | Fires when |
+| --- | --- |
+| Een taak wordt aangemaakt | a task is created, including by a template or another rule |
+| Een taak verandert van status | a task's status changes |
+| Een taak wordt toegewezen | a task is assigned to somebody |
+| Een klant wordt toegevoegd | a new client is created |
+| Een klant verandert van status | a client's status changes |
+| Een project verandert van status | a project's status changes |
+
+<Aside type="caution">
+The list also offers **Uptime-monitoring van een website wordt aan- of uitgezet** and **Een domein
+verandert van status**. You can configure a rule on them today, but those events are not emitted yet,
+so such a rule stays silent. Only use them once the release notes say otherwise.
+</Aside>
+
+### Conditions
+
+A condition is a row of three: **Veld** (Field), an operator and **Waarde** (Value). You type the
+field yourself; you can use any column of the record (`status`, `priority`, `name`) and anything the
+event itself carries — on a status change, for instance, `from` and `to`.
+
+| Operator | Meaning |
+| --- | --- |
+| is gelijk aan / is niet gelijk aan | equals / does not equal |
+| is één van | the value is in a list; separate values with commas |
+| bevat | the text contains it |
+| is groter dan / is kleiner dan | numeric or date comparison |
+
+With more than one row you choose **Alle voorwaarden moeten kloppen** (all must match) or **Minstens
+één voorwaarde moet kloppen** (at least one must match). For anything more involved, switch on
+**Geavanceerd: voorwaarden als JSON bewerken** (Advanced: edit conditions as JSON) and write nested
+`all`/`any` trees, with the JSON validated as you type. There is deliberately no field anywhere that
+takes code: conditions are declarative, never executable.
+
+### Actions
+
+Actions run in order. Five kinds ship built in:
+
+- **Taak aanmaken** (Create task): from a **Taaksjabloon** (Task template), or one bare task with a
+  **Taaktitel** (Task title). If the rule fired on a client, the task lands on that client by itself.
+- **Taakstatus wijzigen** (Change task status): set the task to a **Nieuwe status**.
+- **Taak toewijzen** (Assign task): pick the colleague under **Toewijzen aan**.
+- **Melding sturen** (Send notification): pick **Ontvangers** (Recipients) and type your own
+  **Bericht** (Message). It appears in their inbox as `Automatisering "{rule}": {message}`.
+- **Webhook aanroepen** (Call webhook): the **Webhook-URL** is POSTed the event, the record type, the
+  record id and the payload as JSON. With **Wachten op bevestiging** (Wait for confirmation) the run
+  fails unless the endpoint answers 2xx and does not return `{"ok": false}`.
+
+A rule with no actions matches and logs neatly, but does nothing.
+
+### Test before you switch it on
+
+**Testrun** (Dry run) evaluates your rule against an existing **Record-ID**. You see whether the
+conditions match and which actions would fire. Nothing is executed.
+
+## The run log
+
+*Instellingen → Automatisering → Uitvoerlog* lists every firing, with **Wanneer** (When), **Regel**
+(Rule), **Trigger**, **Status**, the **Stappen** (Steps) and the **Fout** (Error). You can filter it
+down to one rule.
+
+The status is **In wachtrij** (Pending), **Bezig** (Running), **Geslaagd** (Succeeded), **Mislukt**
+(Failed) or **Overgeslagen** (Skipped). Deleting a rule keeps its run history, and the confirmation
+dialog says so.
+
+<Aside type="caution">
+Rules can set each other off: one rule creates a task, which fires a rule on "a task is created".
+After three links that stops by itself, and the log reads "Overgeslagen: veroorzaakt door een keten
+van 3 automatiseringen (lusbeveiliging)". Two rules can therefore never keep triggering each other
+forever.
+</Aside>
+
+## Permissions
+
+| Permission | What it opens | Default |
+| --- | --- | --- |
+| `automation.rule.read` | The rule list and the screen itself | Administrator |
+| `automation.rule.write` | Creating, editing, deleting and dry-running rules | Administrator |
+| `automation.run.read` | The run log | Administrator |
+
+All three are admin-only by default, on purpose: a rule can create tasks, notify colleagues and call
+external webhooks on behalf of the whole organisation. Widen them per role under *Instellingen →
+Rollen* (Settings → Roles).
+
+## Good to know
+
+- Actions run in the background worker, not in the screen. A slow webhook therefore never slows down
+  saving a task.
+- A failed step stops the chain and marks the whole run **Mislukt**. It is never half applied and
+  then abandoned quietly.
+- Private and local addresses are blocked as webhook targets. If you run your own n8n on your own
+  network, your administrator has to allow that deliberately on the server.
+- Exactly the same event on the same record twice produces one run, not two.
+- Automation is a **licensed module**. Without a valid licence it goes read-only: existing rules stay
+  readable, but you can no longer save one.
+
+## Read next
+
+<CardGrid>
+  <LinkCard title="Notifications" description="Where the notifications your rules send end up." href="/en/docs/modules/notifications/" />
+  <LinkCard title="Clients" description="The client status many rules react to." href="/en/docs/modules/companies/" />
+</CardGrid>

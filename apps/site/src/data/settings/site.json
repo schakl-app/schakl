@@ -1,6 +1,6 @@
 {
   "brandName": "schakl.",
-  "siteUrl": "https://schakl.app",
+  "siteUrl": "https://schakl.dev",
   "logo": "/src/assets/site/logo.svg",
   "logoDark": "/src/assets/site/logo-dark.svg",
   "favicon": "/favicon.svg",
@@ -12,7 +12,7 @@
     "github": "https://github.com/schakl-app/schakl"
   },
   "demo": {
-    "url": "https://demo.schakl.app",
+    "url": "https://demo.schakl.dev",
     "label": {
       "nl": "Bekijk de live demo",
       "en": "See the live demo"
@@ -23,12 +23,15 @@
   },
   "nav": [
     { "href": "/#features", "nl": "Functies", "en": "Features" },
+    { "href": "/integrations/", "nl": "Koppelingen", "en": "Integrations" },
     { "href": "/#selfhost", "nl": "Hosting", "en": "Hosting" },
     { "href": "/docs/", "nl": "Documentatie", "en": "Docs" },
     { "href": "/contact/", "nl": "Contact", "en": "Contact" }
   ],
   "footerLinks": [
     { "href": "/docs/", "nl": "Documentatie", "en": "Documentation" },
+    { "href": "/features/", "nl": "Functies", "en": "Features" },
+    { "href": "/integrations/", "nl": "Koppelingen", "en": "Integrations" },
     { "href": "/docs/admin/installation/", "nl": "Installeren", "en": "Install" },
     { "href": "/contact/", "nl": "Contact", "en": "Contact" },
     { "href": "/interest/", "nl": "Interesse", "en": "Interest" },

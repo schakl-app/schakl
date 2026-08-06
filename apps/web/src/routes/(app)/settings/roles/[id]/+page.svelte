@@ -4,6 +4,7 @@
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import Button from "$lib/core/ui/Button.svelte";
+  import I18nLocaleSwitcher from "$lib/core/ui/I18nLocaleSwitcher.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import PermissionMatrix from "$lib/core/roles/PermissionMatrix.svelte";
 
@@ -50,20 +51,19 @@
   <input type="hidden" name="is_owner" value={isOwner} />
 
   <div class="mb-5 rounded-xl border border-border bg-surface-raised p-5">
+    <I18nLocaleSwitcher class="mb-3" hint={false} />
     <div class="grid gap-4 sm:grid-cols-2">
       <I18nTextField
         label={t("common.name_field")}
         basename="name"
         values={role.name_i18n}
         idPrefix="name"
-        hint={false}
       />
       <I18nTextField
         label={t("settings.roles.description")}
         basename="description"
         values={role.description_i18n}
         idPrefix="description"
-        hint={false}
       />
     </div>
     <p class="mt-1 text-xs text-text-muted">{t("common.translations_optional")}</p>

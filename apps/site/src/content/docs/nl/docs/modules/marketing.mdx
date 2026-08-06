@@ -1,0 +1,130 @@
+---
+title: Marketing
+description: "Koppel per klant hun Google Analytics, Search Console en Google Ads, en lees de cijfers op de klantpagina in plaats van in vier browsertabbladen."
+sidebar:
+  order: 16
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Elke klant heeft zijn eigen Analytics-property, Search Console-site en Ads-account, en die staan
+allemaal ergens anders. De marketingmodule koppelt ze aan de klant in schakl., haalt elke nacht
+de dagcijfers op en toont ze op de plek waar de rest van het klantdossier ook staat.
+
+## Waar je het vindt
+
+- **Marketing** in het hoofdmenu: kies bovenin een klant en je krijgt precies hetzelfde
+  dashboard als op de klant zelf.
+- Het paneel **Marketing** op de klantpagina, met daarboven een link naar het volledige
+  marketingtabblad van die klant.
+- *Overzicht → Marketing*: één regel per gekoppelde klant.
+- *Instellingen → Marketing*: het **Google Ads-ontwikkelaarstoken** en de
+  **SE Ranking API-sleutel**.
+
+Marketing is een gelicentieerde module; je zet hem aan onder *Instellingen → Modules*. Zie
+[Licenties](/nl/docs/admin/licenses/).
+
+## Instellen
+
+<Steps>
+1. Zet de module **Google Workspace** aan en vul onder *Instellingen → Google Workspace* de
+   OAuth-client van je eigen Google Cloud-project in. Zet in datzelfde project ook de API's aan
+   die deze module aanroept: **Google Analytics Admin API én Google Analytics Data API** (alleen
+   de Data API laat de property-keuzelijst leeg terwijl de rest ingesteld lijkt), de Google
+   Search Console API en de Google Ads API.
+
+2. Vul onder *Instellingen → Marketing* het **Google Ads-ontwikkelaarstoken** in. Dat maak je
+   aan in het API-center van je Google Ads-beheerdersaccount. Zonder token meldt de
+   Ads-keuzelijst dat er een ontwikkelaarstoken nodig is.
+
+3. Koppel je eigen Google-account: *Instellingen → Mijn account*, kaart **Google-account**, knop
+   **Google koppelen**. Heb je het recht om marketingkoppelingen te beheren, dan zitten de
+   marketingrechten in diezelfde toestemming: één keer door het scherm van Google, niet drie
+   keer.
+
+4. Open een klant, klap in het paneel **Marketing** het ⋯-menu open en kies **Bewerken**. Kies
+   per bron een account in **Analytics-property**, **Search Console-site** en **Ads-account**.
+   Heeft de klant meerdere websites, kies dan eerst bij **Koppelen aan website** aan welke site
+   de koppeling hangt, of laat hem op **Hele klant** staan.
+</Steps>
+
+## Wat je op het dashboard ziet
+
+Per gekoppelde bron een rij KPI's met het verschil ten opzichte van de vorige periode, en een
+sparkline. Bovenin kies je de periode: **Laatste 30 dagen**, **Deze maand**, **Dit kwartaal**,
+**Laatste 90 dagen** of **Laatste 12 maanden**, telkens vergeleken met de vorige periode.
+
+| Bron | Cijfers |
+| --- | --- |
+| Google Analytics | Sessies, Gebruikers, Nieuwe gebruikers, Belangrijke gebeurtenissen, Conversies, Betrokkenheid, Omzet |
+| Search Console | Kliks, Vertoningen, CTR, Gem. positie |
+| Google Ads | Uitgaven, Kliks, Vertoningen, Conversies, Conversiewaarde |
+
+Onder elke bron staan de uitsplitsingen. Die worden live bij de bron opgehaald (en ongeveer een
+uur bewaard): Toppagina's, Kanalen, Apparaten en Belangrijke gebeurtenissen per gebeurtenis uit
+Analytics; Topzoektermen, Toppagina's en Grootste stijgers en dalers uit Search Console;
+Campagnes uit Ads.
+
+## De indeling die de klant ziet
+
+Op het dashboard staat **Indeling bewerken**. Daarin versleep je tegels, verberg je ze
+(verborgen tegels wachten in een strook eronder), hernoem je ze per taal, zet je uitsplitsingen
+aan of uit, kies je de **Standaardgrafiek** en verberg je met **Tonen aan klant** een hele bron.
+Wijzigingen worden direct opgeslagen. Deze indeling is wat de klant in het klantportaal ziet.
+
+Onder **Sleutelgebeurtenissen** geef je elke GA4-gebeurtenis een naam die de klant begrijpt; de
+GA4-gebeurtenisnaam blijft de referentie. Een gebeurtenis die nog niet is langsgekomen voeg je
+toe op zijn ruwe GA4-naam.
+
+## Synchronisatie
+
+Elke koppeling draagt een status: **Gesynchroniseerd**, **Eerste synchronisatie loopt**,
+**Synchronisatiefout** of **Verbinding verbroken**, met de datum van de laatste synchronisatie
+erbij. Een nachtelijke taak haalt de dagcijfers op; een nieuwe koppeling krijgt daarnaast een
+eenmalige inhaalslag van ruim dertien maanden, zodat sparklines en de vergelijking met vorig
+jaar meteen kloppen.
+
+Ontkoppelen verwijdert de historie niet: de koppeling wordt gedeactiveerd, en dezelfde property
+opnieuw koppelen zet hem weer aan.
+
+## Rechten
+
+| Recht | Wat het opent | Standaard bij |
+| --- | --- | --- |
+| `marketing.metrics.read` | Marketingcijfers bekijken (paneel, tabblad, portaaltegel) | Beheerder, Medewerker, Klant |
+| `marketing.link.manage` | Marketingkoppelingen beheren, en *Instellingen → Marketing* | Beheerder |
+| `marketing.overview.read` | Het marketingoverzicht over alle klanten | Beheerder |
+
+Instellen doe je per rol onder *Instellingen → Rollen*.
+
+## Goed om te weten
+
+- **Een koppeling synchroniseert via het Google-account van één collega**, en elk scherm noemt
+  wie dat is. Vertrekt die collega, dan stopt de aanvoer voor die klant totdat iemand anders de
+  koppeling overneemt.
+- **Een uitgezette API en een verlopen toegang geven allebei een foutmelding van Google, maar
+  hebben niet dezelfde oplossing.** schakl leest de reden uit het antwoord: staat de API niet
+  aan in het Google Cloud-project, dan helpt opnieuw koppelen niet en wordt het ook niet
+  aangeboden; ontbreken de rechten, dan is opnieuw koppelen wél de oplossing.
+- **Beheerdersaccounts (MCC) worden uitgeklapt.** Google levert alleen directe toegangen; schakl
+  loopt de hiërarchie na en biedt de onderliggende klantaccounts aan. Het beheerdersaccount zelf
+  is nooit kiesbaar, want Google weigert daar cijfers over te geven.
+- **Bij een verlopen licentie gaat de module alleen-lezen**: koppelen, ontkoppelen en de
+  instellingen weigeren, en de nachtelijke synchronisatie staat stil. Paneel, tabblad en
+  overzicht blijven de al opgehaalde cijfers tonen.
+
+<Aside type="caution" title="SE Ranking: sleutel wel, schermen nog niet">
+De SE Ranking API-sleutel (één sleutel voor het hele bureau, in *Instellingen → Marketing*)
+levert de hoofdstukken zoekwoordposities, website-audit en zichtbaarheid in AI-zoekresultaten
+aan de [maandrapportage](/nl/docs/modules/reporting/). De keuzelijsten op de klantpagina bieden
+op dit moment alleen Google Analytics, Search Console en Google Ads. Twee dingen aan de
+SE Ranking-koppeling zijn bovendien nooit tegen een echte sleutel getest: de precieze opzet van
+de `Authorization`-header en het pad waarop de projectenlijst wordt opgehaald. Beide zijn
+overgenomen uit de documentatie van SE Ranking.
+</Aside>
+
+## Verder lezen
+
+- [Rapportage](/nl/docs/modules/reporting/): de maandrapportage die op deze cijfers wordt
+  gebouwd.
+- [Klanten](/nl/docs/modules/companies/): het klantdossier waar het paneel op staat.

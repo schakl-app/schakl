@@ -9,6 +9,7 @@
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import I18nLocaleSwitcher from "$lib/core/ui/I18nLocaleSwitcher.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
 
@@ -136,6 +137,7 @@
     data-testid="role-create-form"
   >
     <input type="hidden" name="from" value={duplicateFrom} />
+    <I18nLocaleSwitcher />
     <I18nTextField label={t("common.name_field")} basename="name" idPrefix="name" />
     {#if form?.createError}
       <p class="text-sm text-red-600 dark:text-red-400">{t(form.createError)}</p>

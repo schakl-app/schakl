@@ -1,0 +1,112 @@
+---
+title: Bestanden
+description: "Waar bijlagen, logo's en documenten in schakl. terechtkomen, wat je mag uploaden en wie een bestand mag openen."
+sidebar:
+  order: 25
+---
+
+import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Er is geen scherm "Bestanden". Een bestand hangt altijd aan het record waar het bij hoort: de
+offerte bij het project, de screenshot bij de taak, het contract bij de medewerker. schakl. slaat
+die bestanden zelf op en serveert ze via de API, zodat op elk bestand dezelfde afscherming zit
+als op het record eronder. Een link naar een bijlage doet dus niets voor iemand die niet is
+ingelogd bij jouw organisatie. De enige uitzondering zijn je huisstijlbestanden: logo, favicon
+en app-icoon moeten op het inlogscherm staan en zijn daarom zonder inloggen op te halen.
+
+## Waar je het vindt
+
+| Waar | Wat je daar uploadt |
+| --- | --- |
+| Projectpagina, blok **Documenten** | Offertes, opleveringen, alles wat bij het project hoort |
+| Taakpagina, blok **Links & bijlagen** | Bijlagen bij één taak; uploaden kan in de bewerkmodus |
+| Klantpagina, veld **Logo** | Het beeldmerk van de klant zelf |
+| *Instellingen → Mijn account* | **Foto uploaden**: je eigen profielfoto |
+| *Instellingen → Huisstijl* | Logo, favicon en app-icoon van je bureau |
+| *Instellingen → Facturatie* | De achtergrondafbeelding van je documentsjabloon |
+| **Mijn pagina** (via je profielmenu) | Documenten in het [personeelsdossier](/nl/docs/modules/hr/) |
+
+Daarnaast slaat schakl. bestanden op zonder dat jij iets doet: afbeeldingen in de tekst van een
+binnengekomen e-mail, en de pdf van een gegenereerde rapportage.
+
+## Uploaden en verwijderen
+
+In het blok **Documenten** zit één knop, **Bestand uploaden**. Kies je een bestand, dan gaat het
+meteen omhoog; er is geen aparte opslaan-stap. Per regel staat de bestandsnaam, de grootte en
+een ⋯-menu met **Verwijderen**, dat om bevestiging vraagt: "Dit bestand verwijderen? Dit kan niet
+ongedaan worden gemaakt."
+
+Op een taak zit hetzelfde blok, maar dan onder **Links & bijlagen** en alleen zichtbaar voor
+medewerkers. Op een project ziet een klant met een portaallogin de lijst wel, maar zonder
+uploadknop en zonder verwijderoptie.
+
+## Wat er in mag
+
+Standaard geldt: maximaal **10 MB** per bestand, en alleen deze soorten:
+
+- afbeeldingen: PNG, JPEG, WebP, GIF, SVG en ICO
+- PDF
+- platte tekst en CSV
+- ZIP
+- Word en Excel
+
+Wat er niet in staat, staat er bewust niet in: PowerPoint, video en audio worden standaard
+geweigerd. Lukt een upload niet, dan zegt het scherm waarom: "Dit bestandstype is niet
+toegestaan" of "Dit bestand is te groot". Beide grenzen zijn instellingen van de installatie
+(`SCHAKL_UPLOAD_MAX_BYTES` en `SCHAKL_UPLOAD_ALLOWED_TYPES`), dus wie de server beheert kan ze
+verruimen; in de app zelf staat er geen knop voor.
+
+Afbeeldingen en pdf's openen in een nieuw tabblad; al het andere wordt gedownload. SVG downloadt
+altijd, ook al is het een afbeelding, en dat is een bewuste veiligheidskeuze.
+
+## Rechten
+
+| Recht | Wat het geeft | Standaard |
+| --- | --- | --- |
+| `files.file.write` | Bijlagen uploaden en verwijderen, en je eigen profielfoto | Beheerder en Medewerker |
+| geen recht nodig | Een bestand van je eigen organisatie openen | Iedereen die is ingelogd |
+
+Lezen vraagt geen apart recht, maar dat betekent niet dat alles voor iedereen open ligt. De
+zichtbaarheid van het record beslist: wie de taak, het project of de klant niet mag zien, krijgt
+op het bestand hetzelfde antwoord als op het record zelf, namelijk "niet gevonden".
+
+Een paar plekken hebben hun eigen recht in plaats van `files.file.write`:
+
+- het **logo van een klant** valt onder `companies.company.write`;
+- **huisstijlbestanden** vragen daarbovenop `settings.branding.write`, en er kunnen alleen
+  afbeeldingen in;
+- **personeelsdocumenten** vragen `hr.document.manage` om ze toe te voegen, en zijn alleen te
+  openen door de medewerker zelf of door iemand met dossierrechten;
+- je **profielfoto** is van jou: iemand anders kan hem niet verwijderen.
+
+## Goed om te weten
+
+<Aside type="caution">
+De database en de bestandsopslag horen bij elkaar. Zet je een back-up van de database terug
+zonder de bijbehorende opslag, dan bestaan de bestandsregels nog wel maar de inhoud niet meer,
+en meldt de app: "De registratie van dit bestand bestaat, maar de inhoud ontbreekt in de
+opslag." Maak dus altijd van beide tegelijk een back-up.
+</Aside>
+
+- **Hetzelfde bestand kost één keer opslag.** schakl. herkent identieke inhoud binnen je
+  organisatie. Hang je dezelfde pdf aan tien taken, dan staat hij één keer op schijf. Dat is de
+  reden dat een handtekeningafbeelding onder vijfhonderd binnengekomen mails niet vijfhonderd
+  keer wordt bewaard.
+- **Verwijderen geeft niet meteen schijfruimte terug.** De regel verdwijnt direct, maar de
+  inhoud wordt pas opgeruimd door een nachtelijk onderhoudsklusje, en pas als niets er nog naar
+  verwijst. Er is geen scherm dat je opslagverbruik toont.
+- Een record toont maximaal 200 bijlagen.
+- Afbeeldingen die in de tekst van een e-mail zitten, horen bij die tekst en staan dus niet
+  tussen de bijlagen. Ze worden in het bericht zelf getoond.
+- Bestanden staan op je eigen installatie. Een koppeling met Google Drive voor bijlagen bestaat
+  nog niet; het taakscherm zegt dat er zelf bij.
+- De beheerder van de installatie kiest waar de bytes staan: een schijfvolume of S3-compatibele
+  objectopslag. Voor wie de app gebruikt verandert er niets. Zie
+  [Bestandsopslag](/nl/docs/admin/storage/).
+
+## Verder lezen
+
+<CardGrid>
+  <LinkCard title="Huisstijl" description="Logo, favicon en app-icoon van je bureau." href="/nl/docs/modules/branding/" />
+  <LinkCard title="Bestandsopslag" description="Waar de bytes landen, de limieten en het nachtelijke onderhoud." href="/nl/docs/admin/storage/" />
+</CardGrid>

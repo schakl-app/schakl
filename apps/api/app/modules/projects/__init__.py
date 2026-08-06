@@ -11,6 +11,7 @@ from arq import cron
 from app.core.events import subscribe
 from app.modules.projects.attachments import on_file_event
 from app.modules.projects.budget_watch import watch_project_budgets
+from app.modules.projects.bulk import PROJECT_BULK
 from app.modules.projects.coverage import on_subscription_project_linked
 from app.modules.projects.impex import PROJECT_IMPEX
 from app.modules.projects.mcp import PROJECT_MCP_TOOLS
@@ -29,6 +30,7 @@ module = ModuleDescriptor(
     panels=[projects_company_panel],
     permissions=PROJECT_PERMISSIONS,
     impex=[PROJECT_IMPEX],
+    bulk=[PROJECT_BULK],
     mcp_tools=PROJECT_MCP_TOOLS,
     # Offset from the tasks crons (04:00 recurrence, 05:30 reminders) and the 05:00 update check.
     cron_jobs=[cron(watch_project_budgets, hour=5, minute=45)],

@@ -1,0 +1,147 @@
+{
+  "name": "Automatisering",
+  "slug": "automation",
+  "order": 220,
+  "icon": "⚡",
+  "lucide": "automation",
+  "title": {
+    "nl": "Automatisering",
+    "en": "Automation"
+  },
+  "description": {
+    "nl": "Als dit gebeurt, dan dat. Een gebeurtenis vuurt, jouw voorwaarden worden gecontroleerd en de acties draaien op de achtergrond; elke uitvoering staat in het log.",
+    "en": "If this happens, then that. An event fires, your conditions are checked and the actions run in the background — every firing lands in the run log."
+  },
+  "page": {
+    "eyebrow": {
+      "nl": "Automatisering",
+      "en": "Automation"
+    },
+    "title": {
+      "nl": "Als dit gebeurt, dan dat",
+      "en": "If this happens, then that"
+    },
+    "lead": {
+      "nl": "Onder Instellingen → Automatisering leg je vast waar schakl. op moet reageren: een taak die van status verandert, een klant die erbij komt, een project dat wordt afgerond. Voorwaarden bepalen wanneer een regel geldt, acties bepalen wat er dan gebeurt. De achtergrondworker voert ze uit, dus een trage webhook maakt het opslaan van een taak nooit langzamer.",
+      "en": "Under Instellingen → Automatisering you write down what schakl. should react to: a task changing status, a client arriving, a project being finished. Conditions decide when a rule applies, actions decide what happens then. The background worker runs them, so a slow webhook never makes saving a task any slower."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Gebeurtenissen om op te reageren",
+          "en": "Events to react to"
+        },
+        "body": {
+          "nl": "Een regel begint bij zijn trigger: de gebeurtenis waarop hij luistert, één per regel. Die gebeurtenissen komen uit de modules zelf en niet uit een laag ernaast, dus een klant die je in een spreadsheet op 'actief' zet vuurt precies dezelfde regel als een klant die je in het scherm op 'actief' zet. Wil je op twee dingen reageren, dan maak je twee regels; elke regel heeft zijn eigen aan/uit-schakelaar in de lijst, zodat je er één stil kunt leggen zonder hem te verwijderen. In het keuzemenu staan naast deze zes nog twee recepten die vandaag nog niets doen (de uptime-schakelaar van een website en de status van een domein): de regel is vast te bouwen, maar er komt pas iets binnen zodra die modules de gebeurtenis gaan uitzenden.",
+          "en": "A rule starts with its trigger: the event it listens for, one per rule. Those events come out of the modules themselves rather than a layer beside them, so a client you set to 'active' in a spreadsheet fires exactly the same rule as a client you set to 'active' on screen. Want to react to two things? Write two rules. Each rule carries its own on/off switch in the list, so you can silence one without deleting it. Beside these six the select carries two recipes that do nothing yet — a website's uptime toggle and a domain's status — so the rule can be built today, but nothing arrives until those modules start emitting the event."
+        },
+        "bullets": {
+          "nl": [
+            "Een taak wordt aangemaakt",
+            "Een taak verandert van status",
+            "Een taak wordt toegewezen",
+            "Een klant wordt toegevoegd",
+            "Een klant verandert van status",
+            "Een project verandert van status"
+          ],
+          "en": [
+            "A task is created",
+            "A task changes status",
+            "A task is assigned",
+            "A client is added",
+            "A client changes status",
+            "A project changes status"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Voorwaarden die je klikt, geen code die je schrijft",
+          "en": "Conditions you click, not code you write"
+        },
+        "body": {
+          "nl": "Onder de trigger bouw je rijen van Veld, operator en Waarde, met de keuze tussen \"Alle voorwaarden moeten kloppen\" en \"Minstens één voorwaarde moet kloppen\". Ze worden gecontroleerd tegen de gebeurtenis én tegen het record waar die over gaat, dus je kunt zowel op de overgang als op de huidige waarden filteren. Geen voorwaarden betekent: de regel vuurt altijd. Voor geneste alle/één-van-bomen is er \"Geavanceerd: voorwaarden als JSON bewerken\", met directe controle op geldige JSON. Wat er bewust níét is, is een codeveld: een uitvoerbaar script in een beheerscherm op je eigen server is een lek met extra stappen, dus voorwaarden zijn declaratief en blijven dat.",
+          "en": "Under the trigger you build rows of Field, operator and Value, choosing between \"All conditions must match\" and \"At least one condition must match\". They are checked against the event and against the record it is about, so you can filter on the transition as well as on the current values. No conditions means the rule always fires. For nested all/any trees there is \"Advanced: edit conditions as JSON\", validated as you type. What is deliberately absent is a code box: an executable script in an admin screen on your own server is a security hole with extra steps, so conditions are declarative and stay that way."
+        },
+        "bullets": {
+          "nl": [
+            "is gelijk aan · is niet gelijk aan",
+            "is één van (waarden gescheiden door komma's)",
+            "bevat",
+            "is groter dan · is kleiner dan"
+          ],
+          "en": [
+            "equals · does not equal",
+            "is one of (values separated by commas)",
+            "contains",
+            "is greater than · is less than"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Vijf acties, op volgorde uitgevoerd",
+          "en": "Five actions, run in order"
+        },
+        "body": {
+          "nl": "Klopt de regel, dan draaien de acties op volgorde in de achtergrondworker. Elke actie draait in zijn eigen savepoint: mislukt er één, dan stopt de keten daar, wordt alleen die stap teruggedraaid en staat de uitvoering op Mislukt. Wat de stappen ervóór al deden blijft staan, want half toegepast is eerlijker dan stilletjes ongedaan gemaakt. Andere modules kunnen hun eigen acties bijdragen, dus de lijst kan groeien zonder dat er aan automatisering zelf iets verandert. Een regel zonder acties mag ook: die matcht en logt, en doet verder niets.",
+          "en": "When the rule matches, its actions run in order in the background worker. Each action runs inside its own savepoint: if one fails, the chain stops there, only that step is rolled back, and the run is marked Failed. What the earlier steps already did stays done, because half-applied is more honest than silently undone. Other modules can contribute their own actions, so the list can grow without touching automation itself. A rule with no actions is allowed too: it matches and logs, and does nothing further."
+        },
+        "bullets": {
+          "nl": [
+            "Taak aanmaken: één losse taak, of een heel taaksjabloon op de klant waarop de regel vuurde",
+            "Taakstatus wijzigen",
+            "Taak toewijzen",
+            "Melding sturen: naar de collega's die je aanwijst, met je eigen tekst",
+            "Webhook aanroepen"
+          ],
+          "en": [
+            "Create task: one loose task, or a whole task template onto the client the rule fired on",
+            "Set task status",
+            "Assign task",
+            "Send notification: to the colleagues you name, in your own words",
+            "Call webhook"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Een webhook die het antwoord meetelt",
+          "en": "A webhook that counts the answer"
+        },
+        "body": {
+          "nl": "De webhookactie post de gebeurtenis, het entiteitstype, het id en de payload als JSON naar de URL die je invult, klaar voor n8n, Make of je eigen endpoint. Zet je \"Wachten op bevestiging\" aan, dan is het geen los schot maar een handdruk: de uitvoering faalt tenzij het endpoint met 2xx antwoordt en niet {\"ok\": false} teruggeeft. Omdat die URL door een mens is ingetypt en het verzoek van jouw eigen server vertrekt, wordt de hostnaam eerst opgezocht en moet elk adres waarop hij uitkomt publiek zijn; loopback, privénetwerken en link-local worden geweigerd, redirects worden niet gevolgd en er staat een harde time-out op. Draait je automatiseringsserver bewust op het LAN, dan zet de beheerder die uitzondering expliciet aan.",
+          "en": "The webhook action posts the event, the entity type, the id and the payload as JSON to the URL you fill in — ready for n8n, Make or your own endpoint. Switch on \"Wait for confirmation\" and it becomes a handshake rather than a shot in the dark: the run fails unless the endpoint answers 2xx and does not reply {\"ok\": false}. Because that URL was typed by a person and the request leaves your own server, the hostname is resolved first and every address it resolves to must be public; loopback, private ranges and link-local are refused, redirects are not followed, and a hard timeout applies. If your automation server deliberately lives on the LAN, the operator switches that exception on explicitly."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Testrun vooraf, uitvoerlog achteraf",
+          "en": "Dry run before, run log after"
+        },
+        "body": {
+          "nl": "Voordat je een regel aanzet, draai je een Testrun tegen het id van een bestaand record: je ziet of de voorwaarden kloppen en welke acties zouden vuren, en er wordt niets uitgevoerd. Daarna houdt het Uitvoerlog alles bij: wanneer, welke regel, welke trigger, de status, de uitkomst per stap, de foutmelding en de ketendiepte, te filteren op één regel. Verwijder je een regel, dan blijft die geschiedenis staan; het verwijdervenster zegt dat er ook bij. Een uitvoering die de wachtrij nooit haalde, bijvoorbeeld door een hapering in Redis, wordt door een sweep opnieuw aangeboden in plaats van stil te blijven liggen.",
+          "en": "Before switching a rule on you run a Dry run against the id of a real record: you see whether the conditions match and which actions would fire, and nothing is executed. After that the Run log keeps everything: when, which rule, which trigger, the status, the result per step, the error and the chain depth, filterable down to a single rule. Delete a rule and that history stays; the delete dialog says so. A run that never reached the queue, say through a Redis blip, is re-offered by a sweep instead of quietly sitting there."
+        },
+        "bullets": {
+          "nl": [
+            "In wachtrij · Bezig · Geslaagd · Mislukt · Overgeslagen"
+          ],
+          "en": [
+            "Pending · Running · Succeeded · Failed · Skipped"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Regels die elkaar niet gek maken",
+          "en": "Rules that cannot wind each other up"
+        },
+        "body": {
+          "nl": "Een regel die een taak aanmaakt, vuurt een gebeurtenis waar een andere regel weer op kan reageren. Dat mag, maar niet eindeloos: een gebeurtenis die drie automatiseringssprongen diep is wordt als Overgeslagen vastgelegd in plaats van uitgevoerd, dus regel A → B → A is zichtbaar in het log en geen storing; dezelfde gebeurtenis die twee keer binnenkomt krijgt dezelfde sleutel en levert geen tweede uitvoering op. Regels schrijven is standaard alleen voor beheerders, want een regel handelt namens de organisatie: hij maakt taken aan, stuurt meldingen en roept externe endpoints aan. Regels lezen, regels schrijven en het log lezen zijn daarom drie losse rechten, per rol te verruimen onder Instellingen → Rollen. Automatisering is een uitbreidingsmodule: de kern van schakl. is open source (AGPL-3.0), uitbreidingsmodules vragen een licentiesleutel die je onder Instellingen → Licentie invult.",
+          "en": "A rule that creates a task fires an event another rule can react to. That is allowed, but not endlessly: an event three automation hops deep is recorded as Skipped instead of executed, so rule A → B → A shows up in the log rather than as an outage; and the same event arriving twice computes the same key and produces no second run. Writing rules is admin-only by default, because a rule acts on behalf of the organisation: it creates tasks, sends notifications and calls external endpoints. Reading rules, writing rules and reading the log are therefore three separate permissions, widened per role under Instellingen → Rollen. Automation is an extension module: the core of schakl. is open source (AGPL-3.0), extension modules need a licence key, entered under Instellingen → Licentie."
+        }
+      }
+    ]
+  }
+}

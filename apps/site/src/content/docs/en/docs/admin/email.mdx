@@ -1,0 +1,146 @@
+---
+title: Outgoing email
+description: "Set up how schakl. sends mail: your own SMTP server or Brevo, SendGrid or SMTP2GO, plus the signature and the per-language templates."
+sidebar:
+  order: 5
+---
+
+import { Aside, CardGrid, LinkCard, Steps } from '@astrojs/starlight/components';
+
+schakl. sends mail of its own: an invitation to a colleague, a password reset, an invoice, a
+quote, a payment reminder, a monthly report, and whichever notifications you want by email.
+You connect one transport once, and every outgoing mail from then on leaves under your own
+brand name, logo and colour.
+
+## Where to find it
+
+*Instellingen → E-mail* (Settings → Email), in the **Communicatie & koppelingen**
+(Communication & integrations) group. The whole screen sits behind the `settings.email.manage`
+permission, admins only by default, including the read: the configuration holds API keys and
+SMTP passwords.
+
+At the top the screen states what is actually sending right now: **Actief: Brevo** (Active: …,
+naming whichever provider it is) with **Verstuurd als naam (adres)** (Sent as …) below it, or
+**Nog niet ingesteld** (Not configured yet) with an amber dot.
+
+## Choosing a provider
+
+| Provider | What you fill in |
+| --- | --- |
+| Eigen SMTP-server (own SMTP server) | SMTP-server, Poort (587), Beveiliging (STARTTLS / SSL/TLS / Geen), Gebruikersnaam, Wachtwoord |
+| Brevo | API-sleutel (API key) |
+| SendGrid | API-sleutel |
+| SMTP2GO | API-sleutel |
+| Inbegrepen e-mail (included email) | nothing; only shown when whoever runs the installation has switched it on |
+
+The three named services go through their official HTTP APIs, not their SMTP relays. That buys
+two things: an error comes back as readable text instead of an SMTP dialogue, and outbound
+traffic over 443 works on hosts where port 587 is blocked.
+
+**Afzendernaam** (from name) and **Afzenderadres** (from address) are required;
+**Antwoordadres** (reply-to) is optional. Keys and passwords are stored encrypted and never
+handed back to the browser: afterwards the field only reads "Opgeslagen; laat leeg om te
+behouden" (Stored, leave empty to keep).
+
+## The test mail
+
+<Steps>
+
+1. Fill in the fields and click **Opslaan** (Save).
+
+2. Click **Verstuur testmail** (Send test email). The test goes to your own address and uses
+   the **stored** settings, so saving before testing is not a formality.
+
+3. On success you read "Testmail verzonden; controleer je inbox". On failure the screen shows
+   the provider's own error text ("Versturen mislukt: …"). That is exactly what the button is
+   for: a rejected login or a blocked from-address is quoted verbatim.
+
+</Steps>
+
+## Signature
+
+The **E-mailhandtekening** (email signature) field takes HTML; the example shown in the field
+is `<p>Met vriendelijke groet,<br>{name}</p>`. Whatever you put here is appended to **every**
+outgoing mail, so there is no second place to repeat it per kind of message. The HTML is
+cleaned server-side, both when you save it and again when a mail goes out. Leave it blank for
+no signature.
+
+The logo, brand name and colour the mail is wrapped in come from *Instellingen → Huisstijl*
+(Settings → Branding). The organisation's internal name is never used in a mail, and the name
+schakl. appears in none of them.
+
+## Email templates
+
+Below the transport sits the **E-mailsjablonen** (Email templates) section: per kind of mail
+and per language, an **Onderwerp** (subject) and an **HTML-inhoud** (HTML body). A switcher
+above the section picks the language you are editing; every translation is optional.
+
+| Kind of mail | From | Available variables |
+| --- | --- | --- |
+| Uitnodiging (invitation) | core | `{brand}` `{name}` `{link}` |
+| Wachtwoord herstellen (password reset) | core | `{brand}` `{name}` `{link}` |
+| Factuur versturen (sending an invoice) | invoicing | `{brand}` `{number}` `{company}` `{contact}` `{total}` `{date}` `{due_date}` `{reference}` |
+| Offerte versturen (sending a quote) | invoicing | as the invoice, with `{valid_until}` instead of `{due_date}` |
+| Betalingsherinnering (payment reminder) | invoicing | as the invoice, plus `{outstanding}` and `{days}` |
+| Maandrapportage (monthly report) | reporting | `{brand}` `{client}` `{contact}` `{period}` `{sender_name}` `{link}` |
+
+The list follows the modules your organisation has switched on: turn invoicing off and those
+three mails disappear from here too. Each card carries an **Aangepast** (Customised) or
+**Standaard in gebruik** (Using default) badge, an expandable **Toon het ingebouwde
+standaardsjabloon** (Show the built-in default), and a **Verstuur test** (Send test) button
+that mails a realistic preview to your own address. Empty both fields again and that kind
+falls back to the built-in template.
+
+At the bottom of the screen sits **Configuratie verwijderen** (Remove configuration); the
+confirmation says plainly that outgoing email will be off afterwards.
+
+## Included email (for whoever runs the installation)
+
+To ship a transport that organisations without settings of their own fall back to, set
+`SCHAKL_INSTANCE_EMAIL_ENABLED=true`, pick `SCHAKL_INSTANCE_EMAIL_PROVIDER` (`smtp`, `brevo`,
+`sendgrid` or `smtp2go`), fill `SCHAKL_INSTANCE_EMAIL_FROM` and
+`SCHAKL_INSTANCE_EMAIL_FROM_NAME`, and add either the SMTP variables (`_HOST`, `_PORT`,
+`_SECURITY`, `_USERNAME`, `_PASSWORD`) or `SCHAKL_INSTANCE_EMAIL_API_KEY`. Only then does the
+**Inbegrepen e-mail** button appear in the provider picker.
+
+<Aside type="caution" title="The from-address is then not yours">
+On included email the mail leaves from the installation's own address (SPF and DKIM belong to
+that domain), displayed under your brand name. If you want your own domain in the from line,
+configure a transport of your own.
+</Aside>
+
+## Permissions
+
+| Permission | What it opens | Default |
+| --- | --- | --- |
+| `settings.email.manage` | *Instellingen → E-mail*: read, save and delete the transport, the test mail, the templates | Administrator |
+| `settings.branding.write` | *Instellingen → Huisstijl*: the logo, brand name and colour every mail is wrapped in | Administrator |
+
+## Good to know
+
+- **"Stored" and "active" are two different answers.** An organisation running on included
+  email has nothing stored and sends perfectly well. Read the "Actief: …" line at the top, not
+  the form below it.
+- **Notification mails cannot be reworded.** Only the kinds listed in the template section can;
+  the notifications from *Instellingen → Standaardmeldingen* (Settings → Notification defaults)
+  cannot.
+- **There is no deliverability dashboard.** schakl. keeps no bounce log, does not check your
+  SPF or DKIM, and has no suppression list. What happened to a sent mail is whatever your
+  provider's own dashboard shows.
+- **Every variable always resolves**, to an empty string if it has to, so an unfilled
+  `{reference}` never reaches your client's inbox as a literal marker.
+- **The language of a mail** is the recipient's, otherwise the organisation's default,
+  otherwise Dutch. Dates print European (dd-mm-yyyy).
+- **The HTML of a mail is deliberately old-fashioned**: nested tables, inline styles, 600 px
+  wide, no webfonts. That is not sloppiness but the only markup that survives Outlook and
+  Gmail; keep your own templates in the same style.
+- With nothing configured, a send fails with "E-mail is nog niet geconfigureerd (Instellingen
+  → E-mail)".
+
+## Read next
+
+<CardGrid>
+  <LinkCard title="Notifications" description="Which events go out by email." href="/en/docs/modules/notifications/" />
+  <LinkCard title="Invoicing" description="The three mails your client actually reads." href="/en/docs/modules/invoicing/" />
+  <LinkCard title="File storage" description="Where attachments and logos land." href="/en/docs/admin/storage/" />
+</CardGrid>

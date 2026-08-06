@@ -116,9 +116,38 @@ agency tool — so, direct.
 
 - Only link emails whose participants match a known `contact`; attach to the company/project
   timeline.
+- **The agency is not the client** (#305). An agency keeps itself in its own company list —
+  that is where its own domains, hosting and invoices hang — with its staff and its
+  `administratie@` address as contacts on it. Those records date from setup, so on any thread
+  with a colleague in Cc they matched *first*, and the old "oldest link first" rule filed the
+  mail under the agency rather than the customer who sent it: every row in the review queue
+  arrived pre-filled with the wrong client, to be remapped by hand. `resolve_mappings` now
+  **ranks** (`matching.py`): insiders last, then the `From` of an inbound mail and the `To` of
+  an outbound one ahead of whoever was merely kept informed, then oldest link as the stable
+  tie-break. "Insider" is *derived, never configured* — a staff address, or a contact whose
+  companies are all companies that have a staff member as a contact, which is what identifies
+  the agency's own record without a flag anyone has to remember to set. Ranked, never
+  filtered: internal-only mail (`gmail_log_internal`) still maps to the agency's own company,
+  because there is nothing else it could mean.
 - Store **metadata + a deep link** (`message-id`, `thread-id`, subject, snippet, participants,
   timestamp, `https://mail.google.com/mail/u/0/#all/<msgid>`) rather than full bodies by
   default. Pull the body on demand — lighter, faster, far less invasive.
+- **The body arrives twice, and the difference is the point.** `body_text` is the `text/plain`
+  part: what search reads and what the snippet is cut from. `body_markdown` is the `text/html`
+  part converted by `app/core/htmlmd.py`, and it is written **only** when the message actually
+  had one — because a received body is not our markdown, and rendering a plain-text mail as
+  markdown would turn a sender's `*sterretjes*` into italics. Every surface renders
+  `body_markdown` when it is set and `body_text` when it is not. The same conversion runs on
+  an uploaded `.eml` (`interactions/eml.py`), so a synced message and an uploaded one read
+  identically — the #262 rule, extended to formatting.
+- **An inline image is content of that body, not an attachment of the message.** A signature
+  logo is a part with a `Content-ID` the HTML points at; it is stored (`files.content_id`) and
+  the body's `cid:` marker is rewritten to `file:<uuid>`, which the web resolves at render
+  time. Two consequences: it renders *inside* the message, and it no longer appears as a chip
+  on every mail that sender ever sent. A **remote** `<img src="https://…">` is dropped to its
+  alt text at conversion — a tracking pixel is an image, and loading one tells the sender the
+  agency opened the mail. This is also why the logos are affordable at all: identical bytes are
+  stored once per org (`docs/STORAGE.md`).
 - **Ingestion:** Gmail's real-time `watch` requires **Google Pub/Sub** (unlike Calendar) —
   extra infra. Start with **periodic ARQ polling using `historyId`** (incremental, cheap); add
   Pub/Sub push later only if latency demands it.

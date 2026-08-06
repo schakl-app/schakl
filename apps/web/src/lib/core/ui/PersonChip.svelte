@@ -37,7 +37,13 @@
   const text = $derived(label || name || email || "");
 </script>
 
-<span class="inline-flex min-w-0 items-center gap-1.5 align-middle" title={title ?? text}>
+<!-- `max-w-full`: an `inline-flex` shrink-to-fits to its *content*, so `min-w-0` alone never
+     engages and the chip renders wider than the cell holding it. With a ceiling, the name's own
+     `truncate` below finally has something to truncate against. -->
+<span
+  class="inline-flex min-w-0 max-w-full items-center gap-1.5 align-middle"
+  title={title ?? text}
+>
   <Avatar {name} {email} {avatarUrl} {size} title={title ?? text} />
   <span class="truncate {muted ? 'text-text-muted' : 'text-text'}">{text}</span>
 </span>

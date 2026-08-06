@@ -1,0 +1,148 @@
+{
+  "slug": "rest-api",
+  "name": "REST API & API-sleutels",
+  "order": 91,
+  "category": "automation",
+  "status": "live",
+  "lucide": "key",
+  "mark": { "monogram": "AP", "color": "#0EA5E9" },
+  "tagline": {
+    "nl": "Eén getypte API, rechten per sleutel",
+    "en": "One typed API, permissions per key"
+  },
+  "summary": {
+    "nl": "Alles wat de app doet, loopt over /api/v1: de webapp praat nooit rechtstreeks met de database, dus er is geen achterdeur die een script mist. De interactieve referentie staat op je eigen host onder /api/docs, met het OpenAPI-document op /api/openapi.json. Je authenticeert met een API-sleutel die precies de rechten draagt die je aanvinkt.",
+    "en": "Everything the app does travels /api/v1: the web app never talks to the database directly, so there is no back door a script misses. The interactive reference sits on your own host at /api/docs, with the OpenAPI document at /api/openapi.json. You authenticate with an API key carrying exactly the permissions you tick."
+  },
+  "highlights": {
+    "nl": [
+      "Swagger UI op /api/docs, ReDoc op /api/redoc, het document op /api/openapi.json",
+      "Persoonlijke sleutels per medewerker, service-accounts voor koppelingen die blijven draaien",
+      "n8n is precies dit: een API-sleutel plus HTTP-nodes, geen aparte koppeling nodig"
+    ],
+    "en": [
+      "Swagger UI at /api/docs, ReDoc at /api/redoc, the document at /api/openapi.json",
+      "Personal keys per employee, service accounts for integrations that keep running",
+      "n8n is exactly this: an API key plus HTTP nodes, no separate connector needed"
+    ]
+  },
+  "where": {
+    "nl": "Instellingen → Mijn account, sectie API-sleutels voor persoonlijke sleutels; Instellingen → Service-accounts voor koppelingen. De referentie zelf staat op https://<je-host>/api/docs.",
+    "en": "Instellingen → Mijn account (Settings → My account), section API-sleutels, for personal keys; Instellingen → Service-accounts (Settings → Service accounts) for integrations. The reference itself lives at https://<your-host>/api/docs."
+  },
+  "docs": "/docs/integrations/rest-api/",
+  "page": {
+    "lead": {
+      "nl": "De API is geen laag naast het product, hij is het product. De webapp gebruikt hem, de MCP-server proxyt ernaartoe en jouw script spreekt precies dezelfde endpoints aan.",
+      "en": "The API is not a layer beside the product, it is the product. The web app uses it, the MCP server proxies onto it, and your script calls exactly the same endpoints."
+    },
+    "requirements": {
+      "nl": [
+        "Je eigen tenant-hostname over HTTPS: het geverifieerde eigen domein, of <slug>.<basisdomein>",
+        "Het recht apikeys.personal.manage voor een persoonlijke sleutel, of apikeys.service_account.manage voor een service-account",
+        "Een beeld van welke rechten de koppeling nodig heeft: scopes komen uit dezelfde rechtencatalogus als rollen",
+        "Voor de interactieve referentie: SCHAKL_API_DOCS_ENABLED mag niet op false staan (standaard staat hij aan)"
+      ],
+      "en": [
+        "Your own tenant hostname over HTTPS: the verified custom domain, or <slug>.<base domain>",
+        "The apikeys.personal.manage permission for a personal key, or apikeys.service_account.manage for a service account",
+        "A sense of which permissions the integration needs: scopes come from the same permission catalogue as roles",
+        "For the interactive reference: SCHAKL_API_DOCS_ENABLED must not be false (it is on by default)"
+      ]
+    },
+    "steps": {
+      "nl": [
+        "Open de referentie op <code>https://&lt;je-host&gt;/api/docs</code> (Swagger UI) of <code>https://&lt;je-host&gt;/api/redoc</code>. Het document zelf staat op <code>/api/openapi.json</code>. Let op het pad: alles staat onder <code>/api/</code>, want dat is de enige prefix die de edge naar de API-service stuurt.",
+        "Maak een persoonlijke sleutel aan: <strong>Instellingen → Mijn account</strong>, sectie <strong>API-sleutels</strong>. Vul <strong>Naam</strong> in (bijvoorbeeld <code>n8n-automatisering</code>), kies eventueel een datum bij <strong>Verloopt op</strong> en vink onder <strong>Scopes</strong> aan wat het script nodig heeft. Minstens één scope is verplicht.",
+        "Of maak een sleutel die niemands account nodig heeft: <strong>Instellingen → Service-accounts</strong> → <strong>Service-account toevoegen</strong>, daarna <strong>Nieuwe sleutel</strong>. Zo'n sleutel draagt precies zijn eigen scopes en blijft werken als de aanmaker vertrekt.",
+        "Kopieer de sleutel meteen: <code>schakl_&lt;prefix&gt;_&lt;secret&gt;</code>. Hij wordt één keer getoond, want alleen een hash van het geheim wordt bewaard; daarna geeft de API nog slechts <code>schakl_&lt;prefix&gt;_********</code> terug.",
+        "Stuur hem mee als <code>Authorization: Bearer schakl_…</code> of als <code>X-API-Key: schakl_…</code>, altijd naar je eigen tenant-hostname.",
+        "Voor n8n: één HTTP Request-node per endpoint, met de sleutel als header-credential. Er is geen aparte n8n-koppeling; het is dezelfde API die de app zelf gebruikt.",
+        "Bouw je een echte client, genereer hem dan uit <code>/api/openapi.json</code>. De webapp doet precies dat, met <code>openapi-typescript</code>, zodat een endpoint dat verandert een typefout oplevert in plaats van een verrassing."
+      ],
+      "en": [
+        "Open the reference at <code>https://&lt;your-host&gt;/api/docs</code> (Swagger UI) or <code>https://&lt;your-host&gt;/api/redoc</code>. The document itself is at <code>/api/openapi.json</code>. Mind the path: everything sits under <code>/api/</code>, because that is the only prefix the edge routes to the API service.",
+        "Mint a personal key: <strong>Instellingen → Mijn account</strong> (Settings → My account), section <strong>API-sleutels</strong> (API keys). Fill in <strong>Naam</strong> (Name), for example <code>n8n-automatisering</code>, optionally pick a date under <strong>Verloopt op</strong> (Expires on), and tick under <strong>Scopes</strong> what the script needs. At least one scope is required.",
+        "Or mint a key that needs nobody's account: <strong>Instellingen → Service-accounts</strong> (Settings → Service accounts) → <strong>Service-account toevoegen</strong> (Add service account), then <strong>Nieuwe sleutel</strong> (New key). Such a key carries exactly its own scopes and keeps working after its creator leaves.",
+        "Copy the key straight away: <code>schakl_&lt;prefix&gt;_&lt;secret&gt;</code>. It is shown exactly once, because only a hash of the secret is stored; afterwards the API returns nothing but <code>schakl_&lt;prefix&gt;_********</code>.",
+        "Send it as <code>Authorization: Bearer schakl_…</code> or as <code>X-API-Key: schakl_…</code>, always to your own tenant hostname.",
+        "For n8n: one HTTP Request node per endpoint, with the key as a header credential. There is no separate n8n connector; it is the same API the app itself uses.",
+        "Building a real client, generate it from <code>/api/openapi.json</code>. The web app does exactly that with <code>openapi-typescript</code>, so a changed endpoint becomes a type error instead of a surprise."
+      ]
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Persoonlijke sleutel of service-account",
+          "en": "A personal key or a service account"
+        },
+        "body": {
+          "nl": "Een persoonlijke sleutel hoort bij jou en wordt bij elk verzoek afgetopt op je actuele rechten: word je gedegradeerd, dan krimpt de sleutel mee. Dat is precies wat je wil voor een script dat namens jou werkt, en precies wat je niet wil voor de koppeling waar het bureau op draait. Daarvoor is er het service-account: een gedeelde principal die niet aan een persoon hangt, met zijn eigen scopes, beheerd door een beheerder.",
+          "en": "A personal key belongs to you and is capped by your live permissions on every request: demote the owner and the key shrinks with them. That is exactly what you want for a script acting on your behalf, and exactly what you do not want for the integration the agency runs on. That is what the service account is for: a shared principal tied to no person, with its own scopes, managed by an admin."
+        },
+        "bullets": {
+          "nl": [
+            "Een sleutel hoort bij één organisatie; op een andere hostname wordt hij niet gevonden",
+            "Ingetrokken, verlopen of onbekend antwoordt allemaal met dezelfde 401, zonder te bevestigen dat de sleutel bestaat",
+            "Een vervaldatum mag maximaal 366 dagen vooruit; leeg laten betekent nooit verlopen, en intrekken is dan de noodrem"
+          ],
+          "en": [
+            "A key belongs to one organisation; on another hostname it is simply not found",
+            "Revoked, expired and unknown all answer with the same 401, never confirming that the key exists",
+            "An expiry date may sit at most 366 days out; leaving it empty means never expires, and revoking is then the kill switch"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Waarom de referentie onder /api/ staat",
+          "en": "Why the reference lives under /api/"
+        },
+        "body": {
+          "nl": "De edge stuurt precies twee prefixen naar de API-service: /api/ en /mcp. Al het andere gaat naar de webapp. Op de standaardpaden van FastAPI (/docs, /redoc, /openapi.json) kwam je dus op de 404 van de webapp uit: de documentatie was niet uitgezet, ze was onbereikbaar. Nu staat ze onder de prefix die er wel komt, zonder aanpassing aan je edge. Wil je hem helemaal niet serveren: zet SCHAKL_API_DOCS_ENABLED op false. Het document wordt intern gewoon nog opgebouwd, dus de getypte client en de MCP-toolset blijven werken.",
+          "en": "The edge routes exactly two prefixes to the API service: /api/ and /mcp. Everything else goes to the web app. So at FastAPI's default paths (/docs, /redoc, /openapi.json) you landed on the web app's 404: the documentation was not disabled, it was unroutable. It now sits under the prefix that does arrive, with no edge change on an existing install. If you would rather not serve it at all, set SCHAKL_API_DOCS_ENABLED to false. The document is still built in process, so the typed client and the MCP tool surface keep working."
+        }
+      },
+      {
+        "heading": {
+          "nl": "De vorm van de API",
+          "en": "The shape of the API"
+        },
+        "body": {
+          "nl": "Meervoudige zelfstandige naamwoorden onder /api/v1/<module>/<resource>. Lijst-endpoints nemen limit en offset, en met count=false sla je het totaal over als je het niet nodig hebt. Fouten komen in één envelop terug, { error: { code, message, fields? } }, waarbij message een i18n-sleutel is en dus geen zin die je aan je gebruiker moet laten zien. Elke module die aanstaat breidt dezelfde API en dezelfde spec uit.",
+          "en": "Plural nouns under /api/v1/<module>/<resource>. List endpoints take limit and offset, and count=false skips the total where you do not need it. Errors come back in one envelope, { error: { code, message, fields? } }, where message is an i18n key rather than a sentence to show your user. Every enabled module extends the same API and the same spec."
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "key": "apikeys.personal.manage",
+        "nl": "Eigen API-sleutels beheren: zelf een sleutel aanmaken en intrekken. Standaard voor beheerder en medewerker, want zo'n sleutel kan nooit meer dan de eigenaar zelf.",
+        "en": "Manage your own API keys: mint and revoke them yourself. Granted to admin and member by default, because such a key can never exceed its owner."
+      },
+      {
+        "key": "apikeys.service_account.manage",
+        "nl": "Serviceaccounts beheren: gedeelde sleutels die aan geen enkele medewerker hangen. Standaard alleen voor beheerders.",
+        "en": "Manage service accounts: shared keys tied to no employee. Admin only by default."
+      }
+    ],
+    "limits": {
+      "nl": [
+        "600 verzoeken per minuut per sleutel. Genoeg voor automatisering, en een vaste grens onder een gelekte sleutel.",
+        "Het geheim wordt niet bewaard, alleen de hash ervan. Kwijt is kwijt: intrekken en een nieuwe aanmaken.",
+        "Een sleutel geeft nooit meer dan zijn scopes, en een persoonlijke sleutel nooit meer dan zijn eigenaar op dat moment mag. Rechten toekennen doe je in Instellingen → Rollen, niet op de sleutel.",
+        "De kolom Laatst gebruikt loopt achter: die wordt buiten het verzoek om bijgewerkt, zodat een API-aanroep er niet op wacht.",
+        "Uitgaande event-webhooks bestaan nog niet. Reageren op een wijziging betekent vandaag pollen, of een automatiseringsregel met de actie Webhook aanroepen.",
+        "Bulk-export via /impex vraagt een eigen recht (impex.export) bovenop het leesrecht van de entiteit; een sleutel die klanten mag lezen, mag daarmee nog geen klantenlijst downloaden."
+      ],
+      "en": [
+        "600 requests per minute per key. Enough for automation, and a firm ceiling under a leaked key.",
+        "The secret is not stored, only its hash. Lost is lost: revoke it and mint a new one.",
+        "A key never grants more than its scopes, and a personal key never more than its owner may do at that moment. Permissions are granted in Instellingen → Rollen (Settings → Roles), not on the key.",
+        "The Laatst gebruikt (Last used) column lags: it is updated out of band so an API call never waits on it.",
+        "Outbound event webhooks do not exist yet. Reacting to a change today means polling, or an automation rule with the Webhook aanroepen (Call a webhook) action.",
+        "Bulk export over /impex needs its own permission (impex.export) on top of the entity's read permission; a key that may read clients cannot therefore download the client list."
+      ]
+    }
+  }
+}

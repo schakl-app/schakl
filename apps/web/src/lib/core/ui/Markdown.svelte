@@ -12,14 +12,27 @@
 
   import { renderMarkdown } from "$lib/core/markdown";
 
-  let { value, class: klass = "" }: { value: string | null | undefined; class?: string } = $props();
+  let {
+    value,
+    class: klass = "",
+    images = false,
+  }: {
+    value: string | null | undefined;
+    class?: string;
+    /**
+     * Draw `file:<uuid>` images — the `cid:` parts of a received e-mail, already downloaded
+     * and served from our own storage. Off everywhere else: a note has no business fetching
+     * pictures, and this marker is the one image form that cannot name a remote host.
+     */
+    images?: boolean;
+  } = $props();
 
   let mounted = $state(false);
   onMount(() => {
     mounted = true;
   });
 
-  const html = $derived(mounted && value ? renderMarkdown(value) : null);
+  const html = $derived(mounted && value ? renderMarkdown(value, { images }) : null);
 </script>
 
 {#if html !== null}
@@ -118,5 +131,31 @@
     border-left: 3px solid var(--color-border);
     padding-left: 0.75rem;
     color: var(--color-text-muted);
+  }
+  /* An e-mail's inline image (a signature logo, a pasted screenshot). Bounded, because the
+     sender chose its dimensions and a 2000px letterhead must not widen the dialog. */
+  .markdown-body :global(img) {
+    display: inline-block;
+    max-width: 100%;
+    height: auto;
+    max-height: 24rem;
+    border-radius: 0.25rem;
+  }
+  /* A received mail's table is data the sender laid out; it scrolls in its own box rather
+     than pushing the page sideways (docs/PERFORMANCE.md / the artifact rule, same reason). */
+  .markdown-body :global(table) {
+    display: block;
+    overflow-x: auto;
+    max-width: 100%;
+    border-collapse: collapse;
+  }
+  .markdown-body :global(th),
+  .markdown-body :global(td) {
+    border: 1px solid var(--color-border);
+    padding: 0.2rem 0.45rem;
+    text-align: left;
+  }
+  .markdown-body :global(th) {
+    font-weight: 600;
   }
 </style>

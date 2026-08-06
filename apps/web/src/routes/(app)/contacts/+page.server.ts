@@ -1,10 +1,12 @@
 import { fail } from "@sveltejs/kit";
 
+import { bulkDeleteAction, bulkUpdateAction } from "$lib/core/bulk/actions.server";
 import { apiErrorKey } from "$lib/core/errors";
 import { impexAction } from "$lib/core/impex/actions.server";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
+import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { CONTACT_COLUMNS, CONTACTS_TABLE_ID } from "$lib/modules/contacts/columns";
 
@@ -25,14 +27,26 @@ export const load: PageServerLoad = async (event) => {
   // Client filter (#154) — applied by the API; the URL keeps it shareable.
   const company_id = event.url.searchParams.get("company") || undefined;
 
+  const paging = resolvePaging(event.url, pref);
+
   // Only the URL-dependent read. The definitions, the client picker and the type vocabulary
   // come from the section layout, which does not rerun on filter navigation (#290).
   const contacts = await api.GET("/api/v1/contacts", {
-    params: { query: { limit: 100, offset: 0, q, sort, contact_type_id, company_id } },
+    params: {
+      query: {
+        limit: paging.limit,
+        offset: paging.offset,
+        q,
+        sort,
+        contact_type_id,
+        company_id,
+      },
+    },
   });
   return {
     contacts: contacts.data?.items ?? [],
     total: contacts.data?.total ?? 0,
+    paging,
     typeFilter: contact_type_id ?? "",
     companyFilter: company_id ?? "",
     table: { pref, sort: sort ?? null, widths: resolved.widths },
@@ -68,6 +82,10 @@ export const actions: Actions = {
 
   /** CSV import (issue #77): dry-run preview by default, all-or-nothing commit on demand. */
   impex: (event) => impexAction(event, "contact"),
+
+  /** The ✎ menu's two actions, shared by every list that has one. */
+  bulkUpdate: (event) => bulkUpdateAction(event, "contact"),
+  bulkDelete: (event) => bulkDeleteAction(event, "contact"),
 
   /** Inline company create from the "connected companies" picker (#115). */
   createCompany: createCompanyAction,

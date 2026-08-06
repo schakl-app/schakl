@@ -1,0 +1,131 @@
+---
+title: Contactpersonen
+description: "Het gedeelde adresboek van je bureau: de mensen bij je klanten, waarbij één persoon aan meerdere klanten kan hangen."
+sidebar:
+  order: 3
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Contactpersonen zijn de mensen bij je klanten: de opdrachtgever, de marketeer, de webmaster.
+Je eigen collega's staan er niet tussen (die beheer je onder *Instellingen → Team & gebruikers*).
+Eén persoon staat één keer in het adresboek en kan aan zo veel klanten hangen als nodig is.
+
+## Waar je het vindt
+
+- Hoofdmenu **Contactpersonen**: het hele adresboek.
+- Het paneel **Contactpersonen** op elke klantpagina: de mensen van die ene klant.
+- *Instellingen → Contactsoorten*: de soorten contactpersoon die je onderscheidt.
+
+## De lijst
+
+De lijst is gegroepeerd per klant, alfabetisch, met **Zonder klant** onderaan voor mensen die
+nergens aan hangen. Iemand die bij twee klanten hoort, staat onder allebei; je zoekt een persoon
+waar je hem verwacht, niet waar het systeem hem heeft ondergebracht. De klantsecties tellen
+alleen de contactpersonen op de pagina die je bekijkt, en dat staat er ook bij.
+
+Boven de lijst staan het zoekveld en *Filter op klant*; zodra je contactsoorten hebt, komt daar
+een rij chips bij om op soort te filteren. Rechts vind je de kolomkiezer, Export en Import, en de
+✎ die de selectievakjes aanzet. Een klantchip in een rij is merkkleurig als deze persoon daar de
+**primaire** contactpersoon is.
+
+## Een contactpersoon vastleggen
+
+Velden: **Voornaam** (verplicht), **Achternaam**, **E-mailadres**, **Telefoon** (met landkeuze;
+een nationaal nummer wordt gelezen in het land van je organisatie), **Functie** en **Notities**.
+Notities zijn opmaakbare tekst waarin je met `@` een collega of contactpersoon noemt en met `#`
+naar een taak verwijst. Eigen velden die je onder *Instellingen → Aangepaste velden* voor
+contactpersonen hebt gedefinieerd, verschijnen eronder, ook als kolom in de lijst.
+
+Een e-mailadres dat al bij een andere contactpersoon staat, wordt geweigerd: "Er bestaat al een
+contactpersoon met dit e-mailadres." Twee kaarten voor dezelfde persoon zijn vervelender dan
+één foutmelding.
+
+## Koppelen aan klanten
+
+Bovenaan de contactpagina staat het blok **Klanten**, met een chip per klant. Koppelen,
+loskoppelen en het primair maken zitten in de bewerkmodus: ⋯ → *Bewerken*. Het veld
+*Klant toevoegen…* zoekt bestaande klanten en biedt bij een onbekende naam het volledige
+formulier **Nieuwe klant** aan; na opslaan is die klant meteen gekoppeld.
+
+Vanaf de klantkant doe je hetzelfde in het paneel **Contactpersonen**, dat zijn eigen
+⋯ → *Bewerken* heeft. Het zoekveld daar doorzoekt het hele adresboek terwijl je typt, en een
+naam die nog niet bestaat opent het volledige aanmaakformulier en koppelt de persoon in één
+stap.
+
+De eerste contactpersoon van een klant wordt automatisch de primaire. Een volgende koppeling
+verdringt die nooit stilletjes: wisselen doe je zelf, met *Als primair instellen*.
+
+## Contactsoorten
+
+Onder *Instellingen → Contactsoorten* beheer je de soorten contactpersoon die iemand voor een
+klant kan zijn: klantcontact, technisch contact, facturatie, wat je maar onderscheidt. Per soort
+geef je een Nederlands en een Engels label, een volgorde en of hij actief is. Een soort
+verwijderen laat de koppelingen intact; ze houden alleen geen soort meer.
+
+De soort hoort bij de **koppeling** tussen persoon en klant, niet bij de persoon zelf: dezelfde
+man kan klantcontact zijn bij Acme en technisch contact bij Beta.
+
+<Aside type="caution">
+De chipsrij boven de lijst filtert op contactsoort, maar er is vandaag nog geen veld in het
+scherm waarmee je een soort aan een koppeling toekent; dat kan alleen via de API. Zet je soorten
+gerust klaar, maar reken er nog niet op als indeling van je adresboek.
+</Aside>
+
+## Meerdere tegelijk
+
+De ✎ in de werkbalk zet de selectievakjes aan en plaatst de acties ernaast. Voor contactpersonen
+zijn dat er twee: een selectie **aan een klant koppelen** en een selectie **verwijderen**.
+Loskoppelen zit er bewust niet bij; dat doe je op de persoon zelf, waar je ziet welke koppeling je
+verbreekt. Verwijderen haalt de persoon weg bij élke klant waar hij aan hangt.
+
+## Import & export
+
+Contactpersonen gaan als **Contactpersonen** in en uit, via de knoppen naast de kolomkiezer. Het
+bestand werkt bij op **e-mailadres**; een rij zonder adres maakt altijd iemand nieuw. Kolommen:
+`first_name` (verplicht), `last_name`, `email`, `phone`, `job_title`, `notes` en `company`
+(exacte klantnaam of id), plus je eigen velden. Een lege `company`-cel ontkoppelt nooit.
+
+Een klantenlijst mag de contactpersoon in dezelfde regel meenemen: `contact_first_name`,
+`contact_last_name`, `contact_email`, `contact_phone` en `contact_job_title` horen bij de import
+van **Klanten**. Die kolommen zie je alleen als je contactpersonen mag schrijven, en een lege cel
+wist nooit iets. Zie [Import & export](/nl/docs/modules/import-export/).
+
+## Klantportaal
+
+Heb je de module Klantportaal, dan staat op de contactpagina de kaart **Klantportaal**:
+*Uitnodigen voor portaal*, *Toegang uitschakelen* en *Inloggen als deze contactpersoon*. Die
+laatste toont een half uur lang het portaal precies zoals de klant het ziet; het wordt vastgelegd
+bij de activiteit van deze contactpersoon, en alles wat je ondertussen doet krijgt jouw naam erbij.
+
+## Rechten
+
+Per rol in te stellen onder *Instellingen → Rollen*. Standaard:
+
+| Recht | Wat het doet | Standaard bij |
+| --- | --- | --- |
+| `contacts.contact.read` | Contactpersonen bekijken | Beheerder, Medewerker, Klant |
+| `contacts.contact.write` | Aanmaken en bewerken | Beheerder |
+| `contacts.contact.delete` | Verwijderen | Beheerder |
+| `contacts.link.write` | Aan klanten koppelen | Beheerder |
+| `contacts.type.read` | Contactsoorten bekijken | Beheerder, Medewerker, Klant |
+| `contacts.type.manage` | Contactsoorten beheren | Beheerder |
+
+Een **Medewerker** mag dus standaard alleen lezen. Wil je dat je team contactpersonen aanmaakt, vink dan
+`contacts.contact.write` en `contacts.link.write` aan bij die rol. Exporteren en importeren zijn
+aparte rechten (`impex.export`, `impex.import`) en staan standaard alleen bij Beheerder.
+
+## Goed om te weten
+
+- Onderaan de contactpagina staat de **activiteit**: wie wat wanneer wijzigde. Vertrekt de
+  collega die het deed, dan blijft de naam op het spoor staan.
+- Een login met de rol Klant ziet alleen de contactpersonen van zijn eigen bedrijven; het hele
+  adresboek is voor hem niet bereikbaar.
+- Een klantportaal-login die aan geen enkel bedrijf hangt, kan geen contactpersoon toevoegen: er
+  is dan geen bedrijf om hem aan te koppelen, en dat zegt de melding ook.
+
+## Verder lezen
+
+- [Klanten](/nl/docs/modules/companies/): het dossier waar het paneel Contactpersonen op staat
+- [Contactmomenten](/nl/docs/modules/interactions/): de tijdlijn waarop deze mensen terugkomen
+- [Import & export](/nl/docs/modules/import-export/)

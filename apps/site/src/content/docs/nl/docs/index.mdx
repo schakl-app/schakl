@@ -1,37 +1,53 @@
 ---
 title: Wat is schakl.?
-description: "Een zelf-gehost, wit-label platform voor bureauwerk: klanten, projecten, uren, verlof en taken in één modulaire webapp."
+description: "Een zelf-gehost, wit-label platform voor bureauwerk: klanten, projecten, uren, verlof, facturen, marketingcijfers en rapportages in één modulaire webapp."
 ---
 
 import { CardGrid, LinkCard } from '@astrojs/starlight/components';
 
-**schakl.** is een zelf-gehost platform voor bureaus: klanten, contactpersonen, projecten,
-uren, verlof en taken in één snelle webapp, die ook als app op je telefoon installeerbaar is
-(PWA). Je draait het op je eigen server, onder je eigen merk en domein.
+**schakl.** is een zelf-gehost platform voor bureaus. Klanten, contactpersonen, projecten, uren,
+verlof, taken, domeinen, facturen, marketingcijfers en maandrapportages staan in één snelle webapp,
+die ook als app op je telefoon installeerbaar is (PWA). Je draait het op je eigen server, onder je
+eigen merk en je eigen domein.
 
 ## De klant is het middelpunt
 
-Alles in schakl. hangt aan de **klant**: contactpersonen, projecten, domeinen, websites,
-hosting, uren en afspraken. De klantpagina toont per onderwerp een paneel; zet je een module
-uit, dan verdwijnt het paneel. Zo blijft één pagina het hele beeld geven, hoe groot je
-installatie ook wordt.
+Alles in schakl. hangt aan de **klant**: contactpersonen, projecten, domeinen, websites, hosting,
+uren, contactmomenten, abonnementen, facturen en rapportages. De klantpagina toont per onderwerp een
+paneel; zet je een module uit, dan verdwijnt het paneel. Zo blijft één pagina het hele beeld geven,
+hoe groot je installatie ook wordt.
 
 ## Modulair vanaf de kern
 
-Elke functie is een **module** die je per organisatie aan- of uitzet (*Instellingen →
-Modules*). Elke module brengt zijn eigen schermen, rechten en instellingen mee. Wat je niet
-gebruikt, zie je nergens.
+Elke functie is een **module** die je per organisatie aan- of uitzet (*Instellingen → Modules*).
+Elke module brengt zijn eigen schermen, rechten en instellingen mee. Wat je niet gebruikt, zie je
+nergens: niet in het menu, niet op de klantpagina en niet in de rechtenlijst.
+
+De kern is open source (AGPL). Een deel van de modules draait op een licentiesleutel; verloopt die,
+dan wordt de module alleen-lezen en raak je niets kwijt. Zie [Licenties](/nl/docs/admin/licenses/).
 
 ## In jouw taal, onder jouw merk
 
 De hele app is Nederlands als standaard, met Engels ingebouwd; een extra taal is één
-vertaalbestand. Logo, kleuren, merknaam en eigen domein stel je in onder *Instellingen →
-Huisstijl*; een rebuild is niet nodig.
+vertaalbestand. Merknaam, logo, favicon, kleuren en je eigen domein stel je in onder
+*Instellingen → Huisstijl*, en een rebuild is niet nodig. Diezelfde huisstijl zit in je facturen,
+je rapportages en elke mail die de deur uitgaat.
 
-## Verder lezen
+## Waar begin je?
 
 <CardGrid>
-  <LinkCard title="Installeren" description="Van Docker Compose tot de eerste-start-wizard." href="/docs/admin/installation/" />
-  <LinkCard title="Updaten & back-ups" description="Nieuwe versies, migraties en wat je veiligstelt." href="/docs/admin/upgrades/" />
-  <LinkCard title="Module: Klanten" description="De spil van het platform: het klantdossier." href="/docs/modules/companies/" />
+  <LinkCard title="Installeren" description="Van Docker Compose tot de eerste-start-wizard." href="/nl/docs/admin/installation/" />
+  <LinkCard title="Modules aan- en uitzetten" description="Wat je aanzet, en wat een verlopen licentie doet." href="/nl/docs/admin/modules/" />
+  <LinkCard title="Rollen en rechten" description="Wie wat mag, en wie welke klanten ziet." href="/nl/docs/modules/roles/" />
+  <LinkCard title="Klanten" description="De spil van het platform: het klantdossier." href="/nl/docs/modules/companies/" />
+  <LinkCard title="Facturatie" description="Facturen en offertes uit de uren, abonnementen en domeinen die ze factureren." href="/nl/docs/modules/invoicing/" />
+  <LinkCard title="Koppelingen" description="Mollie, Cloudflare, OXXA, Google Workspace en je eigen scripts." href="/nl/docs/integrations/" />
 </CardGrid>
+
+## Hoe deze documentatie is ingedeeld
+
+- **Modules**: één pagina per onderdeel dat je aan kunt zetten, van Klanten tot AI-assistentie. Elke
+  pagina zegt waar je het vindt, wat je ermee doet, welke rechten erbij horen en wat je moet weten
+  voordat het je verrast.
+- **Koppelingen**: wat schakl. met diensten van buiten doet, en precies wat je waar moet invullen.
+- **Beheer**: installeren, updaten, licenties, e-mail, opslag, single sign-on en tweestapsverificatie.

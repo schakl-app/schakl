@@ -1,11 +1,13 @@
 import { fail, redirect } from "@sveltejs/kit";
 
+import { bulkDeleteAction, bulkUpdateAction } from "$lib/core/bulk/actions.server";
 import { editHref } from "$lib/core/edit-intent";
 import { apiErrorKey } from "$lib/core/errors";
 import { t } from "$lib/core/i18n";
 import { impexAction } from "$lib/core/impex/actions.server";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
+import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { TASK_COLUMNS, TASKS_TABLE_ID } from "$lib/modules/tasks/columns";
 import { ALL_ASSIGNEES } from "$lib/modules/tasks/filters";
@@ -36,24 +38,32 @@ export const load: PageServerLoad = async (event) => {
       : (filters.assignee_user_id ?? event.locals.user?.id);
 
   // The saved layout rides in on the layout load, which does not rerun on filter or sort
-  // navigation (docs/PERFORMANCE.md). The *server* applies the sort: this page holds 200 of a
-  // possibly longer list, and sorting the slice you happen to have sorts the wrong set. The URL
+  // navigation (docs/PERFORMANCE.md). The *server* applies the sort: this page holds one slice of
+  // a possibly longer list, and sorting the slice you happen to have sorts the wrong set. The URL
   // wins over the saved default, so a sorted board stays shareable and the back button works.
   const { prefs } = await event.parent();
   const pref = readTablePref(prefs, TASKS_TABLE_ID);
   const resolved = resolveColumns(TASK_COLUMNS, pref);
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
+  const paging = resolvePaging(event.url, pref);
 
   // Lookups (companies/projects/labels/members) come from the /tasks layout load.
   const { data: tasks } = await api.GET("/api/v1/tasks", {
     params: {
-      query: { limit: 200, offset: 0, sort, ...filters, assignee_user_id: assigneeQuery },
+      query: {
+        limit: paging.limit,
+        offset: paging.offset,
+        sort,
+        ...filters,
+        assignee_user_id: assigneeQuery,
+      },
     },
   });
 
   return {
     tasks: tasks?.items ?? [],
     total: tasks?.total ?? 0,
+    paging,
     filters,
     table: { pref, sort: sort ?? null, widths: resolved.widths },
   };
@@ -68,6 +78,10 @@ export const actions: Actions = {
     await saveTablePref(event, TASKS_TABLE_ID, parseTablePref(form));
     return { tableSaved: true };
   },
+
+  /** The ✎ menu's two actions, shared by every list that has one. */
+  bulkUpdate: (event) => bulkUpdateAction(event, "task"),
+  bulkDelete: (event) => bulkDeleteAction(event, "task"),
 
   /**
    * Create-then-edit (#230, docs/UX.md Principle 3): a new task is created minimal —

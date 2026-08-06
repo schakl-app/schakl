@@ -59,12 +59,20 @@ def system_context(org: Org, session: AsyncSession) -> RequestContext:
     no membership, so any service path that resolves *a person* 404s rather than inventing one —
     a job acts on explicit user ids, never as "someone". Wildcard permissions, because the
     permission system models people; what a *job* may do is decided by what the job calls.
+
+    ``is_system`` is the other half of "exists in no table": a placeholder is safe to *resolve*
+    against and never safe to **store**. ``activity_log.actor_user_id`` has a FK to ``users``,
+    so a service that records a trail entry — the payment settle path reached from a provider
+    callback, epic #269 — would otherwise raise a foreign-key violation inside the transaction
+    that books the money. The flag lets ``ActivityService`` write the NULL actor the trail's own
+    contract already defines as "the system" (§16) instead of a person who does not exist.
     """
     return RequestContext(
         user=User(id=uuid.uuid4(), email="system@localhost", hashed_password="", is_active=True),
         org=org,
         session=session,
         permissions=PermissionSet.of(("*",)),
+        is_system=True,
     )
 
 

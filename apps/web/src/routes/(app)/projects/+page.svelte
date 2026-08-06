@@ -4,6 +4,10 @@
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
+  import BulkBar from "$lib/core/bulk/BulkBar.svelte";
+  import BulkToggle from "$lib/core/bulk/BulkToggle.svelte";
+  import BulkResult from "$lib/core/bulk/BulkResult.svelte";
+  import type { BulkFieldDef } from "$lib/core/bulk/types";
   import { editHref } from "$lib/core/edit-intent";
   import { fmtNumber, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
@@ -12,15 +16,18 @@
   import { navLabel, pageTitle } from "$lib/core/title";
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
+  import { resetPage } from "$lib/core/table/paging";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Assignees from "$lib/core/ui/Assignees.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import Pagination from "$lib/core/ui/Pagination.svelte";
   import HoursCell from "$lib/core/ui/HoursCell.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import { HOURS_COLUMN, PROJECT_COLUMNS } from "$lib/modules/projects/columns";
+  import { PROJECT_STATUSES } from "$lib/modules/projects/status";
 
   let { data, form } = $props();
 
@@ -70,7 +77,7 @@
 
   // Filtered by the API — matching any assignee, not just the primary.
   function toggleMine() {
-    const url = new URL(page.url);
+    const url = resetPage(new URL(page.url));
     if (data.mine) url.searchParams.delete("mine");
     else url.searchParams.set("mine", "1");
     void goto(url, { keepFocus: true, noScroll: true });
@@ -79,33 +86,83 @@
   // Client filter (#154) — the tasks page's URL-param shape; the API applies it.
   const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
   function setFilter(key: string, value: string) {
-    const url = new URL(page.url);
+    const url = resetPage(new URL(page.url));
     if (value) url.searchParams.set(key, value);
     else url.searchParams.delete(key);
     void goto(url, { keepFocus: true, noScroll: true });
   }
+
+  // --- bulk (the ✎ selection mode in the toolbar) --------------------------------------
+  // Status, client and the billable default: the three that say how a *batch* of work is run —
+  // closing out a quarter, moving an account, flipping a run of internal work to non-billable.
+  // A budget is a figure agreed per project, so setting one across a selection would be wrong
+  // on nearly all of them; it is deliberately absent here and in the API's descriptor.
+  // Mirrors `apps/api/app/modules/projects/bulk.py`; labels are the import's, so the two
+  // surfaces that name the same column can never name it differently.
+  //
+  // Declared last because the client options are the picker's own (`companyItems`), and
+  // `$derived` so a client created inline reaches both controls at once.
+  let selecting = $state(false);
+  let bulkSelected = $state<string[]>([]);
+  const bulkFields: BulkFieldDef[] = $derived([
+    {
+      key: "status",
+      label: t("impex.column.project.status"),
+      type: "select",
+      options: PROJECT_STATUSES.map((status) => ({
+        value: status,
+        label: t(`projects.status.${status}`),
+      })),
+    },
+    {
+      key: "company",
+      label: t("impex.column.project.company"),
+      type: "fk",
+      options: companyItems,
+    },
+    // The dialog draws Ja/Nee itself — a bare checkbox has no "leave this one alone" state.
+    { key: "billable_default", label: t("impex.column.project.billable_default"), type: "bool" },
+  ]);
+  // One configuration, spread into the ✎ in the toolbar and the strip above the table: they
+  // render in different places and must never disagree about what this list can do.
+  const bulkConfig = $derived({
+    fields: bulkFields,
+    writePermission: "projects.project.write",
+    deletePermission: "projects.project.delete",
+    deleteMessage: t("projects.bulk.delete_message", { count: bulkSelected.length }),
+    fieldErrors: form?.bulkFields ?? null,
+  });
 </script>
 
 {#snippet nameCell(project: Project)}
-  <a href="/projects/{project.id}" class="font-medium text-text hover:text-brand">{project.name}</a>
+  <!-- `block`, because `overflow` does not apply to an inline box: on a bare `<a>` the class
+       would set `nowrap` and nothing else, and the name would spill into Klant. -->
+  <a href="/projects/{project.id}" class="block truncate font-medium text-text hover:text-brand"
+    >{project.name}</a
+  >
 {/snippet}
 
 {#snippet companyCell(project: Project)}
   {#if companyName(project.company_id)}
-    <a href="/companies/{project.company_id}" class="text-text-muted hover:text-brand"
-      >{companyName(project.company_id)}</a
+    <a
+      href="/companies/{project.company_id}"
+      class="block truncate text-text-muted hover:text-brand">{companyName(project.company_id)}</a
     >
   {:else}<span class="text-text-muted">—</span>{/if}
 {/snippet}
 
 {#snippet statusCell(project: Project)}
-  <span class="rounded-full bg-surface px-2.5 py-0.5 text-xs font-medium text-text-muted">
+  <span
+    class="inline-block max-w-full truncate rounded-full bg-surface px-2.5 py-0.5 align-middle text-xs font-medium text-text-muted"
+  >
     {t(`projects.status.${project.status}`)}
   </span>
 {/snippet}
 
 {#snippet assigneesCell(project: Project)}
-  <Assignees assignees={project.assignees ?? []} members={data.members} />
+  <div class="flex min-w-0 items-center overflow-hidden">
+    <Assignees assignees={project.assignees ?? []} members={data.members} />
+  </div>
 {/snippet}
 
 {#snippet hoursCell(project: Project)}
@@ -154,10 +211,12 @@
   <!-- A phone gets the concept's row, not a sideways-scrolling grid (docs/UX.md). -->
   <div class="flex items-center gap-3">
     <a href="/projects/{project.id}" class="min-w-0 flex-1">
-      <span class="font-medium text-text">{project.name}</span>
-      {#if companyName(project.company_id)}
-        <span class="ml-2 text-sm text-text-muted">· {companyName(project.company_id)}</span>
-      {/if}
+      <span class="block truncate">
+        <span class="font-medium text-text">{project.name}</span>
+        {#if companyName(project.company_id)}
+          <span class="ml-2 text-sm text-text-muted">· {companyName(project.company_id)}</span>
+        {/if}
+      </span>
       {#if table.visibleKeys.includes("hours") && project.hours}
         <span class="mt-0.5 block text-xs"><HoursCell hours={project.hours} /></span>
       {/if}
@@ -230,27 +289,39 @@
       id="filter-company"
     />
   </div>
-  <ImpexBar
-    entity="project"
-    readPermission="projects.project.read"
-    writePermission="projects.project.write"
-    filters={{
-      q: page.url.searchParams.get("q"),
-      company_id: data.companyFilter,
-      mine: data.mine,
-      sort: data.table.sort,
-    }}
-    locale={data.locale}
-    {form}
-  />
-  <ColumnPicker
-    all={table.pickerColumns}
-    visible={table.visibleKeys}
-    sort={table.sort}
-    onchange={table.onColumnsChange}
-    onsort={table.onSort}
-  />
+  <!-- The list's own controls, pushed right: the filters read left-to-right, what you can *do*
+       with the list sits at the far end, and that is the same on every list here. -->
+  <div class="ml-auto flex flex-wrap items-center gap-2">
+    <ImpexBar
+      entity="project"
+      readPermission="projects.project.read"
+      writePermission="projects.project.write"
+      filters={{
+        q: page.url.searchParams.get("q"),
+        company_id: data.companyFilter,
+        mine: data.mine,
+        sort: data.table.sort,
+      }}
+      locale={data.locale}
+      {form}
+    />
+    <ColumnPicker
+      all={table.pickerColumns}
+      visible={table.visibleKeys}
+      sort={table.sort}
+      onchange={table.onColumnsChange}
+      onsort={table.onSort}
+    />
+    <!-- Last in the toolbar, always: it is the only control here that changes what the *rows*
+         do rather than what the list shows, so it sits after Kolommen rather than among the
+         list's own controls. Pressing it opens the selection strip above the table. -->
+    <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
+  </div>
 </div>
+
+<BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
+
+<BulkResult result={form?.bulkResult} />
 
 <DataTable
   rows={data.projects}
@@ -263,8 +334,17 @@
   actions={canWrite || canDelete ? rowActions : undefined}
   {mobileRow}
   empty={emptyState}
+  selectable={selecting}
+  bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}
+/>
+
+<Pagination
+  total={data.total}
+  page={data.paging.page}
+  limit={data.paging.limit}
+  onsize={table.onPageSize}
 />
 
 <ConfirmDialog

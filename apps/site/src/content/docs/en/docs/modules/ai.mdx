@@ -1,0 +1,163 @@
+---
+title: AI assistance
+description: "One AI account for the whole platform: your own provider and key, four features you switch on separately, a monthly budget with a meter, and speech to text."
+sidebar:
+  order: 28
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+schakl. runs no AI service of its own and sells no credits. You connect your own account at
+Anthropic, OpenAI or a server that speaks the OpenAI API, and every AI feature in the platform
+runs through that one key, that one budget and that one usage meter. With nothing configured, no
+AI control is drawn anywhere in the app.
+
+## Where to find it
+
+- *Instellingen → AI* (Settings → AI), in the **Communicatie & koppelingen** (Communication &
+  integrations) group: provider, key, model, features, house style, budget, speech and usage.
+- The **Assistent** (Assistant): the sparkle icon at the top right of the bar, on every page.
+- The **Schrijfhulp** (Writing assist): the sparkle icon in the toolbar of every rich text field.
+- The **Urenhulp** (Time assist): the **Snel toevoegen** (Quick add) field above the entry form on
+  *Uren* (Hours).
+- **Brief me** and **AI-rapport** (AI report): two buttons on the client page.
+
+AI falls under the commercial licence; see [Licences](/en/docs/admin/licenses/).
+
+## Setting it up
+
+<Steps>
+1. Open *Instellingen → AI*. You need the **AI-instellingen beheren** (Manage AI settings)
+   permission, which admins hold by default.
+
+2. Pick a **Provider**: Anthropic, OpenAI or **OpenAI-compatibel (eigen server)**
+   (OpenAI-compatible, own server). The last one is anything speaking the OpenAI chat API at an
+   address of your own.
+
+3. Paste your key into **API-sleutel** (API key). It is stored encrypted and never played back:
+   next time it reads "Er is een sleutel opgeslagen; laat leeg om die te behouden" (a key is
+   stored; leave empty to keep it), and leaving it blank keeps it.
+
+4. Fill in **Basis-URL** (Base URL) only for OpenAI-compatible, for example
+   `https://ai.example.com/v1`. Saving without it is a validation error on that field.
+
+5. Leave **Model** empty for the provider's default, or type one yourself. The field is free text
+   so a new model needs no new release of schakl.; **Modellen ophalen** (Fetch models) pulls your
+   provider's current list in as suggestions.
+
+6. Tick what you want under **Functies** (Features), optionally fill in **Huisstijl** (House
+   style) and **Maandelijks tokenbudget** (Monthly token budget), and press **Opslaan** (Save).
+
+7. Press **Verbinding testen** (Test connection). It round-trips a small request through the
+   stored settings; on a failure the provider's own error text is shown verbatim.
+</Steps>
+
+## The four features
+
+Each feature is its own checkbox with an **Eigen model (optioneel)** (Model override) box beside
+it, so you can put a fast model on the time assist and leave the larger one for writing.
+
+**Assistent.** The sparkle icon in the top bar opens the **Assistent** slide-over, where you ask
+about your own clients, projects, tasks and hours ("How many hours did I log this week?"). On a
+client, project or task page it inherits that record, so "this client" resolves. Answers carry
+source chips that deep-link to the records they came from. The assistant is deliberately
+read-only: it looks things up and answers, it never creates or changes anything. And it only sees
+what you may see.
+
+**Schrijfhulp.** Every rich text field (client, contact, project, task, interaction, invoice and
+quote texts, task and subscription templates, and long-text custom fields) carries a sparkle icon
+with: Verbeteren (Improve), Inkorten (Shorten), Uitbreiden (Expand), Spelling & grammatica
+(Spelling & grammar), Zakelijke toon (Business tone), Informele toon (Informal tone), Vertalen
+naar Nederlands / Engels (Translate to Dutch / English) and Schrijf uit (Write out). The result
+appears separately first, and you choose **Vervangen** (Replace) or **Invoegen** (Insert).
+Whatever you put under **Huisstijl** (up to 4,000 characters, e.g. "write informally, address the
+reader as je, keep sentences short") is prepended to every writing request.
+
+**Urenhulp.** On *Uren* you type one line into **Snel toevoegen**, for example "gisteren
+14:00-16:30 website Jansen, homepage overleg". The server looks up your own clients, projects and
+tasks and prefills the entry form with them; saving is yours. **Vul mijn dag aan** (Fill in my
+day) compares your work schedule with your approved leave and what you already logged, and
+suggests draft rows for the gap from tasks you demonstrably worked on that day. Nothing there is
+saved without your click either.
+
+**Briefing & rapporten** (Digest & reports). On a client page, **Brief me** summarises that
+client's recent activity, with source chips. **AI-rapport** drafts a monthly report you edit in
+the editor and save as a record. This is the light version in the core; the full report with a
+branded PDF, a schedule and sending is the [reporting module](/en/docs/modules/reporting/).
+
+## Dictating instead of typing
+
+Speech to text needs a credential of its own, because Anthropic (the default provider) has no
+transcription service. *Instellingen → AI* carries a **Spraak naar tekst** (Speech to text) block
+for it:
+
+- **Spraakaanbieder** (Speech provider): *Uit* (Off), OpenAI or OpenAI-compatible. Anthropic is
+  deliberately absent, because that setting could never work. On *Uit* your chat provider is
+  reused, which only resolves if that is OpenAI or a compatible server.
+- **API-sleutel voor spraak** (Speech API key), **Basis-URL** (compatible only), **Spraakmodel**
+  (Speech model, empty means `whisper-1`) and **Maandbudget audio (seconden)** (Monthly audio
+  budget in seconds). Audio is counted in seconds rather than tokens, so it gets its own budget.
+
+A microphone then appears beside **Snel toevoegen** on *Uren*: **Inspreken** (Dictate), speak,
+**Opname stoppen** (Stop recording), and the transcript lands in the field. Reading it back is
+the whole point — Dutch proper nouns are exactly what a recogniser gets wrong, and "Janssen"
+instead of "Jansen" silently matches no client at all.
+
+The microphone is drawn only when all four hold: a speech service is configured, **Urenhulp** is
+on, you may write time entries, and the browser is allowed to record. That last one requires
+`https://`. A recording runs to at most 60 seconds; too long, or an unsupported format, is a
+clean error rather than a half-transcribed line.
+
+## Budget and usage
+
+**Maandelijks tokenbudget** is a soft cap per calendar month; empty means unlimited. The
+**Verbruik** (Usage) panel shows this month's requests and tokens per feature, with a bar that
+turns amber at 80% and red at 100%. Over the cap, the app says "Het maandelijkse AI-budget is
+bereikt." (the monthly AI budget has been reached) with a **Toch doorgaan** (Proceed anyway)
+button, so an urgent question does not strand on a limit you set yourself.
+
+Usage records counts and labels only. The text of a question or an answer is stored nowhere in
+schakl.
+
+## Permissions
+
+| Permission | What it opens | Held by default |
+| --- | --- | --- |
+| `ai.use` | Using the AI features: assistant, writing assist, time assist, briefings and dictation | Administrator, Member |
+| `ai.settings.manage` | *Instellingen → AI*: provider, key, features, budget, test and usage | Administrator |
+| `time.entry.write` | Additionally required to dictate, because the transcript becomes a time entry | Administrator, Member (own entries) |
+
+Clients with a portal login are not given `ai.use`, on purpose: AI reads across the very records
+a client role is scoped away from.
+
+## Good to know
+
+- **A feature you just toggled can take up to half a minute** to appear for colleagues: the list
+  of active features is briefly cached.
+- **The model name is free text**, so a typo is not a validation error but a provider error on
+  first use. **Verbinding testen** brings that forward.
+- **Relative dates in the time assist match your day**: they resolve in the organisation's
+  timezone and against the day you are actually looking at, not the server's clock.
+- **If your sentence says nothing about billable, the field stays empty** and the project's own
+  setting wins. It is never quietly defaulted to non-billable.
+- **Names are matched literally.** "Jansn" finds nothing. What you yourself logged in the last
+  thirty days is weighed in, so Tuesday's client is usually recognised anyway.
+- **Dictation works only in the Snel toevoegen field** on *Uren* today, nowhere else.
+- **AI-configuratie verwijderen** (Remove AI configuration) at the bottom of the page takes every
+  AI feature away until a new key is entered. The usage history is kept.
+- **An expired licence stops generation**, while the settings screen and the usage history stay
+  readable.
+
+<Aside type="caution" title="Do not rotate the encryption key without re-entering the API key">
+Provider keys are stored encrypted with the installation's encryption key
+(`SCHAKL_ENCRYPTION_KEY`, falling back to `SCHAKL_SECRET_KEY`). If that changes and the keys are
+not re-entered, the stored secret can no longer be decrypted and the organisation silently reads
+as "AI is nog niet ingesteld" (AI is not set up yet). Paste the keys again in *Instellingen → AI*.
+</Aside>
+
+## Read next
+
+- [Time](/en/docs/modules/time/): the screen the time assist and the microphone live on.
+- [Reporting](/en/docs/modules/reporting/): the full client report, which uses these same AI
+  settings.
+- [Licences](/en/docs/admin/licenses/): what happens when the licence expires.

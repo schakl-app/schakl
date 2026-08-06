@@ -7,7 +7,7 @@
 
   const path = $derived(page.url.pathname);
   const canTime = $derived(can(page.data.user, "time.report.read"));
-  const canMarketing = $derived(can(page.data.user, "marketing.report.read"));
+  const canMarketing = $derived(can(page.data.user, "marketing.overview.read"));
   const tabClass = (active: boolean) =>
     `rounded-lg px-3 py-1.5 text-sm font-medium ${
       active ? "bg-brand text-white" : "text-text-muted hover:bg-surface"

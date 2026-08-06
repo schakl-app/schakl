@@ -80,7 +80,13 @@ class ActivityService:
         payload: dict[str, Any] | None = None,
     ) -> None:
         """Append one trail entry in the current transaction. No-op flush is the caller's."""
-        actor = self.ctx.user
+        # A system context (``app.core.jobs.system_context``: a cron tick, a provider callback)
+        # carries a placeholder ``User`` that exists in no ``users`` row — safe to resolve
+        # against, never safe to store, because ``actor_user_id`` has a FK. It is also exactly
+        # the case this table already has a word for: no id and no name is the system (see the
+        # model). Same ``getattr`` shape as ``impersonated_by`` below, and for the same reason:
+        # a ``SystemContext`` has no such field either.
+        actor = None if getattr(self.ctx, "is_system", False) else self.ctx.user
         # Whoever is really at the keyboard (#296). ``getattr`` because a ``SystemContext`` (a
         # cron tick) has no such field and can never be impersonating anyone.
         impersonator = getattr(self.ctx, "impersonated_by", None)

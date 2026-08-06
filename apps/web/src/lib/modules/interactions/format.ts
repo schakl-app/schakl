@@ -68,6 +68,13 @@ export interface InteractionItem {
   subject: string | null;
   snippet: string | null;
   body_text?: string | null;
+  /**
+   * The same body with its formatting kept, set **only** for an e-mail whose HTML part the API
+   * converted itself. Render this when it is there and `body_text` when it is not: a plain-text
+   * message is not markdown, and drawing it as such would turn a sender's `*sterretjes*` into
+   * italics. Rides `with_body` exactly like `body_text` — a list row carries neither.
+   */
+  body_markdown?: string | null;
   direction: string;
   company_id?: string | null;
   project_id?: string | null;

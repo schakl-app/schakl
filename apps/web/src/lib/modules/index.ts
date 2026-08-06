@@ -18,6 +18,8 @@ import "./websites";
 import "./interactions";
 import "./google";
 import "./marketing";
+import "./reporting";
 import "./cloudflare";
 import "./oxxa";
+import "./mollie";
 import "./portal";

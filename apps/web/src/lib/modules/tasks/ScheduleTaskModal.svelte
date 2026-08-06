@@ -14,6 +14,8 @@
    * editable, and a live preview shows exactly the block that will be stored, and its end.
    */
   import { enhance } from "$app/forms";
+  import { untrack } from "svelte";
+
   import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -167,18 +169,26 @@
 
   // Reset on each open; edit prefills from the block, a preselected task jumps to the form, and
   // picker mode fetches the schedulable list once.
+  //
+  // It depends on `open` alone: it resets the form, so anything else in its dependency set resets
+  // the user's typing as a side effect of loading. `loadPicker`'s `loaded` guard is read in this
+  // body — an async function's prefix runs inside the caller's reaction — and `loadPicker` then
+  // writes it, so the list arriving re-ran this and blanked `search`/`selectedTask` underneath
+  // whoever had already started picking.
   $effect(() => {
     if (!open) return;
-    errorKey = null;
-    if (editBlock && task) {
-      prefillEdit(task, editBlock);
-    } else if (task) {
-      prefill(task);
-    } else {
-      selectedTask = null;
-      search = "";
-      void loadPicker();
-    }
+    untrack(() => {
+      errorKey = null;
+      if (editBlock && task) {
+        prefillEdit(task, editBlock);
+      } else if (task) {
+        prefill(task);
+      } else {
+        selectedTask = null;
+        search = "";
+        void loadPicker();
+      }
+    });
   });
 
   // Live preview: the exact block that will be stored, and where it ends.

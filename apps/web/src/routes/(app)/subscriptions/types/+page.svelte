@@ -21,6 +21,7 @@
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import I18nLocaleSwitcher from "$lib/core/ui/I18nLocaleSwitcher.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
@@ -240,6 +241,7 @@
       })}
     >
       {#if editing}<input type="hidden" name="id" value={editing.id} />{/if}
+      <I18nLocaleSwitcher />
       {#key editing?.id ?? "new"}
         <I18nTextField
           label={t("common.label_field")}

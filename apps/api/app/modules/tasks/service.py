@@ -25,7 +25,7 @@ from app.core.richtext import (
     extract_contact_mention_ids,
     extract_mention_ids,
     extract_task_mention_ids,
-    markdown_to_plaintext,
+    markdown_excerpt,
     sanitize_markdown,
 )
 from app.core.sorting import apply_sort, user_sort_name
@@ -174,12 +174,13 @@ def _attribution(live: User | None, snapshot: str | None) -> tuple[str | None, b
 def _excerpt(body: str, limit: int = 140) -> str:
     """A comment's first line, short enough to read in a notification list.
 
-    The body is markdown now (issue #66), so flatten it to plain text *before* the length cap —
-    otherwise the bell dropdown shows literal ``**bold**`` / ``[label](url)`` syntax, and cutting
-    by character count could sever a link mid-``()``.
+    The body is markdown now (issue #66), so it is flattened to plain text *before* the length
+    cap — otherwise the bell dropdown shows literal ``**bold**`` / ``[label](url)`` syntax, and
+    cutting by character count could sever a link mid-``()``. That rule now lives in
+    :func:`markdown_excerpt`, shared with the contactmoment timeline's teaser; a comment with no
+    words left reads as empty here rather than as "no excerpt".
     """
-    text = " ".join(markdown_to_plaintext(body).split())
-    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+    return markdown_excerpt(body, limit) or ""
 
 
 def _rich_items(

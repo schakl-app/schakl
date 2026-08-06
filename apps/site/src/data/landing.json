@@ -5,7 +5,7 @@
         "type": "hero",
         "eyebrow": "Modulair · wit-label · jouw data",
         "title": "Het besturingssysteem voor je bureau",
-        "subtitle": "Klanten, projecten, uren, verlof en taken in één snel, modulair platform. Onder jouw merk, in jouw taal, met jouw data onder controle.",
+        "subtitle": "Klanten, projecten, uren, verlof, facturen, marketingcijfers en maandrapportages in één snel, modulair platform. Onder jouw merk, in jouw taal, op jouw eigen server.",
         "ctaPrimary": {
           "label": "Lees de documentatie",
           "href": "/docs/"
@@ -19,19 +19,19 @@
         "type": "features",
         "anchor": "features",
         "title": "Alles wat een bureau draaiende houdt",
-        "intro": "Elke functie is een module. Zet aan wat je gebruikt; de rest blijft uit de weg."
+        "intro": "Elke functie is een module. Zet aan wat je gebruikt; de rest blijft uit de weg, tot in de navigatie."
       },
       {
         "type": "showcase",
         "anchor": "tour",
         "title": "Zie het in actie",
-        "intro": "Van een nieuwe klant tot geboekte uren: een paar klikken, live meegerekend door de API. Alles hieronder is de echte interface, nagebouwd en geanimeerd, geen video.",
+        "intro": "Van een nieuwe klant tot een betaalde factuur: een paar klikken, live meegerekend door de API. Alles hieronder is de echte interface, nagebouwd en geanimeerd, geen video.",
         "items": [
           {
             "demo": "createClient",
             "overline": "Klanten",
             "title": "Een nieuwe klant in seconden",
-            "body": "Klanten staan centraal. Vul de kaart in, kies een status en je klant verschijnt bovenaan de lijst, klaar om projecten, uren en contactpersonen aan te hangen."
+            "body": "Klanten staan centraal. Vul de kaart in, kies een status en je klant verschijnt bovenaan de lijst, klaar om projecten, uren, domeinen en contactpersonen aan te hangen."
           },
           {
             "demo": "addTime",
@@ -46,10 +46,22 @@
             "body": "De balk kleurt mee: groen, oranje, rood. Elk getal is te openen tot op de registratie erachter, dus je weet altijd waar het budget heen ging."
           },
           {
-            "demo": "tasks",
-            "overline": "Taken",
-            "title": "Taken en checklists",
-            "body": "Vink af wat af is; de voortgang loopt mee en springt op groen als alles klaar is. Elke wijziging landt in de activiteit, met wie en wanneer."
+            "demo": "invoice",
+            "overline": "Facturatie",
+            "title": "Van geboekte uren naar betaald",
+            "body": "Een factuur bouw je uit wat er al staat: goedgekeurde uren, abonnementsperiodes en domeinverlengingen. Wat je op het scherm ziet is precies wat er gedrukt wordt, en met een betaallink boekt de betaling zichzelf op de factuur."
+          },
+          {
+            "demo": "marketing",
+            "overline": "Marketing",
+            "title": "De cijfers van je klant, waar je werkt",
+            "body": "Koppel per klant hun Analytics, Search Console, Google Ads en SE Ranking. De tegels zet je zelf op volgorde, en je ziet meteen wanneer een bron voor het laatst is opgehaald."
+          },
+          {
+            "demo": "report",
+            "overline": "Rapportage",
+            "title": "Elke maand een verhaal, niet een tabel",
+            "body": "De maandrapportage bevriest elk getal dat hij afdrukt, schrijft de tekst in de tone of voice van jouw bureau, en wacht op jou. Nakijken is de standaard; direct versturen is een bewuste keuze per klant."
           },
           {
             "demo": "leave",
@@ -61,18 +73,26 @@
             "demo": "whiteLabel",
             "overline": "Wit-label",
             "title": "Jouw merk, jouw kleur",
-            "body": "Logo, kleur en domein zijn instellingen, geen rebuild. De hele app kleurt mee, in het licht of donker, in het Nederlands of Engels."
+            "body": "Logo, kleur en domein zijn instellingen, geen rebuild. De hele app kleurt mee, in het licht of donker, in het Nederlands of Engels, tot in je facturen en e-mails."
           }
         ]
+      },
+      {
+        "type": "integrations",
+        "anchor": "koppelingen",
+        "title": "Praat met wat je al gebruikt",
+        "intro": "Elke koppeling draait op jouw eigen account en jouw eigen sleutels, per organisatie ingesteld en versleuteld opgeslagen. Er zit geen tussenpartij in: je draait de installatie zelf.",
+        "slugs": ["mollie", "cloudflare", "oxxa", "google-workspace", "anthropic", "oidc"],
+        "label": "Bekijk alle koppelingen"
       },
       {
         "type": "textBullets",
         "anchor": "selfhost",
         "title": "Draai het waar jij wilt",
-        "body": "Zelf hosten met één Docker Compose-stack: web, API, worker, database en Redis. Updates zijn een nieuwe image-tag; migraties draaien vanzelf, vóór de app opstart. Liever niet zelf beheren? Een beheerde cloudversie staat op de roadmap.",
+        "body": "Zelf hosten met één Docker Compose-stack: web, API, worker, database en Redis. Updates zijn een nieuwe image-tag; migraties draaien vanzelf en een herstart is geen storing meer. Liever niet zelf beheren? Een beheerde cloudversie staat op de roadmap.",
         "bullets": [
           "Eén compose-stack, geen losse diensten om te babysitten",
-          "Automatische databasemigraties bij elke update",
+          "Automatische databasemigraties bij elke update, met een herstart zonder downtime",
           "De kern is open source (AGPL); alleen uitbreidingsmodules vragen een licentiesleutel",
           "Telemetrie staat standaard uit: jij bepaalt wat je deelt",
           "Wit-label: jouw logo, kleuren en eigen domein",
@@ -83,7 +103,7 @@
         "type": "cta",
         "anchor": "",
         "title": "Klaar om te beginnen?",
-        "body": "Van installatie tot de losse modules: alles staat in de documentatie.",
+        "body": "Van installatie tot de losse modules en koppelingen: alles staat in de documentatie.",
         "label": "Naar de documentatie",
         "href": "/docs/"
       }
@@ -95,7 +115,7 @@
         "type": "hero",
         "eyebrow": "Modular · white-label · your data",
         "title": "The operating system for your agency",
-        "subtitle": "Clients, projects, hours, leave and tasks in one fast, modular platform. Under your brand, in your language, with your data under your control.",
+        "subtitle": "Clients, projects, hours, leave, invoices, marketing numbers and monthly reports in one fast, modular platform. Under your brand, in your language, on your own server.",
         "ctaPrimary": {
           "label": "Read the documentation",
           "href": "/docs/"
@@ -109,19 +129,19 @@
         "type": "features",
         "anchor": "features",
         "title": "Everything that keeps an agency running",
-        "intro": "Every capability is a module. Enable what you use — the rest stays out of the way."
+        "intro": "Every capability is a module. Enable what you use — the rest stays out of the way, right down to the navigation."
       },
       {
         "type": "showcase",
         "anchor": "tour",
         "title": "See it in action",
-        "intro": "From a new client to logged hours: a few clicks, computed live by the API. Everything below is the real interface, rebuilt and animated — not a video.",
+        "intro": "From a new client to a paid invoice: a few clicks, computed live by the API. Everything below is the real interface, rebuilt and animated — not a video.",
         "items": [
           {
             "demo": "createClient",
             "overline": "Clients",
             "title": "A new client in seconds",
-            "body": "Clients are the hub. Fill in the card, pick a status, and the client appears at the top of the list — ready to attach projects, hours and contacts."
+            "body": "Clients are the hub. Fill in the card, pick a status, and the client appears at the top of the list — ready to attach projects, hours, domains and contacts."
           },
           {
             "demo": "addTime",
@@ -136,10 +156,22 @@
             "body": "The bar changes colour: green, amber, red. Every number opens down to the entry behind it, so you always know where the budget went."
           },
           {
-            "demo": "tasks",
-            "overline": "Tasks",
-            "title": "Tasks and checklists",
-            "body": "Tick off what's done; the progress bar follows and turns green when everything's complete. Every change lands in the activity feed, with who and when."
+            "demo": "invoice",
+            "overline": "Invoicing",
+            "title": "From logged hours to paid",
+            "body": "An invoice is built from what is already there: approved hours, subscription periods and domain renewals. What you see on screen is exactly what prints — and with a payment link, the payment books itself onto the invoice."
+          },
+          {
+            "demo": "marketing",
+            "overline": "Marketing",
+            "title": "Your client's numbers, where you work",
+            "body": "Link each client's Analytics, Search Console, Google Ads and SE Ranking. You arrange the tiles yourself, and you can always see when a source was last fetched."
+          },
+          {
+            "demo": "report",
+            "overline": "Reporting",
+            "title": "A story every month, not a table",
+            "body": "The monthly report freezes every number it prints, writes the prose in your agency's own tone of voice, and then waits for you. Review is the default; sending straight out is a deliberate choice per client."
           },
           {
             "demo": "leave",
@@ -151,18 +183,26 @@
             "demo": "whiteLabel",
             "overline": "White-label",
             "title": "Your brand, your color",
-            "body": "Logo, color and domain are settings, not a rebuild. The whole app recolors — in light or dark, in Dutch or English."
+            "body": "Logo, color and domain are settings, not a rebuild. The whole app recolors — in light or dark, in Dutch or English, right through to your invoices and emails."
           }
         ]
+      },
+      {
+        "type": "integrations",
+        "anchor": "integrations",
+        "title": "Talks to what you already use",
+        "intro": "Every integration runs on your own account and your own keys, configured per organisation and stored encrypted. There is no middleman in the path — you run the install yourself.",
+        "slugs": ["mollie", "cloudflare", "oxxa", "google-workspace", "anthropic", "oidc"],
+        "label": "See all integrations"
       },
       {
         "type": "textBullets",
         "anchor": "selfhost",
         "title": "Run it where you want",
-        "body": "Self-host with one Docker Compose stack — web, API, worker, database and Redis. Updates are a new image tag; migrations run automatically, before the app boots. Rather not manage it yourself? A managed cloud version is on the roadmap.",
+        "body": "Self-host with one Docker Compose stack — web, API, worker, database and Redis. Updates are a new image tag; migrations run on their own, and a restart is no longer an outage. Rather not manage it yourself? A managed cloud version is on the roadmap.",
         "bullets": [
           "One compose stack — no scattered services to babysit",
-          "Automatic database migrations on every update",
+          "Automatic database migrations on every update, with a zero-downtime restart",
           "The core is open source (AGPL) — only extension modules require a license key",
           "Telemetry is off by default — you decide what you share",
           "White-label: your logo, colors and custom domain",
@@ -173,7 +213,7 @@
         "type": "cta",
         "anchor": "",
         "title": "Ready to get started?",
-        "body": "From installation to every module: it is all in the documentation.",
+        "body": "From installation to every module and integration: it is all in the documentation.",
         "label": "Go to the docs",
         "href": "/docs/"
       }

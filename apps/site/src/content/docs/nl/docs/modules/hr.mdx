@@ -1,0 +1,108 @@
+---
+title: Personeelsdossier
+description: "Mijn pagina: het verlofsaldo, het lopende contract en de personeelsdocumenten van één medewerker."
+sidebar:
+  order: 9
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Het personeelsdossier is de plek waar de papieren kant van een dienstverband ligt: de getekende
+arbeidsovereenkomst, groeiplannen, bonusafspraken, de CAO. Elke medewerker ziet zijn eigen
+dossier; wie personeelszaken doet, kan dat van iedereen openen.
+
+## Waar je het vindt
+
+Via het **profielmenu** rechtsboven (je eigen naam) → **Mijn pagina** (`/me`). Bewust niet in de
+zijbalk: het gaat over jou en niet over een module. De ingang verschijnt alleen als de
+HR-module aanstaat en je het recht hebt om een dossier te lezen.
+
+HR is een gelicentieerde module en wordt aangezet onder *Instellingen → Modules*.
+
+## Wat er op Mijn pagina staat
+
+Bovenaan twee kaarten, daaronder het dossier:
+
+- **Verlofsaldo** met het gecombineerde saldo per balansgroep, en op je eigen pagina een link
+  **Naar verlof**. Deze kaart verschijnt alleen als ook de verlofmodule aanstaat.
+- **Contract**: *In dienst sinds*, *Uren per week* en, als die er is, *Tot*. Deze gegevens komen
+  uit de arbeidscontracten die je onder Dienstverband vastlegt; hier zijn ze alleen leesbaar. Is
+  er nog geen contract vastgelegd, dan blijft de kaart weg.
+- Het **dossier**, opgedeeld in zes vaste categorieën.
+
+De categorieën liggen vast, zodat elk dossier in de organisatie er hetzelfde uitziet:
+
+| Categorie | Waarvoor |
+| --- | --- |
+| Contract | de arbeidsovereenkomst en aanvullingen daarop |
+| Groeiplannen | ontwikkel- en functioneringsafspraken |
+| Bonusafspraken | variabele beloning |
+| Voorwaarden & benefits | secundaire arbeidsvoorwaarden |
+| CAO | de van toepassing zijnde CAO |
+| Overig | alles wat er niet in past |
+
+Een categorie zonder documenten wordt alleen getoond aan wie documenten mag beheren; voor de
+medewerker zelf blijft de pagina daarmee kort.
+
+## Een document toevoegen
+
+<Steps>
+
+1. Open *Mijn pagina*. Mag je elk dossier lezen, kies dan bovenaan de medewerker uit de
+   **Kies een medewerker…**-lijst.
+
+2. Ga naar **Document toevoegen** onderaan de pagina.
+
+3. Kies de **Categorie** en vul een **Naam** in, bijvoorbeeld "Contract 2026". Laat je de naam
+   leeg, dan wordt de bestandsnaam gebruikt.
+
+4. Kies het bestand en klik **Uploaden**.
+
+</Steps>
+
+Bij elk document staat de datum en de naam van degene die het archiveerde. Die naam wordt
+opgeslagen op het moment van uploaden, dus het dossier blijft leesbaar ook als dat account later
+verdwijnt. Zowel het toevoegen als het verwijderen van een document komt op het activiteitenspoor
+van het dossier terecht.
+
+Verwijderen gaat via het ⋯-menu naast het document.
+
+<Aside type="caution">
+Verwijderen is definitief: de dossierregel én het bestand gaan weg. Er is geen prullenbak.
+</Aside>
+
+## Iemand anders' dossier
+
+Wie het recht heeft om elk dossier te lezen, krijgt bovenaan een medewerkerkiezer. Je kunt dus
+zonder omwegen het dossier van een collega openen om er een getekend contract in te hangen, of om
+te controleren wat er al ligt.
+
+## Rechten
+
+| Recht | Standaard |
+| --- | --- |
+| `hr.dossier.read` | Medewerker: eigen dossier · Beheerder: elk dossier |
+| `hr.document.manage` | Beheerder |
+
+Die twee staan bewust los van elkaar en los van de verlofrechten. "Iemand mag werkroosters
+beheren" betekent daarmee niet automatisch "iemand mag arbeidscontracten inzien". Rollen stel je
+in onder *Instellingen → Rollen*.
+
+## Goed om te weten
+
+- Dossierbestanden gaan niet via de gewone bestandsroute. Ze worden geserveerd door een eigen
+  route die bij élke download opnieuw je dossierrecht toetst, en de generieke bestandsroute
+  weigert dossierbestanden buiten je eigen dossier. Een gedeelde link naar een contract werkt
+  daarom niet voor een collega zonder recht.
+- Identieke bestanden worden één keer opgeslagen. Hetzelfde getekende PDF in twee dossiers kost
+  dus geen dubbele opslag, en het verwijderen van het ene document raakt het andere niet.
+- Het dossier kent geen import of export. Het zijn bestanden, geen rijen die een spreadsheet kan
+  dragen.
+- Wordt een gebruikersaccount verwijderd, dan verdwijnt het bijbehorende dossier mee.
+- Het contract- en verlofblok komen uit de verlofmodule. Staat die uit, dan toont Mijn pagina
+  alleen het documentendossier.
+
+<CardGrid>
+  <LinkCard title="Verlof" href="/nl/docs/modules/leave/" description="Aanvragen, saldi, werkroosters en arbeidscontracten." />
+  <LinkCard title="Licenties" href="/nl/docs/admin/licenses/" description="Wat een licentiesleutel dekt en wat er gebeurt als hij verloopt." />
+</CardGrid>

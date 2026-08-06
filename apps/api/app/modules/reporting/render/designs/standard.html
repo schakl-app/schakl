@@ -1,0 +1,16 @@
+{#
+  The shipped report design: cover, then a section per contributed block, then — on an
+  internal document only — the actions and open questions.
+
+  Kept as a thin wrapper around `standard.body.html` so that "start from this design" hands a
+  tenant the *same* file this renders from, which is what makes what they get what they saw.
+#}
+{% extends "_shell.html" %}
+
+{% block design_css %}
+{% include "standard.css" %}
+{% endblock %}
+
+{% block body %}
+{% include "standard.body.html" %}
+{% endblock %}

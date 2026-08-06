@@ -23,6 +23,7 @@ jobs:
       web: ${{ steps.filter.outputs.web }}
       i18n: ${{ steps.filter.outputs.i18n }}
       client: ${{ steps.filter.outputs.client }}
+      site: ${{ steps.filter.outputs.site }}
       run_all: ${{ steps.gate.outputs.run_all }}
     steps:
       # Full history so the gate can diff this push against its own previous commit. With a
@@ -76,6 +77,16 @@ jobs:
             i18n:
               - 'messages/**'
               - 'scripts/i18n-check.mjs'
+              - '.github/workflows/ci.yml'
+            site:
+              - 'apps/site/**'
+              - 'scripts/docs-check.mjs'
+              - 'scripts/site-content-check.mjs'
+              - 'scripts/site-feature-order.mjs'
+              - 'scripts/site-links-check.mjs'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'package.json'
               - '.github/workflows/ci.yml'
             client:
               - 'apps/api/**'
@@ -180,6 +191,36 @@ jobs:
         run: pnpm --filter @schakl/web test:unit
       - name: Build
         run: pnpm --filter @schakl/web build
+
+  site:
+    name: Site (content + docs + links)
+    needs: changes
+    if: ${{ needs.changes.outputs.site == 'true' || needs.changes.outputs.run_all == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      # Plain node first: these three need no install and catch the failures that `astro build`
+      # cannot see, because a broken reference between two data files still renders — a card with
+      # a blank icon, a "Live demo" badge over no demo, a "Read more" into a 404.
+      - name: Content references resolve
+        run: node scripts/site-content-check.mjs
+      - name: Feature order matches the grouping
+        run: node scripts/site-feature-order.mjs --check
+      - name: Docs locale parity + MDX hazards
+        run: node scripts/docs-check.mjs
+      - run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm --filter @schakl/site build
+      # After the build, against dist/, where a link either resolves to a file or it does not.
+      # This is the check that would have caught the Dutch docs index pointing at /docs/… for
+      # months: three dead cards on the first page a Dutch reader opens.
+      - name: Internal links resolve
+        run: node scripts/site-links-check.mjs
 
   client-drift:
     name: Typed client is up to date

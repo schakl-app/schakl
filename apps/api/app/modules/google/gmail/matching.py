@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import re
 import uuid
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from email.utils import getaddresses
 from html import unescape
@@ -55,38 +56,78 @@ def is_relevant(label_ids: list[str], excluded_label_id: str | None) -> bool:
     return not (excluded_label_id and excluded_label_id in labels)
 
 
+#: Which header a contact appeared on, most central first. The sender of an inbound mail and
+#: the addressee of an outbound one are what it is *about*; a Cc is who was kept informed.
+_ROLE_RANK = {"from": 0, "to": 1, "cc": 2}
+
+
 @dataclass
 class ContactMatch:
     contact_id: uuid.UUID
     #: The contact's companies, oldest link first (deterministic tie-breaking).
     company_ids: list[uuid.UUID] = field(default_factory=list)
+    #: The header this contact was found on — see ``_ROLE_RANK``.
+    role: str = "to"
+    #: This contact is a colleague: their address is a staff member's.
+    is_staff: bool = False
 
 
-def internal_only(participants: list[dict[str, str]], member_emails: set[str]) -> bool:
+def internal_only(participants: list[dict[str, str]], member_emails: AbstractSet[str]) -> bool:
     """Colleague-to-colleague mail is not a client touchpoint — skip it entirely."""
     addresses = {p["email"] for p in participants}
     return bool(addresses) and addresses <= member_emails
 
 
-def resolve_mappings(matches: list[ContactMatch]) -> dict[str, uuid.UUID | None]:
+def _rank(match: ContactMatch, internal_company_ids: frozenset[uuid.UUID]) -> tuple[int, int]:
+    """Sort key: outsiders before insiders, then by how central the header is."""
+    internal = match.is_staff or (
+        bool(match.company_ids)
+        and all(company_id in internal_company_ids for company_id in match.company_ids)
+    )
+    return (int(internal), _ROLE_RANK.get(match.role, len(_ROLE_RANK)))
+
+
+def resolve_mappings(
+    matches: list[ContactMatch],
+    *,
+    internal_company_ids: frozenset[uuid.UUID] = frozenset(),
+) -> dict[str, uuid.UUID | None]:
     """Contact + company for the interaction row.
 
-    The company is the single unambiguous one when the matched contacts agree; otherwise the
-    first (oldest-linked) — every logged email lands on *some* client timeline, reachable and
-    remappable, rather than floating unmapped where no panel would ever show it.
+    Every logged email lands on *some* client timeline — reachable and remappable, rather than
+    floating unmapped where no panel would ever show it — so this always answers when anything
+    matched. *Which* client is a ranking, not a first-come (#305):
+
+    1. **The agency is not the client.** An agency is normally a company in its own list, and
+       its people are contacts on it — so a colleague in Cc, or ``administratie@`` on the
+       thread, matched exactly like the customer did and, being the older record, won every
+       time. Every email then defaulted to the agency's own company, and the reviewer remapped
+       by hand. Insiders now rank last: a staff address, and a contact whose companies are
+       *all* ours (``internal_company_ids``).
+    2. **A Cc is not what the mail is about.** Among the rest, the ``From`` of an inbound mail
+       and the ``To`` of an outbound one outrank whoever was kept informed.
+    3. **Then oldest link first**, as before — the sort is stable, so the caller's ordering is
+       the tie-break and the answer stays deterministic.
+
+    Ranked, never filtered: internal-only mail (``gmail_log_internal``) still maps to the
+    agency's own company, because there is nothing else it could mean.
     """
     if not matches:
         return {}
-    contact_id = matches[0].contact_id if len(matches) == 1 else None
+    ranked = sorted(matches, key=lambda match: _rank(match, internal_company_ids))
+    contact_id = ranked[0].contact_id if len(ranked) == 1 else None
     all_companies: list[uuid.UUID] = []
-    for match in matches:
+    for match in ranked:
         for company_id in match.company_ids:
             if company_id not in all_companies:
                 all_companies.append(company_id)
+    # One contact may sit on both sides (a colleague listed on a client's company too), so the
+    # company list gets the same treatment as the contacts that produced it.
+    all_companies.sort(key=lambda company_id: company_id in internal_company_ids)
     company_id = all_companies[0] if all_companies else None
     if contact_id is None and company_id is not None:
-        # Several matched contacts: attribute to the one linked to the chosen company.
-        for match in matches:
+        # Several matched contacts: attribute to the best-ranked one on the chosen company.
+        for match in ranked:
             if company_id in match.company_ids:
                 contact_id = match.contact_id
                 break
@@ -147,19 +188,44 @@ def _walk_parts(part: dict[str, Any], mime: str) -> str | None:
 
 
 def attachment_parts(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """The MIME parts that are real attachments (#180): a filename plus an ``attachmentId``
-    to fetch the bytes by. Inline text/html parts carry no filename and stay out."""
+    """The MIME parts worth fetching (#180): a filename **or** a body reference, plus an
+    ``attachmentId`` to fetch the bytes by. Inline text/html parts have neither and stay out.
+
+    A part carrying a ``Content-ID`` is a candidate either way — whether it is *content of the
+    body* or an ordinary attachment is decided by :func:`part_content_id` against what the
+    converted body actually references, not by whether the sending client gave it a filename.
+    """
     found: list[dict[str, Any]] = []
 
     def walk(part: dict[str, Any]) -> None:
         body = part.get("body") or {}
-        if part.get("filename") and body.get("attachmentId"):
+        if body.get("attachmentId") and (part.get("filename") or part_content_id(part)):
             found.append(part)
         for sub in part.get("parts") or []:
             walk(sub)
 
     walk(payload)
     return found
+
+
+def part_content_id(part: dict[str, Any]) -> str | None:
+    """A part's ``Content-ID`` as the body spells it: ``<x@y>`` in the header, ``cid:x@y``."""
+    for header in part.get("headers") or []:
+        if (header.get("name") or "").lower() == "content-id":
+            return (header.get("value") or "").strip().strip("<>") or None
+    return None
+
+
+def extract_markdown(payload: dict[str, Any]) -> str | None:
+    """The message's ``text/html`` part converted to markdown, or ``None`` when it has none.
+
+    Deliberately the HTML part even when a ``text/plain`` alternative exists: both say the
+    same words, and only one of them still knows it had a list in it. The plain part remains
+    what :func:`extract_text` returns and what search reads.
+    """
+    from app.core.htmlmd import html_to_markdown
+
+    return html_to_markdown(_walk_parts(payload, "text/html"))
 
 
 def extract_text(payload: dict[str, Any]) -> str | None:

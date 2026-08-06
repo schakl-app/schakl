@@ -7,6 +7,8 @@ import Icon from './showcase/Icon.astro';
 import DemoButton from './DemoButton.astro';
 import settings from '../data/settings/site.json';
 import landing from '../data/landing.json';
+import IntegrationMark from './integrations/IntegrationMark.astro';
+import { integrations as allIntegrations, statusLabel } from '../lib/integrations.ts';
 import { localizeHref } from '../lib/links';
 
 interface Props {
@@ -52,11 +54,18 @@ const title = hero ? `${settings.brandName} · ${hero.title}` : settings.brandNa
         case 'features':
           return (
             <section id={id} class="container features">
-              <h2>{v.title}</h2>
-              <p class="section-intro">{v.intro}</p>
+              <div data-reveal>
+                <h2>{v.title}</h2>
+                <p class="section-intro">{v.intro}</p>
+              </div>
               <div class="feature-grid">
-                {features.map((f: any) => (
-                  <a class="feature-card" href={href(`/features/${f.slug}`)}>
+                {features.map((f: any, n: number) => (
+                  <a
+                    class="feature-card"
+                    href={href(`/features/${f.slug}`)}
+                    data-reveal
+                    style={`--reveal-delay:${Math.min(n, 8) * 45}ms`}
+                  >
                     <span class="feature-icon"><Icon name={f.lucide} size={1.4} /></span>
                     <h3>{f.title[locale]}</h3>
                     <p>{f.description[locale]}</p>
@@ -72,11 +81,11 @@ const title = hero ? `${settings.brandName} · ${hero.title}` : settings.brandNa
           return (
             <section id={id} class="selfhost">
               <div class="container selfhost-grid">
-                <div>
+                <div data-reveal>
                   <h2>{v.title}</h2>
                   <p class="section-intro">{v.body}</p>
                 </div>
-                <ul class="check-list">
+                <ul class="check-list" data-reveal style="--reveal-delay:120ms">
                   {v.bullets.map((b: string) => <li>{b}</li>)}
                 </ul>
               </div>
@@ -92,9 +101,53 @@ const title = hero ? `${settings.brandName} · ${hero.title}` : settings.brandNa
               items={v.items}
             />
           );
+        case 'integrations': {
+          // The strip names the services an agency already pays for, so the block picks them by
+          // slug from the CMS list rather than repeating their names as copy — one place to
+          // rename Mollie, and the badge cannot drift from the integrations page.
+          const picked = (v.slugs ?? [])
+            .map((s: string) => allIntegrations.find((i: any) => i.slug === s))
+            .filter(Boolean);
+          return (
+            <section id={id} class="ixstrip">
+              <div class="container">
+                <div class="ixstrip__head" data-reveal>
+                  <h2>{v.title}</h2>
+                  <p class="section-intro">{v.intro}</p>
+                </div>
+                <div class="ixstrip__grid">
+                  {picked.map((i: any, n: number) => (
+                    <a
+                      class="ixstrip__item"
+                      href={href(`/integrations/${i.slug}`)}
+                      data-reveal
+                      style={`--reveal-delay:${Math.min(n, 6) * 55}ms`}
+                    >
+                      <IntegrationMark
+                        monogram={i.mark?.monogram ?? i.name.charAt(0)}
+                        color={i.mark?.color}
+                        lucide={i.lucide}
+                        size={2.5}
+                      />
+                      <span class="ixstrip__name">{i.name}</span>
+                      <span class="ixstrip__tag">{i.tagline?.[locale]}</span>
+                      {i.status !== 'live' && (
+                        <span class="ixstrip__badge">{statusLabel[i.status]?.[locale]}</span>
+                      )}
+                    </a>
+                  ))}
+                </div>
+                <a class="ixstrip__all" href={href('/integrations/')} data-reveal>
+                  {v.label}
+                  <Icon name="arrowRight" size={0.95} />
+                </a>
+              </div>
+            </section>
+          );
+        }
         case 'cta':
           return (
-            <section id={id} class="container docs-cta">
+            <section id={id} class="container docs-cta" data-reveal>
               <h2>{v.title}</h2>
               <p class="section-intro">{v.body}</p>
               <a class="button primary" href={href(v.href)}>{v.label}</a>
@@ -104,3 +157,78 @@ const title = hero ? `${settings.brandName} · ${hero.title}` : settings.brandNa
     })
   }
 </SiteShell>
+
+<style>
+  .ixstrip {
+    background: var(--bg-soft);
+    border-block: 1px solid var(--border);
+    padding-block: 3.5rem;
+  }
+  .ixstrip__head {
+    max-width: 42rem;
+    margin-bottom: 2rem;
+  }
+  .ixstrip__head h2 {
+    font-size: clamp(1.6rem, 4vw, 2.2rem);
+  }
+  .ixstrip__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+    gap: 0.75rem;
+  }
+  .ixstrip__item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 1.1rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 0.8rem;
+    background: var(--bg);
+    color: var(--text);
+    transition:
+      border-color 0.18s ease,
+      transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ixstrip__item:hover {
+    border-color: var(--accent);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .ixstrip__item:hover {
+      transform: translateY(-2px);
+    }
+  }
+  .ixstrip__item :global(.mark) {
+    margin-bottom: 0.6rem;
+  }
+  .ixstrip__name {
+    font-weight: 620;
+    font-size: 0.98rem;
+  }
+  .ixstrip__tag {
+    color: var(--muted);
+    font-size: 0.84rem;
+  }
+  .ixstrip__badge {
+    align-self: flex-start;
+    margin-top: 0.5rem;
+    padding: 0.08rem 0.45rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--bg-soft);
+    color: var(--muted);
+    font-size: 0.7rem;
+    font-weight: 650;
+  }
+  .ixstrip__all {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 1.5rem;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .ixstrip__all:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+</style>

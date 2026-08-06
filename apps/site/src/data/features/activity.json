@@ -1,7 +1,7 @@
 {
   "name": "Activiteit en audit",
   "slug": "activity",
-  "order": 110,
+  "order": 190,
   "icon": "🕓",
   "lucide": "activity",
   "demo": "activity",

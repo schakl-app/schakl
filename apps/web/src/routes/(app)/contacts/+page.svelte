@@ -3,6 +3,10 @@
 
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
+  import BulkBar from "$lib/core/bulk/BulkBar.svelte";
+  import BulkToggle from "$lib/core/bulk/BulkToggle.svelte";
+  import BulkResult from "$lib/core/bulk/BulkResult.svelte";
+  import type { BulkFieldDef } from "$lib/core/bulk/types";
   import { editHref } from "$lib/core/edit-intent";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
@@ -13,12 +17,14 @@
   import { navLabel, pageTitle } from "$lib/core/title";
   import { customFieldColumns } from "$lib/core/table/columns";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
+  import { resetPage } from "$lib/core/table/paging";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import Pagination from "$lib/core/ui/Pagination.svelte";
   import PhoneInput from "$lib/core/ui/PhoneInput.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
@@ -52,11 +58,40 @@
   // Client filter (#154) — the tasks page's URL-param shape; the API applies it.
   const companyFilterItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
   function setFilter(key: string, value: string) {
-    const url = new URL(page.url);
+    const url = resetPage(new URL(page.url));
     if (value) url.searchParams.set(key, value);
     else url.searchParams.delete(key);
     void goto(url, { keepFocus: true, noScroll: true });
   }
+
+  // --- bulk (the ✎ selection mode in the toolbar) --------------------------------------
+  // Only the client link, and only in the attaching direction. Someone's name, address and phone
+  // are the definition of that person and are never shared by a selection; "these six all work at
+  // Acme now" is the one thing a batch of contacts genuinely has in common. Detaching is not
+  // offered here — from the same control it is the one that gets misclicked, so it stays on the
+  // contact, where you can see which link you are breaking. Mirrors
+  // `apps/api/app/modules/contacts/bulk.py`; the label is the import's, so the two surfaces that
+  // name this column can never name it differently.
+  let selecting = $state(false);
+  let bulkSelected = $state<string[]>([]);
+  const bulkFields: BulkFieldDef[] = $derived([
+    {
+      key: "company",
+      label: t("impex.column.contact.company"),
+      type: "fk",
+      // The clients the page already loaded for its own filter — the dialog costs no extra call.
+      options: companyFilterItems,
+    },
+  ]);
+  // One configuration, spread into the ✎ in the toolbar and the strip above the table: they
+  // render in different places and must never disagree about what this list can do.
+  const bulkConfig = $derived({
+    fields: bulkFields,
+    writePermission: "contacts.contact.write",
+    deletePermission: "contacts.contact.delete",
+    deleteMessage: t("contacts.bulk.delete_message", { count: bulkSelected.length }),
+    fieldErrors: form?.bulkFields ?? null,
+  });
 
   // #80: companies to link while creating the contact. `ContactCreate.company_ids` does the
   // linking server-side (the first becomes that company's primary contact), so the picker only
@@ -160,20 +195,27 @@
 </script>
 
 {#snippet nameCell(contact: Contact)}
-  <a href="/contacts/{contact.id}" class="font-medium text-text hover:text-brand"
+  <!-- `block`, because `overflow` does not apply to an inline box: a bare `truncate` on an `<a>`
+       gets only its `nowrap` half, so under the table's fixed layout a long name runs sideways
+       over the next column instead of ellipsizing inside its own. Same for every cell below. -->
+  <a href="/contacts/{contact.id}" class="block truncate font-medium text-text hover:text-brand"
     >{fullName(contact)}</a
   >
 {/snippet}
 
 {#snippet companiesCell(contact: Contact)}
   {#if contact.companies && contact.companies.length > 0}
-    <span class="flex flex-wrap gap-1">
+    <!-- `flex-nowrap`, not `wrap`: wrapping is what makes a client with a long name a two-line
+         chip and a four-line row. The chips shrink and ellipsize instead, and the full name is
+         on the hover title. -->
+    <span class="flex min-w-0 flex-nowrap gap-1 overflow-hidden">
       {#each contact.companies as link (link.company_id)}
         <!-- Colour is the marker: the client this person is the primary contact for is
              brand-coloured, never starred (docs/UX.md). -->
         <a
           href="/companies/{link.company_id}"
-          class="rounded-full px-2 py-0.5 text-xs {link.is_primary
+          title={link.name}
+          class="truncate rounded-full px-2 py-0.5 text-xs {link.is_primary
             ? 'bg-brand/10 text-brand ring-1 ring-inset ring-brand/30'
             : 'bg-surface text-text-muted'} hover:text-brand"
         >
@@ -187,20 +229,22 @@
 
 {#snippet emailCell(contact: Contact)}
   {#if contact.email}
-    <a href="mailto:{contact.email}" class="text-text-muted hover:text-brand">{contact.email}</a>
+    <a href="mailto:{contact.email}" class="block truncate text-text-muted hover:text-brand"
+      >{contact.email}</a
+    >
   {:else}<span class="text-text-muted">—</span>{/if}
 {/snippet}
 
 {#snippet phoneCell(contact: Contact)}
   {#if contact.phone}
-    <a href="tel:{contact.phone}" class="text-text-muted hover:text-brand"
+    <a href="tel:{contact.phone}" class="block truncate text-text-muted hover:text-brand"
       >{formatPhone(contact.phone)}</a
     >
   {:else}<span class="text-text-muted">—</span>{/if}
 {/snippet}
 
 {#snippet jobCell(contact: Contact)}
-  <span class="text-text-muted">{contact.job_title || "—"}</span>
+  <span class="block truncate text-text-muted">{contact.job_title || "—"}</span>
 {/snippet}
 
 {#snippet createdCell(contact: Contact)}
@@ -231,7 +275,7 @@
   <!-- A phone gets the concept's row, not a sideways-scrolling grid (docs/UX.md). -->
   <div class="flex items-center gap-3">
     <a href="/contacts/{contact.id}" class="min-w-0 flex-1">
-      <span class="font-medium text-text">{fullName(contact)}</span>
+      <span class="block truncate font-medium text-text">{fullName(contact)}</span>
       {#if contact.email}
         <span class="mt-0.5 block truncate text-sm text-text-muted">{contact.email}</span>
       {/if}
@@ -309,6 +353,10 @@
       onchange={table.onColumnsChange}
       onsort={table.onSort}
     />
+    <!-- Last in the toolbar, always: it is the only control here that changes what the *rows*
+         do rather than what the list shows, so it sits after Kolommen rather than among the
+         list's own controls. Pressing it opens the selection strip above the table. -->
+    <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
   </div>
 </div>
 
@@ -430,6 +478,7 @@
           placeholder={t("contacts.add_client")}
           allowEmpty={false}
           onselect={addCompany}
+          keepOpenOnSelect
           oncreate={(name) => {
             qcCompanyName = name;
             qcCompanyOpen = true;
@@ -462,14 +511,16 @@
   </form>
 {/if}
 
-{#if data.contacts.length < data.total}
-  <!-- The list is one page of 100. Sectioned by client, "Acme (2)" above a client that has seven
-       contacts reads as the whole answer, so say what is actually on screen — a cap is reported,
-       never silent (docs/PERFORMANCE.md). -->
-  <p class="mb-3 text-sm text-amber-700 dark:text-amber-400">
-    {t("contacts.truncated", { shown: data.contacts.length, total: data.total })}
-  </p>
+{#if data.total > data.paging.limit}
+  <!-- Sectioned by client, "Acme (2)" above a client that has seven contacts reads as the whole
+       answer. The pager below says which slice this is, but the *group counts* still need saying
+       out loud — a cap is reported, never silent (docs/PERFORMANCE.md). -->
+  <p class="mb-3 text-sm text-text-muted">{t("contacts.groups_page_only")}</p>
 {/if}
+
+<BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
+
+<BulkResult result={form?.bulkResult} />
 
 <DataTable
   rows={data.contacts}
@@ -486,8 +537,17 @@
   actions={canWrite || canDelete ? rowActions : undefined}
   {mobileRow}
   empty={emptyState}
+  selectable={selecting}
+  bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}
+/>
+
+<Pagination
+  total={data.total}
+  page={data.paging.page}
+  limit={data.paging.limit}
+  onsize={table.onPageSize}
 />
 
 <ConfirmDialog

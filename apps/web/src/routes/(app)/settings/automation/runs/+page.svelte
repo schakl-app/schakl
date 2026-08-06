@@ -3,6 +3,7 @@
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
+  import Pagination from "$lib/core/ui/Pagination.svelte";
 
   let { data } = $props();
 
@@ -129,3 +130,5 @@
     </ul>
   {/if}
 </div>
+
+<Pagination total={data.page.total} page={data.paging.page} limit={data.paging.limit} />

@@ -47,12 +47,22 @@ EXPORT_FORMAT = 1
 _USER_FIELDS = ("email", "hashed_password", "is_active", "is_verified", "full_name", "locale")
 
 
+#: Org-scoped, but not the org's data: ``file_blobs`` is storage bookkeeping about *where this
+#: instance keeps bytes*, and its keys belong to the source org's key space. Exporting them
+#: would hand another instance pointers into a prefix it does not own, so an archive carries
+#: only ``files`` rows and their bytes; they land un-folded and the storage maintenance cron
+#: re-derives the blobs on the receiving side (docs/STORAGE.md).
+_DERIVED_TABLES = frozenset({"file_blobs"})
+
+
 def _tenant_tables() -> list[sa.Table]:
     """Every org-scoped table, in FK-dependency order (parents before children)."""
     return [
         t
         for t in Base.metadata.sorted_tables
-        if "org_id" in t.c and t.name not in INSTANCE_LEVEL_TABLES
+        if "org_id" in t.c
+        and t.name not in INSTANCE_LEVEL_TABLES
+        and t.name not in _DERIVED_TABLES
     ]
 
 
@@ -256,6 +266,10 @@ async def import_org(
             for key, raw in row.items():
                 if key not in table.c:
                     continue
+                if table.name == "files" and key == "blob_id":
+                    # Handled in the files branch below: the archive carries no blobs, so
+                    # this FK has nothing to map to and the row arrives owning its own copy.
+                    continue
                 target = fk_targets.get(key)
                 if key == "id":
                     decoded[key] = _mapped(table.name, raw)
@@ -282,10 +296,15 @@ async def import_org(
             # bytes today, and someone else's prefix the moment either org is terminated
             # (whose purge now deletes that prefix). Re-key onto this org, and carry the bytes
             # across when the archive brought them.
+            # An imported file owns its own copy (``blob_id`` NULL) — the archive brought
+            # bytes, not this instance's de-duplication bookkeeping. The maintenance cron
+            # folds identical content back together on the receiving side, which is also the
+            # only way a *merged* import (two archives sharing a logo) ever converges.
             if table.name == "files":
                 restored.append((str(row["id"]), decoded["id"]))
                 decoded["storage_key"] = f"{org.id}/{decoded['id']}"
                 decoded["backend"] = settings.storage_backend
+                decoded["blob_id"] = None
             values.append(decoded)
         await session.execute(table.insert(), values)
         counts[table.name] = len(values)

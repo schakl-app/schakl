@@ -103,6 +103,16 @@ class AccountSyncResult(BaseModel):
     zones_synced: int = 0
     zones_matched: int = 0
     pages_projects_synced: int = 0
+    #: Custom hostnames those projects serve, and how many of them matched a schakl domain and
+    #: are therefore now on that domain's page. Separate numbers because they answer different
+    #: questions: a hostname belonging to no domain record here is a finding, not a failure.
+    pages_domains_synced: int = 0
+    pages_links_matched: int = 0
+    #: Links this sync adopted (Cloudflare holds the hostname, schakl had no row) and links it
+    #: found gone (schakl has a row, the project no longer serves it). Neither is acted on
+    #: beyond recording it — a sync reports drift, it does not resolve it.
+    pages_links_adopted: int = 0
+    pages_links_missing: int = 0
     #: Whether the Registrar list answered at all (#298). **Not derivable from the counts**: an
     #: account holding no registrations and a token that may not read the register both report
     #: zero, and only the first of those may narrow what schakl invoices. False keeps every
@@ -241,6 +251,13 @@ class PagesLinkRead(BaseModel):
     status: str | None = None
     last_error: str | None = None
     last_checked_at: datetime | None = None
+    #: Set when a check found Cloudflare no longer holds this hostname on this project. The row
+    #: survives and says so — the same reporting-not-overwriting rule the redirect reconcile
+    #: follows.
+    missing_at: datetime | None = None
+    #: Set when a sync adopted this link from Cloudflare instead of the button creating it, so
+    #: the panel can say where the row came from.
+    discovered_at: datetime | None = None
 
 
 class PagesLinkCreate(BaseModel):
@@ -326,6 +343,13 @@ class DomainStatusRead(BaseModel):
     domain_id: uuid.UUID
     domain_name: str
     live: bool = False
+    #: When Cloudflare was last actually asked about this domain — the most recent of the
+    #: observations this report is assembled from (the zone, the redirect rule, the Pages
+    #: links), never "when this report was built". A stored read renders as fast as it does
+    #: *because* it asks nothing, so without this the panel cannot tell "checked a minute ago"
+    #: from "never checked", and the answer it shows has no age at all. ``None`` means nothing
+    #: here has ever been observed.
+    checked_at: datetime | None = None
 
     zone: ZoneRead | None = None
     #: Every account that has this apex. More than one is legal at Cloudflare (only *activation*

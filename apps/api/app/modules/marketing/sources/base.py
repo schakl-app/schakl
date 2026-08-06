@@ -74,6 +74,17 @@ GA4_METRICS = [
 ]
 GSC_METRICS = ["clicks", "impressions", "ctr", "position"]
 GADS_METRICS = ["cost", "clicks", "impressions", "conversions", "conversionsValue"]
+#: SE Ranking (#300). ``avg_position`` leads because it is the number a client asks about, and
+#: it is both *averaged* and *lower-is-better* — registered in both sets below, or a month of
+#: daily averages would be summed into a four-figure "position".
+SERANKING_METRICS = [
+    "avg_position",
+    "top3",
+    "top10",
+    "top30",
+    "keywords_ranking",
+    "keywords_tracked",
+]
 
 #: The GA4 acquisition split we store as a sub-object (sessions by default channel group).
 GA4_CHANNELS = ["Organic Search", "Paid Search", "Direct", "Organic Social", "Referral", "Email"]
@@ -82,25 +93,37 @@ METRICS_BY_SOURCE: dict[str, list[str]] = {
     MarketingSource.GA4.value: GA4_METRICS,
     MarketingSource.GSC.value: GSC_METRICS,
     MarketingSource.GADS.value: GADS_METRICS,
+    MarketingSource.SERANKING.value: SERANKING_METRICS,
 }
 
 #: Metrics that are *averages*, not sums — a period total re-derives them, never adds them.
 #: (CTR and average position over N days is not the sum of N daily CTRs.)
-AVERAGED_METRICS = {"ctr", "position", "engagementRate"}
+AVERAGED_METRICS = {"ctr", "position", "engagementRate", "avg_position"}
 
 #: Metrics where a *lower* number is better, so a positive delta reads red not green (position).
-LOWER_IS_BETTER = {"position"}
+LOWER_IS_BETTER = {"position", "avg_position"}
 
 
 def primary_metric(source: str) -> str:
     return METRICS_BY_SOURCE[source][0]
 
 
+#: How a source authenticates (#300). Not a generalisation of Google's flow — the opposite:
+#: Google's *is* the special one, with a per-user grant, incremental scopes, a revocable
+#: connection and a reconnect prompt. An org-key source has none of those states; it is
+#: configured or it is not, and conflating the two would have the SE Ranking card telling an
+#: admin to "reconnect Google".
+AUTH_GOOGLE = "google"
+AUTH_ORG_KEY = "org_key"
+
+
 class MarketingSourceAdapter(Protocol):
-    """What every source must implement. Stateless — the connection's client is passed in."""
+    """What every source must implement. Stateless — the prepared client is passed in."""
 
     source: str
-    #: The OAuth scope a connection must hold to use this source.
+    #: Which credential this source rides (:data:`AUTH_GOOGLE` / :data:`AUTH_ORG_KEY`).
+    auth: str
+    #: The OAuth scope a connection must hold to use this source. Empty for an org-key source.
     scope: str
     #: Drill-down kinds this source offers (``marketing.drilldown.<kind>`` i18n).
     drilldowns: tuple[str, ...]
@@ -146,7 +169,16 @@ SCOPE_BY_SOURCE: dict[str, str] = {
     MarketingSource.GA4.value: SCOPE_ANALYTICS,
     MarketingSource.GSC.value: SCOPE_SEARCH_CONSOLE,
     MarketingSource.GADS.value: SCOPE_ADS,
+    # SE Ranking has no OAuth and therefore no scope. Present with an empty value rather than
+    # absent, so a caller iterating the sources gets a falsy answer instead of a KeyError.
+    MarketingSource.SERANKING.value: "",
 }
+
+
+def source_auth(source: str) -> str:
+    """Which credential a source rides. Defaults to Google so an adapter that predates the
+    distinction keeps working unchanged."""
+    return getattr(SOURCES.get(source), "auth", AUTH_GOOGLE)
 
 
 def source_for(source: str) -> MarketingSourceAdapter:

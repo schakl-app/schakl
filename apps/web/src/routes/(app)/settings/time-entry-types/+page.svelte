@@ -10,6 +10,7 @@
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import I18nLocaleSwitcher from "$lib/core/ui/I18nLocaleSwitcher.svelte";
   import I18nTextField from "$lib/core/ui/I18nTextField.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import { entryTypeLabel, type TimeEntryTypeDef } from "$lib/modules/time/format";
@@ -107,6 +108,7 @@
       })}
     >
       {#if editing}<input type="hidden" name="id" value={editing.id} />{/if}
+      <I18nLocaleSwitcher />
       {#key editing?.id ?? "new"}
         <I18nTextField
           label={t("common.label_field")}

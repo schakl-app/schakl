@@ -1,0 +1,123 @@
+{
+  "name": "Meldingen",
+  "slug": "notifications",
+  "order": 210,
+  "icon": "🔔",
+  "lucide": "bell",
+  "title": {
+    "nl": "Meldingen",
+    "en": "Notifications"
+  },
+  "description": {
+    "nl": "Een bel die iedereen leest, plus e-mail, Slack, Teams of een webhook. Per gebeurtenis kies je zelf of het nu binnenkomt of morgenochtend als één overzicht.",
+    "en": "A bell everyone actually reads, plus e-mail, Slack, Teams or a webhook. Per event you choose whether it arrives now or tomorrow morning as one digest."
+  },
+  "page": {
+    "eyebrow": {
+      "nl": "Meldingen",
+      "en": "Notifications"
+    },
+    "title": {
+      "nl": "Weten wanneer het telt",
+      "en": "Knowing when it matters"
+    },
+    "lead": {
+      "nl": "Een bureau draait op dingen die bij iemand anders gebeuren: een taak die op een collega landt, een projectbudget dat vol loopt, een verlofaanvraag, een mail die op beoordeling wacht. Dat wordt één bel die iedereen leest, en per gebeurtenis bepaalt elke medewerker zelf of het ook zijn inbox of zijn Slack haalt. Niets staat standaard luid: e-mail gaat pas lopen als iemand erom vraagt.",
+      "en": "An agency runs on things that happen to somebody else: a task landing on a colleague, a project budget filling up, a leave request, an e-mail waiting to be reviewed. That becomes one bell everyone reads, and per event each person decides whether it also reaches their inbox or their Slack. Nothing is loud by default: e-mail stays off until someone asks for it."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "De bel, en de lijst erachter",
+          "en": "The bell, and the list behind it"
+        },
+        "body": {
+          "nl": "In de bovenbalk zit een bel met een teller voor het ongelezene; erin staan de laatste meldingen, met per regel gelezen markeren, Alles gelezen en een doorsteek naar je eigen instellingen. Het volledige overzicht staat onder Meldingen: wat er gebeurde, op welk record, door wie en wanneer, gegroepeerd per dag met Vandaag en Gisteren bovenaan. Je filtert op alles of alleen ongelezen, en op het soort record (taak, project, klant, verlof, urenregistratie). Gelezen markeren kan altijd terug, en Alles als gelezen markeren maakt in één keer schoon schip. Wordt de onderliggende zaak afgehandeld, dan houdt de melding vanzelf op te vragen: een besliste verlofaanvraag of een beoordeelde mail verdwijnt bij iedereen die hem nooit had geopend.",
+          "en": "The top bar carries a bell with an unread count; inside are the most recent items, with per-row mark-read, \"Alles gelezen\" (mark all read) and a shortcut into your own settings. The full list lives under Meldingen: what happened, on which record, by whom and when, grouped per day with today and yesterday at the top. You filter on everything or unread only, and on the kind of record (task, project, client, leave, time entry). Marking read is always reversible, and \"Alles als gelezen markeren\" clears the lot at once. When the underlying thing is settled the notification stops asking on its own: a decided leave request or a reviewed e-mail disappears for everyone who never opened it."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Eenentwintig gebeurtenissen, één tabel",
+          "en": "Twenty-one events, one table"
+        },
+        "body": {
+          "nl": "Instellingen → Meldingen is een matrix: één rij per gebeurtenis, één kolom per kanaal. In elk vakje staat niet aan of uit, maar hoe vaak: Uit, Direct, Elk uur, Dagelijks overzicht of Wekelijks overzicht. Zo kan een toegewezen taak meteen binnenkomen terwijl een statuswijziging in het dagoverzicht van morgen belandt, zonder dat je er een regel voor hoeft te verzinnen. Welke rijen je ziet hangt af van de modules die je organisatie draait: zonder verlofmodule zijn er geen verlofrijen.",
+          "en": "Instellingen → Meldingen (Settings → Notifications) is a matrix: one row per event, one column per channel. Each cell is not on or off but how often: off, immediately, hourly, a daily digest or a weekly digest. So an assigned task can arrive at once while a status change lands in tomorrow's daily digest, without inventing a rule for it. Which rows you see depends on the modules your organisation runs: with no leave module there are no leave rows."
+        },
+        "bullets": {
+          "nl": [
+            "Taken: toegewezen, weer weggehaald, status gewijzigd, becommentarieerd, genoemd, bijna verlopen, te laat en ingepland",
+            "Projecten: toegewezen, status gewijzigd en een budgetdrempel geraakt",
+            "Klanten: aangemaakt, status gewijzigd en toegewezen",
+            "Verlof: aangevraagd, goedgekeurd en afgewezen",
+            "Uren: goedgekeurde uren en een urenstaat die nog leeg is",
+            "Contactmomenten: een e-mail die op beoordeling wacht, en zelf genoemd worden"
+          ],
+          "en": [
+            "Tasks: assigned, unassigned, status changed, commented, mentioned, due soon, overdue and scheduled",
+            "Projects: assigned, status changed and a budget threshold reached",
+            "Clients: created, status changed and assigned",
+            "Leave: requested, approved and rejected",
+            "Hours: approved time and a timesheet still empty",
+            "Touchpoints: an e-mail waiting to be reviewed, and being named in one"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Het bureau zet de standaard, de medewerker wijkt af",
+          "en": "The agency sets the default, the employee departs from it"
+        },
+        "body": {
+          "nl": "Een beheerder vult dezelfde matrix één keer in onder Instellingen → Standaardmeldingen; dat is wat iedereen overneemt zolang hij er zelf niets van vindt. Op je eigen scherm draagt elke rij een label dat vertelt waar zijn waarde vandaan komt: Standaard, Organisatie of Eigen instelling, met een telling van hoeveel je er hebt overschreven en een knop Terug naar overgenomen per rij. Boven de tabel staat het praktische werk: hoeveel dagen voor een deadline als \"bijna verlopen\" telt, op welk tijdstip en welke dag je e-mailoverzichten vertrekken, en een knop die de hele e-mailkolom in één keer op dezelfde stand zet. Stille uren zijn er als veld, maar worden nog niet toegepast, en dat staat er in het scherm ook gewoon bij.",
+          "en": "An admin fills in the same matrix once under Instellingen → Standaardmeldingen (Settings → Notification defaults); that is what everyone inherits until they have an opinion of their own. On your personal screen every row is badged with where its value came from: the built-in default, the organisation, or your own setting, with a count of how many you overrode and a per-row reset back to inherited. Above the table sits the practical work: how many days before a deadline counts as \"due soon\", at what time and on which weekday your e-mail digests leave, and a control that sets the whole e-mail column at once. Quiet hours exist as a field but are not applied yet, and the screen says so plainly."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Je eigen kanalen, en de kamers van het team",
+          "en": "Your own channels, and the team's rooms"
+        },
+        "body": {
+          "nl": "Onder Kanalen koppel je Slack, Microsoft Teams, Google Chat, Discord, Telegram, een gewoon e-mailadres, een JSON-webhook of een andere Apprise-URL. Je plakt wat de aanbieder je geeft en het wordt voor je omgezet; per soort staat erbij waar je die URL vandaan haalt. Testen stuurt een echt bericht en meldt bij mislukking de fout van de aanbieder zelf. Wat je plakt bevat bottokens en webhooksleutels, dus het wordt versleuteld bewaard en nooit teruggegeven: je ziet alleen een afgeschermde weergave. Elke medewerker koppelt zijn eigen kanalen zonder tussenkomst van een beheerder; de gedeelde kamers van het bureau, zoals de Slack-kanalen van het team of een groepsmailbox, staan apart en zijn een beheerdersbeslissing, want wat er in #crm landt gaat iedereen aan. Er is geen sms en geen pushmelding: sms bestaat hier alleen als tweede factor bij het inloggen.",
+          "en": "Under Kanalen (channels) you connect Slack, Microsoft Teams, Google Chat, Discord, Telegram, a plain e-mail address, a JSON webhook or any other Apprise URL. You paste what the provider hands you and it is converted for you, with per-provider instructions telling you where to copy that URL from. \"Testen\" sends a real message and, on failure, reports the provider's own error. What you paste contains bot tokens and webhook secrets, so it is stored encrypted and never returned: you only ever see a redacted preview. Every employee connects their own channels without an admin; the agency's shared rooms, like the team's Slack channels or a group mailbox, are configured separately and are an administrative decision, because what lands in #crm concerns everyone. There is no SMS and no push notification: SMS exists here only as a second factor at login."
+        },
+        "bullets": {
+          "nl": [
+            "Slack, Teams, Google Chat, Discord, Telegram, e-mail, webhook of een eigen Apprise-URL",
+            "Sleutels versleuteld bewaard, nooit teruggetoond, alleen afgeschermd weergegeven",
+            "Een webhook naar een privé- of lokaal adres wordt geweigerd, tenzij je dat bewust aanzet",
+            "Elk kanaal draagt zijn eigen schema: op welk uur en welke dag zijn overzichten vertrekken"
+          ],
+          "en": [
+            "Slack, Teams, Google Chat, Discord, Telegram, e-mail, a webhook or an Apprise URL of your own",
+            "Credentials kept encrypted, never played back, shown only in redacted form",
+            "A webhook aimed at a private or local address is refused unless you deliberately allow it",
+            "Every channel carries its own schedule: which hour and which weekday its digests leave"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Niets begint met lawaai",
+          "en": "Nothing starts out loud"
+        },
+        "body": {
+          "nl": "Een net gekoppeld kanaal blijft stil totdat je er in de tabel iets naartoe stuurt; het scherm zegt dat er ook bij. E-mail staat per gebeurtenis uit, want dat is het enige kanaal dat de app verlaat. En alles wat naar buiten gaat is een deelverzameling van wat je in de app krijgt: een gebeurtenis die in de kolom In-app uit staat, verlaat de app nooit, wat er in zijn eigen kolom ook staat. Dat is met opzet één plek om iets het zwijgen op te leggen. In de app staat standaard alles aan: een korte lijst komt meteen binnen, de rest landt om 08:00 in het dagoverzicht, op de klok van jouw organisatie (Instellingen → Huisstijl) en met kalenderrekenwerk, zodat een overzicht bij het verzetten van de klok niet een uur gaat schuiven.",
+          "en": "A freshly connected channel stays silent until you route something to it in the table; the screen says so outright. E-mail is off per event, because it is the only channel that leaves the app. And everything external is a subset of what you get in-app: an event switched off in the in-app column never leaves the app, whatever its own column says. That is deliberately one place to silence something. In-app, everything is on by default: a short list arrives immediately and the rest lands at 08:00 in the daily digest, on your organisation's own clock, set under Instellingen → Huisstijl (Settings → Branding), and with wall-clock arithmetic, so a digest does not drift an hour when the clocks change."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Bezorgen gebeurt buiten je verzoek om",
+          "en": "Delivery happens off the request path"
+        },
+        "body": {
+          "nl": "Geen enkel kanaal doet netwerkwerk terwijl jij op Opslaan drukt: een storing bij Slack kan het opslaan van een taak dus niet vertragen. Er wordt een rij klaargezet en een sweep per organisatie leegt die elke minuut. Een overzicht is echt bundelen: alles wat in hetzelfde slot voor één persoon of één kamer klaarstaat, vertrekt als één bericht. E-mail groepeert per ontvanger, want een mens heeft één inbox; een extern kanaal groepeert per kanaal, want een kamer heeft geen ontvanger. Mislukt het versturen, dan blijft de hele bundel staan met de foutmelding van de aanbieder erbij en wordt het opnieuw geprobeerd met oplopende tussenpozen; een half verstuurd overzicht is geen toestand die we wilden kunnen hebben. E-mail vertrekt via je eigen mailkoppeling (Instellingen → E-mail), in de huisstijl van jouw organisatie. Meldingen zelf zijn kernfunctionaliteit en vragen geen licentiesleutel.",
+          "en": "No channel does network work while you press save: an outage at Slack cannot slow down saving a task. A delivery row is queued and a per-organisation sweep drains it every minute. A digest is real batching: everything due in the same slot for one person or one room leaves as a single message. E-mail groups by recipient, because a person has one inbox; an external channel groups by channel, because a room has no single recipient. If sending fails, the whole bundle stays pending with the provider's own error recorded on it and is retried at growing intervals; half a digest sent is not a state we wanted to be able to have. E-mail leaves through your own mail connection, set under Instellingen → E-mail (Settings → E-mail), in your organisation's branding. Notifications themselves are core functionality and need no licence key."
+        }
+      }
+    ]
+  }
+}

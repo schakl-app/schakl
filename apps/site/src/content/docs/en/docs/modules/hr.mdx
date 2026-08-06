@@ -1,0 +1,105 @@
+---
+title: Employee dossier
+description: "My page: one employee's leave balance, current contract and personnel documents."
+sidebar:
+  order: 9
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+The employee dossier is where the paperwork side of an employment lives: the signed contract,
+growth plans, bonus agreements, the collective labour agreement. Every employee sees their own
+dossier; whoever handles HR can open anyone's.
+
+## Where to find it
+
+Through the **profile menu** at the top right (your own name) → **Mijn pagina** (My page,
+`/me`). Deliberately not in the sidebar: it is about you, not about a module. The entry only
+appears when the HR module is switched on and you hold permission to read a dossier.
+
+HR is a licensed module, switched on under *Instellingen → Modules* (Settings → Modules).
+
+## What is on My page
+
+Two cards at the top, the dossier below them:
+
+- **Verlofsaldo** (Leave balance): the combined balance per balance group, with a *Naar verlof*
+  (To leave) link on your own page. This card only appears when the leave module is on as well.
+- **Contract**: *In dienst sinds* (Employed since), *Uren per week* (Hours per week) and, where
+  there is one, *Tot* (Until). These come from the employment contracts recorded under
+  Dienstverband and are read-only here. With no contract recorded, the card stays away.
+- The **dossier**, split into six fixed categories.
+
+The categories are fixed, so every dossier in the organisation looks the same:
+
+| Category | What goes in it |
+| --- | --- |
+| Contract | the employment agreement and its addenda |
+| Groeiplannen (Growth plans) | development and appraisal agreements |
+| Bonusafspraken (Bonus agreements) | variable pay |
+| Voorwaarden & benefits (Benefits) | secondary employment conditions |
+| CAO | the applicable collective labour agreement |
+| Overig (Other) | anything that does not fit |
+
+A category with no documents is shown only to someone who may manage documents, which keeps the
+page short for the employee themselves.
+
+## Filing a document
+
+<Steps>
+
+1. Open *Mijn pagina*. If you may read every dossier, pick the employee from the
+   **Kies een medewerker…** (Pick an employee…) box at the top.
+
+2. Go to **Document toevoegen** (Add document) at the bottom of the page.
+
+3. Choose the **Categorie** and type a **Naam** (Name), "Contract 2026" for instance. Leave the
+   name empty and the file name is used.
+
+4. Pick the file and press **Uploaden** (Upload).
+
+</Steps>
+
+Each document carries the date and the name of whoever filed it. That name is stored at upload
+time, so the dossier stays readable even if the account disappears later. Both adding and removing
+a document lands in the dossier's activity trail.
+
+Deleting is done from the ⋯ menu beside the document.
+
+<Aside type="caution">
+Deleting is permanent: the dossier entry and the file both go. There is no recycle bin.
+</Aside>
+
+## Somebody else's dossier
+
+Whoever may read every dossier gets an employee picker at the top of the page, so opening a
+colleague's dossier to file a signed contract, or to check what is already there, takes no detour.
+
+## Permissions
+
+| Permission | Default |
+| --- | --- |
+| `hr.dossier.read` | Member: own dossier · Administrator: any dossier |
+| `hr.document.manage` | Administrator |
+
+The two are deliberately separate from each other and from the leave permissions. "Someone may
+manage work schedules" therefore does not silently mean "someone may read employment contracts".
+Roles are configured under *Instellingen → Rollen* (Settings → Roles).
+
+## Good to know
+
+- Dossier files do not travel the ordinary file route. They are served by a route of their own
+  that re-checks your dossier permission on **every** download, and the generic file route refuses
+  dossier files outside your own dossier. A shared link to a contract therefore does not work for
+  a colleague without the permission.
+- Identical files are stored once. The same signed PDF in two dossiers costs no double storage,
+  and deleting one of the two documents does not touch the other.
+- The dossier has no import or export. These are files, not rows a spreadsheet could carry.
+- Delete a user account and its dossier goes with it.
+- The contract and leave cards come from the leave module. With that module off, My page shows the
+  document dossier only.
+
+<CardGrid>
+  <LinkCard title="Leave" href="/en/docs/modules/leave/" description="Requests, balances, work schedules and employment contracts." />
+  <LinkCard title="Licences" href="/en/docs/admin/licenses/" description="What a licence key covers and what happens when it expires." />
+</CardGrid>

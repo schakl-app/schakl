@@ -21,6 +21,7 @@ from app.modules.invoicing.models import (
     InvoiceKind,
     InvoiceStatus,
     LineKind,
+    PaymentIntentStatus,
     QuoteStatus,
     TaxCategory,
 )
@@ -313,6 +314,17 @@ class TemplateConfig(BaseModel):
     html: str | None = Field(default=None, max_length=MAX_CUSTOM_HTML)
     #: Extra CSS. On a shipped design it layers on top; on a custom one it *is* the design.
     css: str | None = Field(default=None, max_length=MAX_CUSTOM_CSS)
+    #: How the payment QR is drawn (epic #269). ``brand`` — the default — puts the tenant's
+    #: accent colour in the modules and their logo in the middle, so the code on a client's
+    #: invoice is recognisably *theirs* rather than a generic black square. ``plain`` is the
+    #: black-and-white code, for an agency printing monochrome on a copier or one whose logo
+    #: simply looks wrong at 7 modules across.
+    #:
+    #: A style, never a colour picker: the colour follows ``accent_color`` (which already falls
+    #: back to the brand colour at render time, Golden Rule 4) and is replaced by near-black
+    #: when it is too pale to scan (``render/qr.readable_dark``). Letting a tenant type a hex
+    #: here would be offering them a way to print an invoice nobody's phone can read.
+    qr_style: Literal["brand", "plain"] = "brand"
     #: Per-locale text blocks: {"nl": "...", "en": "..."} — shown above the lines.
     intro_i18n: dict[str, str] = Field(default_factory=dict)
     #: Below the totals: payment instructions ("Gelieve te betalen binnen {days} dagen …").
@@ -569,6 +581,64 @@ class PaymentRead(BaseModel):
     created_at: datetime
 
 
+class InvoicePaymentAccountRead(BaseModel):
+    """A payment credential this org has connected, as an invoice screen needs it (#267).
+
+    Prefixed like everything else in this module: a bare ``PaymentAccountRead`` would collide
+    with the provider module's own schemas and silently qualify *both* in the generated client
+    (the ``TemplateRead`` lesson). No secret and no credential — the label, the mode and
+    whether it can start a payment right now.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    provider: str
+    id: uuid.UUID
+    label: str
+    #: ``live`` or ``test``, straight from the credential. Rendered beside the label because
+    #: "I thought we were live" is the one mistake this integration can make with real money.
+    mode: str
+    active: bool
+
+
+class InvoicePaymentIntentCreate(BaseModel):
+    """Start an online payment for an invoice.
+
+    Deliberately carries **no amount**: the server charges the invoice's outstanding balance,
+    recomputed at creation time. A client-supplied amount is the one thing a payment endpoint
+    must never accept (#267's hard requirement).
+    """
+
+    #: Omit to use the org's only connected provider. Required as soon as there are two —
+    #: nothing here ever picks a credential for you.
+    provider: str | None = None
+    account_id: uuid.UUID | None = None
+
+
+class InvoicePaymentIntentRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    invoice_id: uuid.UUID
+    provider: str
+    account_id: uuid.UUID | None
+    status: PaymentIntentStatus
+    amount: Decimal
+    currency: str
+    mode: str
+    #: Where to send the payer. ``None`` once the provider stops offering one — an expired
+    #: checkout is not a link to render.
+    checkout_url: str | None
+    #: What the payer chose, in the provider's own vocabulary (``ideal``, ``creditcard``).
+    method: str | None
+    synced_at: datetime | None
+    #: When the ledger row was written. ``status="paid"`` with this ``None`` is the state a
+    #: human must be shown — the money arrived and we have not booked it.
+    settled_at: datetime | None
+    last_error: str | None
+    created_at: datetime
+
+
 class CreditNoteRef(BaseModel):
     """A credit note as seen from the invoice it corrects — enough to link to it and say
     how much of it that invoice absorbed."""
@@ -636,6 +706,15 @@ class InvoiceRead(BaseModel):
     lines: list[LineRead] = Field(default_factory=list)
     tax_groups: list[TaxGroupRead] = Field(default_factory=list)
     payments: list[PaymentRead] = Field(default_factory=list)
+    #: Online payment attempts (#267), resolved on the **detail** read only — a list draws
+    #: neither, and loading every invoice's intents to render a page of numbers is exactly
+    #: the shape docs/PERFORMANCE.md forbids.
+    intents: list[InvoicePaymentIntentRead] = Field(default_factory=list)
+    #: Derived on the detail read: this org has an active payment credential *and* this
+    #: document is in a state one could be spent on. It exists so the **portal** can decide
+    #: whether to draw a "pay now" button without being allowed to read which accounts the
+    #: agency has connected — a control that always refuses is a broken control (#253).
+    online_payment: bool = False
     #: Both halves of a correction, resolved on the detail read so either document can link
     #: to the other. Empty on a list, which draws the ``credited`` flag instead.
     credit_notes: list[CreditNoteRef] = Field(default_factory=list)

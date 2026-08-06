@@ -24,6 +24,7 @@ and their web counterparts — currently:
 - `apps/api/app/modules/invoicing/`
 - `apps/api/app/modules/leave/`
 - `apps/api/app/modules/marketing/`
+- `apps/api/app/modules/mollie/`
 - `apps/api/app/modules/projects/`
 - `apps/api/app/modules/subscriptions/`
 - `apps/api/app/modules/time/`
@@ -39,6 +40,7 @@ and their web counterparts — currently:
 - `apps/web/src/lib/modules/invoicing/`
 - `apps/web/src/lib/modules/leave/`
 - `apps/web/src/lib/modules/marketing/`
+- `apps/web/src/lib/modules/mollie/`
 - `apps/web/src/lib/modules/projects/`
 - `apps/web/src/lib/modules/subscriptions/`
 - `apps/web/src/lib/modules/time/`
@@ -63,6 +65,7 @@ and their web counterparts — currently:
 - `apps/web/src/routes/(app)/settings/invoicing/`
 - `apps/web/src/routes/(app)/settings/leave/`
 - `apps/web/src/routes/(app)/settings/marketing/`
+- `apps/web/src/routes/(app)/settings/mollie/`
 - `apps/web/src/routes/(app)/settings/subscriptions/`
 - `apps/web/src/routes/(app)/settings/time-entry-types/`
 

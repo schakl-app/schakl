@@ -195,7 +195,16 @@ class Interaction(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Auditable
     #: Metadata-first (docs/GOOGLE.md §6): the preview the team sees while an email is pending.
     snippet: Mapped[str | None] = mapped_column(Text, nullable=True)
     #: Manual notes at write time; for gmail rows only filled after the owner approves.
+    #: For an e-mail this stays the **plain text** of the message: it is what search reads and
+    #: what the snippet is cut from, and a plain-text mail has nothing else.
     body_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: The same message with its formatting kept, present **only when we converted it from an
+    #: HTML part ourselves** (``core/htmlmd.py``). That condition is the whole design: a
+    #: received body is not our markdown, so rendering an arbitrary plain-text mail as
+    #: markdown would turn a sender's ``*sterretjes*`` into italics and ``[iets]`` into a
+    #: broken link. A surface renders this when it is set and falls back to ``body_text``
+    #: when it is not.
+    body_markdown: Mapped[str | None] = mapped_column(Text, nullable=True)
     direction: Mapped[str] = mapped_column(
         String(10), nullable=False, default=InteractionDirection.NONE.value
     )

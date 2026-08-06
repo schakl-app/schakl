@@ -241,6 +241,12 @@ Never drop, rename, or retype a populated column in the release that stops using
 A rename is expand/contract, not `op.alter_column(new_column_name=…)`. A type change is
 expand/contract. Splitting or merging a table is expand/contract.
 
+**The cloud deploy now depends on this rule, not just the self-hosted upgrade path.** The API
+rolls `start-first` (`docs/DEPLOY.md`, "Rolling updates"), so for the length of every rollover the
+old and new images are *both serving against the new schema*. That is safe exactly to the extent
+that release *N+1* only ever adds. A destructive change smuggled into one release does not merely
+risk a bad rollback any more — it breaks the running release while the new one comes up.
+
 ### Rules
 
 - Backfills must be **idempotent** and must not assume they run once, or on a small table.

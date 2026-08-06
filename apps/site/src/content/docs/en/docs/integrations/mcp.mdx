@@ -1,0 +1,111 @@
+---
+title: MCP server
+description: "Connect Claude or another MCP client to your own schakl installation, with an API key that decides exactly what the AI may see and do."
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+MCP (Model Context Protocol) is how AI clients are given tools. schakl. serves one at `/mcp`: every
+endpoint of the API is a tool there. You connect Claude Desktop, Claude Code or any other MCP client
+to your own installation and ask your question in plain language, without exporting anything first.
+What the AI may see and do is decided by the scopes on the key you hand it.
+
+## Where to find it
+
+The server runs at `https://<your-host>/mcp`, on your organisation's own address. There is no screen
+for it: you configure it on the client side, using a key from *Instellingen → Mijn account*
+(Settings → My account, the **API-sleutels** block) or from *Instellingen → Service-accounts*
+(Settings → Service accounts).
+
+<Aside type="caution">
+The MCP server is a **licensed** module. Without a covering licence, `/mcp` answers with a licence
+error as a whole, reads included. That is deliberate: MCP is used mostly for reading, so a
+reads-still-work split would fence off nothing here. See [Licenses](/en/docs/admin/licenses/).
+</Aside>
+
+## Connecting
+
+<Steps>
+1. Mint a key as described under [REST API](/en/docs/integrations/rest-api/). Under **Scopes**, tick
+   only what the AI may do — for asking questions that is usually read permissions only.
+2. Copy the key immediately. It is shown only once.
+3. Add the server to your client. For Claude Code:
+
+   ```bash
+   claude mcp add --transport http schakl https://<your-host>/mcp \
+     --header "Authorization: Bearer schakl_…"
+   ```
+4. Any other client that speaks Streamable HTTP: point it at the same address with the header
+   `Authorization: Bearer schakl_…` or `X-API-Key: schakl_…`.
+5. Ask the client to list its tools. If nothing appears, check that you used your organisation's own
+   address — a key only exists on its own organisation's hostname.
+</Steps>
+
+## What tools the AI gets
+
+The tool list is derived straight from the API itself, so it never lags behind. Every endpoint under
+`/api/v1` is a tool, named after the operation: `list_companies`, `create_task`, `time_summary`.
+
+Only the modules your organisation has switched on have endpoints, so the tool list automatically
+follows which modules you use. Turn a module off and its tools disappear.
+
+A few things are deliberately left out:
+
+| Not a tool | Why |
+| --- | --- |
+| Signing in and the first-run wizard | session handling, meaningless for a key |
+| The instance operator's administration surface | that belongs to the instance owner, not the organisation |
+| Import: inspecting a file and importing it | those need a file, plus the human judgement of mapping columns |
+
+The rest of import and export stays available: reading an entity's columns and exporting data are
+both useful to an AI.
+
+## What the AI may and may not do
+
+A tool call travels exactly the same path as an ordinary request from a screen: hostname to
+organisation, row-level isolation in the database, then that endpoint's own permission check. There
+is no second route to the data. A call the key holds no permission for simply comes back as an error
+on the tool.
+
+Do watch what you tick: the tool surface includes writes, because it is the whole API. If you want
+the AI to read along only, give the key read permissions only. That is a choice you make when
+minting the key, not something the server enforces for you.
+
+<Aside type="caution">
+For an AI client, a read-only key is usually enough. Tick write permissions too and the client can
+create, change and delete records on its own, with nobody pressing **Opslaan** (Save).
+</Aside>
+
+## Permissions
+
+| Permission | What it opens | Default |
+| --- | --- | --- |
+| `apikeys.personal.manage` | Manage own API keys | Administrator, Member |
+| `apikeys.service_account.manage` | Manage service accounts | Administrator |
+
+After that the key decides everything: each ticked scope is a permission from the same catalogue as
+*Instellingen → Rollen* (Settings → Roles). A personal key is additionally re-capped to its owner's
+live permissions on every single request.
+
+## Good to know
+
+- **API keys are the only way in today.** The full OAuth sign-in flow some MCP clients expect is not
+  implemented, so such a client cannot connect yet.
+- The transport is Streamable HTTP with self-contained JSON responses. The older SSE transport is
+  not offered.
+- 600 calls per minute per key. An AI that searches enthusiastically can run into that.
+- **Intrekken** (Revoke) in the key screen removes access immediately, with nothing to change on the
+  client side.
+- The tool list comes entirely from the API description. Hand-written, smarter tools (such as "find
+  this client") do exist inside the in-app assistant, but are not part of this list.
+- To not serve the server at all, set `SCHAKL_MCP_ENABLED=false` on the server. That removes `/mcp`
+  entirely.
+
+## Read next
+
+<CardGrid>
+  <LinkCard title="REST API" description="Minting keys, choosing scopes and calling the API yourself." href="/en/docs/integrations/rest-api/" />
+  <LinkCard title="Licenses" description="What happens when the licence stops covering MCP." href="/en/docs/admin/licenses/" />
+</CardGrid>

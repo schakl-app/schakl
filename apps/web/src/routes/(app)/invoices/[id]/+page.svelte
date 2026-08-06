@@ -18,6 +18,7 @@
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import DocumentForm from "$lib/modules/invoicing/DocumentForm.svelte";
   import DocumentFrame from "$lib/modules/invoicing/DocumentFrame.svelte";
+  import PaymentIntentsCard from "$lib/modules/invoicing/PaymentIntentsCard.svelte";
   import { docMoney, docStatus } from "$lib/modules/invoicing/types";
 
   let { data, form } = $props();
@@ -366,6 +367,22 @@
       {/if}
     </div>
 
+    <!-- Online payment (#267) sits directly under the balance, because that is the number it
+         collects and the client reads the two together: what is due, and the button that pays
+         it. The ledger below stays what it always was — every payment, however it arrived. The
+         card draws nothing at all when there is neither an attempt nor one to offer, so an
+         instance with no payment provider connected is unchanged. -->
+    <PaymentIntentsCard
+      intents={invoice.intents ?? []}
+      currency={invoice.currency}
+      locale={data.locale}
+      payable={invoice.status === "open" && invoice.online_payment}
+      canStart={data.canStartPayment}
+      canSync={data.canSyncPayment}
+      agencyView={data.canReadRegister}
+      {form}
+    />
+
     <div class="rounded-xl border border-border bg-surface-raised p-4">
       <h2 class="mb-2 text-sm font-semibold text-text">{t("invoicing.payment.history")}</h2>
       {#if (invoice.payments ?? []).length === 0}
@@ -536,6 +553,10 @@
       <label for="pay-method" class="mb-1 block text-sm font-medium text-text"
         >{t("invoicing.payment.method")}</label
       >
+      <!-- `online` is deliberately not offered here, and `PaymentWrite.method` is a closed
+           Literal that refuses it (#267): that value means "a provider confirmed this", and
+           nobody should be able to assert it by hand. An online payment writes its own ledger
+           row from the callback; this modal is for money that arrived some other way. -->
       <select id="pay-method" name="method" class={inputClass}>
         {#each ["bank", "cash", "card", "other"] as method (method)}
           <option value={method}>{t(`invoicing.payment.method.${method}`)}</option>

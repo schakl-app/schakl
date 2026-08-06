@@ -1,15 +1,17 @@
-"""Tenant-customisable auth email templates (#161 tier 2).
+"""Tenant-customisable email templates (#161 tier 2).
 
-A tenant may override the subject and HTML body of the **reset** and **invite** mails, per
-locale, in Instellingen -> E-mail. A missing override falls back to the built-in catalog text
-(tier 1), so *blank means default* everywhere. Three variables are available — ``{brand}``,
-``{name}``, ``{link}`` — the same ones tier 1's catalog strings already use, substituted with the
-single-brace convention the rest of the API uses (:mod:`app.i18n`).
+A tenant may override the subject and HTML body of any **customisable kind** — core's reset
+and invite mails, plus whatever the enabled modules contribute (the invoice, quote and
+reminder mails; :mod:`app.core.email.kinds`) — per locale, in Instellingen -> E-mail. A
+missing override falls back to the built-in catalog text (tier 1), so *blank means default*
+everywhere. Which ``{markers}`` a body may use is the **kind's** property, not this module's:
+an invoice mail interpolates a number and an amount, a reset mail a link. They substitute with
+the single-brace convention the rest of the API uses (:mod:`app.i18n`).
 
 Safety: the HTML is sanitised with an email-safe allow-list on **write** and again on **send**
-(after variable substitution, so a value smuggling markup — a user's display name — is caught
-too). The plaintext part is always the catalog-rendered body, so every mail keeps a working
-reset link even when a tenant's HTML omits one.
+(after variable substitution, so a value smuggling markup — a user's display name, a client's
+company name — is caught too). The plaintext part is always the catalog-rendered body, so every
+mail keeps its working link or its full summary even when a tenant's HTML omits one.
 """
 
 from __future__ import annotations
@@ -21,12 +23,10 @@ import nh3
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.email.models import EMAIL_TEMPLATE_KINDS, OrgEmailTemplate
+from app.core.email.kinds import email_kind, require_email_kind
+from app.core.email.models import OrgEmailTemplate
 from app.core.email.senders import OutgoingEmail
 from app.i18n import available_locales, translate
-
-#: The variables a tenant may use in a template; shown in the editor.
-TEMPLATE_VARIABLES: tuple[str, ...] = ("brand", "name", "link")
 
 _VAR_RE = re.compile(r"\{(\w+)\}")
 
@@ -56,7 +56,12 @@ _STYLE_PROPERTIES: set[str] = {
     "border-radius", "line-height", "width", "max-width", "height", "display",
     "vertical-align",
 }
-_URL_SCHEMES: set[str] = {"http", "https", "mailto"}
+#: ``cid:`` is allowed because an inline image is a MIME part of *this* message
+#: (``EmailAttachment.inline``, epic #269's payment QR), not a network fetch: it cannot report
+#: an open back to anyone the way a remote ``<img>`` can, and stripping it would silently
+#: remove the QR from a tenant-authored invoice body. ``data:`` stays out — most clients block
+#: it — and so does everything else, ``javascript:`` first among them.
+_URL_SCHEMES: set[str] = {"http", "https", "mailto", "cid"}
 
 
 def render_variables(text: str, values: dict[str, str]) -> str:
@@ -83,7 +88,7 @@ def _strip_tags(text: str) -> str:
 
 def default_subject(kind: str, locale: str) -> str:
     """The built-in subject template (raw, with ``{brand}`` visible) for the editor placeholder."""
-    return translate(f"auth.email.{kind}_subject", locale)
+    return translate(require_email_kind(kind).subject_key, locale)
 
 
 def default_body_html(kind: str, locale: str) -> str:
@@ -92,7 +97,7 @@ def default_body_html(kind: str, locale: str) -> str:
     Paragraphs on blank lines, ``<br>`` on single newlines, and the bare ``{link}`` made
     clickable. Variables stay as ``{...}`` markers — they resolve when the mail is sent.
     """
-    body = translate(f"auth.email.{kind}_body", locale)
+    body = translate(require_email_kind(kind).body_key, locale)
     paragraphs: list[str] = []
     for block in body.split("\n\n"):
         block = block.strip("\n")
@@ -112,13 +117,32 @@ def branded_default_html(kind: str, locale: str, values: dict[str, str], primary
     :func:`sanitize_email_html` afterwards, so a value smuggling markup (a display name) is
     caught exactly like in the tier-2 path. The chrome (logo, card, footer) is not built
     here — it rides the send seam (:mod:`app.core.email.branding`).
+
+    A kind with no ``button_key`` simply renders its paragraphs: the button is an affordance of
+    the body, not of the layer.
+
+    **A variable that resolves to nothing takes its line with it.** ``{link}`` is optional for
+    some kinds — an invoice mail offers a pay button only while there is something to pay and
+    something to pay it with (epic #269) — and the two naive renderings are both wrong in front
+    of a client: an empty ``<p></p>`` opening a gap in the middle of the mail, or worse, a
+    perfectly styled CTA whose ``href`` is the empty string, which navigates to the mail client's
+    own idea of nowhere. So a line that renders blank is dropped, a paragraph left with no lines
+    is dropped, and the button needs a URL before it is drawn at all.
     """
     from app.core.email.branding import button_html
 
-    body = translate(f"auth.email.{kind}_body", locale)
-    label = translate(f"auth.email.{kind}_button", locale)
+    spec = require_email_kind(kind)
+    body = translate(spec.body_key, locale)
+    label = translate(spec.button_key, locale) if spec.button_key else ""
     link = values.get("link", "")
-    escaped = {key: html_lib.escape(str(value)) for key, value in values.items()}
+    # ``image`` is the one value that is **markup**, not text: an inline ``<img src="cid:…">``
+    # (with its anchor) built by the composer, which is the only layer that knows the message's
+    # attachments. It therefore skips the escaping every other value gets — and must skip the
+    # substitution pass too, or a `{` in a URL would be re-read as a marker.
+    image = values.get("image", "")
+    escaped = {
+        key: html_lib.escape(str(value)) for key, value in values.items() if key != "image"
+    }
     blocks: list[str] = []
     for block in body.split("\n\n"):
         block = block.strip("\n")
@@ -126,16 +150,27 @@ def branded_default_html(kind: str, locale: str, values: dict[str, str], primary
             continue
         lines: list[str] = []
         button = False
+        picture = False
         for line in block.split("\n"):
-            if line.strip() == "{link}":
+            if spec.button_key and line.strip() == "{link}":
                 # The URL-on-its-own-line becomes the button, not a wall of href text.
                 button = True
                 continue
-            lines.append(render_variables(html_lib.escape(line), escaped))
+            if line.strip() == "{image}":
+                # …and an image marker on its own line becomes the image. Same shape as the
+                # button, and for the same reason: a block element cannot live inside a <p>.
+                picture = True
+                continue
+            rendered = render_variables(html_lib.escape(line), escaped)
+            # A line that was nothing but an unresolved variable is not a line.
+            if rendered.strip():
+                lines.append(rendered)
         if lines:
             blocks.append('<p style="margin:0 0 16px 0;">' + "<br>\n".join(lines) + "</p>")
-        if button:
+        if button and link:
             blocks.append(button_html(label, link, primary_color))
+        if picture and image:
+            blocks.append(image)
     return sanitize_email_html("\n".join(blocks))
 
 
@@ -152,6 +187,24 @@ async def resolve_template(
     )
 
 
+def _tidy(text: str) -> str:
+    """Close the hole an optional variable leaves in the plaintext body.
+
+    A catalog body puts ``{link}`` in a paragraph of its own so the HTML half can turn it into
+    a button. When it resolves to nothing — no provider connected, nothing left to collect —
+    the plaintext is left with a paragraph break, a blank line and another paragraph break in
+    the middle of the letter. Trailing spaces go, runs of blank lines collapse to one, and the
+    whole thing is stripped: the same mail, minus the gap.
+    """
+    lines = [line.rstrip() for line in text.split("\n")]
+    out: list[str] = []
+    for line in lines:
+        if not line and out and not out[-1]:
+            continue
+        out.append(line)
+    return "\n".join(out).strip()
+
+
 def build_email_content(
     kind: str,
     locale: str,
@@ -161,16 +214,23 @@ def build_email_content(
     *,
     primary_color: str | None = None,
 ) -> tuple[str, str, str | None]:
-    """Return ``(subject, text, html)`` for an auth mail.
+    """Return ``(subject, text, html)`` for one customisable mail.
 
-    ``text`` is always the catalog-rendered plaintext body (so a working link survives even a
-    linkless custom HTML). ``subject`` / ``html`` use the tenant override when it is non-blank,
-    substituting variables and sanitising the HTML afterwards. Without an override, ``html``
-    is the branded built-in default (#236) when a ``primary_color`` is given — never ``None``
-    on the normal send path, so the mail leaves as styled multipart out of the box.
+    ``text`` is always the catalog-rendered plaintext body (so a working link — or the amount
+    and due date an invoice mail promises — survives even a custom HTML that omits it).
+    ``subject`` / ``html`` use the tenant override when it is non-blank, substituting variables
+    and sanitising the HTML afterwards. Without an override, ``html`` is the branded built-in
+    default (#236) when a ``primary_color`` is given — never ``None`` on the normal send path,
+    so the mail leaves as styled multipart out of the box.
     """
-    subject = translate(f"auth.email.{kind}_subject", locale, **values)
-    text = translate(f"auth.email.{kind}_body", locale, **values)
+    spec = require_email_kind(kind)
+    subject = translate(spec.subject_key, locale, **values)
+    # ``image`` is markup, and **an image has no plaintext form**: substituted into the text
+    # part it would put a raw ``<table><img src="cid:…">`` in the middle of the letter every
+    # client that shows plaintext would then display verbatim. It resolves to nothing here and
+    # its line goes with it (:func:`_tidy`); the URL it links to is already in the body as
+    # ``{link}``, so the plaintext reader loses no way in.
+    text = _tidy(translate(spec.body_key, locale, **{**values, "image": ""}))
     html: str | None = None
     if subject_override and subject_override.strip():
         subject = _strip_tags(render_variables(subject_override, values))
@@ -182,7 +242,7 @@ def build_email_content(
 
 
 def is_supported_kind(kind: str) -> bool:
-    return kind in EMAIL_TEMPLATE_KINDS
+    return email_kind(kind) is not None
 
 
 def is_supported_locale(locale: str) -> bool:

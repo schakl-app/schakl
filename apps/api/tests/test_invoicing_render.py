@@ -61,6 +61,58 @@ def _render(config: dict, *, brand: DocumentBrand | None = None) -> str:
     )
 
 
+def _boxes(html: str):
+    """Every laid-out box WeasyPrint produced, page by page.
+
+    The HTML is not the document. Everything else in this file reads the markup, which is why
+    a code that printed the full width of the sheet passed all of it — the markup was right and
+    the *box* was not. Anything about size or arrangement has to ask the layout.
+    """
+    from weasyprint import HTML
+
+    def walk(box):
+        yield box
+        yield from (b for child in getattr(box, "children", ()) for b in walk(child))
+
+    for page in HTML(string=html).render().pages:
+        yield from walk(page._page_box)
+
+
+#: Elements that never open a level, so the ancestry stack below stays balanced.
+_VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source"}
+
+
+def _descends(html: str, *, inner: str, outer: str) -> bool:
+    """Does an element carrying class ``inner`` sit *inside* one carrying class ``outer``?
+
+    Ancestry rather than "appears after", because the arrangement this file's placement tests
+    guard against — the block drawn below the card instead of within it — satisfies a source
+    order comparison perfectly well.
+    """
+    from html.parser import HTMLParser
+
+    class Ancestry(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__()
+            self.open: list[bool] = []
+            self.found = False
+
+        def handle_starttag(self, tag: str, attrs: list) -> None:
+            classes = (dict(attrs).get("class") or "").split()
+            if inner in classes and any(self.open):
+                self.found = True
+            if tag not in _VOID:
+                self.open.append(outer in classes)
+
+        def handle_endtag(self, tag: str) -> None:
+            if tag not in _VOID and self.open:
+                self.open.pop()
+
+    parser = Ancestry()
+    parser.feed(html)
+    return parser.found
+
+
 # --------------------------------------------------------------------------- #
 # Layout resolution — a stored layout is a diff against the catalog, not a snapshot
 # --------------------------------------------------------------------------- #
@@ -719,3 +771,314 @@ def test_a_written_off_invoice_does_not_ask_for_the_money_back() -> None:
     )
     assert "Betaalgegevens" in partial
     assert "Gecrediteerd" in partial
+
+
+# --------------------------------------------------------------------------- #
+# The portal QR (issue #268)
+# --------------------------------------------------------------------------- #
+_QR_ON = {"design": "letterhead", "layout": [{"key": "payment_qr", "enabled": True}]}
+_PAY_URL = "https://bureau.schakl.app/invoices/6f1a0d5c-2f0e-4e9f-9c3f-0a1b2c3d4e5f"
+
+
+def _with_qr(**overrides) -> str:  # noqa: ANN003 — mirrors ``_render``'s shape
+    doc, lines, groups = sample_document("nl", "EUR", TODAY)
+    doc.status = overrides.pop("status", "open")
+    for key, value in overrides.pop("doc", {}).items():
+        setattr(doc, key, value)
+    return render_document_html(
+        kind=overrides.pop("kind", "invoice"),
+        doc=doc,
+        lines=lines,
+        seller=SELLER,
+        config=overrides.pop("config", _QR_ON),
+        brand=DocumentBrand(name="Agency"),
+        tax_groups=groups,
+        pay_url=overrides.pop("pay_url", _PAY_URL),
+        payable_online=overrides.pop("payable_online", True),
+    )
+
+
+def test_the_qr_is_off_until_a_template_asks_for_it() -> None:
+    """A block a tenant never enabled must not appear on documents they already send."""
+    assert 'class="payment-qr' not in _with_qr(config={"design": "letterhead"})
+    assert 'class="payment-qr' in _with_qr()
+
+
+def test_the_qr_is_an_inline_svg_and_survives_the_print() -> None:
+    """The document CSP allows ``img-src data:`` and nothing else, and the renderer resolves no
+    URL at all — an ``<img src="https://…">`` would be blocked in the preview and blank in the
+    PDF. So the code has to be markup the page already carries, and #268 asks for more than
+    "no exception": the bytes have to come out the other end."""
+    html = _with_qr()
+    block = html[html.index('class="payment-qr') :]
+    assert "<svg" in block[:400]
+    assert "<img" not in block[: block.index("</div>")]
+
+    doc, lines, groups = sample_document("nl", "EUR", TODAY)
+    doc.status = "open"
+    with_code = render_document_pdf(
+        kind="invoice", doc=doc, lines=lines, seller=SELLER, config=_QR_ON,
+        brand=DocumentBrand(name="Agency"), tax_groups=groups,
+        pay_url=_PAY_URL, payable_online=True,
+    )
+    without = render_document_pdf(
+        kind="invoice", doc=doc, lines=lines, seller=SELLER, config={"design": "letterhead"},
+        brand=DocumentBrand(name="Agency"), tax_groups=groups,
+    )
+    assert with_code.startswith(b"%PDF")
+    # WeasyPrint draws the matrix as vector paths, so the page with a code in it is materially
+    # bigger. A "renders without raising" assertion passes just as well on a blank 24 mm box.
+    assert len(with_code) > len(without) + 1000
+
+
+def test_the_caption_says_pay_only_when_something_can_collect() -> None:
+    """The code works either way — it opens the invoice — so a connected provider changes the
+    words and nothing else. Promising "scan om te betalen" with nothing to pay through would be
+    a control that refuses (#253), printed on paper where nobody can fix it."""
+    assert "Scan om te betalen" in _with_qr(payable_online=True)
+    assert "Scan om deze factuur te bekijken" in _with_qr(payable_online=False)
+
+
+def test_the_qr_never_appears_where_there_is_nothing_to_pay() -> None:
+    """The payment card's three conditions, for the same reasons: a credit note is money going
+    the other way, a settled invoice owes nothing, and a draft's portal page 404s for the very
+    client it would send there (``Invoice.__portal_horizon_clause__``)."""
+    assert 'class="payment-qr' not in _with_qr(status="draft")
+    assert 'class="payment-qr' not in _with_qr(doc={"paid_total": Decimal("99999.00")})
+    assert 'class="payment-qr' not in _with_qr(doc={"kind": "credit_note"})
+    # No host resolved means nothing to encode; a quote is never paid from a portal page.
+    assert 'class="payment-qr' not in _with_qr(pay_url=None)
+    assert 'class="payment-qr' not in _with_qr(kind="quote")
+
+
+def test_the_qr_encodes_the_portal_url_and_never_a_checkout_url() -> None:
+    """The security decision worth pinning: a provider's checkout URL is a bearer credential,
+    and printing one on paper hands whoever picks that paper up somebody else's bill. What the
+    document gets is the invoice's page in the portal, behind the login #193 established."""
+    from app.modules.invoicing.paylinks import invoice_pay_url
+    from app.modules.invoicing.render.qr import qr_svg
+
+    assert invoice_pay_url("https://bureau.schakl.app/", "abc") == (
+        "https://bureau.schakl.app/invoices/abc"
+    )
+    # Deterministic, and genuinely a function of the payload — a code that came out identical
+    # for two different URLs would pass every other assertion in this file.
+    assert qr_svg(_PAY_URL) == qr_svg(_PAY_URL)
+    assert qr_svg(_PAY_URL) != qr_svg("https://www.mollie.com/checkout/select-method/abc")
+    assert qr_svg("") == ""
+
+
+# --------------------------------------------------------------------------- #
+# The pay-online line (epic #269) — the QR's twin, in words
+# --------------------------------------------------------------------------- #
+_LINK_ON = {"design": "letterhead", "layout": [{"key": "payment_link", "enabled": True}]}
+#: The marker every switch test below reads. It is on the anchor rather than on a wrapper,
+#: because *whether* a document offers the line is a property of the layout and the wrapper is
+#: a property of the design that arranged it: the letterhead now draws both halves as one strip
+#: inside its payment card, and seven tests bound to `class="payment-link"` failed a change
+#: that broke nothing. `payment-qr-code` is the same marker for the code, and both are stated
+#: as shared vocabulary in ``_blocks.html``.
+_LINK = 'class="pay-online-link"'
+_CODE = 'class="payment-qr-code"'
+
+
+def test_the_pay_line_is_off_until_a_template_asks_for_it() -> None:
+    assert _LINK not in _with_qr(config={"design": "letterhead"})
+    assert _LINK in _with_qr(config=_LINK_ON)
+
+
+def test_the_pay_line_prints_the_url_as_well_as_linking_it() -> None:
+    """A document is read on two surfaces. A PDF viewer follows the anchor; paper has to be
+    typed, so the address itself is on the page rather than hidden behind a word."""
+    html = _with_qr(config=_LINK_ON)
+    assert f'href="{_PAY_URL}"' in html
+    block = html[html.index(_LINK) :]
+    assert _PAY_URL in block[: block.index("</div>")], "the URL is linked but never shown"
+    assert "Betaal deze factuur online" in html
+
+
+def test_the_pay_line_and_the_qr_switch_independently() -> None:
+    """Two affordances for one destination, and an agency printing monochrome on a copier may
+    reasonably want the line without the code."""
+    both = _with_qr(
+        config={
+            "design": "letterhead",
+            "layout": [
+                {"key": "payment_link", "enabled": True},
+                {"key": "payment_qr", "enabled": True},
+            ],
+        }
+    )
+    assert _LINK in both and _CODE in both
+    assert _CODE not in _with_qr(config=_LINK_ON)
+    assert _LINK not in _with_qr()
+
+
+def test_the_pay_line_never_appears_where_there_is_nothing_to_pay() -> None:
+    """Exactly the QR's conditions — they share one predicate, so they cannot drift."""
+    assert _LINK not in _with_qr(config=_LINK_ON, status="draft")
+    assert _LINK not in _with_qr(config=_LINK_ON, doc={"paid_total": Decimal("99999.00")})
+    assert _LINK not in _with_qr(config=_LINK_ON, doc={"kind": "credit_note"})
+    assert _LINK not in _with_qr(config=_LINK_ON, pay_url=None)
+
+
+def test_the_document_qr_is_branded_by_default_and_clickable() -> None:
+    """A QR on a client's invoice should look like *the agency's* (epic #269), and a code on a
+    PDF opened on a laptop should be pressable — the one case a QR serves worst."""
+    doc, lines, groups = sample_document("nl", "EUR", TODAY)
+    doc.status = "open"
+    html = render_document_html(
+        kind="invoice", doc=doc, lines=lines, seller=SELLER, config=_QR_ON,
+        brand=DocumentBrand(name="Agency", primary_color="#4f46e5"),
+        tax_groups=groups, pay_url=_PAY_URL, payable_online=True,
+    )
+    # The accent reaches the modules, and the code is wrapped in the same destination.
+    assert "#4f46e5" in html[html.index('class="payment-qr') :]
+    assert f'href="{_PAY_URL}"' in html[html.index('class="payment-qr') :]
+    # segno emits width/height only; without a viewBox the CSS box resizes the viewport rather
+    # than the symbol and the code overflows its 24mm square.
+    assert "viewBox" in html
+
+
+def test_a_plain_qr_style_drops_the_colour_and_the_logo() -> None:
+    """The escape hatch for an agency printing monochrome, or one whose logo does not survive
+    being seven modules across."""
+    plain = {"design": "letterhead", "qr_style": "plain",
+             "layout": [{"key": "payment_qr", "enabled": True}]}
+    doc, lines, groups = sample_document("nl", "EUR", TODAY)
+    doc.status = "open"
+    html = render_document_html(
+        kind="invoice", doc=doc, lines=lines, seller=SELLER, config=plain,
+        brand=DocumentBrand(name="Agency", primary_color="#4f46e5"),
+        tax_groups=groups, pay_url=_PAY_URL, payable_online=True,
+    )
+    block = html[html.index('class="payment-qr') :]
+    assert "#4f46e5" not in block
+    assert "data:image" not in block, "a plain code carries no logo"
+
+
+def test_a_pale_brand_colour_never_reaches_the_code() -> None:
+    """The one failure a QR cannot afford is being beautiful and unreadable, and the person
+    holding the paper cannot squint harder (``render/qr.readable_dark``)."""
+    doc, lines, groups = sample_document("nl", "EUR", TODAY)
+    doc.status = "open"
+    html = render_document_html(
+        kind="invoice", doc=doc, lines=lines, seller=SELLER, config=_QR_ON,
+        brand=DocumentBrand(name="Agency", primary_color="#ffe066"),
+        tax_groups=groups, pay_url=_PAY_URL, payable_online=True,
+    )
+    block = html[html.index('class="payment-qr') :]
+    assert "#ffe066" not in block
+
+
+# --------------------------------------------------------------------------- #
+# How the two of them are printed and arranged
+# --------------------------------------------------------------------------- #
+#: Every way to pay at once — the card, the code and the line. All three ship off, so this is
+#: the arrangement no default exercises, and it is the one the QR was broken in.
+_PAY_ON = [
+    {"key": "payment_box", "enabled": True},
+    {"key": "payment_qr", "enabled": True},
+    {"key": "payment_link", "enabled": True},
+]
+
+
+@pytest.mark.parametrize("design", ["classic", "letterhead"])
+def test_the_qr_prints_at_the_size_the_design_asks_for(design: str) -> None:
+    """24 mm is the smallest a phone camera reads reliably off paper — and it is a *box* the
+    anchor has to have before the number means anything.
+
+    It had none. An ``<a>`` is inline, ``width``/``height`` do not apply to it, and the svg's
+    ``100%`` then resolved against the paragraph: the code came out the full width of the sheet
+    and the sample ran to three pages, identically in the preview and in the PDF. Every other
+    test here reads the markup, and the markup was right in both states — so this one measures
+    the laid-out box, and it is all that stands between that rule and a stylesheet edit that
+    quietly deletes it again.
+    """
+    boxes = [
+        box
+        for box in _boxes(_with_qr(config={"design": design, "layout": _PAY_ON}))
+        if str(box.element_tag).endswith("}svg")
+    ]
+    assert len(boxes) == 1, "the QR is the only inline SVG the sample draws"
+    # 24 mm in CSS pixels. Loose by a pixel: this asks for a stamp, not a poster.
+    assert boxes[0].width == pytest.approx(24 * 96 / 25.4, abs=1.0)
+    assert boxes[0].height == pytest.approx(24 * 96 / 25.4, abs=1.0)
+
+
+@pytest.mark.parametrize("design", ["classic", "letterhead"])
+def test_the_printed_pay_url_keeps_its_own_case(design: str) -> None:
+    """The URL is printed as well as linked for one reader: the one who cannot click it.
+
+    It was set in ``micro``, the house label style, which uppercases — so what reached the paper
+    was ``HTTPS://…/INVOICES/6F1A…``, and a URL path is case-sensitive: the route is
+    ``/invoices/[id]``, and anyone who typed what they were given landed on a 404. The markup
+    carried the right characters either way, so the assertion is on the *rendered* text.
+    """
+    printed = "".join(
+        box.text
+        for box in _boxes(_with_qr(config={"design": design, "layout": _PAY_ON}))
+        if getattr(box, "text", None)
+    )
+    assert "/invoices/" in printed
+    assert "/INVOICES/" not in printed
+
+
+def test_the_letterhead_asks_for_the_money_in_one_box() -> None:
+    """The code and the line are body blocks in ``classic``'s stack. In this design they belong
+    *inside* the payment card: they answer the same question as the IBAN above them, and left
+    in the loop they landed centimetres lower, in the open middle of the sheet.
+
+    Ancestry and not source order, because "below the card" satisfies an index comparison
+    perfectly well and is exactly the arrangement this replaced.
+    """
+    html = _with_qr(config={"design": "letterhead", "layout": _PAY_ON})
+    assert _descends(html, inner="pay-online", outer="payment-card")
+    # ...and exactly once. Each is drawn by hand *and* skipped in the body loop; getting one of
+    # the two wrong prints the code twice, which is the mistake the closing band's own test
+    # guards against for the VAT breakdown.
+    assert html.count(_CODE) == 1
+    assert html.count(_LINK) == 1
+
+
+def test_the_pay_strip_stands_on_its_own_without_the_card() -> None:
+    """The three switches are independent, so the code and the line have to print with the box
+    switched off — the left column is where this design puts how to settle the invoice, drawn
+    around or not. Hanging them off the card alone would have made ``payment_box`` a silent
+    third switch on both of them.
+    """
+    html = _with_qr(
+        config={
+            "design": "letterhead",
+            "layout": [*_PAY_ON, {"key": "payment_box", "enabled": False}],
+        }
+    )
+    assert "Betaalgegevens" not in html
+    assert _CODE in html and _LINK in html
+    assert not _descends(html, inner="pay-online", outer="payment-card")
+
+
+def test_the_code_is_captioned_only_when_nothing_else_says_what_it_is() -> None:
+    """"Scan om te betalen" draws the distinction the pay-online label already draws (#253's
+    "betalen" against "bekijken"), about a picture nobody needs told is scannable. Beside that
+    label it is a third line under the address that reads as belonging to the address. Without
+    it, it is the only thing saying the code is worth pointing a phone at, and it prints.
+    """
+    both = _with_qr(config={"design": "letterhead", "layout": _PAY_ON})
+    assert "Betaal deze factuur online" in both
+    assert "Scan om te betalen" not in both
+
+    code_only = _with_qr(
+        config={
+            "design": "letterhead",
+            "layout": [*_PAY_ON, {"key": "payment_link", "enabled": False}],
+        }
+    )
+    assert "Scan om te betalen" in code_only
+
+
+def test_the_pay_line_reads_as_viewing_when_nothing_can_collect() -> None:
+    """Same rule as the QR's caption: the page still works without a provider — it opens the
+    invoice — so the words change and the link stays."""
+    assert "Betaal deze factuur online" in _with_qr(config=_LINK_ON, payable_online=True)
+    assert "Bekijk deze factuur online" in _with_qr(config=_LINK_ON, payable_online=False)

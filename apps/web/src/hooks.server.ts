@@ -60,6 +60,12 @@ const handleSecurityHeaders: Handle = async ({ event, resolve }) => {
 };
 
 const handleContext: Handle = async ({ event, resolve }) => {
+  // The container liveness probe resolves no tenant and no user (routes/healthz/+server.ts).
+  // This hook runs on *every* request, endpoints included, so without this line `/healthz` would
+  // fetch /meta/tenant like anything else — and answer 500 in exactly the situation it exists to
+  // report on, pulling every web replica out of rotation whenever the API restarts.
+  if (event.url.pathname === "/healthz") return resolve(event);
+
   const [theme, user] = await Promise.all([fetchTenant(event), fetchUser(event)]);
   event.locals.theme = theme;
   event.locals.user = user;

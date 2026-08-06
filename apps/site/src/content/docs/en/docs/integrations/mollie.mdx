@@ -1,0 +1,177 @@
+---
+title: Mollie
+description: "Connect your own Mollie account so a client can pay an open invoice online and the payment lands back on that invoice by itself."
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+"Please transfer within 14 days" gets paid slower than a button does. Connect the Mollie account
+your agency already has and every open invoice gains a payment link: iDEAL, Bancontact, cards,
+SEPA direct debit or PayPal, whatever your Mollie profile has switched on. The payer goes to
+Mollie's own checkout and what comes back here is an id, so schakl. never sees card data. As soon
+as Mollie confirms, an ordinary payment line appears on the invoice with nobody retyping it.
+
+<Aside type="caution" title="This integration has never been run against a live Mollie account">
+Mollie is built from Mollie's official API documentation and tested against a stand-in cut from
+that same document. That proves our code agrees with the document, not that it agrees with
+Mollie's servers. So treat it as **beta**: rehearse with a test key before you point clients at
+it, and watch the first real payments through.
+</Aside>
+
+## Where to find it
+
+Two places, no more. You connect the account at *Instellingen → Mollie* (Settings → Mollie), in the
+group **Communicatie & koppelingen** (Communication & integrations) — also findable by searching
+"ideal", "creditcard", "betaallink" or "webhook". The work itself happens on the invoice:
+*Facturatie → Facturen* (Invoicing → Invoices) → the invoice → the **Online betalingen** (online
+payments) card. Mollie deliberately contributes no menu item and no client panel; a payment
+provider is not a place you go.
+
+## Connecting
+
+<Steps>
+
+1. **Get your API key from Mollie.** Mollie dashboard → **Developers** → API keys. A test key
+   starts with `test_`, a live key with `live_`. They are fully separate worlds, and one key
+   belongs to exactly one website profile.
+
+2. **Make sure you hold the permission.** *Instellingen → Rollen* (Settings → Roles) →
+   `mollie.settings.manage` ("Mollie-accounts beheren"). Only the **admin** role holds it by
+   default, and the client role never does.
+
+3. **Add the account.** *Instellingen → Mollie* → **Account toevoegen** (add account). Fill in
+   **Naam** (the name you recognise this account by, for instance the profile at Mollie),
+   optionally a **Leverancier** (supplier) from your own list, and paste your **API-sleutel** (API
+   key). Save. The screen stores the key encrypted and verifies it straight away.
+
+4. **Read what comes back.** **Modus** (mode) shows Live or Test, derived from the key's own
+   prefix and never entered. **Betaalmethoden** (payment methods) lists what Mollie itself reported
+   back: this is the only place "iDEAL is not switched on" is visible before a client meets it at
+   checkout. If Mollie rejects the key you get "Probleem met de sleutel" with Mollie's own wording
+   verbatim behind it. **Sleutel controleren** (check key) re-runs the probe at any time.
+
+5. **Allow the Meldingsadres through your edge.** The screen prints the exact per-account URL that
+   Mollie calls, with a **Kopiëren** (copy) button. See below for why this is the step that
+   matters most.
+
+6. **Rehearse with the test key.** Open an invoice, create a **Betaallink**, follow the checkout,
+   force a final status on Mollie's test screen and watch the state on the card move. Then rotate
+   the live key in (*Instellingen → Mollie* → account → **API-sleutel**), or add the live key as a
+   second account and set the test one to **Niet in gebruik** (not in use).
+
+</Steps>
+
+Nothing else needs configuring in Mollie's dashboard beyond enabling the payment methods you want.
+schakl. sends the notification URL with each individual payment, so there is no dashboard webhook
+to register.
+
+## The Meldingsadres: the step that fails silently
+
+<Aside type="caution" title="Allow this path, or payments are collected and never booked">
+Mollie calls the **Meldingsadres** (notification URL) whenever a payment changes, with no session
+and no cookie. If an access proxy sits in front of your installation (Cloudflare Zero Trust, for
+example), Mollie meets a login page instead of your API. So add a **bypass rule for that path
+only**: public, no Access policy. Nothing anywhere reports an error if you forget, and nobody is
+alerted.
+
+Two other ways this breaks:
+
+- **A 301 or 302 redirect in front of the API throws the message body away.** A trailing-slash
+  redirect, or an http-to-https bump, has to be a 307 or 308.
+- **Rotating the API key changes the Meldingsadres.** The secret underneath it is regenerated.
+  Copy the new URL into your edge rule after every rotation.
+</Aside>
+
+Do **not** pin Mollie to an IP allowlist. Mollie says so themselves: the published range moves.
+
+## Getting an invoice paid
+
+An open (issued) invoice carries the **Online betalingen** card.
+
+- **As staff** you press **Betaallink** (payment link): that creates a Mollie checkout for the
+  amount still outstanding. You then pass it on with **Betaalpagina openen** (open payment page) or
+  **Link kopiëren** (copy link).
+- **The client** sees **Nu betalen** (pay now) in the same place in the portal. The portal never
+  reads which accounts you connected; it reads only whether a payment provider is active and
+  whether this document still has something outstanding.
+- **The state follows along**: Wacht op betaling (waiting), In verwerking (processing),
+  Gereserveerd (reserved), Betaald (paid), Mislukt (failed), Verlopen (expired) or Geannuleerd
+  (cancelled), with the moment the link was created beside it.
+- If it reads "Ontvangen, nog niet geboekt" (received, not booked yet), Mollie confirmed the
+  payment but it has not been processed here. **Status ophalen** (check status) fetches it.
+
+The amount never comes from the button: schakl. recomputes what is outstanding at that moment, and
+refuses an invoice that is not open or has nothing left to collect. Pressing pay twice does not
+open two payments either — a live checkout for exactly this account *and* this amount is reused.
+
+Every hour at **:25** schakl. re-asks about the payments that have not come to rest and repairs
+whatever a missed callback left behind, looking back seven days. That turns a blocked notification
+URL into a delay rather than an incident, but it is not a substitute: fix the edge rule.
+
+## Permissions
+
+| Permission | What it opens | Held by default |
+| --- | --- | --- |
+| `mollie.settings.manage` | The *Instellingen → Mollie* screen: adding accounts, rotating keys, verifying and removing them | Administrator (Administrator) |
+| `invoicing.payment.link` | Starting an online payment (Betaallink / Nu betalen) and fetching its status | Administrator (Administrator, everything), Client (Client, their own invoices only) |
+| `invoicing.payment.write` | Registering a payment by hand | Administrator (Administrator) |
+| `settings.providers.read` | Optional: without it the **Leverancier** field is hidden rather than offered empty | Administrator, Member, Client (Administrator, Member, Client) |
+
+There is deliberately no `mollie.payment.*`. Starting a payment is an act on an invoice, not an act
+on Mollie, so it declares `invoicing.payment.link`. And a client paying their own invoice needs
+exactly that and nothing more: `invoicing.payment.write` would let them declare an invoice paid.
+
+## Good to know
+
+- **A test payment books nothing, ever.** It runs the whole loop, Mollie reports it as paid, and
+  the card says "Testbetaling: niet geboekt op deze factuur" (test payment: not booked on this
+  invoice). The invoice stays open. That is deliberate: rotating a test key to a live one later
+  cannot make an old test payment real.
+- **Live beats test.** With one live and one test account, schakl. picks the live key. Two *live*
+  accounts stay ambiguous on purpose ("Kies welke gebruikt moet worden" — choose which one to
+  use); resolve it by setting one to **Niet in gebruik**.
+- **Reserved is not paid.** Money held is not money moved, so nothing is booked against it. Only a
+  genuinely paid payment produces a payment line.
+- **Payment methods are switched on at Mollie, not here.** The list on the screen is an
+  observation. In test mode Mollie also reports methods that are still pending, so a test key can
+  legitimately show more than the live key will.
+- **There is no second place the mode is stored.** Live or test always follows the key. An
+  unrecognised prefix is read as live, because a misread key that books nothing is less bad than a
+  real payment quietly filed as a test.
+- **Deleting an account changes nothing at Mollie**, and the payments made through it stay on
+  their invoices.
+- **If your licence expires** you can no longer connect a new Mollie account or rotate a key, while
+  the recording of payments already made keeps working.
+- **This integration cannot refund.** Do that in Mollie's dashboard; in schakl. you correct the
+  invoice with a credit note and record the money going back with **Terugbetaling registreren**
+  (register refund). Mandates, recurring payments and Mollie-side subscriptions are not in it
+  either.
+- **Do not expect a fixed expiry.** It differs per method (iDEAL fifteen minutes, cards half an
+  hour, Bancontact an hour, PayPal six hours) and it is Mollie's to decide. schakl. does not
+  predict it.
+- **The QR code on your invoice is not a payment link.** Switch it on at *Instellingen → Facturatie
+  → Sjablonen → Indeling → QR-code* (Settings → Invoicing → Templates → Layout) and it points at
+  the invoice's page in the client portal. A payment link is a key, and a key does not belong on
+  paper.
+
+## Read next
+
+<CardGrid>
+  <LinkCard
+    title="Invoicing"
+    href="/en/docs/modules/invoicing/"
+    description="Where the invoice comes from and what happens to a payment."
+  />
+  <LinkCard
+    title="Client portal"
+    href="/en/docs/modules/portal/"
+    description="The screen your client sees Nu betalen on."
+  />
+  <LinkCard
+    title="All integrations"
+    href="/en/docs/integrations/"
+    description="What else can be connected, and what is available or beta."
+  />
+</CardGrid>

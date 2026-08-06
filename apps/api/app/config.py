@@ -86,6 +86,13 @@ class Settings(BaseSettings):
     storage_s3_key_prefix: str = ""
     # Path-style addressing is MinIO-safe and Hetzner supports both; default on.
     storage_s3_force_path_style: bool = True
+    # De-duplication maintenance (docs/STORAGE.md). The fold pass is bounded per org per run so
+    # an instance with a large backlog converges over a few nights instead of hammering the
+    # backend in one go; the grace window is how long an unreferenced blob is kept before its
+    # bytes are reclaimed, which is also the window in which restoring a mistaken delete is
+    # still a row insert rather than a restore from backup.
+    storage_fold_batch: int = 500
+    storage_blob_grace_hours: int = 24
     # Upload guardrails: bytes, and an allow-list of content types (images, pdf, plain text,
     # archives, office docs — the practical attachment set; extend per deployment via env).
     upload_max_bytes: int = 10 * 1024 * 1024
@@ -113,6 +120,15 @@ class Settings(BaseSettings):
     db_pool_size: int = 15
     db_pool_max_overflow: int = 15
     db_pool_timeout_seconds: int = 5
+    # The pool is PER PROCESS, so a multi-replica deployment multiplies it. `api` replicas ×
+    # (size + overflow), plus the worker's, must stay under the server's max_connections — the
+    # cloud stacks halve these defaults precisely because they run two API replicas.
+    #
+    # How long a booting instance waits for another instance's `alembic upgrade` to finish
+    # (alembic/env.py). It bounds a *rolling deploy*, not a migration: whoever holds the lock may
+    # run for as long as it likes. Generous, because the wait costs nothing while the previous
+    # release keeps serving, and a premature timeout would roll back a perfectly good migration.
+    migration_lock_timeout_seconds: int = 600
     redis_url: str = "redis://localhost:6379/0"
 
     # --- Tenancy / white-label ---
@@ -124,6 +140,7 @@ class Settings(BaseSettings):
             "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
             "domains", "hosting", "websites", "subscriptions", "invoicing", "automation",
             "interactions", "google", "marketing", "hr", "cloudflare", "oxxa", "portal",
+            "reporting", "mollie",
         ]
     )
     default_locale: str = "nl"
@@ -204,6 +221,16 @@ class Settings(BaseSettings):
     # Streamable HTTP at /mcp: every /api/v1 operation as a tool, authenticated with the
     # platform's API keys (per-key permission scopes, #20). Disable to remove the surface.
     mcp_enabled: bool = True
+
+    # --- Interactive API documentation ---
+    # Swagger UI, ReDoc and the OpenAPI document. They live under ``/api/`` rather than at
+    # the root because the edge routes exactly two prefixes to this service — ``/api/`` and
+    # ``/mcp`` (infra/traefik/dynamic*.yml) — and everything else to the SSR web app. At
+    # FastAPI's defaults (``/docs``, ``/redoc``, ``/openapi.json``) the docs were reachable
+    # only by talking to the container directly, which no deployment does. Set false to
+    # remove the surface: the spec still generates (the typed client and the MCP tool
+    # surface derive from it in-process), it is just not served over HTTP.
+    api_docs_enabled: bool = True
 
     # --- Entitlements / licensing (issue #137) ---
     # Ed25519 public key (base64url, raw 32 bytes) that license keys are verified against.

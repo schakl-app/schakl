@@ -1,0 +1,177 @@
+---
+title: Mollie
+description: "Koppel je eigen Mollie-account, zodat een klant een openstaande factuur online betaalt en die betaling vanzelf op de factuur wordt geboekt."
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+"Graag binnen 14 dagen overmaken" wordt trager betaald dan een knop. Koppel je het Mollie-account
+dat je bureau al heeft, dan krijgt elke openstaande factuur een betaallink: iDEAL, Bancontact,
+kaart, SEPA-incasso of PayPal, precies wat in jouw Mollie-profiel aanstaat. De klant betaalt op de
+betaalpagina van Mollie; wat hier terugkomt is alleen een id, dus schakl. ziet nooit kaartgegevens.
+Zodra Mollie bevestigt, staat er een gewone betaalregel op de factuur zonder dat iemand hem overtypt.
+
+<Aside type="caution" title="Deze koppeling is nog nooit tegen een echte Mollie-account gedraaid">
+Mollie is gebouwd op de officiële API-documentatie van Mollie en getest tegen een nabootsing
+daarvan. Dat bewijst dat onze code klopt met dat document, niet dat hij het eens is met de servers
+van Mollie. Reken hem daarom als **bèta**: doe eerst een proefronde met een testsleutel voordat je
+er klanten doorheen stuurt, en houd de eerste echte betalingen in de gaten.
+</Aside>
+
+## Waar je het vindt
+
+Twee plekken, meer niet. Het account koppel je onder *Instellingen → Mollie* (in de groep
+**Communicatie & koppelingen**, ook te vinden door "ideal", "creditcard", "betaallink" of
+"webhook" te zoeken). Het werk zelf gebeurt op de factuur: *Facturatie → Facturen* → de factuur →
+de kaart **Online betalingen**. Mollie draagt bewust geen menu-item en geen klantpaneel bij; een
+betaalprovider is geen plek waar je naartoe gaat.
+
+## Koppelen
+
+<Steps>
+
+1. **Haal je API-sleutel op bij Mollie.** Mollie-dashboard → **Developers** → API keys. Een
+   testsleutel begint met `test_`, een live sleutel met `live_`. Het zijn volledig gescheiden
+   werelden, en één sleutel hoort bij precies één websiteprofiel.
+
+2. **Zorg dat je het recht hebt.** *Instellingen → Rollen* → `mollie.settings.manage`
+   ("Mollie-accounts beheren"). Standaard heeft alleen de rol **admin** dit, en de klantrol
+   nooit.
+
+3. **Voeg het account toe.** *Instellingen → Mollie* → **Account toevoegen**. Vul **Naam** in
+   (waaraan je dit account herkent, bijvoorbeeld het profiel bij Mollie), eventueel een
+   **Leverancier** uit je eigen lijst, en plak je **API-sleutel**. Opslaan. Het scherm bewaart de
+   sleutel versleuteld en controleert hem meteen daarna.
+
+4. **Lees wat er terugkomt.** **Modus** toont Live of Test, afgeleid uit de sleutel zelf en nooit
+   ingevuld. **Betaalmethoden** toont wat Mollie zelf terugmeldde: dit is de enige plek waar
+   "iDEAL staat niet aan" zichtbaar is voordat een klant het op de betaalpagina merkt. Weigert Mollie de
+   sleutel, dan staat er "Probleem met de sleutel" met de tekst van Mollie er letterlijk achter.
+   Met **Sleutel controleren** doe je de proef opnieuw.
+
+5. **Geef het Meldingsadres vrij op je edge.** Het scherm drukt per account het exacte adres af
+   dat Mollie aanroept, met een knop **Kopiëren**. Zie hieronder waarom dit de belangrijkste stap
+   is.
+
+6. **Oefen met de testsleutel.** Open een factuur, maak een **Betaallink**, doorloop de betaling,
+   kies op het testscherm van Mollie een eindstatus en kijk of de status op de kaart meeloopt. Zet
+   daarna de live sleutel erin (*Instellingen → Mollie* → account → **API-sleutel**), of voeg de
+   live sleutel als tweede account toe en zet het testaccount op **Niet in gebruik**.
+
+</Steps>
+
+In het dashboard van Mollie hoef je verder niets in te stellen behalve de betaalmethoden die je
+wilt aanbieden. schakl. stuurt het meldingsadres per betaling mee, dus er is geen webhook die je
+daar hoeft te registreren.
+
+## Het Meldingsadres: de stap die stil misgaat
+
+<Aside type="caution" title="Sta dit pad toe, anders komen betalingen wél binnen en worden ze niet geboekt">
+Mollie roept het **Meldingsadres** aan zodra een betaling verandert, zonder sessie en zonder
+cookie. Zit er een toegangsproxy voor je installatie (bijvoorbeeld Cloudflare Zero Trust), dan
+krijgt Mollie een inlogpagina te zien in plaats van je API. Voeg daarom een **bypass-regel toe voor
+precies dat pad**: geen Access-policy, publiek bereikbaar. Er verschijnt nergens een foutmelding
+als je dit vergeet, en niemand krijgt een waarschuwing.
+
+Twee dingen waar dit ook op stukloopt:
+
+- **Een 301- of 302-redirect vóór de API gooit de inhoud van het bericht weg.** Een omleiding voor
+  een ontbrekende slash of van http naar https moet 307 of 308 zijn.
+- **Roteer je de API-sleutel, dan verandert het Meldingsadres.** Het geheim eronder wordt
+  vernieuwd. Kopieer het adres na elke rotatie opnieuw naar je edge-regel.
+</Aside>
+
+Zet Mollie **niet** vast op een lijst met IP-adressen. Mollie zegt dat zelf ook: de gepubliceerde
+reeks verandert.
+
+## Een factuur laten betalen
+
+Op een openstaande (definitieve) factuur staat de kaart **Online betalingen**.
+
+- **Als medewerker** druk je op **Betaallink**: dat maakt een Mollie-betaalpagina aan voor het
+  bedrag dat nog openstaat. Daarna geef je hem door met **Betaalpagina openen** of **Link
+  kopiëren**.
+- **De klant** ziet op dezelfde plek in het portaal **Nu betalen**. Het portaal weet niet welke
+  accounts jij gekoppeld hebt; het leest alleen of er een betaalprovider actief is én of er op dit
+  document nog iets openstaat.
+- **De status loopt mee**: Wacht op betaling, In verwerking, Gereserveerd, Betaald, Mislukt,
+  Verlopen of Geannuleerd, met erbij wanneer de betaallink is aangemaakt.
+- Staat er "Ontvangen, nog niet geboekt", dan bevestigde Mollie de betaling maar is hij hier nog
+  niet verwerkt. **Status ophalen** vraagt het alsnog op.
+
+Het bedrag komt nooit van de knop: schakl. rekent op dat moment uit wat er nog openstaat en
+weigert een factuur die niet open is of waarop niets meer te innen valt. Twee keer op betalen
+drukken opent geen tweede betaling: een lopende betaalpagina voor precies dit account én dit
+bedrag wordt hergebruikt.
+
+Elk uur, op **:25**, controleert schakl. zelf de betalingen die nog niet tot rust zijn gekomen en
+repareert wat een gemiste melding liet liggen. Het kijkt daarbij naar betalingen van de afgelopen
+zeven dagen. Dat maakt een dichtgetimmerd meldingsadres een vertraging in plaats van een incident,
+maar het is geen vervanging: zorg alsnog dat het adres bereikbaar is.
+
+## Rechten
+
+| Recht | Wat het opent | Standaard bij |
+| --- | --- | --- |
+| `mollie.settings.manage` | Het scherm *Instellingen → Mollie*: accounts toevoegen, sleutels roteren, controleren en verwijderen | Beheerder |
+| `invoicing.payment.link` | Een online betaling starten (Betaallink / Nu betalen) en de status ophalen | Beheerder (alles), Klant (alleen eigen facturen) |
+| `invoicing.payment.write` | Een betaling met de hand registreren | Beheerder |
+| `settings.providers.read` | Optioneel: zonder dit recht wordt het veld **Leverancier** verborgen in plaats van leeg aangeboden | Beheerder, Medewerker, Klant |
+
+Er bestaat met opzet geen `mollie.payment.*`. Een betaling starten is een handeling op een
+factuur, geen handeling op Mollie, dus die gaat via `invoicing.payment.link`. En een klant die zijn
+eigen factuur betaalt heeft precies dat recht nodig en niets meer: `invoicing.payment.write` zou
+hem laten verklaren dát er betaald is.
+
+## Goed om te weten
+
+- **Een testbetaling boekt nooit iets.** Hij doorloopt de hele route, Mollie meldt hem als betaald,
+  en op de kaart staat "Testbetaling: niet geboekt op deze factuur". De factuur blijft open. Dat
+  is bewust: roteer je later een testsleutel naar live, dan wordt een oude testbetaling niet
+  alsnog echt.
+- **Live wint van test.** Heb je één live en één testaccount, dan kiest schakl. de live sleutel.
+  Twee *live* accounts blijven bewust dubbelzinnig ("Kies welke gebruikt moet worden"): zet er dan
+  één op **Niet in gebruik**.
+- **Gereserveerd is niet betaald.** Geld dat vastgehouden wordt is nog niet overgemaakt, dus daar
+  wordt niets op geboekt. Alleen een echt betaalde betaling levert een betaalregel op.
+- **Betaalmethoden zet je bij Mollie aan, niet hier.** De lijst op het scherm is een waarneming.
+  In testmodus meldt Mollie ook methoden die nog in aanvraag staan, dus een testsleutel kan
+  legitiem meer tonen dan de live sleutel straks doet.
+- **Er is geen tweede plek waar de modus staat.** Live of test volgt altijd de sleutel. Een
+  onbekend voorvoegsel wordt als live gelezen, want een verkeerd gelezen sleutel die niets boekt
+  is minder erg dan een echte betaling die als test verdwijnt.
+- **Een account verwijderen verandert niets bij Mollie**, en de betalingen die ermee zijn gedaan
+  blijven op hun facturen staan.
+- **Vervalt je licentie**, dan kun je geen nieuw Mollie-account meer koppelen en geen sleutel meer
+  roteren; het terugmelden van betalingen die al gedaan zijn blijft gewoon werken.
+- **Terugbetalen kan deze koppeling niet.** Dat doe je in het dashboard van Mollie; in schakl.
+  corrigeer je de factuur met een creditfactuur, en met **Terugbetaling registreren** leg je vast
+  dat het geld terug is. Incasso-machtigingen, herhaalbetalingen en abonnementen aan de kant van
+  Mollie zitten er evenmin in.
+- **Verwacht geen vaste vervaltijd.** Die verschilt per methode (iDEAL een kwartier, kaart een half
+  uur, Bancontact een uur, PayPal zes uur) en Mollie bepaalt hem. schakl. voorspelt hem niet.
+- **De QR-code op je factuur is geen betaallink.** Zet je hem aan onder *Instellingen → Facturatie
+  → Sjablonen → Indeling → QR-code*, dan verwijst hij naar de factuurpagina in het klantportaal.
+  Een betaallink is een sleutel en hoort niet op papier.
+
+## Verder lezen
+
+<CardGrid>
+  <LinkCard
+    title="Facturatie"
+    href="/nl/docs/modules/invoicing/"
+    description="Waar de factuur vandaan komt en wat er met een betaling gebeurt."
+  />
+  <LinkCard
+    title="Klantportaal"
+    href="/nl/docs/modules/portal/"
+    description="Het scherm waarop je klant Nu betalen ziet staan."
+  />
+  <LinkCard
+    title="Alle koppelingen"
+    href="/nl/docs/integrations/"
+    description="Wat er verder te koppelen valt, en wat beschikbaar of bèta is."
+  />
+</CardGrid>

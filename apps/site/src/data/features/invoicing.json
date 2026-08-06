@@ -1,0 +1,156 @@
+{
+  "name": "Facturatie en offertes",
+  "slug": "invoicing",
+  "order": 100,
+  "icon": "🧾",
+  "lucide": "invoicing",
+  "demo": "invoice",
+  "title": {
+    "nl": "Facturatie & offertes",
+    "en": "Invoicing & quotes"
+  },
+  "description": {
+    "nl": "Facturen, offertes en creditfacturen naast de uren, abonnementen en domeinen die ze factureren: gekozen uit wat er nog openstaat, in je eigen ontwerp, online te betalen.",
+    "en": "Invoices, quotes and credit notes right beside the hours, retainers and domains they bill — picked from what is still outstanding, in your own design, payable online."
+  },
+  "page": {
+    "eyebrow": {
+      "nl": "Facturatie",
+      "en": "Invoicing"
+    },
+    "title": {
+      "nl": "Facturen die uit het werk zelf komen",
+      "en": "Invoices built from the work itself"
+    },
+    "lead": {
+      "nl": "Facturen, offertes en creditfacturen wonen naast de uren, de abonnementen en de domeinen die ze factureren. Je kiest wat er nog openstaat in plaats van het over te typen, het document draagt jouw ontwerp, en wat je op het scherm ziet is precies de pagina die als pdf wordt gedrukt. Betalen kan online; de boekhouder krijgt UBL 2.1.",
+      "en": "Invoices, quotes and credit notes live next to the hours, retainers and domains they bill. You pick what is still outstanding instead of retyping it, the document carries your design, and what you see on screen is exactly the page that prints as PDF. Payment can happen online; the bookkeeper gets UBL 2.1."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Eén motor, twee documenten",
+          "en": "One engine, two documents"
+        },
+        "body": {
+          "nl": "Een factuur en een offerte zijn hetzelfde document met een andere levensloop: dezelfde regels, dezelfde btw-tarieven, dezelfde valuta en dezelfde sjablonen. Definitief maken kent het nummer toe volgens je eigen formaat, met aparte reeksen voor facturen en offertes en desgewenst elk jaar opnieuw beginnen. Een geaccepteerde offerte zet je om naar een factuur met de prijzen en de btw waarop hij is geaccepteerd, dus een tariefwijziging van vorige week verandert niets aan wat de klant heeft getekend. Open offertes verlopen vanzelf op hun geldigheidsdatum, zodat je lijst niet volloopt met voorstellen van een half jaar geleden. Op de lijst staan tegels voor Openstaand, Vervallen, Concepten, Betaald dit jaar en Openstaande offertes, die de lijst filteren die ze tellen.",
+          "en": "An invoice and a quote are the same document with a different lifecycle: the same lines, the same VAT rates, the same currency and the same templates. Issuing allocates the number from your own format, with separate series for invoices and quotes and a yearly restart if you want one. An accepted quote converts to an invoice at the prices and VAT it was accepted at, so a rate change from last week never rewrites what the client signed. Open quotes expire on their validity date by themselves, so the list doesn't fill up with proposals from six months ago. The list carries tiles for Openstaand, Vervallen, Concepten, Betaald dit jaar and Openstaande offertes, each filtering the list it counts."
+        },
+        "bullets": {
+          "nl": [
+            "Factuur: Concept → Definitief maken → Versturen → Betaling registreren",
+            "Offerte: Concept → Definitief maken → Versturen → Accepteren → Omzetten naar factuur",
+            "Nummerformaat met {year}, {yy} en {seq}, standaard 2026-0001 en Q2026-0001"
+          ],
+          "en": [
+            "Invoice: draft → issue → send → register payment",
+            "Quote: draft → issue → send → accept → convert to invoice",
+            "Number format with {year}, {yy} and {seq}, 2026-0001 and Q2026-0001 by default"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Vier soorten regels, en drie keer kiezen",
+          "en": "Four kinds of line, and three pickers"
+        },
+        "body": {
+          "nl": "De regeleditor kent vier soorten regels: Uren, Abonnementen, Domeinen en Diensten. De eerste drie type je niet, die kies je: elk opent een eigen picker over wat er voor déze klant nog openstaat, en de regel komt geprijsd, gedateerd en met de juiste eenheid binnen. Elke regel onthoudt wát hij factureert, dus een concept bewerken factureert hetzelfde werk nooit een tweede keer, en haal je de regel weg, dan komt dat werk gewoon weer op de picker terug. Al gefactureerde periodes blijven zichtbaar met het label 'al gefactureerd' in plaats van stilletjes te verdwijnen; antwoorden door iets weg te laten is precies hoe een dubbele factuur ontstaat. Het scherm Facturatie → Nog te factureren doet hetzelfde voor de hele organisatie, met vier tegels en een groepering per dag, week, maand, jaar, klant, project of medewerker.",
+          "en": "The line editor knows four kinds of line: Uren, Abonnementen, Domeinen and Diensten. You don't type the first three, you pick them: each opens its own picker over what is still outstanding for this client, and the line arrives priced, dated and with the right unit. Every line remembers what it bills, so editing a draft never bills the same work twice, and removing a line puts that work straight back on the picker. Periods that were already billed stay visible, labelled \"al gefactureerd\" instead of quietly disappearing — answering by omission is exactly how a duplicate invoice happens. The Facturatie → Nog te factureren screen does the same for the whole agency, with four tiles and a grouping by day, week, month, year, client, project or employee."
+        },
+        "bullets": {
+          "nl": [
+            "Uren kiezen: goedgekeurde, facturabele uren die nog op geen enkele factuur staan",
+            "Periodes kiezen: abonnementsperiodes die nog niet gefactureerd zijn",
+            "Verlengingen kiezen: domeinverlengingen per jaar, tegen het TLD-tarief of de eigen prijs van dat domein",
+            "Diensten: vrije regels, met één klik uit je eigen lijst Producten en diensten"
+          ],
+          "en": [
+            "Uren kiezen: approved, billable hours that sit on no invoice yet",
+            "Periodes kiezen: subscription periods not yet billed",
+            "Verlengingen kiezen: domain renewals per year, at the TLD rate or that domain's own price",
+            "Diensten: free lines, one click from your own Producten en diensten list"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Wat je ziet is wat er gedrukt wordt",
+          "en": "What you see is what prints"
+        },
+        "body": {
+          "nl": "Het sjabloon bewerk je in een visuele editor naast een voorbeeld dat de echte renderer van de API is, geen benadering ervan. Je zet blokken aan en uit en sleept ze in volgorde (Logo, Afzender, Geadresseerde, Betaalgegevens, Regels, Btw-overzicht, Totalen, Notities, Voettekst, QR-code), geeft velden je eigen labels, kiest een accentkleur en legt desgewenst een merkteken op de achtergrond met eigen doorzichtigheid, grootte, positie en draaiing. Wettelijk verplichte onderdelen zoals het nummer, de datum, het btw-overzicht en de verlegd-melding mag je verplaatsen, maar niet uitzetten. Er is één render: het voorbeeld, de afdruk en de pdf zijn dezelfde pagina. Opmaak volgt het document en niet de kijker, dus een Nederlands bureau dat een Duitse klant factureert drukt bedragen en datums in de taal en de valuta van dat document, wie het ook opent.",
+          "en": "You edit the template in a visual editor beside a preview that is the API's real renderer, not an approximation of it. You switch blocks on and off and drag them into order (Logo, sender, recipient, payment details, lines, VAT breakdown, totals, notes, footer, QR code), give fields your own labels, choose an accent colour and optionally lay a watermark on the background with its own opacity, size, position and rotation. Legally required parts — the number, the date, the VAT breakdown, the reverse-charge notice — may be moved but never switched off. There is one render: the preview, the printout and the PDF are the same page. Formatting follows the document and not the viewer, so a Dutch agency invoicing a German client prints amounts and dates in that document's language and currency, whoever opens it."
+        },
+        "bullets": {
+          "nl": [
+            "Klassiek: het standaardontwerp, met je logo en je accentkleur",
+            "Briefpapier: eigen woorden op het briefhoofd, eigen kleur op de lijnen",
+            "Eigen HTML: je eigen Jinja en CSS, afgeschermd en zonder netwerktoegang"
+          ],
+          "en": [
+            "Klassiek: the default design, with your logo and accent colour",
+            "Briefpapier: your own words on the letterhead, your own colour on the rules",
+            "Eigen HTML: your own Jinja and CSS, sandboxed and with no network access"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Crediteren, betalen en wat er openstaat",
+          "en": "Credit notes, payments and what is outstanding"
+        },
+        "body": {
+          "nl": "Zodra een factuur definitief is, ligt het geld erop vast: bedragen, regels en btw zijn niet meer te bewerken, en corrigeren doe je met een creditfactuur. Crediteren geeft je een concept met dezelfde regels en negatieve bedragen, dat je kleiner kunt knippen voor een gedeeltelijke creditering. Dekt de creditfactuur het origineel volledig, dan komen de uren, de abonnementsperiodes en de domeinjaren weer vrij om opnieuw te factureren. Betalingen leg je vast met datum, bedrag en methode, en deelbetalingen mogen: het openstaande bedrag is totaal min betaald min gecrediteerd, en 'vervallen' wordt elke dag afgeleid uit de vervaldatum in plaats van ergens opgeslagen. Procesvelden blijven wel gewoon bewerkbaar, dus een referentie, notitie, vervaldatum of documenttaal aanpassen kost geen creditfactuur.",
+          "en": "Once an invoice is issued, the money on it is fixed: amounts, lines and VAT stop being editable, and you correct with a credit note. Crediting hands you a draft with the same lines at negative amounts, which you can trim down for a partial credit. When the credit note covers the original in full, the hours, subscription periods and domain years are released to be billed again. You register payments with a date, an amount and a method, and partial payments are fine: outstanding is total minus paid minus credited, and \"overdue\" is derived from the due date every day rather than stored anywhere. Process fields stay editable, so changing a reference, a note, a due date or the document language never costs you a credit note."
+        },
+        "bullets": {
+          "nl": [
+            "Methoden: bankoverschrijving, contant, pin of anders; 'online' schrijft de provider zelf",
+            "Een concept verwijderen ontfactureert precies de regels die het vasthield",
+            "Een definitieve factuur wordt geannuleerd, niet verwijderd, en niet zolang er betalingen op staan"
+          ],
+          "en": [
+            "Methods: bank transfer, cash, card or other; \"online\" is only ever written by the provider",
+            "Deleting a draft un-bills exactly the work it held",
+            "An issued invoice is cancelled, never deleted, and not while payments sit on it"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Online betalen, en de klant die meekijkt",
+          "en": "Paying online, and the client looking in"
+        },
+        "body": {
+          "nl": "Op een openstaande factuur staat de kaart Online betalingen: één knop maakt een betaalpagina aan voor precies het openstaande bedrag, dat de server zelf uitrekent, en je krijgt een link om te mailen of te kopiëren. Een klant met een portaallogin ziet daar 'Nu betalen'. Bevestigt de provider de betaling, dan komt er een gewone betaalregel op de factuur te staan, zodat de status, de herinneringen en de export het meteen weten; een uurlijkse controle haalt op wat een gemiste melding heeft laten liggen. Mollie is de eerste provider en je koppelt je eigen account onder Instellingen → Mollie; de sleutel is write-only en kaartgegevens komen nooit langs schakl. In het portaal ziet een ingelogde klant alleen de definitieve facturen van zijn eigen bedrijf, nooit een concept en nooit die van een ander, en de optionele QR-code op papier wijst naar die portaalpagina in plaats van naar een betaallink.",
+          "en": "An open invoice carries the Online betalingen card: one button creates a payment page for exactly the outstanding amount, computed server-side, and hands you a link to mail or copy. A client with a portal login sees \"Nu betalen\" there instead. When the provider confirms, an ordinary payment row is written on the invoice, so the status, the reminders and the export all know at once; an hourly check picks up whatever a missed notification left behind. Mollie is the first provider and you connect your own account under Instellingen → Mollie; the key is write-only and card details never touch schakl. In the portal a signed-in client sees only their own company's issued invoices, never a draft and never anyone else's, and the optional QR code on paper points at that portal page rather than at a payment link."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Automatisch factureren, herinneren en overdragen",
+          "en": "Automatic invoicing, chasing and handover"
+        },
+        "body": {
+          "nl": "Automatisch factureren is een niveau, geen schakelaar. Je stelt het organisatiebreed in en overschrijft het per abonnement of per domein, dus de vaste hostingretainer loopt vanzelf terwijl de klant over wie elke maand onderhandeld wordt met de hand blijft gaan. Betalingsherinneringen staan standaard uit; zet je ze aan, dan bepaal je zelf het schema in dagen na de vervaldatum (bijvoorbeeld 7, 14 en 30), gaat er hooguit één mail per stap uit en pauzeer je ze per factuur. De drie klantmails (factuur, offerte en herinnering) herschrijf je per taal onder Instellingen → E-mail. En de boekhouder krijgt per definitieve factuur een UBL 2.1-bestand dat Exact Online, SnelStart, Moneybird en e-Boekhouden importeren, met per btw-tarief je eigen grootboekcode. Facturatie is een uitbreidingsmodule: de kern van schakl. is open source (AGPL), uitbreidingen draaien op een licentiesleutel die de beheerder invoert onder Instellingen → Licentie; verloopt die, dan wordt de module alleen-lezen en blijven je facturen, pdf's en UBL-bestanden gewoon bereikbaar.",
+          "en": "Automatic invoicing is a level, not a switch. You set it agency-wide and override it per subscription or per domain, so the fixed hosting retainer runs on its own while the client you renegotiate every month stays manual. Payment reminders are off by default; switch them on and you set the schedule yourself in days past the due date (7, 14 and 30, for instance), at most one mail goes out per step, and you can pause them per invoice. The three client-facing mails — invoice, quote and reminder — are rewritable per language under Instellingen → E-mail. And the bookkeeper gets a UBL 2.1 file per issued invoice that Exact Online, SnelStart, Moneybird and e-Boekhouden import, carrying your own ledger code per VAT rate. Invoicing is an extension module: the core of schakl. is open source (AGPL) and extensions run on a licence key the administrator installs under Instellingen → Licentie; when it lapses the module goes read-only and your invoices, PDFs and UBL files stay reachable."
+        },
+        "bullets": {
+          "nl": [
+            "Uit: je maakt elke factuur zelf",
+            "Concept klaarzetten: het concept staat er, jij kijkt het na",
+            "Klaarzetten en definitief maken: genummerd en verstuurbaar",
+            "Klaarzetten, definitief maken en mailen: de klant heeft hem al"
+          ],
+          "en": [
+            "Off: you make every invoice yourself",
+            "Prepare a draft: the draft is waiting, you review it",
+            "Prepare and issue: numbered and ready to send",
+            "Prepare, issue and mail: the client already has it"
+          ]
+        }
+      }
+    ]
+  }
+}

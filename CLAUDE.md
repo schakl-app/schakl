@@ -43,11 +43,14 @@ other identifiers; the dot appears solely when the official product name is disp
 | i18n (web)    | Paraglide JS (inlang) — flat JSON message catalogs, type-safe, tree-shaken |
 | API           | FastAPI · Pydantic v2 · SQLAlchemy 2.0 · Alembic → auto OpenAPI |
 | Documents     | Jinja → HTML → **WeasyPrint** (`invoicing/render/`): the page the browser previews *is* the page the PDF prints, and a tenant may bring their own design (sandboxed Jinja, no network) — `docs/INVOICING.md` |
+| Payments      | Provider-agnostic seam in `app/core/payments/` (epic #269): a `PaymentProvider` protocol, a per-provider account resolver, and the `{org}.{account}.{secret}` callback token a provider's unauthenticated POST names its tenant by (the Google channel-token pattern). `mollie` is the first implementation and Stripe/Adyen are a package, not a refactor. **A webhook body is a hint, never a fact**: only the id it names is read, and status, amount and mode come from an authenticated re-fetch with the tenant's own credential. A confirmed payment writes an ordinary `InvoicePayment` row, so invoicing stays the single answer to "what has been paid" — `docs/PAYMENTS.md`, `docs/MOLLIE.md` |
 | Typed client  | `openapi-typescript` client generated from the API's OpenAPI spec |
 | Database      | PostgreSQL (with Row-Level Security) |
 | Jobs & cache  | Redis + ARQ |
 | Auth          | App-native at the API: FastAPI Users (local username/password, verification, reset) + 2FA on local login (TOTP + backup codes, optional SMS via instance gateway; org-admin reset — docs/TWOFACTOR.md) + Authlib (OIDC relying-party, configured **per org in the DB** — Instellingen → SSO, #76; encrypted secret, runtime toggles, `SCHAKL_FORCE_LOCAL_LOGIN` break-glass) · Google OAuth for Workspace scopes |
-| Infra         | Docker Compose · Traefik · deployed on Hetzner · Cloudflare Zero Trust |
+| File storage  | Pluggable backend (named volume · S3-compatible) behind `app/core/storage/`. A file row is **not** its bytes: `file_blobs` holds one object per distinct sha256 **per org**, so the signature logo on 500 e-mails is one object — and therefore no single row may ever delete one. Call `service.drop_file`, never `storage_for(...).delete(key)`; a nightly cron folds pre-dedup rows and reclaims what nothing references — `docs/STORAGE.md` |
+| Received mail | HTML → markdown at ingest (`app/core/htmlmd.py`), stored beside the plain text as `interactions.body_markdown` and **only** when the message had an HTML part: text a *sender* wrote is not our markdown, so a plain-text mail keeps rendering as plain text. Its `cid:` images become files marked `content_id` (body content, not attachments) and the body's marker becomes `file:<uuid>`, resolved by the renderer; a remote `<img>` is dropped — a tracking pixel is an image — `docs/GOOGLE.md` |
+| Infra         | Docker Compose · Traefik · deployed on Hetzner · Cloudflare Zero Trust. **A redeploy is not an outage**: the API rolls `start-first` on two replicas because "one migration at a time" is now stated as a Postgres advisory lock (`app/core/migrations.py`) rather than as `replicas: 1` — `docs/DEPLOY.md` |
 | MCP / AI       | MCP server over Streamable HTTP (OAuth 2.1 resource server) via the official Python MCP SDK / FastMCP; mounted on the API app; tools contributed per module, read-first · every AI feature goes through one core (`app/core/ai/`, `docs/AI.md`): per-tenant provider + encrypted key, and **every in-request model call wrapped in `ctx.release_db()`** — §11's pool-drain is worst here, because a tool loop holds the connection for tens of seconds. Speech-to-text is its own credential (`docs/VOICE.md`): Anthropic has no transcription endpoint and is the default provider, so "reuse the chat provider" configures nothing |
 
 Ship these as separate containers in one Compose file: `web`, `api`, `worker`, `db`, `redis`, `traefik`.
@@ -151,6 +154,11 @@ An **API module** is a package under `apps/api/app/modules/<name>/` exposing:
   data provider) so the company detail view can compose it. This is the modular hub.
 - `impex.py` — optional: the entity's spreadsheet import/export shape, and any columns this
   module contributes to *another* module's entity (see §17).
+- `email_templates` — optional: the outgoing mails this module lets the tenant reword
+  (`EmailTemplateKind`, `docs/EMAIL.md`). A mail the agency's **client** reads is theirs to
+  write: core declares only the auth pair and holds no module list, keys are namespaced
+  (`invoicing.invoice`) and asserted at mount, and a missing override means the built-in text —
+  so contributing one adds no schema and changes nothing until a tenant types in the box.
 - `mcp.py` — optional: the MCP tools/resources this module contributes (e.g.
   `companies.find`, `companies.recent_projects`), registered onto the MCP surface alongside
   the router. Read-only by default; each tool goes through the tenant-scoped service layer.
@@ -249,13 +257,27 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
 - **Definition of done** for a feature: migration written, endpoints + tenant scoping,
   **every route declaring a permission** (§15) and its `PermissionSpec`s on the module
   descriptor with `en`+`nl` labels, web UI (**every entity-reference picker offers inline-create →
-  full dialog → auto-select**, `docs/UX.md`), `nl.json` + `en.json` keys, test for tenant
+  full dialog → auto-select**, and **every list screen ends in the shared pager**, `docs/UX.md`),
+  `nl.json` + `en.json` keys, test for tenant
   isolation, **a mutable entity records its changes to the activity log and its detail view
   renders the trail** (§16), docs/OpenAPI updated. **Performance is part of done, not a
   follow-up**: a list endpoint exposes `count=false` and skips whatever the caller opts out of, a
   row carries only what its screen draws, aggregates are computed in SQL with the company horizon
   carried, every unbounded read is capped, section-shared lookups live in the section's layout
   load, and the whole thing lands with a `count_queries` budget test (`docs/PERFORMANCE.md`).
+- **A list screen pages; it never shows a prefix of itself.** The old shape — `limit: 200,
+  offset: 0` and a sentence apologising for it — made a tenant who outgrew the cap read a sample
+  as the whole answer, with row 201 reachable only by guessing a search term. One contract now
+  covers every index (`$lib/core/table/paging.ts`, `core/ui/Pagination.svelte`): **the URL is the
+  view** (`?page=` / `?size=`, so the back button lands where the user left and a page is
+  shareable — hence `<a href>`, never a click handler), **the load resolves and the API applies**
+  (`resolvePaging(event.url, pref)` → `limit`/`offset`; a filter the API cannot express is a
+  missing query parameter, never a licence to narrow the slice in the browser), **every filter,
+  search and sort drops the page** (`resetPage`), and **the size is a saved personal default, not
+  state** (`TablePref.page_size`, 50 by default, beside the column layout — the *page* stays in
+  the URL, or two tabs fight over one number). A group count inside a page counts the page, so a
+  sectioned list says so. The narrow exceptions — a grouped inventory, a report whose subtotals
+  span the whole set, an approval queue meant to be emptied — are named in `docs/PERFORMANCE.md`.
 
 ## 10. Phased plan (build gates)
 
@@ -329,6 +351,54 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   always refuses is a broken control"). The lists it reads (`licensed_modules`, `entitled_modules`,
   `deployment`) ride `/meta/tenant`, which the app layout already loads, and come from the same
   helper `/meta/modules` uses so a locked control and Instellingen → Modules can never disagree.
+- **A report is a record, and the voice it is written in is the tenant's** (#300,
+  `docs/REPORTING.md`). The monthly client report is `reporting` — its own module and `sku`,
+  because a document has a lifecycle (drafted → reviewed → published → sent), an audience and a
+  commercial boundary that a live dashboard does not; a tenant licences `marketing` without it.
+  `reports.data_snapshot` freezes **every number the document prints**, which is what makes it
+  reopenable, makes prose and tables agree by construction rather than by both re-querying, and —
+  with `UNIQUE (org, company, audience, period_start)` — makes a re-run update a document instead
+  of mailing a client a second copy. **Sections come from the registry** (`report_sections`, the
+  panels pattern applied to documents), so `marketing` owns the traffic/rankings/audit half and
+  reporting names no module. **The prompt is three layers and they must not fuse**: product
+  invariants are code, the agency's editorial voice is a `report_tones` row, and what is true
+  about one client is a `report_profiles` row that reaches the model **inside the JSON, never
+  appended to the prompt** — a house style compiled into `prompts.py` is a tenant's decision we
+  took for them, and a client profile concatenated into the instructions is obeyed. A banned
+  phrase is *checked* after generation, not merely requested. **Review is the default and
+  auto-send is a per-client setting**: prose a model wrote leaving under the agency's brand
+  unread is not a thing to arrive at by not choosing. Externality follows §15/#266 —
+  `Report.__portal_horizon_clause__` (own companies, never internal, never unpublished) lives on
+  the model because `GET /files` declares no permission and `entity_visible` is its only gate.
+  The renderer is shared with invoicing (`app/core/documents/`) rather than copied, and charts
+  are inline SVG because the engine's fetcher answers `data:` and nothing else. `marketing`
+  borrows the latest published report's paragraph per section through `app/core/narratives.py`,
+  so a dashboard stops being a table on the other twenty-nine days of the month.
+- **Collecting money is three rules that outlive the provider** (epic #269, `docs/PAYMENTS.md` +
+  `docs/MOLLIE.md`). #267 asked for Mollie and argued *against* an abstraction, since no second
+  provider was on the roadmap; the owner reversed that, because the issue was right about
+  *methods* and wrong about *providers* — Stripe and Adyen are ordinary asks from an agency with
+  non-EU clients, and the seam costs one file today against a rewrite of the settle path at the
+  exact moment a live tenant depends on the first one. None of the three rules that came out of
+  it is about Mollie. **A webhook body is a hint, never a fact: the authenticated re-fetch is the
+  authentication.** Mollie posts one unsigned form field and documents that this is safe *because*
+  you re-fetch; a provider that posts a whole signed event is no different, because a signature
+  proves who sent a message and not that the message is still true. So `verify_webhook` is an
+  extra gate and never *the* gate, and `handle_webhook` runs five in one order — the token names
+  the tenant, RLS is bound before anything is read, the secret is compared in constant time (a
+  mismatch is a bare 404, never a 401 that would confirm the account), the provider gets its
+  optional signature check, and only then is the body read for ids and nothing else. **An
+  idempotency guarantee that lives in application code loses the race the database would have
+  won**: a provider retries until it gets a 200 — ten times over 26 hours — so two deliveries and
+  an hourly reconcile cron are in flight against each other, and "have we settled this yet?"
+  followed by an insert leaves a window every retry enters. `SELECT … FOR UPDATE` on the intent
+  makes the common case cheap; the partial unique index on `invoice_payments (org_id, intent_id)`
+  makes the uncommon case *impossible* rather than unlikely, including across two API replicas
+  that share no memory. And **an expired licence makes a module read-only; it does not make the
+  agency's takings disappear** — the callback is the one route carrying `license_exempt`, because
+  a 402 there would drop money that has already left someone's bank account and no retry would
+  ever fix it (the provider's retries would 402 too). Gate what the agency *does*; never gate the
+  recording of what has already happened to them.
 
 ## 11. Working agreement (for Claude Code)
 
@@ -355,6 +425,19 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   It also holds the rule for **breaking database changes**: existing self-hosted releases
   migrate themselves unattended on upgrade, so destructive schema changes go out over two
   releases (expand/contract) and the upgrade path is written down before the migration is.
+- **State a constraint as the constraint, not as a deployment shape that happens to imply it.**
+  The cloud API was pinned to `replicas: 1` + `order: stop-first` to stop two tasks racing
+  `alembic upgrade head`. The reasoning was sound and the conclusion was far too strong: one
+  replica plus stop-first is *by definition* a window with no API at all, and the web app — which
+  rolls `start-first` and therefore stays up — answered 500 on every request for the length of
+  every redeploy, because its first server hook fetches `/meta/tenant` before anything renders.
+  The web app was up precisely so that it could render an error. The actual requirement was "one
+  migration at a time", which is a Postgres advisory lock (`app/core/migrations.py`) and says
+  nothing about replica counts; with it, the loser waits and then no-ops against a schema already
+  at head. Two smells generalise. A comment that estimates its own cost (*"costs a few seconds of
+  API downtime"*) is worth measuring — this one omitted the migration and the lifespan reconcile
+  that the healthcheck already budgeted 90s for. And a service kept alive **through** a dependency's
+  planned outage needs an answer for what it serves during it; "it stays up" is not one.
 - Keep this file updated when architecture decisions change.
 - Never leave a hardcoded user-facing string or an unscoped query — treat both as build breaks.
 - After each module: register it, add its panels, add its i18n keys, run `i18n:check` + tests.
@@ -384,6 +467,17 @@ Desktop/Code, agents) can work with the instance's data. Design rules:
   routes exist, so the generated surface already tracks per-tenant modules.
 - **Read-first is a key-minting decision:** a cautious instance mints read-only-scoped keys;
   the deny-by-default route permissions answer every call either way.
+- **A route the edge does not forward is a route nobody has.** Swagger UI, ReDoc and the
+  OpenAPI document live at `/api/docs`, `/api/redoc` and `/api/openapi.json`, not at FastAPI's
+  root-level defaults, because the edge routes exactly `/api/` and `/mcp` here and everything
+  else to the SSR web app (`infra/traefik/dynamic*.yml`). At the defaults the API reference had
+  never been reachable in *any* deployment — it resolved to the web app's 404 — and nothing
+  caught it, because every test that touches the spec calls `app.openapi()` in-process, which
+  is exactly the path the bug does not lie on. So the test pins the **paths**
+  (`tests/test_api_docs.py`), and the generalisation is worth keeping: when a surface is only
+  reachable through a proxy, assert the URL the proxy actually forwards, not the object behind
+  it. `SCHAKL_API_DOCS_ENABLED=false` drops the HTTP surface while leaving the in-process spec
+  that the tool builder and `scripts/gen-client.sh` both read.
 - **Moving target:** MCP evolves fast — the SDK is pinned (`fastmcp>=2.12,<3`) and tracks
   the spec; don't hardcode protocol details or well-known paths beyond what the SDK needs.
 
@@ -856,3 +950,54 @@ its shape**, exactly as it does for custom fields (§13) and panels (§6).
   user with a spreadsheet of domains should have to look.
 - Large imports as a background job are still deferred (issue #77); `MAX_IMPORT_ROWS` is what
   keeps the synchronous path honest until that lands.
+
+## 18. Bulk edit & delete (core capability)
+
+A selection is a spreadsheet you never had to leave the app to make, so it uses the same
+description of the same entity. `app/core/bulk/` owns the mechanics; a module declares a
+`BulkDescriptor` that **borrows its `ImpexDescriptor`** — the column vocabulary, the batched
+reference resolvers, and `update_row`, which is its own service call. A second write path is the
+one way a bulk edit could stop meaning what an edit means: fifty picked rows must get the
+validation, activity line, events and custom-field rules that fifty visits to the form would.
+
+- **`editable` is an allow-list, never a deny-list.** What may be set across a selection is a
+  product judgement no column can carry — a domain's `name` is importable and must never be
+  bulk-writable — so a column added to an import tomorrow is not silently bulk-writable today.
+  `check_descriptor` fails at **import time** on a key that names no column, names a derived one,
+  or names a per-row type (`phone`, `email`: a national number is read in *that row's* country,
+  so one shared value is meaningless).
+- **A bad shared value is the caller's; a bad row is the row's.** An unknown status or an
+  unresolvable client is resolved once, before anything is touched, and is a **422 for the whole
+  call** — every row would fail on it identically. Row-level trouble is *reported, never raised*:
+  raising mid-batch rolls the request back and undoes the forty-nine that worked. Which is why
+  **every row runs in its own SAVEPOINT** (`begin_nested`) — catching an error without one leaves
+  the session poisoned for everything after it — and why only `AppError` is caught: that is the
+  vocabulary a service speaks when it *decides* to refuse, and anything else surfacing as "3 rows
+  skipped" is a bug nobody will ever find.
+- **Absent means leave alone; explicit `null` means clear** (`InteractionBulkLinks`' rule,
+  generalised). The dialog opens blank over rows that disagree with each other, so "I did not
+  fill this in" can never mean "empty it on all of them". `required` overrules `clearable` for
+  the same reason it does on an import.
+- **Routes are generated per entity, never generic** (§15): each declares that entity's own
+  write/delete permission, so deny-by-default stays enumerable. **No new capability gates it** —
+  the two precedents disagree deliberately and both say why: impex earns `impex.export` because
+  taking the client list out of the building in one file is a *different act*, while bulk review
+  carries the plain review permission because approving forty emails you may each approve is *the
+  same act, repeated*. A bulk edit is the second kind. Unlike impex it **does** carry its
+  module's `license_write_gate`: a bulk write must not be the one way an uncovered module can
+  still be written to.
+- **An entity with no import shape still gets a bulk delete.** `impex` is optional; a descriptor
+  that names its `entity`, its model, its delete permission and its service call is complete.
+  Deleting needs no column vocabulary, and requiring one would have excluded the two entities
+  where a batch is most obviously wanted: a run of **draft invoices** and a run of mis-logged
+  **contact moments**. Neither has a field a selection could share, so neither mounts an update
+  route — and the web's `BulkUpdateEntity` / `BulkDeleteEntity` are separate types read off the
+  generated client, so asking for the wrong one is a compile error.
+- The web mirrors it in `$lib/core/bulk/`: `BulkToggle` (the ✎, **last** in every toolbar, which
+  switches the checkboxes on) and `BulkBar` (the actions, in their own strip above the table) —
+  a list has no selection gutter until someone asks for one, and the actions are not more
+  toolbar (`docs/UX.md`). Both take the same `BulkConfig`, so a page configures once and spreads
+  into both. Plus one dialog, one outcome banner, and `bulkUpdateAction(event, entity)` spread
+  into each list's actions the way `impexAction` already is. Field definitions live in web code
+  beside `columns.ts`, because the picker options are lookups the page already loaded and no
+  generic endpoint could hand them back without shipping the tenant.

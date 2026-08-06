@@ -1,0 +1,141 @@
+---
+title: Two-factor authentication
+description: "A second step on password login: an authenticator app, ten backup codes, optional SMS, and an admin reset for when somebody loses their phone."
+sidebar:
+  order: 8
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Two-factor authentication puts a second step on password login, so a leaked or reused password is not
+enough to reach client data, invoices and hosting credentials. Everybody enrols themselves, in about
+two minutes.
+
+## Where to find it
+
+Enrolment lives on *Instellingen → Mijn account* (Settings → My account), in the **Mijn instellingen**
+(My settings) section, under the **Tweestapsverificatie** (Two-factor authentication) block. No
+permission is needed: it is your own account.
+
+Resetting it for somebody else happens on *Instellingen → Team & gebruikers* (Settings → Team &
+users).
+
+<Aside type="caution" title="Hidden when SSO is enforced">
+If *Single sign-on verplichten* (require single sign-on) is on for your organization, the whole block
+disappears, enrolment included. On a federated session your identity provider owns the second step.
+See [Single sign-on](/en/docs/admin/sso/).
+</Aside>
+
+## Enrolling
+
+<Steps>
+
+1. Go to *Instellingen → Mijn account* and press **Tweestapsverificatie instellen** (set up two-factor
+   authentication) in the **Tweestapsverificatie** block.
+
+2. Scan the QR code with your authenticator app. If your app cannot scan, use the **Handmatige
+   sleutel** (manual key) shown beside it. In the app the account appears under your organization's
+   own brand name (the one from *Instellingen → Huisstijl*, Settings → Branding), never under a
+   product name.
+
+3. Type the code from the app into **6-cijferige code** (6-digit code) and press **Verifiëren en
+   inschakelen** (verify and enable). That confirmation is what actually switches it on; if you change
+   your mind, press **Instellen annuleren** (cancel setup).
+
+4. Ten codes then appear once, under **Back-upcodes** (backup codes), with a **Codes kopiëren** (copy
+   codes) button. Store them somewhere safe: each code works exactly once and they are never shown
+   again.
+
+</Steps>
+
+From then on the page reads "Tweestapsverificatie staat aan" (two-factor authentication is on), with
+the number of backup codes you have left underneath.
+
+## Signing in
+
+After your password comes a second screen: **Verificatie in twee stappen** (two-step verification),
+asking for the 6-digit code from your authenticator app. Below the field are links to **Gebruik een
+back-upcode** (use a backup code) and back to **Gebruik je authenticator-app** (use your authenticator
+app).
+
+There is deliberately no "trust this device": every password login asks for a code.
+
+## Replacing backup codes
+
+**Nieuwe back-upcodes** (new backup codes) on *Instellingen → Mijn account* mints a fresh set. It
+costs a current code from your authenticator app: a stolen session alone must never be enough to mint
+recovery codes. All the old codes lapse.
+
+Turning it off is **Uitzetten** (turn off), and that costs your password.
+
+## SMS codes
+
+As an extra, sign-in codes can also arrive by text message. The **Sms-codes** block sits on the same
+page, right below two-factor authentication:
+
+1. Enter a number in international format under **Telefoonnummer** (phone number), for example
+   `+31612345678`.
+2. Press **Verificatiecode versturen** (send verification code) and type in the code you receive.
+3. Press **Nummer verifiëren** (verify number). You can drop it later with **Nummer verwijderen**
+   (remove number).
+
+At sign-in an extra button then appears: **Sms een code naar mijn telefoon** (text a code to my
+phone). SMS is never a standalone factor: it is an add-on to a working authenticator app, so removing
+the number never leaves the account unprotected.
+
+<Aside type="caution" title="SMS exists only if your operator wires it up">
+Without a configured SMS gateway the option is nowhere to be seen; try anyway and you get "Sms-codes
+zijn niet beschikbaar op deze installatie." (SMS codes are not available on this installation). It is
+instance configuration, not an organization setting: an agency on somebody else's server cannot turn
+it on themselves. The operator sets `SCHAKL_SMS_GATEWAY_URL` on the API container (and optionally
+`SCHAKL_SMS_GATEWAY_TOKEN` and `SCHAKL_SMS_GATEWAY_SENDER`). schakl. posts a JSON message there with
+the number and the text, and the text is in the recipient's own language. The three variables are
+already present in `infra/compose.portainer.yml`; in the other compose files you add them yourself.
+</Aside>
+
+## Losing the phone
+
+Backup codes are the path you can walk yourself. If that fails, an administrator resets it:
+
+1. Go to *Instellingen → Team & gebruikers*. People with two-factor authentication carry a **2FA aan**
+   (2FA on) badge.
+2. Open the ⋯ menu on that row and choose **Tweestapsverificatie resetten** (reset two-factor
+   authentication).
+3. Confirm. The account returns to password-only sign-in until the person sets it up again.
+
+The reset deletes the whole enrolment: the key, the backup codes and any SMS number. No secret is ever
+read. Every reset is written to the organization's audit trail. The option only appears for people who
+actually have two-factor authentication on, and never on your own row.
+
+## Permissions
+
+| Permission | What it opens | Default |
+| --- | --- | --- |
+| `members.member.write` | *Instellingen → Team & gebruikers*: invite, change, remove, and **Tweestapsverificatie resetten** | Administrator only (the Owner holds everything) |
+
+Enrolling, minting new backup codes, adding SMS and turning it off yourself need **no** permission:
+that is your own account. Permissions are set per role under *Instellingen → Rollen* (Settings →
+Roles).
+
+## Good to know
+
+- **You cannot (yet) require two-factor authentication across the organization.** Everybody switches
+  it on themselves; there is no toggle that mandates it for the whole team.
+- **No second step on SSO logins.** Enforce single sign-on and the whole block is gone; your provider
+  owns MFA.
+- After **8 failed attempts** the factor locks for 15 minutes, however you verify.
+- The second screen at sign-in is valid for **5 minutes**. After that you land back at the password
+  step, not in a dead loop.
+- A code from your app that has already been accepted cannot be reused inside the same 30 seconds.
+- An SMS code is 6 digits, valid for 10 minutes, 5 attempts, single use, and you can only request a
+  new one after 30 seconds.
+- Your second factor belongs to **you**, not to an organization: it follows you to every organization
+  you are a member of. An administrator's reset therefore clears it everywhere. On an ordinary
+  single-organization install those are the same thing.
+- **API keys and MCP are untouched by this**: they authenticate with their own scoped credential, not
+  a password.
+
+<CardGrid>
+  <LinkCard title="Single sign-on" href="/en/docs/admin/sso/" description="Signing in through your own identity provider, and switching password login off." />
+  <LinkCard title="Installation" href="/en/docs/admin/installation/" description="The stack and the environment variables of your install." />
+</CardGrid>

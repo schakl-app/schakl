@@ -50,6 +50,23 @@
       {/if}
     </div>
 
+    <div class="border-t border-border pt-5">
+      <label for="seranking-api-key" class="mb-1 block text-sm font-medium text-text">
+        {t("marketing.settings.seranking_key")}
+      </label>
+      <input
+        id="seranking-api-key"
+        name="seranking_api_key"
+        type="password"
+        autocomplete="new-password"
+        placeholder={settings?.seranking_api_key_configured
+          ? t("marketing.settings.seranking_key_configured")
+          : ""}
+        class={inputClass}
+      />
+      <p class="mt-1 text-xs text-text-muted">{t("marketing.settings.seranking_key_hint")}</p>
+    </div>
+
     {#if form?.saved}
       <p class="text-sm text-green-600 dark:text-green-400">{t("settings.marketing.saved")}</p>
     {:else if form?.error}

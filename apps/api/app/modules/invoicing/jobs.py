@@ -14,17 +14,18 @@ concept, and a reminder that fires a day early because of UTC is a wrong reminde
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.activity import ActivityService
+from app.core.branding import load_brand_logo
 from app.core.email.branding import apply_branding, load_brand
 from app.core.email.senders import EmailAttachment, send_email
 from app.core.events import SystemContext
 from app.core.jobs import run_per_org
-from app.core.models import Org
+from app.core.models import Org, OrgSettings
 from app.core.timezone import org_zoneinfo
 from app.modules.invoicing.emails import (
     compose_invoice_email,
@@ -34,14 +35,47 @@ from app.modules.invoicing.emails import (
 from app.modules.invoicing.models import (
     Invoice,
     InvoiceKind,
+    InvoicePaymentIntent,
     InvoiceStatus,
     InvoicingSettings,
+    PaymentIntentStatus,
     Quote,
     QuoteStatus,
 )
+from app.modules.invoicing.paylinks import mail_pay_qr, mail_pay_url
 from app.modules.invoicing.service import InvoiceService
 
 logger = logging.getLogger("schakl.invoicing")
+
+
+async def _provider_connected(session: AsyncSession, org_id) -> bool:  # noqa: ANN001
+    """Does this org hold an **active** payment credential (epic #269)?
+
+    One query per org per run, never per mail. Answers ``False`` for an instance with no
+    provider module enabled at all, which is what keeps the dunning mail of an org that has
+    never heard of online payments byte-identical to the one it sent yesterday.
+    """
+    from app.core.payments import available_accounts
+
+    return any(account.active for account in await available_accounts(session, org_id))
+
+
+async def _qr_brand(ctx) -> dict:  # noqa: ANN001
+    """The colour and logo an org's mail QRs are drawn with — **once per org, per run**.
+
+    Reading the logo out of storage is a round-trip, and a nightly dunning pass legitimately
+    sends dozens of mails for one tenant whose logo has not changed between them. The same
+    reason the transport and the brand are resolved beside this rather than per invoice.
+    """
+    org_settings = await ctx.session.scalar(
+        select(OrgSettings).where(OrgSettings.org_id == ctx.org.id)
+    )
+    logo, logo_type = await load_brand_logo(ctx, org_settings)
+    return {
+        "brand_color": org_settings.primary_color if org_settings else None,
+        "logo": logo,
+        "logo_content_type": logo_type,
+    }
 
 
 async def _expire_quotes(ctx: SystemContext, today) -> None:  # noqa: ANN001
@@ -97,6 +131,12 @@ async def _send_auto_issued(ctx: SystemContext, brand, transport) -> None:  # no
     )
     if not pending:
         return
+    # Asked **once for the org**, outside the loop (epic #269, docs/PERFORMANCE.md): whether a
+    # payment provider is connected is a property of the tenant, not of an invoice, and a
+    # per-invoice check would be one extra query per mail on a nightly run that legitimately
+    # sends dozens.
+    connected = await _provider_connected(ctx.session, ctx.org.id)
+    qr_brand = await _qr_brand(ctx) if connected else {}
     sent = 0
     for invoice in pending:
         to = (invoice.customer or {}).get("email")
@@ -117,8 +157,18 @@ async def _send_auto_issued(ctx: SystemContext, brand, transport) -> None:  # no
             )
             continue
         provider, config, sender = transport
+        pay_url = mail_pay_url(invoice, brand.base_url, provider_connected=connected)
         message = apply_branding(
-            brand, compose_invoice_email(invoice, brand.brand_name, None)
+            brand,
+            await compose_invoice_email(
+                ctx.session,
+                ctx.org.id,
+                invoice,
+                brand,
+                None,
+                pay_url,
+                mail_pay_qr(pay_url, transport=provider, **qr_brand),
+            ),
         )
         message.to = to
         try:
@@ -219,6 +269,10 @@ async def _remind_org(org: Org, session: AsyncSession) -> None:
 
     transport = await load_transport(session, org.id)
     brand = await load_brand(session, org)
+    # Once for the org, beside the transport and the brand, for the same reason all three are
+    # resolved here rather than per invoice (epic #269, docs/PERFORMANCE.md).
+    connected = await _provider_connected(session, org.id)
+    qr_brand = await _qr_brand(ctx) if connected else {}
     for invoice in due:
         if invoice.reminder_count >= len(schedule):
             continue  # the schedule is exhausted — escalation is a human's call now
@@ -246,8 +300,18 @@ async def _remind_org(org: Org, session: AsyncSession) -> None:
                 )
             continue
         provider, config, sender = transport
+        pay_url = mail_pay_url(invoice, brand.base_url, provider_connected=connected)
         message = apply_branding(
-            brand, compose_reminder_email(invoice, brand.brand_name, days_past)
+            brand,
+            await compose_reminder_email(
+                session,
+                org.id,
+                invoice,
+                brand,
+                days_past,
+                pay_url,
+                mail_pay_qr(pay_url, transport=provider, **qr_brand),
+            ),
         )
         message.to = to
         ok, error = await send_email(provider, config, sender, message)
@@ -272,3 +336,94 @@ async def _remind_org(org: Org, session: AsyncSession) -> None:
 async def invoicing_daily(ctx: dict) -> None:
     """ARQ entrypoint: reminders + quote expiry, per org via ``run_per_org``."""
     await run_per_org(_remind_org)
+
+
+# --------------------------------------------------------------------------- #
+# Online payments — the safety net under the webhook (epic #269)
+# --------------------------------------------------------------------------- #
+#: How long an intent that never reached a final state stays worth asking about. Past this it
+#: is abandoned: no provider keeps an unpaid checkout open for a week, and re-asking forever
+#: would grow one request per stale row per hour, indefinitely.
+_RECONCILE_HORIZON = timedelta(days=7)
+
+#: Never ask about more than this many in one org, one pass. A cap that is *reported* rather
+#: than silent (§17): the next pass takes the rest, and the log says so.
+_RECONCILE_LIMIT = 100
+
+
+async def _reconcile_org(org: Org, session: AsyncSession) -> None:
+    """Re-ask the provider about every payment we have not seen come to rest.
+
+    The callback is the fast path and this is the one that makes it *safe to miss*. A webhook
+    can be lost for entirely ordinary reasons — an access proxy in front of the API, a
+    redeploy, a firewall rule — and the failure is invisible from the outside: the client's
+    money moved and the invoice still says open. So the loop is the same one the callback runs,
+    on a schedule, and the two are idempotent against each other by construction (the row lock
+    plus the unique index in ``payments.py``).
+
+    Hourly rather than daily, deliberately. Mollie retries a failed webhook for 26 hours; an
+    agency chasing "the client says they paid" should not have to wait out a nightly job.
+    """
+    from app.core.jobs import system_context
+    from app.core.payments import available_accounts
+    from app.modules.invoicing.payments import InvoicePaymentService
+
+    accounts = {
+        (account.provider, account.id): account
+        for account in await available_accounts(session, org.id)
+    }
+    if not accounts:
+        return
+    cutoff = datetime.now(UTC) - _RECONCILE_HORIZON
+    rows = (
+        (
+            await session.execute(
+                select(InvoicePaymentIntent)
+                .where(
+                    InvoicePaymentIntent.org_id == org.id,
+                    InvoicePaymentIntent.settled_at.is_(None),
+                    InvoicePaymentIntent.created_at >= cutoff,
+                    InvoicePaymentIntent.status.notin_(_INTENT_ABANDONED),
+                )
+                .order_by(InvoicePaymentIntent.created_at)
+                .limit(_RECONCILE_LIMIT + 1)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if len(rows) > _RECONCILE_LIMIT:
+        logger.warning(
+            "org %s has more than %s unsettled payment intents; taking the oldest %s this pass",
+            org.slug,
+            _RECONCILE_LIMIT,
+            _RECONCILE_LIMIT,
+        )
+        rows = rows[:_RECONCILE_LIMIT]
+    if not rows:
+        return
+
+    service = InvoicePaymentService(system_context(org, session))
+    for intent in rows:
+        account = accounts.get((intent.provider, intent.account_id))
+        if account is None:
+            # The credential was disconnected while a payment was in flight. Nothing to ask
+            # with, and nothing to be done about it here — say so on the row and move on.
+            await service._note_error(intent, "credential unavailable")  # noqa: SLF001
+            continue
+        await service.reconcile(intent, account)
+
+
+#: States a reconcile stops asking about. ``paid`` is **not** here: a paid intent with no
+#: ``settled_at`` is precisely the case this cron exists to repair — the money arrived and the
+#: ledger write did not happen (a cancelled invoice at the time, a crash mid-settle).
+_INTENT_ABANDONED = (
+    PaymentIntentStatus.FAILED.value,
+    PaymentIntentStatus.EXPIRED.value,
+    PaymentIntentStatus.CANCELED.value,
+)
+
+
+async def invoicing_payments_reconcile(ctx: dict) -> None:
+    """ARQ entrypoint: re-ask every provider about payments that never came to rest."""
+    await run_per_org(_reconcile_org)

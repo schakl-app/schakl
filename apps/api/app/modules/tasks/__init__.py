@@ -12,6 +12,7 @@ from arq import cron
 from app.core.activity import register_auditable
 from app.core.events import subscribe
 from app.modules.tasks.attachments import on_file_event
+from app.modules.tasks.bulk import TASK_BULK
 from app.modules.tasks.impex import TASK_IMPEX
 from app.modules.tasks.mcp import TASK_MCP_TOOLS
 from app.modules.tasks.panels import tasks_company_panel
@@ -29,6 +30,7 @@ module = ModuleDescriptor(
     panels=[tasks_company_panel],
     permissions=TASK_PERMISSIONS,
     impex=[TASK_IMPEX],
+    bulk=[TASK_BULK],
     mcp_tools=TASK_MCP_TOOLS,
     # 04:00 UTC is early morning across European zones; the job resolves each org's own local
     # date itself (CLAUDE.md §8), so the cron hour only has to be early enough for all of them.

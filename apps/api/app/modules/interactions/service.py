@@ -25,14 +25,26 @@ from app.core.activity.service import snapshot
 from app.core.auth.models import User
 from app.core.directory import ids_by_email, visible_ids
 from app.core.events import emit
+from app.core.htmlmd import rewrite_cid_images
 from app.core.models import Membership
-from app.core.richtext import extract_contact_mention_ids, extract_mention_ids, sanitize_markdown
+from app.core.richtext import (
+    extract_contact_mention_ids,
+    extract_mention_ids,
+    markdown_excerpt,
+    sanitize_markdown,
+)
 from app.core.sorting import apply_sort, user_sort_name
 from app.core.storage.service import FileService
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
 from app.errors import AppError
-from app.modules.interactions.eml import EmlAttachment, EmlParseError, looks_like_eml, parse_eml
+from app.modules.interactions.eml import (
+    SNIPPET_CHARS,
+    EmlAttachment,
+    EmlParseError,
+    looks_like_eml,
+    parse_eml,
+)
 from app.modules.interactions.models import (
     DEFAULT_KINDS,
     ENTITY_TYPE,
@@ -89,6 +101,11 @@ _LINK_TABLES = {
 #: Must match ``notifications.events.INTERACTION_MENTIONED`` (#151) — a string on the bus,
 #: like the gmail feed's ``PENDING_EVENT``, never a cross-module import (CLAUDE.md §6).
 MENTIONED_EVENT = "interactions.mentioned"
+
+#: How much of an untitled row stands in for its subject where one line quotes it — a trail
+#: entry, a bell notification. Shorter than the timeline's ``SNIPPET_CHARS``: those read on a
+#: row of their own, these are quoted mid-sentence after somebody's name.
+LINE_TEASER_CHARS = 80
 
 # A lightweight table ref, like ``_LINK_TABLES``' raw SQL — never the contacts module's
 # internals (CLAUDE.md §6). Only what the sort expression touches.
@@ -467,7 +484,9 @@ class InteractionService:
             kind=data.kind,
             status=InteractionStatus.LOGGED.value,
             occurred_at=await self._as_instant(data.occurred_at),
-            subject=data.subject.strip(),
+            # Blank is ``NULL``, never ``""`` — the column is nullable and every reader falls
+            # back to the kind's label, which an empty string would defeat.
+            subject=(data.subject or "").strip() or None,
             body_text=body,
             direction=data.direction.value,
             owner_user_id=user.id,
@@ -511,7 +530,9 @@ class InteractionService:
             company_id=row.company_id,
             project_id=row.project_id,
             task_id=row.task_id,
-            description=row.subject,
+            # A subject is optional (schemas.py), so the notes stand in for it: a timesheet row
+            # reading "Gebeld over de verlenging…" beats a blank one on a call nobody titled.
+            description=row.subject or markdown_excerpt(row.body_text, SNIPPET_CHARS),
             entry_type_key=entry_type_key,
             interaction_id=row.id,
         )
@@ -613,6 +634,11 @@ class InteractionService:
             snippet=parsed.snippet,
             # Stored raw, like a gmail body: it is a received message, never markdown of ours.
             body_text=parsed.body_text,
+            # …and the formatted half, which *is* markdown of ours — we converted it from the
+            # message's own HTML part, which is exactly what makes rendering it as markdown
+            # honest. Its `cid:` image markers are rewritten below, once the parts they point
+            # at are stored files with ids.
+            body_markdown=parsed.body_markdown,
             direction=await self._upload_direction(parsed.from_email),
             owner_user_id=user.id,
             owner_name=user.full_name or user.email,
@@ -626,7 +652,14 @@ class InteractionService:
         await self._set_contacts(row, roster)
         await ActivityService(self.ctx).record_created(ENTITY_TYPE, row.id, {"source": "eml"})
         await self._record_on_hosts(row, "interaction.logged", contact_ids=roster)
-        stored, skipped = await self._store_eml_attachments(row.id, parsed.attachments)
+        stored, skipped, inline = await self._store_eml_attachments(row.id, parsed.attachments)
+        if inline:
+            # The body pointed at parts that are now files. Rewriting here rather than at
+            # render time keeps the stored body self-contained, and an unstored cid degrades
+            # to its alt text instead of leaving a marker nothing resolves.
+            row = await self.repo.update(
+                row, body_markdown=rewrite_cid_images(row.body_markdown, inline)
+            )
         return await self._present_one(row), stored, skipped
 
     async def _upload_direction(self, from_email: str | None) -> str:
@@ -646,20 +679,27 @@ class InteractionService:
 
     async def _store_eml_attachments(
         self, interaction_id: uuid.UUID, attachments: list[EmlAttachment]
-    ) -> tuple[int, int]:
-        """Store the message's attachments through the ordinary, permission-checked file
-        service (#123) — this is a person's own upload, not the gmail worker's system write.
+    ) -> tuple[int, int, dict[str, str]]:
+        """Store the message's parts through the ordinary, permission-checked file service
+        (#123) — this is a person's own upload, not the gmail worker's system write.
+
+        Returns ``(stored, skipped, {content id: file id})``. The counts are about
+        **attachments**, which an inline part is not: a signature logo is content of the body,
+        so reporting "3 bijlagen" for one PDF and two logos would describe a message nobody
+        received. An inline part that the guardrails refuse is not a skipped attachment either
+        — the body simply falls back to its alt text.
 
         One rejected attachment must never lose the message (the gmail path's rule, #180), so
         anything the storage guardrails would refuse is skipped and **counted**: the response
         says how many, rather than quietly dropping a client's PDF.
         """
         if not attachments:
-            return 0, 0
+            return 0, 0, {}
         if not self.ctx.can("files.file.write"):
-            return 0, len(attachments)
+            return 0, sum(1 for a in attachments if not a.content_id), {}
         files = FileService(self.ctx)
         stored = skipped = 0
+        inline: dict[str, str] = {}
         for attachment in attachments:
             if (
                 attachment.content_type not in settings.upload_allowed_types
@@ -670,18 +710,22 @@ class InteractionService:
                     interaction_id,
                     attachment.filename,
                 )
-                skipped += 1
+                skipped += 0 if attachment.content_id else 1
                 continue
-            await files.create(
+            row = await files.create(
                 filename=attachment.filename,
                 content_type=attachment.content_type,
                 stream=io.BytesIO(attachment.data),
                 size_bytes=len(attachment.data),
                 entity_type=ENTITY_TYPE,
                 entity_id=interaction_id,
+                content_id=attachment.content_id,
             )
-            stored += 1
-        return stored, skipped
+            if attachment.content_id:
+                inline[attachment.content_id] = str(row.id)
+            else:
+                stored += 1
+        return stored, skipped, inline
 
     async def update(self, interaction_id: uuid.UUID, data: InteractionUpdate) -> dict[str, Any]:
         row = await self._writable_or_404(interaction_id, "interactions.interaction.write")
@@ -711,8 +755,9 @@ class InteractionService:
         }
         if values.get("direction") is not None:
             values["direction"] = values["direction"].value
-        if "subject" in values and values["subject"]:
-            values["subject"] = values["subject"].strip()
+        if "subject" in values:
+            # Sent-and-blank clears it (schemas.py); an absent key never reaches here at all.
+            values["subject"] = (values["subject"] or "").strip() or None
         if "participants" in sent:
             values["participants"] = [p.model_dump() for p in data.participants or []]
         if values.get("occurred_at") is not None:
@@ -724,6 +769,9 @@ class InteractionService:
             already = set(row.mentioned_user_ids or [])
             body = sanitize_markdown(values["body_text"])
             values["body_text"] = body
+            # An edited body is the author's, not the sender's: the converted formatting
+            # described the message as received and would now contradict the text on screen.
+            values["body_markdown"] = None
             mentioned = await self._valid_mentions(extract_mention_ids(body))
             values["mentioned_user_ids"] = [str(uid) for uid in mentioned]
             values["mentioned_contact_ids"] = [
@@ -1196,7 +1244,16 @@ class InteractionService:
 
     # --- helpers ---------------------------------------------------------------- #
     def _host_payload(self, row: Interaction) -> dict[str, Any]:
-        return {"interaction_id": str(row.id), "kind": row.kind, "subject": row.subject}
+        # The host's trail quotes the subject (`activity.action.interaction.logged`), so an
+        # untitled row falls back to the source's snippet, then to its own opening words —
+        # anything but a pair of empty quotes on the company's activity feed.
+        return {
+            "interaction_id": str(row.id),
+            "kind": row.kind,
+            "subject": row.subject
+            or row.snippet
+            or markdown_excerpt(row.body_text, LINE_TEASER_CHARS),
+        }
 
     async def _record_on_hosts(
         self, row: Interaction, action: str, *, contact_ids: list[uuid.UUID] | None = None
@@ -1302,7 +1359,9 @@ class InteractionService:
             self.ctx,
             {
                 "interaction_id": row.id,
-                "subject": row.subject,
+                # The bell line quotes this (`notifications.event.interactions.mentioned`), so
+                # an untitled note falls back to its own opening words rather than to “”.
+                "subject": row.subject or markdown_excerpt(row.body_text, LINE_TEASER_CHARS),
                 # Link targets for the notification (format.ts): the host the note hangs on.
                 "task_id": row.task_id,
                 "project_id": row.project_id,
@@ -1597,8 +1656,21 @@ class InteractionService:
             "status": row.status,
             "occurred_at": row.occurred_at,
             "subject": row.subject,
-            "snippet": row.snippet,
+            # A row we wrote has no ``snippet`` column to read: only a *source* hands us one
+            # (Gmail's own, the ``.eml`` parser's), so a hand-logged call or note carried its
+            # text in ``body_text`` and previewed as nothing at all — the timeline drew a title
+            # and a timestamp over an empty space where the words were. The stored column keeps
+            # meaning "the preview the source gave us"; the field means "the teaser to show",
+            # and for our own markdown that is derived here. Deliberately not written on save:
+            # derived, every row that already exists gains its preview without a backfill, and
+            # an edited note can never leave a stale teaser behind. Costs nothing extra — the
+            # list already selects the whole row, and ``with_body`` only blanks the payload.
+            "snippet": row.snippet or markdown_excerpt(row.body_text, SNIPPET_CHARS),
             "body_text": row.body_text if with_body else None,
+            # Rides ``with_body`` for the same reason: it is the *larger* of the two, and a
+            # page of formatted e-mail bodies to draw a snippet column is exactly the payload
+            # #290 took off the list.
+            "body_markdown": row.body_markdown if with_body else None,
             "direction": row.direction,
             "company_id": row.company_id,
             "project_id": row.project_id,

@@ -1,7 +1,7 @@
 {
   "name": "Uren zonder frictie",
   "slug": "time",
-  "order": 30,
+  "order": 70,
   "icon": "⏱️",
   "lucide": "time",
   "demo": "addTime",
@@ -10,8 +10,8 @@
     "en": "Frictionless time tracking"
   },
   "description": {
-    "nl": "Timer, weekstaat en rapportages. Goedkeuren, uurtarieven en factureerbaar markeren zitten erbij in.",
-    "en": "Timer, weekly timesheet and reports. Approval, hourly rates and billable flags included."
+    "nl": "Timer, weekstaat en het urenoverzicht van het hele team. Facturabel, goedgekeurd en gefactureerd zijn drie losse vinkjes, en wat klaarstaat wordt een factuurregel.",
+    "en": "Timer, weekly timesheet and the whole team's hours in one overview. Billable, approved and invoiced are three separate flags, and what is ready becomes an invoice line."
   },
   "page": {
     "eyebrow": {
@@ -23,8 +23,8 @@
       "en": "From timer to invoice"
     },
     "lead": {
-      "nl": "Een lopende timer, een handmatige regel of de hele weekstaat in één keer: uren komen binnen zoals het jou uitkomt. Goedkeuren, factureerbaar markeren en het budget bewaken doe je op dezelfde plek, zonder ergens over te typen.",
-      "en": "A running timer, a single manual line or the whole weekly timesheet at once: hours go in however it suits you. Approving, flagging billable and watching the budget all happen in one place, with nothing retyped."
+      "nl": "Een lopende timer, een handmatige regel of de hele weekstaat in één keer: uren komen binnen zoals het jou uitkomt, en een halfingevulde regel blijft als concept staan. Goedkeuren, factureerbaar markeren en het resterende budget bewaken gebeuren op dezelfde plek, zonder ergens over te typen. Wat eruit komt is een lijst goedgekeurde uren waar de factuur uit wordt samengesteld.",
+      "en": "A running timer, a single manual line or the whole weekly timesheet at once: hours go in however it suits you, and a half-filled line stays put as a draft. Approving, flagging billable and watching what is left of the budget all happen in one place, with nothing retyped. What comes out the far end is a list of approved hours the invoice is assembled from."
     },
     "sections": [
       {
@@ -33,64 +33,86 @@
           "en": "However the work happens"
         },
         "body": {
-          "nl": "Start de timer en laat hem lopen, of typ achteraf een regel bij. De weekstaat toont je hele week in één raster, klaar om per dag in te vullen. Wat je typt terwijl je nog bezig bent wordt na een seconde als concept bewaard, dus een half ingevulde regel raak je nooit kwijt.",
-          "en": "Start the timer and let it run, or type a line in afterwards. The weekly timesheet lays your whole week out as one grid, ready to fill day by day. Anything you type while you're still working is saved as a draft after a second, so a half-finished line is never lost."
+          "nl": "Start de timer en laat hem lopen, of typ achteraf een regel bij met Van, Tot en een pauze in minuten. Het duurveld denkt mee: 1:30 en 90m leveren allebei anderhalf uur op, en een eindtijd vóór de begintijd loopt gewoon door naar de volgende dag, dus een nachtklus klopt zonder trucje. De weekstaat legt je hele week als raster neer, per klant, project en taak, met dagtotalen en een weektotaal eronder. Of je daar de volledige week of alleen de werkweek (ma–vr) ziet, is een persoonlijke voorkeur en geen instelling die je collega's meekrijgen.",
+          "en": "Start the timer and let it run, or type a line in afterwards with a start, an end and a break in minutes. The duration field thinks along: 1:30 and 90m both come out as ninety minutes, and an end time before the start simply rolls into the next day, so night work adds up without a trick. The weekly timesheet lays your week out as a grid, per client, project and task, with day totals and a week total underneath. Whether you see the full week or only the working week (Mon–Fri) is a personal preference, not a setting your colleagues inherit."
         },
         "bullets": {
           "nl": [
             "Eén lopende timer per persoon, met start, stop en de stand van nu.",
             "Handmatige regels met datum, duur, klant, project en taak.",
-            "De weekstaat als raster: de hele week in één beeld.",
-            "Werksoorten (Werk, E-mail) die je zelf inricht in Instellingen."
+            "Uren-typen (Werk, E-mail, of je eigen labels) richt je in onder Instellingen → Uren-typen.",
+            "Elke keuzelijst biedt \"＋ toevoegen\": een klant of project dat nog niet bestond maak je aan zonder het formulier te verlaten."
           ],
           "en": [
             "One running timer per person, with start, stop and the current total.",
             "Manual lines with date, duration, client, project and task.",
-            "The weekly timesheet as a grid: the whole week in one view.",
-            "Work types (Work, Email) you configure yourself in Instellingen."
+            "Entry types (Work, Email, or your own labels) are configured under Instellingen → Uren-typen (Settings → Time types).",
+            "Every picker offers \"＋ add\": a client or project that did not exist yet is created without leaving the form."
           ]
         }
       },
       {
         "heading": {
-          "nl": "Budget terwijl je boekt",
-          "en": "Budget as you log"
+          "nl": "Wat de weekstaat er zelf bij zet",
+          "en": "What the timesheet adds by itself"
         },
         "body": {
-          "nl": "Kies een project en je ziet meteen hoeveel budget er nog in zit, vóór je opslaat en niet op een ander scherm achteraf. De burn-kleuren lopen mee: groen onder 75%, amber tot 100%, rood zodra het budget vol is (en hoever eroverheen je gaat).",
-          "en": "Pick a project and you see how much budget is left right away, before you save rather than on some screen afterwards. The burn colours track it: green under 75%, amber up to 100%, red once the budget is full (and how far past it you go)."
+          "nl": "Wat je typt terwijl je nog bezig bent, wordt na een seconde als concept van die dag bewaard; je ziet het staan met het label Concept en de tijd waarop het is opgeslagen. Een concept telt nergens in mee: niet in de dagtotalen, niet in goedkeuring en niet in facturatie. Je maakt het af of je verwerpt het, en oude concepten ruimt de nachtelijke opruiming zelf op. Goedgekeurd verlof en actieve feestdagen verschijnen als eigen regel in de weekstaat, dus je week telt op zonder dat iemand verlof als urenregistratie invoert en het per ongeluk twee keer staat.",
+          "en": "Anything you type while you are still working is saved as that day's draft after a second; you see it sitting there labelled Concept with the time it was saved. A draft counts nowhere: not in the day totals, not in approval, not in invoicing. You either finish it or discard it, and stale drafts are cleared by the nightly job. Approved leave and active public holidays appear as their own row in the timesheet, so your week adds up without anyone entering leave as a time entry and having it counted twice."
         }
       },
       {
         "heading": {
-          "nl": "Goedkeuren en vastzetten",
-          "en": "Approve and lock"
+          "nl": "Beschikbare uren terwijl je boekt",
+          "en": "Hours left while you log"
         },
         "body": {
-          "nl": "Een manager keurt uren goed, in bulk vanuit het overzicht. Goedgekeurde uren zijn ondertekend: ze staan vast en alleen wie mag goedkeuren kan ze daarna nog aanpassen, de indiener zelf niet meer. Zo blijft een factureerbare week precies zoals hij is afgetekend.",
-          "en": "A manager approves hours in bulk from the overview. Approved hours are signed off: they hold, and from then on only someone who may approve can still change them, not the person who logged them. A billable week stays exactly as it was signed off."
+          "nl": "Kies een project en het paneel Beschikbare uren laat meteen zien wat er nog in zit voor deze periode, vóór je opslaat en niet op een ander scherm achteraf. Dekt een abonnement de uren, dan staat erbij uit welke overeenkomst ze komen. De burn-kleuren lopen mee: onder 75% je eigen merkkleur, amber tot 100%, rood zodra het budget vol is, en de balk blijft doortellen hoever je eroverheen gaat. Ook niet-facturabel werk eet het budget op, want een uur is een uur. De vlag Facturabel komt standaard van het project, dus werk op een project dat een retainer al betaalt begint niet-facturabel in plaats van dat iemand het achteraf corrigeert.",
+          "en": "Pick a project and the \"Beschikbare uren\" panel shows what is left for this period straight away, before you save rather than on some screen afterwards. When a subscription covers the hours, it names the agreement they come from. The burn colours track it: below 75% your own brand colour, amber up to 100%, red once the budget is full, and the figure keeps counting past it so you can see how far over you are. Non-billable work eats the budget too, because an hour is an hour. The billable flag is seeded by the project, so work on a project a retainer already pays for starts non-billable instead of being corrected afterwards."
         }
       },
       {
         "heading": {
-          "nl": "Van uren naar factuur",
-          "en": "From hours to invoice"
+          "nl": "Inspreken of in één zin",
+          "en": "Speak it, or type one sentence"
         },
         "body": {
-          "nl": "Het Urenoverzicht bundelt alle uren van het team met filters op medewerker, klant, project, periode en status. De status van elke regel volgt uit drie dingen samen: factureerbaar, goedgekeurd, gefactureerd. Onderaan lopen de totalen mee en wat klaarstaat markeer je in één keer als gefactureerd.",
-          "en": "The hours overview (Urenoverzicht) gathers the whole team's time with filters on employee, client, project, period and status. Each line's status follows from three things together: billable, approved, invoiced. The totals run along the bottom and whatever is ready you mark as invoiced in one go."
+          "nl": "Heb je een AI-aanbieder ingesteld onder Instellingen → AI, dan komt er Snel toevoegen bij op het urenscherm: je typt \"gisteren 14:00-16:30 website Jansen, homepage overleg\" en het formulier wordt ingevuld, met klant, project, taak, tijden en omschrijving opgezocht in je eigen data. Naast dat veld staat een microfoon, zodat je een registratie kunt inspreken in plaats van typen. Vul mijn dag aan vergelijkt je dag met je rooster en stelt regels voor waar iets ontbreekt, met de onderbouwing erbij. In alle drie de gevallen wordt er niets opgeslagen: je krijgt een ingevuld formulier en jij drukt op opslaan. Staat er geen aanbieder ingesteld, dan is er op dit scherm geen AI-knop te zien.",
+          "en": "With an AI provider configured under Instellingen → AI (Settings → AI), the time screen gains \"Snel toevoegen\": you type \"yesterday 14:00-16:30 website Jansen, homepage call\" and the form fills itself, with the client, project, task, times and description looked up in your own data. Beside that field sits a microphone, so an entry can be spoken instead of typed. \"Vul mijn dag aan\" compares your day with your schedule and proposes lines where something is missing, with its reasoning attached. In all three cases nothing is stored: you get a filled-in form and you press save. With no provider configured, there is no AI control on this screen at all."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Goedkeuren, vastzetten en factureren",
+          "en": "Approve, lock and invoice"
+        },
+        "body": {
+          "nl": "Het Urenoverzicht (Overzicht → Uren) bundelt de uren van het hele team en filtert op medewerker, klant, project, periode, type, facturabel, goedgekeurd en gefactureerd. De totalen onderaan tellen de hele filterset op en niet alleen de pagina die je toevallig ziet. Een manager keurt daar in bulk goed; goedgekeurde uren zijn daarna vergrendeld voor wie niet mag goedkeuren, dus een afgetekende week blijft zoals hij is afgetekend. Goedkeuring ongedaan maken haalt de facturatie mee terug, zodat die twee elkaar nooit tegenspreken. Op maandagochtend krijgt iedereen wiens vorige week leeg bleef één herinnering, en wie die hele week goedgekeurd verlof had wordt overgeslagen.",
+          "en": "The hours overview (Overzicht → Uren) gathers the whole team's time and filters on employee, client, project, period, type, billable, approved and invoiced. The totals along the bottom add up the entire filter set, not just the page you happen to be looking at. A manager approves there in bulk; approved hours are then locked for anyone who may not approve, so a signed-off week stays as it was signed off. Undoing an approval takes the invoiced flag back with it, so those two can never contradict each other. On Monday morning anyone whose previous week stayed empty gets one reminder, and whoever was on approved leave that whole week is skipped."
         },
         "bullets": {
           "nl": [
-            "Filter op medewerker, klant, project, periode en status.",
-            "Totalen: factureerbaar, goedgekeurd, nog te factureren, gefactureerd.",
-            "Markeer een selectie in bulk als gefactureerd."
+            "Statuspil per regel: Goed te keuren, Goedgekeurd, Te factureren, Gefactureerd, met de naam van wie het goedkeurde.",
+            "Markeer een selectie in bulk als gefactureerd, of draai dat terug.",
+            "Nog te factureren uren zet goedgekeurde, facturabele en nog niet gefactureerde uren om in een factuur.",
+            "Je eigen kolommen: datum, medewerker, klant, project, taak, omschrijving, type, duur, facturabel, status, goedgekeurd door, gefactureerd op."
           ],
           "en": [
-            "Filter by employee, client, project, period and status.",
-            "Totals: billable, approved, still to invoice, invoiced.",
-            "Mark a selection as invoiced in bulk."
+            "A status pill per line: to approve, approved, to invoice, invoiced, with the name of whoever approved it.",
+            "Mark a selection as invoiced in bulk, or take it back.",
+            "\"Nog te factureren uren\" turns approved, billable, not-yet-invoiced hours into an invoice.",
+            "Your own columns: date, employee, client, project, task, description, type, duration, billable, status, approved by, invoiced on."
           ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Waar de uren verder opduiken, en wat de module kost",
+          "en": "Where the hours turn up next, and what the module costs"
+        },
+        "body": {
+          "nl": "Uren blijven niet op het urenscherm hangen. De klantpagina krijgt een paneel Uren met het totaal en de tien recentste registraties van het hele team plus een snelactie die de klant al invult; de projectpagina zet de registraties achter de budgetbalk. Op Mijn dag staan Uren vandaag (met de lopende timer) en Team deze maand. Overzicht → Productiviteit zet uren, facturabel aandeel, goedkeuring en actieve dagen per medewerker naast elkaar, en Overzicht → Omzet laat de maanden van dit jaar naast vorig jaar zien met je grootste klanten erbij. Een hele filterset gaat als spreadsheet naar buiten, en een sheet met uren komt er langs dezelfde weg weer in. Urenregistratie is een uitbreidingsmodule: de kern van schakl. is open source (AGPL) en modules als deze werken op een licentiesleutel die je installeert onder Instellingen → Licentie. Verloopt die, dan wordt de module alleen-lezen: lezen en exporteren blijven werken, alleen schrijven wacht op een nieuwe sleutel.",
+          "en": "Hours do not stay on the time screen. The client page gets an \"Uren\" panel with the total and the ten most recent entries from the whole team, plus a quick action that already carries the client; the project page puts the entries behind the budget bar. My Day shows \"Uren vandaag\" (with the running timer) and \"Team deze maand\". Overzicht → Productiviteit lines up hours, billable share, approval and active days per employee, and Overzicht → Omzet shows this year's months beside last year's with your biggest clients alongside. A whole filter set travels out as a spreadsheet, and a sheet of hours comes back in the same way. Time tracking is an extension module: the core of schakl. is open source (AGPL) and modules like this one run on a licence key you install under Instellingen → Licentie (Settings → License). When it lapses the module goes read-only: reading and exporting keep working, only writing waits for a new key."
         }
       }
     ]

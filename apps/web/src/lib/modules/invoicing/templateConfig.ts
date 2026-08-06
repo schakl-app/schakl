@@ -68,6 +68,11 @@ export interface TemplateConfig {
   columns: Record<"quantity" | "unit" | "unit_price" | "tax", boolean>;
   layout: TemplateLayoutBlock[];
   background: TemplateBackground;
+  /** How the payment QR is drawn (epic #269). `brand` — the default — uses the accent colour
+   *  and puts the tenant's logo in the middle; `plain` is black and white, for monochrome
+   *  printing. A *style*, never a colour: the API replaces an accent too pale to scan, so
+   *  there is no field here in which to type an unreadable invoice. */
+  qr_style: "brand" | "plain";
   html: string | null;
   css: string | null;
   intro_i18n: Record<string, string>;
@@ -94,6 +99,7 @@ export const DEFAULT_CONFIG: TemplateConfig = {
   columns: { quantity: true, unit: false, unit_price: true, tax: true },
   layout: [],
   background: DEFAULT_BACKGROUND,
+  qr_style: "brand",
   html: null,
   css: null,
   intro_i18n: {},

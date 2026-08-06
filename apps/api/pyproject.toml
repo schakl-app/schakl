@@ -55,6 +55,9 @@ dev = [
     "pytest-asyncio>=0.24",
     "asgi-lifespan>=2.1",
     "ruff>=0.7",
+    # tests/test_migration_lock.py asserts the deploy shape of the swarm stacks. Present
+    # transitively already; declared so the guard cannot vanish with someone else's dependency.
+    "pyyaml>=6.0",
 ]
 
 [tool.uv]

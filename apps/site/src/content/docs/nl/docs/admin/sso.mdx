@@ -1,0 +1,149 @@
+---
+title: Single sign-on (SSO)
+description: "Je team laat inloggen met de identiteitsprovider die je al draait: Google Workspace, Microsoft Entra ID, Authentik, Keycloak of Auth0."
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Met single sign-on logt je team in schakl. in via de identiteitsprovider die jullie al gebruiken.
+Je onderhoudt geen tweede wachtwoordenlijst meer, en je kunt het inloggen met wachtwoord voor de
+hele organisatie uitzetten, zodat elke sessie onder de MFA- en toegangsregels van je provider valt.
+
+## Waar je het vindt
+
+*Instellingen → Single sign-on*, in de sectie **Organisatie**, groep **Team & toegang**. Je hebt het
+recht `settings.auth.manage` nodig; eigenaren en beheerders hebben dat standaard. Alles staat in de
+app: er zijn geen omgevingsvariabelen voor nodig en herstarten hoeft ook niet. Een wijziging werkt
+meteen.
+
+## De callback-URL
+
+Bovenaan de pagina staat het alleen-lezen veld **Callback-URL** met een knop **Kopiëren**. Dat adres
+registreer je bij je provider als redirect-URI. Het is altijd precies:
+
+```
+https://<jouw-host>/api/v1/auth/oidc/callback
+```
+
+Het adres is niet instelbaar: schakl. bouwt het op uit de host waarop je organisatie draait (je
+geverifieerde eigen domein, of `<slug>.<basisdomein>`). Providers vergelijken die tekst teken voor
+teken; een afsluitende schuine streep, `http` in plaats van `https` of `www.` voor de host zijn drie
+verschillende adressen.
+
+<Aside type="caution" title="redirect_uri_mismatch met http://">
+Verreweg de vaakst voorkomende fout bij een eerste opzet. In de details van de provider staat dan
+`redirect_uri=http://...` terwijl je `https://...` hebt geregistreerd. De meegeleverde API-image
+start al met `--proxy-headers`, dus wat er meestal nog aan schort is dat het publieke verzoek zelf
+niet over HTTPS binnenkomt (zet bijvoorbeeld Cloudflare's "Always Use HTTPS" aan). Zet in productie
+ook `SCHAKL_AUTH_COOKIE_SECURE=true`.
+</Aside>
+
+## Instellen
+
+<Steps>
+
+1. Registreer bij je provider een toepassing van het type **web / confidential**: eentje met een
+   clientgeheim die de code-uitwisseling aan de serverkant doet.
+
+2. Zet de gekopieerde callback-URL in het veld "Authorized redirect URIs" of "Reply URL" van de
+   provider, precies zoals hij op de instellingenpagina staat.
+
+3. Geef de scopes `openid email profile` vrij. schakl. vraagt precies deze drie; `email` is
+   verplicht, want een login zonder e-mailadres wordt geweigerd. Een "Authorized JavaScript origin"
+   heb je niet nodig: dit is een omleiding aan de serverkant, geen browserflow.
+
+4. Vul op *Instellingen → Single sign-on* de **Discovery-URL** in (het
+   `/.well-known/openid-configuration`-adres van je provider), plus **Client-ID** en
+   **Clientgeheim**. Bij **Weergavenaam** zet je de naam die op de inlogknop komt; die leest
+   "Inloggen met &lt;naam&gt;".
+
+5. Kies de **Rol voor nieuwe gebruikers** (standaard Medewerker) en bepaal of **Maak bij de eerste
+   keer inloggen een lidmaatschap aan** aan moet staan.
+
+6. Vink **Single sign-on inschakelen** aan en klik op **Opslaan**. De knop op de inlogpagina
+   verschijnt alleen als de instelling aan staat én discovery-URL, client-ID en clientgeheim alle
+   drie ingevuld zijn.
+
+7. Klik op **Verbinding testen**. Die knop verschijnt zodra er een discovery-URL is opgeslagen. Bij
+   succes lees je "Verbinding in orde: geldig discovery-document", met de issuer erbij; anders krijg
+   je de foutmelding van de provider letterlijk te zien.
+
+8. Log zelf een keer in via de SSO-knop op de inlogpagina, vóórdat je iets verplicht stelt.
+
+</Steps>
+
+### Google als provider
+
+Google Cloud Console → *APIs & Services → Credentials → Create credentials → OAuth client ID → Web
+application*. Zet de callback-URL onder **Authorized redirect URIs**; wijzigingen daaraan kunnen bij
+Google een paar minuten duren. Werk je alleen met eigen Workspace-accounts, zet het
+OAuth-toestemmingsscherm dan op **Internal**: dat houdt de client binnen je eigen domein en scheelt
+Google's verificatie voor de inlogscopes. De discovery-URL is
+`https://accounts.google.com/.well-known/openid-configuration`.
+
+Inloggen met Google is iets anders dan toegang tot de Google Workspace-API's (Agenda, Gmail, Drive).
+Dat is een losse koppeling met een eigen toestemming.
+
+## Wachtwoordlogin uitzetten
+
+**Single sign-on verplichten** zet het inloggen met een wachtwoord uit voor iedereen in deze
+organisatie. Je kunt die schakelaar pas aanzetten na een geslaagde **Verbinding testen**, en elke
+wijziging aan de discovery-URL, het client-ID of het geheim wist die goedkeuring weer: verplichten
+zonder bewijs dat de provider werkt, is uitsluiten.
+
+<Aside type="caution" title="Nooit buitengesloten">
+Werkt je provider niet meer, of is de schakelaar per ongeluk aangezet? Zet
+`SCHAKL_FORCE_LOCAL_LOGIN=true` op de API-container en herstart die. Inloggen met wachtwoord werkt
+dan weer, ongeacht wat er is opgeslagen. Log in, repareer of zet SSO uit, en haal de variabele daarna
+weg. In `infra/compose.yaml` en `infra/compose.tunnel.yaml` staat de variabele al klaar; in de
+Portainer-stack niet, die moet je hem zelf toevoegen.
+</Aside>
+
+Verplicht stellen zet ook de hele tweestapsverificatie voor deze organisatie uit, inclusief het
+instellen ervan. Bij een federatieve sessie is je identiteitsprovider de plek waar MFA thuishoort.
+Zie [Tweestapsverificatie](/nl/docs/admin/two-factor/).
+
+## Wie er binnenkomt
+
+- **Automatisch aanmaken geldt bij het eerste contact met deze organisatie**, niet bij "heeft nu geen
+  lidmaatschap". Wie je verwijdert onder *Instellingen → Team & gebruikers* blijft verwijderd; een
+  volgende SSO-login zet dat niet stilletjes terug. Toegang teruggeven doe je bewust, door het
+  lidmaatschap opnieuw toe te kennen met de rol die je bedoelt.
+- **Geen lidmaatschap betekent geen sessie.** Iemand die bij de provider wél bekend is maar hier geen
+  toegang heeft, komt terug op de inlogpagina met "Je account is geen lid van deze organisatie. Vraag
+  een beheerder om toegang." Er wordt geen cookie gezet.
+- **Een bestaand lokaal account wordt alleen aan een SSO-identiteit gekoppeld als de provider het
+  e-mailadres als geverifieerd doorgeeft.** Zo niet, dan wordt de login geweigerd.
+
+## Rechten
+
+| Recht | Wat het opent | Standaard |
+| --- | --- | --- |
+| `settings.auth.manage` | *Instellingen → Single sign-on*: lezen, opslaan en testen | Alleen Beheerder (Eigenaar heeft alles) |
+
+Je stelt dit per rol in onder *Instellingen → Rollen*.
+
+## Goed om te weten
+
+- Het **clientgeheim is alleen schrijfbaar**: de app slaat een nieuwe waarde op en meldt daarna
+  alleen nog "opgeslagen". Laat het veld leeg bij een volgende opslag om het bewaarde geheim te
+  behouden (de placeholder zegt dat ook).
+- Staat `SCHAKL_SECRET_KEY` nog op de meegeleverde standaardwaarde, dan waarschuwt de pagina. Stel
+  een echte sleutel in vóórdat je in productie een clientgeheim opslaat.
+- De discovery-URL wordt opgehaald **zonder omleidingen te volgen**, dus een adres dat doorstuurt
+  faalt in de test. Een `http://`-discovery-URL mag wel: een eigen Keycloak of Authentik op het
+  interne netwerk is een gewone situatie.
+- **Geen SSO-knop op de inlogpagina?** Dan staat de instelling uit of is de configuratie onvolledig.
+  Het antwoord hangt aan de hostnaam, dus controleer ook of je op de juiste host zit.
+- Een SSO-gebruiker wijzigt zijn e-mailadres niet in de app: dat beheert de provider. Diens
+  profielfoto wordt overgenomen, tenzij iemand er zelf een uploadt.
+- De oude `SCHAKL_OIDC_*`-omgevingsvariabelen zijn **vervallen**. Ze zijn bij het bijwerken één keer
+  overgezet naar de instellingen van je organisatie en worden daarna genegeerd; je mag ze uit je
+  compose-bestand halen.
+
+<CardGrid>
+  <LinkCard title="Tweestapsverificatie" href="/nl/docs/admin/two-factor/" description="Een tweede stap op het inloggen met wachtwoord, voor organisaties zonder SSO." />
+  <LinkCard title="Installeren" href="/nl/docs/admin/installation/" description="De stack, de omgevingsvariabelen en de hostnaam waarop je organisatie draait." />
+</CardGrid>

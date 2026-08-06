@@ -1,0 +1,158 @@
+{
+  "slug": "google-ads",
+  "name": "Google Ads",
+  "order": 53,
+  "category": "marketing",
+  "status": "live",
+  "lucide": "megaphone",
+  "mark": {
+    "monogram": "Ad",
+    "color": "#1A73E8"
+  },
+  "tagline": {
+    "nl": "Uitgaven, kliks en conversies per klant",
+    "en": "Spend, clicks and conversions per client"
+  },
+  "summary": {
+    "nl": "Je koppelt per klant een Google Ads-account en ziet uitgaven, kliks, vertoningen, conversies en conversiewaarde naast de cijfers van Analytics en Search Console. Werk je vanuit een beheerdersaccount (MCC), dan worden de klantaccounts eronder uitgeklapt in de kiezer. Google Ads vraagt naast de Google-koppeling één ontwikkelaarstoken van je bureau.",
+    "en": "You link a Google Ads account per client and see spend, clicks, impressions, conversions and conversion value beside the Analytics and Search Console figures. If you work from a manager account (MCC), the client accounts under it are expanded in the picker. On top of the Google connection, Google Ads asks for one developer token belonging to your agency."
+  },
+  "highlights": {
+    "nl": [
+      "Uitgaven, kliks, vertoningen, conversies en conversiewaarde, per dag bewaard",
+      "Campagne-uitsplitsing: de tien duurste campagnes van de periode",
+      "MCC-hiërarchieën worden uitgeklapt, tot 500 klantaccounts per beheerdersaccount"
+    ],
+    "en": [
+      "Spend, clicks, impressions, conversions and conversion value, stored per day",
+      "Campaign drill-down: the ten costliest campaigns of the period",
+      "MCC hierarchies are expanded, up to 500 client accounts per manager account"
+    ]
+  },
+  "where": {
+    "nl": "Instellingen → Marketing voor het ontwikkelaarstoken, en Klanten → de klant → paneel Marketing om een account te koppelen.",
+    "en": "Instellingen → Marketing (Settings → Marketing) for the developer token, and Klanten → de klant → paneel Marketing (Clients → the client → Marketing panel) to link an account."
+  },
+  "docs": "/docs/integrations/marketing-sources/",
+  "page": {
+    "lead": {
+      "nl": "Ads deelt de klantkoppeling en de Google-toestemming met Analytics en Search Console, maar heeft twee dingen extra nodig: een ontwikkelaarstoken van je bureau en, bij een beheerdersaccount, de wetenschap via welk account elk klantaccount bereikt moet worden.",
+      "en": "Ads shares the per-client link and the Google consent with Analytics and Search Console, but needs two extra things: a developer token belonging to your agency and, under a manager account, the knowledge of which account each client account has to be reached through."
+    },
+    "requirements": {
+      "nl": [
+        "De module Marketing staat aan en is gelicentieerd voor deze werkomgeving (Instellingen → Modules)",
+        "De Google Ads API staat aan in het Google Cloud-project van je OAuth-client",
+        "Een ontwikkelaarstoken uit het <strong>API-center</strong> van je Google Ads-beheerdersaccount. Vraag dat vroeg aan: Google beoordeelt zo'n aanvraag zelf, en een pas uitgegeven token leest nog niet zomaar je echte accounts.",
+        "Een Google-account met toegang tot het Ads-account, of tot het beheerdersaccount erboven, gekoppeld onder Instellingen → Mijn account",
+        "Het recht marketing.link.manage, dat zowel het token als het koppelen afschermt"
+      ],
+      "en": [
+        "The Marketing module is enabled and licensed for this workspace (Instellingen → Modules)",
+        "The Google Ads API is switched on in your OAuth client's Google Cloud project",
+        "A developer token from the <strong>API Center</strong> of your Google Ads manager account. Apply early: Google reviews the request itself, and a freshly issued token does not yet read your live accounts.",
+        "A Google account with access to the Ads account, or to the manager account above it, connected under Instellingen → Mijn account",
+        "The marketing.link.manage permission, which gates both the token and the linking"
+      ]
+    },
+    "steps": {
+      "nl": [
+        "Vraag in je <strong>Google Ads-beheerdersaccount</strong> onder <strong>API-center</strong> een ontwikkelaarstoken aan. Dit is één token voor je hele bureau, niet één per klant.",
+        "Zet de <strong>Google Ads API</strong> aan in het Google Cloud-project waar je OAuth-client bij hoort.",
+        "Zet het token in <strong>Instellingen → Marketing</strong>. Het wordt versleuteld opgeslagen en nooit teruggegeven; het scherm meldt alleen dat er een token staat, en leeg laten bewaart het bestaande. Een installatie die nog <code>SCHAKL_GOOGLE_ADS_DEVELOPER_TOKEN</code> in de omgeving heeft staan blijft werken, maar het scherm is de plek waar het hoort.",
+        "Koppel je Google-account onder <strong>Instellingen → Mijn account</strong>, als dat nog niet gebeurd is. Die ene toestemming dekt Analytics, Search Console en Ads samen.",
+        "Open <strong>Klanten → de klant</strong>, klik in het paneel <strong>Marketing</strong> op bewerken en kies <strong>Account koppelen</strong> met bron <code>Ads-account</code>. Zit het account onder een beheerdersaccount, dan staat dat als hint achter de naam.",
+        "De koppeling haalt ongeveer 13 maanden historie op en wordt daarna elke nacht bijgewerkt."
+      ],
+      "en": [
+        "Request a developer token in your <strong>Google Ads manager account</strong> under <strong>API Center</strong>. This is one token for the whole agency, not one per client.",
+        "Switch on the <strong>Google Ads API</strong> in the Google Cloud project your OAuth client belongs to.",
+        "Put the token into <strong>Instellingen → Marketing</strong> (Settings → Marketing). It is stored encrypted and never handed back; the screen only reports that a token is present, and leaving the field empty keeps the stored one. An install that still has <code>SCHAKL_GOOGLE_ADS_DEVELOPER_TOKEN</code> in its environment keeps working, but the screen is where it belongs.",
+        "Connect your Google account under <strong>Instellingen → Mijn account</strong> (Settings → My account) if you haven't. That single consent covers Analytics, Search Console and Ads together.",
+        "Open <strong>Klanten → de klant</strong> (Clients → the client), click edit on the <strong>Marketing</strong> panel and choose <strong>Account koppelen</strong> (Link account) with source <code>Ads-account</code>. If the account sits under a manager account, that is shown as a hint beside its name.",
+        "The link backfills roughly 13 months and is updated nightly from then on."
+      ]
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Beheerdersaccounts zijn de normale vorm, geen randgeval",
+          "en": "Manager accounts are the normal shape, not an edge case"
+        },
+        "body": {
+          "nl": "Een bureau krijgt toegang tot het beheerdersaccount, niet tot elk klantaccount apart. Google beantwoordt de vraag welke accounts je mag zien alleen met de directe toekenningen, dus die lijst is precies één MCC-nummer en geen enkele klant die je daadwerkelijk draait. Daarom klapt schakl. elk beheerdersaccount uit tot de hele hiërarchie eronder, in één opvraag, en onthoudt bij elk klantaccount via welk beheerdersaccount het bereikt moet worden. Dat laatste is het dragende deel: zonder dat wordt elke volgende aanroep gedaan door iemand zonder rechten op dat account.",
+          "en": "An agency is granted access to the manager account, not to each client account separately. Google's answer to \"which accounts may you see\" covers direct grants only, so that list is exactly one MCC id and none of the clients you actually run. So schakl. expands each manager account into its whole hierarchy in one query, and remembers per client account which manager it has to be reached through. That last part is the load-bearing half: without it every later call is made by someone with no grant on that account."
+        },
+        "bullets": {
+          "nl": [
+            "Een geneste MCC hoeft niet apart doorlopen te worden: de hele boom komt in één keer mee",
+            "Sub-beheerders vallen weg, hun klantaccounts blijven",
+            "Beheerdersaccounts zijn zelf niet koppelbaar: Google weigert cijfers op dat niveau",
+            "Boven de 500 klantaccounts per beheerder wordt de lijst afgekapt en dat wordt gelogd, nooit stilzwijgend weggelaten"
+          ],
+          "en": [
+            "A nested MCC needs no separate walk: the whole tree arrives in one call",
+            "Sub-managers are dropped and their client accounts kept",
+            "Manager accounts cannot be linked themselves — Google refuses metric queries at that level",
+            "Past 500 client accounts per manager the list is capped and that is logged, never silently dropped"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "De API-versie is een instelling, omdat hij verloopt",
+          "en": "The API version is a setting, because it expires"
+        },
+        "body": {
+          "nl": "Google Ads is de enige Google-API hier waarvan het versienummer in de URL staat, en Google zet een versie ongeveer een jaar na uitgifte uit. Vanaf die dag antwoordt elk adres eronder met 404. Dat is geen probleem met je token, je rechten of je account, dus geen van de gewone foutmeldingen past erop en de module lijkt simpelweg stuk. schakl. herkent daarom een 404 van Ads apart en zegt wat er aan de hand is. De release wijst een actuele versie aan en <code>SCHAKL_GOOGLE_ADS_API_VERSION</code> overschrijft hem, zodat een installatie die zijn release overleeft vanuit het compose-bestand bijgesteld kan worden in plaats van te moeten wachten op een update.",
+          "en": "Google Ads is the one Google API here whose URL carries a version, and Google sunsets a version roughly a year after it ships. From that day every path under it answers 404. That is not a token, permission or account problem, so none of the usual failure messages fits it and the module simply looks broken. schakl. therefore recognises a 404 from Ads specifically and says what is going on. The release pins a current version and <code>SCHAKL_GOOGLE_ADS_API_VERSION</code> overrides it, so an install that outlives its release can be bumped from the compose file instead of waiting for an upgrade."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Zonder token blijft de rest gewoon werken",
+          "en": "Without a token, the rest keeps working"
+        },
+        "body": {
+          "nl": "Staat er geen ontwikkelaarstoken, dan gaat Ads niet stuk maar uit: de kiezer en de synchronisatie zakken terug naar een net gelabelde stand die zegt dat Ads nog ingesteld moet worden. Analytics en Search Console draaien intussen door. Dat is bewust zo gebouwd, want een bureau dat de eerste twee bronnen wil gebruiken hoort daar geen ontwikkelaarstoken voor te hoeven aanvragen.",
+          "en": "With no developer token, Ads is not broken but off: the picker and the sync fall back to a labelled state saying Ads still needs configuring. Analytics and Search Console keep running in the meantime. That is deliberate, because an agency that only wants the first two sources should not have to apply for a developer token to get them."
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "key": "marketing.metrics.read",
+        "nl": "De marketingcijfers van een klant lezen, inclusief de uitgaven. Standaard voor beheerder, medewerker en klantportaal; een bureau dat advertentiebudget gevoelig vindt, beperkt dit recht tot beheerders.",
+        "en": "Read a client's marketing figures, spend included. Granted by default to admin, member and the client portal; an agency that treats ad spend as sensitive narrows this to admins."
+      },
+      {
+        "key": "marketing.link.manage",
+        "nl": "Ads-accounts koppelen en ontkoppelen, de accountkiezer openen en het ontwikkelaarstoken opslaan onder Instellingen → Marketing. Standaard alleen beheerder.",
+        "en": "Link and unlink Ads accounts, open the account picker, and save the developer token under Instellingen → Marketing. Admin only by default."
+      },
+      {
+        "key": "marketing.overview.read",
+        "nl": "Het cross-klantoverzicht onder Overzicht → Marketing, waar de kolom Uitgaven vandaan komt. Standaard alleen beheerder.",
+        "en": "The cross-client grid under Overzicht → Marketing, which is where the spend column comes from. Admin only by default."
+      }
+    ],
+    "limits": {
+      "nl": [
+        "Er wordt niets teruggeschreven: geen budgetten, biedingen, campagnes of advertenties wijzigen. De koppeling leest alleen.",
+        "Beheerdersaccounts zijn niet koppelbaar; je koppelt de klantaccounts eronder.",
+        "De campagne-uitsplitsing toont tien campagnes op uitgaven gesorteerd. Advertentiegroepen, zoekwoorden en losse advertenties zitten er niet in.",
+        "Bedragen komen in de valuta van het Ads-account zelf en worden nooit omgerekend.",
+        "Per beheerdersaccount worden maximaal 500 klantaccounts in de kiezer gezet.",
+        "Een koppeling van vóór het uitklappen van beheerdersaccounts draagt niet mee via welk account hij bereikt wordt. Ontkoppel hem en kies het account opnieuw; de kiezer verbergt accounts die al gekoppeld zijn, dus het ontkoppelen is wat hem terugzet in de lijst."
+      ],
+      "en": [
+        "Nothing is written back: no changing budgets, bids, campaigns or ads. The link only reads.",
+        "Manager accounts cannot be linked; you link the client accounts beneath them.",
+        "The campaign drill-down shows ten campaigns sorted on spend. Ad groups, keywords and individual ads are not in it.",
+        "Amounts arrive in the Ads account's own currency and are never converted.",
+        "At most 500 client accounts per manager account are offered in the picker.",
+        "A link made before manager-account expansion shipped does not carry the manager it is reached through. Unlink it and pick the account again — the picker hides accounts already linked to the client, so the unlink is what puts it back in the list."
+      ]
+    }
+  }
+}

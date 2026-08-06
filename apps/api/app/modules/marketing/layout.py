@@ -33,9 +33,18 @@ from app.modules.marketing.sources.base import METRICS_BY_SOURCE, primary_metric
 
 #: Kept in step with each adapter's ``drilldowns`` tuple (sources/*.py).
 DRILLDOWNS_BY_SOURCE: dict[str, tuple[str, ...]] = {
-    "ga4": ("top_pages", "channels", "devices", "key_events"),
+    "ga4": (
+        "top_pages",
+        "channels",
+        "devices",
+        "key_events",
+        "organic_sources",
+        "social_sources",
+        "referral_sources",
+    ),
     "gsc": ("top_queries", "top_pages", "movers"),
     "gads": ("campaigns",),
+    "seranking": ("keywords", "keyword_groups", "audit", "ai_search"),
 }
 
 #: The GA4 metrics the legacy boolean gates, and the drill-down that rides them (#134).

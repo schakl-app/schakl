@@ -20,7 +20,7 @@ function rangeToDays(range: string): number {
 }
 
 export const load: PageServerLoad = async (event) => {
-  if (!can(event.locals.user, "marketing.report.read")) throw redirect(303, "/");
+  if (!can(event.locals.user, "marketing.overview.read")) throw redirect(303, "/");
   const api = apiFor(event);
   const q = event.url.searchParams;
   const range = q.get("range") ?? "30d";

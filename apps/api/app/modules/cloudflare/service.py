@@ -101,6 +101,13 @@ ORIGIN_PLACEHOLDER_CONTENT = "100::"
 #: Record types that can carry the orange cloud. A redirect needs one of these, proxied.
 PROXIABLE_TYPES = ("A", "AAAA", "CNAME")
 
+#: How many Pages projects a single sync will interrogate one call at a time. Cloudflare embeds
+#: a project's custom domains in the project object, so the normal path costs nothing extra and
+#: never reaches this; the cap bounds only the fallback for a payload that omits them, where an
+#: account with hundreds of projects would otherwise turn one sync into hundreds of requests.
+#: Reaching it is reported as a warning, never swallowed.
+PAGES_DOMAIN_SCAN_LIMIT = 100
+
 #: Cloudflare error codes worth their own message. Everything else falls back to the generic
 #: key — a wrong-but-specific message is worse than an honest generic one.
 _ERROR_CODES: dict[int, tuple[str, str, int]] = {
@@ -125,6 +132,11 @@ ISSUE_REDIRECT_DRIFT = "redirect_drift"
 ISSUE_REDIRECT_MISSING = "redirect_missing"
 ISSUE_REDIRECT_UNPUSHED = "redirect_not_pushed"
 ISSUE_REDIRECT_CONFLICT = "redirect_conflict"
+#: A link schakl holds that the project no longer serves, and a hostname Cloudflare is still
+#: waiting on. The second one is the failure worth naming — nothing resolves to the project's
+#: ``pages.dev`` name, which reads as a Cloudflare problem and is DNS.
+ISSUE_PAGES_MISSING = "pages_missing"
+ISSUE_PAGES_PENDING = "pages_pending"
 ISSUE_ORIGIN_MISSING = "origin_missing"
 #: Its own key, not folded into ``origin_missing``: with the apex proxied and ``www`` not, traffic
 #: *does* reach the redirect and "no traffic reaches it" would be a lie. The apex is fine, ``www``
@@ -152,6 +164,39 @@ def _norm_host(value: str | None) -> str:
     return (value or "").strip().lower().rstrip(".")
 
 
+def _host_candidates(hostname: str) -> list[str]:
+    """Every domain record a hostname could belong to, most specific first.
+
+    ``www.shop.klant.nl`` is a hostname of ``shop.klant.nl`` when the tenant holds that as a
+    domain of its own, and of ``klant.nl`` otherwise. Longest wins, so an agency holding both
+    never gets the link filed under the wrong client — the same reason ``link_pages_project``
+    refuses a hostname outside the domain it was called on.
+    """
+    labels = hostname.split(".")
+    return [".".join(labels[i:]) for i in range(len(labels) - 1)]
+
+
+def _unavailable(report: dict[str, Any], probe: str) -> None:
+    """Name a probe that could not run, once. The Pages refresh loops over projects, and three
+    projects behind one unreadable token is still one thing the admin has to fix."""
+    if probe not in report["unavailable"]:
+        report["unavailable"].append(probe)
+
+
+def _pages_error(row: dict[str, Any]) -> str | None:
+    """Whatever Cloudflare put an error message in on a custom-domain row.
+
+    The shape has moved between API versions (``validation_data`` and ``verification_data``
+    both occur) and none of it is documented as stable, so every read is defensive: an
+    unrecognised payload means *no error*, never an exception on a check that mostly worked.
+    """
+    for key in ("validation_data", "verification_data"):
+        block = row.get(key)
+        if isinstance(block, dict) and block.get("error_message"):
+            return str(block["error_message"])[:500]
+    return str(row["error_message"])[:500] if row.get("error_message") else None
+
+
 @dataclass
 class _RegistrarSyncCounts:
     """What one Registrar sync did, for the result envelope. Mutable and local — a few counters
@@ -166,6 +211,23 @@ class _RegistrarSyncCounts:
     synced: int = 0
     at_cloudflare: int = 0
     matched: int = 0
+
+
+@dataclass
+class _PagesSyncCounts:
+    """What one Pages sync did. Local counters, threaded through the loop — never a schema.
+
+    ``truncated`` is the one that is not a count: an account whose projects had to be scanned
+    one call at a time can hit the cap, and a sync that silently stopped looking would report
+    "nothing changed" for the projects it never reached (§17's no-silent-caps rule).
+    """
+
+    projects: int = 0
+    domains: int = 0
+    matched: int = 0
+    adopted: int = 0
+    missing: int = 0
+    truncated: bool = False
 
 
 def _registrar_name(row: dict) -> str:
@@ -636,11 +698,11 @@ class CloudflareService:
                 claimed.add(zone.domain_id)
                 matched += 1
 
-        projects_synced = 0
+        pages = _PagesSyncCounts()
         registrar = _RegistrarSyncCounts()
         if account.cf_account_id:
             try:
-                projects_synced = await self._sync_pages_projects(account, client, now)
+                pages = await self._sync_pages_projects(account, client, now)
             except CloudflareError as exc:
                 # Pages is optional. A token without it still syncs zones, and saying so beats
                 # failing an action that mostly worked.
@@ -655,11 +717,17 @@ class CloudflareService:
         else:
             warnings.append("no_account_id")
 
+        if pages.truncated:
+            warnings.append("pages_domains_truncated")
         await self.accounts.update(account, last_synced_at=now, last_error=None)
         return AccountSyncResult(
             zones_synced=len(zones),
             zones_matched=matched,
-            pages_projects_synced=projects_synced,
+            pages_projects_synced=pages.projects,
+            pages_domains_synced=pages.domains,
+            pages_links_matched=pages.matched,
+            pages_links_adopted=pages.adopted,
+            pages_links_missing=pages.missing,
             registrar_read=registrar.read,
             registrar_domains_synced=registrar.synced,
             registrar_domains_at_cloudflare=registrar.at_cloudflare,
@@ -761,8 +829,19 @@ class CloudflareService:
 
     async def _sync_pages_projects(
         self, account: CloudflareAccount, client: CloudflareClient, now: datetime
-    ) -> int:
+    ) -> _PagesSyncCounts:
+        """Pull the account's Pages projects **and the hostnames they serve**.
+
+        The projects half feeds the picker. The hostnames half is what lets an agency's
+        existing Cloudflare import itself: a placeholder somebody attached to a project in
+        Cloudflare's own dashboard months ago becomes a link on that domain's page here,
+        without anyone pressing a button that would re-register what is already registered.
+
+        Reading is the whole of it. Nothing is created, moved or deleted at Cloudflare by a
+        sync, and a hostname belonging to no domain record here is counted and left alone.
+        """
         projects = await client.list_pages_projects(account.cf_account_id or "")
+        counts = _PagesSyncCounts(projects=len(projects))
         existing = {
             p.name: p
             for p in (
@@ -775,6 +854,8 @@ class CloudflareService:
             .scalars()
             .all()
         }
+        observed: dict[uuid.UUID, set[str]] = {}
+        scans = 0
         for row in projects:
             name = str(row.get("name") or "")
             if not name:
@@ -785,11 +866,107 @@ class CloudflareService:
                 "last_synced_at": now,
             }
             project = existing.get(name)
-            if project is None:
+            project = (
                 await self.projects.create(account_id=account.id, name=name, **values)
+                if project is None
+                else await self.projects.update(project, **values)
+            )
+
+            # Cloudflare puts a project's custom domains on the project object, so the normal
+            # path costs no extra call. A payload without the key at all (an older shape, a
+            # trimmed response) falls back to the per-project endpoint; an *empty list* is a
+            # real answer — a project serving nothing — and must not trigger a second look.
+            hosts = row.get("domains")
+            if isinstance(hosts, list):
+                names = {_norm_host(h) for h in hosts if isinstance(h, str)}
+            elif scans >= PAGES_DOMAIN_SCAN_LIMIT:
+                counts.truncated = True
+                continue
             else:
-                await self.projects.update(project, **values)
-        return len(projects)
+                scans += 1
+                names = {
+                    _norm_host(d.get("name"))
+                    for d in await client.list_pages_domains(
+                        account.cf_account_id or "", name
+                    )
+                }
+            observed[project.id] = {h for h in names if h}
+
+        counts.domains = sum(len(hosts) for hosts in observed.values())
+        await self._reconcile_pages_links(observed, now, counts)
+        return counts
+
+    async def _reconcile_pages_links(
+        self, observed: dict[uuid.UUID, set[str]], now: datetime, counts: _PagesSyncCounts
+    ) -> None:
+        """Make the stored links agree with what the scanned projects actually serve.
+
+        Three outcomes, and only two of them touch a row. A hostname Cloudflare holds that we
+        can file under a domain is **adopted**; a link whose project no longer serves it is
+        **marked missing**, never deleted — the row is the only record that the hostname was
+        ever ours, and one unreadable probe must not be able to erase it. A hostname matching
+        no domain record here is counted and left alone: inventing a domain row would file a
+        name under a client who never asked for it.
+
+        Only projects present in ``observed`` are judged. A project the scan could not reach
+        keeps every link it has, because "we did not look" and "it is gone" are different
+        answers and only one of them is this method's to give.
+        """
+        if not observed:
+            return
+        links = list(
+            (
+                await self.ctx.session.execute(
+                    self.pages_links.scoped_select().where(
+                        CloudflarePagesLink.project_id.in_(list(observed))
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        known = {(link.project_id, link.hostname) for link in links}
+
+        # Every unknown hostname on every scanned project resolves in one batched lookup:
+        # each name's candidate apexes go into a single query, never one query per hostname.
+        unknown = [
+            (project_id, host)
+            for project_id, hosts in observed.items()
+            for host in hosts
+            if (project_id, host) not in known
+        ]
+        by_name = await self._domains_by_name(
+            {candidate for _, host in unknown for candidate in _host_candidates(host)}
+        )
+        for project_id, host in unknown:
+            domain_id = next(
+                (by_name[c] for c in _host_candidates(host) if c in by_name), None
+            )
+            if domain_id is None:
+                continue
+            await self.pages_links.create(
+                project_id=project_id,
+                domain_id=domain_id,
+                hostname=host,
+                last_checked_at=now,
+                discovered_at=now,
+            )
+            counts.adopted += 1
+
+        for link in links:
+            present = link.hostname in observed[link.project_id]
+            await self.pages_links.update(
+                link,
+                last_checked_at=now,
+                # Keep the *first* time it went missing: "since when" is the question, and
+                # restamping it every sync would answer "just now" forever.
+                missing_at=None if present else (link.missing_at or now),
+            )
+            if present:
+                counts.matched += 1
+            else:
+                counts.missing += 1
+        counts.matched += counts.adopted
 
     # ------------------------------------------------------------------ #
     # Account resolution
@@ -1457,6 +1634,7 @@ class CloudflareService:
             "domain_id": domain.id,
             "domain_name": domain.name,
             "live": live,
+            "checked_at": None,
             "zone": (await self._decorate_zones([zone]))[0] if zone is not None else None,
             "candidates": await self._candidate_refs(candidates),
             "expected_nameservers": (zone.name_servers or []) if zone else [],
@@ -1476,11 +1654,36 @@ class CloudflareService:
         observed = set(domain.nameservers)
         report["nameservers_delegated"] = bool(expected) and bool(observed & expected)
 
-        if live and zone is not None:
-            await self._probe_live(report, zone, redirect)
+        if live:
+            if zone is not None:
+                await self._probe_live(report, zone, redirect)
+            # Outside the zone branch on purpose, for the reason the panel draws Pages outside
+            # it (docs/CLOUDFLARE.md §6): a custom hostname is registered on a *project*, which
+            # names its own account. Inside, the one domain whose DNS lives elsewhere — exactly
+            # the domain an agency serves from Pages — could never refresh at all.
+            await self._refresh_pages_links(report)
 
         report["issues"] = self._issues(report, domain, zone, redirect)
+        report["checked_at"] = self._last_observed(report)
         return report
+
+    @staticmethod
+    def _last_observed(report: dict[str, Any]) -> datetime | None:
+        """How old the answer on this report is: the newest of the facts it is built from.
+
+        Taken from the rows themselves rather than stamped when a check runs, because a probe
+        that failed leaves its row's timestamp alone (``_probe_live`` fails softly and
+        separately) — and a "checked just now" over a report nothing could be read for is the
+        one thing this must never say. Every branch of the panel has a check button, including
+        the Pages-only one that has no zone at all, so it is one number covering all of them.
+        """
+        zone = report.get("zone") or {}
+        seen = [
+            zone.get("last_synced_at"),
+            getattr(report.get("redirect"), "last_checked_at", None),
+            *(link.get("last_checked_at") for link in report["pages_links"]),
+        ]
+        return max((at for at in seen if at is not None), default=None)
 
     async def _candidate_refs(self, zones: list[CloudflareZone]) -> list[ZoneCandidate]:
         if not zones:
@@ -1706,6 +1909,17 @@ class CloudflareService:
         if report["conflicts"]:
             issues.append(ISSUE_REDIRECT_CONFLICT)
 
+        pages_links = report["pages_links"]
+        if any(link["missing_at"] for link in pages_links):
+            issues.append(ISSUE_PAGES_MISSING)
+        # Only a status Cloudflare actually gave us. A link adopted by a sync carries none yet,
+        # and reading "no answer" as "pending" would raise a finding nobody can act on.
+        if any(
+            link["status"] and link["status"] != "active" and not link["missing_at"]
+            for link in pages_links
+        ):
+            issues.append(ISSUE_PAGES_PENDING)
+
         # The two halves of "does this domain redirect" disagreeing is its own finding — it is
         # how a redirect wired outside schakl (#96's webhook flow, a hand-made Page Rule) shows
         # up, and how a rule someone deleted at Cloudflare does.
@@ -1762,6 +1976,127 @@ class CloudflareService:
             for p in projects
         ]
 
+    async def _refresh_pages_links(self, report: dict[str, Any]) -> None:
+        """Ask the projects this domain is linked to what they serve now, and record it.
+
+        Without this the panel showed the answer Cloudflare gave in the second the link was
+        made and never again: a hostname that finished provisioning still read *pending*
+        forever, and one removed in Cloudflare's dashboard still read as linked. It also picks
+        up a sibling hostname added there by hand (``www`` beside the apex) — bounded to this
+        domain's own names, because a hostname outside it belongs to another client's record
+        and is the sync's to file, not this check's.
+
+        One call per distinct project, and a project that refuses is named in ``unavailable``
+        and leaves its links untouched — the per-probe degradation :meth:`_probe_live` follows.
+        """
+        domain_id: uuid.UUID = report["domain_id"]
+        domain_name: str = report["domain_name"]
+        links = list(
+            (
+                await self.ctx.session.execute(
+                    self.pages_links.scoped_select().where(
+                        CloudflarePagesLink.domain_id == domain_id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not links:
+            return
+        projects = list(
+            (
+                await self.ctx.session.execute(
+                    self.projects.scoped_select().where(
+                        CloudflarePagesProject.id.in_({link.project_id for link in links})
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        accounts = {
+            a.id: a
+            for a in (
+                await self.ctx.session.execute(
+                    self.accounts.scoped_select().where(
+                        CloudflareAccount.id.in_({p.account_id for p in projects})
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        }
+
+        now = datetime.now(UTC)
+        observed: dict[uuid.UUID, dict[str, dict[str, Any]]] = {}
+        for project in projects:
+            account = accounts.get(project.account_id)
+            if account is None or not account.cf_account_id:
+                _unavailable(report, "pages")
+                continue
+            try:
+                rows = await self._client(account).list_pages_domains(
+                    account.cf_account_id, project.name
+                )
+            except CloudflareError as exc:
+                _unavailable(report, "pages")
+                await self._flag_account(account, exc)
+                continue
+            observed[project.id] = {
+                host: row for row in rows if (host := _norm_host(row.get("name")))
+            }
+
+        for link in links:
+            seen = observed.get(link.project_id)
+            if seen is None:
+                continue  # not read, so not judged
+            row = seen.get(link.hostname)
+            if row is None:
+                await self.pages_links.update(
+                    link, last_checked_at=now, missing_at=link.missing_at or now
+                )
+                continue
+            await self.pages_links.update(
+                link,
+                status=str(row.get("status") or "") or None,
+                last_error=_pages_error(row),
+                last_checked_at=now,
+                missing_at=None,
+            )
+
+        known = {(link.project_id, link.hostname) for link in links}
+        unknown = [
+            (project_id, host, row)
+            for project_id, seen in observed.items()
+            for host, row in seen.items()
+            if (project_id, host) not in known
+            and (host == domain_name or host.endswith(f".{domain_name}"))
+        ]
+        # A suffix of this domain's name is not proof it is *this domain's* hostname: a tenant
+        # holding both ``klant.nl`` and ``shop.klant.nl`` would get ``www.shop.klant.nl`` filed
+        # under the parent — the wrong client's page, and the exact mistake the sync's
+        # longest-suffix match exists to prevent. So resolve it the same way and adopt only
+        # what resolves back to here; anything else is the sync's to file, correctly.
+        by_name = await self._domains_by_name(
+            {candidate for _, host, _ in unknown for candidate in _host_candidates(host)}
+        )
+        for project_id, host, row in unknown:
+            owner = next((by_name[c] for c in _host_candidates(host) if c in by_name), None)
+            if owner != domain_id:
+                continue
+            await self.pages_links.create(
+                project_id=project_id,
+                domain_id=domain_id,
+                hostname=host,
+                status=str(row.get("status") or "") or None,
+                last_error=_pages_error(row),
+                last_checked_at=now,
+                discovered_at=now,
+            )
+
+        report["pages_links"] = await self._pages_links_for(domain_id)
+
     async def _pages_links_for(self, domain_id: uuid.UUID) -> list[dict[str, Any]]:
         links = list(
             (
@@ -1796,6 +2131,8 @@ class CloudflareService:
                 "status": link.status,
                 "last_error": link.last_error,
                 "last_checked_at": link.last_checked_at,
+                "missing_at": link.missing_at,
+                "discovered_at": link.discovered_at,
             }
             for link in links
         ]
@@ -1855,6 +2192,10 @@ class CloudflareService:
             "status": str(created.get("status") or "pending"),
             "last_error": None,
             "last_checked_at": datetime.now(UTC),
+            # Re-linking a hostname a check had found gone is how drift gets resolved, so the
+            # flag clears here. Leaving it would leave the panel warning about a link that was
+            # just re-registered a second ago.
+            "missing_at": None,
         }
         link = (
             await self.pages_links.update(existing, **values)
@@ -1878,6 +2219,8 @@ class CloudflareService:
             "status": link.status,
             "last_error": link.last_error,
             "last_checked_at": link.last_checked_at,
+            "missing_at": link.missing_at,
+            "discovered_at": link.discovered_at,
         }
 
     async def _ensure_pages_cname(

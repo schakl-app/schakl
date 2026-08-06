@@ -1,5 +1,6 @@
 import { fail, redirect } from "@sveltejs/kit";
 
+import { bulkDeleteAction, bulkUpdateAction } from "$lib/core/bulk/actions.server";
 import { apiErrorKey } from "$lib/core/errors";
 import { impexAction } from "$lib/core/impex/actions.server";
 import { parseParty } from "$lib/core/party";
@@ -11,6 +12,7 @@ import {
 } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
+import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { WEBSITE_COLUMNS, WEBSITES_TABLE_ID } from "$lib/modules/websites/columns";
 
@@ -37,15 +39,18 @@ export const load: PageServerLoad = async (event) => {
   const resolved = resolveColumns(WEBSITE_COLUMNS, pref);
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
 
+  const paging = resolvePaging(event.url, pref);
+
   // Only the URL-dependent read; every picker and definition set comes from the section
   // layout, which does not rerun on a sort click (#290).
   const websites = await api.GET("/api/v1/websites", {
-    params: { query: { limit: 200, offset: 0, sort } },
+    params: { query: { limit: paging.limit, offset: paging.offset, sort } },
   });
 
   return {
     websites: websites.data?.items ?? [],
     total: websites.data?.total ?? 0,
+    paging,
     agencyLabel: event.locals.theme?.brandName ?? "",
     table: { pref, sort: sort ?? null, widths: resolved.widths },
     locale: event.locals.locale,
@@ -61,6 +66,10 @@ export const actions: Actions = {
     await saveTablePref(event, WEBSITES_TABLE_ID, parseTablePref(form));
     return { tableSaved: true };
   },
+
+  /** The ✎ menu's two actions, shared by every list that has one. */
+  bulkUpdate: (event) => bulkUpdateAction(event, "website"),
+  bulkDelete: (event) => bulkDeleteAction(event, "website"),
 
   save: async (event) => {
     const form = await event.request.formData();

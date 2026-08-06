@@ -8,8 +8,9 @@
 // Editing works two ways:
 //  - locally: `pnpm site cms`, open /admin, "Work with Local Repository" (Chrome/Edge),
 //    pick the repo folder — saves write straight into the working tree.
-//  - hosted (later): GitHub backend sign-in needs a small token-exchange service
-//    (sveltia-cms-auth); decided together with the deploy target.
+//  - hosted: "Sign in with GitHub", which needs the token-exchange service in
+//    functions/api/auth/ (a Cloudflare Pages Function deployed with this site). It is live
+//    once the OAuth app exists and its two secrets are set — see apps/site/AUTH.md.
 ---
 
 <html lang="nl">

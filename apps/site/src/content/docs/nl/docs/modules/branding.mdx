@@ -1,0 +1,111 @@
+---
+title: Huisstijl
+description: "Merknaam, logo, favicon, app-icoon en kleuren van je bureau, plus de taal, tijdzone, valuta en het land van je organisatie."
+sidebar:
+  order: 24
+---
+
+import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+schakl. draagt de naam van jouw bureau, niet die van ons. Op één scherm zet je merknaam, logo,
+favicon, app-icoon en kleuren, en daarnaast de taal, tijdzone, valuta en het land van je
+organisatie. Alles geldt vanaf de volgende paginalaadbeurt, voor iedereen in de omgeving; er
+wordt niets opnieuw gebouwd of opnieuw gestart.
+
+## Waar je het vindt
+
+*Instellingen → Huisstijl*, in de groep **Werkruimte**. In het zoekveld "Zoek een instelling"
+vind je het scherm ook op woorden als "logo", "favicon", "kleur", "tijdzone" of "valuta". Het is
+één formulier met één **Opslaan** en twee benoemde helften: **Merk** en **Regio & formaat**.
+Rechts staat een blokje **Voorbeeld** dat meebeweegt terwijl je kleuren kiest.
+
+## Merk
+
+- **Merknaam** (verplicht). Staat bovenin de zijbalk, op het inlogscherm, in de titel van het
+  browsertabblad, in de naam van de geïnstalleerde app, in de kop van elke uitgaande e-mail en
+  op je facturen, offertes en rapportages als daar geen logo staat.
+- **Merknaam naast het logo tonen**. Laat je dit uit, dan draagt de zijbalk alleen het logo en
+  krijgt de tabbladtitel geen merknaam meer voor de paginanaam.
+- **Titel browsertabblad**. Een sjabloon met `{page}` (de paginanaam, verplicht) en eventueel
+  `{brand}`. Onder het veld staat direct een voorbeeld; klopt het sjabloon niet, dan zegt het
+  scherm dat vóór je opslaat. Leeg laten geeft de standaard: *Merknaam · Paginanaam*.
+- **Logo**. Zichtbaar in de zijbalk, op het inlogscherm, in de kop van uitgaande e-mail en op de
+  pdf-documenten die schakl. maakt.
+- **Favicon**. Het icoon van het browsertabblad.
+- **App-icoon**. Een vierkante afbeelding van minimaal 512×512 px (PNG, JPEG of WebP). Dit wordt
+  het icoon op het startscherm wanneer iemand de app installeert; schakl. maakt daar zelf de
+  formaten 192 en 512 van, ook de "maskable" variant die Android rond bijsnijdt. De favicon
+  blijft het tabblad-icoon.
+- **Primaire kleur** en **Accentkleur**. De primaire kleur is waar de app mee tekent: knoppen,
+  links, actieve menu-items, badges, en ook de native vinkjes en datumkiezers van de browser.
+  Diezelfde kleur is de themakleur en de splashkleur van de geïnstalleerde app, de kleur van de
+  merknaam in de e-mailkop en de terugvalkleur van je documenten.
+
+De drie afbeeldingsvelden gebruiken dezelfde kiezer: een miniatuur met **Bestand kiezen** of
+**Vervangen** en **Verwijderen**. Wil je liever naar een al gehost bestand wijzen, klap dan
+**Een gehoste URL gebruiken** open en plak de URL.
+
+## Regio & formaat
+
+- **Standaardtaal**: Nederlands of Engels, voor iedereen die zelf niets heeft gekozen.
+- **Tijdzone**: tijdstippen van gebeurtenissen worden voor iedereen in deze zone getoond.
+- **Land**: waar de organisatie gevestigd is. Wordt gebruikt om een telefoonnummer zonder
+  landcode te lezen, en als standaard voor een nieuwe klant.
+- **Valuta**: alle bedragen worden voor iedereen in deze valuta getoond.
+
+## Waar je huisstijl nog meer terugkomt
+
+| Waar | Wat het overneemt |
+| --- | --- |
+| Inlogscherm | Logo en merknaam, nog vóórdat iemand is ingelogd |
+| Uitgaande e-mail | Logo, merknaam in de primaire kleur, rond elke mail die het platform stuurt |
+| Facturen, offertes en rapportages | Logo, merknaam en de primaire kleur als terugval |
+| Geïnstalleerde app (PWA) | Naam, app-icoon, thema- en achtergrondkleur |
+| Klantportaal | Dezelfde omgeving, dus dezelfde huisstijl |
+
+## Eigen domein
+
+Onderaan het scherm staat een kaart **Eigen domein** met de huidige status. Het instellen zelf
+gebeurt in een eigen begeleide wizard (*Instellingen → Eigen domein*): eerst eigendom aantonen
+met een TXT-record, daarna DNS en het TLS-certificaat. Dat is bewust een apart scherm en geen
+veld op dit formulier.
+
+## Rechten
+
+| Recht | Wat het opent | Standaard |
+| --- | --- | --- |
+| `settings.branding.write` | *Instellingen → Huisstijl* en *Instellingen → Modules* | Beheerder |
+| `settings.domain.write` | *Instellingen → Eigen domein* | Beheerder |
+
+Een eigenaar heeft alles. Een beheerder kan het recht ook los uitdelen: iemand die alleen
+`settings.branding.write` heeft, ziet in Instellingen precies die twee kaarten en verder niets.
+Een afbeelding uploaden vraagt daarnaast het gewone uploadrecht (`files.file.write`), en er
+kunnen hier alleen afbeeldingen in.
+
+## Goed om te weten
+
+<Aside type="caution">
+Wat je hier uploadt is openbaar leesbaar. Logo, favicon en app-icoon moeten op het inlogscherm
+staan vóórdat er een sessie is, dus ze worden zonder inloggen geserveerd op het adres van je
+organisatie. Zet er dus niets in dat niet naar buiten mag.
+</Aside>
+
+- Wijzigingen gelden vanaf de volgende paginalaadbeurt, voor iedereen. Je hoeft niemand te
+  vragen uit te loggen.
+- In donkere modus worden je merkkleuren automatisch iets lichter gemaakt als het contrast met
+  de donkere achtergrond te laag zou worden. De kleurtoon blijft behouden, dus je kleur blijft
+  herkenbaar; je hoeft geen tweede set kleuren op te geven.
+- De eerste installatie (de wizard op `/setup`) vraagt al om merknaam, kleuren en taal. Dit
+  scherm is waar je ze daarna wijzigt.
+- De achtergrondafbeelding en de accentkleur van je factuur- en offertesjabloon staan niet hier
+  maar bij *Instellingen → Facturatie*. Het sjabloon valt terug op je primaire kleur zolang je
+  daar niets invult.
+- Het logo van een klant is iets anders dan je eigen huisstijl. Dat zet je op de klantpagina
+  zelf, en het is zichtbaar op die pagina en op het portaaldashboard van die klant.
+
+## Verder lezen
+
+<CardGrid>
+  <LinkCard title="Bestanden" description="Waar geüploade bestanden terechtkomen en wie ze mag zien." href="/nl/docs/modules/files/" />
+  <LinkCard title="Klantportaal" description="Je klanten loggen in op jouw merk, niet op het onze." href="/nl/docs/modules/portal/" />
+</CardGrid>

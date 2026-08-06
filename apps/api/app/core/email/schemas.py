@@ -77,16 +77,34 @@ class EmailTestResult(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
-# Tenant-customisable auth email templates (#161 tier 2)
+# Tenant-customisable email templates (#161 tier 2)
 # --------------------------------------------------------------------------- #
-EmailTemplateKind = Literal["reset", "invite"]
+#: A registry key (``app.core.email.kinds``), not a closed literal: which mails are
+#: customisable depends on the modules this org runs, so the enum would be wrong per tenant.
+#: The handler validates against that org's own kinds and 422s anything else.
+
+
+class EmailTemplateKindRead(BaseModel):
+    """One customisable mail, as the editor needs to draw it.
+
+    ``variables`` is per kind on purpose: an invoice mail interpolates a number and an amount,
+    a reset mail a link, and a single global list would advertise markers that render as
+    literal ``{link}`` text in the client's inbox.
+    """
+
+    key: str
+    label_key: str
+    hint_key: str
+    variables: list[str]
+    #: The module contributing it (``None`` = core), so the UI can group or explain it.
+    module: str | None = None
 
 
 class EmailTemplateItem(BaseModel):
     """One ``(kind, locale)`` slot: the tenant override (``None`` = default) plus the built-in
     default, so the editor can show placeholders and a "reset to default" is just clearing it."""
 
-    kind: EmailTemplateKind
+    kind: str
     locale: str
     subject: str | None = None
     body_html: str | None = None
@@ -96,12 +114,13 @@ class EmailTemplateItem(BaseModel):
 
 class EmailTemplatesRead(BaseModel):
     locales: list[str]
-    variables: list[str]
+    #: Every customisable mail for *this* org — core's, plus its enabled modules'.
+    kinds: list[EmailTemplateKindRead]
     templates: list[EmailTemplateItem]
 
 
 class EmailTemplateWrite(BaseModel):
-    kind: EmailTemplateKind
+    kind: str = Field(min_length=1, max_length=32)
     locale: str = Field(min_length=2, max_length=8)
     #: Blank subject *and* body deletes the override — the built-in default applies again.
     subject: str | None = Field(default=None, max_length=500)
@@ -111,7 +130,7 @@ class EmailTemplateWrite(BaseModel):
 class EmailTemplateTest(BaseModel):
     """Send a preview of the draft on screen (falls back to the stored/default when omitted)."""
 
-    kind: EmailTemplateKind
+    kind: str = Field(min_length=1, max_length=32)
     locale: str = Field(min_length=2, max_length=8)
     subject: str | None = Field(default=None, max_length=500)
     body_html: str | None = Field(default=None, max_length=20000)

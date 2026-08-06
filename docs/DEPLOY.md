@@ -181,6 +181,12 @@ volume **`storage-data`**, mounted into `api` and `worker` at `SCHAKL_STORAGE_PA
 - **Limits are instance config:** `SCHAKL_UPLOAD_MAX_BYTES` (default 10 MB) and
   `SCHAKL_UPLOAD_ALLOWED_TYPES` (a JSON list; defaults to images, PDF, text, zip and office
   documents). The API refuses anything outside them with `413`/`422`.
+- **Identical bytes are stored once, per org** — see `docs/STORAGE.md` for the model. Two
+  consequences for operators: deleting a file no longer frees space immediately (a nightly
+  cron reclaims it after `SCHAKL_STORAGE_BLOB_GRACE_HOURS`, default 24), and existing
+  duplicates are folded in batches of `SCHAKL_STORAGE_FOLD_BATCH` (default 500) per org per
+  night, so a large instance reclaims its backlog over several days rather than at upgrade.
+  Both are `worker` settings; the cron runs at 03:15 UTC.
 
 ### S3-compatible object storage (issue #190, off by default)
 
@@ -311,6 +317,27 @@ ls`) — it's the one your `cloudflared` stack created. `cloudflared` routes `/a
 > `infra/cloudflared/*.json` is a long-lived tunnel credential and is gitignored. Never
 > commit it.
 
+### Two paths an outside service has to reach without a session
+
+If an Access policy sits in front of the hostname, it challenges **every** request — including
+the ones that come from somebody else's servers rather than from a browser. Two of those exist,
+and both fail *silently*: the caller sees a login page, retries on its own schedule, and gives
+up. Add a bypass for each, and only for each.
+
+| path | called by | what breaks without it |
+|---|---|---|
+| `/api/v1/invoicing/payments/webhook/*` | the tenant's payment provider (epic #269) | payments are collected at the provider and **never booked** on the invoice. The hourly reconcile turns this into a delay rather than a loss, but an instance running permanently on the safety net is spending an outbound call per unsettled payment per hour — `docs/PAYMENTS.md` §10 |
+| `/api/v1/google/calendar/webhook` | Google's push service | calendar changes arrive only on the poll fallback — `docs/GOOGLE.md` |
+
+Both are safe to expose. Neither reads a session: each authenticates on a token schakl itself
+minted (`{org}.{account}.{secret}`), compares its secret in constant time, and answers a bare
+status with no body — and the payment one additionally takes nothing from the request except an
+id, re-fetching the actual status from the provider with the tenant's own credential.
+
+One more, true of any reverse proxy in front: **a 301 or 302 drops the POST body.** A
+trailing-slash redirect or an http→https bump on these paths must answer 307/308, or the
+callback arrives empty and parses to nothing.
+
 ## The application database role
 
 `db-init` is a one-shot service that creates `schakl_app`, the **non-superuser** role the API
@@ -334,6 +361,7 @@ Three surfaces, kept apart on purpose — they have different callers and differ
 | `GET /health` | none | nothing | Liveness. Compose/orchestrator probes. Must stay cheap: a probe that touched Postgres would restart a healthy API whenever the database blipped. |
 | `GET /health/ready` | none | Postgres, Redis, Alembic at head | Readiness. `200 {"status":"ok"}` or `503 {"status":"degraded"}`. Deliberately **detail-free** — it never names the failing dependency, because anyone can call it. |
 | `GET /api/v1/system/info` | owner/admin | everything, in detail | The Instellingen → Systeem screen. Versions, git sha, migration revisions, worker heartbeat, queue depth. Gated because exact versions and dependency topology are reconnaissance. |
+| `GET /healthz` (**web**) | none | nothing | Liveness for the SSR container. Answers "is Node listening yet?". Resolves no tenant and **never calls the API** — a probe that did would pull every web replica out of rotation during an API restart, turning a blip into an outage. |
 
 The container healthcheck stays on `/health`. Point a *readiness* gate (a load balancer, or
 `depends_on: service_healthy` for something that must not start against a half-migrated box)
@@ -346,6 +374,60 @@ still in flight (it runs *before* uvicorn binds).
 **A dead worker is otherwise invisible.** The API keeps serving and ARQ jobs silently pile up.
 The worker writes a heartbeat to Redis every minute; `system/info` reports its last check-in
 and the queue depth.
+
+## Rolling updates: a redeploy is not an outage
+
+**The symptom this section exists to explain: every cloud redeploy used to answer `500` for its
+whole duration**, on every page including login.
+
+The cause was a chain, not a bug in any one place. The API entrypoint runs `alembic upgrade head`
+before serving, so the swarm stacks pinned it to `replicas: 1` with `order: stop-first` — two
+tasks booting together would have raced each other through the same revisions. But one replica
+plus stop-first is, by definition, a window with **zero** API tasks: Swarm stops the only one
+before it starts its replacement. Meanwhile `web` rolls `start-first` and stays up — so it was
+still serving, straight into nothing. Its first server hook fetches `/meta/tenant` before any page
+renders, the fetch throws, and nothing catches it. The web app was up precisely so that it could
+render an error.
+
+**The fix names the real constraint.** It was never "one replica"; it was "one migration at a
+time". That is now a Postgres advisory lock taken by `alembic upgrade` itself
+(`app/core/migrations.py`), so:
+
+- the API runs **`replicas: 2` + `order: start-first`** — a new task boots, migrates, passes its
+  healthcheck, and only then does Swarm retire an old one. Something is always serving.
+- whoever loses the lock **waits and then no-ops**, because by the time it runs, the schema is
+  already at head. It logs `waiting for the migration lock`, so a slow deploy says so.
+- the lock lives in `alembic/env.py`, not in `docker-entrypoint.sh`, so an operator running
+  `alembic upgrade head` by hand mid-deploy contends for it too.
+- a migration killed mid-flight cannot wedge the next deploy: the lock rides its own connection,
+  and Postgres drops session locks when the backend goes away.
+
+**This works because destructive schema changes already go out over two releases**
+(`docs/WORKFLOW.md`, expand/contract). Start-first means old and new code share a schema for the
+length of the rollover — which is exactly the property expand/contract guarantees. If you are
+about to break that rule, you are also about to break rolling deploys.
+
+Three settings are load-bearing and easy to get wrong:
+
+| Setting | Why |
+|---|---|
+| `monitor: 180s` on the API | Swarm's default is `5s` — shorter than a boot that includes a migration, so it would declare the update good before the first task had finished and `failure_action: rollback` would never fire. |
+| `SCHAKL_DB_POOL_SIZE` / `_MAX_OVERFLOW` | The pool is **per replica**. Both cloud stacks halve them to `8`/`8` so two replicas total 32 connections against the 30 one replica used — the ceiling did not silently double on a managed database sized for one. Raise them only together with `API_REPLICAS`, after checking `max_connections`. |
+| The `web` healthcheck | Without one, `start-first` rotates a new web task into Traefik the moment the container is *running*, a second or two before the SSR server binds `:3000` — a handful of 502s per deploy. It probes `/healthz` with `node -e` (the runtime image is `node:22-slim`, which has neither curl nor wget). |
+
+`SCHAKL_MIGRATION_LOCK_TIMEOUT_SECONDS` (default `600`) bounds how long a booting instance waits
+for another one's migration. It bounds a *rolling deploy*, not a migration — the holder may run as
+long as it likes. On timeout the task fails its healthcheck and Swarm rolls back, which is the
+right outcome: the alternative is a container that never serves and never explains itself.
+
+**Self-hosted (`infra/compose.yaml`) is deliberately unchanged** — one replica, and `api` still
+migrates on boot. A self-hosted release upgrades itself unattended, so moving migrations into a
+separate service would have broken every existing compose file on the next `docker compose pull
+&& up -d`. The lock is simply inert when nothing contends for it.
+
+There is also a `migrate` entrypoint command (`docker run --rm … migrate`) for an operator who
+would rather land the schema as an explicit step before rolling the service. It is optional, and
+safe to run *during* a rolling deploy — it takes the same lock.
 
 ## Version stamping
 

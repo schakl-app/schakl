@@ -10,11 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.crypto import decrypt, encrypt
 from app.core.email.branding import EmailBrand, apply_branding, load_brand, load_brand_by_id
-from app.core.email.models import EMAIL_TEMPLATE_KINDS, EmailSettings, OrgEmailTemplate
+from app.core.email.kinds import EmailTemplateKind, email_kinds_for
+from app.core.email.models import EmailSettings, OrgEmailTemplate
 from app.core.email.schemas import (
     EmailSettingsRead,
     EmailSettingsWrite,
     EmailTemplateItem,
+    EmailTemplateKindRead,
     EmailTemplatesRead,
     EmailTemplateTest,
     EmailTemplateWrite,
@@ -22,7 +24,6 @@ from app.core.email.schemas import (
 )
 from app.core.email.senders import OutgoingEmail, Sender, send_email
 from app.core.email.templates import (
-    TEMPLATE_VARIABLES,
     apply_signature,
     build_email_content,
     default_body_html,
@@ -361,11 +362,16 @@ class EmailSettingsService:
 
 
 class OrgEmailTemplateService:
-    """Admin surface for the tenant-customisable auth email templates (#161 tier 2).
+    """Admin surface for the tenant-customisable email templates (#161 tier 2).
 
     Same permission and page as the transport (``settings.email.manage``, Instellingen ->
     E-mail): a template can leak nothing a transport config does not, and both are the same
     "how this tenant emails people" concern.
+
+    *Which* mails are on offer is not this service's to know: core's auth pair plus whatever
+    the org's enabled modules contribute (:mod:`app.core.email.kinds`). Disabling invoicing
+    takes its three mails off the editor — and off the write path, so a stale form cannot
+    store an override for a mail this org no longer sends.
     """
 
     def __init__(self, ctx: RequestContext) -> None:
@@ -379,8 +385,17 @@ class OrgEmailTemplateService:
         ).scalars().all()
         return {(row.kind, row.locale): row for row in rows}
 
-    def _validate(self, kind: str, locale: str) -> None:
-        if kind not in EMAIL_TEMPLATE_KINDS:
+    async def _kinds(self) -> list[EmailTemplateKind]:
+        """The mails *this* org may rewrite. One read of its module list (the same
+        org_settings fallback ``/meta/tenant`` uses), on an admin screen."""
+        enabled = await self.ctx.session.scalar(
+            select(OrgSettings.enabled_modules).where(OrgSettings.org_id == self.ctx.org.id)
+        )
+        return email_kinds_for(enabled or list(settings.enabled_modules))
+
+    async def _validated(self, kind: str, locale: str) -> EmailTemplateKind:
+        spec = next((k for k in await self._kinds() if k.key == kind), None)
+        if spec is None:
             raise AppError(
                 "validation", "errors.validation", status_code=422,
                 fields={"kind": "errors.validation"},
@@ -390,32 +405,45 @@ class OrgEmailTemplateService:
                 "validation", "errors.validation", status_code=422,
                 fields={"locale": "errors.validation"},
             )
+        return spec
 
     async def list(self) -> EmailTemplatesRead:
         self.ctx.require("settings.email.manage")
         stored = await self._stored()
         locales = available_locales()
+        kinds = await self._kinds()
         items: list[EmailTemplateItem] = []
-        for kind in EMAIL_TEMPLATE_KINDS:
+        for spec in kinds:
             for locale in locales:
-                row = stored.get((kind, locale))
+                row = stored.get((spec.key, locale))
                 items.append(
                     EmailTemplateItem(
-                        kind=kind,  # type: ignore[arg-type]
+                        kind=spec.key,
                         locale=locale,
                         subject=row.subject if row else None,
                         body_html=row.body_html if row else None,
-                        default_subject=default_subject(kind, locale),
-                        default_body_html=default_body_html(kind, locale),
+                        default_subject=default_subject(spec.key, locale),
+                        default_body_html=default_body_html(spec.key, locale),
                     )
                 )
         return EmailTemplatesRead(
-            locales=locales, variables=list(TEMPLATE_VARIABLES), templates=items
+            locales=locales,
+            kinds=[
+                EmailTemplateKindRead(
+                    key=spec.key,
+                    label_key=spec.label_key,
+                    hint_key=spec.hint_key,
+                    variables=list(spec.variables),
+                    module=spec.module,
+                )
+                for spec in kinds
+            ],
+            templates=items,
         )
 
     async def save(self, data: EmailTemplateWrite) -> EmailTemplateItem:
         self.ctx.require("settings.email.manage")
-        self._validate(data.kind, data.locale)
+        await self._validated(data.kind, data.locale)
         subject = (data.subject or "").strip() or None
         body_html = (data.body_html or "").strip() or None
         if body_html is not None:
@@ -459,19 +487,26 @@ class OrgEmailTemplateService:
         )
 
     async def test(self, data: EmailTemplateTest) -> EmailTestResult:
-        """Render the draft (or stored/default) with sample values and send to the acting admin."""
+        """Render the draft (or stored/default) with sample values and send to the acting admin.
+
+        The values come from the **kind's own** sample provider, because plausible is the whole
+        point of a preview: a reset mail wants a link on the org's address, an invoice mail a
+        number and an amount in the org's currency. A kind that provides none previews with the
+        brand alone rather than not at all.
+        """
         self.ctx.require("settings.email.manage")
-        self._validate(data.kind, data.locale)
-        # A realistic-looking preview link on the org's own address; the token is a placeholder.
+        spec = await self._validated(data.kind, data.locale)
+        locale = resolve_locale(data.locale)
         brand = await load_brand(self.ctx.session, self.ctx.org)
-        values = {
-            "brand": brand.brand_name,
-            "name": self.ctx.user.full_name or self.ctx.user.email,
-            "link": f"{brand.base_url}/reset-password?token=preview",
-        }
+        values = {"brand": brand.brand_name}
+        if spec.sample is not None:
+            values.update(await spec.sample(self.ctx, locale))
+        # Every declared variable resolves to *something*: an unfilled one would reach the
+        # inbox as a literal "{reference}".
+        values = {name: values.get(name, "") for name in spec.variables} | values
         subject, text, html = build_email_content(
             data.kind,
-            resolve_locale(data.locale),
+            locale,
             data.subject,
             data.body_html,
             values,

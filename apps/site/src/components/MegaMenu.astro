@@ -100,7 +100,7 @@ const allLabel = locale === 'nl' ? 'Alle functies bekijken' : 'See all features'
        viewport width — so it can't overflow on the left on smaller desktops. */
     right: max(1.25rem, calc((100vw - 68rem) / 2 + 1.25rem));
     margin-top: 0.6rem;
-    width: min(56rem, calc(100vw - 2.5rem));
+    width: min(66rem, calc(100vw - 2.5rem));
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 1rem;
@@ -146,8 +146,11 @@ const allLabel = locale === 'nl' ? 'Alle functies bekijken' : 'See all features'
 
   .mega__grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0.5rem 1.75rem;
+    /* One column per feature group. `auto-fit` rather than a fixed count so adding or removing a
+       group in features.ts reflows the panel instead of leaving a hole or overflowing it. */
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+    gap: 0.5rem 1.5rem;
+    align-items: start;
   }
   .mega__col-title {
     font-size: 0.72rem;

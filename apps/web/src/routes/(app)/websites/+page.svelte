@@ -9,6 +9,10 @@
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import type { components } from "$lib/core/api/schema";
+  import BulkBar from "$lib/core/bulk/BulkBar.svelte";
+  import BulkToggle from "$lib/core/bulk/BulkToggle.svelte";
+  import BulkResult from "$lib/core/bulk/BulkResult.svelte";
+  import type { BulkFieldDef } from "$lib/core/bulk/types";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
@@ -23,6 +27,7 @@
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import Pagination from "$lib/core/ui/Pagination.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import PartyPicker from "$lib/core/ui/PartyPicker.svelte";
   import ProviderQuickCreate from "$lib/core/ui/ProviderQuickCreate.svelte";
@@ -149,6 +154,38 @@
     confirmDelete = true;
   }
 
+  // --- bulk (the ✎ selection mode in the toolbar) --------------------------------------
+  // The hosting account and uptime monitoring: the two facts a server migration changes across a
+  // whole estate at once. The domain is the row's identity and the client follows from it, so
+  // neither is a field here — and the technical owner is deliberately absent even though the
+  // engine resolves party tokens: a party control always holds a type, so it has no "leave this
+  // one alone" state, which is the one thing every control in this dialog needs. Mirrors
+  // `apps/api/app/modules/websites/bulk.py`; labels are the import's, so the two surfaces that
+  // name the same column can never name it differently.
+  let selecting = $state(false);
+  let bulkSelected = $state<string[]>([]);
+  const bulkFields: BulkFieldDef[] = $derived([
+    {
+      key: "hosting",
+      label: t("impex.column.website.hosting"),
+      type: "fk",
+      // The same accounts the create modal offers, from the same layout load. Clearable for the
+      // reason the import's column is: a site we no longer host is a state, not a blank.
+      options: hostingItems,
+      clearable: true,
+    },
+    { key: "uptime_enabled", label: t("impex.column.website.uptime_enabled"), type: "bool" },
+  ]);
+  // One configuration, spread into the ✎ in the toolbar and the strip above the table: they
+  // render in different places and must never disagree about what this list can do.
+  const bulkConfig = $derived({
+    fields: bulkFields,
+    writePermission: "websites.website.write",
+    deletePermission: "websites.website.delete",
+    deleteMessage: t("websites.bulk.delete_message", { count: bulkSelected.length }),
+    fieldErrors: form?.bulkFields ?? null,
+  });
+
   // The tenant's custom fields join the built-ins as selectable columns with no code here (#24).
   // Layout resolution and persistence are the shared table layout's job.
   const allColumns = $derived([
@@ -173,27 +210,32 @@
 
 {#snippet nameCell(site: Website)}
   <!-- The detail surface stays the domain page (#94); the row links through to it. -->
-  <a href={`/domains/${site.domain_id}#website`} class="font-medium text-text hover:text-brand">
+  <a
+    href={`/domains/${site.domain_id}#website`}
+    class="block truncate font-medium text-text hover:text-brand"
+  >
     {site.root ? site.domain_name : `www.${site.domain_name}`}
   </a>
 {/snippet}
 
 {#snippet companyCell(site: Website)}
-  <span class="text-text-muted">{site.company_name ?? "—"}</span>
+  <span class="block truncate text-text-muted">{site.company_name ?? "—"}</span>
 {/snippet}
 
 {#snippet hostingCell(site: Website)}
-  <span class="text-text-muted">{site.hosting_name ?? "—"}</span>
+  <span class="block truncate text-text-muted">{site.hosting_name ?? "—"}</span>
 {/snippet}
 
 {#snippet ownerCell(site: Website)}
-  <span class="text-text-muted">{site.technical_owner?.label || "—"}</span>
+  <span class="block truncate text-text-muted">{site.technical_owner?.label || "—"}</span>
 {/snippet}
 
 {#snippet uptimeCell(site: Website)}
   {#if site.uptime_enabled}
+    <!-- `inline-block`, not `block`: the pill hugs its label rather than painting across the
+         whole cell, and an inline box would ignore the truncate entirely. -->
     <span
-      class="rounded-full bg-green-500/10 px-2 py-0.5 text-[11px] text-green-700 dark:text-green-400"
+      class="inline-block max-w-full truncate rounded-full bg-green-500/10 px-2 py-0.5 text-[11px] text-green-700 dark:text-green-400"
     >
       {t("websites.uptime_short")}
     </span>
@@ -290,7 +332,15 @@
     onchange={table.onColumnsChange}
     onsort={table.onSort}
   />
+  <!-- Last in the toolbar, always: it is the only control here that changes what the *rows*
+         do rather than what the list shows, so it sits after Kolommen rather than among the
+         list's own controls. Pressing it opens the selection strip above the table. -->
+  <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
 </div>
+
+<BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
+
+<BulkResult result={form?.bulkResult} />
 
 <DataTable
   rows={data.websites}
@@ -303,8 +353,17 @@
   actions={canWrite || canDelete ? rowActions : undefined}
   {mobileRow}
   empty={emptyState}
+  selectable={selecting}
+  bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}
+/>
+
+<Pagination
+  total={data.total}
+  page={data.paging.page}
+  limit={data.paging.limit}
+  onsize={table.onPageSize}
 />
 
 {#if canWrite}

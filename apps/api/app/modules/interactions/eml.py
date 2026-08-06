@@ -23,6 +23,8 @@ from email.parser import BytesParser
 from email.utils import getaddresses, parsedate_to_datetime
 from html import unescape
 
+from app.core.htmlmd import html_to_markdown, referenced_cids
+
 #: Roles, in the order the participant list should read.
 _HEADER_ROLES = (("From", "from"), ("To", "to"), ("Cc", "cc"))
 
@@ -70,6 +72,11 @@ class EmlAttachment:
     filename: str
     content_type: str
     data: bytes
+    #: The part's ``Content-ID``, brackets stripped, when the body references it as
+    #: ``cid:``. Set means **this is part of the body, not an attachment of the message** —
+    #: a signature logo or a pasted screenshot — so it renders inside the text and stays out
+    #: of the attachment chips (``files.content_id``).
+    content_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -83,6 +90,9 @@ class ParsedEml:
     #: ``[{email, name, role}]`` — the same JSONB shape gmail rows carry.
     participants: list[dict[str, str | None]] = field(default_factory=list)
     body_text: str | None = None
+    #: The body with its formatting kept, present only when the message had an HTML part —
+    #: a plain-text mail has nothing to convert and must not be reinterpreted as markdown.
+    body_markdown: str | None = None
     snippet: str | None = None
     rfc822_message_id: str | None = None
     #: The RFC 5322 threading chain (#272): every Message-ID this email ``References`` or is
@@ -104,16 +114,18 @@ def parse_eml(data: bytes) -> ParsedEml:
     if not any(name in message for name in _EVIDENCE_HEADERS):
         raise EmlParseError("no email headers")
     body_text = _body_text(message)
+    body_markdown = html_to_markdown(_html_body(message))
     return ParsedEml(
         subject=_header(message, "Subject"),
         occurred_at=_occurred_at(message),
         participants=_participants(message),
         body_text=body_text,
+        body_markdown=body_markdown,
         snippet=_snippet(body_text),
         rfc822_message_id=(_header(message, "Message-ID") or None),
         reference_ids=_reference_ids(message),
         from_email=_first_address(message, "From"),
-        attachments=_attachments(message),
+        attachments=_attachments(message, referenced_cids(body_markdown)),
     )
 
 
@@ -205,7 +217,11 @@ def _part_text(part: EmailMessage) -> str | None:
 def _body_text(message: EmailMessage) -> str | None:
     """The message body as plain text: ``text/plain`` if there is one, else stripped HTML —
     the same preference (and the same stripping) the gmail feed's ``extract_text`` applies,
-    so a manually uploaded email and a synced one read the same."""
+    so a manually uploaded email and a synced one read the same.
+
+    This stays the plain-text answer even when :func:`_html_body` finds formatting: it is what
+    search reads and what the snippet is cut from, and one of the two has to be greppable.
+    """
     try:
         part = message.get_body(preferencelist=("plain", "html"))
     except Exception:  # noqa: BLE001 — a malformed structure degrades to "no body"
@@ -218,6 +234,21 @@ def _body_text(message: EmailMessage) -> str | None:
     if part.get_content_type() != "text/html":
         return content.strip() or None
     return html_to_text(content)
+
+
+def _html_body(message: EmailMessage) -> str | None:
+    """The ``text/html`` part, if the message has one — the source of the formatted body.
+
+    Preferred over ``text/plain`` here on purpose: a multipart/alternative mail carries both,
+    and the HTML half is the one that still knows it had a list in it.
+    """
+    try:
+        part = message.get_body(preferencelist=("html",))
+    except Exception:  # noqa: BLE001 — a malformed structure degrades to "no formatting"
+        return None
+    if part is None or part.get_content_type() != "text/html":
+        return None
+    return _part_text(part)
 
 
 def html_to_text(html: str) -> str:
@@ -240,27 +271,57 @@ def _snippet(body_text: str | None) -> str | None:
     return collapsed[:SNIPPET_CHARS].rstrip() + "…"
 
 
-def _attachments(message: EmailMessage) -> list[EmlAttachment]:
-    """The parts that are real attachments: a filename plus decodable bytes. Inline body
-    parts carry no filename and stay out, mirroring the gmail feed's ``attachment_parts``.
-    A nested ``message/rfc822`` decodes to no bytes and is skipped rather than half-stored."""
+def _attachments(message: EmailMessage, inline_cids: set[str]) -> list[EmlAttachment]:
+    """The parts worth storing: a filename **or** a body reference, plus decodable bytes.
+
+    A signature logo is a part with a ``Content-ID`` the HTML body points at. Before, it was
+    stored because it happened to carry a filename too, and then listed as an attachment of
+    the message — so every mail from the same sender showed the same logo chip. It is
+    *content of the body*, and ``inline_cids`` (what the converted markdown actually
+    references) is the only honest test of that: a part with a Content-ID nothing points at is
+    an ordinary attachment, whatever the sending client labelled it.
+
+    ``iter_attachments`` alone does not find the inline ones: a signature logo lives inside the
+    ``multipart/related`` that *is* the body, and the stdlib rightly calls that body rather than
+    attachment. So the whole tree is walked for the cids the body names, and
+    ``iter_attachments`` still answers what a real attachment is.
+
+    A nested ``message/rfc822`` decodes to no bytes and is skipped rather than half-stored.
+    """
     found: list[EmlAttachment] = []
+    seen: set[int] = set()
     try:
-        parts = list(message.iter_attachments())
+        parts = [
+            (part, cid)
+            for part in message.walk()
+            if (cid := _content_id(part)) is not None and cid in inline_cids
+        ]
+        parts += [(part, None) for part in message.iter_attachments()]
     except Exception:  # noqa: BLE001 — a malformed MIME tree still yields its message body
         return found
-    for part in parts:
+    for part, content_id in parts:
+        if id(part) in seen:
+            continue
+        seen.add(id(part))
         filename = part.get_filename()
-        if not filename:
+        if not filename and not content_id:
             continue
         payload = part.get_payload(decode=True)
         if not isinstance(payload, bytes) or not payload:
             continue
         found.append(
             EmlAttachment(
-                filename=str(filename),
+                # An inline part often has no name of its own; the cid is what identifies it.
+                filename=str(filename or content_id or "afbeelding"),
                 content_type=part.get_content_type() or "application/octet-stream",
                 data=payload,
+                content_id=content_id,
             )
         )
     return found
+
+
+def _content_id(part: EmailMessage) -> str | None:
+    """A part's ``Content-ID`` as the body spells it: ``<x@y>`` in the header, ``cid:x@y``."""
+    raw = _header(part, "Content-ID")
+    return raw.strip().strip("<>") or None if raw else None

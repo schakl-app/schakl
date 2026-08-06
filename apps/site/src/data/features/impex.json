@@ -1,0 +1,135 @@
+{
+  "name": "Import & export",
+  "slug": "impex",
+  "order": 200,
+  "icon": "📥",
+  "lucide": "impex",
+  "title": {
+    "nl": "Import & export",
+    "en": "Import & export"
+  },
+  "description": {
+    "nl": "Elke lijst die je kunt bekijken, kun je ook uitvoeren en weer terugbrengen: CSV, TSV, Excel of een geplakt blok. Eerst controleren, dan in één keer toepassen.",
+    "en": "Every list you can read, you can also take out and bring back — CSV, TSV, Excel or a pasted block. Check first, then apply in one go."
+  },
+  "page": {
+    "eyebrow": {
+      "nl": "Import & export",
+      "en": "Import & export"
+    },
+    "title": {
+      "nl": "Erin en eruit, als spreadsheet",
+      "en": "In and out, as a spreadsheet"
+    },
+    "lead": {
+      "nl": "Je hoeft nooit iets over te typen. Klanten, contactpersonen, projecten, taken, urenstaten, abonnementen, domeinen, websites en hosting reizen als bestand, met vaste kolomkoppen zodat een export ongewijzigd terug te importeren is. Elke import wordt eerst helemaal doorgerekend zonder dat er iets wordt opgeslagen, en gaat daarna in één keer door of helemaal niet.",
+      "en": "You never have to retype anything. Clients, contacts, projects, tasks, timesheets, subscriptions, domains, websites and hosting all travel as a file, with stable column headers so an export re-imports unchanged. Every import is computed through in full without saving a thing, and then either lands completely or not at all."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Een bestand, of gewoon geplakt",
+          "en": "A file, or simply pasted"
+        },
+        "body": {
+          "nl": "Je kiest een bestand of je plakt de cellen die je in Excel of Google Spreadsheets al had geselecteerd; de eerste rij is dan de kop. Het soort bestand wordt uit de inhoud afgeleid en niet uit de extensie, net als de tekencodering, dus een export uit een Nederlandse Excel met accenten wordt gelezen in plaats van geweigerd. Er geldt een grens van 2.000 rijen en 200 kolommen per keer, en boven die grens volgt een foutmelding en nooit een afkapping: de eerste 2.000 rijen van een bestand met 2.500 stilletjes importeren is de slechtst denkbare uitkomst, want het ziet eruit alsof het gelukt is. Bevat een Excel-bestand formules waarvan geen berekende uitkomst is meegeschreven, dan meldt de wizard hoeveel cellen dat zijn voordat je verder gaat.",
+          "en": "You pick a file, or you paste the cells you already had selected in Excel or Google Sheets, in which case the first row is the header. The kind of file is worked out from the content rather than the extension, and so is the character encoding, so an export from a Dutch Excel full of accents is read instead of refused. There is a ceiling of 2,000 rows and 200 columns at a time, and over that ceiling you get an error and never a truncation: silently importing the first 2,000 rows of a 2,500-row file is the worst outcome available, because it looks like it worked. If an Excel file holds formulas with no calculated result written alongside them, the wizard tells you how many cells that is before you go on."
+        },
+        "bullets": {
+          "nl": [
+            "CSV, met komma's of puntkomma's",
+            "TSV en tab-gescheiden tekst",
+            "Excel (.xlsx), met een werkbladkiezer",
+            "Een geplakte tabel, rechtstreeks uit je spreadsheet"
+          ],
+          "en": [
+            "CSV, comma- or semicolon-separated",
+            "TSV and tab-separated text",
+            "Excel (.xlsx), with a worksheet picker",
+            "A pasted table, straight out of your spreadsheet"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Zeggen wat elke kolom betekent",
+          "en": "Saying what each column means"
+        },
+        "body": {
+          "nl": "Zodra het bestand gelezen is, krijg je één regel per kolom uit jóuw bestand, met de eerste echte waarden eruit ernaast onder \"Voorbeelden\". Daarnaast kies je bij \"Importeren als\" wat die kolom in schakl. betekent: een gewoon veld, één van je eigen maatwerkvelden, of \"Niet importeren\". Die keuze wordt voorgesteld op basis van je eigen kopregel, ook een Nederlandse, en wat niet herkend wordt blijft leeg zodat je zelf kiest in plaats van iets verkeerds te erven. Niet-gekoppelde kolommen worden overgeslagen, dus een bestand met tien kolommen waarvan er drie toe doen hoeft niet eerst opgeruimd te worden. Bij \"Bestaande records herkennen aan\" staat Automatisch, en je kunt het overschrijven.",
+          "en": "Once the file is read you get one row per column of your file, with the first real values from it beside them under \"Examples\". Next to those, \"Import as\" is where you say what the column means in schakl.: an ordinary field, one of your own custom fields, or \"Do not import\". The choice is suggested from your own header row, Dutch headers included, and whatever is not recognised stays blank so that you choose rather than inherit something wrong. Unmapped columns are skipped, so a file with ten columns of which three matter needs no tidying first. \"Match existing records on\" reads Automatic, and you can override it."
+        },
+        "bullets": {
+          "nl": [
+            "De voorbeeldwaarden maken een verschoven kolom zichtbaar vóórdat er iets wordt opgeslagen",
+            "Een koppeling is positioneel, dus het bestand krijgt een vingerafdruk bij het inlezen",
+            "Wijzig je het bestand daarna nog, dan meldt de wizard dat en vraagt hij je de kolommen opnieuw na te lopen"
+          ],
+          "en": [
+            "The sample values make a shifted column visible before anything is saved",
+            "A mapping is positional, so the file is fingerprinted when it is read",
+            "Change the file after that and the wizard says so, and asks you to check the columns again"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Eerst controleren, dan in één keer",
+          "en": "Check first, then all at once"
+        },
+        "body": {
+          "nl": "\"Bestand controleren\" draait de hele import zonder iets op te slaan: hoeveel records nieuw zijn, hoeveel er worden bijgewerkt, en welke rijen een fout bevatten, genummerd zoals jij de rijen in je spreadsheet telt. Pas na een schone controle wordt \"Importeren\" beschikbaar, en die import is alles of niets. Klopt er iets niet, dan wordt er niets opgeslagen, ook de goede rijen niet; je repareert het bestand en probeert het opnieuw in plaats van te ontdekken dat de helft al binnen is. Controles die een rij bij naam kunnen noemen horen in dat voorbeeld thuis: een telefoonnummer wordt omgezet naar internationale notatie in het land van die rij zelf, en een nummer dat een cijfer mist wordt teruggemeld bij die rij en die kolom, niet als één naamloze fout achteraf.",
+          "en": "\"Check file\" runs the whole import without saving anything: how many records are new, how many would be updated, and which rows hold an error, numbered the way you count rows in your spreadsheet. Only after a clean check does \"Import\" become available, and that import is all or nothing. If something is wrong, nothing is saved, not even the rows that were fine; you fix the file and try again rather than discovering half of it already landed. Checks that can name a row belong in that preview: a phone number is coerced to international notation in that row's own country, and a number one digit short is reported against that row and that column, not as one nameless error after the fact."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Een import is geen achterdeur",
+          "en": "An import is not a back door"
+        },
+        "body": {
+          "nl": "Een geïmporteerde rij loopt door precies dezelfde aanmaak- of bijwerkroute als het formulier: dezelfde validatie, dezelfde gebeurtenissen, dezelfde neveneffecten en dezelfde regel op het activiteitenspoor. Je eigen maatwerkvelden zijn daarbij gewone kolommen, en verplichte velden blijven verplicht. Waarop een rij wordt herkend verschilt per soort en staat in de wizard erbij; waar geen eerlijke sleutel bestaat maakt de import altijd nieuwe records aan, want taaktitels en urenregistraties herhalen zich terecht. Wat goedkeuring draagt reist bewust helemaal niet mee: verlof vraag je aan, dat schrijf je niet in bulk weg.",
+          "en": "An imported row travels exactly the same create or update path the form does: the same validation, the same events, the same side effects and the same line on the activity trail. Your own custom fields are ordinary columns there, and required fields stay required. What a row is matched on differs per type and is stated in the wizard; where there is no honest key the import always creates, because task titles and time entries legitimately repeat. Anything carrying an approval deliberately does not travel at all: leave is requested, not bulk-written."
+        },
+        "bullets": {
+          "nl": [
+            "Klanten: op klantnummer, anders op naam",
+            "Contactpersonen: op e-mailadres",
+            "Projecten, abonnementen en hosting: op naam",
+            "Domeinen: op de domeinnaam, waarbij een geplakte URL eerst tot het kale hoofddomein wordt teruggebracht",
+            "Websites: op het domein waar de site op staat",
+            "Taken en urenstaten: altijd nieuw"
+          ],
+          "en": [
+            "Clients: on the client number, otherwise the name",
+            "Contacts: on the e-mail address",
+            "Projects, subscriptions and hosting: on the name",
+            "Domains: on the domain name, a pasted URL being reduced to its bare root first",
+            "Websites: on the domain the site sits on",
+            "Tasks and timesheets: always created"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Een export die weer terugkomt",
+          "en": "An export that comes back"
+        },
+        "body": {
+          "nl": "Een export bevat de hele lijst zoals je hem gefilterd hebt, niet alleen de pagina die je ziet, inclusief je eigen maatwerkvelden. De kolomkoppen zijn vaste sleutels en geen labels, dus het bestand wordt ongewijzigd herkend als je het terugzet: exporteren, twee kolommen aanpassen en importeren is de eenvoudigste manier om vijftig records tegelijk te wijzigen. Modules dragen bovendien kolommen bij aan elkaars bestanden, dus een klantenexport neemt de contactpersoon mee (voornaam, achternaam, e-mail, telefoon, functie), die bij het importeren in dezelfde rij wordt aangemaakt en gekoppeld; de eerste wordt de primaire contactpersoon van die klant. Die kolommen verschijnen alleen voor wie contactpersonen mag schrijven, zodat je nooit halverwege een bestand op een weigering stuit. En exporteren blijft werken als een licentie verloopt: een module die alleen-lezen wordt, laat je je gegevens nog steeds meenemen.",
+          "en": "An export holds the whole list as you have filtered it, not just the page you can see, and includes your own custom fields. The column headers are stable keys rather than labels, so the file is recognised unchanged when you put it back: export, edit two columns, import is the simplest way to change fifty records at once. Modules also contribute columns to each other's sheets, so a client export carries the contact person along (first name, last name, e-mail, phone, job title), created and linked in the same row on the way back in; the first one becomes that client's primary contact. Those columns only appear for someone who may write contacts, so you never hit a refusal halfway through a file. And exporting keeps working when a licence expires: a module that goes read-only still lets you take your data with you."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Op elke lijst, en een recht apart",
+          "en": "On every list, and a permission of its own"
+        },
+        "body": {
+          "nl": "Exporteren en Importeren staan naast de kolomkiezer op elke lijst die per bestand kan reizen, met de filters van die lijst in de export; ze zijn dus niet weggestopt, want wie een spreadsheet met domeinen heeft hoeft niet te weten dat er ook een Instellingen-scherm bestaat. Instellingen → Import & export is het overzicht van wat er überhaupt kan reizen en exporteert de hele ongefilterde set. Bulk in- en uitvoeren is een eigen recht, bovenop het gewone lees- of schrijfrecht van het onderdeel zelf, en het staat standaard alleen voor beheerders aan: de klantenlijst of het domeinregister in één bestand het pand uit dragen is een andere handeling dan één record openen, en dat is een beslissing die een bureau per persoon neemt. Het is één recht voor alle onderdelen tegelijk, zodat die beslissing één keer valt in plaats van per scherm; een klant met een portaallogin kan er dus nooit een lijst mee ophalen. Beide poorten worden ook in de interface nagebootst, dus een knop die zou weigeren wordt niet getekend.",
+          "en": "Export and Import sit beside the column picker on every list that can travel as a file, with that list's filters carried into the export — not tucked away, because somebody holding a spreadsheet of domains should not have to know a settings screen exists. Instellingen → Import & export is the overview of what can travel at all, and exports the whole unfiltered set. Bulk import and export is a permission of its own, on top of the ordinary read or write permission for the entity itself, and it is admin-only by default: carrying the client list or the domain register out of the building in one file is a different act from opening one record, and that is a decision an agency makes per person. It is one permission across every entity, so the decision is made once instead of per screen; a client with a portal login can therefore never pull a list with it. Both gates are mirrored in the interface too, so a button that would refuse is never drawn."
+        }
+      }
+    ]
+  }
+}

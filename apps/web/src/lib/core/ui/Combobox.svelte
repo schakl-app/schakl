@@ -23,6 +23,7 @@
     ariaLabel,
     listClass = "w-full",
     onselect,
+    keepOpenOnSelect = false,
     oncreate,
     onsearch,
     searching = false,
@@ -40,6 +41,15 @@
     /** Dropdown width; a narrow trigger (the phone country picker) passes a wider one. */
     listClass?: string;
     onselect?: (value: string) => void;
+    /**
+     * This picker *adds to a list* — chips, invoice lines — so the list stays open after a pick
+     * and the field goes back to empty, ready for the next one.
+     *
+     * The host is what makes that true: it takes the value in `onselect`, appends it somewhere
+     * and clears the binding, so the picker never holds a selection to display. A single-value
+     * picker leaves this off — there the pick *is* the answer, and closing says so.
+     */
+    keepOpenOnSelect?: boolean;
     /** When provided, typing an unknown name offers a "add …" option in the dropdown. */
     oncreate?: (query: string) => void;
     /**
@@ -111,11 +121,34 @@
     if (!open) query = selectedLabel;
   });
 
+  /**
+   * Show the list, and show all of it. The visible text is the current selection's label, so
+   * opening without clearing it would filter the list down to the one option already picked.
+   * Idempotent: a click on an unfocused field runs this from `mousedown` and then again from
+   * `focus`, and the second must not wipe anything.
+   */
+  function openList() {
+    if (open) return;
+    open = true;
+    query = "";
+    highlighted = -1;
+  }
+
   function choose(item: Item | null) {
     value = item?.value ?? "";
     query = item?.label ?? "";
-    open = false;
     onselect?.(value);
+    if (keepOpenOnSelect && item) {
+      // The host has taken the pick and cleared the binding, so there is nothing to display and
+      // the next one is what the user is here for. Closing would strand them: the mouse never
+      // left the input, so no `focus` event is coming to reopen it.
+      query = "";
+      highlighted = -1;
+      // The rows on screen answer a query that is no longer in the field.
+      if (onsearch) search("");
+      return;
+    }
+    open = false;
   }
 
   function onkeydown(e: KeyboardEvent) {
@@ -152,16 +185,17 @@
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
   $effect(() => () => clearTimeout(searchTimer));
 
+  function search(draft: string) {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => onsearch?.(draft), 200);
+  }
+
   function oninput() {
     open = true;
     highlighted = 0;
     // Clearing the text clears the selection (when allowed).
     if (query.trim() === "" && allowEmpty) value = "";
-    if (onsearch) {
-      const draft = query.trim();
-      clearTimeout(searchTimer);
-      searchTimer = setTimeout(() => onsearch(draft), 200);
-    }
+    if (onsearch) search(query.trim());
   }
 
   function onblur() {
@@ -190,11 +224,8 @@
       class="w-full rounded-lg border border-border px-3 py-2 {oncreate
         ? 'pr-14'
         : 'pr-8'} text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-      onfocus={() => {
-        open = true;
-        query = "";
-        highlighted = -1;
-      }}
+      onfocus={openList}
+      onmousedown={openList}
       {oninput}
       {onkeydown}
       {onblur}

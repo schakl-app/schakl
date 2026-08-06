@@ -1,0 +1,134 @@
+---
+title: Editing many rows at once
+description: "Tick rows in a list and edit or delete them in one go, with exactly the checks you would have got by opening each record."
+sidebar:
+  order: 27
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Archiving twelve clients, forty domains that moved to another registrar, a sprint handed to a
+colleague: each of those is one decision about a long list. You tick the rows and change them in
+one go. Every row still travels the same validation, the same events and the same activity trail
+as if you had opened the record yourself; there is no second, shorter route into the data.
+
+## Where to find it
+
+On a list's toolbar, beside **Kolommen** (Columns) and the Export and Import buttons, sits a
+pencil ✎ with the tooltip **Rijen selecteren** (Select rows). It is only drawn when there is
+something you may actually do on that list: no edit and no delete permission means no ✎ at all.
+
+Lists that carry it today: **Klanten** (Clients), **Contactpersonen** (Contact people),
+**Projecten** (Projects), **Taken** (Tasks), **Websites**, **Domeinen** (Domains) and
+**Abonnementen** (Agreements). **Interacties** (Interactions) has the same selection mode, but
+with its own three review actions instead of a generic edit.
+
+## How it works
+
+<Steps>
+1. Press ✎. The list grows checkboxes and **Bewerken** (Edit) and **Verwijderen** (Delete)
+   appear beside the button.
+2. Tick rows. The header checkbox selects every row on this page; shift-click extends the
+   selection from the last row you ticked. The count sits beside the buttons.
+3. Press **Bewerken**. The **Selectie bewerken** (Edit selection) dialog opens blank.
+4. Fill in only what you want to change and press **Toepassen op 12** (Apply to 12; the button
+   names your own count). The button stays disabled until you have decided something.
+5. A banner above the list reports the outcome, for example "37 bijgewerkt · 3 overgeslagen"
+   (37 updated · 3 skipped), with the reason for each skipped row underneath.
+6. Press ✎ again to leave the mode. The selection is dropped with it.
+</Steps>
+
+## Anything you leave empty stays as it was
+
+<Aside type="caution">
+The dialog opens blank, even when the rows you ticked disagree with each other. An empty field
+therefore always means "let every row keep its own value", never "empty this everywhere". The
+dialog says so itself: "Geldt voor 12 records; wat je leeg laat, houdt per record de eigen
+waarde." (Applies to 12 records. Anything you leave empty keeps each record's own value.)
+</Aside>
+
+Clearing is therefore a separate, deliberate act: a **Leegmaken** (Empty) tick appears beside the
+field. That tick only exists on fields where empty is a real state, and it can never hold an
+answer at the same time as the control: pick a value and the tick goes off, and the other way
+round.
+
+## What you can set, per list
+
+| List | Fields |
+| --- | --- |
+| Klanten | Status |
+| Contactpersonen | Klant (Client) |
+| Projecten | Status, Klant, Standaard factureerbaar (Billable by default) |
+| Taken | Status, Toegewezen aan (Assignee), Prioriteit, Project, Klant, Deadline (can be emptied) |
+| Websites | Hosting (can be emptied), Uptime-monitoring |
+| Domeinen | Status, Klant, Registrar, DNS-provider, E-mailprovider, Factureren (Invoice) |
+| Abonnementen | Status, Type, Klant |
+
+On **Domeinen**, emptying *Factureren* is labelled **Register volgen** (Follow the register) for
+a reason: empty is not a blank there but a third answer, namely "let the registrar's own register
+decide".
+
+The list is short on purpose. What defines a single record is missing from it: a client's or a
+domain's name, a contact person's address, a project's budget, an agreement's price. A shared
+value would be wrong on nearly every row. For a price change across several agreements there is
+a feature of its own, **Prijsverhoging** (Price increase).
+
+## Deleting
+
+**Verwijderen** always asks to confirm, and the confirmation says what goes with it. For clients
+it reads: "12 klanten verwijderen? Alles wat eraan hangt gaat mee: contactpersonen, domeinen,
+abonnementen en facturen." (Delete 12 clients? Everything attached to them goes with them.) On
+tasks, comments, checklists and time entries go too; on projects the tasks and hours deliberately
+stay, without a project.
+
+## When something cannot be done
+
+There are two kinds of trouble, and they deliberately end differently.
+
+- **A bad value is yours.** An unknown status or a client that resolves to nothing is refused up
+  front, with the message under the field that caused it. Nothing changes, on any row. That is
+  right: the value would fail on all of them identically.
+- **A row that refuses is its own.** That row comes back in the banner and the rest goes through.
+  Examples: a task whose deadline moves later and needs a reason for it, a status that requires a
+  closing contact moment, a project whose hours come from a linked agreement, or a task that is
+  not yours while you may only edit your own.
+
+## Permissions
+
+There is no separate "bulk" permission, and that is deliberate: editing forty records you were
+each allowed to edit is the same act, repeated.
+
+| Action | Permission | Default |
+| --- | --- | --- |
+| **Bewerken** | that list's ordinary write key, e.g. `domains.domain.write` | Administrator |
+| **Verwijderen** | its ordinary delete key, e.g. `companies.company.delete` | Administrator |
+| The three actions on Interacties | `interactions.interaction.review` | Administrator and Member |
+
+Tasks are the exception: a member holds `tasks.task.write` on their **own** tasks, so they do see
+the ✎, and a colleague's tasks come back as skipped rows rather than refusing the whole batch.
+
+If a module runs on a licence that has expired, a bulk edit refuses exactly as an ordinary edit
+does. Reading always keeps working.
+
+## Good to know
+
+- **The selection belongs to the page.** Move to the next page, or change a filter, the search
+  term or the sorting, and the selection is dropped. To act on more rows at once, first raise
+  **Per pagina** (Per page) under the list; the choices are 25, 50, 100 and 200.
+- On **Interacties** the three actions are **Goedkeuren** (Approve), **Toewijzen…** (Assign) and
+  **Afwijzen** (Reject). A number behind an action means it can do fewer rows than you ticked,
+  and says how many.
+- Every bulk change lands in the record's activity trail with your name and the time on it,
+  exactly like a change made through the form.
+- A row outside your company groups is not in the list, so it cannot be ticked either.
+- A bulk edit only ever touches what you ticked. To create or update rows from a file you want
+  [import & export](/en/docs/modules/import-export/) instead, which works differently: it finds
+  records by a key in your file.
+
+## Read next
+
+<CardGrid>
+  <LinkCard title="Import & export" description="The same columns, with a file as the source." href="/en/docs/modules/import-export/" />
+  <LinkCard title="Tasks" description="The list where editing in bulk saves the most work." href="/en/docs/modules/tasks/" />
+  <LinkCard title="Roles and permissions" description="Who may edit and delete, per role." href="/en/docs/modules/roles/" />
+</CardGrid>

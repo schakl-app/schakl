@@ -446,11 +446,15 @@ async def test_s3_backend_records_and_serves_new_writes(
         old = await c.get(f"/api/v1/files/{local_meta['id']}", headers=headers)
         assert old.status_code == 200 and old.content == _PNG
 
-        # Deleting the s3 row removes the object from the bucket.
+        # Deleting the s3 row removes the row and leaves the object: the bytes are shared
+        # content now, and only the storage sweeper can see that nothing references them any
+        # more (docs/STORAGE.md). Reclaiming them here is `sweep_unreferenced`'s job, and it
+        # is tested there — what matters on the request path is that no S3 call is made.
         assert (
             await c.delete(f"/api/v1/files/{meta['id']}", headers=headers)
         ).status_code == 204
-        assert meta["storage_key"] not in fake.blobs
+        assert (await c.get(f"/api/v1/files/{meta['id']}", headers=headers)).status_code == 404
+        assert meta["storage_key"] in fake.blobs
 
 
 async def test_s3_row_with_config_removed_reads_as_distinct_404(

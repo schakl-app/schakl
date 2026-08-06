@@ -1,0 +1,150 @@
+{
+  "slug": "mcp",
+  "name": "MCP (Model Context Protocol)",
+  "order": 90,
+  "category": "automation",
+  "status": "live",
+  "lucide": "bot",
+  "mark": { "monogram": "MC", "color": "#6366F1" },
+  "tagline": {
+    "nl": "Je eigen API als toolset voor AI-clients",
+    "en": "Your own API as a toolset for AI clients"
+  },
+  "summary": {
+    "nl": "schakl. draait een MCP-server op /mcp. Elke operatie van /api/v1 is daar een tool, gegenereerd uit de OpenAPI-spec van je eigen instance en in-process teruggeproxied naar diezelfde API. Een tool-aanroep gaat dus door precies dezelfde poort als het web: hostname naar organisatie, RLS gebonden, rechten opgelost.",
+    "en": "schakl. runs an MCP server at /mcp. Every /api/v1 operation is a tool there, generated from your own instance's OpenAPI spec and proxied in-process back to that same API. So a tool call travels exactly the same gate as the web app: hostname to organisation, RLS bound, permissions resolved."
+  },
+  "highlights": {
+    "nl": [
+      "Elke /api/v1-operatie is een tool, met de naam van de operatie: list_companies, create_task, team_time_summary",
+      "Sleutels zijn tenant-gebonden, intrekbaar en dragen precies de scopes die je aanvinkt",
+      "Aansluiten in één regel met claude mcp add --transport http"
+    ],
+    "en": [
+      "Every /api/v1 operation is a tool, named after the operation: list_companies, create_task, team_time_summary",
+      "Keys are tenant-scoped, revocable and carry exactly the scopes you tick",
+      "Connect in one line with claude mcp add --transport http"
+    ]
+  },
+  "where": {
+    "nl": "Instellingen → Mijn account, sectie API-sleutels voor een persoonlijke sleutel, of Instellingen → Service-accounts voor een sleutel die iemands vertrek overleeft. Het endpoint zelf is https://<je-host>/mcp.",
+    "en": "Instellingen → Mijn account (Settings → My account), section API-sleutels, for a personal key, or Instellingen → Service-accounts (Settings → Service accounts) for a key that outlives an employee. The endpoint itself is https://<your-host>/mcp."
+  },
+  "docs": "/docs/integrations/mcp/",
+  "page": {
+    "lead": {
+      "nl": "Wijs een AI-client naar je eigen instance en stel je vraag in gewone taal. Er wordt niets geëxporteerd en er ontstaat geen tweede datapad: de MCP-server praat in-process met dezelfde API als de webapp.",
+      "en": "Point an AI client at your own instance and ask in plain language. Nothing gets exported and no second data path appears: the MCP server talks in-process to the same API the web app uses."
+    },
+    "requirements": {
+      "nl": [
+        "Je eigen tenant-hostname over HTTPS: het geverifieerde eigen domein, of <slug>.<basisdomein>",
+        "Een licentie die de sku mcp dekt; zonder dekking antwoordt de hele /mcp-mount met 402",
+        "SCHAKL_MCP_ENABLED mag niet op false staan (standaard staat hij aan)",
+        "Het recht apikeys.personal.manage voor een persoonlijke sleutel, of apikeys.service_account.manage voor een service-account",
+        "Een client die Streamable HTTP spreekt, bijvoorbeeld Claude Code of Claude Desktop"
+      ],
+      "en": [
+        "Your own tenant hostname over HTTPS: the verified custom domain, or <slug>.<base domain>",
+        "A licence covering the mcp sku; without it the whole /mcp mount answers 402",
+        "SCHAKL_MCP_ENABLED must not be false (it is on by default)",
+        "The apikeys.personal.manage permission for a personal key, or apikeys.service_account.manage for a service account",
+        "A client that speaks Streamable HTTP, for example Claude Code or Claude Desktop"
+      ]
+    },
+    "steps": {
+      "nl": [
+        "Controleer je licentie onder <strong>Instellingen → Licentie</strong>. MCP heeft een eigen sku (<code>mcp</code>); wordt die niet gedekt, dan antwoordt <code>/mcp</code> met een 402 en is er niets aan te sluiten.",
+        "Maak een persoonlijke sleutel aan onder <strong>Instellingen → Mijn account</strong>, sectie <strong>API-sleutels</strong>. Vul <strong>Naam</strong> in, laat <strong>Verloopt op</strong> leeg voor een sleutel die nooit verloopt, en vink onder <strong>Scopes</strong> precies de rechten aan die de AI mag uitoefenen. Druk op <strong>Sleutel aanmaken</strong>.",
+        "Of maak een sleutel die niemands account nodig heeft: <strong>Instellingen → Service-accounts</strong> → <strong>Service-account toevoegen</strong>, daarna <strong>Nieuwe sleutel</strong> met zijn eigen scopes.",
+        "Kopieer de sleutel meteen. Hij heeft de vorm <code>schakl_&lt;prefix&gt;_&lt;secret&gt;</code> en wordt één keer getoond; daarna geeft de API alleen nog <code>schakl_&lt;prefix&gt;_********</code> terug.",
+        "Koppel Claude Code: <code>claude mcp add --transport http schakl https://&lt;je-host&gt;/mcp --header \"Authorization: Bearer schakl_…\"</code>",
+        "Een andere Streamable-HTTP-client: endpoint <code>https://&lt;je-host&gt;/mcp</code>, header <code>Authorization: Bearer schakl_…</code> of <code>X-API-Key: schakl_…</code>. Gebruik altijd je eigen tenant-hostname; een sleutel die op de hostname van een andere organisatie wordt aangeboden, wordt simpelweg niet gevonden.",
+        "Klaar met de koppeling of sleutel kwijt: druk op <strong>Intrekken</strong> naast de sleutel, of verwijder het hele service-account. Alles wat hem nog gebruikt, verliest per direct toegang."
+      ],
+      "en": [
+        "Check your licence under <strong>Instellingen → Licentie</strong> (Settings → Licence). MCP has its own sku (<code>mcp</code>); if it is not covered, <code>/mcp</code> answers 402 and there is nothing to connect to.",
+        "Mint a personal key under <strong>Instellingen → Mijn account</strong> (Settings → My account), section <strong>API-sleutels</strong> (API keys). Fill in <strong>Naam</strong> (Name), leave <strong>Verloopt op</strong> (Expires on) empty for a key that never expires, and under <strong>Scopes</strong> tick exactly the permissions the AI may exercise. Press <strong>Sleutel aanmaken</strong> (Create key).",
+        "Or mint a key that needs nobody's account: <strong>Instellingen → Service-accounts</strong> → <strong>Service-account toevoegen</strong> (Add service account), then <strong>Nieuwe sleutel</strong> (New key) with its own scopes.",
+        "Copy the key straight away. It has the form <code>schakl_&lt;prefix&gt;_&lt;secret&gt;</code> and is shown exactly once; afterwards the API only ever returns <code>schakl_&lt;prefix&gt;_********</code>.",
+        "Connect Claude Code: <code>claude mcp add --transport http schakl https://&lt;your-host&gt;/mcp --header \"Authorization: Bearer schakl_…\"</code>",
+        "Any other Streamable-HTTP client: endpoint <code>https://&lt;your-host&gt;/mcp</code>, header <code>Authorization: Bearer schakl_…</code> or <code>X-API-Key: schakl_…</code>. Always use your own tenant hostname; a key presented on another organisation's hostname is simply not found.",
+        "Done with the client, or lost the key: press <strong>Intrekken</strong> (Revoke) beside it, or delete the whole service account. Anything still using it loses access immediately."
+      ]
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Dezelfde poort als de webapp",
+          "en": "The same gate as the web app"
+        },
+        "body": {
+          "nl": "Er is geen tweede datapad. Een tool-aanroep gaat in-process door dezelfde afhandeling als een HTTP-verzoek: de hostname wijst de organisatie aan, row-level security wordt gebonden en de rechten van de sleutel worden opgelost. Een aanroep die niet mag, geeft de 401 of 403 van de API zelf terug als fout op de tool. De binnenkomende sleutel wordt nooit doorgegeven aan een externe dienst; de proxy praat alleen in-process met de API.",
+          "en": "There is no second data path. A tool call goes in-process through the same handling as an HTTP request: the hostname resolves the organisation, row-level security is bound, and the key's permissions are resolved. A call that is not allowed surfaces the API's own 401 or 403 envelope as a tool error. The incoming key is never forwarded to any external service; the proxy only ever calls the API in-process."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Read-first is een keuze bij het aanmaken",
+          "en": "Read-first is a choice at mint time"
+        },
+        "body": {
+          "nl": "De toolset bevat ook schrijfacties, omdat de hele API erin zit. Wat een client feitelijk mag, staat in de scopes van de sleutel: vink alleen leesrechten aan en er valt niets te veranderen. Een persoonlijke sleutel wordt daarbovenop bij elk verzoek afgetopt op de actuele rechten van de eigenaar, dus wie gedegradeerd wordt, verliest dat via zijn sleutels ook. Een service-account-sleutel draagt precies de scopes die je hem gaf.",
+          "en": "The tool surface includes writes, because the whole API is in it. What a client may actually do lives in the key's scopes: tick read permissions only and there is nothing to change. A personal key is additionally capped by its owner's live permissions on every request, so demoting someone narrows their keys with them. A service-account key carries exactly the scopes you granted it."
+        },
+        "bullets": {
+          "nl": [
+            "Scopes komen uit dezelfde rechtencatalogus als rollen, inclusief de eigen/alle-variant zoals time.entry.read:own",
+            "De deny-by-default-regel van de API beantwoordt elke aanroep, ook die van een AI",
+            "Alleen modules die aanstaan leveren routes, dus de toolset volgt vanzelf wat je draait"
+          ],
+          "en": [
+            "Scopes come from the same permission catalogue as roles, including the own/any variant such as time.entry.read:own",
+            "The API's deny-by-default rule answers every call, an AI's included",
+            "Only enabled modules contribute routes, so the tool surface tracks what you actually run"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Transport en tempo",
+          "en": "Transport and pace"
+        },
+        "body": {
+          "nl": "Streamable HTTP, stateless, met JSON-antwoorden: elke JSON-RPC-POST staat op zichzelf, dus het werkt achter elke load balancer en vanaf een kale curl. Per sleutel geldt een limiet van 600 verzoeken per minuut, ruim voor automatisering en een vaste bovengrens onder een gelekte sleutel. De kolom Laatst gebruikt loopt bewust achter: die wordt buiten het verzoek om bijgewerkt, zodat een tool-aanroep er nooit op hoeft te wachten.",
+          "en": "Streamable HTTP, stateless, with JSON responses: every JSON-RPC POST stands alone, so it works behind any load balancer and from plain curl. Each key is limited to 600 requests per minute, generous for automation and a firm ceiling under a leaked key. The Laatst gebruikt (Last used) column deliberately lags: it is updated out of band, so a tool call never waits on it."
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "key": "apikeys.personal.manage",
+        "nl": "Eigen API-sleutels beheren: zelf een sleutel aanmaken en intrekken. Standaard voor beheerder en medewerker, want de sleutel kan nooit meer dan de eigenaar zelf.",
+        "en": "Manage your own API keys: mint and revoke them yourself. Granted to admin and member by default, because such a key can never exceed its owner."
+      },
+      {
+        "key": "apikeys.service_account.manage",
+        "nl": "Serviceaccounts beheren: gedeelde, persoonsonafhankelijke sleutels. Standaard alleen voor beheerders.",
+        "en": "Manage service accounts: shared principals that belong to no one person. Admin only by default."
+      }
+    ],
+    "limits": {
+      "nl": [
+        "Geen OAuth 2.1: de resource-server-laag (RFC 9728) is nog niet gebouwd. Een client die een volledige OAuth-flow eist, kan vandaag niet koppelen; een API-sleutel is de enige credential.",
+        "Niet alles is een tool: /api/v1/auth, /api/v1/setup, /api/v1/instance, /api/v1/users en de upload-endpoints van import (/inspect en /import) zitten er bewust niet in. De kolommenlijst en de export van import & export blijven wel bereikbaar.",
+        "De handgeschreven tools per module (companies.find, projects.budget_status) voeden vandaag de assistent in de app; de MCP-toolset komt puur uit de OpenAPI-spec.",
+        "De oudere SSE-transport wordt niet aangeboden, die is afgeschreven.",
+        "600 verzoeken per minuut per sleutel is een vaste grens, geen instelling.",
+        "SCHAKL_MCP_ENABLED=false haalt de hele /mcp-surface weg; er is geen uitschakeling per tool."
+      ],
+      "en": [
+        "No OAuth 2.1: the resource-server layer (RFC 9728) has not been built. A client that requires the full OAuth flow cannot connect today; an API key is the only credential.",
+        "Not everything is a tool: /api/v1/auth, /api/v1/setup, /api/v1/instance, /api/v1/users and the import upload endpoints (/inspect and /import) are deliberately excluded. The column list and the export side of import and export stay reachable.",
+        "The hand-written per-module tools (companies.find, projects.budget_status) feed the in-app assistant today; the MCP tool surface is derived purely from the OpenAPI spec.",
+        "The older SSE transport is not offered, it is deprecated.",
+        "600 requests per minute per key is a fixed ceiling, not a setting.",
+        "SCHAKL_MCP_ENABLED=false removes the whole /mcp surface; there is no per-tool switch."
+      ]
+    }
+  }
+}

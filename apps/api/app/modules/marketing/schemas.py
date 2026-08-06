@@ -179,6 +179,13 @@ class CompanyMarketing(BaseModel):
     #: The client's websites, so the link pickers can attach a new link to one and the tab can
     #: label its groups. Empty when the client has none (links stay client-level).
     websites: list[WebsiteRef] = Field(default_factory=list)
+    #: The latest published report's own words about this client, keyed by report section, plus
+    #: the period they describe (#300, ``app/core/narratives.py``). A dashboard is a table until
+    #: somebody explains it, and the agency already wrote that explanation once — so the panel,
+    #: the tab and the client's portal widget show it beside the numbers rather than only in a
+    #: PDF once a month. ``None`` whenever there is nothing to borrow: reporting not installed,
+    #: not licensed, or no published report yet, and every screen renders as it did before.
+    narrative: dict | None = None
 
 
 # --- per-client settings (#134, layout #192) -------------------------------------------------- #
@@ -210,12 +217,17 @@ class MarketingSettingsRead(BaseModel):
     #: True when the deprecated ``SCHAKL_GOOGLE_ADS_DEVELOPER_TOKEN`` env var is set — the fallback
     #: still used when no token is stored, so the UI can say "using the environment value".
     env_ads_token_configured: bool = False
+    #: Whether the agency's SE Ranking API key is stored (#300). One key covers every client
+    #: project; the value itself is never returned, like the token above.
+    seranking_api_key_configured: bool = False
 
 
 class MarketingSettingsWrite(BaseModel):
     #: The Google Ads developer token. Empty/omitted keeps the stored one (the Google-client-secret
     #: rule); the API never plays it back.
     ads_developer_token: str | None = Field(default=None, max_length=1024)
+    #: The agency's SE Ranking API key (#300). Same write-only rule.
+    seranking_api_key: str | None = Field(default=None, max_length=1024)
 
 
 class DrilldownRowOut(BaseModel):

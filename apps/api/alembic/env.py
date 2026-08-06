@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from sqlalchemy.pool import NullPool
 
 from app.config import settings
+from app.core.migrations import acquire_migration_lock, release_migration_lock
 from app.db import Base
 
 # Import side-effect: populates Base.metadata with all tables.
@@ -63,9 +64,23 @@ async def run_migrations_online() -> None:
         prefix="sqlalchemy.",
         poolclass=NullPool,
     )
-    async with connectable.connect() as connection:
-        await connection.run_sync(_do_run_migrations)
-    await connectable.dispose()
+    try:
+        # The lock rides its OWN connection, held open for the whole migration, for two reasons:
+        # it must not be entangled with the transactions Alembic opens and closes on the
+        # migration connection, and closing it is an unconditional release even if the process
+        # is killed mid-migration (Postgres drops session locks when the backend goes away — so
+        # a `docker service update --force` during a migration cannot wedge the next deploy).
+        lock_connection = await connectable.connect()
+        await lock_connection.execution_options(isolation_level="AUTOCOMMIT")
+        try:
+            await acquire_migration_lock(lock_connection)
+            async with connectable.connect() as connection:
+                await connection.run_sync(_do_run_migrations)
+        finally:
+            await release_migration_lock(lock_connection)
+            await lock_connection.close()
+    finally:
+        await connectable.dispose()
 
 
 if context.is_offline_mode():

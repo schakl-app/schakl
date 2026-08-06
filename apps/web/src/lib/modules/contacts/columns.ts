@@ -15,6 +15,11 @@ import type { ColumnMeta } from "$lib/core/table/columns";
 
 export const CONTACTS_TABLE_ID = "contacts";
 
+// Every non-primary column states a `width`. The table lays out `table-fixed`, which shares the
+// remainder equally between the columns that declare none — so a bare list would give the client
+// chips and the created date the same share as the person's name. The primary column keeps its
+// number for a dragged layout, but is the one that absorbs the slack (`DataTable.flexKey`), so
+// these are what actually decide the shape: ~590px of fixed columns by default, name takes the rest.
 export const CONTACT_COLUMNS: ColumnMeta[] = [
   {
     key: "name",
@@ -23,9 +28,16 @@ export const CONTACT_COLUMNS: ColumnMeta[] = [
     primary: true,
     width: 240,
   },
-  { key: "companies", labelKey: "contacts.companies", defaultVisible: true },
-  { key: "email", labelKey: "contacts.email", sortKey: "email", defaultVisible: true },
-  { key: "phone", labelKey: "contacts.phone", defaultVisible: true },
-  { key: "job_title", labelKey: "contacts.job_title", sortKey: "job_title" },
-  { key: "created_at", labelKey: "table.column.created_at", sortKey: "created_at", align: "right" },
+  // Chips, one per client this person is linked to — the widest of the three default columns.
+  { key: "companies", labelKey: "contacts.companies", defaultVisible: true, width: 220 },
+  { key: "email", labelKey: "contacts.email", sortKey: "email", defaultVisible: true, width: 220 },
+  { key: "phone", labelKey: "contacts.phone", defaultVisible: true, width: 150 },
+  { key: "job_title", labelKey: "contacts.job_title", sortKey: "job_title", width: 170 },
+  {
+    key: "created_at",
+    labelKey: "table.column.created_at",
+    sortKey: "created_at",
+    align: "right",
+    width: 110,
+  },
 ];

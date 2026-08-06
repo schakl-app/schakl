@@ -1,0 +1,113 @@
+---
+title: MCP-server
+description: "Koppel Claude of een andere MCP-client aan je eigen schakl-installatie, met een API-sleutel die precies bepaalt wat de AI mag zien en doen."
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+MCP (Model Context Protocol) is de manier waarop AI-clients gereedschap krijgen. schakl. biedt zo'n
+server aan op `/mcp`: elk eindpunt van de API is er een tool. Je koppelt Claude Desktop, Claude Code
+of een andere MCP-client aan je eigen installatie en stelt je vraag in gewone taal, zonder eerst
+iets te exporteren. Wat de AI mag zien en doen, bepaal je met de scopes van de sleutel die je hem
+geeft.
+
+## Waar je het vindt
+
+De server draait op `https://<jouw-adres>/mcp`, op het eigen adres van je organisatie. Er is geen
+scherm voor: je regelt het aan de kant van de client, met een sleutel uit
+*Instellingen → Mijn account* (blok **API-sleutels**) of uit *Instellingen → Service-accounts*.
+
+<Aside type="caution">
+De MCP-server is een **gelicentieerde** module. Zonder dekkende licentie antwoordt `/mcp` in zijn
+geheel met een licentiefout, ook op lezen. Dat is bewust: MCP wordt vooral gebruikt om te lezen, dus
+een lezen-mag-toch-splitsing zou hier niets afschermen. Zie [Licenties](/nl/docs/admin/licenses/).
+</Aside>
+
+## Aansluiten
+
+<Steps>
+1. Maak een sleutel aan zoals beschreven bij de [REST API](/nl/docs/integrations/rest-api/). Vink
+   onder **Scopes** alleen aan wat de AI mag; voor vragen stellen is dat meestal alleen leesrecht.
+2. Kopieer de sleutel meteen. Hij wordt maar één keer getoond.
+3. Voeg de server toe aan je client. Voor Claude Code:
+
+   ```bash
+   claude mcp add --transport http schakl https://<jouw-adres>/mcp \
+     --header "Authorization: Bearer schakl_…"
+   ```
+4. Een andere client die Streamable HTTP spreekt, wijs je naar hetzelfde adres met de header
+   `Authorization: Bearer schakl_…` of `X-API-Key: schakl_…`.
+5. Vraag de client de tools op te halen. Verschijnt er niets, controleer dan of je het eigen adres
+   van je organisatie gebruikt: een sleutel bestaat alleen op de hostnaam van zijn eigen organisatie.
+</Steps>
+
+## Welk gereedschap de AI krijgt
+
+De toollijst wordt rechtstreeks afgeleid van de API zelf, dus hij loopt nooit achter. Elk eindpunt
+onder `/api/v1` is een tool, met de korte naam van de bewerking: `list_companies`, `create_task`,
+`time_summary`.
+
+Alleen de modules die jouw organisatie aan heeft staan hebben eindpunten, dus de toollijst volgt
+vanzelf welke modules je gebruikt. Zet je een module uit, dan verdwijnt zijn gereedschap.
+
+Een paar dingen doen bewust niet mee:
+
+| Niet als tool | Waarom |
+| --- | --- |
+| Inloggen en de eerste-start-wizard | sessieafhandeling, zinloos voor een sleutel |
+| Het beheerderscherm van de instantie | dat is de instantie-eigenaar, niet de organisatie |
+| Import: bestand inspecteren en importeren | daar hoort een bestand en menselijk kolommen-koppelen bij |
+
+De rest van import en export blijft wel beschikbaar: kolommen opvragen en gegevens exporteren zijn
+allebei bruikbaar voor een AI.
+
+## Wat de AI wel en niet mag
+
+Een toolaanroep loopt precies dezelfde weg als een gewoon verzoek uit het scherm: hostnaam naar
+organisatie, afscherming op databaseniveau, en daarna de rechtencontrole van dat eindpunt. Er is
+geen tweede route naar de gegevens. Een aanroep waar de sleutel geen recht voor heeft komt gewoon
+terug als een foutmelding bij de tool.
+
+Let wel op wat je aanvinkt: het gereedschap bevat ook schrijfacties, want het is de hele API. Wil je
+dat de AI alleen kan meelezen, geef de sleutel dan uitsluitend leesrechten. Dat is een keuze bij het
+aanmaken van de sleutel, niet iets wat de server voor je afdwingt.
+
+<Aside type="caution">
+Voor een AI-client is een sleutel met alleen leesrechten meestal genoeg. Vink je ook schrijfrechten
+aan, dan kan de client uit zichzelf records aanmaken, wijzigen en verwijderen, zonder dat er nog
+iemand op **Opslaan** klikt.
+</Aside>
+
+## Rechten
+
+| Recht | Wat het opent | Standaard |
+| --- | --- | --- |
+| `apikeys.personal.manage` | Eigen API-sleutels beheren | Beheerder, Medewerker |
+| `apikeys.service_account.manage` | Serviceaccounts beheren | Beheerder |
+
+Daarna bepaalt de sleutel zelf alles: elke aangevinkte scope is een recht uit dezelfde catalogus als
+*Instellingen → Rollen*. Een persoonlijke sleutel wordt daarbovenop elk verzoek opnieuw begrensd
+door de actuele rechten van de eigenaar.
+
+## Goed om te weten
+
+- **API-sleutels zijn vandaag de enige manier om in te loggen.** De volledige OAuth-aanmeldstroom
+  die sommige MCP-clients verwachten is nog niet ingebouwd; zo'n client kan dus (nog) niet koppelen.
+- Het transport is Streamable HTTP met losstaande JSON-antwoorden. De oudere SSE-variant wordt niet
+  aangeboden.
+- 600 aanroepen per minuut per sleutel. Een AI die enthousiast doorzoekt kan daar tegenaan lopen.
+- **Intrekken** in het sleutelscherm haalt de toegang er per direct af, zonder dat er aan de kant
+  van de client iets hoeft te gebeuren.
+- De toollijst komt volledig uit de API-beschrijving. Handgeschreven, slimmere tools (zoals "zoek
+  deze klant") bestaan wel binnen de app-assistent, maar zitten niet in deze lijst.
+- Wil je de server helemaal niet aanbieden, dan zet je op de server `SCHAKL_MCP_ENABLED=false`.
+  Daarmee verdwijnt `/mcp` volledig.
+
+## Verder lezen
+
+<CardGrid>
+  <LinkCard title="REST API" description="Sleutels aanmaken, scopes kiezen en de API zelf aanroepen." href="/nl/docs/integrations/rest-api/" />
+  <LinkCard title="Licenties" description="Wat er gebeurt als de licentie voor MCP niet meer dekt." href="/nl/docs/admin/licenses/" />
+</CardGrid>

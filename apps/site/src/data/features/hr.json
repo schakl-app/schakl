@@ -1,0 +1,121 @@
+{
+  "name": "Personeelsdossier",
+  "slug": "hr",
+  "order": 130,
+  "icon": "🗂️",
+  "lucide": "hr",
+  "title": {
+    "nl": "Personeelsdossier",
+    "en": "Employee records"
+  },
+  "description": {
+    "nl": "Arbeidscontracten met hun eigen werkweek, en per medewerker een dossier met contract, groeiplannen en CAO op één persoonlijke pagina.",
+    "en": "Employment contracts carrying their own working week, and a record per employee holding the contract, growth plans and CAO on one personal page."
+  },
+  "page": {
+    "eyebrow": {
+      "nl": "Personeel",
+      "en": "People"
+    },
+    "title": {
+      "nl": "Het dossier achter de persoonlijke pagina",
+      "en": "The record behind the personal page"
+    },
+    "lead": {
+      "nl": "Mijn pagina staat in het profielmenu en niet in de navigatie: het gaat over jou, niet over een module. Je vindt er je verlofsaldo, je lopende contract en je dossierdocumenten per categorie. Dit gaat over medewerkers, dus over de gebruikers van je eigen organisatie, en nooit over de contactpersonen van een klant.",
+      "en": "My page sits in the profile menu, not in the navigation: it is about you, not about a module. It holds your leave balance, your running contract and your dossier documents by category. This is employee data — the users and memberships of your own organisation — and never a client's contact people."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Mijn pagina, in het profielmenu",
+          "en": "My page, in the profile menu"
+        },
+        "body": {
+          "nl": "Mijn pagina hoort niet in de zijbalk thuis: de zijbalk gaat over modules, deze pagina gaat over jou. Je opent hem via het profielmenu rechtsboven. Bovenaan staan je verlofsaldo, waarin wettelijk en bovenwettelijk vakantieverlof als één getal staan, en je lopende contract met in dienst sinds, uren per week en een einddatum wanneer die er is; beide blokken komen uit de verlofmodule en verschijnen alleen wanneer die aanstaat. Daaronder staat het dossier zelf, dat ook zonder verlof werkt. Personeelsdossier is een gelicentieerde uitbreidingsmodule: de kern van schakl. is open source (AGPL), modules als deze vragen een licentiesleutel en gaan aan onder Instellingen → Modules.",
+          "en": "My page does not belong in the sidebar: the sidebar is about modules and this page is about you. You open it from the profile menu. At the top sit your leave balance — statutory and extra-statutory vacation shown as one figure — and your running contract with the start date, the hours per week and an end date where there is one; both blocks come from the leave module and appear only when it is on. Below them is the dossier itself, which works with or without leave. Personeelsdossier is a licensed extension module: the core of schakl. is open source (AGPL), modules like this one require a license key, and you switch it on under Instellingen → Modules."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Zes categorieën, één uploadformulier",
+          "en": "Six categories, one upload form"
+        },
+        "body": {
+          "nl": "Het dossier heeft een vaste indeling, zodat een getekend contract niet in dezelfde stapel belandt als een bonusafspraak. Je archiveert een bestand met een categorie, een eigen naam (bijvoorbeeld 'Contract 2026') en een optionele notitie. Bij elke regel staat de datum en wie het archiveerde; die naam wordt op het moment van uploaden vastgelegd, dus hij blijft leesbaar ook als dat account later verdwijnt. Verwijderen haalt de dossierregel en het bestand definitief weg, en zowel het toevoegen als het verwijderen komt op het activiteitenspoor van het dossier te staan.",
+          "en": "The dossier has a fixed shape, so a signed contract never lands in the same pile as a bonus agreement. You file a document with a category, a name of your own (\"Contract 2026\", say) and an optional note. Each row shows the date and who filed it; that name is snapshotted at upload time, so it stays readable even after the account behind it is gone. Deleting removes the dossier row and the file for good, and both filing and removing land on the dossier's activity trail."
+        },
+        "bullets": {
+          "nl": [
+            "Contract",
+            "Groeiplannen",
+            "Bonusafspraken",
+            "Voorwaarden & benefits",
+            "CAO",
+            "Overig"
+          ],
+          "en": [
+            "Contract",
+            "Growth plans",
+            "Bonus agreements",
+            "Terms & benefits",
+            "CAO (collective agreement)",
+            "Other"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Twee rechten, en een eigen route voor de bestanden",
+          "en": "Two permissions, and a route of its own for the files"
+        },
+        "body": {
+          "nl": "Een dossier mogen lezen en er documenten in mogen zetten zijn twee losse rechten: 'Personeelsdossier bekijken' (het eigen dossier of dat van iedereen) en 'Dossierdocumenten beheren'. Dat iemand roosters mag beheren betekent dus niet dat diegene contracten mag inzien. Elke medewerker ziet zijn eigen dossier; wie alle dossiers mag lezen kiest bovenin een collega uit de medewerkerkiezer. De bestanden zelf gaan niet via de gewone bestandsroute maar via een eigen route die bij elke download opnieuw toetst of je dit dossier mag lezen, en die antwoordt met 'niet gevonden' in plaats van 'geen toegang': een document-id bevestigt zo nooit dat een collega dat stuk in zijn dossier heeft.",
+          "en": "Reading a dossier and filing into it are two separate permissions: \"Personeelsdossier bekijken\" (your own, or anyone's) and \"Dossierdocumenten beheren\". So letting someone manage work schedules does not quietly let them read contracts. Every employee sees their own dossier; whoever may read all of them picks a colleague from the employee picker at the top. The bytes do not travel the ordinary file route but one of their own, which re-checks the dossier permission on every single download and answers \"not found\" rather than \"forbidden\" — a document id never confirms that a colleague holds that paper."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Een contract is een periode, geen veld",
+          "en": "A contract is a period, not a field"
+        },
+        "body": {
+          "nl": "Een arbeidscontract loopt van een begindatum tot een einddatum, of het loopt door. Gaat iemand van 32 naar 38 uur, dan is dat een nieuwe regel en geen bewerking van de oude, want de opbouw van vorig jaar hangt aan de oude periode. Beëindigen legt alleen de einddatum vast; de regel blijft als historie staan. Contracturen zijn het juridische getal dat je intypt, los van hoeveel uur er geroosterd staat, en het verschil met de voltijdnorm is precies wat als vrije tijd kan opbouwen. Contract, werkweek en vrije tijd leg je in één wizard van drie stappen vast, via Instellingen → Team & gebruikers en ook vanaf de teamlijst onder Verlof → Team.",
+          "en": "An employment contract runs from a start date to an end date, or it runs on. Someone moving from 32 to 38 hours gets a new row, never an edit of the old one, because last year's accrual hangs off the old period. Terminating records the end date and nothing else; the row stays as history. Contract hours are the legal number you type in, independent of how many hours are actually rostered, and the gap to the full-time norm is exactly what can accrue as free time. Contract, working week and free time are one three-step wizard, reached from Instellingen → Team & gebruikers and from the team roster under Verlof → Team."
+        }
+      },
+      {
+        "heading": {
+          "nl": "De werkweek hangt aan het contract, dus per datum",
+          "en": "The working week hangs off the contract, so it resolves per date"
+        },
+        "body": {
+          "nl": "De werkweek is geen los veld op de persoon maar een eigenschap van de contractperiode, want een roosterwijziging is meestal ook een contractwijziging. Bij het uitrekenen van verlof zoekt de server de week per dag op, en een aanvraag die over een contractgrens heen loopt wordt dus aan beide kanten met de juiste week gerekend. Zo blijft verlof van vorig jaar geprijsd tegen het rooster van toen, ook nadat iemand in maart van vier naar vijf dagen ging. Een leeg rooster op een contract betekent 'erven', niet 'nog niet ingevuld': de terugval is expliciet en in één volgorde vastgelegd.",
+          "en": "The working week is not a loose field on the person but a property of the employment period, because a schedule change usually is a contract change. Pricing leave looks the week up per day, so a request that crosses a contract boundary is measured against the right week on either side. That is what keeps last year's leave priced at last year's roster, even after someone moved from four days to five in March. An empty week on a contract means \"inherit\", not \"not filled in yet\": the fallback is explicit and runs in one order."
+        },
+        "bullets": {
+          "nl": [
+            "Het contract dat die dag dekt",
+            "anders het eigen rooster van de medewerker (Instellingen → Team & gebruikers)",
+            "anders het standaardrooster van de organisatie (Instellingen → Verlof)"
+          ],
+          "en": [
+            "The contract covering that day",
+            "otherwise the employee's own schedule (Instellingen → Team & gebruikers)",
+            "otherwise the organisation's default week (Instellingen → Verlof)"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Een contractwijziging rekent het saldo meteen opnieuw uit",
+          "en": "A contract change reprorates the balance on the spot"
+        },
+        "body": {
+          "nl": "Een contract aanmaken, corrigeren of beëindigen herberekent in dezelfde transactie de automatisch afgeleide jaarsaldi van die medewerker: de wijziging en het nieuwe saldo staan samen vast, of geen van beide. Wie halverwege het jaar uit dienst gaat houdt dus een naar rato verlaagd saldo in plaats van een vol jaar, en een opslag via 'oude contract beëindigen, nieuw contract erbij' telt beide perioden mee. Handmatige correcties blijven daarbij ongemoeid en het verleden blijft bevroren: een afgesloten jaar wordt niet opnieuw geprijsd en goedgekeurd verlof wordt nooit met terugwerkende kracht herrekend. Passen er na de wijziging al ingeplande vrije dagen niet meer in het saldo, dan zet het scherm ze op een rij met een knop om ze terug te nemen; stilletjes annuleren gebeurt nooit.",
+          "en": "Creating, correcting or terminating a contract re-derives that employee's generated yearly entitlements in the same transaction: the change and the new balance commit together, or neither does. Someone leaving mid-year therefore keeps a prorated balance instead of a full year, and a raise applied as \"terminate the old contract, add a new one\" folds both periods in. Manual corrections are left alone and the past stays frozen: a closed year is never re-priced, and approved leave is never retroactively recalculated. If the change leaves already-scheduled free days that no longer fit the balance, the screen lists them with a button to take them back — nothing is ever cancelled silently."
+        }
+      }
+    ]
+  }
+}

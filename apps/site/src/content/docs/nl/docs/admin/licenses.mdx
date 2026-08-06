@@ -2,16 +2,24 @@
 title: Licenties
 description: "Hoe uitbreidingsmodules gelicentieerd worden: de licentiesleutel, de proefperiode en wat er gebeurt als een licentie verloopt."
 sidebar:
-  order: 3
+  order: 4
 ---
 
 De kern van schakl. is **open source** (AGPL-3.0): het platform zelf plus de modules
-bedrijven, contacten, taken en notificaties. De **uitbreidingsmodules** — op dit moment
-projecten, tijdschrijven, verlof, HR, domeinen, websites, hosting, abonnementen, facturatie,
-contactmomenten, automatisering, marketing en Google Workspace, samen met de MCP-server en
-de AI-assistent — vallen onder de commerciële licentie en vereisen een **licentiesleutel**.
+Klanten, Contactpersonen, Taken en Meldingen. De **uitbreidingsmodules** vallen onder de
+commerciële licentie en vereisen een **licentiesleutel**. Dat zijn er op dit moment
+achttien: Projecten, Uren, Verlof, HR, Domeinen, Websites, Hosting, Abonnementen,
+Facturatie, Contactmomenten, Automatisering, Marketing, Rapportage, Klantportaal,
+Google Workspace, Cloudflare, OXXA en Mollie, plus twee onderdelen die geen module in de
+lijst zijn maar wel een eigen licentieregel hebben: de MCP-server en AI-assistentie.
 De broncode van die modules is gewoon zichtbaar in de repository; alleen het gebruik ervan
 vraagt een sleutel.
+
+Elke uitbreidingsmodule heeft een eigen licentieregel, dus een licentie hoeft er niet alle
+achttien te dekken. Op *Instellingen → Licentie* staat onder **Gelicentieerde modules** de
+hele lijst met per regel de status, zodat je per module ziet of jouw sleutel hem dekt. Twee
+regels staan daar nog met hun technische naam, `reporting` en `mcp`; dat zijn Rapportage en
+de MCP-server. Welke modules aan staan regel je onder *Instellingen → Modules*.
 
 ## Hoe het werkt
 
@@ -25,17 +33,26 @@ vraagt een sleutel.
 ## Proefperiode
 
 Elke verse installatie (en elke bestaande installatie die naar deze versie bijwerkt) krijgt
-een **ingebouwde proefperiode**: gelicentieerde modules werken twee weken volledig, zonder
-sleutel. Daarna kunnen ze niet meer worden ingeschakeld en worden al ingeschakelde
-gelicentieerde modules **alleen-lezen**.
+een **ingebouwde proefperiode**: gelicentieerde modules werken veertien dagen volledig,
+zonder sleutel. Daarna kunnen ze niet meer worden ingeschakeld en worden al ingeschakelde
+gelicentieerde modules **alleen-lezen**. De teller begint te lopen zodra de database naar
+deze versie is gemigreerd; op *Instellingen → Licentie* staat de einddatum als
+**Modules zonder licentie worden alleen-lezen op**. Wil je een andere lengte, dan zet je
+`SCHAKL_LICENSE_BOOTSTRAP_GRACE_DAYS` op het aantal dagen dat je wilt.
 
 ## Als een licentie verloopt
 
-- Binnen de **respijtperiode** (standaard twee weken na de vervaldatum) blijft alles gewoon
-  werken; zo is er tijd om te verlengen.
+- Een licentie kan zelf een **respijtperiode** meebrengen: een aantal dagen na de
+  vervaldatum waarin alles gewoon blijft werken, zodat er tijd is om te verlengen. Hoe lang
+  die is, staat op de sleutel zelf en verschilt dus per licentie; er is geen vast aantal
+  dagen in de software. Je ziet de einddatum op *Instellingen → Licentie* staan als
+  **Respijtperiode tot**, met als status *Verlopen (respijtperiode)*. Vermeldt de sleutel
+  geen respijt, dan begint het alleen-lezen op de vervaldatum zelf.
 - Daarna worden de gelicentieerde modules **alleen-lezen**: bestaande gegevens blijven
   zichtbaar en **exporteren blijft altijd werken**. Er gaat nooit iets verloren; een nieuwe
   sleutel installeren maakt de module direct weer volledig werkend.
+- De proefperiode hierboven brengt een verlopen licentie niet terug. Die klok geldt alleen
+  voor modules die op geen enkele geïnstalleerde licentie staan.
 - De rest van het platform merkt er niets van.
 
 ## Een licentie aanvragen of verlengen

@@ -15,7 +15,7 @@ const logoSrc = settings.logo ? settings.logo.replace(/^\//, './') : undefined;
 const logoDarkSrc = settings.logoDark ? settings.logoDark.replace(/^\//, './') : logoSrc;
 
 export default defineConfig({
-  site: settings.siteUrl || 'https://schakl.app',
+  site: settings.siteUrl || 'https://schakl.dev',
   output: 'static',
   image: { service: passthroughImageService() },
   // The docs moved from a root-locale layout to symmetric /nl/ + /en/ folders when the CMS
@@ -53,6 +53,11 @@ export default defineConfig({
         {
           label: 'Modules',
           autogenerate: { directory: 'docs/modules' },
+        },
+        {
+          label: 'Koppelingen',
+          translations: { en: 'Integrations' },
+          autogenerate: { directory: 'docs/integrations' },
         },
         {
           label: 'Beheer',

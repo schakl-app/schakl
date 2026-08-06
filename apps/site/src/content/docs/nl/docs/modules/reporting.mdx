@@ -1,0 +1,139 @@
+---
+title: Rapportage
+description: "De periodieke klantrapportage als document: cijfers bevroren in een momentopname, tekst in jullie eigen toon, een pdf in de huisstijl, en versturen met een mens ertussen."
+sidebar:
+  order: 17
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Elke maand moet elke klant horen hoe het ervoor staat, en dat met de hand uit Analytics, Search
+Console en een rank tracker halen kost een dag. De rapportagemodule maakt het hele document:
+cijfers, grafieken, tekst in jullie eigen toon, jullie huisstijl. Per klant, op een planning, en
+met de pdf als bijlage in de mail.
+
+## Waar je het vindt
+
+- **Rapportages** in het hoofdmenu: alle documenten, nieuwste periode eerst, met filters op
+  klant en soort.
+- Het paneel **Rapportage** op de klantpagina: de laatste rapportages, de planning, de
+  ontvangers, en de knoppen **Nieuwe rapportage**, **Instellen** en **Alle rapportages**.
+- *Instellingen → Rapportage*: de tone of voice, de sjablonen en de planning van de hele
+  organisatie. Het profiel van één klant staat bewust niet hier maar op de klant zelf.
+
+Rapportage is een gelicentieerde module; je zet hem aan onder *Instellingen → Modules*. Zie
+[Licenties](/nl/docs/admin/licenses/).
+
+## Wat er eerst moet staan
+
+<Steps>
+1. Vul onder *Instellingen → AI* een provider en API-sleutel in en zet de functie **Briefing &
+   rapporten** aan. Alle tekst loopt via jullie eigen AI-account, budget en verbruiksmeter.
+
+2. Koppel de gegevens per klant via de [marketingmodule](/nl/docs/modules/marketing/). Zonder
+   gekoppelde bronnen valt er niets te rapporteren, en dat zegt het scherm ook.
+
+3. Loop *Instellingen → Rapportage* langs: **Planning**, **Tone of voice** en **Sjablonen**. Bij
+   het eerste bezoek staat er al een Nederlandse standaardtoon klaar, inclusief een lijst met
+   woorden die niet gebruikt mogen worden.
+
+4. Open een klant, ga in het paneel **Rapportage** naar **Instellen** en vul het profiel in.
+</Steps>
+
+## Twee documenten over dezelfde cijfers
+
+Per periode kunnen er twee documenten zijn: de **Maandrapportage** die de klant leest, en de
+**Interne analyse**, jullie eigen werkdocument met risico's, hiaten en wat mogelijk buiten scope
+valt. Ze lezen dezelfde cijfers en verschillen alleen in tekst en in welke onderdelen meedoen:
+de website-audit, **Wat we deze maand oppakken** en **Open vragen** staan uitsluitend in de
+interne analyse. Die gaat nooit naar een klant en komt nooit in het klantportaal.
+
+## Planning, toon en sjabloon
+
+Onder *Instellingen → Rapportage → Planning* staan de standaarden die elke klant erft: **Hoe
+vaak** (Niet automatisch, Maandelijks of Per kwartaal), **Dag van de maand** (standaard de 5e,
+maximaal de 28e), **Uur**, **Vergelijken met**, **Na het genereren** (Eerst nakijken of Direct
+versturen), **Publiceren in het klantportaal** en een **Afsluitende regel**. De 5e is met opzet
+de standaard: attributie in Analytics loopt na een maandeinde nog dagen door en Search Console
+rondt nog later af.
+
+Een **tone of voice** is een rij die je zelf bewerkt, geen code: **Schrijfinstructies** in jullie
+eigen woorden, **Deze woorden nooit gebruiken** (één per regel) en **Deze formuleringen hebben
+de voorkeur**. Er kunnen er meerdere naast elkaar bestaan, want niet elke klant leest hetzelfde
+register. Een **sjabloon** bepaalt het uiterlijk: **Voor wie**, **Accentkleur** (leeg is jullie
+huisstijlkleur), een **Openingsalinea** en de **Onderdelen**, de hoofdstukken die de ingeschakelde
+modules aanleveren, hier te herordenen of uit te zetten.
+
+## Het klantprofiel
+
+Onder **Over deze klant** vul je in wat waar is over ze: **Wat ze doen**, **Hun doelen**,
+**SEO-focus**, **SEA-focus**, **Belangrijkste diensten**, **Prioritaire pagina's**,
+**Conversiedoelen**, **Scope** en **Niet noemen**. Dat zijn feiten, geen instructies: ze gaan als
+gegeven mee bij het schrijven, de tone of voice bepaalt de formulering.
+
+Daaronder staan **Ontvangers** (aan te vinken uit de contactpersonen, plus **Andere adressen**,
+één per regel), **Toon, taal en ontwerp**, de **Planning** van deze klant, **Ook de interne
+analyse maken** en **Rapportage actief voor deze klant**. Wat op **Standaard volgen** blijft
+staan, erft de organisatie-instelling; het scherm toont de uitkomst en de volgende uitvoerdatum.
+
+## Genereren, nakijken, versturen
+
+Een rapportage wordt altijd in de wachtrij gezet, nooit ter plekke gemaakt. Start hem met
+**Nieuwe rapportage** op de klant, of met **Deze periode genereren** op *Rapportages* voor
+iedereen tegelijk; elke klant draait als eigen taak, dus één trage bron neemt de rest niet mee.
+De status leest **Concept**, **Wordt gemaakt**, **Klaar om na te kijken**, **Verstuurd** of
+**Mislukt**.
+
+Op het nakijkscherm lees je de samenvatting en elke sectiealinea. Je kunt de tekst met de hand
+aanpassen (die sectie krijgt het label **met de hand aangepast** en overleeft een regeneratie) of
+met **Opnieuw schrijven** één sectie opnieuw laten schrijven. **Het document** toont de preview
+zoals de pdf hem afdrukt, **Pdf** downloadt hem, en bovenaan staat **Goed om te weten voordat je
+verstuurt**: de waarschuwingen van deze run, die de klant nooit ziet.
+
+**Naar de klant sturen** mailt de pdf naar de ontvangers uit het profiel; **In het portaal
+publiceren** maakt hem zichtbaar in het klantportaal, staat los van mailen en kan ook weer terug.
+De begeleidende mail herschrijf je onder *Instellingen → E-mail*, sjabloon **Maandrapportage**,
+met de variabelen `{brand}`, `{client}`, `{contact}`, `{period}`, `{sender_name}` en `{link}`.
+De afzendernaam komt van de verantwoordelijke van die klant.
+
+## Rechten
+
+| Recht | Wat het opent | Standaard bij |
+| --- | --- | --- |
+| `reporting.report.read` | Rapportages lezen (`:any` is personeel, inclusief concepten; `:own` is de eigen gepubliceerde rapportages van een klant) | Beheerder, Medewerker (`:any`), Klant (`:own`) |
+| `reporting.report.write` | Maken, tekst bewerken, opnieuw laten schrijven, verwijderen | Beheerder, Medewerker |
+| `reporting.report.send` | Publiceren en naar klanten mailen | Beheerder |
+| `reporting.internal.read` | De interne analyse lezen | Beheerder, Medewerker |
+| `reporting.profile.manage` | Het rapportageprofiel van een klant beheren | Beheerder, Medewerker |
+| `reporting.settings.manage` | Tone of voice, sjablonen en planning beheren | Beheerder |
+
+Versturen is met opzet geen onderdeel van schrijven: een junior kan de maand schrijven terwijl de
+knop om te versturen bij degene blijft die de relatie heeft.
+
+## Goed om te weten
+
+- **Een periode is altijd een hele kalendermaand of een heel kwartaal**, in de tijdzone van de
+  organisatie. Een run op 5 augustus gaat over 1 tot en met 31 juli en heet juli.
+- **Opnieuw draaien maakt geen tweede document**: een rapportage is uniek per klant, soort en
+  periode, dus een tweede run werkt hetzelfde document bij. Elk getal dat het document afdrukt
+  is bevroren, dus een rapportage van maart zegt volgend jaar december nog hetzelfde.
+- **Verboden woorden worden achteraf gecontroleerd, niet alleen gevraagd.** Wat er toch doorheen
+  glipt komt op de waarschuwingen, waar jij het ziet voordat de klant het ziet.
+- **Een verstuurde rapportage kun je niet meer verwijderen en de tekst niet meer bewerken.**
+  Mislukt het versturen, dan blijft de status op klaar staan en kun je het opnieuw proberen.
+- **Ontvangers staan vast op het profiel**, ze worden niet live uit de contactpersonen gehaald.
+  Vertrekt er iemand bij de klant, dan blijft die op de lijst tot iemand hem eraf haalt.
+- **Zonder AI, of over het maandbudget heen, wordt de rapportage nog steeds gemaakt**: de cijfers
+  zonder tekst, met een waarschuwing die dat zegt.
+- **Bij een verlopen licentie gaat de module alleen-lezen** en staat de planning stil; al gemaakte
+  rapportages blijven openen en downloaden.
+
+<Aside type="caution" title="Nog niet in een uitgebrachte versie">
+De rapportagemodule is nieuw en zit nog niet in een uitgebrachte versie: hij komt na v0.21.0. Op
+een installatie die op die versie draait, staat het menu-item *Rapportages* er dus nog niet.
+</Aside>
+
+## Verder lezen
+
+- [Marketing](/nl/docs/modules/marketing/): de cijfers waar de rapportage op gebouwd wordt.
+- [Klanten](/nl/docs/modules/companies/): het klantdossier waar het paneel op staat.

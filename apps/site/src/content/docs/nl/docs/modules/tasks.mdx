@@ -1,0 +1,169 @@
+---
+title: Taken
+description: "Het takenbord: eigen statussen, labels, checklists, sjablonen, herhaling en de planning van je werk op de agenda."
+sidebar:
+  order: 5
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Taken zijn het werk zelf: wat er moet gebeuren, voor welke klant, door wie en wanneer. Het bord
+groepeert op de statussen die jouw bureau zelf inricht, niet op een lijstje dat wij bedacht
+hebben.
+
+## Waar je het vindt
+
+**Taken** in het hoofdmenu. Daarnaast staat er een paneel **Taken** op elk klantdossier en een
+takenlijst op elke projectpagina. De instellingsschermen zijn:
+
+- *Instellingen → Taakstatussen*: de kolommen van je bord
+- *Instellingen → Taaklabels*: gekleurde labels
+- *Taken → Sjablonen*: takensjablonen en checklistsjablonen op één scherm
+
+Taken hoort bij de open kern van schakl. en heeft dus geen licentiesleutel nodig.
+
+## Het bord
+
+Open je **Taken**, dan zie je standaard **jouw** taken, niet die van iedereen. Wil je de rest
+zien, kies dan een andere toegewezene of "Geen" in de personenkiezer.
+
+Filteren kan op klant, project, toegewezene, label en op deadline (**Over tijd**, **Vandaag**,
+**Deze week**), plus vrije tekst. Rijen zijn gegroepeerd per status; afgeronde statussen staan
+standaard dichtgeklapt. Kolommen kies je zelf en die keuze blijft bewaard; sorteren gebeurt
+binnen elke groep.
+
+Met de ✎ zet je de selectievakjes aan en pas je een hele selectie tegelijk aan: **status**,
+**toegewezene**, **prioriteit**, **project**, **klant** en **deadline**. Rijen die geweigerd
+worden (bijvoorbeeld een taak die een reden voor de deadline nodig heeft) worden per rij gemeld;
+de rest gaat gewoon door. **Nieuwe taak** maakt meteen een taak aan en zet je op de taakpagina
+in bewerkmodus; een apart aanmaakformulier is er niet.
+
+## Statussen inrichten
+
+Onder *Instellingen → Taakstatussen* hernoem, verkleur en herorden je de kolommen van je bord,
+of voeg je er nieuwe toe. Elke status heeft drie vinkjes:
+
+- **Afgerond**: een eindstatus. Bepaalt wanneer een taak "klaar" is, klapt op het bord dicht en
+  start een herhaling die op afronden staat.
+- **Standaard**: hier beginnen nieuwe taken.
+- **Contactmoment vereist**: deze status is alleen bereikbaar via een gelogd contactmoment.
+
+<Aside type="caution">
+Een status verwijderen lukt pas als er geen taken meer in staan, en de laatste status kan
+nooit weg. Verplaats de taken er eerst uit.
+</Aside>
+
+## Een taak
+
+Op de taakpagina zet je met **Bewerken** de definitie open: **Status**, **Prioriteit**
+(Laag/Normaal/Hoog), **Toegewezen aan**, **Project**, **Klant**, **Vervaldatum** en
+**Tijdbudget** in minuten. Dat budget wordt getoond naast de uren die op de taak geschreven
+zijn, als "x over" of "x over budget".
+
+- **Labels**: gekleurd, organisatiebreed, en aan te maken vanuit de taak zelf.
+- **Checklists**: meerdere per taak, elk met een omschrijving in markdown en punten die hun
+  eigen omschrijving mogen hebben. Met **Uit sjabloon** haal je een bestaande checklist binnen;
+  met **Opslaan als sjabloon** zet je deze in de gedeelde bibliotheek.
+- **Links & bijlagen**: URL's plus echte bestandsuploads.
+- **Reacties**: met @-vermeldingen van collega's en contactpersonen en `#`-verwijzingen naar
+  andere taken. Bewerken en verwijderen mag; een bewerkte reactie krijgt het label "bewerkt".
+- **Activiteit**: alles wat er met de taak gebeurde, van aanmaken tot een verschoven deadline
+  met reden. De naam van wie het deed wordt vastgelegd en blijft leesbaar als het account
+  later verdwijnt.
+
+Vink je het laatste openstaande punt af, dan vraagt schakl. of de taak naar de eindstatus mag.
+
+<Aside type="caution">
+Een deadline **naar later** verschuiven vraagt om een reden. Die reden komt in het
+activiteitenspoor van de taak te staan; zonder reden weigert de opslag.
+</Aside>
+
+### Twee schakelaars die verder gaan dan de taak
+
+- **Alleen afsluiten met een contactmoment**: deze ene taak mag alleen naar een afgeronde
+  status via een contactmoment dat als afsluiter is aangewezen. Los van de statusinstelling,
+  dus één taak kan het eisen zonder de hele status.
+- **Zichtbaar voor klant**: standaard uit. Staat hij aan, dan ziet een portaalcontact van die
+  klant de taak en mag erop reageren.
+
+Een taak kan ook aan een **contactpersoon van de eigen klant** worden toegewezen in plaats van
+aan een medewerker: "wachten op de klant". Aan allebei tegelijk kan niet.
+
+## Inplannen op de agenda
+
+Een deadline is niet hetzelfde als een moment waarop je eraan werkt. Onder **Agenda → Nieuw →
+Inplannen** (en vanuit het paneel **Planning** op de taak zelf) plan je blokken:
+
+<Steps>
+1. Kies de taak; het tijdbudget en de deadline staan erbij.
+2. Kies **Voor wie**. Jezelf mag altijd; een collega alleen met het bijbehorende recht.
+3. Vul **Datum**, **Starttijd**, **Duur (minuten)** en eventueel een **Notitie** in.
+4. Het blok verschijnt op de Agenda en is naar een andere dag te slepen.
+5. Is het blok voorbij, dan biedt het **Uren registreren**. Dat maakt de echte urenregistratie
+   aan en markeert het blok als geregistreerd, zodat je het nooit dubbel schrijft.
+</Steps>
+
+Eén taak mag meerdere blokken hebben; met de Google-koppeling aan komen ze ook in Google Agenda.
+
+## Herhaling
+
+Een taak kan **Dagelijks**, **Wekelijks**, **Maandelijks**, **Per kwartaal** of **Jaarlijks**
+terugkeren, in een van twee modi:
+
+- **Na afronden**: de volgende taak verschijnt zodra je deze afrondt.
+- **Op schema**: hij wordt automatisch op het interval aangemaakt, ook als deze nog open staat.
+
+Labels en checklists gaan mee naar de volgende taak.
+
+## Sjablonen
+
+Onder **Taken → Sjablonen** staan twee bibliotheken. Een **takensjabloon** is een set taken met
+per regel een prioriteit, **Deadline na** zoveel dagen, een tijdbudget, een toegewezene of
+**Verantwoordelijke van de klant** (die pas bij toepassen wordt bepaald), en een checklist.
+Toepassen kan **Handmatig** vanaf het klantdossier (**Sjabloon toepassen**) of automatisch
+**Bij klantstatus**: zodra een klant die status bereikt, verschijnen de taken. Ook een
+abonnementstype kan zijn sjablonen uitrollen zodra een abonnement voor het eerst actief wordt.
+**Checklistsjablonen** zijn herbruikbare checklists die iedereen aan een taak kan hangen.
+
+## Herinneringen
+
+Eén keer per dag meldt schakl. wat over tijd is en wat binnen jouw eigen drempel valt; die
+drempel stel je per persoon in onder *Instellingen → Meldingen*, veld **Bijna verlopen
+(dagen)**. Een taak meldt zich één keer per deadline en opnieuw zodra iemand die verschuift.
+
+## Rechten
+
+| Recht | Standaard bij |
+| --- | --- |
+| `tasks.task.read` | Beheerder, Medewerker, Klant |
+| `tasks.task.create` | Beheerder, Medewerker |
+| `tasks.task.write` | Beheerder (alles), Medewerker (eigen) |
+| `tasks.task.delete` | Beheerder |
+| `tasks.comment.write` | Beheerder (alles), Medewerker en Klant (eigen) |
+| `tasks.schedule.read` / `tasks.schedule.write` | Beheerder (iedereen), Medewerker (zichzelf) |
+| `tasks.label.write` · `tasks.status.write` | Beheerder |
+| `tasks.template.write` · `tasks.template.apply` · `tasks.checklist_template.write` | Beheerder |
+
+"Eigen" betekent bij een taak: **de taak is aan jou toegewezen**. Een medewerker bewerkt dus de
+taken die van hem zijn en niet die van een ander. Alles is per rol aan te passen onder
+*Instellingen → Rollen*.
+
+## Goed om te weten
+
+- **Een taak verwijderen neemt zijn reacties, checklists, links en ingeplande blokken mee.**
+  Al geschreven uren blijven bestaan; ze raken alleen hun koppeling met de taak kwijt.
+- **Import maakt altijd nieuwe taken aan.** Taaktitels mogen legitiem herhalen, dus er is geen
+  eerlijke sleutel om op bij te werken. De kolom `assignee` matcht op het e-mailadres van de
+  medewerker en `status` wordt tegen jouw eigen statuslijst gecontroleerd. Exporteren kan
+  gewoon; zie [Import & export](/nl/docs/modules/import-export/).
+- **De tab Sjablonen verschijnt alleen bij wie ze mag beheren**; een portaalklant komt er niet
+  bij.
+- Op het **Dashboard** staan de widgets **Mijn openstaande taken** en **Openstaande taken per
+  project / klant**, en op de **Agenda** de feeds **Ingeplande taken** en **Taakdeadlines**
+  (rood zodra iets over tijd is).
+
+## Verder lezen
+
+- [Projecten](/nl/docs/modules/projects/): waar taken hun budget en to-do-lijst vandaan halen
+- [Klanten](/nl/docs/modules/companies/): het dossier met het takenpaneel
+- [Import & export](/nl/docs/modules/import-export/)

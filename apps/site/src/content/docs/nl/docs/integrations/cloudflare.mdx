@@ -1,0 +1,170 @@
+---
+title: Cloudflare
+description: "DNS, domeinbrede omleidingen en Pages voor de domeinen van je klanten, via je eigen Cloudflare-accounts."
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+De Cloudflare-koppeling zet de DNS van een klantdomein, de omleiding erop en het Pages-project
+erachter op de domeinpagina zelf, zodat je er geen tweede tabblad meer voor open hoeft te
+houden. De status **Doorverwijzing** op een domein was tot nu toe alleen een label; hiermee
+wordt het een echte Redirect Rule die schakl. aanmaakt, teruglegt en bewaakt.
+
+## Waar je het vindt
+
+De accounts staan onder *Instellingen → Cloudflare* ("API-tokens, zones en Pages-projecten per
+account"), in de groep **Communicatie & koppelingen**. Het dagelijkse werk staat op de
+domeinpagina: *Domeinen & websites → Domeinen*, open een domein, en daar staat het paneel
+**Cloudflare** (met daaronder het paneel *Registrar (OXXA)*). De module voegt bewust geen
+menu-item toe: Cloudflare is geen plek waar je heen gaat, het is iets wat een domein heeft.
+
+Cloudflare is een gelicentieerde module. Schakel hem in onder *Instellingen → Modules*; de
+licentiesleutel voer je in onder *Instellingen → Licentie*.
+
+## Het API-token
+
+Eén regel per Cloudflare-account waarmee je werkt: je bureau heeft er meestal een, en sommige
+klanten brengen dat van henzelf mee. Maak het token aan in het Cloudflare-dashboard zelf
+(*My Profile → API Tokens → Create Token*, een custom token) en zet aan wat je nodig hebt:
+
+| Cloudflare-recht | Waarvoor |
+| --- | --- |
+| Zone → Zone → **Read** | zones tonen en koppelen (het minimum) |
+| Zone → DNS → **Edit** | de DNS-tabel, de export en de records die een omleiding nodig heeft |
+| Zone → Dynamic Redirect → **Edit** | de domeinbrede omleiding lezen en schrijven |
+| Zone → Page Rules → **Read** | optioneel: een oude forwarding page rule als conflict herkennen |
+| Account → Zone → **Edit** | optioneel: een zone aanmaken die er nog niet is |
+| Account → Cloudflare Pages → **Read/Edit** | optioneel: Pages-projecten en hostnamen koppelen |
+| Account → Domain Registration → **Read** | optioneel: de Registrar-lijst, en dus de facturatiebeslissing |
+
+<Aside type="caution">
+Gebruik nooit de Global API Key. Het veld vraagt om een token met beperkte rechten en weigert de
+ongescopete sleutel bewust.
+</Aside>
+
+<Steps>
+
+1. Ga naar *Instellingen → Cloudflare* en druk op **Account toevoegen**. Vul **Naam** in
+   (waaraan je dit account herkent, bijvoorbeeld de klantnaam), plak het **API-token**, kies
+   eventueel een **Leveranciersregel** uit je eigen lijst (*Instellingen → Providers*, soort DNS)
+   en laat **In gebruik** aan staan.
+2. Druk op **Token controleren**. Onder **Wat dit token mag** komt te staan wat het werkelijk
+   kan: *Token is geldig*, *Account uitlezen*, *Zones uitlezen*, *Pages-projecten uitlezen*,
+   *Registrar-domeinen uitlezen*. Wat je niet hebt toegekend leest hier "niet toegekend", in
+   plaats van drie schermen verderop als een foutmelding onder een knop.
+3. Ziet het token meerdere Cloudflare-accounts, vul dan **Cloudflare-account-ID** in. Bij één
+   account wordt dat veld automatisch ingevuld.
+4. Druk op **Zones ophalen**. Die ene actie haalt de zones, de Pages-projecten én de
+   Registrar-lijst op, en meldt hoeveel zones er zijn opgehaald en hoeveel er aan een domein
+   gekoppeld zijn.
+5. Werk in de tabel **Zones** de rest bij met **Aan domein koppelen** of **Ontkoppelen**, een
+   **Zone zoeken**-veld en het filter **Alleen niet-gekoppelde**. Automatisch koppelen gaat op
+   de domeinnaam; wat niet matcht wordt getoond, niet verborgen.
+
+</Steps>
+
+## Een domein koppelen
+
+Op de domeinpagina staat **Koppelen aan Cloudflare**. schakl. zoekt eerst naar een bestaande
+zone en maakt er alleen een aan als die er niet is; neem je een bestaande inrichting van een
+klant over, zet dan **Alleen een bestaande zone koppelen** aan.
+
+Daarna toont het paneel **Cloudflare verwacht** (de nameservers die Cloudflare heeft toegewezen)
+naast **Publieke DNS antwoordt**, met het oordeel "Nameservers wijzen naar Cloudflare" of
+"Nameservers wijzen nog niet naar Cloudflare. Wijzig ze bij de registrar." De knop **Controleren
+bij Cloudflare** is de enige actie die daadwerkelijk bij Cloudflare gaat kijken; het paneel zelf
+tekent uit opgeslagen gegevens en blijft dus werken als Cloudflare eruit ligt. Wat zo'n controle
+vindt komt terug onder **Aandachtspunten**: een zone die wacht of gepauzeerd is, een omleiding
+die bij Cloudflare gewijzigd of verdwenen is, iets anders dat al omleidt, een ontbrekend geproxyd
+record, of een domein dat in meerdere accounts bestaat.
+
+## De domeinbrede omleiding
+
+In de sectie **Domeinbrede omleiding** vul je in: **Omleiden naar** (een volledig adres,
+bijvoorbeeld `https://nieuwesite.nl`), **Soort omleiding** (301 permanent, 302 tijdelijk, 307 of
+308), **Pad meenemen**, **Querystring meenemen**, **Ook www en andere subdomeinen omleiden** en
+**Records toevoegen die de omleiding nodig heeft**. **Omleiding opslaan** zet meteen ook de
+status van het domein op *Doorverwijzing* met het doeladres erbij.
+
+<Aside type="caution">
+Een omleidingsregel werkt alleen voor verkeer dat Cloudflare bereikt. Heeft het domein geen
+geproxyd record, dan wordt de regel netjes opgeslagen, staat hij in het Cloudflare-dashboard als
+actief, en gebeurt er niets. Laat daarom **Records toevoegen die de omleiding nodig heeft**
+aanstaan: schakl. zet dan het door Cloudflare gedocumenteerde placeholder-record neer voor het
+domein zelf en voor `www`, en raakt bestaande records nooit aan. Zet iemand het wolkje later
+alsnog grijs, dan meldt de controle dat.
+</Aside>
+
+Een omleiding die naar het domein zelf terugwijst wordt geweigerd: Cloudflare zou hem accepteren
+en de site van de klant zou eindeloos doorverwijzen. Of het een lus is hangt af van de
+subdomeinen-optie, want `klant.nl → nieuw.klant.nl` is verstandig zonder subdomeinen en een lus
+met. Staat er al een andere omleidingsregel of een oude page rule op de zone, dan verschijnt
+**Andere omleidingen op deze zone**: conflicten worden gemeld, nooit opgelost, want schakl.
+herschikt of verwijdert de regel van iemand anders niet. Bulk Redirects op accountniveau worden
+helemaal niet bekeken, dus gebruik je die, dan gelden zowel jouw bulkregel als deze regel.
+
+## DNS-records en Pages
+
+De DNS-tabel (**DNS-records tonen**) wordt live bij Cloudflare gelezen en nergens opgeslagen: een
+kopie zou binnen enkele minuten onjuist zijn. Je voegt A-, AAAA-, CNAME-, TXT-, MX-, NS-, SRV- en
+CAA-records toe en wijzigt ze, met **Type**, **Naam**, **Waarde**, **TTL** (of Automatisch),
+**Via Cloudflare**, **Prioriteit** en een **Notitie**. Exporteren kan als zonebestand of als CSV.
+
+Onder **Cloudflare Pages** kies je een **Project** en eventueel een **Hostnaam** (leeg laten
+betekent het domein zelf) en druk je op **Aan project koppelen**. Ligt de zone hier, dan
+registreert schakl. de hostnaam bij het project én zet het CNAME klaar. Ligt de DNS ergens
+anders, dan gebeurt de registratie wel en wijs je de hostnaam zelf naar het `pages.dev`-adres van
+het project; tot die tijd houdt Cloudflare de hostnaam op "pending". De hostnaam moet het domein
+zelf of een subdomein ervan zijn, want die koppeling bepaalt bij welke klant hij hoort.
+
+## Wie betaalt voor de naam
+
+Een zone is geen registratie. Cloudflare beantwoordt met alle plezier de DNS van een domein dat
+de klant zelf registreerde en zelf verlengt, en dat is precies het domein dat je nooit mag
+doorbelasten. Alleen de **Registrar-lijst** kent het verschil: die heeft een eigen token-recht en
+een eigen tijdstip waarop hij is uitgelezen. Zet daarom het veld **Facturatie** op een domein op
+**Volg het register**, dan verschijnt de zin "Staat in het register van Cloudflare Registrar, dus
+dit domein wordt gefactureerd", of het tegenovergestelde. Zolang er geen register is uitgelezen,
+factureert alles precies zoals het altijd deed.
+
+<Aside type="caution">
+De Registrar-helft is nooit tegen een echt Cloudflare Registrar-account uitgeprobeerd. Elk veld
+wordt behoedzaam gelezen, maar controleer na de eerste synchronisatie zelf of de lijst klopt
+voordat je erop vertrouwt bij het factureren.
+</Aside>
+
+## Rechten
+
+| Recht | Waarvoor | Standaard bij |
+| --- | --- | --- |
+| `cloudflare.settings.manage` | accounts toevoegen, vervangen, controleren, verwijderen en synchroniseren; opent ook het instellingenscherm | Beheerder |
+| `cloudflare.dns.read` | de zonelijst, DNS-records en export, het statusrapport, de accountkeuze | Beheerder |
+| `cloudflare.zone.manage` | een zone aanmaken of koppelen, DNS wijzigen, de omleiding instellen of verwijderen, Pages koppelen | Beheerder |
+
+Aan te passen per rol onder *Instellingen → Rollen*. Geen van de drie gaat ooit naar de rol
+*Klant*. Ze staan los van `domains.domain.write`: dat recht wijzigt óns record van een domein,
+deze wijzigen de levende DNS ervan.
+
+## Goed om te weten
+
+- Er is geen achtergrondtaak. **Zones ophalen** is een knop, en niets ververst de zones, de
+  Pages-projecten of de Registrar-lijst vanzelf.
+- Er is geen webhook en geen callback-URL: buiten het aanmaken van het token hoef je in
+  Cloudflare niets in te stellen.
+- schakl. kiest nooit zelf een account. Dezelfde domeinnaam mag in meerdere accounts bestaan, dus
+  bij twijfel wordt het koppelen geweigerd en kies je zelf. Een zone in het verkeerde account is
+  niet te verplaatsen, alleen te verwijderen en opnieuw aan te maken.
+- Een account verwijderen wist de opgehaalde zones, omleidingen en Pages-koppelingen uit schakl.
+  en verandert niets bij Cloudflare.
+- De zonetabel op het instellingenscherm toont maximaal 200 zones en heeft geen pagina's. Heeft
+  een account er meer, dan staan ze niet allemaal op dit scherm.
+- Bij een verlopen licentie blijven lezen, exporteren en het statusrapport werken; alleen
+  wijzigen wordt geblokkeerd.
+
+<CardGrid>
+  <LinkCard title="OXXA" href="/nl/docs/integrations/oxxa/" description="De registrarhelft: verloopdatums en het verzetten van nameservers." />
+  <LinkCard title="Domeinen" href="/nl/docs/modules/domains/" description="Het domeinregister, de verlengingen en het veld Facturatie." />
+  <LinkCard title="Licenties" href="/nl/docs/admin/licenses/" description="Cloudflare is een gelicentieerde module." />
+</CardGrid>

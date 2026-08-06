@@ -65,6 +65,11 @@ export const BACKLOG_COLUMNS: ColumnMeta[] = [
   },
 ];
 
+// Every column but one states a `width`, because the table lays out `table-fixed`: an undeclared
+// width there is not "as wide as it needs", it is an equal share of the slack — which put a
+// client's name in a 150px column and wrapped every row to five lines. The client is the widest
+// thing on the row and takes the remainder (`flex`), *not* the primary column: an invoice is
+// identified by a number, and a number needs 130px whatever the screen.
 export const INVOICE_COLUMNS: ColumnMeta[] = [
   {
     key: "number",
@@ -73,13 +78,14 @@ export const INVOICE_COLUMNS: ColumnMeta[] = [
     primary: true,
     width: 130,
   },
-  { key: "company", labelKey: "invoicing.field.company", defaultVisible: true },
+  { key: "company", labelKey: "invoicing.field.company", defaultVisible: true, flex: true },
   {
     key: "issue_date",
     labelKey: "invoicing.field.issue_date",
     sortKey: "issue_date",
     align: "right",
     defaultVisible: true,
+    width: 130,
   },
   {
     key: "due_date",
@@ -87,23 +93,32 @@ export const INVOICE_COLUMNS: ColumnMeta[] = [
     sortKey: "due_date",
     align: "right",
     defaultVisible: true,
+    width: 130,
   },
-  { key: "status", labelKey: "invoicing.field.status", sortKey: "status", defaultVisible: true },
+  {
+    key: "status",
+    labelKey: "invoicing.field.status",
+    sortKey: "status",
+    defaultVisible: true,
+    width: 120,
+  },
   {
     key: "total",
     labelKey: "invoicing.field.total",
     sortKey: "total",
     align: "right",
     defaultVisible: true,
+    width: 110,
   },
   {
     key: "outstanding",
     labelKey: "invoicing.field.outstanding",
     align: "right",
     defaultVisible: true,
+    width: 120,
   },
-  { key: "reference", labelKey: "invoicing.field.reference", defaultVisible: false },
-  { key: "reminders", labelKey: "invoicing.field.reminders", defaultVisible: false },
+  { key: "reference", labelKey: "invoicing.field.reference", defaultVisible: false, width: 160 },
+  { key: "reminders", labelKey: "invoicing.field.reminders", defaultVisible: false, width: 110 },
 ];
 
 export const QUOTE_COLUMNS: ColumnMeta[] = [

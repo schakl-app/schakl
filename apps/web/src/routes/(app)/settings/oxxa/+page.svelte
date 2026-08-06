@@ -28,6 +28,7 @@
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import Pagination from "$lib/core/ui/Pagination.svelte";
   import type { AccountRead, RegistrarDomain } from "$lib/modules/oxxa/types";
 
   let { data, form } = $props();
@@ -385,11 +386,7 @@
             {/each}
           </tbody>
         </table>
-        {#if data.registerTotal > register.length}
-          <p class="mt-3 text-xs text-text-muted">
-            {t("domains.count", { count: data.registerTotal })}
-          </p>
-        {/if}
+        <Pagination total={data.registerTotal} page={data.paging.page} limit={data.paging.limit} />
       </div>
     {/if}
   </section>

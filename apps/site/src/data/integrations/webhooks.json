@@ -1,0 +1,124 @@
+{
+  "slug": "webhooks",
+  "name": "Webhooks",
+  "order": 92,
+  "category": "automation",
+  "status": "planned",
+  "lucide": "workflow",
+  "mark": { "monogram": "WH", "color": "#64748B" },
+  "tagline": {
+    "nl": "Uitgaande event-webhooks: op de roadmap",
+    "en": "Outbound event webhooks: on the roadmap"
+  },
+  "summary": {
+    "nl": "Je abonneren op gebeurtenissen, waarbij schakl. bij elke wijziging een payload naar jouw URL stuurt, kan nog niet. Wat er vandaag wel is: een automatiseringsregel kan op acht triggers een webhook aanroepen, en een meldingskanaal kan berichten naar een webhook-URL sturen. Wil je op iets anders reageren, dan pol je de API of gebruik je MCP.",
+    "en": "Subscribing to events, with schakl. posting a payload to your URL on every change, is not possible yet. What does ship today: an automation rule can call a webhook on eight triggers, and a notification channel can push messages to a webhook URL. To react to anything else, you poll the API or use MCP."
+  },
+  "highlights": {
+    "nl": [
+      "Vandaag: de actie Webhook aanroepen in een regel onder Instellingen → Automatisering",
+      "Vandaag: een kanaal van het soort Webhook onder Instellingen → Meldingen",
+      "Nog niet: abonneren op gebeurtenissen, met een eigen payload-contract, ondertekening en herhaalpogingen"
+    ],
+    "en": [
+      "Today: the Webhook aanroepen (Call a webhook) action in a rule under Instellingen → Automatisering",
+      "Today: a channel of kind Webhook under Instellingen → Meldingen",
+      "Not yet: subscribing to events, with its own payload contract, signing and retries"
+    ]
+  },
+  "where": {
+    "nl": "Instellingen → Automatisering voor een regel met de actie Webhook aanroepen; Instellingen → Meldingen, sectie Kanalen, voor een kanaal van het soort Webhook.",
+    "en": "Instellingen → Automatisering (Settings → Automation) for a rule with the Webhook aanroepen (Call a webhook) action; Instellingen → Meldingen (Settings → Notifications), section Kanalen (Channels), for a channel of kind Webhook."
+  },
+  "roadmapNote": {
+    "nl": "Uitgaande event-webhooks staan in fase P4 van de bouwplanning, naast de gedocumenteerde publieke API en geplande PDF-rapporten. Er is nog geen abonnementsmodel, geen vastgelegd payload-contract, geen ondertekening en geen herhaalbeleid. Er staat geen datum onder.",
+    "en": "Outbound event webhooks sit in phase P4 of the build plan, alongside the documented public API and scheduled PDF reports. There is no subscription model, no fixed payload contract, no signing and no retry policy yet. No date is attached."
+  },
+  "page": {
+    "lead": {
+      "nl": "Er is nog geen manier om je op gebeurtenissen te abonneren. Deze pagina staat er zodat je niet gaat zoeken naar iets wat niet bestaat, en zodat duidelijk is wat je vandaag in plaats daarvan gebruikt.",
+      "en": "There is no way to subscribe to events yet. This page exists so you do not go hunting for something that is not there, and so it is clear what you use instead today."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Wat er vandaag wel de deur uitgaat",
+          "en": "What does leave the building today"
+        },
+        "body": {
+          "nl": "De module automatisering laat je een regel maken van een trigger, voorwaarden en acties. Eén van die acties is Webhook aanroepen: je vult een Webhook-URL in en de achtergrondworker doet een POST met een body van vier velden, event, entity_type, entity_id en payload. Zet je Wachten op bevestiging aan, dan faalt de stap tenzij je endpoint met 2xx antwoordt en niet {ok: false} teruggeeft. Elke uitvoering wordt gelogd, dus je ziet achteraf wat er is gestuurd en wat er terugkwam. De regel vuurt alleen op de triggers die er zijn.",
+          "en": "The automation module lets you build a rule from a trigger, conditions and actions. One of those actions is Webhook aanroepen (Call a webhook): you fill in a Webhook-URL and the background worker POSTs a body of four fields, event, entity_type, entity_id and payload. Switch on Wachten op bevestiging (Wait for confirmation) and the step fails unless your endpoint answers 2xx and does not return {ok: false}. Every run is logged, so you can see afterwards what was sent and what came back. A rule only ever fires on the triggers that exist."
+        },
+        "bullets": {
+          "nl": [
+            "Taken: aangemaakt, van status gewijzigd, toegewezen",
+            "Klanten: toegevoegd, van status gewijzigd. Projecten: van status gewijzigd",
+            "Websites: uptime-monitoring aan- of uitgezet. Domeinen: van status gewijzigd"
+          ],
+          "en": [
+            "Tasks: created, status changed, assigned",
+            "Clients: added, status changed. Projects: status changed",
+            "Websites: uptime monitoring switched on or off. Domains: status changed"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Meldingen naar een webhook",
+          "en": "Notifications to a webhook"
+        },
+        "body": {
+          "nl": "Naast Slack, Teams, Google Chat, Discord en Telegram kent het meldingensysteem een kanaalsoort Webhook: een gewone http(s)-URL die het bericht als JSON ontvangt. Dat is bedoeld om mensen te bereiken, niet om je systemen te voeden: er komt een melding binnen, geen recordwijziging. Twee dingen om te weten. Een nieuw kanaal blijft stil tot je het in de matrix ergens naartoe routeert, en alles wat naar buiten gaat is een deelverzameling van in-app: een gebeurtenis die in-app uitstaat, verlaat de app nooit.",
+          "en": "Alongside Slack, Teams, Google Chat, Discord and Telegram, the notification system has a Webhook channel kind: an ordinary http(s) URL that receives the message as JSON. It is meant to reach people, not to feed your systems: what arrives is a notification, not a record change. Two things to know. A new channel stays silent until you route it somewhere in the matrix, and everything external is a subset of in-app: an event switched off in-app never leaves the app."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Hoe je vandaag op wijzigingen reageert",
+          "en": "How you react to changes today"
+        },
+        "body": {
+          "nl": "Zolang abonneren niet kan, zijn er twee werkende routes. Pollen: haal met een API-sleutel het lijst-endpoint op dat je nodig hebt en vergelijk zelf. Of laat een AI-client het werk doen via MCP, met dezelfde sleutel en dezelfde scopes. Beide lopen over de gewone API, dus je bouwt niets weg als de webhooks er later bij komen.",
+          "en": "While subscribing is not possible, two routes work. Polling: fetch the list endpoint you need with an API key and diff it yourself. Or let an AI client do the work over MCP, with the same key and the same scopes. Both run on the ordinary API, so nothing you build now is wasted when webhooks arrive later."
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "key": "automation.rule.write",
+        "nl": "Automatiseringsregels aanmaken en bewerken, inclusief de actie Webhook aanroepen. Standaard alleen voor beheerders.",
+        "en": "Create and edit automation rules, the Webhook aanroepen (Call a webhook) action included. Admin only by default."
+      },
+      {
+        "key": "automation.run.read",
+        "nl": "Het uitvoerlog bekijken: welke regel vuurde, welke stappen liepen en wat een webhook terugstuurde.",
+        "en": "Read the run log: which rule fired, which steps ran and what a webhook answered."
+      },
+      {
+        "key": "notifications.channels.manage_own",
+        "nl": "Je eigen meldingskanalen aansluiten, waaronder een kanaal van het soort Webhook. Standaard voor beheerder en medewerker.",
+        "en": "Connect your own notification channels, a Webhook kind included. Granted to admin and member by default."
+      }
+    ],
+    "limits": {
+      "nl": [
+        "Er is geen endpoint om je op gebeurtenissen te abonneren, en geen payload-contract dat je kunt versioneren.",
+        "De webhook-actie vuurt alleen op de acht bestaande triggers. Er is bijvoorbeeld geen trigger op een factuur, een urenregistratie of een verlofaanvraag.",
+        "Er wordt niets ondertekend. Jouw endpoint moet zelf beslissen of het de aanroep vertrouwt, bijvoorbeeld met een geheim in de URL of een netwerkregel.",
+        "Zonder Wachten op bevestiging faalt de stap alleen bij een transportfout: de HTTP-status wordt wel vastgelegd, maar niet beoordeeld. Er is geen automatische herhaling van een afgewezen aflevering.",
+        "Doelen worden gecontroleerd: privé-, loopback- en link-local-adressen worden geweigerd tenzij de beheerder SCHAKL_ALLOW_PRIVATE_NOTIFICATION_TARGETS aanzet, redirects worden niet gevolgd en er geldt een harde time-out van tien seconden.",
+        "Inkomend kun je niets zelf definiëren. Er zijn alleen vaste callbacks van diensten die schakl. zelf kent, zoals de betaalprovider en de push van Google Agenda.",
+        "Automatisering is een gelicentieerde module (sku automation): zonder dekking wordt hij na de respijtperiode alleen-lezen."
+      ],
+      "en": [
+        "There is no endpoint to subscribe to events, and no payload contract you can version.",
+        "The webhook action fires only on the eight existing triggers. There is no trigger on an invoice, a time entry or a leave request, for example.",
+        "Nothing is signed. Your endpoint has to decide for itself whether to trust the call, for instance with a secret in the URL or a network rule.",
+        "Without Wachten op bevestiging (Wait for confirmation) the step only fails on a transport error: the HTTP status is recorded but not judged. There is no automatic retry of a rejected delivery.",
+        "Targets are checked: private, loopback and link-local addresses are refused unless an admin sets SCHAKL_ALLOW_PRIVATE_NOTIFICATION_TARGETS, redirects are not followed, and a hard ten-second timeout applies.",
+        "Inbound, you cannot define anything yourself. There are only fixed callbacks from services schakl. itself knows, such as the payment provider and Google Calendar push.",
+        "Automation is a licensed module (sku automation): without cover it goes read-only after the grace period."
+      ]
+    }
+  }
+}

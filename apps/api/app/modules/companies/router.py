@@ -218,67 +218,40 @@ async def upload_company_logo(
     ctx: RequestContext = Depends(require_context),
 ) -> CompanyRead:
     """Upload or replace the client's logo. Images only, bounded by the instance caps."""
-    import asyncio
-
     from app.core.activity import ActivityService
-    from app.core.storage.backend import get_storage
     from app.core.storage.models import StoredFile
+    from app.core.storage.service import drop_file, write_file
 
     service = CompanyService(ctx)
     company = await service.get(company_id)  # tenant + horizon scoped: 404 outside
 
     content_type = file.content_type or "application/octet-stream"
-    if not content_type.startswith("image/") or content_type not in settings.upload_allowed_types:
+    if not content_type.startswith("image/"):
         raise AppError(
             "validation",
             "errors.upload_type",
             status_code=422,
             fields={"file": "errors.upload_type"},
         )
-    file.file.seek(0, 2)
-    size = file.file.tell()
-    file.file.seek(0)
-    if size > settings.upload_max_bytes:
-        raise AppError(
-            "validation",
-            "errors.upload_too_large",
-            status_code=413,
-            fields={"file": "errors.upload_too_large"},
-        )
-
-    file_id = uuid.uuid4()
-    key = f"{ctx.org.id}/{file_id}"
-    # An S3 put is an external call — release the pooled DB connection for it (#190).
-    if settings.storage_backend == "s3":
-        async with ctx.release_db():
-            await asyncio.to_thread(get_storage().put, key, file.file)
-    else:
-        await asyncio.to_thread(get_storage().put, key, file.file)
-    stored = await ctx.repo(StoredFile).create(
-        id=file_id,
-        backend=settings.storage_backend,
-        storage_key=key,
-        filename=(file.filename or "logo")[:255],
+    # The type allow-list, the size ceiling and the de-duplicated write all live in the
+    # storage core; the *permission* is this route's own (a company writer sets a client's
+    # logo without holding `files.file.write`), which is why this is not `FileService`.
+    stored = await write_file(
+        ctx,
+        filename=file.filename or "logo",
         content_type=content_type,
-        size_bytes=size,
+        stream=file.file,
         entity_type="company_logo",
         entity_id=company.id,
-        created_by_user_id=ctx.user.id,
     )
     previous_id = company.logo_file_id
     company = await ctx.repo(Company).update(company, logo_file_id=stored.id)
     if previous_id is not None:
         old = await ctx.repo(StoredFile).get(previous_id)
         if old is not None:
-            old_key = old.storage_key
-            old_backend = old.backend
-            await ctx.repo(StoredFile).delete(old)
-            from app.core.storage.backend import StorageUnavailableError, storage_for
-
-            try:
-                await asyncio.to_thread(storage_for(old_backend).delete, old_key)
-            except StorageUnavailableError:
-                pass  # orphaned space, never a blocked replace
+            # Never `storage_for(...).delete(key)` by hand here: replacing a logo with the
+            # *same* image would delete the bytes the new row now shares.
+            await drop_file(ctx, old)
     await ActivityService(ctx).record(
         "company", company.id, "logo_uploaded", {"filename": stored.filename}
     )
@@ -315,11 +288,9 @@ async def remove_company_logo(
     company_id: uuid.UUID,
     ctx: RequestContext = Depends(require_context),
 ) -> CompanyRead:
-    import asyncio
-
     from app.core.activity import ActivityService
-    from app.core.storage.backend import StorageUnavailableError, storage_for
     from app.core.storage.models import StoredFile
+    from app.core.storage.service import drop_file
 
     service = CompanyService(ctx)
     company = await service.get(company_id)
@@ -328,12 +299,6 @@ async def remove_company_logo(
     stored = await ctx.repo(StoredFile).get(company.logo_file_id)
     company = await ctx.repo(Company).update(company, logo_file_id=None)
     if stored is not None:
-        stored_key = stored.storage_key
-        stored_backend = stored.backend
-        await ctx.repo(StoredFile).delete(stored)
-        try:
-            await asyncio.to_thread(storage_for(stored_backend).delete, stored_key)
-        except StorageUnavailableError:
-            pass
+        await drop_file(ctx, stored)
     await ActivityService(ctx).record("company", company.id, "logo_removed", {})
     return CompanyRead.model_validate(company)

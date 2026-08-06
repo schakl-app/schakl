@@ -30,6 +30,7 @@ from app.config import settings
 from app.modules.google.oauth import SCOPE_ADS
 from app.modules.marketing.models import MarketingSource
 from app.modules.marketing.sources.base import (
+    AUTH_GOOGLE,
     AccountOption,
     DailyMetrics,
     DrilldownRow,
@@ -122,6 +123,7 @@ def _headers(config: dict) -> dict[str, str]:
 
 class GAdsAdapter:
     source = MarketingSource.GADS.value
+    auth = AUTH_GOOGLE
     scope = SCOPE_ADS
     drilldowns = ("campaigns",)
 

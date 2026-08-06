@@ -21,6 +21,7 @@
   import { page } from "$app/state";
   import { ChevronUp, Ellipsis, ExternalLink, Paperclip, Plus } from "@lucide/svelte";
 
+  import { untrack } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
 
   import ActivityFeed from "$lib/core/activity/ActivityFeed.svelte";
@@ -145,17 +146,31 @@
 
   // Opening a row (#180/#152/#272): seed the conversation with the row itself, load the newest
   // message's extras, and — only when it actually folds one — fetch the rest of the thread.
+  //
+  // This effect depends on exactly *which row is on screen* — `open` and `item`, read above the
+  // `untrack` — and deliberately not on anything the loads below write back. It is a seed, not a
+  // sync: re-running it discards the thread, so it must fire when the row changes and never when
+  // that row's contents arrive. Left to Svelte's own bookkeeping it did the opposite.
+  // `loadAttachments` reads `attachmentsFor` to skip a fetch it already has, and an async
+  // function's prefix runs inside the caller's reaction, so that guard registered as a dependency
+  // of this effect — which the same function then wrote to. Every arriving attachment list
+  // therefore re-seeded the modal. Expanding an older message of a thread fetches *its*
+  // attachments, so the first click on one collapsed the conversation back to the anchor and
+  // re-fetched `/thread` instead of opening the message; only the second click worked, because a
+  // cache hit wrote nothing. It also cost every open of a folded conversation a second `/thread`.
   $effect(() => {
     if (!open || !item) return;
     const anchor = item;
-    trailFor = null;
-    quotedExpanded.clear();
-    messages = [anchor];
-    expanded.clear();
-    expanded.add(anchor.id);
-    if (isMailRow(anchor) && anchor.status === "logged") void loadAttachments(anchor.id);
-    if ((anchor.conversation_count ?? 1) > 1) void loadThread(anchor);
-    else if (anchor.body_text == null) void loadBody(anchor);
+    untrack(() => {
+      trailFor = null;
+      quotedExpanded.clear();
+      messages = [anchor];
+      expanded.clear();
+      expanded.add(anchor.id);
+      if (isMailRow(anchor) && anchor.status === "logged") void loadAttachments(anchor.id);
+      if ((anchor.conversation_count ?? 1) > 1) void loadThread(anchor);
+      else if (anchor.body_text == null) void loadBody(anchor);
+    });
   });
 
   // A long email conversation shows only the current message; the quoted history folds behind
@@ -165,8 +180,21 @@
     if (quotedExpanded.has(id)) quotedExpanded.delete(id);
     else quotedExpanded.add(id);
   }
+  /**
+   * The body to read, and how to draw it. `body_markdown` is set only for a message whose HTML
+   * part the API converted itself, which is exactly what makes rendering it as markdown honest
+   * — a plain-text mail falls back to `body_text` and stays plain text, so a sender's
+   * `*sterretjes*` never become italics. The quoted trail splits either way: an HTML quote
+   * converts to `> `, which the splitter already folds on.
+   */
+  function bodyFor(msg: InteractionItem): { text: string; markdown: boolean } | null {
+    if (msg.body_markdown) return { text: msg.body_markdown, markdown: true };
+    if (msg.body_text) return { text: msg.body_text, markdown: false };
+    return null;
+  }
   function bodyPartsFor(msg: InteractionItem) {
-    return isMailRow(msg) && msg.body_text ? splitQuotedTrail(msg.body_text) : null;
+    const body = isMailRow(msg) ? bodyFor(msg) : null;
+    return body ? splitQuotedTrail(body.text) : null;
   }
 
   // --- unknown participant → contact quick-create (#160) ------------------------------------ //
@@ -201,6 +229,7 @@
 </script>
 
 {#snippet messageBody(di: InteractionItem)}
+  {@const body = bodyFor(di)}
   {@const bodyParts = bodyPartsFor(di)}
   <div class="space-y-3 text-sm">
     <div class="flex items-start justify-between gap-2">
@@ -304,12 +333,18 @@
       </div>
     {/if}
 
-    {#if di.body_text}
+    {#if body}
       {#if isMailRow(di)}
-        <!-- break-words so a lone long URL can't scroll the modal sideways (#184). -->
-        <p class="whitespace-pre-wrap break-words text-sm text-text">
-          {bodyParts?.head ?? di.body_text}
-        </p>
+        {#if body.markdown}
+          <!-- The API converted this message's own HTML part, so it renders as what the
+               sender sent: lists, emphasis, links, and the `cid:` images it carried. -->
+          <Markdown value={bodyParts?.head ?? body.text} images class="break-words" />
+        {:else}
+          <!-- break-words so a lone long URL can't scroll the modal sideways (#184). -->
+          <p class="whitespace-pre-wrap break-words text-sm text-text">
+            {bodyParts?.head ?? body.text}
+          </p>
+        {/if}
         {#if bodyParts?.trail}
           <button
             type="button"
@@ -328,15 +363,21 @@
             </span>
           </button>
           {#if quotedExpanded.has(di.id)}
-            <p
-              class="whitespace-pre-wrap break-words border-l-2 border-border pl-3 text-sm text-text-muted"
-            >
-              {bodyParts.trail}
-            </p>
+            {#if body.markdown}
+              <div class="border-l-2 border-border pl-3 text-text-muted">
+                <Markdown value={bodyParts.trail} images class="break-words text-text-muted" />
+              </div>
+            {:else}
+              <p
+                class="whitespace-pre-wrap break-words border-l-2 border-border pl-3 text-sm text-text-muted"
+              >
+                {bodyParts.trail}
+              </p>
+            {/if}
           {/if}
         {/if}
       {:else}
-        <Markdown value={di.body_text} />
+        <Markdown value={body.text} />
       {/if}
     {:else if di.snippet}
       <!-- The whole snippet here — this is the detail — but decoded: it arrives from Gmail

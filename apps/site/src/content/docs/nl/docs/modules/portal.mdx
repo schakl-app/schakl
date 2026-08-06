@@ -1,0 +1,115 @@
+---
+title: Klantportaal
+description: "Geef de contactpersoon van een klant een eigen login in jouw app: zijn eigen dashboard, zijn eigen facturen en zijn eigen rapportages."
+sidebar:
+  order: 18
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Met het klantportaal geef je de contactpersoon van een klant een eigen login in jouw eigen app,
+onder jouw huisstijl. Die persoon ziet het marketingoverzicht dat jij hebt samengesteld, de
+facturen van zijn eigen bedrijf en de rapportages die jij hebt gepubliceerd. Al het andere blijft
+onzichtbaar; niet omdat iemand een vinkje heeft gezet, maar omdat de koppeling aan zijn bedrijf
+bepaalt wat hij überhaupt kan opvragen.
+
+## Waar je het vindt
+
+Er is geen apart instellingenscherm. De knop staat op de persoon zelf: *Contactpersonen* → open de
+contactpersoon → de kaart **Klantportaal**. In *Instellingen → Modules* heet de module
+"Klantportaal".
+
+## Iemand uitnodigen
+
+<Steps>
+1. Zorg dat de contactpersoon aan minstens één klant gekoppeld is. Die koppeling is precies wat hij
+   straks mag zien.
+2. Zorg dat hij een eigen e-mailadres heeft. Zonder adres kun je niet uitnodigen: "Deze
+   contactpersoon heeft een e-mailadres nodig voordat je kunt uitnodigen."
+3. Druk op **Uitnodigen voor portaal**. Er wordt een account aangemaakt met de rol *Klant*,
+   gekoppeld aan deze contactpersoon, en er gaat een mail in jouw huisstijl met een link om een
+   wachtwoord in te stellen.
+4. De kaart toont vanaf nu een status: **Geen toegang**, **Uitgenodigd**, **Actief** of
+   **Uitgeschakeld**. Zolang de status "Uitgenodigd" is, staat er ook een knop **Uitnodiging opnieuw
+   versturen**.
+</Steps>
+
+<Aside type="caution">
+De uitnodigingsmail gaat via het e-mailtransport van je organisatie (*Instellingen → E-mail*). Is
+dat nog niet ingesteld, dan wordt de toegang wél aangemaakt maar de mail niet verstuurd; de kaart
+zegt dat er letterlijk bij. Stel e-mail in en verstuur de uitnodiging daarna opnieuw.
+
+Een e-mailadres dat al bij een bestaand account hoort (een collega, of een account in een andere
+organisatie) wordt geweigerd. Een portaallogin heeft een eigen adres nodig.
+</Aside>
+
+## Wat de klant ziet
+
+De klant logt in op hetzelfde webadres, in dezelfde huisstijl, en komt uit op **Jouw dashboard**:
+een widgetbord dat hij zelf mag indelen. Heeft hij meerdere bedrijven, dan staat er een
+bedrijfswisselaar boven, met het logo van het gekozen bedrijf.
+
+- **Marketing**: het overzicht dat jouw bureau voor hem heeft samengesteld. Hij mag tegels
+  verplaatsen of weglaten, maar niets toevoegen dat jij niet hebt vrijgegeven.
+- **Facturen**: alleen de facturen van zijn eigen bedrijven, met status en dezelfde pdf die jij
+  verstuurt. Een factuur met de status *Concept* ziet hij nooit.
+- **Rapportages**: alleen gepubliceerde rapportages.
+- **Taken**: reageren op zijn eigen taken.
+
+Meer kan een klant niet wijzigen: reacties op eigen taken, de indeling van zijn eigen dashboard en
+menu, en zijn eigen meldingen. Dat is het hele schrijfoppervlak.
+
+## Toegang weer intrekken
+
+**Toegang uitschakelen** zet de login uit zonder iets weg te gooien: het account, de koppeling en de
+geschiedenis blijven bestaan, en de knop heet daarna **Toegang opnieuw inschakelen**. Er is bewust
+geen knop om een portaallogin te verwijderen.
+
+## Inloggen als deze contactpersoon
+
+Zegt een klant "ik kan de rapportage niet vinden", dan hoef je niet te raden. Op dezelfde kaart staat
+**Inloggen als deze contactpersoon**. Je bevestigt eerst en komt dan op het dashboard van de klant
+terecht, een half uur lang.
+
+- Je eigen sessie blijft gewoon open; hij wordt niet vervangen.
+- Op elk scherm staat een balk: `{jij} is ingelogd als {klant}`, met een knop **Stoppen**.
+- De sessie kan nooit meer dan jijzelf mag. Zie je minder dan de klant zelf ziet, dan zegt de balk
+  dat erbij: "u ziet minder dan zij: alleen wat uw eigen rechten toelaten".
+- Het begin en het einde komen op de activiteit van de contactpersoon te staan ("logde in als …",
+  "beëindigde de sessie als …"), en alles wat je ondertussen wijzigt krijgt jouw naam erbij.
+
+Ben je al als iemand anders ingelogd, dan moet je daar eerst mee stoppen.
+
+## Rechten
+
+| Recht | Wat het opent | Standaard |
+| --- | --- | --- |
+| `members.member.write` | De hele kaart Klantportaal: uitnodigen, opnieuw versturen, uitschakelen | Beheerder |
+| `portal.login.impersonate` | "Inloggen als de portaallogin van een klant" | Beheerder |
+
+Beide stel je per rol in onder *Instellingen → Rollen*. Inloggen als een klant volgt nooit
+automatisch uit het beheren van de login: dat zijn twee verschillende dingen. Wie
+`members.member.write` niet heeft, ziet de kaart helemaal niet staan.
+
+De uitgenodigde klant krijgt de meegeleverde rol **Klant**: leesrechten op zijn eigen gegevens, plus
+reageren op zijn eigen taken.
+
+## Goed om te weten
+
+- Klantportaal is een **gelicentieerde module**. Is er geen geldige licentie, dan staat er een slotje
+  op **Uitnodigen voor portaal** met de melding "Niet inbegrepen", en opent er een venster dat
+  uitlegt wat je op deze installatie kunt doen. Bestaande klantlogins blijven ondertussen gewoon
+  werken; een verlopen licentie maakt de module alleen-lezen, niet onbruikbaar.
+- Een klantlogin die aan geen enkel bedrijf gekoppeld is, ziet niets, hoeveel rechten de rol ook
+  heeft. *Instellingen → Team & gebruikers* zet er daarom het label **Ziet geen klanten** bij.
+- Alleen contactpersonen kunnen vandaag een portaallogin krijgen.
+- Een contactpersoon buiten je eigen klantgroepen bestaat voor jou niet: je krijgt "niet gevonden"
+  in plaats van "geen toegang".
+
+## Verder lezen
+
+<CardGrid>
+  <LinkCard title="Contactpersonen" description="Het adresboek waar de kaart Klantportaal op staat." href="/nl/docs/modules/contacts/" />
+  <LinkCard title="Klanten" description="Het klantdossier waar de contactpersonen aan hangen." href="/nl/docs/modules/companies/" />
+  <LinkCard title="Meldingen" description="De bel, de inbox en waar meldingen naartoe gaan." href="/nl/docs/modules/notifications/" />
+</CardGrid>

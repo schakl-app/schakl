@@ -38,6 +38,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    select,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -633,6 +634,20 @@ class InvoicePayment(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     total; deleting one reopens it. Negative amounts model a refund/correction."""
 
     __tablename__ = "invoice_payments"
+    __table_args__ = (
+        # **The idempotency of the whole online-payment path** (#267). A provider retries a
+        # webhook until it gets a 200 — Mollie ten times over 26 hours — and two deliveries
+        # can be in flight at once. An application-level "have we settled this yet?" check
+        # loses that race; a partial unique index cannot. Partial because a hand-registered
+        # bank transfer has no intent, and a hundred of those must not fight over NULL.
+        Index(
+            "uq_invoice_payments_intent",
+            "org_id",
+            "intent_id",
+            unique=True,
+            postgresql_where=text("intent_id IS NOT NULL"),
+        ),
+    )
 
     invoice_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
@@ -644,6 +659,112 @@ class InvoicePayment(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     method: Mapped[str] = mapped_column(String(30), nullable=False, default="bank")
     note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: The online payment this row settles (#267), or NULL for one a human registered. A bare
+    #: UUID rather than an FK on purpose: the ledger row is the durable fact and must survive
+    #: its intent being pruned, exactly as ``activity_log.entity_id`` outlives its record.
+    intent_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+
+
+class PaymentIntentStatus(StrEnum):
+    """Mirrors :class:`app.core.payments.PaymentStatus` — the provider's own vocabulary.
+
+    Stored as the provider's word rather than translated into an invoicing status, because the
+    two answer different questions: this says what happened at the provider, ``settled_at``
+    says what we did about it. Collapsing them is how "the client paid and we never booked it"
+    becomes invisible (CLAUDE.md §10, the Cloudflare drift rule, applied to money).
+    """
+
+    OPEN = "open"
+    PENDING = "pending"
+    AUTHORIZED = "authorized"
+    PAID = "paid"
+    FAILED = "failed"
+    EXPIRED = "expired"
+    CANCELED = "canceled"
+
+
+class InvoicePaymentIntent(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """One attempt to collect an invoice through a payment provider (#267).
+
+    Deliberately **not** ``ExternalRef``. That table's unique key is
+    ``(org, provider, local_type, local_id)`` — one row per local record — so a second checkout
+    for the same invoice would overwrite the first's external id, and a late webhook for the
+    abandoned attempt would then settle against a payment nobody made. An invoice legitimately
+    has several attempts (iDEAL expires in fifteen minutes; clients abandon and retry), so the
+    identity here is the **provider's** payment, not the invoice.
+
+    ``account_id`` is a bare UUID: the credential lives in the provider's own module and
+    invoicing may not know its table (§6). ``provider`` + ``external_id`` is what a callback
+    resolves by, and the unique constraint on it is what makes resolving it safe.
+    """
+
+    __tablename__ = "invoice_payment_intents"
+    __table_args__ = (
+        # The webhook dedup key: one local row per provider payment, per tenant.
+        UniqueConstraint(
+            "org_id", "provider", "external_id", name="uq_invoice_payment_intents_external"
+        ),
+        Index("ix_invoice_payment_intents_invoice", "org_id", "invoice_id"),
+        # The reconcile cron's read: everything not yet at rest, oldest first.
+        Index("ix_invoice_payment_intents_open", "org_id", "status"),
+    )
+
+    invoice_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("invoices.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    provider: Mapped[str] = mapped_column(String(30), nullable=False)
+    #: Which of the org's credentials opened it — a webhook must be re-fetched with the *same*
+    #: credential, and an agency may legitimately hold two (a live one and a test one).
+    account_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    #: The provider's own payment id (Mollie's ``tr_…``).
+    external_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default=PaymentIntentStatus.OPEN.value,
+        server_default=PaymentIntentStatus.OPEN.value,
+    )
+    #: What we asked the payer for — the invoice's *outstanding* amount at creation, frozen.
+    #: Never re-derived: a partial payment registered in the meantime must not silently change
+    #: what a checkout link already promised.
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="EUR")
+    #: ``live`` or ``test``. A test payment settles nothing — see ``payments.py``.
+    mode: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="live", server_default="live"
+    )
+    #: Where to send the payer. Long: providers hang session ids off it.
+    checkout_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    #: The method the payer actually chose, in the provider's vocabulary. NULL until they pick.
+    method: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    #: When the provider last told us something, however it reached us.
+    synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: When *we* wrote the ledger row. Separate from ``status`` on purpose: ``paid`` with no
+    #: ``settled_at`` is precisely the state a human must be shown and a retry must fix.
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: The provider's own untranslatable text for the last failure. Read by a human, never put
+    #: in an error envelope (§9).
+    last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+
+    @classmethod
+    def __company_horizon_clause__(cls, scope: frozenset[uuid.UUID] | None):  # noqa: ANN206
+        """This row's client is its **invoice's** — failure mode (1) of #285.
+
+        There is no ``company_id`` here, so without this the repository's column match finds
+        nothing and therefore filters *nothing at all*. Every read in ``payments.py`` already
+        goes through an invoice the document repository narrowed first, so this is the second
+        lock rather than the first — which is exactly the arrangement #285 asks for, since the
+        next read added will not remember.
+        """
+        return cls.invoice_id.in_(
+            select(Invoice.id).where(
+                Invoice.org_id == cls.org_id, Invoice.company_id.in_(scope or frozenset())
+            )
+        )
 
 
 class InvoiceTimeEntry(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):

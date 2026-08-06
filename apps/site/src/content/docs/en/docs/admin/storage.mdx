@@ -1,0 +1,144 @@
+---
+title: File storage
+description: "Where uploaded files land: the volume on the host or an S3-compatible bucket, the upload limits and the nightly maintenance."
+sidebar:
+  order: 6
+---
+
+import { Aside, CardGrid, LinkCard, Steps } from '@astrojs/starlight/components';
+
+Everything you upload into schakl. (attachments, logos, profile photos, PDFs) is stored as a
+file outside the database. Where that happens is an install-time choice: a volume on the host,
+or an S3-compatible bucket.
+
+## Where to find it
+
+Nowhere in the app. There is no storage settings screen, no quota and no usage figure. It is
+instance configuration, set through environment variables on **both** the `api` and the
+`worker` container (they must see the same storage).
+
+Files themselves do turn up in fixed places:
+
+- **Documenten** (Documents) on a project page and on a task page, with the *Bestand uploaden*
+  (Upload file) button
+- a client's **logo** on the client record
+- your own profile photo under *Instellingen → Mijn account → Foto uploaden* (Settings → My
+  account → Upload photo)
+- *Instellingen → Huisstijl* (Settings → Branding): **Logo**, **Favicon**, **App-icoon**
+- the invoice background image under *Instellingen → Facturatie* (Settings → Invoicing)
+- documents in an employee's HR file
+- images that came in with a received email
+
+## Two backends
+
+| | Volume (default) | S3-compatible |
+| --- | --- | --- |
+| `SCHAKL_STORAGE_BACKEND` | `local` | `s3` |
+| Where | the Docker volume `storage-data`, mounted at `SCHAKL_STORAGE_PATH` (`/data/storage`) | Hetzner Object Storage, MinIO, Scaleway, AWS |
+| Backup | a volume snapshot | bucket versioning and lifecycle rules |
+
+For S3 you also set `SCHAKL_STORAGE_S3_ENDPOINT`, `_REGION`, `_BUCKET`, `_ACCESS_KEY_ID` and
+`_SECRET_ACCESS_KEY`; optionally `_KEY_PREFIX` (nests everything under a prefix) and
+`_FORCE_PATH_STYLE` (on by default, MinIO-safe).
+
+<Steps>
+
+1. Create a bucket and a key that can reach **only** that bucket.
+
+2. Set the variables on `api` *and* `worker`, then redeploy.
+
+3. Keep the `storage-data` volume as long as files still live on it. Switching is an
+   **override, not a migration**: only new uploads go to the bucket, older files keep being
+   served from the volume. Each file remembers where it lives.
+
+</Steps>
+
+The bucket stays private: no public ACL or bucket policy is involved, every byte still travels
+through the API and therefore through the permissions and the tenant separation. Rolling back
+is always possible: remove the variables and new uploads land on the volume again. Files that
+were in the bucket then answer with a clear error until the configuration returns.
+
+<Aside type="caution" title="Changing a bucket or prefix makes files unreachable">
+Objects written under the old bucket or the old `_KEY_PREFIX` can no longer be found by the app
+(exactly as when you move `SCHAKL_STORAGE_PATH`). Move the objects first, or leave the old
+configuration in place.
+</Aside>
+
+Sensitive values can be read from a file instead of a variable, which is what a Docker secret
+is: `SCHAKL_STORAGE_S3_SECRET_ACCESS_KEY_FILE=/run/secrets/…`. A `_FILE` that is unreadable or
+empty deliberately refuses to start the container.
+
+## Upload limits
+
+| Variable | Default |
+| --- | --- |
+| `SCHAKL_UPLOAD_MAX_BYTES` | 10 MB |
+| `SCHAKL_UPLOAD_ALLOWED_TYPES` | a JSON list: PNG, JPEG, WebP, GIF, SVG, ICO, PDF, plain text, CSV, ZIP, Word and Excel (old and new) |
+
+Anything outside them is refused with "Dit bestandstype is niet toegestaan." (This file type is
+not allowed) or "Dit bestand is te groot." (This file is too large). To allow more, replace the
+whole list.
+
+## The same bytes, stored once
+
+schakl. stores identical file content once per organisation. The supplier's signature logo that
+rides along on five hundred incoming emails costs one object instead of five hundred. You
+notice nothing else about it: every file stays its own row with its own name.
+
+One consequence *is* visible: **deleting a file does not free space right away.** That happens
+in the `worker`'s nightly maintenance, daily at 03:15 UTC:
+
+- **Folding**: files from before this scheme are hashed and merged, per organisation, in
+  batches of `SCHAKL_STORAGE_FOLD_BATCH` (500 by default). An installation with a large backlog
+  therefore catches up over a few nights rather than in one go during an upgrade.
+- **Sweeping**: content nothing references any more is only reclaimed after it has been unused
+  for `SCHAKL_STORAGE_BLOB_GRACE_HOURS` (24 hours by default). That window doubles as the
+  safety net: within it, "I deleted the wrong file" is still fixable without restoring a backup.
+
+<Aside type="caution" title="Rolled back to an older version? Then delete no files">
+An older release of schakl. does not know about shared content and removes the object
+unconditionally when a file is deleted. Delete a file that shares its content with another file
+while you are rolled back, and it disappears for both. Reading and running on an older version
+is otherwise safe; deleting is not.
+</Aside>
+
+## Permissions
+
+| Permission | What it grants | Default |
+| --- | --- | --- |
+| `files.file.write` | uploading and deleting files | Administrator and Member (not Client) |
+
+Fetching a file needs no permission of its own: any signed-in user may fetch their own
+organisation's files. The ordinary boundaries still apply underneath: the tenant separation,
+and for anyone restricted to certain client groups that boundary too. A client logo and an HR
+file document carry an extra lock and answer "not found" rather than an error that would reveal
+the file exists. Only branding assets (the login-screen logo, the favicon, the app icon) are
+fetchable without signing in.
+
+## Good to know
+
+- **Back the files up together with the database.** A restored database without the volume
+  points at files that are gone; a volume without the database is loose bytes. See
+  [Upgrades & backups](/en/docs/admin/upgrades/).
+- **Two error messages point at storage, not at a broken file.** "De registratie van dit
+  bestand bestaat, maar de inhoud ontbreekt in de opslag" (the file's record exists but its
+  contents are missing from storage) usually means a database restored without its volume, or
+  `api` and `worker` not sharing the same volume. "Dit bestand is opgeslagen in een
+  opslag-backend die niet op deze installatie is geconfigureerd" (this file was stored in a
+  backend that is not configured here) means the S3 settings are missing or were changed.
+- **Identical content is never shared across organisations**, only within one. That is
+  deliberate: otherwise cleaning up a departed organisation could take another one's files
+  with it.
+- **During a migration to S3 the same bytes may sit in two places.** That is not a
+  double-count: the volume and the bucket are two separate stores.
+- **Nowhere in the app does it say how much storage you use.** *Instellingen →
+  Systeeminformatie* (Settings → System information) does not report it either; look in your
+  bucket or on the host.
+
+## Read next
+
+<CardGrid>
+  <LinkCard title="Installation" description="The stack, the variables and the first run." href="/en/docs/admin/installation/" />
+  <LinkCard title="Upgrades & backups" description="New versions and what you secure." href="/en/docs/admin/upgrades/" />
+  <LinkCard title="Outgoing email" description="The transport schakl. sends mail through." href="/en/docs/admin/email/" />
+</CardGrid>

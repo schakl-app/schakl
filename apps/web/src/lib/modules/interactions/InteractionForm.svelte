@@ -26,6 +26,7 @@
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import Markdown from "$lib/core/ui/Markdown.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
@@ -550,12 +551,16 @@
     <p class="-mt-2 text-xs text-text-muted">{t("interactions.log_time_hint")}</p>
   {/if}
 
+  <!-- Optional (#22 follow-up): a logged phone call is titled by what it *is*, and every
+       surface already falls back to the kind's label — so the placeholder shows the title the
+       row will carry when this is left empty, rather than demanding one be invented before
+       the notes below can be written. -->
   <label class="block text-sm">
     <span class="mb-1 block font-medium text-text">{t("interactions.field.subject")}</span>
     <input
       name="subject"
       value={interaction?.subject ?? ""}
-      required
+      placeholder={kindDef ? kindLabel(kindDef, locale) : ""}
       maxlength="500"
       class="w-full min-w-0 rounded-lg border border-border bg-surface px-3 py-2 text-sm"
     />
@@ -716,14 +721,23 @@
   {#if emailRow}
     <!-- A received message is not ours to re-type (#262): shown for context while the links
          are corrected, and deliberately not posted — the API leaves an unsent field alone. -->
-    {#if interaction?.body_text}
+    {#if interaction?.body_markdown || interaction?.body_text}
       <div class="text-sm">
         <span class="mb-1 block font-medium text-text">{t("interactions.eml.message")}</span>
-        <p
-          class="max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-muted"
-        >
-          {interaction.body_text}
-        </p>
+        {#if interaction.body_markdown}
+          <!-- Converted from the message's own HTML part, so this reads as it was sent. -->
+          <div
+            class="max-h-40 overflow-y-auto rounded-lg border border-border bg-surface px-3 py-2"
+          >
+            <Markdown value={interaction.body_markdown} images class="break-words" />
+          </div>
+        {:else}
+          <p
+            class="max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-muted"
+          >
+            {interaction.body_text}
+          </p>
+        {/if}
       </div>
     {/if}
   {:else}

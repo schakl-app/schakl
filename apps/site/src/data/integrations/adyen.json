@@ -1,0 +1,77 @@
+{
+  "slug": "adyen",
+  "name": "Adyen",
+  "order": 13,
+  "category": "payments",
+  "status": "planned",
+  "lucide": "wallet",
+  "mark": { "monogram": "A", "color": "#0ABF53" },
+  "tagline": {
+    "nl": "Voor enterprise-klanten, nog niet koppelbaar",
+    "en": "For enterprise clients, not connectable yet"
+  },
+  "summary": {
+    "nl": "Bureaus met enterprise-klanten vragen om Adyen, en dat is geen betaalmethode maar een andere provider. Precies daarom noemt de betaallaag in schakl. geen leverancier: er ligt een protocol, een accountzoeker per provider en een meldingsadres dat zijn eigen organisatie benoemt. Vandaag is er niets in te stellen; Mollie is de enige koppeling die er staat.",
+    "en": "Agencies with enterprise clients ask for Adyen, and that is not a payment method but a different provider. Which is exactly why the payment layer in schakl. names no vendor: there is a protocol, a per-provider account resolver, and a callback address that names its own organisation. There is nothing to configure today; Mollie is the only connection that exists."
+  },
+  "highlights": {
+    "nl": [
+      "Dezelfde leveranciersneutrale laag als waar Mollie in past",
+      "Het boekingspad blijft van facturatie en wordt niet per provider herschreven",
+      "Nog geen scherm, geen sleutelveld en geen meldingsadres"
+    ],
+    "en": [
+      "The same provider-neutral layer Mollie already fits into",
+      "The settle path stays invoicing's and is not rewritten per provider",
+      "No screen yet, no key field and no callback address"
+    ]
+  },
+  "where": {
+    "nl": "Nog nergens: er is geen Adyen-scherm en geen veld voor gegevens.",
+    "en": "Nowhere yet: there is no Adyen screen and no field for credentials."
+  },
+  "roadmapNote": {
+    "nl": "Er is nog niets te koppelen. Adyen staat op de lijst omdat een bureau met enterprise-klanten er nu eenmaal naar gevraagd wordt; de betaallaag is er alvast op gebouwd, zodat een tweede provider een pakket erbij is en geen verbouwing van het deel dat geld raakt.",
+    "en": "Nothing to connect yet. Adyen is on the list because an agency with enterprise clients simply gets asked for it; the payment layer was built for that in advance, so a second provider is an added package rather than a rebuild of the part that touches money."
+  },
+  "page": {
+    "lead": {
+      "nl": "Adyen staat op de roadmap. Wat er nu ligt is de laag eronder, gebouwd zodat een tweede provider erin past zonder dat het pad dat een betaling boekt opnieuw geschreven wordt.",
+      "en": "Adyen is on the roadmap. What exists today is the layer beneath, built so a second provider fits into it without the path that books a payment being rewritten."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Dezelfde laag, een andere provider",
+          "en": "The same layer, a different provider"
+        },
+        "body": {
+          "nl": "De betaallaag kent een protocol dat elke provider invult, een aparte accountzoeker per provider en een meldingsadres waarin de organisatie, het account en een geheim zitten. Een tweede provider vult daarin drie gedragingen in: of de inhoud van een melding geloofd mag worden, of die ondertekend is, en of de aanmaakaanroep herhaald mag worden. Wat bewust niet meebeweegt is het boekingspad: een bevestigde betaling is en blijft één gewone betaalregel op de factuur, zodat facturatie het enige antwoord blijft op de vraag wat er betaald is.",
+          "en": "The payment layer holds a protocol each provider fills in, a separate account resolver per provider, and a callback address carrying the organisation, the account and a secret. A second provider fills in three behaviours: whether the body of a callback may be believed, whether it is signed, and whether the create call may be replayed. What deliberately does not move is the settle path: a confirmed payment is and stays one ordinary payment line on the invoice, so invoicing remains the single answer to what has been paid."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Wat je vandaag niet kunt",
+          "en": "What you cannot do today"
+        },
+        "body": {
+          "nl": "Er is geen Adyen-scherm, geen plek voor gegevens en geen meldingsadres. Wil je nu online laten betalen, dan is Mollie de enige koppeling die er staat, en die is zelf nog bèta. Reken deze kaart dus niet mee bij een keuze die je deze maand moet maken.",
+          "en": "There is no Adyen screen, no place for credentials and no callback address. If you want to collect online today, Mollie is the only connection that exists, and that one is itself still in beta. So do not count this card towards a decision you have to make this month."
+        }
+      }
+    ],
+    "limits": {
+      "nl": [
+        "Niets is te koppelen: er is geen scherm en geen plek om Adyen-gegevens in te voeren.",
+        "Mollie is vandaag de enige betaalprovider die schakl. spreekt.",
+        "Er staat geen datum op. De laag eronder ligt er, de implementatie niet."
+      ],
+      "en": [
+        "Nothing is connectable: there is no screen and no place to enter Adyen credentials.",
+        "Mollie is the only payment provider schakl. speaks today.",
+        "There is no date on it. The layer beneath exists, the implementation does not."
+      ]
+    }
+  }
+}

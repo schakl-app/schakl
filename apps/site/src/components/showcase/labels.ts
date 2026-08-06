@@ -13,6 +13,12 @@ const intlLocale = (l: Locale) => (l === 'nl' ? 'nl-NL' : 'en-GB');
 export const num = (l: Locale, n: number, frac = 0): string =>
   new Intl.NumberFormat(intlLocale(l), { minimumFractionDigits: frac, maximumFractionDigits: frac }).format(n);
 export const eur = (l: Locale, n: number, frac = 0): string => `€ ${num(l, n, frac)}`;
+// "7 sep" / "7 Sept" — the app's own fmtDayMonth (core/format.ts), same options, same UTC
+// anchoring, for the date ends of a chart's x axis.
+export const dayMonth = (l: Locale, isoDate: string): string =>
+  new Intl.DateTimeFormat(intlLocale(l), { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(
+    new Date(`${isoDate}T00:00:00Z`),
+  );
 
 export interface DemoLabels {
   // App shell / nav
@@ -26,6 +32,12 @@ export interface DemoLabels {
   navSubscriptions: string;
   navCalendar: string;
   navSettings: string;
+  navInvoices: string;
+  navQuotes: string;
+  navDomains: string;
+  navMarketing: string;
+  navReports: string;
+  navInteractions: string;
   search: string;
   // Common
   save: string;
@@ -99,6 +111,28 @@ export interface DemoLabels {
   lApproved: string;
   leaveVacation: string;
   leaveHolidayNote: string; // "Feestdag" tag on a day that costs no hours
+  // Reporting — the monthly client report (reporting.* keys). The four statuses are the
+  // document's whole lifecycle. Everything else here is the review screen
+  // (apps/web/src/routes/(app)/reports/[id]): the header actions, the publish control beside
+  // the preview, and the per-section editor's two controls plus its "edited by hand" marker.
+  repDocument: string; // reporting.document.client — the document's own name, on the sheet
+  repAudienceClient: string; // reporting.audience.client — the subtitle's second half
+  repPreview: string; // reporting.review.preview
+  repSummary: string; // reporting.doc.summary
+  repSectionTraffic: string; // reporting.section.traffic_channels
+  repSectionConversions: string; // reporting.section.conversions
+  repStDraft: string; // reporting.status.draft
+  repStGenerating: string; // reporting.status.generating
+  repStReady: string; // reporting.status.ready
+  repStSent: string; // reporting.status.sent
+  repPdf: string; // reporting.review.pdf
+  repRegenerate: string; // reporting.review.regenerate
+  repPublish: string; // reporting.review.publish
+  repUnpublish: string; // reporting.review.unpublish
+  repSend: string; // reporting.review.send
+  repSendAgain: string; // reporting.review.send_again
+  repRewrite: string; // reporting.review.rewrite
+  repEdited: string; // reporting.review.edited
   // White-label
   brandLabel: string;
 }
@@ -115,6 +149,12 @@ export const labels: Record<Locale, DemoLabels> = {
     navSubscriptions: 'Abonnementen',
     navCalendar: 'Agenda',
     navSettings: 'Instellingen',
+    navInvoices: 'Facturen',
+    navQuotes: 'Offertes',
+    navDomains: 'Domeinen',
+    navMarketing: 'Marketing',
+    navReports: 'Rapportages',
+    navInteractions: 'Interacties',
     search: 'Zoeken',
     save: 'Opslaan',
     cancel: 'Annuleren',
@@ -182,6 +222,24 @@ export const labels: Record<Locale, DemoLabels> = {
     lApproved: 'Goedgekeurd',
     leaveVacation: 'Vakantie',
     leaveHolidayNote: 'Feestdag',
+    repDocument: 'Maandrapportage',
+    repAudienceClient: 'Klantrapportage',
+    repPreview: 'Het document',
+    repSummary: 'In het kort',
+    repSectionTraffic: 'Verkeerskanalen',
+    repSectionConversions: 'Conversies',
+    repStDraft: 'Concept',
+    repStGenerating: 'Wordt gemaakt',
+    repStReady: 'Klaar om na te kijken',
+    repStSent: 'Verstuurd',
+    repPdf: 'Pdf',
+    repRegenerate: 'Opnieuw genereren',
+    repPublish: 'In het portaal publiceren',
+    repUnpublish: 'Uit het portaal halen',
+    repSend: 'Naar de klant sturen',
+    repSendAgain: 'Opnieuw versturen',
+    repRewrite: 'Opnieuw schrijven',
+    repEdited: 'met de hand aangepast',
     brandLabel: 'Jouw merk',
   },
   en: {
@@ -195,6 +253,12 @@ export const labels: Record<Locale, DemoLabels> = {
     navSubscriptions: 'Subscriptions',
     navCalendar: 'Calendar',
     navSettings: 'Settings',
+    navInvoices: 'Invoices',
+    navQuotes: 'Quotes',
+    navDomains: 'Domains',
+    navMarketing: 'Marketing',
+    navReports: 'Reports',
+    navInteractions: 'Interactions',
     search: 'Search',
     save: 'Save',
     cancel: 'Cancel',
@@ -262,6 +326,24 @@ export const labels: Record<Locale, DemoLabels> = {
     lApproved: 'Approved',
     leaveVacation: 'Vacation',
     leaveHolidayNote: 'Holiday',
+    repDocument: 'Monthly report',
+    repAudienceClient: 'Client report',
+    repPreview: 'The document',
+    repSummary: 'In short',
+    repSectionTraffic: 'Traffic channels',
+    repSectionConversions: 'Conversions',
+    repStDraft: 'Draft',
+    repStGenerating: 'Generating',
+    repStReady: 'Ready to review',
+    repStSent: 'Sent',
+    repPdf: 'PDF',
+    repRegenerate: 'Generate again',
+    repPublish: 'Publish to the portal',
+    repUnpublish: 'Remove from the portal',
+    repSend: 'Send to the client',
+    repSendAgain: 'Send again',
+    repRewrite: 'Rewrite',
+    repEdited: 'edited by hand',
     brandLabel: 'Your brand',
   },
 };

@@ -1,0 +1,158 @@
+{
+  "slug": "oxxa",
+  "name": "OXXA",
+  "order": 31,
+  "category": "domains",
+  "status": "beta",
+  "lucide": "globe",
+  "mark": {
+    "monogram": "OX",
+    "color": "#4A6FA5"
+  },
+  "tagline": {
+    "nl": "Het register: vervaldatum, slot, nameservers",
+    "en": "The register: expiry, lock, nameservers"
+  },
+  "summary": {
+    "nl": "Leest je OXXA-resellerregister uit en zet vervaldatum, verhuisslot, automatisch verlengen, DNSSEC, de gedelegeerde nameservers en de houder op de domeinpagina. Eén actie schrijft terug: de nameservers van een domein omzetten, waarmee de overstap naar Cloudflare klaar is. De eerste sync laat bovendien zien welke domeinen je verlengt zonder dat schakl. ze kent.",
+    "en": "Reads your OXXA reseller register and puts expiry, transfer lock, autorenew, DNSSEC, the delegated nameservers and the registrant on the domain page. One action writes back: moving a domain's nameservers, which is what finishes the hand-off to Cloudflare. The first sync also shows which domains you are paying to renew that schakl. has no record of."
+  },
+  "highlights": {
+    "nl": [
+      "Markeert op de domeinpagina wat aandacht vraagt: nog 60 dagen, verhuisslot uit, automatisch verlengen uit. Geen mail, geen melding",
+      "Nameservers omzetten vanaf het domein, met het Cloudflare-paar één klik ernaast",
+      "Nog nooit tegen een echte OXXA-account gedraaid: reken op een proefrun"
+    ],
+    "en": [
+      "Warns 60 days before expiry, and when a transfer lock is off",
+      "Move nameservers from the domain page, with the Cloudflare pair one click away",
+      "Never yet run against a real OXXA account: plan a rehearsal"
+    ]
+  },
+  "where": {
+    "nl": "Instellingen → OXXA voor de resellerlogin en het opgehaalde register, plus het paneel Registrar (OXXA) op Domeinen → het domein.",
+    "en": "Instellingen → OXXA (Settings → OXXA) for the reseller login and the fetched register, plus the Registrar (OXXA) panel on Domeinen → the domain (Domains)."
+  },
+  "docs": "/docs/integrations/oxxa/",
+  "page": {
+    "lead": {
+      "nl": "Een domeinrecord weet wat publieke DNS antwoordt. Het weet niet wanneer het domein verloopt, of het verhuisslot uitstaat, wat het register werkelijk heeft gedelegeerd en wie de houder is. Die vier feiten komen hiervandaan.",
+      "en": "A domain record knows what public DNS answers. It does not know when the domain expires, whether the transfer lock is off, what the registry has actually delegated, or who the registrant is. Those four facts come from here."
+    },
+    "requirements": {
+      "nl": [
+        "Een OXXA-resellerlogin: een API-gebruiker en een API-wachtwoord. De MD5-vorm van het wachtwoord wordt bewust niet ondersteund, want dan is de digest zelf de sleutel.",
+        "De module oxxa aan onder Instellingen → Modules, en dekking op de licentie via Instellingen → Licentie. Zonder dekking blijft lezen werken (het opgehaalde register, de vervaldatums, het statusrapport), zodat een verlopen sleutel nooit verbergt dat het domein van een klant afloopt.",
+        "De rechten oxxa.settings.manage, oxxa.registrar.sync en oxxa.registrar.manage, uitgedeeld in Instellingen → Rollen. Alle drie zijn standaard alleen voor beheerders.",
+        "Geen webhook en geen callback-URL. Al het verkeer gaat naar buiten, van de API-container naar api.oxxa.com; aan de kant van OXXA hoef je niets in te stellen.",
+        "Tijd voor een proefrun. Deze koppeling is geschreven op de officiële API-documentatie van OXXA en getest tegen een nabootsing daarvan, niet tegen een echte account."
+      ],
+      "en": [
+        "An OXXA reseller login: an API user and an API password. The MD5 password form is deliberately not supported, because there the digest itself is the credential.",
+        "The oxxa module switched on under Instellingen → Modules (Settings → Modules), and licence cover via Instellingen → Licentie (Settings → Licence). Without cover, reads keep working (the fetched register, expiry dates, the status report), so a lapsed key never hides that a client's domain is running out.",
+        "The permissions oxxa.settings.manage, oxxa.registrar.sync and oxxa.registrar.manage, granted in Instellingen → Rollen (Settings → Roles). All three are admin-only by default.",
+        "No webhook and no callback URL. Traffic is outbound only, from the API container to api.oxxa.com; nothing is configured on OXXA's side.",
+        "Time for a rehearsal. This integration is written from OXXA's official API documentation and tested against a stand-in cut from it, not against a real account."
+      ]
+    },
+    "steps": {
+      "nl": [
+        "Zet de module aan onder <strong>Instellingen → Modules</strong> en deel de rechten uit in <strong>Instellingen → Rollen</strong>: <code>oxxa.settings.manage</code>, <code>oxxa.registrar.sync</code> en <code>oxxa.registrar.manage</code>. Die laatste is de enige die iets buiten schakl. verandert.",
+        "Voeg de login toe: <strong>Instellingen → OXXA → Account toevoegen</strong>. Vul <strong>Naam</strong>, <strong>API-gebruiker</strong> en <strong>API-wachtwoord</strong> in, koppel desgewenst een <strong>Leveranciersregel</strong> en zet <strong>In gebruik</strong> aan. Het wachtwoord wordt nooit teruggetoond; laat het veld leeg om het opgeslagen wachtwoord te behouden.",
+        "Druk op <strong>Inloggegevens controleren</strong>. Dat haalt je <strong>Saldo</strong> en de toegestane <strong>Extensies</strong> op, en is verplicht: zonder die extensielijst kan schakl. een naam niet in sld en tld splitsen en weigert het elke actie. Vervang je later het wachtwoord, dan vervallen de lijst, het saldo en het vinkje Gecontroleerd, zodat een oude badge nooit spreekt voor een wachtwoord dat niemand heeft getest.",
+        "Druk op <strong>Register ophalen</strong>. De regel eronder leest hoeveel domeinen zijn opgehaald, hoeveel er aan een domein in schakl. zijn gekoppeld en hoeveel niet. Eén sync is één <code>domain_list</code>-aanroep plus één lookup per verschillende nameservergroep, hoe groot het register ook is.",
+        "Werk de tabel <strong>OXXA-register</strong> af met het filter <strong>Alleen niet-gekoppelde</strong>. Dat zijn de domeinen die je verlengt terwijl schakl. ze niet kent, en meestal de nuttigste opbrengst van de eerste sync.",
+        "Bekijk één domein: <strong>Domeinen → het domein → paneel Registrar (OXXA)</strong>. Daar staan <strong>Verloopt</strong>, <strong>Houder</strong>, <strong>Verhuisslot</strong>, <strong>Automatisch verlengen</strong>, <strong>DNSSEC</strong>, <strong>Nameservergroep</strong> en <strong>Nameservers</strong>. <strong>Controleren bij OXXA</strong> leest dat ene domein opnieuw; alleen die actie haalt DNSSEC en de naam van de houder op, want registerbreed zou dat één aanroep per contacthandle kosten.",
+        "Zet nameservers om onder <strong>Nameservers wijzigen bij OXXA</strong>: twee tot zes stuks, of druk op <strong>Nameservers van Cloudflare gebruiken</strong> om het toegewezen paar uit het paneel erboven over te nemen. Daarna <strong>Versturen naar OXXA</strong>. Klopte de delegatie al, dan krijg je te horen dat er niets is gewijzigd."
+      ],
+      "en": [
+        "Switch the module on under <strong>Instellingen → Modules</strong> (Settings → Modules) and hand out the permissions in <strong>Instellingen → Rollen</strong> (Settings → Roles): <code>oxxa.settings.manage</code>, <code>oxxa.registrar.sync</code> and <code>oxxa.registrar.manage</code>. The last one is the only permission here that changes anything outside schakl.",
+        "Add the login under <strong>Instellingen → OXXA → Account toevoegen</strong> (Add account). Fill in <strong>Naam</strong> (Name), <strong>API-gebruiker</strong> (API user) and <strong>API-wachtwoord</strong> (API password), optionally link a <strong>Leveranciersregel</strong> (supplier row) and tick <strong>In gebruik</strong> (In use). The password is never played back; leave the field empty to keep the stored one.",
+        "Press <strong>Inloggegevens controleren</strong> (Check credentials). This fetches your <strong>Saldo</strong> (balance) and the permitted <strong>Extensies</strong> (TLDs), and it is mandatory: without that suffix list schakl. cannot split a name into sld and tld and refuses every action. Rotating the password later clears the list, the balance and the verified badge, so a stale badge can never speak for a password nobody has tested.",
+        "Press <strong>Register ophalen</strong> (Fetch register). The result line reads how many domains were pulled, how many matched a domain in schakl. and how many did not. One sync is a single <code>domain_list</code> call plus one lookup per distinct nameserver group, whatever the register's size.",
+        "Work the <strong>OXXA-register</strong> table with the <strong>Alleen niet-gekoppelde</strong> (Unlinked only) filter. Those are the domains you renew that schakl. has no record of, and usually the most valuable output of the first sync.",
+        "Look at one domain: <strong>Domeinen → the domain → Registrar (OXXA) panel</strong>. It carries <strong>Verloopt</strong> (expires), <strong>Houder</strong> (registrant), <strong>Verhuisslot</strong> (transfer lock), <strong>Automatisch verlengen</strong> (autorenew), <strong>DNSSEC</strong>, <strong>Nameservergroep</strong> (nameserver group) and <strong>Nameservers</strong>. <strong>Controleren bij OXXA</strong> (Check at OXXA) re-reads that one domain; only that call fetches DNSSEC and the registrant's name, because register-wide it would cost one request per contact handle.",
+        "Move a delegation under <strong>Nameservers wijzigen bij OXXA</strong> (Change nameservers at OXXA): two to six nameservers, or press <strong>Nameservers van Cloudflare gebruiken</strong> (Use Cloudflare's nameservers) to take the assigned pair straight from the panel above. Then <strong>Versturen naar OXXA</strong> (Send to OXXA). If the delegation was already right, you are told nothing changed."
+      ]
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "De overstap naar Cloudflare is twee knoppen, met opzet",
+          "en": "The Cloudflare hand-off is two buttons, on purpose"
+        },
+        "body": {
+          "nl": "Eerst Koppelen aan Cloudflare in het paneel erboven: dat neemt de zone over of maakt hem aan en bewaart de nameservers die Cloudflare toewijst. Daarna de push hier. Er is expres geen knop die allebei doet. Je ziet wat er verstuurd gaat worden voordat het vertrekt, elke helft meldt zijn eigen afloop, en een mislukte tweede helft laat een afgeronde eerste helft achter in plaats van een half resultaat waarvan niemand weet hoe ver het kwam. Na de push is Publieke DNS antwoordt nog met andere nameservers dan het register heeft de normale toestand, van minuten tot uren; dat is geen fout.",
+          "en": "First Koppelen aan Cloudflare in the panel above: that adopts or creates the zone and stores the nameservers Cloudflare assigns. Then the push here. There is deliberately no single button firing both. You see exactly what will be pushed before it leaves, each leg reports its own outcome, and a failed second leg leaves a finished first leg rather than an ambiguous half-success. After the push, Publieke DNS antwoordt nog met andere nameservers dan het register heeft (public DNS still answers with different nameservers than the register holds) is the normal state for minutes to hours; it is not a failure."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Nameservergroepen zijn gedeeld, en dat is de valkuil",
+          "en": "Nameserver groups are shared objects, and that is the trap"
+        },
+        "body": {
+          "nl": "OXXA kent geen nameserverlijst per domein: het werkt met groepen, en OXXA's eigen documentatie zegt dat een wijziging in een groep wordt doorgevoerd op alle domeinen die het profiel gebruiken. Daarom zoekt of maakt schakl. een groep met de naam schakl- gevolgd door een hash van precies die nameservers, en bewerkt het onder geen enkele omstandigheid een bestaande groep. Twee gevolgen. Cloudflare geeft per zone een ander paar, dus reken op ongeveer één schakl-groep per gekoppeld domein; die groepen stapelen op en worden nooit opgeruimd, want verwijderen is de gevaarlijke richting. En bestaat er al een schakl-groep met andere nameservers erin, dan heeft iemand hem met de hand gewijzigd en wordt de push ronduit geweigerd: hergebruik zou elk ander domein in die groep meeverhuizen. Opnieuw proberen helpt daar niet; dat los je op in het portaal van OXXA.",
+          "en": "OXXA has no per-domain nameserver list: it works with groups, and OXXA's own documentation says an edit to a group is applied to every domain using that profile. So schakl. finds or creates a group named schakl- followed by a hash of exactly that nameserver set, and never, under any circumstance, edits an existing one. Two consequences. Cloudflare assigns a different pair per zone, so expect roughly one schakl- group per connected domain; the groups accumulate and are never cleaned up, because deleting is the dangerous direction. And if a schakl- group already exists holding different nameservers, somebody edited it by hand and the push is refused outright: reusing it would repoint every other domain in it. No retry fixes that; you fix it in OXXA's portal."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Drie nameserverfeiten, en ze zijn niet hetzelfde",
+          "en": "Three nameserver facts, and they are not the same thing"
+        },
+        "body": {
+          "nl": "Wat publieke DNS antwoordt, wat het register heeft gedelegeerd en wat wij hebben verstuurd zijn drie aparte gegevens. Ze worden apart bewaard en apart getoond, want ze door elkaar halen levert waarschuwingen op die niets betekenen: bij vrijwel elk domein is er nooit iets verstuurd, en nooit verstuurd is geen afwijking. Afwijking wordt gemeld, nooit stilzwijgend rechtgetrokken. Hetzelfde geldt voor de waarschuwingen op het paneel: ze vertellen je wat er aan de hand is en laten de beslissing aan jou.",
+          "en": "What public DNS answers, what the registry has delegated and what we asked for are three separate facts. They are stored separately and shown separately, because conflating any two produces warnings that mean nothing: for almost every domain nothing was ever pushed, and never pushed is not drift. Drift is reported, never auto-resolved. The same holds for the panel's warnings: they tell you what is going on and leave the decision with you."
+        },
+        "bullets": {
+          "nl": [
+            "Verloopt binnen 60 dagen, of is al verlopen",
+            "Verhuisslot uit, of automatisch verlengen uit",
+            "Publieke DNS antwoordt nog niet zoals het register zegt (alleen als de lookup werkelijk antwoord gaf)"
+          ],
+          "en": [
+            "Expires within 60 days, or has expired already",
+            "Transfer lock off, or autorenew off",
+            "Public DNS does not answer what the register says yet (raised only when the lookup actually answered)"
+          ]
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "key": "oxxa.settings.manage",
+        "nl": "Een resellerlogin toevoegen, het wachtwoord vervangen, controleren of verwijderen. Dit recht opent ook Instellingen → OXXA.",
+        "en": "Add a reseller login, rotate, verify or delete its password. This permission is also what opens Instellingen → OXXA."
+      },
+      {
+        "key": "oxxa.registrar.sync",
+        "nl": "Het register ophalen en lezen, de registrarstatus van één domein opvragen, dat domein verversen en het account kiezen. Bewust niet genoeg om de instellingen te openen: door een inlog handelen en die inlog vervangen zijn verschillende dingen.",
+        "en": "Run a register sync, read the stored register, read one domain's registrar status, refresh that domain and use the account picker. Deliberately not enough to open the settings screen: acting through a credential and replacing it are different acts."
+      },
+      {
+        "key": "oxxa.registrar.manage",
+        "nl": "De nameservers van een domein naar OXXA sturen. Dat is de enige actie hier die de buitenwereld verandert. Alle drie de rechten zijn standaard alleen voor beheerders en worden nooit aan de rol client gegeven.",
+        "en": "Push a domain's nameservers to OXXA. That is the only action here that changes the outside world. All three permissions are admin-only by default and are never granted to the seeded client role."
+      }
+    ],
+    "limits": {
+      "nl": [
+        "Nog nooit tegen een echte OXXA-account gedraaid. Alles is geschreven op OXXA's officiële API-documentatie en getest tegen een nabootsing daarvan; docs/OXXA.md houdt een checklist van tien punten bij voor de dag dat er een credential is. Een groen instellingenscherm bewijst tot dan dat de inloggegevens kloppen, en verder niets.",
+        "Er draait geen achtergrondsync. Register ophalen is een knop. Een register verandert langzaam, en een cron die uit zichzelf rijen schrijft maakt van een leesfout een stil probleem over het hele register in plaats van een zichtbare fout op het scherm van wie erop drukte.",
+        "Registreren, verhuizen en verlengen kan niet, en beschikbaarheid opzoeken ook niet. Die eerste drie geven geld uit en zijn onomkeerbaar; de laatste is de enige opdracht met een gepubliceerd dagquotum.",
+        "DNSSEC en de houder worden gelezen, nooit geschreven. De contacthandle van een reseller hangt aan tientallen tot honderden domeinen tegelijk, dus één wijziging zou de WHOIS van die hele stapel herschrijven.",
+        "De houder wordt naast je eigen gegevens getoond, maar er wordt niets vergeleken en er is geen waarschuwing bij verschil. Van Jansen Beheer B.V. een partijregel maken blijft mensenwerk.",
+        "Er is één registrarimplementatie. De seam voor een tweede bestaat in de code, maar er is er vandaag maar één geregistreerd. Er is ook geen paneel op de klantpagina: een registrar is niet een plek waar je heen gaat, het is iets wat een domein heeft."
+      ],
+      "en": [
+        "Never yet run against a real OXXA account. It is written from OXXA's official API documentation and tested against a stand-in cut from it; docs/OXXA.md carries a ten-item checklist to run the day a credential arrives. Until then a green settings screen proves the credential is right and nothing more.",
+        "There is no background sync. Register ophalen is a button. A register changes slowly, and a cron writing rows nobody asked for would turn a parsing bug into a silent data problem across the whole register instead of a visible failure on the screen of the person who pressed it.",
+        "No register, transfer or renew, and no availability search. The first three spend money and are irreversible; the last is the one command with a published daily quota.",
+        "DNSSEC and the registrant are read, never written. A reseller's contact handle is shared across dozens or hundreds of domains, so one edit would rewrite the WHOIS of that whole cohort.",
+        "The registrant is shown beside your own record, but nothing is compared and there is no mismatch warning. Turning Jansen Beheer B.V. into a party row stays a human act.",
+        "There is one registrar implementation. The seam for a second exists in the code, but exactly one is registered today. There is no company-page panel either: a registrar is not a place you go, it is something a domain has."
+      ]
+    }
+  }
+}

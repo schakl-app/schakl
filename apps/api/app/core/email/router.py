@@ -71,7 +71,9 @@ async def test_email_settings(ctx: RequestContext = Depends(require_context)) ->
     return await EmailSettingsService(ctx).test()
 
 
-# --- tenant-customisable auth email templates (#161 tier 2) ------------------------ #
+# --- tenant-customisable email templates (#161 tier 2) ----------------------------- #
+# Core's auth pair plus whatever the org's enabled modules contribute (app/core/email/kinds.py):
+# the invoicing module's invoice, quote and reminder mails ship on the same surface.
 @router.get(
     "/templates",
     response_model=EmailTemplatesRead,

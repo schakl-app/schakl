@@ -24,6 +24,7 @@
     registers = [],
     disabled = false,
     formId,
+    onchoose,
   }: {
     name: string;
     value?: boolean | null;
@@ -31,12 +32,16 @@
     registers?: string[];
     disabled?: boolean;
     formId?: string;
+    /** The current row, for a caller that states it elsewhere — a collapsed section's summary
+     *  (`DomainForm`). Read-only: the radios stay this component's own state. */
+    onchoose?: (chosen: string) => void;
   } = $props();
 
   // Bound, never one-way `checked` (docs/UX.md): a radio rendered one-way loses its mark on
   // hydration, and the next save then silently strips what the user never touched.
   // svelte-ignore state_referenced_locally
   let chosen = $state<string>(value === true ? "yes" : value === false ? "no" : "");
+  $effect(() => onchoose?.(chosen));
 
   /** What the register says right now, in one sentence — or nothing, on a create form. */
   const followHint = $derived.by(() => {

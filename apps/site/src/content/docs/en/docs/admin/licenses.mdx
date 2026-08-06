@@ -1,22 +1,32 @@
 ---
 title: Licenses
-description: How extension modules are licensed — the license key, the trial window, and what happens when a license expires.
+description: "How extension modules are licensed: the license key, the trial window, and what happens when a license expires."
 sidebar:
-  order: 3
+  order: 4
 ---
 
-The core of schakl. is **open source** (AGPL-3.0): the platform itself plus the companies,
-contacts, tasks and notifications modules. The **extension modules** — currently projects,
-time tracking, leave, HR, domains, websites, hosting, subscriptions, invoicing,
-interactions, automation, marketing and Google Workspace, along with the MCP server and the
-AI assistant — are governed by the commercial license and require a **license key**. The
-source of those modules is plainly visible in the repository; only using them requires a
-key.
+The core of schakl. is **open source** (AGPL-3.0): the platform itself plus the Klanten
+(Clients), Contactpersonen (Contacts), Taken (Tasks) and Meldingen (Notifications) modules.
+The **extension modules** are governed by the commercial license and require a **license
+key**. There are eighteen of them today: Projecten (Projects), Uren (Time), Verlof (Leave),
+HR, Domeinen (Domains), Websites, Hosting, Abonnementen (Subscriptions), Facturatie
+(Invoicing), Contactmomenten (Interactions), Automatisering (Automation), Marketing,
+Rapportage (Reporting), Klantportaal (Client portal), Google Workspace, Cloudflare, OXXA and
+Mollie — plus two surfaces that are not modules in the list but carry a license entry of
+their own: the MCP server and AI assistance. The source of those modules is plainly visible
+in the repository; only using them requires a key.
+
+Every extension module has its own license entry, so a license need not cover all eighteen.
+*Instellingen → Licentie* (Settings → License) lists all of them under **Gelicentieerde
+modules** (licensed modules) with a status per line, so you can see per module whether your
+key covers it. Two lines are still shown by their technical name, `reporting` and `mcp` —
+Rapportage (Reporting) and the MCP server. Which modules are switched on is settled under
+*Instellingen → Modules* (Settings → Modules).
 
 ## How it works
 
 - A license key is a signed block of text (`SCHAKL1.…`). You paste it under
-  *Settings → License* (visible to the instance owner only).
+  *Instellingen → Licentie* (Settings → License), visible to the instance owner only.
 - Validation is **fully offline**: your server never needs to "phone home" to keep
   running — even if our infrastructure is unreachable.
 - The license states who it belongs to, which modules it covers and until when it is
@@ -25,16 +35,26 @@ key.
 ## Trial window
 
 Every fresh install (and every existing install upgrading to this version) gets a
-**built-in trial**: licensed modules work fully for two weeks without a key. After that
-they can no longer be enabled, and already-enabled licensed modules turn **read-only**.
+**built-in trial**: licensed modules work fully for fourteen days without a key. After that
+they can no longer be enabled, and already-enabled licensed modules turn **read-only**. The
+clock starts the moment the database is migrated to this version; the end date is shown on
+*Instellingen → Licentie* (Settings → License) as **Modules zonder licentie worden
+alleen-lezen op** (unlicensed modules turn read-only on). Set
+`SCHAKL_LICENSE_BOOTSTRAP_GRACE_DAYS` for a different length.
 
 ## When a license expires
 
-- Within the **grace period** (by default two weeks past the expiry date) everything keeps
-  working — time to renew.
+- A license may carry a **grace period** of its own: a number of days past the expiry date
+  in which everything keeps working, so there is time to renew. How long that is comes from
+  the key itself and therefore differs per license — there is no fixed number of days in the
+  software. The end date is shown on *Instellingen → Licentie* as **Respijtperiode tot**
+  (grace period until), with the status *Verlopen (respijtperiode)* (expired, in grace). If
+  the key states no grace, read-only starts on the expiry date itself.
 - After that, licensed modules turn **read-only**: existing data stays visible and
   **export always works**. Nothing is ever lost; installing a new key makes the module
   fully functional again immediately.
+- The trial above does not bring an expired license back. That clock only covers modules
+  that no installed license lists at all.
 - The rest of the platform is unaffected.
 
 ## Getting or renewing a license

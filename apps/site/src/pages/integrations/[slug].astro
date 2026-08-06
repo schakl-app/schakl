@@ -1,0 +1,19 @@
+---
+// English integration pages at /integrations/<slug>/. One page per src/data/integrations/*.json.
+import IntegrationPage from '../../components/IntegrationPage.astro';
+
+export function getStaticPaths() {
+  const mods = import.meta.glob('../../data/integrations/*.json', { eager: true });
+  const items = Object.values(mods)
+    .map((m: any) => m.default ?? m)
+    .sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0));
+  return items.map((i: any) => ({
+    params: { slug: i.slug },
+    props: { integration: i, all: items },
+  }));
+}
+
+const { integration, all } = Astro.props;
+---
+
+<IntegrationPage locale="en" integration={integration} all={all} />

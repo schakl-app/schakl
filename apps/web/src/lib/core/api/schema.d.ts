@@ -771,6 +771,326 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bulk/company/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Delete Company
+         * @description Delete a selection of company records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
+         */
+        post: operations["bulk_delete_company_api_v1_bulk_company_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bulk/company/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Update Company
+         * @description Set fields on a selection of company records: `status`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
+         */
+        post: operations["bulk_update_company_api_v1_bulk_company_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bulk/contact/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Delete Contact
+         * @description Delete a selection of contact records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
+         */
+        post: operations["bulk_delete_contact_api_v1_bulk_contact_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bulk/contact/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Update Contact
+         * @description Set fields on a selection of contact records: `company`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
+         */
+        post: operations["bulk_update_contact_api_v1_bulk_contact_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bulk/domain/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Delete Domain
+         * @description Delete a selection of domain records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
+         */
+        post: operations["bulk_delete_domain_api_v1_bulk_domain_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bulk/domain/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Update Domain
+         * @description Set fields on a selection of domain records: `status`, `company`, `registrar_provider`, `dns_provider`, `email_provider`, `invoiceable`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
+         */
+        post: operations["bulk_update_domain_api_v1_bulk_domain_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bulk/interaction/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Delete Interaction
+         * @description Delete a selection of interaction records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
+         */
+        post: operations["bulk_delete_interaction_api_v1_bulk_interaction_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bulk/invoice/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Delete Invoice
+         * @description Delete a selection of invoice records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
+         */
+        post: operations["bulk_delete_invoice_api_v1_bulk_invoice_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bulk/project/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Delete Project
+         * @description Delete a selection of project records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
+         */
+        post: operations["bulk_delete_project_api_v1_bulk_project_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bulk/project/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Update Project
+         * @description Set fields on a selection of project records: `status`, `company`, `billable_default`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
+         */
+        post: operations["bulk_update_project_api_v1_bulk_project_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bulk/subscription/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Delete Subscription
+         * @description Delete a selection of subscription records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
+         */
+        post: operations["bulk_delete_subscription_api_v1_bulk_subscription_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bulk/subscription/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Update Subscription
+         * @description Set fields on a selection of subscription records: `status`, `type`, `company`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
+         */
+        post: operations["bulk_update_subscription_api_v1_bulk_subscription_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bulk/task/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Delete Task
+         * @description Delete a selection of task records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
+         */
+        post: operations["bulk_delete_task_api_v1_bulk_task_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bulk/task/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Update Task
+         * @description Set fields on a selection of task records: `status`, `assignee`, `priority`, `project`, `company`, `due_date`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
+         */
+        post: operations["bulk_update_task_api_v1_bulk_task_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bulk/website/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Delete Website
+         * @description Delete a selection of website records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
+         */
+        post: operations["bulk_delete_website_api_v1_bulk_website_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bulk/website/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Update Website
+         * @description Set fields on a selection of website records: `hosting`, `uptime_enabled`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
+         */
+        post: operations["bulk_update_website_api_v1_bulk_website_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cloudflare/accounts": {
         parameters: {
             query?: never;
@@ -1675,6 +1995,10 @@ export interface paths {
         /**
          * List Files
          * @description The files attached to one entity (a task's documents, a project's documents).
+         *
+         *     ``include_inline`` also returns the files that are part of the entity's *body* — an
+         *     e-mail's ``cid:`` images. Off by default: they render inside the text, and listing them
+         *     beside the attachments put the sender's signature logo on every message.
          */
         get: operations["list_files_api_v1_files_get"];
         put?: never;
@@ -4093,6 +4417,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoicing/invoices/{invoice_id}/payment-intents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Payment Intents
+         * @description This invoice's payment attempts. ``_READ``'s floor, not ``_MODULE``: a client must be
+         *     able to see the state of the payment they just made.
+         */
+        get: operations["list_payment_intents_api_v1_invoicing_invoices__invoice_id__payment_intents_get"];
+        put?: never;
+        /**
+         * Start Payment
+         * @description Open a hosted checkout for this invoice's outstanding balance.
+         *
+         *     The amount is the server's to decide — the body carries only *which* credential to use.
+         */
+        post: operations["start_payment_api_v1_invoicing_invoices__invoice_id__payment_intents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/invoices/{invoice_id}/payment-intents/{intent_id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Payment Intent
+         * @description Re-ask the provider about one attempt, by hand.
+         *
+         *     "Sync failures are surfaced and retryable, not silently dropped" (#267) needs a button as
+         *     well as a cron: a callback that never arrived — a firewall, a Zero Trust rule, an outage —
+         *     is fixed by an operator who can then settle the payment without waiting for the next pass.
+         *
+         *     ``:any``, unlike starting a payment: this is a **repair** action, it spends an outbound
+         *     call to the provider on every press, and a client has no use for it — their own status
+         *     arrives by callback and, failing that, by the hourly reconcile. Leaving it at the floor
+         *     would have put a rate-costed external call behind a button on a client-reachable page.
+         */
+        post: operations["sync_payment_intent_api_v1_invoicing_invoices__invoice_id__payment_intents__intent_id__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoicing/invoices/{invoice_id}/payments": {
         parameters: {
             query?: never;
@@ -4268,6 +4648,55 @@ export interface paths {
         get: operations["outstanding_api_v1_invoicing_outstanding_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/payment-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Payment Accounts
+         * @description Which payment credentials this org has connected, across every enabled provider module.
+         *
+         *     ``:any``, not the floor (#266): this is org-wide configuration — no client's row could be
+         *     narrowed to it — so a client-role ``:own`` holder must not reach it even though they may
+         *     *start* a payment. What the portal needs instead is ``InvoiceRead.online_payment``, which
+         *     answers the only question a payer has ("can I pay this here?") without naming an account.
+         *     The response carries a label, a mode and an id; never a credential.
+         */
+        get: operations["list_payment_accounts_api_v1_invoicing_payment_accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/payments/webhook/{provider}/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Payment Webhook
+         * @description The provider's callback. Returns bare statuses and no body, by design.
+         *
+         *     ``200`` also covers a reference this tenant does not know — a provider must not be able to
+         *     enumerate what exists here by reading status codes (Mollie documents exactly this).
+         */
+        post: operations["payment_webhook_api_v1_invoicing_payments_webhook__provider___token__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5842,6 +6271,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mollie/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Accounts
+         * @description Connected Mollie keys. The key itself is never part of the response.
+         */
+        get: operations["list_accounts_api_v1_mollie_accounts_get"];
+        put?: never;
+        /**
+         * Create Account
+         * @description Store a credential. Creating does not verify it — ``/verify`` is the explicit probe, so
+         *     a typo is reported on the settings screen rather than as a failed save.
+         */
+        post: operations["create_account_api_v1_mollie_accounts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mollie/accounts/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Account */
+        delete: operations["delete_account_api_v1_mollie_accounts__account_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Account
+         * @description Rename, re-link or rotate. An omitted ``api_key`` keeps the stored one.
+         */
+        patch: operations["update_account_api_v1_mollie_accounts__account_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/mollie/accounts/{account_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Account
+         * @description Ask Mollie whether this key works, and which methods it can take.
+         *
+         *     Answers ``200`` with ``ok=false`` for a rejected credential rather than an error status:
+         *     the probe succeeded, its answer was no, and the row keeps Mollie's own words on it.
+         */
+        post: operations["verify_account_api_v1_mollie_accounts__account_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/nav/prefs": {
         parameters: {
             query?: never;
@@ -6505,6 +7003,327 @@ export interface paths {
         head?: never;
         /** Update Provider */
         patch: operations["update_provider_api_v1_providers__provider_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/reporting/companies/{company_id}/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Profile
+         * @description The client's reporting setup. A company that has never had one answers with the
+         *     inherited defaults rather than a 404 — the form is the same either way.
+         */
+        get: operations["get_profile_api_v1_reporting_companies__company_id__profile_get"];
+        /** Save Profile */
+        put: operations["save_profile_api_v1_reporting_companies__company_id__profile_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reporting/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Reports */
+        get: operations["list_reports_api_v1_reporting_reports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reporting/reports/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Report
+         * @description Queue a run. Never generates inline — it calls several APIs and a model.
+         */
+        post: operations["generate_report_api_v1_reporting_reports_generate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reporting/reports/generate-batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate Batch */
+        post: operations["generate_batch_api_v1_reporting_reports_generate_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reporting/reports/{report_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Report */
+        get: operations["get_report_api_v1_reporting_reports__report_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Report */
+        delete: operations["delete_report_api_v1_reporting_reports__report_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reporting/reports/{report_id}/narrative": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Edit Narrative
+         * @description Hand-edit the prose before it goes out — the point of review-before-send.
+         */
+        put: operations["edit_narrative_api_v1_reporting_reports__report_id__narrative_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reporting/reports/{report_id}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Report Pdf
+         * @description The stored document. Loaded through the portal-aware repository, so a client can
+         *     download exactly the reports they can open — and never the internal analysis.
+         */
+        get: operations["report_pdf_api_v1_reporting_reports__report_id__pdf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reporting/reports/{report_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview Report
+         * @description The document as HTML — the same artefact the PDF prints, so the two cannot drift.
+         */
+        get: operations["preview_report_api_v1_reporting_reports__report_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reporting/reports/{report_id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish Report */
+        post: operations["publish_report_api_v1_reporting_reports__report_id__publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reporting/reports/{report_id}/rewrite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rewrite Section */
+        post: operations["rewrite_section_api_v1_reporting_reports__report_id__rewrite_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reporting/reports/{report_id}/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send Report */
+        post: operations["send_report_api_v1_reporting_reports__report_id__send_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reporting/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings */
+        get: operations["get_settings_api_v1_reporting_settings_get"];
+        /** Save Settings */
+        put: operations["save_settings_api_v1_reporting_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reporting/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Templates */
+        get: operations["list_templates_api_v1_reporting_templates_get"];
+        put?: never;
+        /** Create Template */
+        post: operations["create_template_api_v1_reporting_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reporting/templates/sections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Section Catalog
+         * @description What a template may order or switch off — the registry, made visible (§15's
+         *     "registry, not free text", applied to design).
+         */
+        get: operations["section_catalog_api_v1_reporting_templates_sections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reporting/templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Template */
+        put: operations["update_template_api_v1_reporting_templates__template_id__put"];
+        post?: never;
+        /** Delete Template */
+        delete: operations["delete_template_api_v1_reporting_templates__template_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reporting/tones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tones
+         * @description Readable by whoever assigns one to a client, editable only by an admin (the service
+         *     re-checks) — a manager must be able to see what voice they are picking.
+         */
+        get: operations["list_tones_api_v1_reporting_tones_get"];
+        put?: never;
+        /** Create Tone */
+        post: operations["create_tone_api_v1_reporting_tones_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reporting/tones/{tone_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Tone */
+        put: operations["update_tone_api_v1_reporting_tones__tone_id__put"];
+        post?: never;
+        /** Delete Tone */
+        delete: operations["delete_tone_api_v1_reporting_tones__tone_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/roles": {
@@ -8233,6 +9052,26 @@ export interface components {
          */
         AccountSyncResult: {
             /**
+             * Pages Domains Synced
+             * @default 0
+             */
+            pages_domains_synced: number;
+            /**
+             * Pages Links Adopted
+             * @default 0
+             */
+            pages_links_adopted: number;
+            /**
+             * Pages Links Matched
+             * @default 0
+             */
+            pages_links_matched: number;
+            /**
+             * Pages Links Missing
+             * @default 0
+             */
+            pages_links_missing: number;
+            /**
              * Pages Projects Synced
              * @default 0
              */
@@ -9670,10 +10509,73 @@ export interface components {
             /** Version */
             version: string;
         };
+        /**
+         * BulkActionFailure
+         * @description One row the batch could not do, and why.
+         *
+         *     ``error`` is an i18n key from the same vocabulary the single-row endpoints raise — and where
+         *     that endpoint would have answered 422 with the reason under a *field*, this carries the field's
+         *     key rather than the envelope's (see ``BulkService._reason``). "3 rows failed: invalid" is not
+         *     a reason, and it is what most refusals would otherwise read as.
+         */
+        BulkActionFailure: {
+            /** Error */
+            error: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /**
+         * BulkActionResult
+         * @description What a bulk call actually did.
+         *
+         *     Rows are independent: an ineligible or stale one is **reported, never raised**. Raising
+         *     mid-batch would roll the whole request back (``require_context`` rolls back on any
+         *     exception), so one row a colleague had already changed in another tab would silently undo
+         *     the forty-nine that worked. Each row therefore runs inside its own SAVEPOINT — the failure
+         *     of one leaves the transaction usable for the next.
+         *
+         *     A payload-level problem — a status that is not a status, a client that does not exist — is
+         *     still a 422 for the whole call, because it is the caller's and every row would fail on it
+         *     identically.
+         */
+        BulkActionResult: {
+            /** Failed */
+            failed?: components["schemas"]["BulkActionFailure"][];
+            /** Succeeded */
+            succeeded: number;
+        };
+        /**
+         * BulkDeleteRequest
+         * @description A selection to delete. Permanent, and per row: the rows the batch could do are done.
+         */
+        BulkDeleteRequest: {
+            /** Ids */
+            ids: string[];
+        };
         /** BulkResult */
         BulkResult: {
             /** Updated */
             updated: number;
+        };
+        /**
+         * BulkUpdateRequest
+         * @description A selection plus the fields to set on all of it.
+         *
+         *     ``values`` is keyed by the entity's own column keys (the same stable keys its CSV export
+         *     uses). **An absent key leaves every row's own value alone; an explicit ``null`` clears it**
+         *     where the column allows clearing at all — the dialog opens blank over rows that disagree
+         *     with each other, so "I did not fill this in" must never mean "empty it everywhere".
+         */
+        BulkUpdateRequest: {
+            /** Ids */
+            ids: string[];
+            /** Values */
+            values: {
+                [key: string]: string | null;
+            };
         };
         /** CalendarFeedItem */
         CalendarFeedItem: {
@@ -10166,6 +11068,10 @@ export interface components {
             company_id: string;
             /** Layout */
             layout?: {
+                [key: string]: unknown;
+            } | null;
+            /** Narrative */
+            narrative?: {
                 [key: string]: unknown;
             } | null;
             /**
@@ -11262,6 +12168,8 @@ export interface components {
         DomainStatusRead: {
             /** Candidates */
             candidates?: components["schemas"]["ZoneCandidate"][];
+            /** Checked At */
+            checked_at?: string | null;
             /** Conflicts */
             conflicts?: components["schemas"]["RedirectConflict"][];
             /**
@@ -11709,15 +12617,32 @@ export interface components {
             default_body_html: string;
             /** Default Subject */
             default_subject: string;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "reset" | "invite";
+            /** Kind */
+            kind: string;
             /** Locale */
             locale: string;
             /** Subject */
             subject?: string | null;
+        };
+        /**
+         * EmailTemplateKindRead
+         * @description One customisable mail, as the editor needs to draw it.
+         *
+         *     ``variables`` is per kind on purpose: an invoice mail interpolates a number and an amount,
+         *     a reset mail a link, and a single global list would advertise markers that render as
+         *     literal ``{link}`` text in the client's inbox.
+         */
+        EmailTemplateKindRead: {
+            /** Hint Key */
+            hint_key: string;
+            /** Key */
+            key: string;
+            /** Label Key */
+            label_key: string;
+            /** Module */
+            module?: string | null;
+            /** Variables */
+            variables: string[];
         };
         /**
          * EmailTemplateTest
@@ -11726,11 +12651,8 @@ export interface components {
         EmailTemplateTest: {
             /** Body Html */
             body_html?: string | null;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "reset" | "invite";
+            /** Kind */
+            kind: string;
             /** Locale */
             locale: string;
             /** Subject */
@@ -11740,11 +12662,8 @@ export interface components {
         EmailTemplateWrite: {
             /** Body Html */
             body_html?: string | null;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "reset" | "invite";
+            /** Kind */
+            kind: string;
             /** Locale */
             locale: string;
             /** Subject */
@@ -11752,12 +12671,12 @@ export interface components {
         };
         /** EmailTemplatesRead */
         EmailTemplatesRead: {
+            /** Kinds */
+            kinds: components["schemas"]["EmailTemplateKindRead"][];
             /** Locales */
             locales: string[];
             /** Templates */
             templates: components["schemas"]["EmailTemplateItem"][];
-            /** Variables */
-            variables: string[];
         };
         /** EmailTestResult */
         EmailTestResult: {
@@ -12843,7 +13762,7 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             /** Subject */
-            subject: string;
+            subject?: string | null;
             /** Task Id */
             task_id?: string | null;
         };
@@ -12960,6 +13879,8 @@ export interface components {
         };
         /** InteractionRead */
         InteractionRead: {
+            /** Body Markdown */
+            body_markdown?: string | null;
             /** Body Text */
             body_text?: string | null;
             /**
@@ -13171,6 +14092,83 @@ export interface components {
          * @enum {string}
          */
         InvoiceKind: "invoice" | "credit_note";
+        /**
+         * InvoicePaymentAccountRead
+         * @description A payment credential this org has connected, as an invoice screen needs it (#267).
+         *
+         *     Prefixed like everything else in this module: a bare ``PaymentAccountRead`` would collide
+         *     with the provider module's own schemas and silently qualify *both* in the generated client
+         *     (the ``TemplateRead`` lesson). No secret and no credential — the label, the mode and
+         *     whether it can start a payment right now.
+         */
+        InvoicePaymentAccountRead: {
+            /** Active */
+            active: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Label */
+            label: string;
+            /** Mode */
+            mode: string;
+            /** Provider */
+            provider: string;
+        };
+        /**
+         * InvoicePaymentIntentCreate
+         * @description Start an online payment for an invoice.
+         *
+         *     Deliberately carries **no amount**: the server charges the invoice's outstanding balance,
+         *     recomputed at creation time. A client-supplied amount is the one thing a payment endpoint
+         *     must never accept (#267's hard requirement).
+         */
+        InvoicePaymentIntentCreate: {
+            /** Account Id */
+            account_id?: string | null;
+            /** Provider */
+            provider?: string | null;
+        };
+        /** InvoicePaymentIntentRead */
+        InvoicePaymentIntentRead: {
+            /** Account Id */
+            account_id: string | null;
+            /** Amount */
+            amount: string;
+            /** Checkout Url */
+            checkout_url: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Currency */
+            currency: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Invoice Id
+             * Format: uuid
+             */
+            invoice_id: string;
+            /** Last Error */
+            last_error: string | null;
+            /** Method */
+            method: string | null;
+            /** Mode */
+            mode: string;
+            /** Provider */
+            provider: string;
+            /** Settled At */
+            settled_at: string | null;
+            status: components["schemas"]["PaymentIntentStatus"];
+            /** Synced At */
+            synced_at: string | null;
+        };
         /** InvoiceRead */
         InvoiceRead: {
             /**
@@ -13241,6 +14239,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Intents */
+            intents?: components["schemas"]["InvoicePaymentIntentRead"][];
             /** Intro */
             intro: string | null;
             /** Issue Date */
@@ -13256,6 +14256,11 @@ export interface components {
             notes: string | null;
             /** Number */
             number: string | null;
+            /**
+             * Online Payment
+             * @default false
+             */
+            online_payment: boolean;
             /**
              * Org Id
              * Format: uuid
@@ -14590,11 +15595,18 @@ export interface components {
              * @default false
              */
             env_ads_token_configured: boolean;
+            /**
+             * Seranking Api Key Configured
+             * @default false
+             */
+            seranking_api_key_configured: boolean;
         };
         /** MarketingSettingsWrite */
         MarketingSettingsWrite: {
             /** Ads Developer Token */
             ads_developer_token?: string | null;
+            /** Seranking Api Key */
+            seranking_api_key?: string | null;
         };
         /**
          * MarketingSource
@@ -14605,7 +15617,7 @@ export interface components {
          *     and a picker for zero data in a client-overview CRM. Extend here for Meta/LinkedIn later.
          * @enum {string}
          */
-        MarketingSource: "ga4" | "gsc" | "gads";
+        MarketingSource: "ga4" | "gsc" | "gads" | "seranking";
         /** MarketingSummary */
         MarketingSummary: {
             /**
@@ -14813,6 +15825,107 @@ export interface components {
             /** Supported Locales */
             supported_locales: string[];
         };
+        /** MollieAccountCreate */
+        MollieAccountCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Api Key */
+            api_key: string;
+            /** Name */
+            name: string;
+            /** Provider Id */
+            provider_id?: string | null;
+        };
+        /**
+         * MollieAccountRead
+         * @description One connected Mollie key, as the settings screen sees it. **Never the key.**
+         */
+        MollieAccountRead: {
+            /** Active */
+            active: boolean;
+            /**
+             * Api Key Configured
+             * @default true
+             */
+            api_key_configured: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Verified At */
+            last_verified_at?: string | null;
+            /** Methods */
+            methods?: string[];
+            mode: components["schemas"]["MollieMode"];
+            /** Name */
+            name: string;
+            /** Provider Id */
+            provider_id?: string | null;
+            status: components["schemas"]["MollieAccountStatus"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Webhook Url
+             * @default
+             */
+            webhook_url: string;
+        };
+        /**
+         * MollieAccountStatus
+         * @description Whether the stored credential still works. ``error`` is set by whatever found out.
+         * @enum {string}
+         */
+        MollieAccountStatus: "active" | "error";
+        /** MollieAccountUpdate */
+        MollieAccountUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Api Key */
+            api_key?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Provider Id */
+            provider_id?: string | null;
+        };
+        /**
+         * MollieAccountVerifyResult
+         * @description The outcome of testing a credential. **Never raises** — see the service.
+         *
+         *     ``ok=False`` with the row still saved is a real and common state: a rejected credential is
+         *     still a stored credential, and telling somebody their key is wrong is more useful than
+         *     refusing to remember what they typed.
+         */
+        MollieAccountVerifyResult: {
+            /** Error */
+            error?: string | null;
+            /** Methods */
+            methods?: string[];
+            mode?: components["schemas"]["MollieMode"] | null;
+            /** Ok */
+            ok: boolean;
+        };
+        /**
+         * MollieMode
+         * @description Which world this credential acts in. **Mollie's keys say so themselves** — a key is
+         *     literally prefixed ``test_`` or ``live_`` — so this is derived on save and never entered:
+         *     a field an admin can get wrong about money is a field that should not exist.
+         * @enum {string}
+         */
+        MollieMode: "live" | "test";
         /** MxRecord */
         MxRecord: {
             /** Exchange */
@@ -15595,6 +16708,8 @@ export interface components {
         };
         /** PagesLinkRead */
         PagesLinkRead: {
+            /** Discovered At */
+            discovered_at?: string | null;
             /**
              * Domain Id
              * Format: uuid
@@ -15611,6 +16726,8 @@ export interface components {
             last_checked_at?: string | null;
             /** Last Error */
             last_error?: string | null;
+            /** Missing At */
+            missing_at?: string | null;
             /**
              * Project Id
              * Format: uuid
@@ -15728,6 +16845,17 @@ export interface components {
          * @enum {string}
          */
         PartyType: "agency" | "company" | "employee" | "contact";
+        /**
+         * PaymentIntentStatus
+         * @description Mirrors :class:`app.core.payments.PaymentStatus` — the provider's own vocabulary.
+         *
+         *     Stored as the provider's word rather than translated into an invoicing status, because the
+         *     two answer different questions: this says what happened at the provider, ``settled_at``
+         *     says what we did about it. Collapsing them is how "the client paid and we never booked it"
+         *     becomes invisible (CLAUDE.md §10, the Cloudflare drift rule, applied to money).
+         * @enum {string}
+         */
+        PaymentIntentStatus: "open" | "pending" | "authorized" | "paid" | "failed" | "expired" | "canceled";
         /** PaymentRead */
         PaymentRead: {
             /** Amount */
@@ -17007,6 +18135,35 @@ export interface components {
             /** Transfer Lock */
             transfer_lock?: boolean | null;
         };
+        /** ReportActionResult */
+        ReportActionResult: {
+            /**
+             * Queued
+             * @default false
+             */
+            queued: boolean;
+            report: components["schemas"]["ReportDetail"];
+        };
+        /**
+         * ReportAudience
+         * @description Who a document is for. The split is load-bearing, not cosmetic.
+         *
+         *     The client document and the internal analysis read the *same* snapshot and differ only in
+         *     narrative and in which sections render — which is exactly why "advies", "kans" and
+         *     "actiepunt" can be banned from one while the other is made of them.
+         * @enum {string}
+         */
+        ReportAudience: "client" | "internal";
+        /**
+         * ReportCadence
+         * @enum {string}
+         */
+        ReportCadence: "off" | "monthly" | "quarterly";
+        /**
+         * ReportCompare
+         * @enum {string}
+         */
+        ReportCompare: "year" | "previous";
         /** ReportCreate */
         ReportCreate: {
             /**
@@ -17029,6 +18186,93 @@ export interface components {
             /** Title */
             title: string;
         };
+        /**
+         * ReportDelivery
+         * @description What happens when a scheduled run finishes.
+         *
+         *     ``REVIEW`` is the default and the reason it is: the workflow this replaces mailed
+         *     unreviewed model prose to a client under the agency's brand. Auto-send stays available —
+         *     an agency that trusts its tone and its data should be able to switch it on — but it is a
+         *     decision somebody makes per client, never the behaviour they get by not choosing.
+         * @enum {string}
+         */
+        ReportDelivery: "review" | "auto";
+        /** ReportDetail */
+        ReportDetail: {
+            /** Audience */
+            audience: string;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Company Name */
+            company_name: string;
+            /** Compare End */
+            compare_end?: string | null;
+            /** Compare Start */
+            compare_start?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Data Snapshot */
+            data_snapshot?: {
+                [key: string]: unknown;
+            };
+            /** Edited Sections */
+            edited_sections?: string[];
+            /** Generated By Name */
+            generated_by_name?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Locale */
+            locale: string;
+            /** Narrative */
+            narrative?: {
+                [key: string]: unknown;
+            };
+            /** Pdf File Id */
+            pdf_file_id?: string | null;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /**
+             * Period Start
+             * Format: date
+             */
+            period_start: string;
+            /** Published At */
+            published_at?: string | null;
+            /** Sections */
+            sections?: {
+                [key: string]: unknown;
+            }[];
+            /** Sent At */
+            sent_at?: string | null;
+            /** Sent To */
+            sent_to?: {
+                [key: string]: unknown;
+            }[];
+            /** Status */
+            status: string;
+            /** Template Id */
+            template_id?: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Warning Count
+             * @default 0
+             */
+            warning_count: number;
+            /** Warnings */
+            warnings?: {
+                [key: string]: unknown;
+            }[];
+        };
         /** ReportGenerateRequest */
         ReportGenerateRequest: {
             /**
@@ -17048,6 +18292,134 @@ export interface components {
             override_budget: boolean;
             /** Period */
             period: string;
+        };
+        /** ReportList */
+        ReportList: {
+            /** Items */
+            items: components["schemas"]["ReportRow"][];
+            /** Total */
+            total?: number | null;
+        };
+        /**
+         * ReportNarrativeUpdate
+         * @description Hand-edited prose. Every key present is stored and marked as edited.
+         */
+        ReportNarrativeUpdate: {
+            /** Narrative */
+            narrative?: {
+                [key: string]: string;
+            };
+        };
+        /** ReportProfileRead */
+        ReportProfileRead: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Avoid Topics */
+            avoid_topics?: string | null;
+            /** Business Context */
+            business_context?: string | null;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Conversion Goals */
+            conversion_goals?: string | null;
+            /** Effective Schedule */
+            effective_schedule?: {
+                [key: string]: unknown;
+            };
+            /** Goals */
+            goals?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Internal Enabled
+             * @default true
+             */
+            internal_enabled: boolean;
+            /** Internal Template Id */
+            internal_template_id?: string | null;
+            /** Key Services */
+            key_services?: string | null;
+            /**
+             * Locale
+             * @default nl
+             */
+            locale: string;
+            /** Next Run On */
+            next_run_on?: string | null;
+            /** Priority Pages */
+            priority_pages?: string | null;
+            /** Recipients */
+            recipients?: {
+                [key: string]: unknown;
+            }[];
+            /** Schedule */
+            schedule?: {
+                [key: string]: unknown;
+            };
+            /** Scope Notes */
+            scope_notes?: string | null;
+            /** Sea Focus */
+            sea_focus?: string | null;
+            /** Seo Focus */
+            seo_focus?: string | null;
+            /** Template Id */
+            template_id?: string | null;
+            /** Tone Id */
+            tone_id?: string | null;
+        };
+        /** ReportProfileWrite */
+        ReportProfileWrite: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Avoid Topics */
+            avoid_topics?: string | null;
+            /** Business Context */
+            business_context?: string | null;
+            /** Conversion Goals */
+            conversion_goals?: string | null;
+            /** Goals */
+            goals?: string | null;
+            /**
+             * Internal Enabled
+             * @default true
+             */
+            internal_enabled: boolean;
+            /** Internal Template Id */
+            internal_template_id?: string | null;
+            /** Key Services */
+            key_services?: string | null;
+            /**
+             * Locale
+             * @default nl
+             */
+            locale: string;
+            /** Priority Pages */
+            priority_pages?: string | null;
+            /** Recipients */
+            recipients?: components["schemas"]["ReportRecipient"][];
+            schedule?: components["schemas"]["ReportSchedule"];
+            /** Scope Notes */
+            scope_notes?: string | null;
+            /** Sea Focus */
+            sea_focus?: string | null;
+            /** Seo Focus */
+            seo_focus?: string | null;
+            /** Template Id */
+            template_id?: string | null;
+            /** Tone Id */
+            tone_id?: string | null;
         };
         /** ReportRead */
         ReportRead: {
@@ -17082,6 +18454,290 @@ export interface components {
              */
             updated_at: string;
         };
+        /** ReportRecipient */
+        ReportRecipient: {
+            /** Contact Id */
+            contact_id?: string | null;
+            /** Email */
+            email: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+        };
+        /** ReportRewriteRequest */
+        ReportRewriteRequest: {
+            /** Section Key */
+            section_key: string;
+        };
+        /**
+         * ReportRow
+         * @description A list row. Carries what the list draws and nothing else (docs/PERFORMANCE.md).
+         */
+        ReportRow: {
+            /** Audience */
+            audience: string;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Company Name */
+            company_name: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Generated By Name */
+            generated_by_name?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Locale */
+            locale: string;
+            /** Pdf File Id */
+            pdf_file_id?: string | null;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /**
+             * Period Start
+             * Format: date
+             */
+            period_start: string;
+            /** Published At */
+            published_at?: string | null;
+            /** Sent At */
+            sent_at?: string | null;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+            /**
+             * Warning Count
+             * @default 0
+             */
+            warning_count: number;
+        };
+        /**
+         * ReportRunBatchRequest
+         * @description Run the whole book of clients for one period — the "it is the 5th" button.
+         */
+        ReportRunBatchRequest: {
+            /** @default client */
+            audience: components["schemas"]["ReportAudience"];
+            /** Company Ids */
+            company_ids?: string[] | null;
+            /** Period End */
+            period_end?: string | null;
+            /** Period Start */
+            period_start?: string | null;
+        };
+        /** ReportRunBatchResult */
+        ReportRunBatchResult: {
+            /** Queued */
+            queued: number;
+            /** Skipped */
+            skipped?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** ReportRunRequest */
+        ReportRunRequest: {
+            /** @default client */
+            audience: components["schemas"]["ReportAudience"];
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Period End */
+            period_end?: string | null;
+            /** Period Start */
+            period_start?: string | null;
+            /**
+             * Refresh Data
+             * @default false
+             */
+            refresh_data: boolean;
+        };
+        /**
+         * ReportSchedule
+         * @description A profile's own schedule. Every field may be absent, and absent means *inherit*.
+         */
+        ReportSchedule: {
+            cadence?: components["schemas"]["ReportCadence"] | null;
+            compare?: components["schemas"]["ReportCompare"] | null;
+            /** Day Of Month */
+            day_of_month?: number | null;
+            delivery?: components["schemas"]["ReportDelivery"] | null;
+            /** Hour */
+            hour?: number | null;
+            /** Publish To Portal */
+            publish_to_portal?: boolean | null;
+        };
+        /** ReportSendRequest */
+        ReportSendRequest: {
+            /**
+             * Publish
+             * @default true
+             */
+            publish: boolean;
+            /** Recipients */
+            recipients?: components["schemas"]["ReportRecipient"][] | null;
+        };
+        /** ReportTemplateLayout */
+        ReportTemplateLayout: {
+            /** Sections */
+            sections?: components["schemas"]["ReportTemplateLayoutSection"][];
+        };
+        /** ReportTemplateLayoutSection */
+        ReportTemplateLayoutSection: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Key */
+            key: string;
+            /** Label I18N */
+            label_i18n?: {
+                [key: string]: string;
+            };
+        };
+        /** ReportTemplateRead */
+        ReportTemplateRead: {
+            /** Accent Color */
+            accent_color?: string | null;
+            /** Audience */
+            audience: string;
+            /** Cover Image File Id */
+            cover_image_file_id?: string | null;
+            /** Custom Css */
+            custom_css?: string | null;
+            /** Custom Html */
+            custom_html?: string | null;
+            /** Design */
+            design: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Intro Text */
+            intro_text?: string | null;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /** Layout */
+            layout?: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+        };
+        /** ReportTemplateWrite */
+        ReportTemplateWrite: {
+            /** Accent Color */
+            accent_color?: string | null;
+            /** @default client */
+            audience: components["schemas"]["ReportAudience"];
+            /** Cover Image File Id */
+            cover_image_file_id?: string | null;
+            /** Custom Css */
+            custom_css?: string | null;
+            /** Custom Html */
+            custom_html?: string | null;
+            /**
+             * Design
+             * @default standard
+             */
+            design: string;
+            /** Intro Text */
+            intro_text?: string | null;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            layout?: components["schemas"]["ReportTemplateLayout"];
+            /** Name */
+            name: string;
+        };
+        /** ReportToneRead */
+        ReportToneRead: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Banned Phrases */
+            banned_phrases?: string[];
+            /** Description */
+            description?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Instructions
+             * @default
+             */
+            instructions: string;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /** Preferred Phrases */
+            preferred_phrases?: string[];
+        };
+        /** ReportToneWrite */
+        ReportToneWrite: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Banned Phrases */
+            banned_phrases?: string[];
+            /** Description */
+            description?: string | null;
+            /**
+             * Instructions
+             * @default
+             */
+            instructions: string;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /** Preferred Phrases */
+            preferred_phrases?: string[];
+        };
         /**
          * ReportTotals
          * @description Aggregates over the full filtered report set (not just the returned page).
@@ -17108,6 +18764,31 @@ export interface components {
             content?: string | null;
             /** Title */
             title?: string | null;
+        };
+        /** ReportingSettingsRead */
+        ReportingSettingsRead: {
+            /**
+             * Default Locale
+             * @default nl
+             */
+            default_locale: string;
+            /** Footer Text */
+            footer_text?: string | null;
+            /** Schedule */
+            schedule?: {
+                [key: string]: unknown;
+            };
+        };
+        /** ReportingSettingsWrite */
+        ReportingSettingsWrite: {
+            /**
+             * Default Locale
+             * @default nl
+             */
+            default_locale: string;
+            /** Footer Text */
+            footer_text?: string | null;
+            schedule?: components["schemas"]["ReportSchedule"];
         };
         /**
          * RevenueStats
@@ -17490,6 +19171,20 @@ export interface components {
             user_id?: string | null;
         };
         /**
+         * SectionCatalogEntry
+         * @description One section a template may order or switch off — the registry, made visible.
+         */
+        SectionCatalogEntry: {
+            /** Audience */
+            audience: string;
+            /** Key */
+            key: string;
+            /** Module */
+            module: string;
+            /** Title Key */
+            title_key: string;
+        };
+        /**
          * SellerDetails
          * @description The agency's own legal identity on documents — org_settings is branding, this is
          *     what a factuur must say about its sender.
@@ -17859,6 +19554,8 @@ export interface components {
         StoredFileRead: {
             /** Backend */
             backend: string;
+            /** Content Id */
+            content_id?: string | null;
             /** Content Type */
             content_type: string;
             /**
@@ -19139,6 +20836,12 @@ export interface components {
             payment_i18n?: {
                 [key: string]: string;
             };
+            /**
+             * Qr Style
+             * @default brand
+             * @enum {string}
+             */
+            qr_style: "brand" | "plain";
             /**
              * Show Logo
              * @default true
@@ -22377,6 +24080,534 @@ export interface operations {
             };
         };
     };
+    bulk_delete_company_api_v1_bulk_company_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkActionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_update_company_api_v1_bulk_company_update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkActionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_delete_contact_api_v1_bulk_contact_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkActionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_update_contact_api_v1_bulk_contact_update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkActionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_delete_domain_api_v1_bulk_domain_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkActionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_update_domain_api_v1_bulk_domain_update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkActionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_delete_interaction_api_v1_bulk_interaction_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkActionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_delete_invoice_api_v1_bulk_invoice_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkActionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_delete_project_api_v1_bulk_project_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkActionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_update_project_api_v1_bulk_project_update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkActionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_delete_subscription_api_v1_bulk_subscription_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkActionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_update_subscription_api_v1_bulk_subscription_update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkActionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_delete_task_api_v1_bulk_task_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkActionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_update_task_api_v1_bulk_task_update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkActionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_delete_website_api_v1_bulk_website_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkActionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_update_website_api_v1_bulk_website_update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkActionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_accounts_api_v1_cloudflare_accounts_get: {
         parameters: {
             query?: never;
@@ -24656,6 +26887,7 @@ export interface operations {
             query: {
                 entity_type: string;
                 entity_id: string;
+                include_inline?: boolean;
             };
             header?: never;
             path?: never;
@@ -29331,6 +31563,104 @@ export interface operations {
             };
         };
     };
+    list_payment_intents_api_v1_invoicing_invoices__invoice_id__payment_intents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicePaymentIntentRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_payment_api_v1_invoicing_invoices__invoice_id__payment_intents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicePaymentIntentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicePaymentIntentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_payment_intent_api_v1_invoicing_invoices__invoice_id__payment_intents__intent_id__sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+                intent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicePaymentIntentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     add_payment_api_v1_invoicing_invoices__invoice_id__payments_post: {
         parameters: {
             query?: never;
@@ -29604,6 +31934,58 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OutstandingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_payment_accounts_api_v1_invoicing_payment_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicePaymentAccountRead"][];
+                };
+            };
+        };
+    };
+    payment_webhook_api_v1_invoicing_payments_webhook__provider___token__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -32889,6 +35271,154 @@ export interface operations {
             };
         };
     };
+    list_accounts_api_v1_mollie_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MollieAccountRead"][];
+                };
+            };
+        };
+    };
+    create_account_api_v1_mollie_accounts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MollieAccountCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MollieAccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_account_api_v1_mollie_accounts__account_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_account_api_v1_mollie_accounts__account_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MollieAccountUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MollieAccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_account_api_v1_mollie_accounts__account_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MollieAccountVerifyResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_prefs_api_v1_nav_prefs_get: {
         parameters: {
             query?: never;
@@ -34403,6 +36933,751 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ProviderRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_profile_api_v1_reporting_companies__company_id__profile_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportProfileRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_profile_api_v1_reporting_companies__company_id__profile_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportProfileWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportProfileRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reports_api_v1_reporting_reports_get: {
+        parameters: {
+            query?: {
+                company_id?: string | null;
+                audience?: components["schemas"]["ReportAudience"] | null;
+                limit?: number;
+                offset?: number;
+                count?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_report_api_v1_reporting_reports_generate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportActionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_batch_api_v1_reporting_reports_generate_batch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportRunBatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportRunBatchResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_report_api_v1_reporting_reports__report_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_report_api_v1_reporting_reports__report_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_narrative_api_v1_reporting_reports__report_id__narrative_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportNarrativeUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_pdf_api_v1_reporting_reports__report_id__pdf_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_report_api_v1_reporting_reports__report_id__preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_report_api_v1_reporting_reports__report_id__publish_post: {
+        parameters: {
+            query?: {
+                published?: boolean;
+            };
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rewrite_section_api_v1_reporting_reports__report_id__rewrite_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportRewriteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_report_api_v1_reporting_reports__report_id__send_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportSendRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_api_v1_reporting_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportingSettingsRead"];
+                };
+            };
+        };
+    };
+    save_settings_api_v1_reporting_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportingSettingsWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportingSettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_templates_api_v1_reporting_templates_get: {
+        parameters: {
+            query?: {
+                audience?: components["schemas"]["ReportAudience"] | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportTemplateRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_template_api_v1_reporting_templates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportTemplateWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportTemplateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    section_catalog_api_v1_reporting_templates_sections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SectionCatalogEntry"][];
+                };
+            };
+        };
+    };
+    update_template_api_v1_reporting_templates__template_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportTemplateWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportTemplateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_template_api_v1_reporting_templates__template_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tones_api_v1_reporting_tones_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportToneRead"][];
+                };
+            };
+        };
+    };
+    create_tone_api_v1_reporting_tones_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportToneWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportToneRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_tone_api_v1_reporting_tones__tone_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tone_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportToneWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportToneRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_tone_api_v1_reporting_tones__tone_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tone_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

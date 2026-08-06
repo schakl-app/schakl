@@ -14,7 +14,8 @@
   import { dndzone } from "svelte-dnd-action";
 
   import { fmtNumber } from "$lib/core/format";
-  import { t } from "$lib/core/i18n";
+  import { localeLabel, t } from "$lib/core/i18n";
+  import { editLocale } from "$lib/core/i18n-edit.svelte";
   import TrendChart from "$lib/core/ui/charts/TrendChart.svelte";
 
   import MarketingDrilldown from "./MarketingDrilldown.svelte";
@@ -74,6 +75,9 @@
   const channelMax = $derived(Math.max(...channelEntries.map(([, v]) => v), 1));
 
   // ---- Edit mode ---------------------------------------------------------------------------
+  // The language every inline name field on this section is written in — the dashboard's own
+  // switcher, shared, so relabelling ten tiles in English is one click and not ten.
+  const locale = $derived(editLocale.current);
   const hiddenTiles = $derived(
     edit ? allMetricKeys.filter((key) => !edit!.tiles.some((t) => t.id === key)) : [],
   );
@@ -223,18 +227,13 @@
           <!-- Guarded: while dragging, the dnd zone inserts a shadow placeholder item whose id
                is not a metric key — dereferencing labels for it would crash the flip. -->
           {#if edit.labels[tile.id]}
-            <div class="mt-2 space-y-1">
+            <!-- One input, in the language the dashboard's switcher is on (docs/UX.md). -->
+            <div class="mt-2">
               <input
-                bind:value={edit.labels[tile.id].nl}
+                bind:value={edit.labels[tile.id][locale]}
                 onchange={() => onchange?.()}
-                placeholder="{t('marketing.layout.label_nl')}: {metricLabel(tile.id)}"
-                maxlength="80"
-                class="w-full rounded border border-border bg-surface-raised px-1.5 py-0.5 text-xs text-text outline-none focus:border-brand"
-              />
-              <input
-                bind:value={edit.labels[tile.id].en}
-                onchange={() => onchange?.()}
-                placeholder={t("marketing.layout.label_en")}
+                aria-label={t("marketing.layout.label_in", { language: localeLabel(locale) })}
+                placeholder={metricLabel(tile.id)}
                 maxlength="80"
                 class="w-full rounded border border-border bg-surface-raised px-1.5 py-0.5 text-xs text-text outline-none focus:border-brand"
               />

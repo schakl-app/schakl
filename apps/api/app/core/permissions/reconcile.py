@@ -85,6 +85,16 @@ REVISIONS: tuple[DefaultsRevision, ...] = (
         marker="@rev:296-portal-module",
         rescope={"contacts.portal.impersonate": "portal.login.impersonate"},
     ),
+    DefaultsRevision(
+        # #300: `reporting` arrived as a module of its own, and `marketing.report.read` — which
+        # gates the cross-client *overview grid*, not a report — became the more confusing half
+        # of a pair. Renamed to what it actually guards. Pure spelling, exactly like the portal
+        # revision above: the old key is gone from the catalog, so a role or API key still
+        # holding it would fail `validate_permissions` on its own next save while granting what
+        # it always did. Nothing is granted here; whoever held the grid holds the grid.
+        marker="@rev:300-marketing-overview-read",
+        rescope={"marketing.report.read": "marketing.overview.read"},
+    ),
 )
 
 

@@ -6,16 +6,23 @@
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
+  import type { components } from "$lib/core/api/schema";
+  import BulkBar from "$lib/core/bulk/BulkBar.svelte";
+  import BulkToggle from "$lib/core/bulk/BulkToggle.svelte";
+  import BulkResult from "$lib/core/bulk/BulkResult.svelte";
+  import type { BulkFieldDef } from "$lib/core/bulk/types";
   import { fmtDayMonth, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
+  import { resetPage } from "$lib/core/table/paging";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
+  import Pagination from "$lib/core/ui/Pagination.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import { TASK_COLUMNS } from "$lib/modules/tasks/columns";
   import { ALL_ASSIGNEES } from "$lib/modules/tasks/filters";
@@ -107,8 +114,62 @@
     data.members.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
   );
 
+  // --- bulk (the ✎ selection mode in the toolbar) --------------------------------------
+  // Triage is a bulk gesture: hand a sprint to a colleague, move a run of tickets onto the
+  // project they turned out to belong to, push a week of deadlines, close what is done. So this
+  // list offers the six fields a batch can decide honestly — status, assignee, priority, project,
+  // client, deadline (`apps/api/app/modules/tasks/bulk.py`). A title, a description or a checklist
+  // is a fact about *one* task and is not offered. Every option list is one the page already
+  // loaded for its own filter bar, and the statuses are the org's own vocabulary (#62), never a
+  // frozen list.
+  //
+  // A row the write refuses — a due date moved later without a reason, a terminal status still
+  // owing its contact moment (#157), a colleague's task under a `:own` grant — comes back in the
+  // result banner with its own key. The other forty-nine still land; a batch is not all-or-nothing.
+  let selecting = $state(false);
+  let bulkSelected = $state<string[]>([]);
+  // The API's own `TaskPriority` (`apps/api/app/modules/tasks/models.py`), so a renamed value
+  // fails to compile here rather than posting a priority the write rejects.
+  const priorities: components["schemas"]["TaskPriority"][] = ["low", "normal", "high"];
+  const bulkFields: BulkFieldDef[] = $derived([
+    {
+      key: "status",
+      label: t("impex.column.task.status"),
+      type: "select",
+      options: data.statuses.map((status) => ({ value: status.key, label: status.name })),
+    },
+    {
+      key: "assignee",
+      label: t("impex.column.task.assignee"),
+      type: "fk",
+      options: memberItems,
+    },
+    {
+      key: "priority",
+      label: t("impex.column.task.priority"),
+      type: "select",
+      options: priorities.map((priority) => ({
+        value: priority,
+        label: t(`tasks.priority.${priority}`),
+      })),
+    },
+    { key: "project", label: t("impex.column.task.project"), type: "fk", options: projectItems },
+    { key: "company", label: t("impex.column.task.company"), type: "fk", options: companyItems },
+    // The one clearable field here: a task that loses its deadline is a real state, not a gap.
+    { key: "due_date", label: t("impex.column.task.due_date"), type: "date", clearable: true },
+  ]);
+  // One configuration, spread into the ✎ in the toolbar and the strip above the table: they
+  // render in different places and must never disagree about what this list can do.
+  const bulkConfig = $derived({
+    fields: bulkFields,
+    writePermission: "tasks.task.write",
+    deletePermission: "tasks.task.delete",
+    deleteMessage: t("tasks.bulk.delete_message", { count: bulkSelected.length }),
+    fieldErrors: form?.bulkFields ?? null,
+  });
+
   function setFilter(key: string, value: string) {
-    const url = new URL(page.url);
+    const url = resetPage(new URL(page.url));
     if (value) url.searchParams.set(key, value);
     else url.searchParams.delete(key);
     void goto(url, { keepFocus: true, noScroll: true });
@@ -279,10 +340,14 @@
 {/snippet}
 
 {#snippet labelsCell(task: Task)}
-  <span class="flex flex-wrap gap-1">
+  <!-- One row, never a wrapping stack: six labels used to make this row three lines tall, and a
+       single long one wrapped inside its own chip. The chips shrink and ellipsize instead. -->
+  <span class="flex min-w-0 gap-1 overflow-hidden">
     {#each task.labels ?? [] as label (label.id)}
-      <span class="rounded-full px-2 py-0.5 text-[11px] font-medium {labelChipClass(label.color)}"
-        >{label.name}</span
+      <span
+        class="truncate rounded-full px-2 py-0.5 text-[11px] font-medium {labelChipClass(
+          label.color,
+        )}">{label.name}</span
       >
     {:else}
       <span class="text-text-muted">—</span>
@@ -293,11 +358,15 @@
 {#snippet assigneeCell(task: Task)}
   {@const member = data.members.find((m) => m.user_id === task.assignee_user_id)}
   {#if member}
-    <PersonChip
-      name={member.full_name}
-      email={member.email}
-      avatarUrl={member.avatar_url ?? null}
-    />
+    <!-- The chip is `inline-flex`, so on its own it takes its min-content width and spills past
+         the column; as a flex item it shrinks and its own `truncate` finally has room to work. -->
+    <span class="flex min-w-0 items-center">
+      <PersonChip
+        name={member.full_name}
+        email={member.email}
+        avatarUrl={member.avatar_url ?? null}
+      />
+    </span>
   {:else}
     <span class="text-text-muted">—</span>
   {/if}
@@ -351,7 +420,9 @@
 {#snippet projectCell(task: Task)}
   {@const name = projectName(task.project_id)}
   {#if name}
-    <a href="/projects/{task.project_id}" class="truncate text-text hover:text-brand">{name}</a>
+    <a href="/projects/{task.project_id}" class="block truncate text-text hover:text-brand"
+      >{name}</a
+    >
   {:else}
     <span class="text-text-muted">—</span>
   {/if}
@@ -360,7 +431,9 @@
 {#snippet companyCell(task: Task)}
   {@const name = companyName(task.company_id)}
   {#if name}
-    <a href="/companies/{task.company_id}" class="truncate text-text hover:text-brand">{name}</a>
+    <a href="/companies/{task.company_id}" class="block truncate text-text hover:text-brand"
+      >{name}</a
+    >
   {:else}
     <span class="text-text-muted">—</span>
   {/if}
@@ -431,7 +504,15 @@
     onchange={table.onColumnsChange}
     onsort={table.onSort}
   />
+  <!-- Last in the toolbar, always: it is the only control here that changes what the *rows*
+         do rather than what the list shows, so it sits after Kolommen rather than among the
+         list's own controls. Pressing it opens the selection strip above the table. -->
+  <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
 </div>
+
+<BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
+
+<BulkResult result={form?.bulkResult} />
 
 <DataTable
   rows={data.tasks}
@@ -444,9 +525,18 @@
   actions={canDelete ? rowActions : undefined}
   {mobileRow}
   {empty}
+  selectable={selecting}
+  bind:selected={bulkSelected}
   oncollapse={table.onCollapse}
   onsort={table.onSort}
   onresize={table.onResize}
+/>
+
+<Pagination
+  total={data.total}
+  page={data.paging.page}
+  limit={data.paging.limit}
+  onsize={table.onPageSize}
 />
 
 <ConfirmDialog

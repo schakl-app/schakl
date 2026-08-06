@@ -1,0 +1,161 @@
+---
+title: Contactmomenten
+description: "De klanttijdlijn: afspraken, telefoontjes en notities die je zelf vastlegt, geüploade e-mails en de gematchte e-mail uit de mailboxen van je team."
+sidebar:
+  order: 12
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Elk contact met een klant komt op één tijdlijn: de afspraken, telefoontjes en notities die je
+zelf vastlegt, e-mails die je uploadt, en (met de Google-module) de e-mail uit de mailboxen van
+je team. Zo kan een collega die een account overneemt de geschiedenis lezen in plaats van erom
+te moeten vragen.
+
+## Waar je het vindt
+
+- Hoofdmenu **Interacties**: alle contactmomenten, over alle klanten heen.
+- Het paneel **Contactmomenten** op de klant-, project-, taak- en contactpagina.
+- De widget **E-mails te beoordelen** op je dashboard, met de link *Beoordeel alle …*.
+- *Instellingen → Contactmoment-typen*: de typen die je team kan vastleggen.
+
+<Aside type="caution">
+Contactmomenten is een gelicentieerde module. Zet hem aan onder *Instellingen → Modules* (hij
+heet daar **Contactmomenten**, in het menu **Interacties**) en zorg dat je licentie hem dekt.
+Zonder dekking wordt de module na de respijtperiode alleen-lezen: de tijdlijn blijft leesbaar,
+maar er komt niets meer bij.
+</Aside>
+
+## Een contactmoment vastleggen
+
+De knop **Contactmoment vastleggen** staat rechtsboven op Interacties, en hetzelfde formulier
+zit in elk Contactmomenten-paneel. In volgorde:
+
+- **Type**: uit je eigen lijst. E-mail kun je hier niet kiezen; alleen een echt bericht mag zich
+  zo noemen.
+- **Datum** en **Tijd**.
+- **Voeg aan mijn uren toe**: een vinkje boven het onderwerp. Tijd heet dan **Van**, er komt een
+  **Tot** bij en de duur loopt mee; bij opslaan komt er een urenregistratie op jouw timesheet die
+  aan dit moment hangt, met klant, project en onderwerp erbij. Alleen bij nieuwe momenten, en niet
+  bij een notitie.
+- **Onderwerp**: optioneel. Laat je het leeg, dan heet de regel naar zijn type ("Telefoongesprek").
+- **Contactpersonen**: iedereen die erbij was, niet één persoon. Typen zoekt, een onbekende naam
+  maak je ter plekke aan, en de eerste in de rij is de eerstgenoemde. Filteren op iemand vindt de
+  momenten waar hij bij was, niet alleen die hij leidde.
+- **Gekoppeld aan**: **Klant**, **Project** en **Taak**. Kies je een project of een taak, dan
+  wordt de klant daarvan overgenomen en zegt het veld dat ook.
+- **Taak hiermee afronden**: bij een gekoppelde taak, met een keuze uit je afgeronde statussen.
+- **Richting** (Inkomend, Uitgaand, N.v.t.) en **Notities**, opmaakbare tekst met
+  `@`-vermeldingen van collega's en contactpersonen.
+
+## De lijst
+
+Bovenaan staan de tabs **Alle** en **Te beoordelen**, een typefilter en het filter *Vastgelegd
+door*. Dat laatste staat op **Mijn contactmomenten**; **Iedereen** is één klik verder, maar een
+collega bij naam kiezen vraagt het recht *Contactmomenten van iedereen bekijken*. Voor datums is
+er een weekstapper (*Vorige week*, *Deze week*, *Volgende week*), een maandkeuze en een expliciet
+bereik **Van** – **Tot en met**, met *Datums wissen* ernaast. Zoeken gaat over onderwerp, fragment
+en tekst. De kolommen zijn Onderwerp, Type, Gekoppeld aan, Vastgelegd door en Wanneer.
+
+Per rij biedt ⋯: *Bewerken*, *Verplaatsen / koppelen* (naar een andere klant, project of taak,
+met aanmaken ter plekke) en *Verwijderen*. Bij een e-mail komen daar *Goedkeuren*, *Toewijzen…*,
+*Afwijzen* en *Aan gesprek toevoegen* bij.
+
+## E-mail uit Gmail
+
+Met de Google-module gekoppeld pollt schakl. elke vijf minuten de aangemelde mailboxen. Berichten
+waarvan een deelnemer een bekende contactpersoon is, landen als **Te beoordelen**. Het team ziet
+dan alleen de metagegevens: deelnemers, onderwerp en een fragment. Pas als de eigenaar van de
+mailbox goedkeurt, wordt de inhoud opgehaald en met het team gedeeld.
+
+<Steps>
+
+1. Open **Interacties** en klik de tab **Te beoordelen** (of gebruik de dashboardwidget).
+2. Klik een regel om het bericht te bekijken.
+3. **Goedkeuren** deelt de inhoud, **Toewijzen…** hangt hem eerst aan de juiste klant of het
+   juiste project, **Afwijzen** haalt hem weg.
+4. Meerdere tegelijk: zet met de ✎ de selectievakjes aan, vink rijen aan (shift-klik selecteert
+   een reeks) en kies Goedkeuren, Toewijzen of Afwijzen. Je krijgt per stuk terugkoppeling, niet
+   alles of niets.
+
+</Steps>
+
+Het beleid staat onder *Instellingen → Google Workspace → Gmail-beleid*. Bij **Nieuwe gekoppelde
+e-mails** kies je tussen "Eigenaar keurt goed voordat de inhoud wordt vastgelegd" (standaard) en
+"Direct vastleggen, inclusief inhoud"; *Ook e-mail tussen collega's oppikken* staat uit, en
+interne e-mail wacht altijd op beoordeling.
+
+<Aside type="caution">
+Afwijzen verwijdert de e-mail uit schakl. én zorgt dat hij niet opnieuw wordt vastgelegd. Met
+"Negeer ook toekomstige e-mails in dit gesprek" geldt dat voor het hele gesprek. Terugdraaien kan
+niet.
+</Aside>
+
+<Aside type="caution">
+Een e-mail die nog niet beoordeeld is, is privé voor de eigenaar van de mailbox. Ook een
+beheerder kan er niet over beslissen: die omweg bestaat bewust niet. Vertrekt iemand met een
+volle beoordelingslijst, dan kan niemand anders die nog afhandelen.
+</Aside>
+
+De eerste polling van een nieuw gekoppelde mailbox haalt niets op; die legt alleen het startpunt
+vast. Bestaande mail wordt dus niet met terugwerkende kracht ingelezen.
+
+## E-mail uploaden
+
+Zonder Gmail-koppeling (of voor een bericht uit een andere mailbox) is er **E-mail uploaden**.
+Exporteer het bericht uit je mailprogramma als `.eml`; onderwerp, deelnemers, datum, tekst en
+bijlagen worden uit het bestand gelezen en de opmaak blijft behouden. Staat het bericht al op de
+tijdlijn, dan zegt schakl. dat en kun je alsnog *Toch vastleggen*. Bijlagen die te groot zijn of
+een niet-toegestaan type hebben, worden overgeslagen met een melding erbij.
+
+## Gesprekken
+
+E-mails uit hetzelfde gesprek worden op de lijst tot één regel gevouwen, met een teller. Het
+detailvenster klapt het hele gesprek open, en *Toon eerdere berichten* laat de geciteerde
+geschiedenis zien. Hoort een los bericht er toch bij, dan plak je het er met *Aan gesprek
+toevoegen* aan vast. Een afbeelding uit de handtekening hoort bij de tekst, niet bij de bijlagen;
+afbeeldingen van een externe server worden weggelaten, want een trackingpixel is ook een
+afbeelding.
+
+## Contactmoment-typen
+
+Onder *Instellingen → Contactmoment-typen* beheer je de vocabulaire. Standaard zitten erin:
+E-mail, Online afspraak, Afspraak op locatie, Telefoongesprek en Notitie. Je voegt eigen typen toe
+met een Nederlands en een Engels label en een volgorde.
+
+**E-mail** is een systeemtype: hernoemen mag, verwijderen of deactiveren niet. Een type dat al
+gebruikt wordt, kun je niet verwijderen; deactiveer het, dan verdwijnt het uit de keuzelijsten en
+blijft de geschiedenis kloppen.
+
+## Rechten
+
+Per rol in te stellen onder *Instellingen → Rollen*. Standaard:
+
+| Recht | Wat het doet | Standaard bij |
+| --- | --- | --- |
+| `interactions.interaction.read` | Contactmomenten bekijken | Beheerder, Medewerker |
+| `interactions.interaction.read_all` | Contactmomenten van iedereen bekijken | Beheerder |
+| `interactions.interaction.write` | Vastleggen en bewerken | Beheerder (alle), Medewerker (eigen) |
+| `interactions.interaction.delete` | Verwijderen | Beheerder (alle), Medewerker (eigen) |
+| `interactions.interaction.review` | Vastgelegde e-mails beoordelen (eigen mailbox) | Beheerder, Medewerker |
+| `interactions.kind.read` | Contactmoment-typen bekijken | Beheerder, Medewerker |
+| `interactions.kind.manage` | Contactmoment-typen beheren | Beheerder |
+
+De rol Klant houdt hiervan niets, dus een klantportaal-login ziet de tijdlijn nooit. En
+`review` kent geen "van iedereen": ook met dat recht beslis je alleen over je eigen mailbox.
+
+## Goed om te weten
+
+- Contactmomenten zijn niet te importeren of te exporteren; op deze lijst staan geen Export- en
+  Import-knoppen. De selectiemodus biedt hier alleen beoordelen.
+- Een taak kan de eis dragen dat hij alleen met een contactmoment mag worden afgesloten
+  ("Contactmoment vereist"). Leg het moment dan vast en vink *Taak hiermee afronden* aan.
+- Verwijder je een project of een taak, dan blijft het contactmoment bestaan; alleen de koppeling
+  verdwijnt. Ook de naam van wie het vastlegde blijft staan als die collega later vertrekt.
+- Notificaties: je kunt je laten waarschuwen bij *Een e-mail wacht op mijn beoordeling* en
+  *Ik word genoemd in een contactmoment*.
+
+## Verder lezen
+
+- [Contactpersonen](/nl/docs/modules/contacts/): de mensen die een contactmoment noemt
+- [Klanten](/nl/docs/modules/companies/): het dossier waar de tijdlijn per klant op staat
