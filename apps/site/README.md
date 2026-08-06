@@ -26,10 +26,24 @@ service (`sveltia-cms-auth`) and is decided together with the deploy target.
 | What | Where | CMS surface |
 | --- | --- | --- |
 | Brand name, logo (+dark variant), favicon, **colors**, nav, footer | `src/data/settings/site.json` | Site-instellingen |
-| Landing **blocks** (hero, feature grid, text+bullets, CTA — add/reorder freely; one entry, both locales) | `src/data/landing.json` | Landingspagina |
+| Landing **blocks** (hero, feature grid, tour, integrations strip, text+bullets, CTA — add/reorder freely; one entry, both locales) | `src/data/landing.json` | Landingspagina |
 | Feature cards (NL+EN fields side by side) | `src/data/features/*.json` | Functie-kaarten |
+| Integration cards (`/integrations/` + one page each) | `src/data/integrations/*.json` | Koppelingen |
 | **Free-form pages** (MDX, own URL, site chrome; one entry, locale switcher) | `src/content/pages/{nl,en}/*` | Pagina's |
 | Docs pages (one entry, locale switcher; paths pair the translations) | `src/content/docs/{nl,en}/docs/**` | Documentatie |
+
+### What is content and what is code
+
+The split is deliberate and worth knowing before you go looking for something in the CMS:
+
+- **Content** is the words: card copy, landing blocks, docs prose, integration write-ups.
+- **Code** is the *shape*: which feature groups exist and in what order (`src/lib/features.ts`),
+  which integration categories exist (`src/lib/integrations.ts`), and the animated product demos
+  (`src/components/showcase/Demo*.astro`), which recreate the real app UI and therefore change
+  when the app does — not when a marketeer wants a different sentence.
+
+A card names things in code by string: an icon (`lucide`), a demo (`demo`), a category. Nothing in
+`astro build` checks those, so `pnpm site:content` does — see **Checks** below.
 
 Creating a page with slug `prijzen` publishes `/prijzen/` and `/en/prijzen/` on the next
 build — the slug is shared across locales (that's what pairs the translations); link it by
@@ -48,10 +62,31 @@ The CMS itself is a single static page (`/admin`); its bundle is copied from
 
 ```bash
 pnpm site dev          # landing + docs, no CMS
-pnpm site cms          # same + Keystatic admin (KEYSTATIC=1)
+pnpm site cms          # same + the Sveltia admin at /admin
 pnpm site build        # static build to dist/ — this is what deploys
-pnpm docs:check        # locale parity + module coverage for the docs (issue #136)
 ```
+
+## Checks
+
+Four, and each exists because `astro build` renders the broken version happily. CI runs all four
+(the `site` job in `.github/workflows/ci.yml`).
+
+```bash
+pnpm docs:check        # nl/en parity, expected pages, unlocalised /docs/ links, MDX brace hazards
+pnpm site:content      # every icon / demo / category / docs link a data file names actually exists
+pnpm site:order        # feature-card `order` agrees with the grouping (--check to fail instead of fix)
+pnpm site:build && pnpm site:links   # every internal link in dist/ resolves to a real page
+```
+
+Two of the failures they guard shipped for real, which is why they are checks and not conventions:
+
+- **Docs links carry their locale.** The tree is symmetric `/nl/docs/…` + `/en/docs/…` and only the
+  bare `/docs` redirects, so a link to `/docs/admin/installation/` is a 404. Three of them sat on
+  the first page a Dutch reader opens. `docs:check` catches them at source and `site:links` catches
+  them again in the built output.
+- **MDX evaluates `{…}` in prose as JavaScript.** These docs describe template variables like
+  `{brand}` and `{provider}`, so writing one unquoted kills the build at *render* time with
+  "provider is not defined" and a stack trace into a hashed chunk that names no page. Backtick it.
 
 The production build is 100 % static (the Keystatic integration is only loaded when
 `KEYSTATIC=1`), so deployment is any static host — or the Dockerfile here, which builds the
