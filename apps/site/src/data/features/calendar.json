@@ -1,0 +1,97 @@
+{
+  "name": "Agenda",
+  "slug": "calendar",
+  "order": 60,
+  "icon": "📅",
+  "lucide": "calendar",
+  "title": {
+    "nl": "De gedeelde agenda",
+    "en": "The shared calendar"
+  },
+  "description": {
+    "nl": "Eén agenda die meerdere feeds tegelijk draagt: teamverlof, feestdagen, ingeplande taakblokken en je eigen Google-afspraken, met kleur per verloftype of per collega.",
+    "en": "One calendar carrying several feeds at once: team leave, public holidays, planned task blocks and your own Google events, coloured per leave type or per colleague."
+  },
+  "page": {
+    "eyebrow": {
+      "nl": "Agenda",
+      "en": "Calendar"
+    },
+    "title": {
+      "nl": "Alles wat er staat, op één plek",
+      "en": "Everything that is planned, in one place"
+    },
+    "lead": {
+      "nl": "De Agenda bezit zelf geen enkele afspraak. Net als Mijn dag is het een leeg raamwerk waar elke module zijn eigen feed in hangt: Verlof levert de afwezigheid en de feestdagen, Taken de ingeplande tijdblokken en de deadlines, en de Google-koppeling jouw eigen afspraken. Jij bepaalt per feed wat je ziet en in welke kleur.",
+      "en": "The Agenda owns no event of its own. Like My Day it is an empty frame each module hangs a feed in: Verlof supplies the absences and the public holidays, Taken the planned time blocks and the deadlines, and the Google integration your own appointments. You decide per feed what you see and in which colour."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Vier weergaven, en de URL is de weergave",
+          "en": "Four views, and the URL is the view"
+        },
+        "body": {
+          "nl": "Dag, Week, Maand en Jaar, elk met een sneltoets (d, w, m en y voor de weergave, t om terug naar vandaag te springen). De gekozen weergave en de datum staan in de URL, dus de terugknop werkt zoals je verwacht en een link naar een specifieke week landt bij je collega op diezelfde week. Welke weergave je normaal gesproken opent, is een persoonlijke voorkeur die per gebruiker wordt onthouden en niet ergens in de organisatie-instellingen staat; een gedeelde link wint altijd van die voorkeur, zodat het openen van andermans link jouw eigen keuze niet stilletjes overschrijft. In Dag en Week worden getimede zaken op het uurraster geplaatst; hele dagen blijven een balk bovenaan. De jaarweergave stuurt bewust geen losse afspraken naar de browser, alleen een telling per dag.",
+          "en": "Dag, Week, Maand and Jaar, each with a keyboard shortcut (d, w, m and y for the view, t to jump back to today). The chosen view and the date live in the URL, so the back button behaves and a link to one particular week lands your colleague on that same week. Which view you normally open is a personal preference remembered per user rather than something buried in org settings — and a shared link always beats that preference, so opening someone else's link never quietly overwrites your own choice. In Dag and Week, timed items are positioned on the hour grid; whole days stay a bar along the top. The year view deliberately ships no individual events to the browser, only a count per day."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Vijf feeds uit drie modules",
+          "en": "Five feeds from three modules"
+        },
+        "body": {
+          "nl": "Elke feed komt van de module die de gegevens ook echt bezit, dus de Agenda hoeft van geen enkele module de binnenkant te kennen. Dat is meteen de reden dat je agenda meegroeit: zet je Verlof of de Google-koppeling niet aan, dan bestaan die feeds simpelweg niet, en er staat geen leeg vakje waar ze hadden moeten zijn.",
+          "en": "Every feed comes from the module that actually owns the data, so the Agenda need not know the insides of any of them. That is also why your calendar grows with you: if you do not run Verlof or the Google integration, those feeds simply do not exist, and there is no empty slot where they should have been."
+        },
+        "bullets": {
+          "nl": [
+            "Verlof (team), uit de verlofmodule: wie er wanneer weg is, met aanvragen die nog in afwachting zijn gedempt en met een vraagteken",
+            "Feestdagen, ook uit verlof: geen chip maar een rustige markering over de dag, want een feestdag is niemands afwezigheid maar niemands werkdag",
+            "Ingeplande taken, uit de takenmodule: de tijdblokken die met 'Taak inplannen' zijn gezet, die van jou en die van de collega's die je erbij hebt gelegd",
+            "Taakdeadlines, ook uit taken: je eigen openstaande taken met een datum in beeld, rood zodra ze over tijd zijn",
+            "Google Agenda, uit de Google-koppeling: je eigen afspraken, gelezen uit de lokale kopie die de koppeling bijhoudt en dus nooit live bij Google opgehaald"
+          ],
+          "en": [
+            "Verlof (team), from the leave module: who is away and when, with still-pending requests muted and marked with a question mark",
+            "Feestdagen, from leave as well: not a chip but a quiet marking across the day, because a public holiday is nobody's absence and nobody's working day",
+            "Ingeplande taken, from the tasks module: the time blocks set with \"Taak inplannen\", yours and those of the colleagues you overlaid",
+            "Taakdeadlines, also from tasks: your own open tasks with a date in range, red the moment they run late",
+            "Google Agenda, from the Google integration: your own appointments, read from the local copy the integration keeps and therefore never fetched from Google live"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Kleur en zichtbaarheid, per persoon bewaard",
+          "en": "Colour and visibility, saved per person"
+        },
+        "body": {
+          "nl": "Het feedmenu is tegelijk de legenda: het noemt elke ingeschakelde feed, ook de feeds die je hebt verborgen, met het bolletje in de kleur die je er zelf aan hebt gegeven. Verlof kun je bovendien per collega uitsplitsen, elk met een eigen kleur en een eigen schakelaar, zodat 'kleur Stan paars' harder telt dan 'kleur de hele verloffeed blauw', wat op zijn beurt harder telt dan de kleur van het verloftype zelf. Uitsplitsen per collega krijgt alleen wie andermans verlof mag lezen; een gewoon teamlid houdt zijn eigen agenda in één kleur. Feestdagen zijn met opzet niet te verkleuren, want die tekenen als gestreepte band en niet als gekleurde pil. Alles hier is persoonlijke voorkeur, en een verborgen feed kost ook echt niets: die wordt niet opgehaald.",
+          "en": "The feed menu doubles as the legend: it names every enabled feed, hidden ones included, with a dot in whatever colour you gave it. Leave can be split per colleague on top of that, each with their own colour and their own toggle, so \"colour Stan purple\" beats \"colour the whole leave feed blue\", which in turn beats the leave type's own colour. Splitting per colleague is only offered to someone who may read other people's leave; an ordinary team member keeps their own calendar in one colour. Public holidays are deliberately not recolourable, because they draw as a dashed band rather than a coloured pill. All of this is personal preference, and a hidden feed genuinely costs nothing: it is never fetched."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Verslepen is een echte wijziging",
+          "en": "A drag is a real change"
+        },
+        "body": {
+          "nl": "Sleep een verlofdag of een taakblok naar een andere dag en de Agenda geeft dat door aan de module die het item bezit; de kernagenda kent zelf geen enkele API. De server rekent daarna opnieuw: verlof dat in een week met een feestdag terechtkomt wordt vanzelf goedkoper, en een wijziging aan al goedgekeurd verlof gaat terug naar 'in afwachting' bij je fiatteur. Slepen wordt alleen aangeboden waar een wijziging ook echt kan slagen (je eigen aanvraag, of andermans mét het juiste recht), maar de API blijft de grens en niet de knop. Getimede blokken houden hun kloktijd, ook op de twee dagen per jaar dat de klok verspringt: die omrekening gebeurt op de server, in de tijdzone van jouw organisatie.",
+          "en": "Drag a leave day or a task block to another day and the Agenda hands it back to the module that owns the item; the core calendar knows no module's API at all. The server then recomputes: leave that lands in a week with a public holiday gets cheaper by itself, and an edit to already-approved leave goes back to pending with your approver. The drag is only offered where a change could actually succeed (your own request, or someone else's with the right permission), but the API stays the boundary, not the button. Timed blocks keep their wall-clock time, including on the two days a year the clocks move: that conversion happens on the server, in your organisation's own timezone."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Vanaf de agenda plannen, en uren erop schrijven",
+          "en": "Plan from the calendar, and log hours against it"
+        },
+        "body": {
+          "nl": "Met de knop Nieuw plan je zonder de agenda te verlaten: een taakblok (datum, starttijd, duur, notitie, voor jezelf of met het juiste recht voor een collega) of, met één klik door, een verlofaanvraag. Wat er in dat menu staat volgt je modules én je rechten, dus wie geen taken mag inplannen krijgt de optie niet te zien. Is een blok voorbij, dan biedt het Uren registreren aan: daar ontstaat de echte urenregistratie uit, en het blok wordt als geboekt gemarkeerd, zodat plannen en registreren niet twee keer hetzelfde werk zijn. De Agenda is verder een medewerkersscherm: een klant die in het portaal inlogt, ziet geen teamagenda. De agenda zelf is kernfunctionaliteit en vraagt geen licentiesleutel; welke feeds erin hangen volgt de modules die je draait, en Verlof en de Google-koppeling zijn uitbreidingsmodules die op een licentiesleutel lopen.",
+          "en": "The Nieuw button lets you plan without leaving the calendar: a task block (date, start time, duration, note, for yourself or, with the right permission, for a colleague) or, one click onward, a leave request. What the menu offers follows your modules and your permissions, so someone who may not schedule tasks never sees the option. Once a block has passed it offers Uren registreren: that is where the real time entry comes from, and the block is marked as logged, so planning and recording are not the same work done twice. Beyond that the Agenda is a staff screen: a client signing in to the portal gets no team calendar. The calendar itself is core functionality and needs no licence key; which feeds hang in it follows the modules you run, and Verlof and the Google integration are extension modules running on a licence key."
+        }
+      }
+    ]
+  }
+}

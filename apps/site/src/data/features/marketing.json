@@ -1,0 +1,166 @@
+{
+  "name": "Marketingcijfers per klant",
+  "slug": "marketing",
+  "order": 140,
+  "icon": "📈",
+  "lucide": "chart",
+  "demo": "marketing",
+  "title": {
+    "nl": "Marketing per klant",
+    "en": "Marketing per client"
+  },
+  "description": {
+    "nl": "Google Analytics, Search Console, Google Ads en SE Ranking per klant gekoppeld, en getoond waar je al werkt: op de klantpagina, in een marketingtabblad en in één overzicht over alle klanten.",
+    "en": "Google Analytics, Search Console, Google Ads and SE Ranking linked per client and shown where you already work — the client page, a marketing tab, and one overview across every client."
+  },
+  "page": {
+    "eyebrow": {
+      "nl": "Marketing",
+      "en": "Marketing"
+    },
+    "title": {
+      "nl": "De cijfers van de klant, waar je al werkt",
+      "en": "The client's numbers, where you already work"
+    },
+    "lead": {
+      "nl": "Koppel per klant hun Google Analytics 4, Search Console, Google Ads en SE Ranking; de cijfers verschijnen daarna op de klantpagina zelf, in een marketingtabblad en in één overzicht over alle klanten. Elke koppeling draagt haar eigen synchronisatiestatus, dus een verouderde grafiek is nooit stil. Welke tegels de klant te zien krijgt en hoe ze heten, stel je per klant samen.",
+      "en": "Link each client's Google Analytics 4, Search Console, Google Ads and SE Ranking; the numbers then appear on the client's own page, in a marketing tab and in one overview across every client. Every link carries its own sync status, so a stale graph is never silent. Which tiles the client sees, and what they are called, you compose per client."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Vier bronnen, gekoppeld op de klant",
+          "en": "Four sources, linked on the client"
+        },
+        "body": {
+          "nl": "Een klant krijgt zijn eigen koppelingen: een GA4-property, een Search Console-site, een Google Ads-account en een SE Ranking-project. Meerdere koppelingen per bron mogen, dus een klant met twee merken houdt ze uit elkaar. Elke koppeling kan bovendien aan één website van die klant hangen in plaats van klantbreed te blijven, zodat een klant met twee sites per site groepeert. De accountkiezers zoeken met type-ahead en tonen precies wat de Google-koppeling van de ingelogde collega werkelijk kan bereiken; een lege lijst legt uit waarom hij leeg is en wat de volgende stap is.",
+          "en": "A client gets its own links: a GA4 property, a Search Console site, a Google Ads account and an SE Ranking project. Several links per source are allowed, so a client with two brands keeps them apart. A link can also hang on one specific website of that client instead of staying client-wide, so a client with two sites groups per site. The account pickers search as you type and show exactly what the signed-in colleague's Google connection can actually reach — and an empty list explains why it is empty and what to do next."
+        },
+        "bullets": {
+          "nl": [
+            "Nog geen Google-account gekoppeld: de knop \"Google koppelen\" staat er meteen naast",
+            "Rechten ontbreken: koppel opnieuw en geef toegang tot die ene bron",
+            "Toegang ingetrokken: de koppeling meldt \"Verbinding verbroken\"",
+            "De API staat niet aan in het Google Cloud-project: opnieuw koppelen helpt niet, en dat staat er ook",
+            "Google Ads zonder ontwikkelaarstoken: het scherm verwijst je naar Instellingen → Marketing"
+          ],
+          "en": [
+            "No Google account connected yet: the \"Connect Google\" button sits right there",
+            "Missing scopes: reconnect and grant access to that one source",
+            "Access revoked: the link reads \"Connection lost\"",
+            "The API is off in the Google Cloud project: reconnecting won't help, and it says so",
+            "Google Ads without a developer token: the screen points you at Instellingen → Marketing"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Op de klantpagina, in een tabblad, over alle klanten heen",
+          "en": "On the client page, in a tab, across every client"
+        },
+        "body": {
+          "nl": "Op elke klantpagina staat het paneel Marketing: de laatste 30 dagen tegen de 30 daarvoor, KPI-rijen met het verschil, sparklines en de gekoppelde accounts als chips met \"Openen in Google Analytics\" erachter. Dat paneel leest volledig uit de eigen database en doet nul aanroepen naar Google, dus het opent net zo snel als de rest van het dossier. Wil je verder kijken, dan opent het marketingtabblad van die klant met langere perioden en de uitsplitsingen; de pagina Marketing in de zijbalk toont hetzelfde dashboard met een klantkiezer erboven, dus het is één scherm met twee ingangen. Overzicht → Marketing legt er één regel per gekoppelde klant naast, server-side sorteerbaar, zodat je bij de koffie ziet wie aandacht nodig heeft. Licenseer je ook de rapportagemodule, dan levert marketing negen van de hoofdstukken voor de maandelijkse klantrapportage.",
+          "en": "Every client page carries the Marketing panel: the last 30 days against the 30 before, KPI rows with the delta, sparklines, and the linked accounts as chips with \"Open in Google Analytics\" behind them. That panel reads entirely from our own database and makes zero calls to Google, so it opens as fast as the rest of the record. To look further, the client's marketing tab offers longer ranges and the drilldowns; the Marketing page in the sidebar renders the same dashboard with a client picker above it, so it is one screen with two entrances. Overzicht → Marketing puts one row per linked client beside it, sortable server-side, so over coffee you can see who needs attention. Licence the reporting module too and marketing supplies nine of the chapters in the monthly client report."
+        },
+        "bullets": {
+          "nl": [
+            "Klantpaneel: 30 dagen tegen de vorige 30, met sparklines en accountchips",
+            "Klanttabblad: langere perioden, uitsplitsingen en de indelingseditor",
+            "Overzicht → Marketing: bronnen, sessies, kliks, gem. positie, uitgaven, conversies en key events per klant",
+            "Dashboardtegel voor het team, en een tegel op het dashboard van de klant zelf in het portaal"
+          ],
+          "en": [
+            "Client panel: 30 days against the previous 30, with sparklines and account chips",
+            "Client tab: longer ranges, drilldowns and the layout editor",
+            "Overzicht → Marketing: sources, sessions, clicks, avg. position, spend, conversions and key events per client",
+            "A dashboard tile for the team, and a tile on the client's own portal dashboard"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "KPI's die je kunt openmaken",
+          "en": "KPIs you can open up"
+        },
+        "body": {
+          "nl": "Elke bron levert zijn eigen KPI-rij, met de verandering ten opzichte van de vorige periode ernaast. Je kiest de periode: laatste 30 dagen, deze maand, dit kwartaal, laatste 90 dagen of de laatste 12 maanden, telkens vergeleken met de periode ervoor. Onder de tegels zitten de uitsplitsingen, die live bij de bron worden opgehaald in plaats van meegesynchroniseerd: toppagina's, kanalen, apparaten en belangrijke gebeurtenissen per gebeurtenis uit Analytics; topzoektermen, toppagina's en de grootste stijgers en dalers uit Search Console; campagnes uit Ads; en zoekwoorden, zoekwoordgroepen, de website-audit en zichtbaarheid in AI-zoekresultaten uit SE Ranking. De tegels zelf komen uit de dagcijfers die 's nachts zijn opgehaald, dus een periodewissel kost geen quotum bij Google.",
+          "en": "Each source contributes its own KPI row, with the change against the previous period beside it. You pick the range: last 30 days, this month, this quarter, last 90 days or the last 12 months, each compared with the period before it. Under the tiles sit the drilldowns, fetched live from the source rather than synced along: top pages, channels, devices and key events per event from Analytics; top queries, top pages and the biggest movers from Search Console; campaigns from Ads; and keywords, keyword groups, the site audit and AI-search visibility from SE Ranking. The tiles themselves come from the daily figures pulled overnight, so switching range costs no Google quota."
+        },
+        "bullets": {
+          "nl": [
+            "Analytics: sessies, gebruikers, nieuwe gebruikers, belangrijke gebeurtenissen, conversies, betrokkenheid, omzet en kanalen",
+            "Search Console: kliks, vertoningen, CTR en gemiddelde positie",
+            "Google Ads: uitgaven, kliks, vertoningen, conversies en conversiewaarde",
+            "SE Ranking: gemiddelde positie, Top 3, Top 10, Top 30, scorende en gevolgde zoekwoorden"
+          ],
+          "en": [
+            "Analytics: sessions, users, new users, key events, conversions, engagement, revenue and channels",
+            "Search Console: clicks, impressions, CTR and average position",
+            "Google Ads: spend, clicks, impressions, conversions and conversion value",
+            "SE Ranking: average position, Top 3, Top 10, Top 30, ranking and tracked keywords"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Jij stelt samen wat de klant ziet, en hoe het heet",
+          "en": "You compose what the client sees, and what it is called"
+        },
+        "body": {
+          "nl": "Het dashboard van een klant bewerk je zoals je je eigen Mijn dag-pagina inricht: klik op \"Indeling bewerken\" en je versleept tegels om ze te herordenen, verbergt wat deze klant niet nodig heeft (verborgen tegels wachten in een strook eronder), hernoemt ze ter plekke in het Nederlands en het Engels, zet uitsplitsingen aan of uit, kiest de standaardgrafiek, of verbergt een hele bron voor deze klant. Alles slaat direct op, en de indeling is precies wat een klantlogin in het portaal te zien krijgt. Verbergen gebeurt aan de serverkant: een verborgen tegel verdwijnt uit de gegevens die het paneel, het tabblad en het overzicht krijgen, hij wordt niet in de browser weggedrukt. Zolang je niets aanraakt verandert er niets, want geen indeling betekent gewoon: toon alles. Diezelfde editor is waar een conversie zijn eigen naam krijgt, want GA4 noemt hem zoals de developer hem ooit heeft aangemaakt.",
+          "en": "You edit a client's dashboard the way you arrange your own My Day: hit \"Edit layout\" and you drag tiles to reorder them, hide what this client does not need (hidden tiles wait in a strip below), rename them in place in Dutch and English, switch drilldowns on or off, pick the default chart, or hide a whole source for this client. Everything saves immediately, and the layout is exactly what a portal login sees. Hiding happens server-side: a hidden tile drops out of the data the panel, the tab and the overview receive — it is not merely pushed out of view in the browser. Until you touch it nothing changes, because no layout simply means: show everything. That same editor is where a conversion gets a name of its own, because GA4 calls it whatever a developer once created it as."
+        },
+        "bullets": {
+          "nl": [
+            "GA4 zegt generate_lead; de klant leest \"Aanvragen via de website\"",
+            "Een eigen naam per sleutelgebeurtenis, per taal, getypt in de rij waar die gebeurtenis staat",
+            "De GA4-gebeurtenisnaam blijft eronder de referentie, dus de cijfers blijven kloppen",
+            "Een gebeurtenis die deze periode niet gemeten is, voeg je toe op zijn ruwe GA4-naam",
+            "Liever geen conversiecijfers delen? Zet de tegel met sleutelgebeurtenissen uit voor deze klant"
+          ],
+          "en": [
+            "GA4 says generate_lead; the client reads \"Website enquiries\"",
+            "Your own name per key event, per language, typed in the row where that event sits",
+            "The GA4 event name stays the reference underneath, so the figures keep adding up",
+            "An event not measured this period is added by its raw GA4 name",
+            "Rather not share conversion figures? Switch the key-events tile off for this client"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Een grafiek die veroudert, zegt dat zelf",
+          "en": "A graph that goes stale says so"
+        },
+        "body": {
+          "nl": "Elke koppeling draagt haar eigen status: Gesynchroniseerd, Eerste synchronisatie loopt, Synchronisatiefout of Verbinding verbroken, met \"Laatst gesynchroniseerd …\" erbij. Een koppeling synchroniseert via het Google-account van één collega en elk scherm noemt wie dat is, zodat niemand hoeft te raden waarom de cijfers stilvallen als die persoon vertrekt. 's Nachts haalt een taak per organisatie de dagcijfers op en trekt daarbij de laatste week opnieuw door: Search Console wordt pas twee tot drie dagen later definitief en de attributie van Analytics en Ads blijft nog even schuiven, dus late gegevens herstellen zichzelf. Elke koppeling loopt los van de andere, dus één kapotte verbinding legt de rest niet stil. Bij het aanmaken van een koppeling start een backfill van ongeveer dertien maanden, per maand weggeschreven, zodat sparklines en jaar-op-jaar meteen werken. Ontkoppelen wist niets: de koppeling wordt gedeactiveerd, de gesynchroniseerde historie blijft, en opnieuw koppelen zet hem weer aan.",
+          "en": "Every link carries its own status: Synced, First sync running, Sync error or Connection lost, with \"Last synced …\" beside it. A link syncs through one colleague's Google account and every screen names that person, so nobody has to guess why the numbers stop the day they leave. Overnight a job per organisation pulls the daily figures and re-pulls the last week while it is at it: Search Console only finalises two to three days later and Analytics and Ads attribution keeps shifting for a while, so late data heals itself. Each link runs independently, so one broken connection never stops the rest. Creating a link kicks off a backfill of roughly thirteen months, committed month by month, so sparklines and year-over-year work from day one. Unlinking erases nothing: the link is deactivated, the synced history stays, and relinking switches it back on."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Sleutels, rechten en licentie",
+          "en": "Keys, permissions and licence"
+        },
+        "body": {
+          "nl": "Marketing rijdt mee op de Google-koppeling van je bureau: je registreert je eigen Google Cloud-project en de marketingrechten worden bij hetzelfde toestemmingsscherm gevraagd, dus een collega hoeft niet drie keer langs Google. Onder Instellingen → Marketing zet je de SE Ranking API-sleutel (één sleutel voor het hele bureau, waar elk klantproject aan wordt gekoppeld) en het Google Ads-ontwikkelaarstoken; beide worden versleuteld opgeslagen en nooit teruggegeven, het scherm meldt alleen dát er een sleutel staat. Wie wat mag, staat los van elkaar: de cijfers lezen doet standaard elk teamlid, koppelingen leggen is beheerderswerk en het kruis-klantoverzicht is een managementscherm. De kern van schakl. is open source (AGPL); marketing is een uitbreidingsmodule en vraagt een licentiesleutel. Loopt die af, dan wordt de module alleen-lezen: koppelen en instellingen weigeren en de nachtelijke synchronisatie staat stil, maar het paneel, het tabblad en het overzicht blijven de al opgehaalde cijfers tonen.",
+          "en": "Marketing rides on your agency's own Google connection: you register your own Google Cloud project and the marketing scopes are asked for in that same consent screen, so a colleague does not walk through Google three times. Under Instellingen → Marketing you set the SE Ranking API key (one key for the whole agency, which every client project is attached to) and the Google Ads developer token; both are stored encrypted and never handed back — the screen only reports that a key is on file. Permissions are separate from one another: reading the figures is a default for every team member, creating links is admin work, and the cross-client overview is a management screen. The core of schakl. is open source (AGPL); marketing is an extension module and needs a licence key. When one expires the module goes read-only: linking and settings refuse and the nightly sync stands down, while the panel, the tab and the overview keep showing the figures already pulled."
+        },
+        "bullets": {
+          "nl": [
+            "Marketingcijfers bekijken: standaard voor elk teamlid, te versmallen als je advertentiebudget gevoelig vindt",
+            "Marketingkoppelingen beheren: beheerders, zoals de Google-instellingen zelf",
+            "Marketingoverzicht bekijken: het kruis-klantscherm, standaard voor managers",
+            "Een klantlogin in het portaal ziet alleen het dashboard dat jij voor die klant hebt samengesteld"
+          ],
+          "en": [
+            "Read marketing metrics: default for every team member, narrowable if you treat ad spend as sensitive",
+            "Manage marketing links: admins, like the Google settings themselves",
+            "Read the marketing overview: the cross-client screen, managers by default",
+            "A portal login only ever sees the dashboard you composed for that client"
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,7 +1,7 @@
 {
   "name": "Taken en sjablonen",
   "slug": "tasks",
-  "order": 40,
+  "order": 50,
   "icon": "✅",
   "lucide": "tasks",
   "demo": "tasks",
@@ -10,8 +10,8 @@
     "en": "Tasks & templates"
   },
   "description": {
-    "nl": "Borden, checklists en labels, met org-brede sjablonen voor terugkerend werk: één keer vastleggen, overal toepassen.",
-    "en": "Boards, checklists and labels, with org-wide templates for recurring work — define once, apply anywhere."
+    "nl": "Borden, checklists en labels, met org-brede sjablonen en herhalingen voor terugkerend werk: één keer vastleggen, overal toepassen.",
+    "en": "Boards, checklists and labels, with org-wide templates and recurrence for the work that comes back — define once, apply anywhere."
   },
   "page": {
     "eyebrow": {
@@ -33,8 +33,8 @@
           "en": "One board, grouped by status"
         },
         "body": {
-          "nl": "Taken staan gegroepeerd onder de statussen die jij hebt ingericht, in jouw volgorde. Het is geen kanban met kolommen die naar rechts uitwaaieren, maar secties in dezelfde lijst die je overal gebruikt: klaar-secties beginnen ingeklapt, en sorteren ordent binnen een sectie, nooit eroverheen. Je kiest zelf welke kolommen zichtbaar zijn (labels, verantwoordelijke, prioriteit, deadline, checklist), per persoon bewaard.",
-          "en": "Tasks sit grouped under the statuses you configured, in your order. It is not a kanban that fans out into columns — it is sections in the same list you use everywhere: terminal sections start folded, and sorting orders rows within a section, never across them. You choose which columns are visible (labels, assignee, priority, due date, checklist), saved per person."
+          "nl": "Taken staan gegroepeerd onder de statussen die jij hebt ingericht, in jouw volgorde. Het is geen kanban met kolommen die naar rechts uitwaaieren, maar secties in dezelfde lijst die je overal gebruikt: klaar-secties beginnen ingeklapt, en sorteren ordent binnen een sectie, nooit eroverheen. Je filtert op klant, project, toegewezene, status, label, vrije tekst en op deadline (over tijd, vandaag of deze week), en je kiest zelf welke kolommen zichtbaar zijn (labels, verantwoordelijke, prioriteit, deadline, checklist), per persoon bewaard. Onder de lijst staat dezelfde pagineerbalk als overal: nooit de eerste tweehonderd met een excuus erbij.",
+          "en": "Tasks sit grouped under the statuses you configured, in your order. It is not a kanban that fans out into columns — it is sections in the same list you use everywhere: terminal sections start folded, and sorting orders rows within a section, never across them. You filter by client, project, assignee, status, label, free text and by deadline (overdue, today or this week), and you choose which columns are visible (labels, assignee, priority, due date, checklist), saved per person. Under the list is the same pager as everywhere else: never the first two hundred rows with an apology attached."
         }
       },
       {
@@ -43,8 +43,8 @@
           "en": "Statuses, labels and priorities on your terms"
         },
         "body": {
-          "nl": "De statusreeks is geen vaste lijst in de code maar tenant-data onder Instellingen: hernoem, herorden, verkleur en breid uit. Labels zijn org-breed met een eigen kleur, en een taak met hoge prioriteit staat overal in luid rood. Zo leest het bord zoals jouw bureau werkt, niet zoals wij het ooit bedachten.",
-          "en": "The set of statuses is not a fixed list in code but tenant data under Instellingen: rename, reorder, recolour and extend it. Labels are org-wide with their own colour, and a high-priority task reads in loud red everywhere. So the board speaks your studio's language, not the one we happened to ship."
+          "nl": "De statusreeks is geen vaste lijst in de code maar tenant-data onder Instellingen → Taakstatussen: hernoem, herorden, verkleur en breid uit. Labels beheer je onder Instellingen → Taaklabels, org-breed en met een eigen kleur, en je maakt er ook een aan zonder de taak te verlaten. Een taak met hoge prioriteit staat overal in luid rood. Zo leest het bord zoals jouw bureau werkt, niet zoals wij het ooit bedachten.",
+          "en": "The set of statuses is not a fixed list in code but tenant data under Instellingen → Taakstatussen: rename, reorder, recolour and extend it. Labels are managed under Instellingen → Taaklabels, org-wide and with their own colour, and you can create one without leaving the task. A high-priority task reads in loud red everywhere. So the board speaks your studio's language, not the one we happened to ship."
         },
         "bullets": {
           "nl": [
@@ -61,12 +61,12 @@
       },
       {
         "heading": {
-          "nl": "Checklists met voortgang die je ziet",
-          "en": "Checklists with progress in view"
+          "nl": "Checklists, opmerkingen en de klant die meekijkt",
+          "en": "Checklists, comments and the client looking in"
         },
         "body": {
-          "nl": "Elke taak draagt checklists; de voortgang staat als n/m op de kaart en in elke lijst, en wordt groen zodra alles is afgevinkt. Items hebben een titel en een uitleg in markdown, dus het 'hoe' hoort bij het 'wat'. Een checklist die vaker terugkomt sla je op als org-breed sjabloon en hang je met één klik onder een volgende taak.",
-          "en": "Every task carries checklists; progress shows as n/m on the card and in every list, turning green once everything is ticked. Items have a title and a markdown description, so the how sits with the what. A checklist you reuse becomes an org-wide template and drops onto the next task in one click."
+          "nl": "Elke taak draagt checklists; de voortgang staat als n/m op de kaart en in elke lijst, en wordt groen zodra alles is afgevinkt. Items hebben een titel en een uitleg in markdown, dus het 'hoe' hoort bij het 'wat', en vink je het laatste item af dan biedt schakl. meteen aan de taak af te ronden. Een checklist die vaker terugkomt sla je op in de org-brede bibliotheek en hang je met één klik onder een volgende taak. In de opmerkingen noem je met @ een collega of een contactpersoon van de klant en verwijs je met # naar een andere taak; bewerken en verwijderen mag, met een 'bewerkt'-markering erbij. Een taak kun je zelfs aan de contactpersoon van de klant toewijzen wanneer je op hém wacht, en met 'Zichtbaar voor klant' (standaard uit) mag een portaalcontact van die klant de taak zien en erop reageren. Links en echte bestandsbijlagen horen er ook bij.",
+          "en": "Every task carries checklists; progress shows as n/m on the card and in every list, turning green once everything is ticked. Items have a title and a markdown description, so the how sits with the what, and ticking the last one prompts you to finish the task there and then. A checklist you reuse goes into the org-wide library and drops onto the next task in one click. In comments you mention a colleague or a client's contact with @ and reference another task with #; editing and deleting are allowed, with an \"edited\" marker attached. A task can even be assigned to the client's contact person when they are the one you are waiting on, and \"Zichtbaar voor klant\" (off by default) lets a portal contact of that client see the task and comment on it. Links and real file attachments belong to it too."
         }
       },
       {
@@ -75,20 +75,30 @@
           "en": "Templates: define once, apply anywhere"
         },
         "body": {
-          "nl": "Terugkerend werk (onboarding, een maandelijkse oplevering) leg je vast als org-breed takensjabloon: taken, prioriteiten, checklists en relatieve deadlines. Pas het handmatig toe op een klant, of laat het automatisch afvuren zodra een klant een bepaalde status krijgt. Zo begint elk traject compleet, in plaats van vanaf een leeg bord.",
-          "en": "Recurring work (onboarding, a monthly delivery) is captured as an org-wide task template: tasks, priorities, checklists and relative due dates. Apply it to a client by hand, or let it fire automatically the moment a client enters a given status. So every engagement starts complete, not from a blank board."
+          "nl": "Terugkerend werk (onboarding, een maandelijkse oplevering) leg je vast als org-breed takensjabloon onder Taken → Sjablonen: taken met prioriteit, relatieve deadline, tijdbudget, een checklist en desgewenst een verplicht contactmoment. Pas het handmatig toe op een klant, laat het automatisch afvuren zodra een klant een bepaalde status krijgt, of hang het aan een abonnementstype, zodat de eerste activering van een nieuwe retainer de onboarding zelf op de klant zet. Zo begint elk traject compleet, in plaats van vanaf een leeg bord.",
+          "en": "Recurring work (onboarding, a monthly delivery) is captured as an org-wide task template under Taken → Sjablonen: tasks with a priority, a relative due date, a time budget, a checklist and, where you want one, a required contact moment. Apply it to a client by hand, let it fire automatically the moment a client enters a given status, or attach it to a subscription type, so the first activation of a new retainer puts the onboarding on the client itself. So every engagement starts complete, not from a blank board."
         },
         "bullets": {
           "nl": [
-            "Handmatig toepassen, of automatisch bij een klantstatus.",
+            "Handmatig toepassen, of automatisch bij een klantstatus of een eerste abonnementsactivering.",
             "Deadlines rekenen vanaf de toepasdatum, plus zoveel dagen.",
             "Toewijzing volgt de verantwoordelijke van de klant op dat moment, niet een naam van toen."
           ],
           "en": [
-            "Apply by hand, or automatically on a client status.",
+            "Apply by hand, or automatically on a client status or a first subscription activation.",
             "Due dates count from the apply date, plus so many days.",
             "Assignment follows the client's current responsible, not a name fixed when it was written."
           ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Werk dat terugkomt, en werk dat je inplant",
+          "en": "Work that comes back, and work you plan"
+        },
+        "body": {
+          "nl": "Een taak mag zichzelf herhalen: dagelijks, wekelijks, maandelijks, per kwartaal of jaarlijks, in een van twee modi. 'Na afronden' maakt de volgende pas aan zodra je deze afvinkt, wat past bij werk dat op elkaar volgt; 'Op schema' maakt hem op het interval aan of de vorige nu klaar is of niet, wat past bij een maandrapportage die hoe dan ook af moet. Labels en checklists verhuizen mee naar de volgende. Een deadline is bovendien geen planning: met 'Taak inplannen' zet je een of meer echte tijdblokken op de agenda (datum, starttijd, duur, notitie), voor jezelf of, met het juiste recht, voor een collega. Die blokken staan in de gedeelde Agenda, laten zich naar een andere dag slepen, spiegelen naar je eigen Google Calendar, en een blok dat voorbij is biedt 'Uren registreren' aan, waarmee de echte urenregistratie ontstaat. Naast het tijdbudget per taak, dat naast de geboekte tijd leest als 'x over' of 'x over budget', meldt een dagelijkse controle wat te laat is en wat binnenkort verloopt, volgens de drempel die elke collega zelf instelt.",
+          "en": "A task may repeat itself: daily, weekly, monthly, quarterly or yearly, in one of two modes. \"Na afronden\" creates the next one only when you tick this one off, which suits work that follows on; \"Op schema\" creates it on the interval whether the last is finished or not, which suits a monthly report that has to go out regardless. Labels and checklists move along to the next one. And a deadline is not a plan: \"Taak inplannen\" puts one or more real time blocks on the calendar (date, start time, duration, note), for yourself or, with the right permission, for a colleague. Those blocks sit in the shared Agenda, drag to another day, mirror to your own Google Calendar, and a block that has passed offers \"Uren registreren\", which is where the real time entry comes from. Beside the per-task time budget, which reads against logged time as \"x left\" or \"x over budget\", a daily check announces what is overdue and what falls due within each colleague's own threshold."
         }
       },
       {
@@ -97,8 +107,8 @@
           "en": "Overdue is loud, and everything lands in the trail"
         },
         "body": {
-          "nl": "Werk over tijd is overal luid rood: op rijen, in tellingen en op de dashboardwidgets, zodat het nooit wegvalt in de lijst. Elke betekenisvolle wijziging landt in de activiteitentrail van de taak, met wie en wanneer. De naam van de actor is een momentopname, dus het werk van een vertrokken collega wordt nooit stilletjes 'het systeem'.",
-          "en": "Work past its date is loud red everywhere: on rows, in counts and on the dashboard widgets, so it never fades into the list. Every meaningful change lands in the task's activity trail, with who and when. The actor's name is a snapshot, so a departed colleague's work never quietly becomes 'the system'."
+          "nl": "Werk over tijd is overal luid rood: op rijen, in tellingen en op de dashboardwidgets, zodat het nooit wegvalt in de lijst. Een deadline naar achteren schuiven vraagt om een reden, en die reden komt met de nieuwe datum in het spoor te staan. Elke betekenisvolle wijziging landt daar trouwens: aangemaakt, van status veranderd, becommentarieerd, checklistitem afgevinkt, bijlage toegevoegd, ontstaan uit een herhaling of een sjabloon. De naam van de actor is een momentopname, dus het werk van een vertrokken collega wordt nooit stilletjes 'het systeem', en wie namens iemand anders inlogde staat er met naam naast. Met de ✎ in de werkbalk pas je status, toegewezene, prioriteit, project, klant of deadline over een hele selectie aan; een rij die niet mag (andermans taak, een status die eerst een contactmoment eist) wordt gemeld in plaats van dat de hele batch faalt. Exporteren kan altijd; importeren maakt bewust alleen nieuwe taken aan, want taaktitels mogen best twee keer bestaan en een verzonnen sleutel zou de verkeerde rij overschrijven.",
+          "en": "Work past its date is loud red everywhere: on rows, in counts and on the dashboard widgets, so it never fades into the list. Pushing a deadline back asks for a reason, and that reason goes into the trail alongside the new date. Every meaningful change lands there: created, moved status, commented, checklist item ticked, attachment added, spawned from a recurrence or a template. The actor's name is a snapshot, so a departed colleague's work never quietly becomes \"the system\", and whoever was signed in on someone else's behalf is named beside it. The ✎ in the toolbar changes status, assignee, priority, project, client or deadline across a whole selection; a row that may not be touched (someone else's task, a status that first demands a contact moment) is reported rather than failing the batch. Export always works; import deliberately only creates, because task titles legitimately repeat and an invented key would overwrite the wrong row."
         }
       }
     ]

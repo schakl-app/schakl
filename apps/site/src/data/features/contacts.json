@@ -1,7 +1,7 @@
 {
   "name": "Contactpersonen",
   "slug": "contacts",
-  "order": 15,
+  "order": 30,
   "icon": "👥",
   "lucide": "contacts",
   "demo": "contacts",
@@ -23,8 +23,8 @@
       "en": "The people behind the client"
     },
     "lead": {
-      "nl": "Elke klant is uiteindelijk een paar mensen. schakl legt ze vast als contactpersonen, koppelt ze aan de juiste klanten en houdt bij wie waarvoor het aanspreekpunt is.",
-      "en": "Every client comes down to a handful of people. schakl records them as contacts, attaches them to the right clients, and keeps track of who is the point of contact for what."
+      "nl": "Elke klant is uiteindelijk een paar mensen. schakl. legt ze vast als contactpersonen, koppelt ze aan de juiste klanten en houdt bij wie waarvoor het aanspreekpunt is.",
+      "en": "Every client comes down to a handful of people. schakl. records them as contacts, attaches them to the right clients, and keeps track of who is the point of contact for what."
     },
     "sections": [
       {
@@ -33,8 +33,8 @@
           "en": "People, not accounts"
         },
         "body": {
-          "nl": "Contactpersonen zijn de mensen bij je klant: de tekenbevoegde, de marketeer, de technisch beheerder. Ze staan los van je eigen team, dat gebruikers met een rol zijn. Elke contactpersoon heeft een naam, e-mail, telefoon, functie en notities, plus alle eigen velden die jouw organisatie zelf heeft gedefinieerd.",
-          "en": "Contacts are the people at your client: the signatory, the marketer, the technical administrator. They are kept separate from your own team, who are users with a role. Every contact carries a name, email, phone, job title and notes, plus any custom fields your organisation has defined."
+          "nl": "Contactpersonen zijn de mensen bij je klant: de tekenbevoegde, de marketeer, de technisch beheerder. Ze staan los van je eigen team, dat gebruikers met een rol zijn. Elke contactpersoon heeft een voornaam, achternaam, e-mailadres, telefoonnummer, functie en notities, plus alle eigen velden die jouw organisatie zelf heeft gedefinieerd. Het telefoonnummer wordt als E.164 opgeslagen met een landkeuze ernaast, en de notities gebruiken dezelfde editor als de rest van het product: typ @ om een collega of contactpersoon te noemen en # om naar een taak te verwijzen.",
+          "en": "Contacts are the people at your client: the signatory, the marketer, the technical administrator. They are kept separate from your own team, who are users with a role. Every contact carries a first name, surname, email, phone number, job title and notes, plus any custom fields your organisation has defined. The phone number is stored as E.164 with a country picker beside it, and the notes use the same editor as everywhere else: type @ to mention a colleague or contact and # to reference a task."
         }
       },
       {
@@ -43,12 +43,12 @@
           "en": "One person, many clients"
         },
         "body": {
-          "nl": "Een contactpersoon hangt niet aan één klant vast. Dezelfde persoon kan aanspreekpunt zijn bij de ene klant en technisch contact bij de andere; die rol leeft op de koppeling, niet op de persoon. Zo voer je niemand twee keer in, en op de contactpagina zie je meteen aan welke klanten iemand verbonden is.",
-          "en": "A contact isn't locked to a single client. The same person can be the point of contact at one client and the technical contact at another — that role lives on the link, not on the person. So you never enter anyone twice, and a contact's own page shows exactly which clients they belong to."
+          "nl": "Een contactpersoon hangt niet aan één klant vast. Dezelfde persoon kan aanspreekpunt zijn bij de ene klant en technisch contact bij de andere; die soort leeft op de koppeling, niet op de persoon. Zo voer je niemand twee keer in, en op de contactpagina zie je meteen aan welke klanten iemand verbonden is. De lijst is per klant gegroepeerd, met een eigen sectie 'Zonder klant' voor mensen die nog nergens aan hangen, en filtert op klant, op contactsoort en op vrije tekst.",
+          "en": "A contact isn't locked to a single client. The same person can be the point of contact at one client and the technical contact at another — that type lives on the link, not on the person. So you never enter anyone twice, and a contact's own page shows exactly which clients they belong to. The list is sectioned by client, with a \"Zonder klant\" section of its own for people not attached anywhere yet, and filters by client, by contact type and by free text."
         },
         "bullets": {
           "nl": [
-            "Elke koppeling draagt zijn eigen type en zijn eigen primair-markering.",
+            "Elke koppeling draagt zijn eigen soort en zijn eigen primair-markering.",
             "Verwijder je een klant, dan blijft de persoon bestaan; alleen de koppeling vervalt.",
             "De klantpagina toont de contactpersonen, de contactpagina toont de klanten."
           ],
@@ -75,18 +75,28 @@
           "en": "Add where you work"
         },
         "body": {
-          "nl": "Je maakt een contactpersoon aan vanaf de klantpagina zelf. Typ een naam die nog niet bestaat en er verschijnt '＋ toevoegen': dat opent het volledige aanmaakvenster (echte velden plus jouw eigen custom-velden), vult vast in wat je typte, en koppelt de nieuwe persoon meteen aan deze klant. Je verlaat het scherm niet en komt terug met de chip al geselecteerd.",
-          "en": "You create a contact from the client page itself. Type a name that doesn't exist yet and “＋ add” appears — it opens the full create dialog (real fields plus your own custom fields), prefills what you typed, and attaches the new person to this client in one step. You never leave the screen, and you return with the chip already selected."
+          "nl": "Je maakt een contactpersoon aan vanaf de klantpagina zelf. Typ een naam die nog niet bestaat en er verschijnt '＋ “Els de Wit” toevoegen': dat opent het volledige aanmaakvenster (echte velden plus jouw eigen aangepaste velden), vult vast in wat je typte, en koppelt de nieuwe persoon meteen aan deze klant. Andersom kan ook: staat de klant er nog niet, dan maak je die vanaf de keuzelijst op de contactpagina aan zonder het scherm te verlaten. Een e-mailadres dat al bij iemand anders staat wordt geweigerd met een duidelijke melding, want twee rijen voor dezelfde persoon is precies wat een adresboek onbruikbaar maakt.",
+          "en": "You create a contact from the client page itself. Type a name that doesn't exist yet and ＋ Add “Els de Wit” appears — it opens the full create dialog (real fields plus your own custom fields), prefills what you typed, and attaches the new person to this client in one step. It works the other way round too: if the client doesn't exist yet, you create it from the picker on the contact page without leaving the screen. An email address already on someone else is refused with a clear message, because two rows for the same person is exactly what makes an address book useless."
         }
       },
       {
         "heading": {
-          "nl": "Types die jij bepaalt",
-          "en": "Types you define"
+          "nl": "Soorten die jij bepaalt, velden die je zelf toevoegt",
+          "en": "Types you define, fields you add yourself"
         },
         "body": {
-          "nl": "Wat een contactpersoon precies is (klantcontact, technisch contact, facturatie) bepaal je zelf onder Instellingen → Contacttypen. Types dragen een label in elke taal en zijn per klant instelbaar, want iemand kan bij de ene klant het aanspreekpunt zijn en bij de andere de technisch beheerder. Elke wijziging aan een contactpersoon landt in de activiteitenlijn met wie en wanneer, dus je ziet altijd hoe een gegeven is ontstaan.",
-          "en": "What a contact actually is — client contact, technical contact, billing — is yours to define under Settings → Contact types. Types carry a label in every language and are set per client, because someone can be the point of contact at one client and the technical administrator at another. Every change to a contact lands in the activity trail with who and when, so you can always see how a value came to be."
+          "nl": "Wat een contactpersoon precies is (klantcontact, technisch contact, facturatie) bepaal je zelf onder Instellingen → Contactsoorten. Een soort draagt een label per taal, een eigen volgorde en een actief-vlag, en wordt per koppeling gekozen, want iemand kan bij de ene klant het aanspreekpunt zijn en bij de andere de technisch beheerder. Zet je een soort uit of verwijder je hem, dan blijft de koppeling zelf gewoon staan. Ontbreekt er een gegeven, dan definieer je onder Instellingen → Aangepaste velden je eigen getypeerde velden op contactpersonen; ze verschijnen in het formulier, op het dossier en als kolom in de lijst. Elke wijziging landt in het activiteitenspoor met wie en wanneer, dus je ziet altijd hoe een gegeven is ontstaan.",
+          "en": "What a contact actually is — client contact, technical contact, billing — is yours to define under Instellingen → Contactsoorten. A type carries a label per language, its own ordering and an active flag, and is chosen per link, because someone can be the point of contact at one client and the technical administrator at another. Deactivate or delete a type and the link itself simply stays. Missing a detail? Under Instellingen → Aangepaste velden you define your own typed fields on contacts; they appear in the form, on the record and as a list column. Every change lands in the activity trail with who and when, so you can always see how a value came to be."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Het adresboek in, uit, en alleen voor wie het aangaat",
+          "en": "The address book in, out, and only for those it concerns"
+        },
+        "body": {
+          "nl": "De lijst reist als bestand: Export neemt de hele gefilterde set mee als CSV, TSV of Excel, en Import zet hem terug door op e-mailadres bij te werken in plaats van te dubbelen. Een lege cel ontkoppelt nooit een klant, en dezelfde vijf kolommen (voornaam, achternaam, e-mail, telefoon, functie) reizen mee in de klantenexport, zodat een klantenbestand zijn mensen meebrengt. Met de ✎ in de werkbalk hang je een hele selectie in één keer aan een klant, of verwijder je hem. Wie het adresboek mag zien is niet vanzelfsprekend iedereen: een collega die tot klantgroepen beperkt is, ziet alleen de contactpersonen van zijn eigen klanten, en een klantlogin ziet uitsluitend de mensen van het eigen bedrijf. Wil je die klant erbij, dan nodig je hem vanaf zijn contactkaart uit voor een portaallogin, trek je die weer in, of log je even als hem in om te zien wat hij ziet; het klantportaal is een uitbreidingsmodule met een eigen licentiesleutel, terwijl de kern van schakl. open source is (AGPL).",
+          "en": "The list travels as a file: Export takes the whole filtered set out as CSV, TSV or Excel, and Import puts it back by upserting on the email address rather than duplicating. An empty cell never unlinks a client, and the same five columns (first name, surname, email, phone, job title) ride along in the client export, so a client file brings its people with it. The ✎ in the toolbar attaches a whole selection to one client at once, or deletes it. Who may see the address book is not automatically everyone: a colleague confined to client groups sees only the contacts of their own clients, and a client login sees only the people at their own company. Want that client in? From their contact card you invite them to a portal login, revoke it again, or sign in as them to see what they see — the client portal is an extension module with its own licence key, while the core of schakl. is open source (AGPL)."
         }
       }
     ]

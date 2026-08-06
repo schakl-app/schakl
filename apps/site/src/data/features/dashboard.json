@@ -1,0 +1,99 @@
+{
+  "name": "Mijn dag",
+  "slug": "dashboard",
+  "order": 10,
+  "icon": "🏠",
+  "lucide": "dashboard",
+  "title": {
+    "nl": "Mijn dag",
+    "en": "My Day"
+  },
+  "description": {
+    "nl": "Het scherm waar iedereen begint: een bord met tegels uit de modules die je draait, door iedereen zelf ingedeeld, met een teamstandaard eronder.",
+    "en": "The screen everyone starts on: a board of tiles contributed by the modules you run, arranged by each person, with a team default underneath."
+  },
+  "page": {
+    "eyebrow": {
+      "nl": "Dashboard",
+      "en": "Dashboard"
+    },
+    "title": {
+      "nl": "Het eerste scherm is van jou",
+      "en": "The first screen is yours"
+    },
+    "lead": {
+      "nl": "Mijn dag is de startpagina van schakl.: geen vast dashboard dat wij hebben bedacht, maar een bord dat elke collega samenstelt uit de widgets die de ingeschakelde modules aandragen. Wie niets instelt, erft de indeling die een beheerder als teamstandaard heeft vastgelegd.",
+      "en": "My Day is schakl.'s home screen — not a fixed dashboard we designed, but a board each colleague composes from the widgets the enabled modules contribute. Anyone who sets nothing inherits the layout a manager saved as the team default."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Eerst gebruiken, pas dan aanpassen",
+          "en": "Use it first, edit it deliberately"
+        },
+        "body": {
+          "nl": "Het bord staat in twee kolommen naast elkaar en op een telefoon als één stapel; de bewaarde volgorde leest eerst de linkerkolom van boven naar beneden en dan de rechter, precies de volgorde die je op je telefoon terugziet. In de gebruikstand gebeurt er niets per ongeluk: tegels zijn niet versleepbaar en een uitschieter met de muis kan je indeling niet omgooien. Klik je op Aanpassen, dan verschijnen het slepen tussen beide kolommen, een kruisje per tegel om hem eraf te halen, en de galerij met widgets die nog niet op je bord staan. Klaar zet dat allemaal weer uit. Elke verplaatsing wordt meteen bewaard, dus er is geen apart opslaanmoment om te vergeten.",
+          "en": "The board sits in two columns side by side, and as one stack on a phone; the saved order reads the left column top to bottom and then the right, which is exactly the order the phone shows you. In use mode nothing happens by accident: tiles are not draggable and a stray mouse gesture cannot disturb your layout. Press Aanpassen and you get dragging between both columns, a ✕ on each tile to take it off, and the gallery of widgets not yet on your board. Klaar turns all of that off again. Every move saves itself, so there is no separate save step to forget."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Widgets komen uit je modules, niet uit een vaste lijst",
+          "en": "Widgets come from your modules, not from a fixed list"
+        },
+        "body": {
+          "nl": "De pagina zelf kent geen enkele widget. Elke module draagt zijn eigen tegels aan, dus wat er in de galerij ligt volgt precies de modules die jouw bureau gebruikt; zet je er een uit, dan verdwijnen zijn tegels mee. Er wordt bovendien alleen aangeboden wat je ook mág zien: een widget die achter een recht zit dat jij niet hebt, is geen lege tegel maar een geweigerde aanvraag, dus hij komt niet in de galerij te staan. De galerij groepeert per categorie (Uren, Taken, Verlof, Te beoordelen, Financieel, Projecten, Marketing en Overig) en tekent statische voorbeeldjes; hij haalt nooit echte gegevens op om een miniatuur te vullen.",
+          "en": "The page itself knows no widget at all. Every module contributes its own tiles, so what lies in the gallery follows exactly the modules your agency runs — turn one off and its tiles go with it. And only what you may actually see is offered: a widget behind a permission you do not hold is not an empty tile but a refused request, so it never reaches the gallery. The gallery groups by category (Uren, Taken, Verlof, Te beoordelen, Financieel, Projecten, Marketing and Overig) and draws static previews; it never fetches real data just to fill a thumbnail."
+        },
+        "bullets": {
+          "nl": [
+            "Uren: Uren vandaag met de lopende timer, en Team deze maand met uren, facturabel aandeel, goed te keuren en omzet",
+            "Taken: Mijn openstaande taken (eerst wat het eerst moet) en Openstaande taken per project / klant",
+            "Verlof: je eigen Verlofsaldo, Verlof te beoordelen voor fiatteurs, en Vandaag afwezig",
+            "Financieel: Openstaande facturen met vervallen posten luid gemarkeerd, Openstaande offertes en Terugkerende omzet",
+            "Projecten en Marketing: Projectbudgetten (de budgetprojecten met de hoogste verbranding) en de topklanten op sessies of kliks",
+            "Te beoordelen: E-mails te beoordelen, jouw gematchte berichten over alle klanten heen"
+          ],
+          "en": [
+            "Uren: Uren vandaag with the running timer, and Team deze maand with hours, billable share, awaiting approval and revenue",
+            "Taken: Mijn openstaande taken (soonest due first) and Openstaande taken per project / klant",
+            "Verlof: your own Verlofsaldo, Verlof te beoordelen for approvers, and Vandaag afwezig",
+            "Financieel: Openstaande facturen with overdue flagged loudly, Openstaande offertes and Terugkerende omzet",
+            "Projecten and Marketing: Projectbudgetten (the budgeted projects burning hottest) and the top clients by sessions or clicks",
+            "Te beoordelen: E-mails te beoordelen, your matched messages across every client"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Ieder zijn eigen indeling, met een teamstandaard eronder",
+          "en": "Everyone's own layout, with a team default underneath"
+        },
+        "body": {
+          "nl": "Wat schakl. bewaart is niet meer dan een geordend rijtje widgetsleutels per persoon, en dat is precies genoeg. Een beheerder met het juiste recht legt onder Instellingen → Dashboard de organisatiebrede indeling vast: iedereen zonder eigen bord erft die, en wie later toch gaat schuiven, laat de standaard onaangeroerd voor de rest. Met Terug naar teamstandaard gooi je je persoonlijke indeling weg en val je weer op de sjabloon terug. Staat er nergens een indeling, dan krijg je gewoon alle widgets die je mag zien. En een sleutel die niets meer voorstelt, bijvoorbeeld omdat de module is uitgezet, valt er stilletjes uit in plaats van het bord te breken.",
+          "en": "What schakl. stores is no more than an ordered list of widget keys per person, and that is exactly enough. A manager with the right permission fixes the org-wide layout under Instellingen → Dashboard: everyone without a board of their own inherits it, and whoever later starts rearranging leaves the default untouched for the rest. Terug naar teamstandaard throws your personal layout away and drops you back onto the template. With no layout anywhere, you simply get every widget you may see. And a key that no longer resolves — a module since turned off, say — quietly falls out instead of breaking the board."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Een bord dat opent in plaats van laadt",
+          "en": "A board that opens rather than loads"
+        },
+        "body": {
+          "nl": "Eerst wordt uitgezocht welke tegels er op jouw bord staan, en pas daarna wordt er data gehaald. Dat scheelt echt iets: verschillende widgets waaieren intern uit in meerdere aggregaties, en zonder die volgorde was een bewust klein bord even traag als het grootst mogelijke. Daarna vertrekt elke tegel zelfstandig en verschijnt zodra hij klaar is, dus een trage marketingsamenvatting houdt de rest niet tegen. Vragen twee tegels om exact hetzelfde overzicht, dan wordt dat één keer opgehaald zonder dat de twee widgets iets van elkaar hoeven te weten.",
+          "en": "Which tiles are on your board is resolved first; only then is any data fetched. That genuinely matters: several widgets fan out internally into multiple aggregate queries, and without that ordering a deliberately small board was as slow as the largest possible one. From there each tile travels on its own and appears the moment it is ready, so a slow marketing digest never holds the rest back. If two tiles ask for exactly the same digest it is fetched once, without either widget needing to know the other exists."
+        }
+      },
+      {
+        "heading": {
+          "nl": "En de klant krijgt zijn eigen bord",
+          "en": "And the client gets a board of their own"
+        },
+        "body": {
+          "nl": "Een klant die in het portaal inlogt, landt op hetzelfde mechanisme met eigen aankleding: heeft hij meerdere bedrijven bij je lopen, dan staat er een schakelaar boven het bord met per bedrijf het eigen logo. Zijn galerij is een andere dan die van je team, want een tegel die naar een intern scherm linkt heeft daar niets te zoeken: hij kiest uit Jullie rapportage (de laatst gepubliceerde rapportage met samenvatting en pdf) en het marketingoverzicht dat jouw bureau voor hem heeft samengesteld. De indeling is van de klant; wat er in die marketingtegel staat blijft van jou. Mijn dag zelf is kernfunctionaliteit en vraagt geen licentiesleutel: welke widgets er bestaan volgt gewoon de modules die je draait.",
+          "en": "A client signing in to the portal lands on the same mechanism wearing its own chrome: if they have several companies with you, a switcher sits above the board carrying each company's own logo. Their gallery is not your team's — a tile linking into an internal screen has no business there — so they pick from Jullie rapportage (the latest published report with its summary and PDF) and the marketing overview your agency curated for them. The layout is the client's; what that marketing tile shows stays yours. My Day itself is core functionality and needs no licence key: which widgets exist simply follows the modules you run."
+        }
+      }
+    ]
+  }
+}

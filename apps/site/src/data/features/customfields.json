@@ -1,7 +1,7 @@
 {
   "name": "Maatwerkvelden",
   "slug": "customfields",
-  "order": 90,
+  "order": 170,
   "icon": "🎚️",
   "lucide": "customfields",
   "demo": "customfields",
@@ -33,14 +33,14 @@
           "en": "Fields you define"
         },
         "body": {
-          "nl": "Onder Instellingen → Eigen velden leg je per soort record vast welke extra gegevens je bijhoudt: een KvK-nummer op de klant, een risicoprofiel op het project, een verlengdatum op de website. Elk veld heeft een type, dus een datum is een datum en een keuze is een keuze, geen los tekstvakje waar iedereen iets anders in typt. Nieuwe modules die aan de klant hangen, krijgen dezelfde eigen velden vanzelf.",
-          "en": "Under Settings → Custom fields you decide, per record type, what extra data you keep: a registration number on the client, a risk profile on the project, a renewal date on the website. Every field has a type, so a date is a date and a choice is a choice, not a loose text box everyone fills in differently. New modules that attach to the client inherit the same custom fields automatically."
+          "nl": "Onder Instellingen → Aangepaste velden leg je per soort record vast welke extra gegevens je bijhoudt: een segment of een regiocode op de klant, een risicoprofiel op het project, een verlengdatum op de website. Elk veld heeft een type, dus een datum is een datum en een keuze is een keuze, geen los tekstvakje waar iedereen iets anders in typt. Een nieuwe module die aan de klant hangt, kan meteen zijn eigen velden krijgen: het scherm neemt het nieuwe soort record vanzelf op, want definities horen bij een recordsoort en niet bij het product als geheel.",
+          "en": "Under Instellingen → Aangepaste velden (Settings → Custom fields) you decide, per record type, what extra data you keep: a segment or a region code on the client, a risk profile on the project, a renewal date on the website. Every field has a type, so a date is a date and a choice is a choice, not a loose text box everyone fills in differently. A new module that attaches to the client can carry fields of its own right away: the screen picks the new record type up on its own, because definitions belong to a record type rather than to the product as a whole."
         }
       },
       {
         "heading": {
-          "nl": "Twaalf types, verplicht waar het moet",
-          "en": "Twelve types, required where it counts"
+          "nl": "Elf types, verplicht waar het moet",
+          "en": "Eleven types, required where it counts"
         },
         "body": {
           "nl": "Kies het type dat bij het gegeven past en markeer een veld als verplicht wanneer een record zonder dat gegeven niet af is. Per type stel je de regels in: opties voor een keuzelijst, een minimum en maximum voor getallen, een default of een stukje uitleg bij het veld.",

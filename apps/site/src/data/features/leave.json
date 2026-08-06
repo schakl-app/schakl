@@ -1,7 +1,7 @@
 {
   "name": "Verlof en roosters",
   "slug": "leave",
-  "order": 50,
+  "order": 120,
   "icon": "🌴",
   "lucide": "leave",
   "demo": "leave",
@@ -33,8 +33,8 @@
           "en": "To your policy, not to law written in code"
         },
         "body": {
-          "nl": "Verloftypen definieer je zelf: vakantie, ziek, onbetaald, bijzonder verlof, elk met eigen opbouw, carry-over en vervalregels. Niets van een land staat hardgecodeerd, dus je modelleert wettelijke en bovenwettelijke dagen precies zoals jouw cao ze kent. Ziekte is een eigen type en gaat nooit van het vakantiesaldo af.",
-          "en": "You define the leave types yourself: vacation, sick, unpaid, special leave, each with its own accrual, carry-over and expiry rules. No country's law is hardcoded, so you model statutory and extra-statutory days exactly as your collective agreement knows them. Sick leave is its own type and never comes off the vacation balance."
+          "nl": "Verloftypen definieer je zelf: vakantie, ziek, onbetaald, bijzonder verlof, elk met eigen opbouw, carry-over en vervalregels. Niets van een land staat hardgecodeerd, dus je modelleert wettelijke en bovenwettelijke dagen precies zoals jouw cao ze kent. Ziekte is een eigen type en gaat nooit van het vakantiesaldo af. Per type leg je ook vast hoe het op de agenda hoort te staan: als hele dag of als blok van tot, want of een afwezigheid leest als 'vandaag weg' of als 'weg tussen 08:30 en 17:00' is een eigenschap van de soort verlof en niet van de losse aanvraag.",
+          "en": "You define the leave types yourself: vacation, sick, unpaid, special leave, each with its own accrual, carry-over and expiry rules. No country's law is hardcoded, so you model statutory and extra-statutory days exactly as your collective agreement knows them. Sick leave is its own type and never comes off the vacation balance. Per type you also say how it belongs on the calendar — a full-day chip or an hour block — because whether an absence reads as \"away today\" or \"away between 08:30 and 17:00\" is a property of the kind of leave, not of the individual request."
         }
       },
       {
@@ -63,22 +63,48 @@
       },
       {
         "heading": {
-          "nl": "Roosters per medewerker",
-          "en": "A schedule per employee"
+          "nl": "Roosters die aan het contract hangen",
+          "en": "Schedules that hang on the contract"
         },
         "body": {
-          "nl": "Een rooster is een week per medewerker: per weekdag een werkblok met een willekeurig aantal pauzevensters erin. Een pauze is een venster, geen duur; je trekt geen '30 minuten' van een dag af, je zegt wanneer de pauze valt. Het rooster hoort bij de persoon (Instellingen → Gebruikers), want het is contractgegeven, en de uren per week rollen er automatisch uit. Feestdagen komen uit een generator die ze uit Pasen afleidt, dus 2028 vraagt geen code; werk je Goede Vrijdag door, dan zet je die uit en een herimport brengt hem niet terug.",
-          "en": "A schedule is a week per employee: for each weekday a working block with any number of break windows inside it. A break is a window, not a duration — you don't subtract '30 minutes' from a day, you say when the break falls. The schedule lives on the person (Settings → Users), because it is contract data, and the hours per week roll out of it automatically. Public holidays come from a generator that derives them from Easter, so 2028 needs no code change; if you work Good Friday, you switch it off and a re-import never brings it back."
+          "nl": "Een rooster is een week per medewerker: per weekdag een werkblok met een willekeurig aantal pauzevensters erin. Een pauze is een venster, geen duur; je trekt geen '30 minuten' van een dag af, je zegt wanneer de pauze valt. De uren per week rollen uit die week en worden nooit ingetypt. En omdat een roosterwijziging meestal een contractwijziging is, hoort de week bij het arbeidscontract: contracten zijn perioden met een begindatum, een einddatum of doorlopend, contracturen per week en een eigen werkweek. Een gewijzigd contract is een nieuwe regel en geen bewerking, dus verlof van vorig jaar blijft geprijsd tegen het rooster van toen, ook als een aanvraag over een contractgrens heen loopt. Je legt het per medewerker vast onder Instellingen → Team & gebruikers, in een wizard van drie stappen: Contract, Werkweek, Vrije tijd. Feestdagen komen uit een generator die ze uit Pasen afleidt, dus 2028 vraagt geen code; werk je Goede Vrijdag door, dan zet je die uit en een herimport brengt hem niet terug.",
+          "en": "A schedule is a week per employee: for each weekday a working block with any number of break windows inside it. A break is a window, not a duration — you don't subtract \"30 minutes\" from a day, you say when the break falls. The hours per week roll out of that week and are never typed in. And because a change of schedule is usually a change of contract, the week lives on the employment contract: contracts are periods with a start date, an end date or none, contract hours per week and a week of their own. A changed contract is a new row rather than an edit, so last year's leave stays priced at last year's roster, even when a request crosses a contract boundary. You set it per employee under Instellingen → Team & gebruikers (Settings → Team & users), in a three-step wizard: Contract, Werkweek, Vrije tijd. Public holidays come from a generator that derives them from Easter, so 2028 needs no code change; if you work Good Friday, you switch it off and a re-import never brings it back."
         }
       },
       {
         "heading": {
-          "nl": "Saldo dat klopt, ook bij een voorschot",
-          "en": "A balance that holds, even on an advance"
+          "nl": "Eén saldo, opgebouwd uit potjes die echt vervallen",
+          "en": "One balance, built from pots that really do expire"
         },
         "body": {
-          "nl": "Het saldo is opbouw plus carry-over min opgenomen min openstaand, per medewerker, type en jaar. Vraagt iemand meer dan er staat, dan waarschuwt de vorm maar de aanvraag gaat door: voorschot is de beslissing van de manager, het saldo leest negatief en de goedkeurder ziet het tekort terug op de lijst. Overlappende aanvragen en spannen van nul uur blijven harde fouten. Rechtenpotten voor het lopende en volgende jaar vullen zichzelf, en een cron in december rolt de hele staf door.",
-          "en": "The balance is accrual plus carry-over minus taken minus pending, per employee, type and year. Ask for more than is left and the form warns but the request still goes through: an advance is the manager's call, the balance reads negative, and the approver sees the shortfall again on the pending list. Overlapping requests and zero-hour spans stay hard errors. Entitlement pots for the current and next year seed themselves, and a December cron rolls the whole staff forward."
+          "nl": "Wettelijk en bovenwettelijk vakantieverlof zijn twee potjes met een eigen opbouw en een eigen vervaltermijn, maar de medewerker ziet één getal: Vakantieverlof. Daaronder staat de uitsplitsing per potje, met opbouwjaar, restant en vervaldatum. Het verval is echt: opbouw uit een jaar lapst zoveel maanden na dat jaar als je bij het type instelt, en het opnemen gaat op vervaldatum, kortst houdbare potje eerst. Dat is in het voordeel van de medewerker, want er vervalt niets wat opgemaakt had kunnen worden. Vraagt iemand meer dan er staat, dan waarschuwt de vorm maar de aanvraag gaat door: voorschot is de beslissing van de manager, het saldo leest negatief en de goedkeurder ziet het tekort terug op de lijst. Overlappende aanvragen en spannen van nul uur blijven harde fouten. Jaarsaldi leidt het systeem zelf af uit het contract en berekent het opnieuw bij elke contractwijziging, terwijl een handmatige correctie daarbij nooit wordt overschreven en een afgesloten jaar niet opnieuw wordt geprijsd; een cron in december rolt de hele staf door.",
+          "en": "Statutory and extra-statutory vacation are two pots with their own accrual and their own expiry term, but the employee sees one figure: Vakantieverlof. Underneath sits the breakdown per pot, with its accrual year, what is left and when it expires. Expiry is real: a year's accrual lapses as many months after that year as you set on the type, and consumption runs by expiry date, shortest-lived pot first. That favours the employee, because nothing lapses that could have been spent. Ask for more than is left and the form warns but the request still goes through: an advance is the manager's call, the balance reads negative, and the approver sees the shortfall again on the pending list. Overlapping requests and zero-hour spans stay hard errors. Yearly entitlements are derived from the contract and recomputed on every contract change, while a manual correction is never overwritten and a closed year is never re-priced; a December cron rolls the whole staff forward."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Vrije tijd die zichzelf inplant",
+          "en": "Free time that plans itself"
+        },
+        "body": {
+          "nl": "Werkt iemand minder dan de voltijdnorm van je organisatie, dan is dat verschil vrije tijd: veertig uur norm min een contract van zesendertig geeft vier uur per week, afgerond op halve dagen. Of dat ook zo moet werken, beslis je per contract en niet per organisatie, want beide afspraken komen naast elkaar voor in hetzelfde bureau. Daarna zet je die dagen op de agenda, in een van twee vormen, omdat er ook twee dingen bekend kunnen zijn: soms is de afspraak een ritme, soms alleen het aantal dagen. Ze worden als vooraf goedgekeurd verlof geplaatst, dus ze staan gewoon in de agenda en zijn stuk voor stuk te verplaatsen of te annuleren; een patroon verwijderen laat de geplaatste dagen staan, tenzij je vraagt om ze vanaf vandaag terug te nemen. En omdat een saldo van nul niets zegt zodra alle dagen geplaatst zijn (opgebouwd is dan gelijk aan opgenomen), staat op je verlofpagina de kaart Vrije tijd naast het saldo.",
+          "en": "When someone works less than your organisation's full-time norm, that shortfall is free time: a forty-hour norm minus a thirty-six-hour contract gives four hours a week, rounded to the nearest half day. Whether it should work that way is decided per contract rather than per organisation, because both arrangements live side by side in the same agency. Then you put those days on the calendar, in one of two shapes, because two different things can be known: sometimes the arrangement is a rhythm, sometimes only the number of days. They are placed as pre-approved leave, so they simply sit on the calendar and each one can be moved or cancelled; deleting a pattern leaves the placed days alone unless you ask for the ones from today onward back. And because a balance of zero says nothing once every day has been placed (accrued then equals taken), your leave page carries the Vrije tijd card beside the balance."
+        },
+        "bullets": {
+          "nl": [
+            "Per contract: afleiden uit de norm, 'vast in het rooster' voor wie de vrijdag al vrij heeft, of een afgesproken aantal uren dat geen formule dekt",
+            "'x dagen per jaar': gespreid over het jaar op dezelfde weekdag, doorschuivend langs feestdagen en niet-werkdagen zodat het aantal klopt",
+            "Of een vast ritme: elke twee weken de vrijdag, of elke woensdagmiddag vanaf 15:00",
+            "De kaart Vrije tijd: dit jaar, opgenomen, nog in te plannen, en de eerstvolgende vrije dag",
+            "Plus de overhang: dagen die na een contractwijziging niet meer in het saldo passen, gemeld met een knop om ze terug te nemen, nooit stilletjes geannuleerd"
+          ],
+          "en": [
+            "Per contract: derive it from the norm, \"already in the roster\" for someone who has Friday off anyway, or an agreed number of hours no formula expresses",
+            "\"x days a year\": spread across the year on the same weekday, sliding past holidays and non-working days so the count actually lands",
+            "Or a fixed rhythm: every other Friday, or every Wednesday afternoon from 15:00",
+            "The Vrije tijd card: this year, taken, still to be planned, and the next free day",
+            "Plus the overhang: days that no longer fit the balance after a contract change, reported with a button to withdraw them, never silently cancelled"
+          ]
         }
       },
       {
@@ -87,8 +113,24 @@
           "en": "Approval, and the rest of the platform"
         },
         "body": {
-          "nl": "Zelf goedkeuren staat standaard uit: wie mag goedkeuren is op zijn eigen aanvragen een gewone aanvrager, en Instellingen → Verlof zet dat terug voor een vertrouwde goedkeurder. Kan een rooster iets niet uitdrukken (vier uur op een dag waarop niemand gepland stond), dan legt een manager de uren handmatig vast, op zijn naam. Goedgekeurd verlof verschijnt op de urenstaat en valt buiten de factureerbare capaciteit; het wordt nooit een tweede keer als tijdregel geteld.",
-          "en": "Self-approval is off by default: whoever may approve is, on their own requests, an ordinary requester, and Settings → Leave restores that for a trusted approver. When a schedule can't express something (four hours on a day no one was scheduled), a manager sets the hours by hand, recorded against their name. Approved leave shows on the timesheet and falls outside billable capacity; it is never counted a second time as a time entry."
+          "nl": "Zelf goedkeuren staat standaard uit: wie mag goedkeuren is op zijn eigen aanvragen een gewone aanvrager, en Instellingen → Verlof zet dat terug voor een vertrouwde goedkeurder (is er maar één goedkeurder, dan mag die altijd zichzelf regelen, want een bureau van één persoon moet niet vastlopen). Kan een rooster iets niet uitdrukken (vier uur op een dag waarop niemand gepland stond), dan legt een manager de uren handmatig vast, op zijn naam. Fiatteurs werken op het tabblad Team naast Mijn verlof: de goedkeuringswachtrij met het tekort erbij, de saldi en aanvragen per medewerker per jaar, de contracturen ernaast, en goedkeuren of afwijzen over een hele selectie. Daarna gaat goedgekeurd verlof vanzelf de rest van het platform in. Verlof is een uitbreidingsmodule: de kern van schakl. is open source (AGPL) en modules als deze draaien op een licentiesleutel die de beheerder invoert onder Instellingen → Licentie; verloopt die, dan wordt de module alleen-lezen en blijven saldi, roosters en aanvragen gewoon leesbaar.",
+          "en": "Self-approval is off by default: whoever may approve is, on their own requests, an ordinary requester, and Instellingen → Verlof (Settings → Leave) restores that for a trusted approver — where there is only one approver, they may always manage themselves, because a one-person agency must not deadlock. When a schedule can't express something (four hours on a day no one was scheduled), a manager sets the hours by hand, recorded against their name. Approvers work on the Team tab beside Mijn verlof: the approval queue with the shortfall spelled out, balances and requests per employee per year, the contract hours alongside, and approve or reject across a whole selection. From there, approved leave travels into the rest of the platform on its own. Verlof is an extension module: the core of schakl. is open source (AGPL) and modules like this one run on a licence key the administrator installs under Instellingen → Licentie; when it lapses the module goes read-only and balances, schedules and requests stay readable."
+        },
+        "bullets": {
+          "nl": [
+            "Weekstaat: goedgekeurd verlof staat als eigen regel op de urenstaat en valt buiten de facturabele capaciteit, nooit een tweede keer geteld als urenregistratie",
+            "Agenda: een eigen feed naast de feestdagen, met kleur per verloftype of per collega, per persoon te tonen of te verbergen, en een dag die je naar een andere datum sleept wordt door de server herberekend en zo nodig opnieuw ter goedkeuring gezet",
+            "Verloftypen op 'per uur' worden als geplaatst uurblok in de dag- en weekweergave getekend in plaats van als hele-dagbalk",
+            "Google Calendar: goedgekeurd verlof spiegelt naar de eigen agenda van de medewerker, hele dag of getimed volgens dezelfde instelling",
+            "Mijn dag: je eigen saldo, de wachtrij 'goed te keuren' voor fiatteurs, en wie er vandaag niet is"
+          ],
+          "en": [
+            "Timesheet: approved leave appears as a row of its own and falls outside billable capacity, never counted a second time as a time entry",
+            "Agenda: its own feed beside the public holidays, coloured per leave type or per colleague, shown or hidden per person, and a day you drag to another date is recomputed by the server and sent back for approval where that is needed",
+            "Types set to \"per uur\" are drawn as a positioned hour block in the day and week views instead of a full-day chip",
+            "Google Calendar: approved leave mirrors to the employee's own calendar, all-day or timed by that same setting",
+            "My Day: your own balance, the approver's \"goed te keuren\" queue, and who is out today"
+          ]
         }
       }
     ]

@@ -1,7 +1,7 @@
 {
   "name": "Rollen en rechten",
   "slug": "roles",
-  "order": 100,
+  "order": 180,
   "icon": "🛡️",
   "lucide": "roles",
   "demo": "roles",
@@ -86,7 +86,7 @@
         },
         "body": {
           "nl": "Je regelt alles onder Instellingen → Rollen: rollen maken, rechten aanvinken, toewijzen aan mensen. Zet je later een module aan, dan brengt die zijn eigen rechten mee en worden ze eenmalig aan je systeemrollen toegekend. Elke wijziging aan een rol wordt vastgelegd, zodat je terug kunt zien wie wat veranderde.",
-          "en": "You set everything up under Settings → Roles: create roles, tick permissions, assign them to people. Turn on a module later and it brings its own permissions, granted to your system roles once. Every change to a role is recorded, so you can see who changed what."
+          "en": "You set everything up under Instellingen → Rollen (Settings → Roles): create roles, tick permissions, assign them to people. Turn on a module later and it brings its own permissions, granted to your system roles once. Every change to a role is recorded, so you can see who changed what."
         }
       }
     ]

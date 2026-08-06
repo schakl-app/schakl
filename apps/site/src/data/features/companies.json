@@ -1,7 +1,7 @@
 {
   "name": "Klanten als middelpunt",
   "slug": "companies",
-  "order": 10,
+  "order": 20,
   "icon": "🏢",
   "lucide": "clients",
   "demo": "createClient",
@@ -10,8 +10,8 @@
     "en": "Clients at the centre"
   },
   "description": {
-    "nl": "Contactpersonen, projecten, domeinen, uren en afspraken hangen allemaal aan de klant: één pagina met het hele beeld.",
-    "en": "Contacts, projects, domains, hours and agreements all attach to the client — one page with the full picture."
+    "nl": "Contactpersonen, projecten, domeinen, uren en facturen hangen allemaal aan de klant: één pagina met het hele beeld.",
+    "en": "Contacts, projects, domains, hours and invoices all attach to the client — one page with the full picture."
   },
   "page": {
     "eyebrow": {
@@ -23,8 +23,8 @@
       "en": "The client sits at the centre"
     },
     "lead": {
-      "nl": "Contactpersonen, projecten, uren, domeinen en afspraken hangen allemaal aan de klant. Eén dossierpagina met het hele beeld, samengesteld uit precies de modules die jouw organisatie gebruikt.",
-      "en": "Contacts, projects, hours, domains and agreements all attach to the client. One page with the full picture, composed from exactly the modules your organisation runs."
+      "nl": "Contactpersonen, projecten, uren, domeinen en facturen hangen allemaal aan de klant. Eén dossierpagina met het hele beeld, samengesteld uit precies de modules die jouw organisatie gebruikt.",
+      "en": "Contacts, projects, hours, domains and invoices all attach to the client. One page with the full picture, composed from exactly the modules your organisation runs."
     },
     "sections": [
       {
@@ -33,19 +33,21 @@
           "en": "One record, built from your modules"
         },
         "body": {
-          "nl": "De klant is de spil: elke andere module draagt een paneel bij aan de klantpagina, zonder dat die pagina daarvoor wordt aangepast. Zet je een module uit, dan verdwijnt het bijbehorende paneel vanzelf. Wat je op het dossier ziet is dus precies de manier waarop jouw bureau werkt, niet een vaste lijst die iedereen krijgt.",
-          "en": "The client is the hub: every other module contributes a panel to the client page, and the page never needs editing to receive one. Turn a module off and its panel disappears with it. What you see on the record is the way your agency actually works, not a fixed list handed to everyone."
+          "nl": "De klant is de spil: elke andere module draagt een paneel bij aan de klantpagina, zonder dat die pagina daarvoor wordt aangepast. Zet je een module uit, dan verdwijnt het bijbehorende paneel vanzelf. Wat je op het dossier ziet is dus precies de manier waarop jouw bureau werkt, niet een vaste lijst die iedereen krijgt. Elk paneel toont een begrensd aantal rijen en zegt dat er meer zijn, want een dossier moet openen en niet laden.",
+          "en": "The client is the hub: every other module contributes a panel to the client page, and the page never needs editing to receive one. Turn a module off and its panel disappears with it. What you see on the record is the way your agency actually works, not a fixed list handed to everyone. Every panel caps its rows and admits there are more, because a record should open rather than load."
         },
         "bullets": {
           "nl": [
-            "Contactpersonen, projecten en uren zodra die modules aanstaan",
-            "Domeinen, websites en hosting als losse, koppelbare assets",
-            "Abonnementen, bestanden en toekomstige types volgens hetzelfde patroon"
+            "Gegevens, Contactpersonen, Projecten, Taken en Uren zodra die modules aanstaan",
+            "Contactmomenten, Facturatie en Abonnementen voor de commerciële kant",
+            "Domeinen en Websites als losse, koppelbare assets",
+            "Marketing, Rapportage en Google Drive zodra je die koppelingen gebruikt"
           ],
           "en": [
-            "Contacts, projects and hours as soon as those modules are on",
-            "Domains, websites and hosting as separate, linkable assets",
-            "Subscriptions, files and future types following the same pattern"
+            "Gegevens, Contactpersonen, Projecten, Taken and Uren as soon as those modules are on",
+            "Contactmomenten, Facturatie and Abonnementen for the commercial side",
+            "Domeinen and Websites as separate, linkable assets",
+            "Marketing, Rapportage and Google Drive once you use those integrations"
           ]
         }
       },
@@ -55,14 +57,14 @@
           "en": "A status that sets the work in motion"
         },
         "body": {
-          "nl": "Elke klant doorloopt een heldere levenscyclus, van eerste lead tot archief. De status is niet alleen een label: een overgang kan taaksjablonen aanzetten, zodat een klant die op onboarding komt vanzelf de juiste startchecklist krijgt. Zo staat de intake vast omschreven en begint niemand met een leeg vel.",
-          "en": "Every client moves through a clear lifecycle, from first lead to archive. The status is more than a label: a transition can fire task templates, so a client moving to onboarding gets the right start checklist on its own. The intake is written down once and nobody begins from a blank page."
+          "nl": "Elke klant doorloopt een heldere levenscyclus, van eerste lead tot archief. De status is niet alleen een label: een overgang kan een takensjabloon aanzetten, zodat een klant die op onboarding komt vanzelf de juiste startchecklist krijgt. Zo staat de intake vast omschreven en begint niemand met een leeg vel.",
+          "en": "Every client moves through a clear lifecycle, from first lead to archive. The status is more than a label: a transition can fire a task template, so a client moving to onboarding gets the right start checklist on its own. The intake is written down once and nobody begins from a blank page."
         },
         "bullets": {
           "nl": [
             "Lead: nog in gesprek, nog geen opdracht",
             "Onboarding: binnengehaald, de startchecklist loopt",
-            "Actief, offboarding en archief voor de rest van de rit"
+            "Actief, offboarding en gearchiveerd voor de rest van de rit"
           ],
           "en": [
             "Lead: still in conversation, no engagement yet",
@@ -77,28 +79,38 @@
           "en": "Who knows the client, who runs it"
         },
         "body": {
-          "nl": "Een klant heeft één primaire contactpersoon, herkenbaar aan de merkkleur, en zo veel extra contactpersonen als nodig. Aan de kant van je eigen team wijs je één verantwoordelijke aan plus de collega's die meewerken; die verantwoordelijke valt automatisch door op nieuwe projecten en taken onder deze klant, en is per stuk te overschrijven. Facturatie kent bovendien een eigen e-mailadres, want de boekhouding zit zelden in dezelfde mailbox als de dagelijkse contactpersoon.",
-          "en": "A client has one primary contact, marked in your brand colour, plus as many further contacts as you need. On your own side you name one responsible person and the colleagues working alongside; that responsible person defaults down onto new projects and tasks under this client, overridable case by case. Invoicing carries its own email address too, because accounts payable rarely shares a mailbox with the day-to-day contact."
+          "nl": "Een klant heeft één primaire contactpersoon, herkenbaar aan de merkkleur, en zo veel extra contactpersonen als nodig. Aan de kant van je eigen team wijs je één verantwoordelijke aan plus de collega's die meewerken; die verantwoordelijke valt automatisch door op nieuwe projecten en taken onder deze klant, en is per stuk te overschrijven. In de lijst zet je met één schakelaar 'Mijn klanten' aan, zodat je alleen ziet waar je zelf op staat. En de kolom Beschikbare uren telt de urenbudgetten van de lopende projecten op tegen wat er geboekt is, in SQL uitgerekend en alleen opgehaald wanneer je die kolom ook echt toont.",
+          "en": "A client has one primary contact, marked in your brand colour, plus as many further contacts as you need. On your own side you name one responsible person and the colleagues working alongside; that responsible person defaults down onto new projects and tasks under this client, overridable case by case. On the list a single \"Mijn klanten\" toggle narrows it to the ones you are on. And the Beschikbare uren column sums the hour budgets of the running projects against what has been logged — computed in SQL, and only fetched when you actually show the column."
         }
       },
       {
         "heading": {
-          "nl": "Nooit je werk verlaten voor een ontbrekende klant",
-          "en": "Never leave your work for a missing client"
+          "nl": "Het klantnummer en de administratie",
+          "en": "The client number and the paperwork"
         },
         "body": {
-          "nl": "Elke keuzelijst die naar een klant verwijst, bij een project, een urenregistratie of een domein, biedt \"＋ toevoegen\". Het volledige aanmaakformulier opent in een dialoog en na opslaan is de nieuwe klant meteen geselecteerd. Je hoeft dus nooit een half ingevuld scherm te verlaten omdat een klant nog niet bestond.",
-          "en": "Every picker that points at a client, on a project, a time entry or a domain, offers \"＋ add\". The full create form opens in a dialog and once saved the new client is selected straight away. You never abandon a half-filled screen because a client did not exist yet."
+          "nl": "Een klant draagt de gegevens die de boekhouding nodig heeft: btw-nummer, KvK-nummer, adres met een eigen huisnummerveld, land, telefoon en een apart factuur-e-mailadres, want de crediteurenadministratie zit zelden in dezelfde mailbox als je dagelijkse contactpersoon. Bij het typen van een volledige postcode en huisnummer vraagt schakl. 'Bedoel je: …?' en vult straat en plaats voor je in, via de openbare PDOK-adressen. Telefoonnummers worden als E.164 opgeslagen met een landkeuze, dus een 06-nummer uit een import hoeft niemand met de hand recht te zetten. Het klantnummer bouw je zelf op onder Instellingen → Klantnummering, met tokens voor jaar en volgnummer, een teller die je mag bijstellen, een optionele jaarlijkse reset en een knop die bestaande klanten alsnog nummert, oudste eerst. Alles wat de factuur nodig heeft wordt bij het definitief maken op de factuur zelf vastgelegd, zodat een adreswijziging van vandaag geen factuur van vorig jaar herschrijft.",
+          "en": "A client carries what the bookkeeping needs: VAT number, chamber-of-commerce number, an address with its own house-number field, country, phone and a separate invoice email address, because accounts payable rarely shares a mailbox with your day-to-day contact. Type a complete Dutch postcode and house number and schakl. asks \"Bedoel je: …?\", filling in street and city from the public PDOK address set. Phone numbers are stored as E.164 with a country picker, so an 06 number out of an import never needs hand-correcting. The client number is yours to shape under Instellingen → Klantnummering: tokens for the year and the sequence, a counter you may adjust, an optional yearly reset, and a button that numbers the clients you already had, oldest first. Everything an invoice needs is snapshotted onto the invoice when it is issued, so today's change of address never rewrites last year's document."
         }
       },
       {
         "heading": {
-          "nl": "Eigen velden en een spoor dat blijft",
-          "en": "Your own fields and a trail that stays"
+          "nl": "Werken vanaf de klantpagina",
+          "en": "Working from the client page"
         },
         "body": {
-          "nl": "Mist er een gegeven, zoals een klantnummer, segment of regiocode? Onder Instellingen → Eigen velden definieer je per type je eigen getypeerde velden, desgewenst verplicht, en ze verschijnen automatisch in het formulier en op het dossier. Onderaan elk dossier staat de activiteit: wie wat wanneer wijzigde, met de wijziging erbij, automatisch bijgehouden en bewaard, ook als de medewerker later vertrekt. Wie klanten mag zien, aanmaken of bewerken bepaal je fijnmazig per rol onder Instellingen → Rollen.",
-          "en": "Missing a detail, like a client number, a segment or a region code? Under Instellingen → Eigen velden you define your own typed fields per entity, required where you want, and they appear in the form and on the record on their own. Every record ends with its activity trail: who changed what and when, with the change itself, recorded automatically and kept even after the person leaves. Who may view, create or edit clients is set finely per role under Instellingen → Rollen."
+          "nl": "Elke keuzelijst die naar een klant verwijst, bij een project, een urenregistratie of een domein, biedt '＋ “Jansen” toevoegen': het volledige aanmaakformulier opent in een dialoog en na opslaan is de nieuwe klant meteen geselecteerd. Andersom werkt het net zo. Vanaf de kop van het dossier leg je een contactmoment vast, maak je een taak aan, boek je uren met de klant al ingevuld, of pas je een takensjabloon toe. En wat voor één klant geldt, geldt ook voor vijftig: met de ✎ in de werkbalk zet je selectievakjes aan om in één keer de status te wijzigen of een selectie te verwijderen, en met Export en Import reist de hele gefilterde lijst als CSV, TSV of Excel naar buiten en weer terug. De kolomkoppen zijn vaste sleutels, dus een export wordt ongewijzigd herkend; een import zoekt eerst op klantnummer en pas daarna op naam, en neemt de contactpersoon in dezelfde rij mee.",
+          "en": "Every picker that points at a client, on a project, a time entry or a domain, offers ＋ Add “Jansen”: the full create form opens in a dialog and once saved the new client is selected straight away. It works the same way round, too. From the header of the record you log an interaction, create a task, book hours with the client already filled in, or apply a task template. And what holds for one client holds for fifty: the ✎ in the toolbar switches checkboxes on so you can change the status across a selection or delete one, and Export and Import send the whole filtered list out as CSV, TSV or Excel and take it back. Column headers are stable keys, so an export is recognised unchanged; an import matches on the client number before the name, and carries the contact person along in the same row."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Wie welke klanten ziet, en een spoor dat blijft",
+          "en": "Who sees which clients, and a trail that stays"
+        },
+        "body": {
+          "nl": "Niet iedereen hoeft elke klant te zien. Onder Instellingen → Klantgroepen maak je groepen klanten en vink je aan welke teamleden ertoe beperkt zijn; zo'n lid ziet alleen die klanten, overal in het product, tot in de tellingen boven de lijst, de contactpersonen, de websites en het activiteitenspoor. Een lid zonder groepen ziet alles, en eigenaren worden nooit beperkt. Mist er een gegeven zoals een segment of een regiocode, dan definieer je onder Instellingen → Aangepaste velden je eigen getypeerde velden, desgewenst verplicht, en ze verschijnen vanzelf in het formulier, op het dossier en als kolom in de lijst. Onderaan elk dossier staat de activiteit: wie wat wanneer wijzigde, met de wijziging erbij, bewaard ook nadat de collega is vertrokken, en met de naam van wie er namens iemand anders inlogde. Wie klanten mag zien, aanmaken of bewerken bepaal je fijnmazig per rol onder Instellingen → Rollen.",
+          "en": "Not everyone needs to see every client. Under Instellingen → Klantgroepen you build groups of clients and tick which team members are confined to them; such a member sees only those clients, everywhere in the product, down to the counts above the list, the contacts, the websites and the activity trail. A member with no groups sees everything, and owners are never restricted. Missing a detail such as a segment or a region code? Under Instellingen → Aangepaste velden you define your own typed fields, required where you want, and they appear in the form, on the record and as a list column on their own. Every record ends with its activity trail: who changed what and when, with the change itself, kept after the colleague has left, and naming whoever was signed in on someone else's behalf. Who may view, create or edit clients is set finely per role under Instellingen → Rollen."
         }
       }
     ]

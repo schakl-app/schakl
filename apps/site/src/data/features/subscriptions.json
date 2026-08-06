@@ -1,7 +1,7 @@
 {
   "name": "Abonnementen",
   "slug": "subscriptions",
-  "order": 70,
+  "order": 90,
   "icon": "🔁",
   "lucide": "subscriptions",
   "demo": "subscriptions",
@@ -10,8 +10,8 @@
     "en": "Subscriptions"
   },
   "description": {
-    "nl": "Terugkerende diensten en retainers per klant, met types, status en bulkacties in één overzicht.",
-    "en": "Recurring services and retainers per client, with types, status and bulk actions in one view."
+    "nl": "Terugkerende afspraken per klant, met prijshistorie, inbegrepen uren en een factuurcyclus die zelf een conceptfactuur klaarzet.",
+    "en": "Recurring agreements per client, with price history, included hours and a billing cycle that drafts the invoice itself."
   },
   "page": {
     "eyebrow": {
@@ -23,8 +23,8 @@
       "en": "Every retainer, its own record"
     },
     "lead": {
-      "nl": "Een abonnement legt vast wat een klant per periode betaalt voor welke scope: een terugkerende afspraak die aan de klant hangt, met een status, een type en een prijs die zichzelf nooit herschrijft.",
-      "en": "A subscription records what a client pays per period, and for what scope: a recurring agreement attached to the client, with a status, a type and a price that never rewrites itself."
+      "nl": "Een abonnement legt vast wat een klant per periode betaalt en waarvoor: een terugkerende afspraak aan de klant, met een status, een type, inbegrepen uren en een prijs die zichzelf nooit herschrijft. De factuurcyclus loopt door zonder dat iemand een agenda bijhoudt, en levert een conceptfactuur waar jij nog naar kijkt.",
+      "en": "A subscription records what a client pays per period, and for what: a recurring agreement on the client, with a status, a type, included hours and a price that never rewrites itself. The billing cycle runs on without anyone keeping a calendar, and hands you a draft invoice you still get to look at."
     },
     "sections": [
       {
@@ -33,29 +33,29 @@
           "en": "Attached to the client, not floating"
         },
         "body": {
-          "nl": "Een abonnement hangt aan de klant, net als contactpersonen, projecten en domeinen: op de klantpagina zie je in één paneel welke terugkerende afspraken lopen. Het is een omzetbegrip (wat de klant per periode betaalt), los van het uurbudget van een project. De twee verwijzen naar elkaar, ze zijn niet dezelfde regel.",
-          "en": "A subscription hangs off the client, alongside contacts, projects and domains: one panel on the client page shows which recurring agreements are running. It is a revenue concept (what the client pays per period), separate from a project's hour budget. The two reference each other; they are not the same row."
+          "nl": "Een abonnement hangt aan de klant, net als contactpersonen, projecten en domeinen: op de klantpagina zie je in één paneel welke terugkerende afspraken lopen, met bedrag, interval en de volgende factuurdatum. Het is een omzetbegrip (wat de klant per periode betaalt), los van het uurbudget van een project; de twee verwijzen naar elkaar, ze zijn niet dezelfde regel. Op het record staan naam, type, status, bedrag, interval (maandelijks, per kwartaal of jaarlijks, en desgewenst elke N intervallen), start- en einddatum, opzegtermijn en notities. Een nieuw abonnement start actief en leidt de eerstvolgende factuurdatum meteen af; een geïmporteerd abonnement blijft concept, zodat een bulkimport niet stilletjes live gaat.",
+          "en": "A subscription hangs off the client, alongside contacts, projects and domains: one panel on the client page shows which recurring agreements are running, with the amount, the interval and the next invoice date. It is a revenue concept (what the client pays per period), separate from a project's hour budget; the two reference each other, they are not the same row. The record carries a name, a type, a status, an amount, an interval (monthly, quarterly or yearly, and every N intervals if you want), start and end dates, a notice period and notes. A new subscription starts active and derives its next invoice date straight away; an imported one stays a draft, so a bulk import never quietly goes live."
         }
       },
       {
         "heading": {
-          "nl": "Types en sjablonen die je zelf inricht",
-          "en": "Types and templates you set up yourself"
+          "nl": "Types en standaardabonnementen die je zelf inricht",
+          "en": "Types and standard subscriptions you set up yourself"
         },
         "body": {
-          "nl": "Hosting, onderhoud, SEO: de categorieën zijn geen code, je richt ze zelf in onder Instellingen → Abonnementen, met labels in elke taal. Een sjabloon als \"Hosting Basis, €25 per maand, 1 uur inbegrepen\" vult het aanmaakformulier voor, zodat een nieuwe afspraak in seconden staat. Zet je een abonnement voor het eerst op actief, dan kan het type de bijbehorende onboardingtaken meteen aanmaken.",
-          "en": "Hosting, maintenance, SEO: the categories are not code. You configure them yourself under Settings → Subscriptions, with labels in every language. A template like \"Hosting Basic, €25 per month, 1 hour included\" prefills the create form, so a new agreement stands up in seconds. The first time you activate a subscription, its type can spawn the matching onboarding tasks."
+          "nl": "Hosting, onderhoud, SEO: de categorieën zijn geen code. Je maakt ze zelf aan onder Abonnementen → Abonnementstypes, met labels per taal, een volgorde en een actief-vlag. Een standaardabonnement als \"Hosting Basis, €25 per maand, 1 uur inbegrepen\" vult het aanmaakformulier voor, zodat een nieuwe afspraak in seconden staat; hernoem je zo'n standaardabonnement, dan gaan de abonnementen die die naam nog dragen mee en krijg je te zien hoeveel dat er waren. Een bestaand abonnement bewaar je andersom als standaardabonnement vanaf het ⋯-menu van de rij, en het wordt er meteen aan gekoppeld. En zet je een abonnement voor het eerst op actief, dan maakt zijn type de bijbehorende onboardingtaken op de klant aan: één keer, dus pauzeren en hervatten levert geen tweede onboarding op.",
+          "en": "Hosting, maintenance, SEO: the categories are not code. You create them yourself under Abonnementen → Abonnementstypes, with per-language labels, an order and an active flag. A standard subscription like \"Hosting Basic, €25 per month, 1 hour included\" prefills the create form, so a new agreement stands up in seconds; rename one and the subscriptions still carrying that name come along, with a count of how many did. The other way round, you save an existing subscription as a standard one from the row's ⋯ menu, and it is linked to it there and then. And the first time you set a subscription to active, its type creates the matching onboarding tasks on the client: once, so pausing and resuming never spawns a second onboarding."
         },
         "bullets": {
           "nl": [
-            "Tenant-eigen types met labels per taal",
-            "Sjablonen die het formulier voorvullen, geen kopie op de server",
-            "Taaksjablonen die bij de eerste activatie meelopen"
+            "De catalogus staat als tabblad boven de sectie zelf, niet weggestopt in Instellingen",
+            "Standaardabonnementen vullen het formulier voor; ze zijn geen kopie die achteraf uit de pas loopt",
+            "Notities dragen variabelen als {{company_name}} en {{included_hours}}, bewaard als token en ingevuld bij het tonen"
           ],
           "en": [
-            "Tenant-owned types with per-language labels",
-            "Templates that prefill the form, no server-side copy",
-            "Task templates that fire on first activation"
+            "The catalogue sits as a tab above the section itself, not tucked away in Instellingen",
+            "Standard subscriptions prefill the form; they are not a copy that drifts out of step afterwards",
+            "Notes carry variables like {{company_name}} and {{included_hours}}, stored as tokens and filled in on display"
           ]
         }
       },
@@ -65,8 +65,8 @@
           "en": "A price that never rewrites itself"
         },
         "body": {
-          "nl": "De prijs leeft in een append-only historie met een ingangsdatum. Een tariefwijziging voegt een regel toe, hij overschrijft niets, dus het bedrag op een factuur van vorig jaar blijft antwoordbaar. Verhoog je per 1 januari, dan houdt december gewoon zijn oude getal. En een factuur is geen los bedrag: de regels staan er stuk voor stuk onder.",
-          "en": "The price lives in append-only history with an effective date. A rate change appends a row, it overwrites nothing, so the amount on last year's invoice stays answerable. Raise the fee on 1 January and December keeps its old number. And an invoice is not one opaque figure: its lines are spelled out one by one."
+          "nl": "De prijs leeft in een append-only historie met een ingangsdatum. Een tariefwijziging voegt een regel toe en overschrijft niets, dus het bedrag op een factuur van vorig jaar blijft antwoordbaar: verhoog je per 1 januari, dan houdt december gewoon zijn oude getal. Een ronde prijsverhogingen doe je met de knop Prijsverhoging: percentage erbij, vast bedrag erbij of een nieuw bedrag instellen, met een ingangsdatum en een bereik van alles, één type, één abonnement of één standaardabonnement. Je ziet eerst het voorbeeld met huidig en nieuw bedrag per abonnement, en pas daarna wordt er iets geschreven; de standaardabonnementen gaan optioneel mee. Bij bulk bewerken zit de prijs er bewust niet bij, want die hoort langs dit pad te lopen en niet langs een veld dat de historie overslaat.",
+          "en": "The price lives in append-only history with an effective date. A rate change appends a row and overwrites nothing, so the amount on last year's invoice stays answerable: raise the fee on 1 January and December keeps its old number. A round of increases goes through the Prijsverhoging button: add a percentage, add a fixed amount or set a new amount, with an effective date and a scope of everything, one type, one subscription or one standard subscription. You see the preview with the current and new amount per subscription first, and only then is anything written; the standard subscriptions come along if you tick them. Bulk edit deliberately leaves the price out — it belongs on this path, not on a field that skips the history."
         }
       },
       {
@@ -75,31 +75,51 @@
           "en": "Included hours, measured against real work"
         },
         "body": {
-          "nl": "Een abonnement kan uren bevatten. Het verbruik wordt gemeten tegen de uren die op de gekoppelde projecten geboekt staan: precies dezelfde optelling die elke budgetbalk en burn-kleur leest, niet een aparte teller die uit de pas loopt. Ongebruikte uren vervallen of schuiven door volgens een rollover-regel die je zelf instelt, geen wet in code. Overschrijding wordt gesignaleerd, nooit stilletjes doorbelast.",
-          "en": "A subscription can include hours. Consumption is measured against the time logged on the linked projects: exactly the same total every budget bar and burn colour reads, not a separate counter drifting out of step. Unused hours lapse or carry over by a rollover rule you set yourself, not law written in code. Overage is flagged, never silently billed."
+          "nl": "Een abonnement kan uren bevatten. Het verbruik wordt gemeten tegen de uren die op de gekoppelde projecten geboekt staan: precies dezelfde optelling die elke budgetbalk en burn-kleur leest, niet een aparte teller die uit de pas loopt. Ongebruikte uren vervallen of schuiven door volgens een rollover-regel die je zelf instelt, eventueel met een aantal perioden waarna ze alsnog vervallen. Aan de projectkant werkt het andersom: koppel je een lopende retainer met inbegrepen uren, dan haalt het project zijn urenbudget uit de afspraak (meerdere afspraken tellen op), staat het veld op slot met de bron erbij en wordt de periode maandelijks. Werk dat een retainer al betaalt begint bovendien niet-facturabel, dus een urenregistratie erop wordt niet per ongeluk een tweede keer in rekening gebracht.",
+          "en": "A subscription can include hours. Consumption is measured against the time logged on the linked projects: exactly the same total every budget bar and burn colour reads, not a separate counter drifting out of step. Unused hours lapse or carry over by a rollover rule you set yourself, optionally with a number of periods after which they expire anyway. On the project side it works the other way round: link a running retainer with included hours and the project takes its hour budget from the agreement (several agreements sum), the field locks with its source named, and the period becomes monthly. Work a retainer already pays for also starts non-billable, so a time entry against it is never accidentally charged a second time."
         }
       },
       {
         "heading": {
-          "nl": "De lijst is een werkblad, de omzet één blik",
-          "en": "The list is a worksheet, the revenue one glance"
+          "nl": "Van cyclus naar conceptfactuur",
+          "en": "From cycle to draft invoice"
         },
         "body": {
-          "nl": "Alle abonnementen staan in dezelfde DataTable als de rest van het platform: sorteren op naam, status, startdatum of volgende factuur, filteren op klant, status en type, kolommen tonen of verbergen. Selecteer een reeks rijen en zet in één keer de status om of verwijder ze. Een dagelijkse cron kijkt wat toe is aan facturatie, schuift de volgende factuurdatum een periode op en geeft de regels door aan je boekhoudkoppeling; het Omzet-overzicht telt MRR en ARR op en toont wat er de komende maand aankomt.",
-          "en": "Every subscription sits in the same DataTable as the rest of the platform: sort by name, status, start date or next invoice, filter by client, status and type, show or hide columns. Select a run of rows and switch their status or delete them in one move. A daily cron finds what is due, advances the next invoice date by a period and hands the lines to your accounting integration; the Revenue overview sums MRR and ARR and shows what falls due in the coming month."
+          "nl": "Een dagelijkse cron kijkt welke abonnementen toe zijn, schuift de volgende factuurdatum een periode op en geeft de factuurregels door met het bedrag dat op de factuurdatum gold, niet met de prijs van vandaag. De facturatiemodule maakt daar een factuur van, met de abonnementsregels in hun eigen band op het document. Hoe ver dat automatisch gaat is een niveau en geen schakelaar: uit, concept klaarzetten, klaarzetten en definitief maken, of klaarzetten, definitief maken en mailen. Je stelt dat organisatiebreed in en overschrijft het per abonnement, zodat de vaste hostingretainer vanzelf loopt terwijl de klant over wie elke maand onderhandeld wordt met de hand blijft gaan. Wat er nog openstaat lees je terug in Overzicht → Omzet, met MRR, ARR, het aantal actieve abonnementen en de facturen die binnen een maand vervallen.",
+          "en": "A daily cron finds which subscriptions are due, advances the next invoice date by one period and hands over the invoice lines at the amount that applied on the invoice date, not at today's price. The invoicing module turns that into an invoice, with the subscription lines in their own band on the document. How far that runs by itself is a level rather than a switch: off, draft it, draft and issue it, or draft, issue and mail it. You set that agency-wide and override it per subscription, so the fixed hosting retainer runs on its own while the client you renegotiate every month stays manual. What is still coming reads back in Overzicht → Omzet, with MRR, ARR, the number of active subscriptions and the invoices falling due within a month."
+        },
+        "bullets": {
+          "nl": [
+            "De cyclus schuift door, ook als de factuur nog concept blijft",
+            "De prijs op de factuur is de prijs van die factuurdatum",
+            "Automatisch factureren per abonnement, of 'volg de organisatie'"
+          ],
+          "en": [
+            "The cycle advances even when the invoice stays a draft",
+            "The price on the invoice is the price of that invoice date",
+            "Automatic invoicing per subscription, or \"follow the organisation\""
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "De lijst is een werkblad",
+          "en": "The list is a worksheet"
+        },
+        "body": {
+          "nl": "Alle abonnementen staan in dezelfde tabel als de rest van het platform: sorteren op elke kolom die de lijst toont (ook op bedrag tegen de prijs van vandaag en op volgende factuurdatum), filteren op klant, type en status, kolommen tonen of verbergen, en een echte pagineerbalk in plaats van de eerste tweehonderd rijen. Vraag je om selectievakjes, dan verschijnen ze; daarna zet je status, type en klant over een hele selectie in één keer om, of verwijder je de selectie. Abonnementen, abonnementstypes en standaardabonnementen reizen alle drie als CSV, TSV of Excel, waarbij een import dezelfde controles doorloopt als het formulier: het is geen achterdeur langs de service. Elk abonnement draagt daarbij je eigen extra velden en een volledig activiteitenspoor van wat er wanneer door wie veranderde. Abonnementen is een uitbreidingsmodule: de kern van schakl. is open source (AGPL) en modules als deze draaien op een licentiesleutel die je invoert onder Instellingen → Licentie; verloopt die, dan wordt de module alleen-lezen en blijven je afspraken, prijshistorie en exports gewoon leesbaar.",
+          "en": "Every subscription sits in the same table as the rest of the platform: sort on every column the list shows (including the amount at today's price and the next invoice date), filter by client, type and status, show or hide columns, and page through properly instead of seeing the first two hundred rows. Ask for checkboxes and they appear; then you switch status, type and client across a whole selection in one move, or delete the selection. Subscriptions, subscription types and standard subscriptions all three travel as CSV, TSV or Excel, and an import runs the same validation the form does — it is not a back door around the service. Each subscription also carries your own extra fields and a full activity trail of what changed, when and by whom. Subscriptions is an extension module: the core of schakl. is open source (AGPL) and modules like this one run on a licence key entered under Instellingen → Licentie; when it lapses the module goes read-only and your agreements, price history and exports stay readable."
         },
         "bullets": {
           "nl": [
             "Filter op klant, status en type",
-            "Bulk: status omzetten of verwijderen",
-            "Vier statussen: Concept, Actief, Gepauzeerd, Opgezegd",
-            "MRR, ARR en aankomende facturen bij elkaar"
+            "Bulk: status, type en klant omzetten, of de selectie verwijderen",
+            "Vier statussen: Concept, Actief, Gepauzeerd, Opgezegd"
           ],
           "en": [
             "Filter by client, status and type",
-            "Bulk: switch status or delete",
-            "Four statuses: Draft, Active, Paused, Cancelled",
-            "MRR, ARR and upcoming invoices in one place"
+            "Bulk: switch status, type and client, or delete the selection",
+            "Four statuses: Draft, Active, Paused, Cancelled"
           ]
         }
       }

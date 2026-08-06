@@ -1,0 +1,134 @@
+{
+  "name": "AI op jouw sleutel",
+  "slug": "ai",
+  "order": 230,
+  "icon": "🤖",
+  "lucide": "bot",
+  "demo": "assistant",
+  "title": {
+    "nl": "AI op jouw sleutel",
+    "en": "AI on your own key"
+  },
+  "description": {
+    "nl": "Je eigen aanbieder en je eigen sleutel: Anthropic, OpenAI of een server die je zelf draait. Vier functies apart te schakelen, met een maandbudget en een meter die laat zien wat het kost.",
+    "en": "Your own provider on your own key: Anthropic, OpenAI or a server you run yourself. Four features you switch on separately, with a monthly budget and a meter that shows what it costs."
+  },
+  "page": {
+    "eyebrow": {
+      "nl": "AI",
+      "en": "AI"
+    },
+    "title": {
+      "nl": "Jouw sleutel, jouw model",
+      "en": "Your key, your model"
+    },
+    "lead": {
+      "nl": "Er zit geen AI van ons in het product. Je zet je eigen aanbieder en sleutel in Instellingen → AI en rekent rechtstreeks met die aanbieder af: geen credits van ons, geen toeslag per gebruiker. Vier functies staan los van elkaar aan of uit, en zolang er geen aanbieder is ingesteld, wordt er nergens in de app een AI-knop getekend.",
+      "en": "There is no AI of ours inside the product. You put your own provider and key into Instellingen → AI (Settings → AI) and settle with that provider directly: no credits from us, no per-seat surcharge. Four features switch on and off independently, and until a provider is configured, no AI control is drawn anywhere in the app."
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Je brengt je eigen aanbieder mee",
+          "en": "You bring your own provider"
+        },
+        "body": {
+          "nl": "Onder Instellingen → AI kies je Anthropic, OpenAI of \"OpenAI-compatibel (eigen server)\". Dat laatste is alles wat de OpenAI-chat-API spreekt op een basis-URL van jou, van Azure OpenAI tot een model dat je zelf draait op je eigen machine. Je plakt je eigen API-sleutel in het veld; die wordt versleuteld opgeslagen en nooit teruggetoond, en bij een volgende keer opslaan laat je hem leeg om de bewaarde sleutel te houden. Het modelveld is vrije tekst met een lijst erbij, en \"Modellen ophalen\" leest de actuele lijst bij je aanbieder op, zodat een nieuw model geen release van ons nodig heeft. \"Verbinding testen\" stuurt een echte kleine aanvraag door de opgeslagen instellingen en toont de foutmelding van je aanbieder woordelijk, want dat is de tekst waar je iets aan hebt.",
+          "en": "Under Instellingen → AI you pick Anthropic, OpenAI or \"OpenAI-compatibel (eigen server)\" — anything speaking the OpenAI chat API on a base URL of yours, from Azure OpenAI to a model you host on your own machine. You paste your own API key into the field; it is stored encrypted and never played back, and on a later save you leave it blank to keep the stored one. The model field is free text with a list beside it, and \"Modellen ophalen\" fetches your provider's current models, so a new model needs no release from us. \"Verbinding testen\" sends a real, tiny request through the stored settings and shows your provider's own error verbatim, because that is the text you can actually act on."
+        },
+        "bullets": {
+          "nl": [
+            "Anthropic, OpenAI of een OpenAI-compatibele server op je eigen basis-URL",
+            "De sleutel wordt versleuteld bewaard en komt nooit terug in beeld",
+            "Modellen ophalen leest de lijst bij de aanbieder, niet uit een lijstje van ons",
+            "Jij betaalt je aanbieder rechtstreeks; er zit geen tussenpartij tussen jouw klantdata en het model"
+          ],
+          "en": [
+            "Anthropic, OpenAI or an OpenAI-compatible server on a base URL of your own",
+            "The key is kept encrypted and is never shown again",
+            "Fetching models reads the provider's live list, not a list of ours that rots",
+            "You pay your provider directly; nothing of ours sits between your client data and the model"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Vier functies, los van elkaar te schakelen",
+          "en": "Four features, independently switchable"
+        },
+        "body": {
+          "nl": "Alle AI in de app loopt door dezelfde kern, dus één sleutel, één set schakelaars en één budget gelden overal tegelijk. Een bureau dat wel schrijfhulp wil maar geen chatassistent, zet precies dat aan en verder niets. Elke functie mag bovendien een eigen model krijgen: het standaardmodel is bedoeld voor schrijven, terwijl Snel toevoegen op Uren juist gebaat is bij een snel model. In het veld Huisstijl (maximaal 4000 tekens) beschrijf je hoe jullie schrijven, en die tekst gaat mee in elke schrijfopdracht.",
+          "en": "Every AI feature runs through the same core, so one key, one set of toggles and one budget apply everywhere at once. An agency that wants writing help but no chat assistant switches on exactly that and nothing else. Each feature can also carry its own model: the default model is sized for writing, while quick-add on Uren (Time) is better served by a fast one. The Huisstijl field (house style, up to 4000 characters) is where you describe how your agency writes, and that text is prepended to every writing prompt."
+        },
+        "bullets": {
+          "nl": [
+            "Assistent: een uitschuifpaneel vanuit de bovenbalk dat je vragen over je eigen klanten, projecten, taken en uren beantwoordt",
+            "Schrijfhulp: in elk tekstveld met opmaak, met Verbeteren, Inkorten, Uitbreiden, Spelling & grammatica, Zakelijke of Informele toon, Vertalen en Schrijf uit; daarna Vervangen of Invoegen",
+            "Urenhulp: één regel in Snel toevoegen op Uren wordt een concept-urenregel, plus Vul mijn dag aan voor het gat tussen je rooster en wat je boekte",
+            "Briefing & rapporten: een samenvatting van de recente activiteit van een klant, en een maandconcept dat je zelf bewerkt voordat het iets wordt"
+          ],
+          "en": [
+            "Assistent: a slide-over from the top bar that answers questions about your own clients, projects, tasks and hours",
+            "Schrijfhulp: inside every rich-text field, with improve, shorten, expand, spelling & grammar, business or informal tone, translate and write out; then replace or insert",
+            "Urenhulp: one line in Snel toevoegen on Uren becomes a draft time entry, plus \"Vul mijn dag aan\" for the gap between your schedule and what you logged",
+            "Briefing & rapporten: a digest of a client's recent activity, and a monthly draft you edit yourself before it becomes anything"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Een budget dat je ziet oplopen",
+          "en": "A budget you watch fill up"
+        },
+        "body": {
+          "nl": "Je vult één getal in bij Maandelijks tokenbudget, en leeg betekent onbeperkt. Het paneel Verbruik op hetzelfde scherm toont per functie hoeveel verzoeken en tokens deze kalendermaand zijn gegaan, met een balk die op 80% oranje wordt en op 100% rood. Voor iemand die zit te werken is de grens zacht: hij krijgt te horen dat het maandbudget bereikt is en kan bewust Toch doorgaan, terwijl aanroepen zonder mens erachter wel hard stoppen. Wat er wordt weggeschreven zijn aantallen en labels, nooit de tekst van een prompt of een antwoord.",
+          "en": "You fill in one number under Maandelijks tokenbudget (monthly token budget); empty means unlimited. The Verbruik (usage) panel on the same screen shows requests and tokens per feature for this calendar month, with a bar that turns amber at 80% and red at 100%. For someone at work the cap is soft: they are told the monthly budget is reached and can deliberately continue anyway, while calls with no person behind them stop hard. What gets written down is counts and labels, never the text of a prompt or an answer."
+        }
+      },
+      {
+        "heading": {
+          "nl": "De assistent leest mee, hij schrijft niet",
+          "en": "The assistant reads; it does not write"
+        },
+        "body": {
+          "nl": "Het sterretje in de bovenbalk opent de Assistent naast je werk. Sta je op een klant, een project of een taak, dan neemt hij dat record over, zodat \"deze klant\" gewoon klopt zonder dat je hem uitlegt waar je bent. Hij is met opzet alleen-lezen: hij beantwoordt vragen over je eigen klanten, contactpersonen, projecten, taken, uren en het rooster, en maakt of wijzigt nooit een record. Elk antwoord draagt bronchips die terugklikken naar de records waar het vandaan komt, zodat je een getal kunt narekenen in plaats van het te geloven.",
+          "en": "The sparkle in the top bar opens the Assistent beside your work. On a client, project or task page it inherits that record, so \"this client\" simply resolves without you explaining where you are. It is read-only by design: it answers questions about your own clients, contacts, projects, tasks, hours and the schedule, and never creates or changes a record. Every answer carries source chips that link back to the records it came from, so you can check a number instead of believing it."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Inspreken in plaats van typen",
+          "en": "Speak it instead of typing it"
+        },
+        "body": {
+          "nl": "Naast Snel toevoegen op Uren staat een microfoon: je spreekt één regel in en de uitgeschreven tekst komt in het veld te staan. Spraak vraagt een eigen sleutel onder Spraak naar tekst, want Anthropic heeft helemaal geen transcriptiedienst en staat daarom bewust niet in dat lijstje. De audio gaat naar de dienst die jij daar instelt en nergens anders heen; de ingebouwde spraakfunctie van de browser stuurt in Chrome en Edge alles naar Google en in Safari naar Apple, en die keuze wilden we niet voor je maken. Je leest het transcript eerst na en corrigeert het zelf, omdat een Nederlandse klantnaam nu juist is wat een herkenner verkeerd verstaat.",
+          "en": "Beside Snel toevoegen (quick add) on Uren there is a microphone: you speak one line and the transcript lands in the field. Speech needs its own credential under Spraak naar tekst, because Anthropic has no transcription endpoint at all and is therefore deliberately absent from that list. The audio goes to the service you configure there and nowhere else — the browser's own speech API ships everything to Google in Chrome and Edge, and to Apple in Safari, and that was not a choice to make on your behalf. You read the transcript and fix it yourself first, because a Dutch client name is exactly what a recogniser gets wrong."
+        },
+        "bullets": {
+          "nl": [
+            "Een eigen spraakaanbieder en een eigen maandbudget, gemeten in seconden audio",
+            "Opnemen stopt na zestig seconden en de teller loopt zichtbaar mee",
+            "Het transcript belandt in Snel toevoegen, nooit rechtstreeks op je urenstaat",
+            "De microfoon wordt alleen getekend waar hij ook echt kan werken"
+          ],
+          "en": [
+            "Its own speech provider and its own monthly budget, measured in seconds of audio",
+            "Recording stops after sixty seconds, with the elapsed counter visible while it runs",
+            "The transcript lands in the quick-add field, never straight onto your timesheet",
+            "The microphone is only drawn where it can actually work"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Uit betekent onzichtbaar, en wat de licentie doet",
+          "en": "Off means invisible, and what the licence does"
+        },
+        "body": {
+          "nl": "Zolang er geen aanbieder staat ingesteld, wordt er nergens een AI-knop getekend: het product zeurt niet om een sleutel. Onderaan Instellingen → AI zet AI-configuratie verwijderen alles weer uit, en de verbruikshistorie blijft staan. Wie de aanbieder mag instellen en wie de functies mag gebruiken zijn twee losse rechten, die je per rol toekent onder Instellingen → Rollen; standaard is instellen alleen voor beheerders. De AI-functies zijn een uitbreidingsmodule en vragen dus een licentiesleutel, terwijl de kern van het platform open source is (AGPL). Een verse installatie heeft eerst veertien dagen speling, en loopt een licentie af, dan blijven het instellingenscherm en het verbruik gewoon leesbaar: alleen het genereren stopt.",
+          "en": "Until a provider is configured, no AI control is drawn anywhere: the product does not nag for a key. At the bottom of Instellingen → AI, \"AI-configuratie verwijderen\" switches it all back off and keeps the usage history. Who may configure the provider and who may use the features are two separate permissions, granted per role under Instellingen → Rollen (Settings → Roles); configuring is admin-only by default. The AI features are an extension module and therefore need a licence key, while the core of the platform is open source (AGPL). A fresh install gets fourteen days of grace first, and when a licence lapses the settings screen and the usage history stay readable: only generating stops."
+        }
+      }
+    ]
+  }
+}
