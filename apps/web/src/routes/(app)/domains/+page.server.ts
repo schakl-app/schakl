@@ -85,6 +85,9 @@ export const actions: Actions = {
         status: String(form.get("status") ?? "active") as never,
         redirect_url: String(form.get("redirect_url") ?? "").trim() || null,
         start_date: String(form.get("start_date") ?? "").trim() || undefined,
+        // Left blank on purpose most of the time: the API resolves the register's expiry for
+        // this name, else the first anniversary of the start date still ahead.
+        next_invoice_date: String(form.get("next_invoice_date") ?? "").trim() || undefined,
         price_override: String(form.get("price_override") ?? "").trim() || null,
         // Three-state (#298): "" is *follow the register*, not "no".
         invoiceable: readInvoiceable(form.get("invoiceable")),

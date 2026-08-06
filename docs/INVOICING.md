@@ -301,6 +301,36 @@ for accounting packages.
   due date* (`price_override`, else the TLD's `domain_tld_prices` row valid then); the
   same `events.py` drafts one invoice per `(domain, period)` under its own claim table and
   partial unique index, one line ("Domeinverlenging …" in the org locale). Same level applies.
+- **…on the day the registration actually lapses, which only a register knows.** `next_invoice_date`
+  began life purely derived — the first yearly anniversary of `start_date` still ahead — and that
+  is the true expiry exactly when `start_date` is the true registration date. For a portfolio
+  onboarded in one afternoon it is not: every domain is anchored to that afternoon, and every
+  renewal then invoices on the wrong day, every year, with no amount of re-saving the record
+  fixing it because nothing ever asked the registrar. So a connected register that has *answered*
+  now supplies the default, through `app/core/registrar/expiry.py` — the `presence.py` seam
+  applied to a date, so `domains` still names no registrar and two registers holding one name
+  resolve in a fixed key order rather than by import order. Four rules carry over from #298 and
+  are what make it safe to ship into an instance already invoicing domains:
+  - **A credential is not an authority.** A register speaks only through a row a *sync* wrote, so
+    a connected-but-never-read account contributes nothing and every existing date stands.
+  - **Only forward.** An expiry in the past is a lapsed registration — a thing to look at, not a
+    date to bill on. Taking it would hand the cron a due date it fires on immediately and draft a
+    renewal for a registration that has run out.
+  - **Observed is not decided** (CLAUDE.md §10). `Domain.register_expires_on` is a second, read-only
+    field beside the date schakl bills on; the list has a column for it and the detail view says
+    "de registrar zegt …" when the two differ. Drift is *reported*, and the edit form offers it in
+    one click — a mirror that silently overwrites cannot express "somebody changed this at the
+    registrar" at all.
+  - **The one-off correction skips what was billed.** The migration moves existing rows onto the
+    observed expiry, but never a domain with an `invoice_domain_periods` claim: moving a period
+    boundary underneath a claim is how a period gets billed twice or skipped entirely.
+
+  The date is now editable everywhere the record is — form, spreadsheet and bulk selection — and
+  an explicit `null` means *work the default out again*, not *stop invoicing*: "never bill this
+  domain" is `invoiceable`'s job and already has a field. The import is the one surface where
+  blank means **leave alone**, because in a file a blank column is what an export somebody edited
+  two cells of comes back as, and rescheduling a thousand renewals is not something a blank should
+  be able to say.
 - **…but only if the domain is invoiced at all (#298).** An agency's domain list mixes names it
   registered and renews for the client with names the client registered themselves and merely
   asked us to point somewhere, and only the second kind must never reach an invoice.

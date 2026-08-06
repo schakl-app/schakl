@@ -9,10 +9,16 @@ Two descriptors, because they are two different spreadsheets a tenant actually h
 * ``domain_tld_price`` — the per-TLD rate card, which is where a price change actually arrives
   from (a registrar's tariff sheet), and the one place bulk entry beats a form outright.
 
-Everything the DNS worker fills in (nameservers, DNSSEC, MX, the last check) and everything the
-service derives (``tld``, ``next_invoice_date``) is exported read-only: it is worth having in
-the file, and writing it back would either be overwritten on the next run or quietly reschedule
-an invoice cycle.
+Everything the DNS worker fills in (nameservers, DNSSEC, MX, the last check), what the registers
+observed (``register_expires_on``) and what the service stamps (``tld``) are exported read-only:
+worth having in the file, and writing them back would either be overwritten on the next run or
+be schakl telling itself what it already said.
+
+``next_invoice_date`` is **not** in that group any more. It reads like a derived value and is
+not one — it is the date the registration lapses, which a register knows and an agency's own
+spreadsheet very often knows too, and which the anniversary of ``start_date`` only approximates
+(see ``DomainService._default_invoice_date``). So the column is writable, and pointedly not
+clearable: see its declaration.
 """
 
 from __future__ import annotations
@@ -46,6 +52,7 @@ _FIELDS = (
     "company_id",
     "redirect_url",
     "start_date",
+    "next_invoice_date",
     "registrar_provider_id",
     "dns_provider_id",
     "email_provider_id",
@@ -202,6 +209,34 @@ DOMAIN_IMPEX = ImpexDescriptor(
             clearable=False,
             aliases=("startdatum", "start date", "registratiedatum", "ingangsdatum"),
         ),
+        # When the renewal is invoiced — the expiry date, which a register knows and a
+        # spreadsheet of an agency's own portfolio very often does too. Writable rather than
+        # derived-only, because the derivation is a stand-in for a date somebody may simply
+        # have (see ``DomainService._default_invoice_date``); omitted, it stays derived.
+        #
+        # **Not clearable, and it is the interesting one on this descriptor.** Emptying it
+        # through the *service* means "work the default out again" — a useful, deliberate act,
+        # which is why the bulk dialog offers it (``bulk.py``). Emptying it through a *file*
+        # would mean the same thing applied to every row of a register somebody exported,
+        # edited two cells of, and imported back with the column left blank. Rescheduling a
+        # thousand renewal invoices is not something a blank column should be able to say.
+        ImpexColumn(
+            "next_invoice_date",
+            data_type="date",
+            clearable=False,
+            aliases=(
+                "vervaldatum",
+                "verloopdatum",
+                "expiry",
+                "expiry date",
+                "expires",
+                "expires on",
+                "renewal date",
+                "verlengdatum",
+                "factuurdatum",
+                "next invoice date",
+            ),
+        ),
         ImpexColumn(
             "registrar_provider",
             data_type="fk",
@@ -261,7 +296,14 @@ DOMAIN_IMPEX = ImpexDescriptor(
             getter=lambda d: getattr(d, "invoiceable_effective", None),
         ),
         ImpexColumn("tld", readonly=True),
-        ImpexColumn("next_invoice_date", readonly=True),
+        # What the register last **observed**, beside the date schakl decided (CLAUDE.md §10):
+        # exported so a file can be sorted on the difference, never written back — this column
+        # is the registrar's answer and importing it would be schakl telling itself.
+        ImpexColumn(
+            "register_expires_on",
+            readonly=True,
+            getter=lambda d: getattr(d, "register_expires_on", None),
+        ),
         ImpexColumn(
             "resolved_price", readonly=True, getter=lambda d: getattr(d, "resolved_price", None)
         ),

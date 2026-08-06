@@ -142,10 +142,21 @@
       key: "invoiceable",
       label: t("impex.column.domain.invoiceable"),
       type: "bool",
-      // The one clearable field here (#298): emptying it is not "do not invoice", it hands the
-      // decision back to the register — so the tick says that instead of reading as a blank.
+      // Clearable (#298): emptying it is not "do not invoice", it hands the decision back to
+      // the register — so the tick says that instead of reading as a blank.
       clearable: true,
       clearLabel: t("domains.bulk.invoiceable_auto"),
+    },
+    {
+      key: "next_invoice_date",
+      label: t("impex.column.domain.next_invoice_date"),
+      type: "date",
+      // Clearable here and not in the import, on purpose: over a selection somebody ticked row
+      // by row, "put these back on the date they should have" is the repair this control is
+      // for, while in a file the same blank is just a column nobody filled in
+      // (`app/api/app/modules/domains/bulk.py` argues it in full).
+      clearable: true,
+      clearLabel: t("domains.bulk.renewal_reset"),
     },
   ]);
   // One configuration, spread into the ✎ in the toolbar and the strip above the table: they
@@ -178,6 +189,7 @@
       dnssec: dnssecCell,
       email_enabled: emailCell,
       next_invoice: renewalCell,
+      register_expires: registerExpiryCell,
       price: priceCell,
       invoiceable: invoiceableCell,
       created_at: createdCell,
@@ -233,6 +245,19 @@
 {#snippet renewalCell(domain: Domain)}
   <span class="tabular-nums text-text-muted">
     {domain.next_invoice_date ? fmtNumericDate(domain.next_invoice_date) : "—"}
+  </span>
+{/snippet}
+
+{#snippet registerExpiryCell(domain: Domain)}
+  <!-- The registrar's own date. Highlighted only when it disagrees with what we bill on: a
+       column of matching dates is noise, and the disagreement is the entire reason to open it. -->
+  <span
+    class="tabular-nums {domain.register_expires_on &&
+    domain.register_expires_on !== domain.next_invoice_date
+      ? 'font-medium text-text'
+      : 'text-text-muted'}"
+  >
+    {domain.register_expires_on ? fmtNumericDate(domain.register_expires_on) : "—"}
   </span>
 {/snippet}
 

@@ -25,7 +25,13 @@ from typing import Any
 
 from sqlalchemy import ColumnElement, or_, select
 
-from app.core.registrar import RegisterPresence, register_presence, register_registrar
+from app.core.registrar import (
+    RegisterExpiry,
+    RegisterPresence,
+    register_expiry,
+    register_presence,
+    register_registrar,
+)
 from app.modules.oxxa.client import OxxaClient
 from app.modules.oxxa.models import OxxaAccount, OxxaDomain
 from app.modules.oxxa.permissions import OXXA_PERMISSIONS
@@ -86,5 +92,33 @@ def _holds(org_id: uuid.UUID, domain: Any) -> ColumnElement[bool]:
     )
 
 
-# Who holds the registration (#298) — asked by ``domains``, which may not name this module.
+def _expires_on(org_id: uuid.UUID, domain: Any) -> ColumnElement[Any]:
+    """When OXXA says this domain's registration lapses; NULL if it does not hold it.
+
+    Matched exactly as :func:`_holds` matches, and excluding ``gone`` for the same reason: the
+    expiry of a domain transferred away is the date it would *have* lapsed here, which is not a
+    renewal anyone is going to invoice.
+
+    Ordered furthest-out first because one name can sit in two accounts (a transfer between two
+    of the agency's own OXXA logins, mid-move): the registration that is actually keeping the
+    domain alive is the one running longest, and taking the nearer date would invoice a renewal
+    that has already been paid at the other account.
+    """
+    return (
+        select(OxxaDomain.expires_on)
+        .where(
+            OxxaDomain.org_id == org_id,
+            OxxaDomain.expires_on.is_not(None),
+            OxxaDomain.registry_status.is_distinct_from("gone"),
+            or_(OxxaDomain.domain_id == domain.id, OxxaDomain.name == domain.name),
+        )
+        .order_by(OxxaDomain.expires_on.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
+
+
+# Who holds the registration (#298) and until when — both asked by ``domains``, which may not
+# name this module.
 register_presence(RegisterPresence(key="oxxa", authority=_authority, holds=_holds))
+register_expiry(RegisterExpiry(key="oxxa", expires_on=_expires_on))

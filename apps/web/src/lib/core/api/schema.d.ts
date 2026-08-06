@@ -882,7 +882,7 @@ export interface paths {
         put?: never;
         /**
          * Bulk Update Domain
-         * @description Set fields on a selection of domain records: `status`, `company`, `registrar_provider`, `dns_provider`, `email_provider`, `invoiceable`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
+         * @description Set fields on a selection of domain records: `status`, `company`, `registrar_provider`, `dns_provider`, `email_provider`, `invoiceable`, `next_invoice_date`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
          */
         post: operations["bulk_update_domain_api_v1_bulk_domain_update_post"];
         delete?: never;
@@ -12021,6 +12021,8 @@ export interface components {
             invoiceable?: boolean | null;
             /** Name */
             name: string;
+            /** Next Invoice Date */
+            next_invoice_date?: string | null;
             /** Price Override */
             price_override?: number | string | null;
             /** Redirect Url */
@@ -12127,6 +12129,8 @@ export interface components {
             price_override?: string | null;
             /** Redirect Url */
             redirect_url?: string | null;
+            /** Register Expires On */
+            register_expires_on?: string | null;
             /** Registers */
             registers?: string[];
             /** Registrar Provider Id */
@@ -12257,6 +12261,8 @@ export interface components {
             invoiceable?: boolean | null;
             /** Name */
             name?: string | null;
+            /** Next Invoice Date */
+            next_invoice_date?: string | null;
             /** Price Override */
             price_override?: number | string | null;
             /** Redirect Url */

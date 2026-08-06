@@ -212,10 +212,21 @@
           <dt class="text-text-muted">{t("domains.start_date")}</dt>
           <dd class="text-text">{fmtNumericDate(domain.start_date)}</dd>
         </div>
-        <div class="flex justify-between">
+        <div class="flex justify-between gap-3">
           <dt class="text-text-muted">{t("domains.renewal")}</dt>
-          <dd class="text-text">
+          <dd class="text-right text-text">
             {domain.next_invoice_date ? fmtNumericDate(domain.next_invoice_date) : "—"}
+            <!-- What the registrar last observed, when it is not what we bill on. Reported and
+                 never applied (CLAUDE.md §10): "somebody changed this in the provider's
+                 dashboard" has to be expressible, and a mirror that overwrites cannot say it.
+                 The edit form is where the two are reconciled, in one click. -->
+            {#if domain.register_expires_on && domain.register_expires_on !== domain.next_invoice_date}
+              <span class="block text-xs text-text-muted">
+                {t("domains.register_expiry_differs", {
+                  date: fmtNumericDate(domain.register_expires_on),
+                })}
+              </span>
+            {/if}
           </dd>
         </div>
         <div class="flex justify-between">
