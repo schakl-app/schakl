@@ -147,8 +147,29 @@ BLOCK_CATALOG: tuple[BlockSpec, ...] = (
     # independently switchable, because they answer different readers: a printed invoice gets
     # scanned, a PDF opened on a laptop gets clicked, and an agency that prints in monochrome
     # on a copier may want the line and not the code. Whichever is on, it leads to the
-    # invoice's page in the client portal and never to a provider checkout (``paylinks``).
-    BlockSpec("payment_link", "body", default=False),
+    # invoice's own page and never to a provider checkout (``paylinks``).
+    #
+    # **Its two halves separate (#304).** The clickable wording and the address spelled out
+    # underneath answer different readers — a PDF viewer follows the anchor, paper has to be
+    # typed — and until now switching the line off was the only way to drop either. That was
+    # tolerable while the address was `/invoices/<uuid>`; it stopped being tolerable when the
+    # address became a **capability token in plain text**. Printed, it is readable over a
+    # shoulder, in a photocopy left on a shared tray, and in any screenshot of the invoice —
+    # exposure the QR does not carry, because a code is not human-readable at a glance. So an
+    # agency that wants the convenience without the naked credential switches `url` off and
+    # keeps a line that is still clickable in the PDF everybody actually receives.
+    #
+    # `labelled=False` on both: this block prints a sentence and an address, not a labelled
+    # grid, so a wording override here would introduce a label rather than rename one.
+    BlockSpec(
+        "payment_link",
+        "body",
+        default=False,
+        fields=(
+            FieldSpec("label", labelled=False),
+            FieldSpec("url", labelled=False),
+        ),
+    ),
     BlockSpec("intro", "body"),
     BlockSpec(
         "lines",

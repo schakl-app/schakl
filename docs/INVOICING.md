@@ -519,6 +519,17 @@ itself frames the cheap HTML and only an explicit download reaches the PDF, and 
 here so that the day it matters, the fix is a render cache keyed on
 `(invoice, template, updated_at)` rather than a scramble.
 
+**Printing the address is its own switch.** The pay-online block (`payment_link`) has two
+fields, `label` and `url`, both on by default and toggled in the template editor's Layout tab
+like any other. Before #304 they were one thing, and that was fine while the address was
+`/invoices/<uuid>` — long, inert, meaningless to a reader. It stopped being fine when the
+address became a **capability token in plain type**: printed, it is readable over a shoulder, in
+a photocopy left on a shared tray, and in any screenshot of the invoice. The QR carries none of
+that, because a code is not human-readable at a glance. So an agency that wants the convenience
+without the naked credential switches `url` off and keeps a line the PDF everybody actually
+receives still follows. With both off the block prints nothing and the QR's caption comes back,
+because there is no longer a line for it to stand down beside.
+
 Staff see the link on the invoice screen (`InvoiceRead.public_url`, detail read only) so they
 can hand it over when a client rings up. It is empty for an external login: a client is already
 looking at the document, and a bearer token on their own screen is a thing to forward by

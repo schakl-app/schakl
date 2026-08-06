@@ -922,6 +922,68 @@ def test_the_pay_line_never_appears_where_there_is_nothing_to_pay() -> None:
     assert _LINK not in _with_qr(config=_LINK_ON, pay_url=None)
 
 
+def _link_fields(**fields: bool) -> dict:
+    """The pay-online block on, with its two halves switched individually (#304)."""
+    return {
+        "design": "letterhead",
+        "layout": [
+            {
+                "key": "payment_link",
+                "enabled": True,
+                "fields": [{"key": key, "enabled": on} for key, on in fields.items()],
+            }
+        ],
+    }
+
+
+def test_the_printed_address_can_be_dropped_while_the_line_stays_clickable() -> None:
+    """#304's ask, and the reason it is worth a switch rather than an all-or-nothing block.
+
+    The address used to be ``/invoices/<uuid>`` — long, inert, and meaningless to a reader. It
+    is now a **capability token in plain type**: on paper it is readable over a shoulder, in a
+    photocopy left on a shared tray, and in any screenshot of the invoice. The QR carries none
+    of that exposure, because a code is not human-readable at a glance.
+
+    So an agency can keep the convenience — a line the PDF everybody actually receives still
+    follows — without printing the credential. Asserted on the *rendered* text and not on the
+    markup: the anchor's ``href`` must survive, and only the visible spelling-out goes.
+    """
+    html = _with_qr(config=_link_fields(label=True, url=False))
+    assert _LINK in html, "the clickable wording still prints"
+    assert f'href="{_PAY_URL}"' in html, "and it still goes to the right place"
+    assert f">{_PAY_URL}<" not in html, "but the address is not spelled out on the page"
+
+
+def test_the_address_can_print_without_the_wording() -> None:
+    """The mirror, for a design whose own copy already says what the link is for."""
+    html = _with_qr(config=_link_fields(label=False, url=True))
+    assert _PAY_URL in html
+    assert _LINK not in html
+
+
+def test_both_halves_off_prints_nothing_and_hands_the_caption_back_to_the_qr() -> None:
+    """An empty block must not leave an empty paragraph, and it must not eat the QR's caption.
+
+    The caption stands down *beside the line* — under an address it reads as belonging to the
+    address. With both halves off there is no line, so the code goes back to being the only
+    thing saying it is worth pointing a phone at, and an unlabelled code in the corner of an
+    invoice is a thing people do not scan.
+    """
+    config = _link_fields(label=False, url=False)
+    config["layout"].append({"key": "payment_qr", "enabled": True})
+    html = _with_qr(config=config)
+    assert _LINK not in html and f">{_PAY_URL}<" not in html
+    assert _CODE in html, "the code is unaffected"
+    assert "Scan om" in html, "the caption comes back when the line is not there to defer to"
+
+
+def test_both_halves_print_by_default_so_an_existing_template_is_unchanged() -> None:
+    """A stored layout is a diff against the catalog, not a snapshot: a template written before
+    the block had fields must go on printing exactly what it printed."""
+    html = _with_qr(config=_LINK_ON)
+    assert _LINK in html and _PAY_URL in html
+
+
 def test_the_document_qr_is_branded_by_default_and_clickable() -> None:
     """A QR on a client's invoice should look like *the agency's* (epic #269), and a code on a
     PDF opened on a laptop should be pressable — the one case a QR serves worst."""

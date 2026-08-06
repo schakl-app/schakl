@@ -3574,6 +3574,8 @@
   "invoicing.field.totals.paid": "Betaald",
   "invoicing.field.totals.credited": "Gecrediteerd",
   "invoicing.field.totals.to_pay": "Nog te betalen",
+  "invoicing.field.payment_link.label": "Klikbare tekst",
+  "invoicing.field.payment_link.url": "Het webadres, voluit",
   "invoicing.sample.number": "2026-0042",
   "invoicing.sample.reference": "Voorbeeld: uw referentie",
   "invoicing.sample.line_hours": "Doorontwikkeling website (mei)",

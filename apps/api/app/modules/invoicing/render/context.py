@@ -626,7 +626,20 @@ def build_context(
     # The same link in words, for the reader who is holding a mouse rather than a phone. Its
     # own switch, sharing every condition — so a template may print one, both or neither, and
     # neither can ever appear on a document that has nothing to collect.
-    show_pay_link = payable_here and layout.enabled("payment_link")
+    #
+    # Two halves since #304, because the address stopped being inert. `/invoices/<uuid>` was
+    # long and meant nothing to a reader; `/invoice/<token>` is a **capability in plain text**,
+    # and printing it exposes it to a shoulder, a photocopy and any screenshot — which the QR
+    # does not, being unreadable at a glance. So the wording and the spelled-out address are
+    # separately switchable, and an agency can keep a line that is still clickable in the PDF
+    # without putting the credential in human-readable type.
+    pay_block = payable_here and layout.enabled("payment_link")
+    show_pay_label = pay_block and layout.shows("payment_link", "label")
+    show_pay_url = pay_block and layout.shows("payment_link", "url")
+    # What the designs branch on, and what the QR's caption stands down beside: whether that
+    # block prints *anything*. Kept under its original name so a tenant's own template that
+    # reads it goes on working — with both halves off it now correctly says nothing prints.
+    show_pay_link = show_pay_label or show_pay_url
 
     # --- prose -------------------------------------------------------------------------- #
     def template_text(block: str) -> str:
@@ -706,8 +719,14 @@ def build_context(
         #: in it so a code is clickable as well as scannable (a PDF opened on a laptop is the
         #: case a QR serves worst).
         "pay_url": pay_url if payable_here else "",
-        #: Whether the *words* print. The QR has its own switch and its own emptiness check.
+        #: Whether that block prints *anything* — what the QR's caption stands down beside.
+        #: The QR has its own switch and its own emptiness check.
         "show_pay_link": show_pay_link,
+        #: Its two halves (#304): the clickable wording, and the address spelled out. Separate
+        #: because printing a capability token in human-readable type is a choice an agency
+        #: should get to make without giving up the line.
+        "show_pay_label": show_pay_label,
+        "show_pay_url": show_pay_url,
         "pay_label": (
             t("invoicing.doc.pay_online") if payable_online else t("invoicing.doc.view_online")
         ),

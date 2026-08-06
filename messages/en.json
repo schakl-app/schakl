@@ -3574,6 +3574,8 @@
   "invoicing.field.totals.paid": "Paid",
   "invoicing.field.totals.credited": "Credited",
   "invoicing.field.totals.to_pay": "Still to pay",
+  "invoicing.field.payment_link.label": "Clickable wording",
+  "invoicing.field.payment_link.url": "The web address, spelled out",
   "invoicing.sample.number": "2026-0042",
   "invoicing.sample.reference": "Sample: your reference",
   "invoicing.sample.line_hours": "Website development (May)",
