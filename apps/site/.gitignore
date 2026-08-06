@@ -3,3 +3,6 @@ dist/
 node_modules/
 # copied from node_modules/@sveltia/cms by the sync-cms script
 public/sveltia/sveltia-cms.js
+# local secrets for `wrangler pages dev` — holds a real OAuth client secret (AUTH.md)
+.dev.vars
+.wrangler/

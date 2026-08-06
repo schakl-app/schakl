@@ -6,8 +6,13 @@ backend:
   name: github
   repo: schakl-app/schakl
   branch: dev
-  # Remote sign-in needs a token-exchange service (sveltia-cms-auth) — set base_url when
-  # the deploy target lands. Local editing ("Work with Local Repository") works without it.
+  # Remote sign-in goes through our own token-exchange service, deployed with this site as a
+  # Cloudflare Pages Function (apps/site/functions/api/auth/, see apps/site/AUTH.md). The CMS
+  # requests `<base_url>/<auth_endpoint>`, so these two produce https://schakl.app/api/auth.
+  # Only the auth URL is built from base_url; the GitHub API root is separate and untouched.
+  # Until that is deployed, local editing ("Work with Local Repository") works without it.
+  base_url: https://schakl.app
+  auth_endpoint: api/auth
 
 media_folder: apps/site/public/images
 public_folder: /images
