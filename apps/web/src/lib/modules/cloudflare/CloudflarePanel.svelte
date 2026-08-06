@@ -62,6 +62,16 @@
   const redirect = $derived(status?.redirect ?? null);
   const issues = $derived(status?.issues ?? []);
 
+  // What the page draws is what schakl stored, so the one thing it cannot leave unsaid is how
+  // old that is: "no conflicts" from a check that ran in March is not the same sentence as
+  // "no conflicts" from one that ran a minute ago, and without a date they read identically.
+  // It sits with the button that changes it, in both branches that have one.
+  const checked = $derived(
+    status?.checked_at
+      ? t("cloudflare.panel.checked_at", { when: fmtDateTime(status.checked_at) })
+      : t("cloudflare.panel.never_checked"),
+  );
+
   const inputClass =
     "w-full min-w-0 rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand";
   const labelClass = "mb-1 block text-sm font-medium text-text";
@@ -141,11 +151,14 @@
         {zone.account_name ?? ""} · {zoneStatus(zone.status)}
       </p>
     </div>
-    <form method="POST" action="?/cfCheck" use:enhance={busy.wrap("check")}>
-      <Button variant="secondary" size="xs" loading={busy.is("check")} disabled={busy.active}>
-        {t("cloudflare.panel.check")}
-      </Button>
-    </form>
+    <div class="flex flex-none flex-col items-end gap-1">
+      <form method="POST" action="?/cfCheck" use:enhance={busy.wrap("check")}>
+        <Button variant="secondary" size="xs" loading={busy.is("check")} disabled={busy.active}>
+          {t("cloudflare.panel.check")}
+        </Button>
+      </form>
+      <p class="text-xs text-text-muted">{checked}</p>
+    </div>
   </div>
 
   <dl class="mt-3 grid gap-3 text-sm sm:grid-cols-2">
@@ -347,11 +360,14 @@
            is not inside it — so without this the one case Pages exists for could never
            refresh. The action is the same one; only the button is duplicated. -->
       {#if !zone && status?.pages_links?.length}
-        <form method="POST" action="?/cfCheck" use:enhance={busy.wrap("check")}>
-          <Button variant="secondary" size="xs" loading={busy.is("check")} disabled={busy.active}>
-            {t("cloudflare.pages.check")}
-          </Button>
-        </form>
+        <div class="flex flex-none flex-col items-end gap-1">
+          <form method="POST" action="?/cfCheck" use:enhance={busy.wrap("check")}>
+            <Button variant="secondary" size="xs" loading={busy.is("check")} disabled={busy.active}>
+              {t("cloudflare.pages.check")}
+            </Button>
+          </form>
+          <p class="text-xs text-text-muted">{checked}</p>
+        </div>
       {/if}
     </div>
     {#if status?.pages_links?.length}

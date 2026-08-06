@@ -343,6 +343,13 @@ class DomainStatusRead(BaseModel):
     domain_id: uuid.UUID
     domain_name: str
     live: bool = False
+    #: When Cloudflare was last actually asked about this domain — the most recent of the
+    #: observations this report is assembled from (the zone, the redirect rule, the Pages
+    #: links), never "when this report was built". A stored read renders as fast as it does
+    #: *because* it asks nothing, so without this the panel cannot tell "checked a minute ago"
+    #: from "never checked", and the answer it shows has no age at all. ``None`` means nothing
+    #: here has ever been observed.
+    checked_at: datetime | None = None
 
     zone: ZoneRead | None = None
     #: Every account that has this apex. More than one is legal at Cloudflare (only *activation*

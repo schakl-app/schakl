@@ -1634,6 +1634,7 @@ class CloudflareService:
             "domain_id": domain.id,
             "domain_name": domain.name,
             "live": live,
+            "checked_at": None,
             "zone": (await self._decorate_zones([zone]))[0] if zone is not None else None,
             "candidates": await self._candidate_refs(candidates),
             "expected_nameservers": (zone.name_servers or []) if zone else [],
@@ -1663,7 +1664,26 @@ class CloudflareService:
             await self._refresh_pages_links(report)
 
         report["issues"] = self._issues(report, domain, zone, redirect)
+        report["checked_at"] = self._last_observed(report)
         return report
+
+    @staticmethod
+    def _last_observed(report: dict[str, Any]) -> datetime | None:
+        """How old the answer on this report is: the newest of the facts it is built from.
+
+        Taken from the rows themselves rather than stamped when a check runs, because a probe
+        that failed leaves its row's timestamp alone (``_probe_live`` fails softly and
+        separately) — and a "checked just now" over a report nothing could be read for is the
+        one thing this must never say. Every branch of the panel has a check button, including
+        the Pages-only one that has no zone at all, so it is one number covering all of them.
+        """
+        zone = report.get("zone") or {}
+        seen = [
+            zone.get("last_synced_at"),
+            getattr(report.get("redirect"), "last_checked_at", None),
+            *(link.get("last_checked_at") for link in report["pages_links"]),
+        ]
+        return max((at for at in seen if at is not None), default=None)
 
     async def _candidate_refs(self, zones: list[CloudflareZone]) -> list[ZoneCandidate]:
         if not zones:

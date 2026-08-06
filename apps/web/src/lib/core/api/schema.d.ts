@@ -12168,6 +12168,8 @@ export interface components {
         DomainStatusRead: {
             /** Candidates */
             candidates?: components["schemas"]["ZoneCandidate"][];
+            /** Checked At */
+            checked_at?: string | null;
             /** Conflicts */
             conflicts?: components["schemas"]["RedirectConflict"][];
             /**

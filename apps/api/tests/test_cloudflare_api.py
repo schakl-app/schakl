@@ -890,6 +890,65 @@ async def test_pages_links_a_domain_that_has_no_zone_here(client_for, cloudflare
         assert [link["hostname"] for link in status["pages_links"]] == ["elders.nl"]
 
 
+async def test_the_status_says_how_old_the_answer_it_is_giving_is(client_for, cloudflare) -> None:
+    """The panel draws stored rows and no Cloudflare call, which is what makes a domain page
+    fast and keeps it working while Cloudflare is not (docs/PERFORMANCE.md). The cost of that
+    is that "geen conflicten" from a check that ran in March and one that ran a minute ago are
+    the same sentence, and the panel had no date to tell them apart — the two message keys for
+    it were written and never wired to anything.
+
+    Taken from the rows the report is *built* from, so it is the age of the answer rather than
+    the time the page was drawn, and a stored read repeats it instead of resetting it.
+    """
+    t = await make_tenant("cf-checked-at")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = await _company(c, headers)
+        # Nothing observed: no zone, no links, nothing ever asked. The panel says "never".
+        alone = await _domain(c, headers, "nooitgekeken.nl", company)
+        never = (
+            await c.get(f"/api/v1/cloudflare/domains/{alone['id']}/status", headers=headers)
+        ).json()
+        assert never["checked_at"] is None
+
+        _, domain, _ = await _connected(c, headers, cloudflare)
+        checked = (
+            await c.post(f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers)
+        ).json()
+        assert checked["checked_at"] is not None
+
+        stored = (
+            await c.get(f"/api/v1/cloudflare/domains/{domain['id']}/status", headers=headers)
+        ).json()
+        assert stored["live"] is False
+        assert stored["checked_at"] == checked["checked_at"]
+
+
+async def test_a_check_that_could_read_nothing_does_not_claim_to_be_fresh(
+    client_for, cloudflare
+) -> None:
+    """Every probe fails softly and separately, so a check can come back having observed
+    nothing at all. Stamping "gecontroleerd zojuist" on that report would be the one thing it
+    does not know — hence the timestamp comes off the rows a probe actually wrote, never off
+    the clock at the end of the request.
+    """
+    t = await make_tenant("cf-checked-blind")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, domain, _ = await _connected(c, headers, cloudflare)
+        before = (
+            await c.get(f"/api/v1/cloudflare/domains/{domain['id']}/status", headers=headers)
+        ).json()["checked_at"]
+
+        # The token stops answering for everything the report is assembled from.
+        cloudflare.deny.add("/zones")
+        blind = (
+            await c.post(f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers)
+        ).json()
+        assert "zone" in blind["unavailable"]
+        assert blind["checked_at"] == before
+
+
 async def test_sync_adopts_hostnames_already_attached_at_cloudflare(
     client_for, cloudflare
 ) -> None:

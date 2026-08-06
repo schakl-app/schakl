@@ -101,6 +101,16 @@ because they need account-level scopes and make per-zone drift detection much ha
 question. `GET /domains/{id}/status` reads stored rows only — a domain page must not wait on an
 outside API to render (`docs/PERFORMANCE.md`), and must still render when Cloudflare is down.
 
+**A stored answer has to say how old it is.** That is the price of the cheap read, and the panel
+was not paying it: "geen conflicten" from a check that ran in March and one that ran a minute ago
+are the same sentence, and only one of them means anything. `checked_at` is the newest of the
+observations the report is *assembled* from — `zones.last_synced_at`, the redirect's
+`last_checked_at`, each Pages link's — and never a stamp taken when the request ends. Every probe
+fails softly and separately, so a check can come back having read nothing at all, and "gecontroleerd
+zojuist" over that report is the one thing it does not know. Reading it off the rows also makes it
+the single number both branches of the panel need: a domain served from Pages with its DNS
+elsewhere has a check button and no zone.
+
 The report's `issues` are stable keys the client resolves to `cloudflare.issue.*`:
 
 | key | what it found |
