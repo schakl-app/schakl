@@ -77,6 +77,10 @@ async def _fetch_page(
         offset=offset,
         q=filters.get("q"),
         company_id=filters.get("company_id"),
+        status=filters.get("status"),
+        registrar_provider_id=filters.get("registrar_provider_id"),
+        dns_provider_id=filters.get("dns_provider_id"),
+        invoiceable=filters.get("invoiceable"),
         sort=filters.get("sort"),
     )
     await _hydrate_parties(ctx, items)
@@ -169,9 +173,19 @@ DOMAIN_IMPEX = ImpexDescriptor(
     read_permission="domains.domain.read",
     write_permission="domains.domain.write",
     natural_keys=("name",),
-    # The domains list has no status filter of its own (see DomainService.list); an export
-    # mirrors the list endpoint exactly rather than growing a filter the screen can't set.
-    filters=("q", "company_id", "sort"),
+    # Exactly what the list screen's filter bar can set, and nothing more: an export is the
+    # list on screen, whole (docs/UX.md), so a filter here that the screen cannot set would
+    # produce a file nobody could reproduce — and one the screen *can* set but this omits
+    # produces a file that quietly holds more than was asked for.
+    filters=(
+        "q",
+        "company_id",
+        "status",
+        "registrar_provider_id",
+        "dns_provider_id",
+        "invoiceable",
+        "sort",
+    ),
     columns=(
         ImpexColumn(
             "name",

@@ -30,6 +30,8 @@ async def list_websites(
     domain_id: uuid.UUID | None = Query(None),
     company_id: uuid.UUID | None = Query(None),
     q: str | None = Query(None, max_length=200, description="Matches the parent domain's name"),
+    hosting_id: uuid.UUID | None = Query(None),
+    uptime_enabled: bool | None = Query(None),
     sort: str | None = Query(
         None,
         description="name | company | hosting | uptime | created_at | updated_at, '-' desc",
@@ -42,6 +44,8 @@ async def list_websites(
         domain_id=domain_id,
         company_id=company_id,
         q=q,
+        hosting_id=hosting_id,
+        uptime_enabled=uptime_enabled,
         sort=sort,
     )
     return Page(

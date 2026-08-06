@@ -16,6 +16,9 @@
 
   let { companyId, data }: { companyId: string; data: Record<string, unknown> } = $props();
   const websites = $derived((data.websites ?? []) as PanelWebsite[]);
+  // The API caps the rows and sends the whole count beside them (`websites/panels.py`), so the
+  // card can say how much it is *not* showing rather than implying it shows everything.
+  const total = $derived((data.total as number | undefined) ?? websites.length);
 </script>
 
 {#if websites.length === 0}
@@ -44,12 +47,18 @@
     {/each}
   </ul>
 {/if}
-{#if can(page.data.user, "websites.website.write")}
-  <!-- Quick-create from the client page: opens the website dialog narrowed to this client. -->
-  <a
-    href={`/websites?company=${companyId}&new=1`}
-    class="mt-3 inline-block text-xs text-brand hover:underline"
-  >
-    ＋ {t("websites.new")}
-  </a>
-{/if}
+<div class="mt-3 flex items-center gap-4">
+  {#if total > websites.length}
+    <!-- Five here, the rest one click away on the same filter and the same sort — the card is
+         the first page of the list it links to, never a sample of a different one. -->
+    <a href={`/websites?company=${companyId}`} class="text-xs text-brand hover:underline">
+      {t("websites.panel.view_all", { count: total })}
+    </a>
+  {/if}
+  {#if can(page.data.user, "websites.website.write")}
+    <!-- Quick-create from the client page: opens the website dialog narrowed to this client. -->
+    <a href={`/websites?company=${companyId}&new=1`} class="text-xs text-brand hover:underline">
+      ＋ {t("websites.new")}
+    </a>
+  {/if}
+</div>

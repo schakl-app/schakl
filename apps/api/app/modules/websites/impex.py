@@ -39,6 +39,8 @@ async def _fetch_page(
         offset=offset,
         company_id=filters.get("company_id"),
         q=filters.get("q"),
+        hosting_id=filters.get("hosting_id"),
+        uptime_enabled=filters.get("uptime_enabled"),
         sort=filters.get("sort"),
     )
     if items:
@@ -102,11 +104,11 @@ WEBSITE_IMPEX = ImpexDescriptor(
     read_permission="websites.website.read",
     write_permission="websites.website.write",
     natural_keys=("domain",),
-    # Exactly what the list endpoint takes, and nothing the screen cannot set: an export
-    # carries the filters the user is looking at, so ``q`` belongs here the moment the box
-    # above the table does. It searches the parent domain's name — a website has none of its
+    # Exactly what the list screen's filter bar can set, and nothing the screen cannot: an
+    # export carries the filters the user is looking at, so the file is the list on screen,
+    # whole (docs/UX.md). ``q`` searches the parent domain's name — a website has none of its
     # own (``natural_keys``, above).
-    filters=("company_id", "q", "sort"),
+    filters=("q", "company_id", "hosting_id", "uptime_enabled", "sort"),
     columns=(
         ImpexColumn(
             "domain",

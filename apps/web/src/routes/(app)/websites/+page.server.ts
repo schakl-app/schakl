@@ -2,6 +2,7 @@ import { fail, redirect } from "@sveltejs/kit";
 
 import { bulkDeleteAction, bulkUpdateAction } from "$lib/core/bulk/actions.server";
 import { apiErrorKey } from "$lib/core/errors";
+import { readFilters } from "$lib/core/filters/types";
 import { impexAction } from "$lib/core/impex/actions.server";
 import { parseParty } from "$lib/core/party";
 import { can } from "$lib/core/permissions";
@@ -15,6 +16,7 @@ import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { WEBSITE_COLUMNS, WEBSITES_TABLE_ID } from "$lib/modules/websites/columns";
+import { WEBSITE_FILTERS } from "$lib/modules/websites/filters";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -32,6 +34,10 @@ export const load: PageServerLoad = async (event) => {
   if (!can(event.locals.user, "websites.website.read")) throw redirect(303, "/");
   const api = apiFor(event);
 
+  // Read where the bar reads (core/filters/types.ts), then map onto the API's own names. `q`
+  // and `company` both ask about the parent domain — the API crosses that bridge, not this.
+  const filters = readFilters(event.url, [...WEBSITE_FILTERS]);
+
   // The saved column layout comes from the layout load (docs/PERFORMANCE.md). The URL wins
   // over the saved sort so a sorted list stays shareable and the back button works.
   const { prefs } = await event.parent();
@@ -40,19 +46,29 @@ export const load: PageServerLoad = async (event) => {
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
 
   const paging = resolvePaging(event.url, pref);
-  const q = event.url.searchParams.get("q") || undefined;
 
   // Only the URL-dependent read; every picker and definition set comes from the section
-  // layout, which does not rerun on a search or sort navigation (#290).
+  // layout, which does not rerun on a filter or sort click (#290).
   const websites = await api.GET("/api/v1/websites", {
-    params: { query: { limit: paging.limit, offset: paging.offset, q, sort } },
+    params: {
+      query: {
+        limit: paging.limit,
+        offset: paging.offset,
+        sort,
+        q: filters.q,
+        company_id: filters.company,
+        hosting_id: filters.hosting,
+        // Tri-state: absent is every site, "false" is "what is *not* monitored".
+        uptime_enabled: filters.uptime ? filters.uptime === "true" : undefined,
+      },
+    },
   });
 
   return {
     websites: websites.data?.items ?? [],
     total: websites.data?.total ?? 0,
     paging,
-    q: q ?? "",
+    filters,
     agencyLabel: event.locals.theme?.brandName ?? "",
     table: { pref, sort: sort ?? null, widths: resolved.widths },
     locale: event.locals.locale,

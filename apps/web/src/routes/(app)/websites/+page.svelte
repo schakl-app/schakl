@@ -14,6 +14,8 @@
   import BulkResult from "$lib/core/bulk/BulkResult.svelte";
   import type { BulkFieldDef } from "$lib/core/bulk/types";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
+  import FilterBar from "$lib/core/filters/FilterBar.svelte";
+  import type { FilterDef } from "$lib/core/filters/types";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
@@ -31,22 +33,23 @@
   import Modal from "$lib/core/ui/Modal.svelte";
   import PartyPicker from "$lib/core/ui/PartyPicker.svelte";
   import ProviderQuickCreate from "$lib/core/ui/ProviderQuickCreate.svelte";
-  import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import DomainQuickCreate from "$lib/modules/domains/DomainQuickCreate.svelte";
   import HostingQuickCreate from "$lib/modules/hosting/HostingQuickCreate.svelte";
   import { WEBSITE_COLUMNS } from "$lib/modules/websites/columns";
+  import type { WebsiteFilterKey } from "$lib/modules/websites/filters";
 
   type Website = components["schemas"]["WebsiteRead"];
 
   let { data, form } = $props();
 
-  // Deep link from the client page (?new=1&company=): the dialog opens with the domain
-  // options narrowed to that client's domains.
+  // Deep link from a client card: `?company=` filters the list *and* narrows the create
+  // dialog's domain options to that client, and `?new=1` opens the dialog. One parameter for
+  // both, because they are the same intent.
   let showModal = $state(page.url.searchParams.has("new"));
-  const initialCompanyId = page.url.searchParams.get("company") ?? "";
+  const initialCompanyId = $derived(data.filters.company ?? "");
   let editing = $state<Website | null>(null);
   let deleteId = $state("");
   let confirmDelete = $state(false);
@@ -89,8 +92,11 @@
     qcProviderOpen = true;
   }
 
-  // A domain carries at most one website, so the picker offers only unclaimed domains.
-  const takenDomainIds = $derived(new Set(data.websites.map((w) => w.domain_id)));
+  // A domain carries at most one website, so the picker offers only unclaimed domains. The
+  // claimed set comes from the layout load, not from `data.websites`: those rows are a filtered
+  // slice, and a picker whose vocabulary changed with the list's filters would start offering
+  // domains that 409 on save (see the layout's own note).
+  const takenDomainIds = $derived(new Set(data.claimedDomainIds));
   const domainItems = $derived(
     data.domains
       .filter((d) => !takenDomainIds.has(d.id))
@@ -186,6 +192,40 @@
     deleteMessage: t("websites.bulk.delete_message", { count: bulkSelected.length }),
     fieldErrors: form?.bulkFields ?? null,
   });
+
+  // --- the filter bar (core/filters) ----------------------------------------------------
+  // Four, and the two that matter most on this screen are the ones a migration is planned from:
+  // "everything on cluster-a", "everything nobody is watching". Both option lists are the
+  // layout's, so the bar costs no request of its own.
+  const filtering = $derived(Object.keys(data.filters).length > 0);
+  const filterDefs: FilterDef<WebsiteFilterKey>[] = $derived([
+    { kind: "search", key: "q", placeholder: t("websites.search_placeholder") },
+    {
+      // Every placeholder here is the *column's* own label key, so the filter and the column it
+      // narrows can never end up calling the same thing two different names.
+      kind: "select",
+      key: "company",
+      placeholder: t("websites.company"),
+      options: data.companies.map((company) => ({ value: company.id, label: company.name })),
+    },
+    {
+      kind: "select",
+      key: "hosting",
+      placeholder: t("websites.hosting"),
+      options: hostingItems,
+    },
+    {
+      // Self-describing labels: a Combobox shows the picked one with its placeholder gone, so
+      // a bare "Ja" would leave the bar reading "Ja" with nothing to say Ja to.
+      kind: "select",
+      key: "uptime",
+      placeholder: t("websites.uptime"),
+      options: [
+        { value: "true", label: t("websites.filter.uptime_on") },
+        { value: "false", label: t("websites.filter.uptime_off") },
+      ],
+    },
+  ]);
 
   // The tenant's custom fields join the built-ins as selectable columns with no code here (#24).
   // Layout resolution and persistence are the shared table layout's job.
@@ -293,7 +333,11 @@
 
 {#snippet emptyState()}
   <div class="rounded-xl border border-dashed border-border bg-surface-raised p-10 text-center">
-    <p class="font-medium text-text">{t("websites.empty")}</p>
+    <!-- Under a filter, "nog geen websites" is false and sends the reader looking for the
+         wrong problem: the list is fine, the filter is what emptied it. -->
+    <p class="font-medium text-text">
+      {filtering ? t("common.no_results") : t("websites.empty")}
+    </p>
   </div>
 {/snippet}
 
@@ -314,24 +358,25 @@
   {/if}
 </div>
 
-<!-- Search, then the personal column picker: every sort is reachable from there too (docs/UX.md).
-     A site has no name of its own, so the box searches the domain it renders under. -->
-<div class="mb-4 flex flex-wrap items-center gap-2">
-  <SearchInput placeholder={t("websites.search_placeholder")} />
-  <!-- The list's own controls, pushed right: the filters read left-to-right, what you can *do*
-       with the list sits at the far end, and that is the same on every list here. -->
-  <div class="ml-auto flex flex-wrap items-center gap-2">
+<FilterBar filters={filterDefs} idPrefix="website-filter">
+  {#snippet actions()}
+    <!-- Export carries what the screen is narrowed by, so the file *is* the list on screen,
+         whole (docs/UX.md) — the API declares exactly these on the export route. -->
     <ImpexBar
       entity="website"
       readPermission="websites.website.read"
       writePermission="websites.website.write"
       filters={{
-        q: page.url.searchParams.get("q"),
+        q: data.filters.q,
+        company_id: data.filters.company,
+        hosting_id: data.filters.hosting,
+        uptime_enabled: data.filters.uptime,
         sort: data.table.sort,
       }}
       locale={data.locale}
       {form}
     />
+    <!-- The personal column picker: every sort is reachable from here too (docs/UX.md). -->
     <ColumnPicker
       all={table.pickerColumns}
       visible={table.visibleKeys}
@@ -343,8 +388,8 @@
          do rather than what the list shows, so it sits after Kolommen rather than among the
          list's own controls. Pressing it opens the selection strip above the table. -->
     <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
-  </div>
-</div>
+  {/snippet}
+</FilterBar>
 
 <BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
 

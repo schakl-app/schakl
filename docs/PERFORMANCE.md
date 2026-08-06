@@ -143,7 +143,9 @@ hold the replacement up, and a new list gets all four or it is not done:
    endpoint and return `paging` alongside `total`. Never slice in the browser.
 3. **Every filter, search and sort control drops `page`** (`resetPage`). Page 7 of the old filter
    is usually nothing at all in the new one, and an empty page reads as "the filter found
-   nothing". `SearchInput` and `createTableLayout.onSort` already do it; a bespoke filter must.
+   nothing". `SearchInput` and `createTableLayout.onSort` already do it, and a filter declared
+   through `$lib/core/filters` inherits it — which is most of why bespoke filter code stopped
+   being written: every hand-rolled copy was one `resetPage` away from this bug.
 4. **The size is a personal default, not state.** `TablePref.page_size` (50 by default; 25 / 50 /
    100 / 200 offered) is saved per user per list beside the column layout, and the URL overrides
    it whenever it speaks. Storing the current *page* in the preference instead would make two
@@ -156,6 +158,26 @@ only while the page *was* the list — against a paged list it narrows the fifty
 hold and reports a total counted over all of them. It moved to the API, where the export already
 sent it. And **a group count inside a paged list counts the page**, so a sectioned list says so
 (`contacts.groups_page_only`), exactly as a capped panel does.
+
+**A panel cap is the list's own first page, taken through the list's own read.** The domains
+company panel used to call a bespoke `domains_for_company` with no limit at all: to draw five
+names on a client card it loaded the client's entire portfolio, resolved every party label and
+every TLD price on it, and threw the rest away. Both asset panels now call the module's `list`
+with `limit=5` — the same conditions, the same default sort, the same batched `_attach` — and
+send `total` beside the rows so the card can link on with an honest number. Taking the slice
+*through the list's read* is what makes the "Alle 23 bekijken" link continue the card rather
+than open a differently-ordered set, and it is one fewer query shape to keep correct.
+
+The other half of that change is worth stating on its own: **a filter that crosses a module
+boundary belongs in the statement, not in Python.** A website's client is its parent domain's
+(CLAUDE.md §6 forbids the import, so it is a bare-table bridge), and the first implementation
+selected every one of that client's domain ids and passed them back as an `IN` — an unbounded
+read whose cost tracked the client's register rather than the page, paid twice because the count
+statement re-ran it. As a correlated `EXISTS` it is one more predicate on a statement that was
+running anyway, and the same bridge then carries the list's `q` for free. Pinned by
+`test_website_company_filter_never_reads_the_clients_domains`, which measures the statement count
+at two rows and again at six: the endpoint returns identical JSON either way, so nothing else
+would have caught it.
 
 The exceptions are real but narrow, and each is an exception for a reason offset paging cannot
 serve: a **grouped inventory** (Cloudflare zones, listed under their account) would split a group

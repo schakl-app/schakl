@@ -639,6 +639,121 @@ async def test_horizon_reaches_entities_with_no_company_column(client_for) -> No
         assert (await c.get("/api/v1/websites?limit=50", headers=owner_h)).json()["total"] == 2
 
 
+async def test_horizon_survives_every_filter_a_list_screen_offers(client_for) -> None:
+    """A filter is a second way to ask, and the horizon has to hold on all of them.
+
+    The domains and websites lists grew a shared filter bar, and each control is a fresh way to
+    phrase the same read: a **client picker**, whose options are a list of the agency's clients;
+    a **search**, which on websites matches the *parent domain's* name; and a ``company_id`` a
+    deep link puts straight in the address bar. The horizon is enforced on the statement, so all
+    three narrow rather than widen — but that is a property worth pinning rather than re-deriving,
+    because the failure would be silent and would read as a feature (a picker listing every
+    client is exactly what an unscoped picker looks like).
+
+    The search is the sharpest of the three: matching on a table the caller may not read is how a
+    list screen becomes an enumeration oracle. ``?q=klant`` matches both clients' domains here on
+    purpose — a filter that answers "1 of 1" where the org holds two is the whole assertion.
+    """
+    t, member, membership, owner_h, member_h, a, b, group = await _setup(
+        client_for, "horiz-filters", role="admin"
+    )
+
+    async with client_for(t.host) as c:
+        await _seed_for_both(c, owner_h, a, b)
+        assert (
+            await c.put(
+                f"/api/v1/companies/groups/{group['id']}/memberships",
+                json={"membership_ids": [str(membership.id)]},
+                headers=owner_h,
+            )
+        ).status_code == 204
+
+        async def rows(url: str, headers) -> tuple[list[str], int]:
+            res = await c.get(url, headers=headers)
+            assert res.status_code == 200, f"{url}: {res.status_code} {res.text}"
+            body = res.json()
+            return [r.get("domain_name") or r.get("name") for r in body["items"]], body["total"]
+
+        # The picker's own options: whatever the bar can offer, it offers from this list.
+        assert await rows("/api/v1/companies?limit=50", member_h) == (["Alpha"], 1)
+
+        for module in ("domains", "websites"):
+            # Search: the term matches both clients' domains, the answer holds one.
+            assert await rows(f"/api/v1/{module}?q=klant", member_h) == (["klant-a.nl"], 1)
+            # …and naming the invisible client's domain outright finds nothing, so the box
+            # cannot be used to confirm a guess.
+            assert await rows(f"/api/v1/{module}?q=klant-b", member_h) == ([], 0)
+            # A hand-typed `?company_id=` for a client outside the horizon: no rows, and a
+            # total that agrees with them (#285's failure mode 2 — a count is a fact about
+            # rows the caller cannot see).
+            assert await rows(f"/api/v1/{module}?company_id={b['id']}", member_h) == ([], 0)
+            # The owner is never restricted: proof the fixtures really do hold two of each,
+            # so every empty answer above is the horizon and not an empty database.
+            _, owner_total = await rows(f"/api/v1/{module}?q=klant", owner_h)
+            assert owner_total == 2
+
+        # The panel carries a `total` now, and a card's count is the same fact as a list's.
+        assert (
+            await c.get(f"/api/v1/companies/{b['id']}/panels", headers=member_h)
+        ).status_code == 404
+        panels = (await c.get(f"/api/v1/companies/{a['id']}/panels", headers=member_h)).json()
+        for key in ("domains.company", "websites.company"):
+            panel = next(p for p in panels if p["key"] == key)
+            assert panel["data"]["total"] == 1, panel
+
+
+async def test_a_client_login_never_sees_the_agencys_other_clients(client_for) -> None:
+    """The `client` role (#274's `ctx.is_portal`) against the same filter surfaces.
+
+    A client holds ``domains.domain.read`` and ``websites.website.read`` by default, so these
+    two lists — and therefore the client picker on them — are screens a portal login can reach.
+    That makes "whose names are in that dropdown?" a security question and not a cosmetic one.
+
+    Two states, because they fail differently. With **no** company scope the horizon floors to
+    the empty set (#252), so the answer is nothing at all rather than everything — the direction
+    a missing assignment must fail in. Scoped to one client, the answer is that client, and a
+    search matching the agency's *other* client still returns only their own.
+    """
+    t, member, membership, owner_h, member_h, a, b, group = await _setup(
+        client_for, "horiz-client", role="admin"
+    )
+    portal = await make_tenant("horiz-client-p", email="client-portal@example.com")
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        portal_membership = await add_membership(session, t.org.id, portal.user.id, role="client")
+        portal_membership_id = portal_membership.id
+        await session.commit()
+    client_h = await auth_cookie(portal.user, org_id=t.org.id)
+
+    async with client_for(t.host) as c:
+        await _seed_for_both(c, owner_h, a, b)
+
+        async def rows(url: str) -> tuple[list[str], int]:
+            res = await c.get(url, headers=client_h)
+            assert res.status_code == 200, f"{url}: {res.status_code} {res.text}"
+            body = res.json()
+            return [r.get("domain_name") or r.get("name") for r in body["items"]], body["total"]
+
+        # Unassigned: floored to nothing, never opened to everything.
+        assert await rows("/api/v1/companies?limit=50") == ([], 0)
+        assert await rows("/api/v1/domains?limit=50") == ([], 0)
+        assert await rows("/api/v1/websites?limit=50") == ([], 0)
+
+        assert (
+            await c.put(
+                f"/api/v1/companies/groups/{group['id']}/memberships",
+                json={"membership_ids": [str(portal_membership_id)]},
+                headers=owner_h,
+            )
+        ).status_code == 204
+
+        # Scoped to Alpha: their own client, and only ever their own.
+        assert await rows("/api/v1/companies?limit=50") == (["Alpha"], 1)
+        for module in ("domains", "websites"):
+            assert await rows(f"/api/v1/{module}?q=klant") == (["klant-a.nl"], 1)
+            assert await rows(f"/api/v1/{module}?company_id={b['id']}") == ([], 0)
+
+
 async def test_horizon_reaches_totals_and_summary_tiles(client_for) -> None:
     """A count is a fact about rows the caller cannot see (#252's rule, still open here).
 

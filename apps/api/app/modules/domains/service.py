@@ -289,12 +289,25 @@ class DomainService:
         q: str | None = None,
         sort: str | None = None,
         invoiceable: bool | None = None,
+        status: str | None = None,
+        registrar_provider_id: uuid.UUID | None = None,
+        dns_provider_id: uuid.UUID | None = None,
     ) -> tuple[Sequence[Domain], int]:
         conditions = []
         if company_id is not None:
             conditions.append(Domain.company_id == company_id)
         if q:
             conditions.append(Domain.name.ilike(f"%{q.strip()}%"))
+        if status:
+            conditions.append(Domain.status == status)
+        # "Which of our names sit at this registrar / on this DNS" is the question a portfolio
+        # move is planned from, and the answer has to be the whole register rather than the page
+        # that happened to load — so it is a query parameter, never a filter in the browser
+        # (docs/PERFORMANCE.md).
+        if registrar_provider_id is not None:
+            conditions.append(Domain.registrar_provider_id == registrar_provider_id)
+        if dns_provider_id is not None:
+            conditions.append(Domain.dns_provider_id == dns_provider_id)
         if invoiceable is not None:
             # Filters on the *resolved* answer, not the stored column: "show me what I am not
             # billing" must include the domains a register decided about, which are precisely
@@ -316,16 +329,6 @@ class DomainService:
         domain = await self.repo.get_or_404(domain_id)
         await self._attach([domain])
         return domain
-
-    async def domains_for_company(self, company_id: uuid.UUID) -> Sequence[Domain]:
-        stmt = (
-            self.repo.scoped_select()
-            .where(Domain.company_id == company_id)
-            .order_by(func.lower(Domain.name))
-        )
-        items = list((await self.ctx.session.execute(stmt)).scalars().all())
-        await self._attach(items)
-        return items
 
     async def open_renewals(self, company_id: uuid.UUID | None = None) -> list[OpenRenewal]:
         """Domains and **every renewal period of each still outstanding** (§6), for one client

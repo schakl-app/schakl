@@ -69,23 +69,31 @@ def _hosting_sort_name() -> Any:
     )
 
 
-def _name_matches(needle: str) -> Any:
-    """A website's searchable text is its **parent domain's name**, because that is the only
-    name it has — the row prints one and stores none (``natural_keys=("domain",)``, §17).
+def _domain_exists(*conditions: Any) -> Any:
+    """A predicate on the parent domain, correlated to the website row.
 
-    Correlated ``EXISTS`` over the same bare table the sorts use (§6): the bridge is a join
-    ``websites`` may not make by importing, and an ``EXISTS`` never multiplies the row the way
-    a real join would.
+    The bridge every website filter that is really a *domain* filter crosses — the client a site
+    belongs to and the only name it has are both the domain's. Correlated ``EXISTS`` over the
+    same bare table the sorts use (§6): the join ``websites`` may not make by importing, and an
+    ``EXISTS`` never multiplies the row the way a real join would. Org-scoped on both sides —
+    RLS already is, but a bare table read states its own tenancy (Golden Rule 1).
     """
     return (
         select(_domains.c.id)
         .where(
             _domains.c.org_id == Website.org_id,
             _domains.c.id == Website.domain_id,
-            _domains.c.name.ilike(f"%{needle}%"),
+            *conditions,
         )
         .exists()
     )
+
+
+def _name_matches(needle: str) -> Any:
+    """A website's searchable text is its **parent domain's name**, because that is the only
+    name it has — the row prints one and stores none (``natural_keys=("domain",)``, §17).
+    """
+    return _domain_exists(_domains.c.name.ilike(f"%{needle}%"))
 
 
 # Sort keys a client may pass; anything else is rejected (app/core/sorting.py).
@@ -119,6 +127,8 @@ class WebsiteService:
         domain_id: uuid.UUID | None = None,
         company_id: uuid.UUID | None = None,
         q: str | None = None,
+        hosting_id: uuid.UUID | None = None,
+        uptime_enabled: bool | None = None,
         sort: str | None = None,
     ) -> tuple[Sequence[Website], int]:
         conditions = []
@@ -126,17 +136,16 @@ class WebsiteService:
             conditions.append(Website.domain_id == domain_id)
         if q and q.strip():
             conditions.append(_name_matches(q.strip()))
+        # The client narrows through the same bridge the search does. It used to
+        # `SELECT id FROM domains WHERE company_id = …` into Python and pass the ids back as an
+        # `IN` — an unbounded read whose cost grew with the client's register rather than with
+        # the page (docs/PERFORMANCE.md), and one the count statement paid for a second time.
         if company_id is not None:
-            # A website's client is its parent domain's (§6 bare-table bridge, no import).
-            company_domains = (
-                await self.ctx.session.scalars(
-                    text("SELECT id FROM domains WHERE org_id = :oid AND company_id = :cid"),
-                    {"oid": self._org_id, "cid": company_id},
-                )
-            ).all()
-            if not company_domains:
-                return [], 0
-            conditions.append(Website.domain_id.in_(company_domains))
+            conditions.append(_domain_exists(_domains.c.company_id == company_id))
+        if hosting_id is not None:
+            conditions.append(Website.hosting_id == hosting_id)
+        if uptime_enabled is not None:
+            conditions.append(Website.uptime_enabled.is_(uptime_enabled))
         stmt = self.repo.scoped_select().where(*conditions)
         stmt = apply_sort(stmt, sort, SORTABLE, default=Website.created_at.desc())
         stmt = stmt.limit(limit).offset(offset)

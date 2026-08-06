@@ -150,6 +150,58 @@ async def test_tasks_panel_open_count_is_counted_not_measured(client_for) -> Non
         assert len(panel["data"]["tasks"]) == 50
 
 
+# --- the websites list: a filter that crosses a module boundary, not a prefetch ------------- #
+async def test_website_company_filter_never_reads_the_clients_domains(
+    client_for, count_queries
+) -> None:
+    """``?company_id=`` costs the same at two domains as at two hundred.
+
+    A website's client is its *parent domain's* (§6 — no import, a bare-table bridge), and the
+    first way to express that was to `SELECT id FROM domains WHERE company_id = …` and hand the
+    ids back as an ``IN``. That is an unbounded read whose cost tracks the client's register
+    rather than the page, and the count statement paid for it a second time. Correlated, it is
+    one more predicate on a statement that was going to run anyway.
+
+    Invisible in the JSON, which is why it is pinned here: the endpoint returns identical rows
+    either way (``QueryCounter``'s docstring, and this file's).
+    """
+    t = await make_tenant("perf-website-filter")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers)
+
+        async def add_site(i: int) -> None:
+            domain = (
+                await c.post(
+                    "/api/v1/domains",
+                    json={"name": f"site-{i}.nl", "company_id": company},
+                    headers=headers,
+                )
+            ).json()["id"]
+            created = await c.post(
+                "/api/v1/websites", json={"domain_id": domain}, headers=headers
+            )
+            assert created.status_code == 201, created.text
+
+        async def measure(expected_total: int) -> int:
+            with count_queries() as counter:
+                res = await c.get(f"/api/v1/websites?company_id={company}", headers=headers)
+            assert res.status_code == 200, res.text
+            assert res.json()["total"] == expected_total
+            # The prefetch's shape, gone: nothing asks the domains table for a bare id list to
+            # feed straight back in as a filter.
+            flat = [" ".join(s.split()).lower() for s in counter.statements]
+            assert not [s for s in flat if s.startswith("select id from domains")], flat
+            return len(counter)
+
+        for i in range(2):
+            await add_site(i)
+        small = await measure(2)
+        for i in range(2, 6):
+            await add_site(i)
+        assert await measure(6) == small
+
+
 # --- per-request tenancy overhead ---------------------------------------------------------- #
 # Every request in the app pays this, so it is budgeted rather than left to drift. An owner
 # holds ``*`` and never reaches horizon resolution at all; a member and a client both do, and
@@ -182,7 +234,18 @@ _MEMBER_REQUEST_BUDGET = 8
 #:
 #: 40 -> 41 when `reporting` (#300) added the fourteenth panel: one `SELECT … FROM reports`,
 #: which is the deliberate raise this comment asks for rather than a budget quietly slipping.
-_PANELS_BUDGET = 41
+#:
+#: 41 -> 43 when the domains and websites panels were capped at five rows with an honest total.
+#: Both now cost `SELECT … LIMIT 5` + `COUNT(*)` where each used to cost one statement — but
+#: only *here*, because this company deliberately has neither a domain nor a website, and both
+#: panels used to short-circuit on exactly that: the domains one loaded the client's entire
+#: portfolio in a single unbounded query (nothing to load), and the websites one asked for the
+#: client's domain ids first and returned early when there were none. On a client who actually
+#: has some, the new shape is *cheaper* — the websites panel drops that id prefetch (a
+#: correlated EXISTS now), so it went 3 statements -> 2, and the domains panel stopped
+#: transferring 400 rows to render 5. The measurement below is the worst case for this change
+#: and the best case for the code it replaced; raise it knowingly, as this comment asks.
+_PANELS_BUDGET = 43
 
 
 async def test_a_staff_request_never_queries_contacts_to_learn_it_is_staff(

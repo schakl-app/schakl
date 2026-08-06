@@ -27004,6 +27004,10 @@ export interface operations {
                 sort?: string | null;
                 /** @description Filter on the *resolved* billing answer (#298), not the stored flag: false lists what is registered elsewhere and therefore never invoiced. */
                 invoiceable?: boolean | null;
+                /** @description active | redirect | parked | expired | inactive */
+                status?: string | null;
+                registrar_provider_id?: string | null;
+                dns_provider_id?: string | null;
             };
             header?: never;
             path?: never;
@@ -28569,6 +28573,10 @@ export interface operations {
                 /** @description Search, as on the list */
                 q?: string | null;
                 company_id?: string | null;
+                status?: string | null;
+                registrar_provider_id?: string | null;
+                dns_provider_id?: string | null;
+                invoiceable?: boolean | null;
                 /** @description List sort key, '-' desc */
                 sort?: string | null;
             };
@@ -29669,9 +29677,11 @@ export interface operations {
     impex_export_website_api_v1_impex_website_export_get: {
         parameters: {
             query?: {
-                company_id?: string | null;
                 /** @description Search, as on the list */
                 q?: string | null;
+                company_id?: string | null;
+                hosting_id?: string | null;
+                uptime_enabled?: boolean | null;
                 /** @description List sort key, '-' desc */
                 sort?: string | null;
             };
@@ -42170,6 +42180,8 @@ export interface operations {
                 company_id?: string | null;
                 /** @description Matches the parent domain's name */
                 q?: string | null;
+                hosting_id?: string | null;
+                uptime_enabled?: boolean | null;
                 /** @description name | company | hosting | uptime | created_at | updated_at, '-' desc */
                 sort?: string | null;
             };

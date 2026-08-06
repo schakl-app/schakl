@@ -85,6 +85,11 @@ export const EXPORT_FILTERS = [
   "user_id",
   "date_from",
   "date_to",
+  "hosting_id",
+  "registrar_provider_id",
+  "dns_provider_id",
+  "invoiceable",
+  "uptime_enabled",
   "sort",
 ] as const;
 

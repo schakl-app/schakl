@@ -51,6 +51,13 @@ async def list_domains(
             " false lists what is registered elsewhere and therefore never invoiced."
         ),
     ),
+    status: str | None = Query(
+        None,
+        max_length=50,
+        description="active | redirect | parked | expired | inactive",
+    ),
+    registrar_provider_id: uuid.UUID | None = Query(None),
+    dns_provider_id: uuid.UUID | None = Query(None),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[DomainRead]:
     items, total = await DomainService(ctx).list(
@@ -60,6 +67,9 @@ async def list_domains(
         q=q,
         sort=sort,
         invoiceable=invoiceable,
+        status=status,
+        registrar_provider_id=registrar_provider_id,
+        dns_provider_id=dns_provider_id,
     )
     return Page(
         items=[DomainRead.model_validate(d) for d in items],
