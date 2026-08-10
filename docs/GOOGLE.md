@@ -183,6 +183,28 @@ agency tool — so, direct.
   the agency's own record without a flag anyone has to remember to set. Ranked, never
   filtered: internal-only mail (`gmail_log_internal`) still maps to the agency's own company,
   because there is nothing else it could mean.
+- **Whose email it is, is a header fact — never "whose poll ran first".** One email produces
+  one row (the RFC-822 dedup), so when several colleagues hold a copy, the owner used to be
+  decided by poll order. A shared `info@` mailbox Bcc'd on the agency's outgoing mail therefore
+  claimed every one of them: the row named the wrong person, read as **inbound** (a Bcc'd copy
+  is an ordinary INBOX message and carries no `SENT` label), and — a pending row being private
+  to its owner with *no* admin escape (§15) — the colleague who actually wrote the mail could
+  not see it anywhere. "It never arrived" and "it arrived in a queue you may not open" are the
+  same screen. `matching.intended_owner` reads it off the headers instead: **outgoing** is the
+  `From` when the sender is one of ours, **incoming** is the first `To` that is (then `Cc`),
+  because header order is addressing order. `direction_of` takes the same fact, so a colleague's
+  copy of our own mail is outbound whatever its labels say.
+- **The owner's mailbox logs it; the others stand aside** (`_defer_to_owner_mailbox`). Deferring
+  rather than re-stamping `owner_user_id` is what keeps the row coherent: `gmail_message_id` is
+  only meaningful *inside* the mailbox it came from, so the owner's own copy is the only one
+  whose deep link opens in their Gmail and whose body fetch uses their own grant. Three things
+  are never deferred, and each is load-bearing: a copy carrying `SENT` (a mailbox does not give
+  away its own outgoing mail, whatever the headers claim), a message naming no colleague at all
+  (the shape of a Bcc-only copy — it cannot name an owner, so it must not pick one), and
+  anything whose intended owner is not in `Internals.syncing_user_ids`. That last one is the
+  difference between deferring and *dropping*: standing aside for a mailbox that is
+  disconnected, opted out or missing the Gmail scope would lose the email outright, so in that
+  case the copy we hold is the only one there will ever be and it logs where it landed.
 - Store **metadata + a deep link** (`message-id`, `thread-id`, subject, snippet, participants,
   timestamp, `https://mail.google.com/mail/u/0/#all/<msgid>`) rather than full bodies by
   default. Pull the body on demand — lighter, faster, far less invasive.
