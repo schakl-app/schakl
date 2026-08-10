@@ -429,10 +429,8 @@ async def effective_email_matrix(
 # --------------------------------------------------------------------------- #
 # Web push (#309): per event type, the e-mail matrix's twin
 # --------------------------------------------------------------------------- #
-#: Off until someone opts in, for the same reason e-mail is: this channel leaves the app, and it
-#: is the only one that can wake someone. Granting a browser permission must not by itself start
-#: pushing every event — that is the "connecting a transport must not start pinging a phone" rule
-#: external channels have had since #283, applied to the transport that literally is a phone.
+#: Silent for the events that were never urgent. A browser notification for something whose own
+#: cadence is "tell me tomorrow at 08:00" is a phone lighting up to deliver yesterday's news.
 WEB_PUSH_PREF_OFF = ResolvedPref(
     enabled=False,
     delay_minutes=0,
@@ -441,6 +439,28 @@ WEB_PUSH_PREF_OFF = ResolvedPref(
     digest_weekday=None,
     channel=CHANNEL_WEB_PUSH,
 )
+
+#: On for the events that are *already* immediate — a task assigned to you, a mention, an
+#: overdue item, a leave decision. Granting the browser permission is the opt-in (owner call,
+#: #309 follow-up): the alternative shipped a feature whose success state was a permission
+#: dialog followed by silence, and a second screen nobody was sent to.
+WEB_PUSH_PREF_ON = replace(WEB_PUSH_PREF_OFF, enabled=True)
+
+
+def web_push_default(event_type: str) -> ResolvedPref:
+    """The "nobody has said anything" rule for one event on the push channel.
+
+    Derived from the event's **in-app** cadence rather than from a second list, so an event
+    added to ``_IMMEDIATE_EVENTS`` tomorrow is pushed tomorrow and the two definitions of
+    "this is urgent" cannot drift apart.
+
+    This is the layer *under* the org row and the user row, so a tenant or a person who has
+    turned an event off keeps it off: a default is what applies when nothing has been said,
+    and flipping one must never overwrite something somebody said.
+    """
+    if default_event_pref(event_type).digest == DIGEST_IMMEDIATE:
+        return WEB_PUSH_PREF_ON
+    return WEB_PUSH_PREF_OFF
 
 
 async def resolve_web_push_for_recipients(
@@ -459,9 +479,8 @@ async def resolve_web_push_for_recipients(
         event_types=[event_type],
         user_ids=list(user_ids),
     )
-    return {
-        uid: _merge_implicit(event_type, uid, buckets, off=WEB_PUSH_PREF_OFF) for uid in user_ids
-    }
+    off = web_push_default(event_type)
+    return {uid: _merge_implicit(event_type, uid, buckets, off=off) for uid in user_ids}
 
 
 async def effective_web_push_matrix(
@@ -476,7 +495,7 @@ async def effective_web_push_matrix(
         user_ids=[user_id] if user_id is not None else [],
     )
     events = {
-        event: _merge_implicit(event, user_id, buckets, off=WEB_PUSH_PREF_OFF)
+        event: _merge_implicit(event, user_id, buckets, off=web_push_default(event))
         for event in EVENT_TYPES
     }
     return events, _scope_schedule(user_id, buckets)

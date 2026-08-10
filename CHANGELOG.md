@@ -16,6 +16,12 @@ monitor.
 - Registering takes nothing typed and nothing configured on the server. Each browser is its own
   device in the list, with the moment it was last reached, and can be switched off from any of
   them.
+- **Allowing the browser is the whole opt-in.** You are then pushed the things that were already
+  urgent — a task assigned to you, a mention, an overdue item, a leave request and its decision —
+  and nothing that was only ever meant for tomorrow's digest. The alternative was a permission
+  dialog followed by silence and a second screen nobody was sent to; the split is what keeps a
+  phone from being woken to deliver yesterday's news. Every one of those events is a row in the
+  matrix, so an organisation or a person can change any of it.
 - **One message per person, never per device.** A daily digest of ten events is one notification
   wherever you registered, not thirty, and it counts as delivered the moment a single device
   takes it: a phone that is off and a laptop that is open means you were reached. A browser that
@@ -165,14 +171,18 @@ monitor.
 
 ### Upgrade notes
 
-- **Two migrations, both additive.** One column on reports, and two new tables for push devices.
-  Nothing is dropped, renamed or retyped, both tables come up empty, and rolling the image back
-  is safe.
+- **Three migrations, all additive.** One column on reports, two new tables for push devices, and
+  one that writes the browser-push defaults into every organisation that already exists. Nothing
+  is dropped, renamed or retyped, and rolling the image back is safe.
 - **Quiet hours now do something.** If your organisation had filled in a quiet window, e-mail and
   chat notifications that previously went out inside it will now be held until it ends. The in-app
   bell is unaffected. The window is in Instellingen → Meldingen.
-- **Browser notifications are off until somebody allows them**, per person and per browser. An
-  instance that upgrades and never opens the setting behaves exactly as it did.
+- **Nobody is pushed until they allow their browser**, per person and per device, so an instance
+  that upgrades and where nobody does behaves exactly as it did. The upgrade does write the
+  defaults into your organisation's notification settings — the urgent events on, the digest
+  events off — so the first person who allows their browser receives those events rather than
+  silence. It is written as your organisation's own setting, editable in Instellingen →
+  Meldingen, and it never overwrites a choice already made there.
 - **`Medewerker` gains two contact permissions on startup** — creating and editing contact
   persons, and attaching them to clients. Deleting a contact is unchanged and stays with
   administrators. If you deliberately want an employee not to touch contacts, untick them again

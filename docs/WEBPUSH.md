@@ -96,6 +96,30 @@ CHANNEL_WEB_PUSH = "web_push"   # events.py, beside CHANNEL_IN_APP / _EMAIL / _E
 web-push preference for the whole batch in one query, and write **one delivery row per
 recipient** — not per device.
 
+### The default: on for the urgent events, silent for the rest
+
+`prefs.web_push_default(event_type)` is the bottom layer of the three-layer resolution, and it is
+**not** a single constant: an event whose *in-app* cadence is `immediate` is pushed, an event that
+lands in tomorrow's 08:00 digest is not.
+
+It is derived from `default_event_pref(event).digest` rather than from a second list, so the two
+definitions of "this is urgent" cannot drift apart when an event is added.
+
+The first cut had it uniformly off, reasoning by analogy with an external channel (#283: connecting
+a transport must not start pinging a phone). The analogy does not hold, and the owner reversed it.
+A Slack webhook is a URL somebody pastes with no further ceremony; a push subscription is minted by
+a **browser permission dialog that names notifications**, which is the opt-in — asking for it and
+then delivering silence makes the success state of the feature indistinguishable from its failure
+state, and sends the user to a second screen nobody told them about. What the split preserves is
+the part that was actually right: a phone lighting up to deliver something whose own cadence is
+"tell me tomorrow" is how a channel gets switched off for good.
+
+A default is what applies when nothing has been said, so it never overwrites: an org row or a user
+row that turns an event off outranks it by construction (user ← org ← default). Migration
+`b3f6c1d80a45` additionally writes the same answer down as **org-default rows** for orgs that
+existed at the time — never touching an org that had already said something — so an upgraded
+instance shows the setting as its own rather than as an inherited constant.
+
 One row per recipient, not per device, because the cadence belongs to the *person* and the devices
 are an implementation detail of reaching them. Per-device rows would turn a daily digest of ten
 events into ten × three messages and make "did this get delivered?" a question with three answers.

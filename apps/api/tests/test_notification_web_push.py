@@ -21,7 +21,8 @@ from app.core import webpush as webpush_core
 from app.core.models import Org
 from app.db import async_session_maker, set_current_org
 from app.modules.notifications import webpush as webpush_module
-from app.modules.notifications.defaults import ResolvedPref
+from app.modules.notifications.defaults import ResolvedPref, default_event_pref
+from app.modules.notifications.events import DIGEST_IMMEDIATE, EVENT_TYPES
 from app.modules.notifications.models import NotificationDelivery, PushSubscription
 from app.modules.notifications.prefs import compute_visible_at
 from tests.conftest import auth_cookie, leave_workday, make_tenant
@@ -367,18 +368,108 @@ async def _leave_request(c, owner, member_headers, offset: int = 0) -> None:  # 
     assert res.status_code == 201, res.text
 
 
-async def test_push_is_off_until_someone_opts_in(client_for) -> None:
-    """Granting a browser permission must not by itself start pushing every event (#283's rule)."""
-    t = await make_tenant("push-default-off")
+async def test_push_defaults_to_the_urgent_events_and_nothing_else(client_for) -> None:
+    """Granting a browser permission is the opt-in, and it opts you into the *immediate* events.
+
+    The split is the whole guarantee: an event whose own cadence is "tomorrow at 08:00" must not
+    wake a phone, or the first thing anybody does is switch the channel off entirely. Asserted
+    against the in-app cadence rather than a copied list, so adding an immediate event tomorrow
+    cannot leave the two definitions of "urgent" disagreeing.
+    """
+    t = await make_tenant("push-default-on")
     owner = await auth_cookie(t.user)
     async with client_for(t.host) as c:
         matrix = (await c.get("/api/v1/notifications/preferences", headers=owner)).json()
-        assert all(row["push_enabled"] is False for row in matrix["events"])
+        pushed = {row["event_type"] for row in matrix["events"] if row["push_enabled"]}
+        expected = {
+            event
+            for event in EVENT_TYPES
+            if default_event_pref(event).digest == DIGEST_IMMEDIATE
+        }
+        assert pushed == expected
+        assert "task.commented" not in pushed  # a digest event stays silent
 
         await c.post(
             "/api/v1/notifications/push/subscriptions", json=_subscription(), headers=owner
         )
-        member = await _member(c, owner, "emp@default-off.example")
+        member = await _member(c, owner, "emp@default-on.example")
+        await _leave_request(c, owner, await auth_cookie(member))
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        rows = (
+            (
+                await session.execute(
+                    select(NotificationDelivery).where(
+                        NotificationDelivery.channel == "web_push"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(rows) == 1  # leave.requested is immediate: pushed with nothing ticked
+
+
+async def test_a_digest_event_is_not_pushed_by_default(client_for) -> None:
+    """The other half of the split, end to end rather than off the matrix."""
+    t = await make_tenant("push-digest-silent")
+    owner = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.post(
+            "/api/v1/notifications/push/subscriptions", json=_subscription(), headers=owner
+        )
+        member = await _member(c, owner, "emp@digest-silent.example")
+        # Self-assigned, so creating it notifies nobody: `task.assigned` is immediate and would
+        # otherwise leave the row this test is looking for the absence of.
+        task = (
+            await c.post(
+                "/api/v1/tasks",
+                json={"title": "Iets te doen", "assignee_user_id": str(t.user.id)},
+                headers=owner,
+            )
+        ).json()
+        res = await c.post(
+            f"/api/v1/tasks/{task['id']}/comments",
+            json={"body": "Een opmerking"},
+            headers=await auth_cookie(member),
+        )
+        assert res.status_code == 201, res.text
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        rows = (
+            (
+                await session.execute(
+                    select(NotificationDelivery).where(
+                        NotificationDelivery.channel == "web_push"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert rows == []
+
+
+async def test_an_explicit_off_survives_the_default_being_on(client_for) -> None:
+    """A default is what applies when nothing has been said — never an overwrite of a decision."""
+    t = await make_tenant("push-explicit-off")
+    owner = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put(
+            "/api/v1/notifications/preferences",
+            json={
+                "push_events": [
+                    {"event_type": "leave.requested", "enabled": False, "digest": "immediate"}
+                ]
+            },
+            headers=owner,
+        )
+        await c.post(
+            "/api/v1/notifications/push/subscriptions", json=_subscription(), headers=owner
+        )
+        member = await _member(c, owner, "emp@explicit-off.example")
         await _leave_request(c, owner, await auth_cookie(member))
 
     async with async_session_maker() as session:

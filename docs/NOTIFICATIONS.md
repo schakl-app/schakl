@@ -33,7 +33,10 @@ create. `web_push` has *devices* rather than an address — `push_subscriptions`
 `410`; as a channel row an ordinary auto-prune would delete a user's channel and its routing.
 Its delivery row is written **per recipient, never per device**: the cadence belongs to the
 person, and the fan-out to their browsers happens in the sweep, against whatever devices exist
-then. `docs/WEBPUSH.md` has the rest.
+then. Its default is the one that is not a single constant: **on for the events that are already
+immediate, silent for the ones that land in a digest** (`prefs.web_push_default`) — the browser's
+own permission dialog is the opt-in, and a phone woken to deliver tomorrow's news is how a channel
+gets switched off for good. `docs/WEBPUSH.md` has the rest.
 An `external` channel is an explicit `notification_channels` row holding an Apprise URL,
 encrypted at rest. `user_id NULL` makes it an org/shared channel; `user_id` set makes it personal.
 
