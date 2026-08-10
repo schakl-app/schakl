@@ -282,6 +282,35 @@ class TaskScheduleService:
         await self.ctx.session.flush()
         return block
 
+    async def mark_logged(
+        self, schedule_id: uuid.UUID, *, task_id: uuid.UUID, entry_id: uuid.UUID
+    ) -> None:
+        """Claim a block for an entry someone else built (#314), under ``log_time``'s own rules.
+
+        The finish prompt writes its entry through the time module's published surface with the
+        hours the user confirmed — which may be neither the block's start nor its length — so it
+        cannot go through ``log_time``, whose entry *is* the block's window. What it must still
+        inherit is the guarantee: a block linked to an entry stops offering "Uren registreren",
+        which is the only thing stopping the same afternoon being booked twice. Hence the same
+        three refusals, in the same order.
+        """
+        block = await self._readable_or_404(schedule_id)
+        if block.task_id != task_id:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"schedule_id": "errors.validation"},
+            )
+        if block.user_id != self.ctx.user.id:
+            raise AppError("forbidden", "errors.forbidden", status_code=403)
+        if block.time_entry_id is not None:
+            raise AppError(
+                "schedule_already_logged", "errors.schedule_already_logged", status_code=409
+            )
+        block.time_entry_id = entry_id
+        await self.ctx.session.flush()
+
     # ------------------------------------------------------------------ #
     # Bus emits (CLAUDE.md §6 — never import the google/notifications internals)
     # ------------------------------------------------------------------ #

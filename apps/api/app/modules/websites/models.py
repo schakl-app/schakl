@@ -15,6 +15,7 @@ from sqlalchemy import Boolean, ForeignKey, Index, UniqueConstraint, column, sel
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.activity import AuditableMixin
 from app.core.customfields import CustomizableMixin
 from app.core.mixins import OrgScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
 from app.core.party import party_id_column, party_type_column
@@ -30,10 +31,13 @@ class Website(
     OrgScopedMixin,
     TimestampMixin,
     CustomizableMixin,
+    AuditableMixin,
     Base,
 ):
     __tablename__ = "websites"
-    __entity_type__ = "website"  # registers as customizable
+    __entity_type__ = "website"  # customizable (§13) + auditable (§16)
+    #: Reading the trail needs this module's own read key — core holds no module list (§16).
+    __activity_read_permission__ = "websites.website.read"
 
     __table_args__ = (
         UniqueConstraint("org_id", "domain_id", name="uq_websites_domain"),

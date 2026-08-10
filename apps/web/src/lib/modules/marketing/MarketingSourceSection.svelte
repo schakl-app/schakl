@@ -20,6 +20,7 @@
 
   import MarketingDrilldown from "./MarketingDrilldown.svelte";
   import {
+    channelLabel,
     comparePeriodLabel,
     deltaClass,
     deltaView,
@@ -40,14 +41,14 @@
   let {
     companyId,
     src,
-    rangeDays,
+    period,
     compare,
     edit = null,
     onchange,
   }: {
     companyId: string;
     src: SourceMetrics;
-    rangeDays: number;
+    period: string;
     /** The spans behind every delta on this section (#312) — the tiles name the one they used.
      *  Nullable only for the payload-less edit-before-first-sync case; a tile then shows its
      *  delta unlabelled rather than inventing a period. */
@@ -309,13 +310,13 @@
             >
               <X size={13} />
             </button>
-            {#key rangeDays}
+            {#key period}
               <MarketingDrilldown
                 {companyId}
                 linkId={src.link_id}
                 source={src.source}
                 {kind}
-                {rangeDays}
+                {period}
                 currency={src.currency}
                 {edit}
                 {onchange}
@@ -394,7 +395,7 @@
         <ul class="space-y-1.5">
           {#each channelEntries as [name, value] (name)}
             <li class="flex items-center gap-2 text-sm">
-              <span class="w-32 shrink-0 truncate text-text-muted">{name}</span>
+              <span class="w-32 shrink-0 truncate text-text-muted">{channelLabel(name)}</span>
               <span class="h-2 flex-1 overflow-hidden rounded-full bg-surface">
                 <span
                   class="block h-full rounded-full bg-brand"
@@ -413,13 +414,13 @@
     <!-- Live drill-downs (only these touch Google), keyed so a range change re-fetches. -->
     <div class="grid gap-5 md:grid-cols-2">
       {#each drilldowns as kind (kind)}
-        {#key rangeDays}
+        {#key period}
           <MarketingDrilldown
             {companyId}
             linkId={src.link_id}
             source={src.source}
             {kind}
-            {rangeDays}
+            {period}
             currency={src.currency}
           />
         {/key}

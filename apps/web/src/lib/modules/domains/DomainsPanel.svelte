@@ -10,7 +10,7 @@
     name: string;
     status: string;
     email_enabled: boolean;
-    has_website?: boolean;
+    website_id?: string | null;
     next_invoice_date?: string | null;
     resolved_price?: string | null;
     resolved_currency?: string | null;
@@ -55,9 +55,11 @@
           {/if}
         </div>
         {#if websitesEnabled}
-          {#if domain.has_website}
+          {#if domain.website_id}
+            <!-- Straight to the site's own page. The id was already resolved server-side, so
+                 this costs nothing the boolean did not. -->
             <a
-              href="/domains/{domain.id}#website"
+              href="/websites/{domain.website_id}"
               class="shrink-0 text-xs text-text-muted hover:text-brand hover:underline"
             >
               {t("websites.title")}

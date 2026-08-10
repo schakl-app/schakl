@@ -110,6 +110,12 @@ guess (the `docs/OXXA.md` §1 pattern):
   50. Cloudflare's current OpenAPI schema declares `minimum: 1` for `dns-records_per_page`, so it
   *should* be accepted; the retired `api.cloudflare.com` reference documented a minimum of **5** for
   that same endpoint. "Should" is not evidence, and the parameter bought nothing.
+- **It is gone from every probe now, and the reason stopped being hypothetical.** Registrar
+  refuses list options *at all* (below), so `per_page=1` made "may this token read the register?"
+  depend on a parameter that endpoint does not have. The same sweep found the one probe that let a
+  non-auth refusal out: `/zones` caught only `CloudflareAuthError`, so a `400` there failed the
+  whole verify screen instead of marking one capability — on a screen whose entire purpose is to
+  degrade per probe.
 - **`GET /zones/{id}/dns_records` answers auth failures with `400`, not `401`/`403`** — observed
   directly: a bogus token gets `400` with code `9106`, *"Authentication failed"*. `_unwrap` classes
   only 401/403 as `CloudflareAuthError`, so a genuine *scope* problem on this endpoint would surface
@@ -203,6 +209,29 @@ The flag used to be one-way — nothing but a manual re-verify took a row out of
 that had been fixed at Cloudflare, or was never broken at all, kept its red line through every sync
 and check that plainly worked. A successful zone read now clears it, because that read is the same
 evidence a verify would have been.
+
+### Not every list takes a page
+
+`paginate` asked every list endpoint for `page=1&per_page=50`, and a handful of them do not have
+pages at all. Cloudflare's own SDK types those as **single page** — Registrar's domains among them
+— and they answer a paged request with `400`, *"Invalid list options provided. Review the `page`
+or `per_page` parameter."* The read then failed completely, which reached the settings screen as
+*"Niet alles kon gelezen worden. Cloudflare antwoordde: …"* over an endpoint that was perfectly
+willing to answer and a token that was scoped for it.
+
+The fix is one retry, and the shape of it is the point. **A refusal that names the list options is
+about the question, not the answer**, so the same path is asked once more *plainly* and what comes
+back is the whole collection. It is matched on Cloudflare's sentence rather than on a numeric code,
+because the code differs per product while the sentence does not — and it is deliberately narrow:
+a `400` naming neither `page` nor `per_page` is an honest error, and retrying it would only buy a
+second one. **A fallback is not a truncation**: if `result_info.total_count` says Cloudflare is
+holding more rows than it handed over, this raises, because an endpoint that refuses paging offers
+no next page to ask for and a slice returned as a whole list is §17's worst outcome.
+
+`result_info` now decides the last page in the ordinary paged case too. The row count was a
+guess that happens to be right most of the time: an endpoint that *accepts* `per_page` and then
+ignores it answers every page identically, and counting rows would have asked twenty times for the
+same fifty before failing on the cap.
 
 ## 3. Two rules the module never bends
 
@@ -527,8 +556,11 @@ Run these the day a real Registrar account exists (`docs/OXXA.md` §1's discipli
    real values for both a Cloudflare-held domain and one held elsewhere. **This is the assertion
    the invoicing decision rests on** — get it wrong in the permissive direction and a client is
    billed for a domain they pay for themselves.
-3. **Pagination.** `list_registrar_domains` goes through `paginate`, which assumes the standard
-   `result_info` envelope. Verify against an account with more than one page.
+3. **Pagination.** Item 3 is the one this checklist has since been able to strike: the endpoint is
+   single-page and refuses `page`/`per_page` outright, so `paginate` asks it plainly after the
+   first refusal (§2, *Not every list takes a page*). What is left to confirm against a real
+   account is that the plain answer is the **whole** register — if Cloudflare caps it, its
+   `result_info.total_count` is what says so, and the read raises rather than reporting a prefix.
 4. **The status and lock fields.** `registry_statuses` is stored as Cloudflare sends it, truncated
    at 255 characters; confirm it is a string and not a list. `locked` / `auto_renew` are
    three-state on purpose — an absent value must not render as "transferable".
@@ -578,6 +610,11 @@ disabled at Cloudflare after schakl stored it — flipping that one back is how 
 *recovery*, which nothing could reach while the error flag was one-way.
 Nothing in the suite touches the network, and a test that forgot to install the fake fails loudly
 on connect rather than quietly hitting `api.cloudflare.com`.
+
+`single_page` is the same rule applied to pagination: Registrar refuses `page`/`per_page` in the
+fake **by default**, because it does in real life. A fake that paged everything is a fake in which
+this failure does not exist, and the only test that could catch it would pass against a Cloudflare
+that is not the one we call — the lesson the one-way error flag already taught once.
 
 ## 11. What is not here
 

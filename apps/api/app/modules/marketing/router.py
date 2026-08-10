@@ -123,9 +123,17 @@ async def available_accounts(
 async def company_metrics(
     company_id: uuid.UUID,
     range_days: int = Query(30, ge=1, le=400),
+    period: str | None = Query(
+        None,
+        description=(
+            "The span to report on: a trailing window (30d, 90d, 365d), a preset "
+            "(month, last_month, quarter, last_quarter) or a named calendar period "
+            "(2026-07, 2026-Q3). Wins over range_days; an unknown value falls back to 30d."
+        ),
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> CompanyMarketing:
-    return await MarketingService(ctx).company_marketing(company_id, range_days)
+    return await MarketingService(ctx).company_marketing(company_id, range_days, period)
 
 
 @router.put(
@@ -167,10 +175,18 @@ async def drilldown(
     link_id: uuid.UUID = Query(...),
     kind: str = Query(...),
     range_days: int = Query(30, ge=1, le=400),
+    period: str | None = Query(
+        None,
+        description=(
+            "The span to report on: a trailing window (30d, 90d, 365d), a preset "
+            "(month, last_month, quarter, last_quarter) or a named calendar period "
+            "(2026-07, 2026-Q3). Wins over range_days; an unknown value falls back to 30d."
+        ),
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> DrilldownResponse:
     """A live tier-2 drill-down (top pages/queries/campaigns), Redis-cached ~1h."""
-    return await MarketingService(ctx).drilldown(company_id, link_id, kind, range_days)
+    return await MarketingService(ctx).drilldown(company_id, link_id, kind, range_days, period)
 
 
 # --- My Day widget digest (#254) ------------------------------------------------------------- #
@@ -182,12 +198,20 @@ async def drilldown(
 async def summary(
     range_days: int = Query(30, ge=1, le=400),
     limit: int = Query(5, ge=1, le=20),
+    period: str | None = Query(
+        None,
+        description=(
+            "The span to report on: a trailing window (30d, 90d, 365d), a preset "
+            "(month, last_month, quarter, last_quarter) or a named calendar period "
+            "(2026-07, 2026-Q3). Wins over range_days; an unknown value falls back to 30d."
+        ),
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> MarketingSummary:
     """The dashboard widget's compact digest: top linked clients by their headline KPI, from
     stored data. Horizon-scoped like the per-company metrics read it summarizes — never wider
     than what the caller could fetch client-by-client."""
-    return await MarketingService(ctx).summary(range_days, limit)
+    return await MarketingService(ctx).summary(range_days, limit, period)
 
 
 # --- cross-client overview (#133) ------------------------------------------------------------ #
@@ -202,7 +226,15 @@ async def overview(
         None,
         description="company_name | sessions | clicks | position | cost | conversions (- = desc)",
     ),
+    period: str | None = Query(
+        None,
+        description=(
+            "The span to report on: a trailing window (30d, 90d, 365d), a preset "
+            "(month, last_month, quarter, last_quarter) or a named calendar period "
+            "(2026-07, 2026-Q3). Wins over range_days; an unknown value falls back to 30d."
+        ),
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> OverviewResponse:
     """The morning-coffee grid: one row per linked client, from stored data, server-sorted."""
-    return await MarketingService(ctx).overview(range_days, sort)
+    return await MarketingService(ctx).overview(range_days, sort, period)

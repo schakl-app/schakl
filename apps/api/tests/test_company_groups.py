@@ -660,7 +660,7 @@ async def test_horizon_survives_every_filter_a_list_screen_offers(client_for) ->
     )
 
     async with client_for(t.host) as c:
-        await _seed_for_both(c, owner_h, a, b)
+        made = await _seed_for_both(c, owner_h, a, b)
         assert (
             await c.put(
                 f"/api/v1/companies/groups/{group['id']}/memberships",
@@ -692,6 +692,35 @@ async def test_horizon_survives_every_filter_a_list_screen_offers(client_for) ->
             # so every empty answer above is the horizon and not an empty database.
             _, owner_total = await rows(f"/api/v1/{module}?q=klant", owner_h)
             assert owner_total == 2
+
+        # The perf opt-outs are two more ways to phrase the read, so they are two more ways to
+        # get this wrong. `count=false` replaces the counted total with the page length — which
+        # must be the length of the *narrowed* page — and `meta=false` skips the display
+        # resolution, which must not also skip the filtering. Neither touches `conditions`, and
+        # that is exactly the kind of "obviously fine" that #285 is a list of.
+        #
+        # Asserted on **ids**, not names: `meta=false` blanks the resolved display fields on
+        # purpose, so a name-based assertion here would be checking the opt-out rather than the
+        # horizon — and would pass for an empty string just as happily as for a leak.
+        async def ids(url: str, headers) -> tuple[list[str], int]:
+            res = await c.get(url, headers=headers)
+            assert res.status_code == 200, f"{url}: {res.status_code} {res.text}"
+            body = res.json()
+            return [r["id"] for r in body["items"]], body["total"]
+
+        for module, mine, theirs in (
+            ("domains", made["a"]["domain"], made["b"]["domain"]),
+            ("websites", made["a"]["website"], made["b"]["website"]),
+        ):
+            for extra in ("count=false", "meta=false", "count=false&meta=false"):
+                seen, total = await ids(f"/api/v1/{module}?{extra}", member_h)
+                assert seen == [mine["id"]], f"{module}?{extra}: {seen}"
+                assert total == 1, f"{module}?{extra}: total {total}"
+                assert theirs["id"] not in seen, f"{module}?{extra} leaked the other client"
+                # The owner sees both under the *same* parameters, so every "1" above is the
+                # horizon narrowing and not the opt-out emptying the list.
+                _, owner_total = await ids(f"/api/v1/{module}?{extra}", owner_h)
+                assert owner_total == 2, f"{module}?{extra}: owner {owner_total}"
 
         # The panel carries a `total` now, and a card's count is the same fact as a list's.
         assert (
@@ -822,6 +851,70 @@ async def test_horizon_reaches_totals_and_summary_tiles(client_for) -> None:
         assert tiles["draft_count"] == 1
         owner_tiles = (await c.get("/api/v1/invoicing/summary", headers=owner_h)).json()
         assert owner_tiles["draft_count"] == 2
+
+
+async def test_horizon_reaches_a_tasks_hour_budget(client_for) -> None:
+    """The task burn (#313) is the same failure shape as ``/time/logged``, one module out.
+
+    It used to be a raw ``SELECT SUM(minutes) FROM time_entries WHERE org_id = …`` on the task
+    card: tenant-correct and horizon-blind. A task attached to **no** client stays visible to a
+    restricted membership (no company linkage is not company data) while the hours booked
+    against it are attributed per client — so the bar was filled by work the caller cannot open,
+    and losing the predicate again would be silent in exactly the same way.
+    """
+    t, member, membership, owner_h, member_h, a, b, group = await _setup(
+        client_for, "horiz-task-burn"
+    )
+
+    async with client_for(t.host) as c:
+        task = await c.post(
+            "/api/v1/tasks",
+            json={"title": "Klantwerk", "allocated_minutes": 300},
+            headers=owner_h,
+        )
+        assert task.status_code == 201, task.text
+        task_id = task.json()["id"]
+        for company, minutes in ((a, 60), (b, 120)):
+            entry = await c.post(
+                "/api/v1/time/entries",
+                json={
+                    "task_id": task_id,
+                    "company_id": company["id"],
+                    "started_at": "2026-07-10T09:00:00+00:00",
+                    "minutes": minutes,
+                },
+                headers=owner_h,
+            )
+            assert entry.status_code == 201, entry.text
+        assert (
+            await c.put(
+                f"/api/v1/companies/groups/{group['id']}/memberships",
+                json={"membership_ids": [str(membership.id)]},
+                headers=owner_h,
+            )
+        ).status_code == 204
+
+        def _row(payload: dict) -> dict:
+            return next(r for r in payload["items"] if r["id"] == task_id)
+
+        scoped = _row(
+            (await c.get("/api/v1/tasks?hours=true&limit=50", headers=member_h)).json()
+        )
+        assert scoped["logged_minutes"] == 60
+        assert scoped["remaining_minutes"] == 240
+        assert (
+            _row((await c.get("/api/v1/tasks?hours=true&limit=50", headers=owner_h)).json())[
+                "logged_minutes"
+            ]
+            == 180
+        )
+
+        # The card takes the same predicate — that is what it was changed to do.
+        card = (await c.get(f"/api/v1/tasks/{task_id}", headers=member_h)).json()
+        assert card["logged_minutes"] == 60
+        assert (await c.get(f"/api/v1/tasks/{task_id}", headers=owner_h)).json()[
+            "logged_minutes"
+        ] == 180
 
 
 async def test_horizon_reaches_the_drive_links_of_a_client(client_for) -> None:
@@ -1137,3 +1230,49 @@ async def test_horizon_reaches_references_into_another_module(client_for) -> Non
 
         row = await session.get(Interaction, uuid.UUID(mentioned.json()["id"]))
         assert row.mentioned_contact_ids == [made["a"]["contact"]["id"]]
+
+
+async def test_available_domains_picker_stays_inside_the_horizon(client_for) -> None:
+    """The website create picker is a hand-built cross-client read, so it carries the horizon.
+
+    ``GET /websites/available-domains`` answers "which domains may still be given a website" with
+    a ``NOT EXISTS`` over the ``domains`` **bare table** (§6 — the bridge this module already
+    uses). That is failure mode 3 of §15: the read leaves the repository's path, so nothing else
+    would narrow it, and a restricted manager would have been offered every client's free
+    domains — then created a website they could not see.
+
+    ``role="admin"`` because a plain member cannot write a website at all, and the route declares
+    the write permission: a leak would otherwise hide behind a 403.
+    """
+    t, member, membership, owner_h, member_h, a, b, group = await _setup(
+        client_for, "horiz-avail", role="admin"
+    )
+
+    async with client_for(t.host) as c:
+        for name, company in (("alpha.nl", a), ("beta.nl", b)):
+            res = await c.post(
+                "/api/v1/domains",
+                json={"name": name, "company_id": company["id"]},
+                headers=owner_h,
+            )
+            assert res.status_code == 201, res.text
+
+        # Unassigned, the member sees both — the horizon is empty, not closed.
+        res = await c.get("/api/v1/websites/available-domains", headers=member_h)
+        assert res.status_code == 200, res.text
+        assert sorted(d["name"] for d in res.json()) == ["alpha.nl", "beta.nl"], res.text
+
+        assert (
+            await c.put(
+                f"/api/v1/companies/groups/{group['id']}/memberships",
+                json={"membership_ids": [str(membership.id)]},
+                headers=owner_h,
+            )
+        ).status_code == 204
+
+        res = await c.get("/api/v1/websites/available-domains", headers=member_h)
+        assert res.status_code == 200, res.text
+        assert [d["name"] for d in res.json()] == ["alpha.nl"], res.text
+        # The owner is unaffected — a horizon narrows a membership, never the org.
+        res = await c.get("/api/v1/websites/available-domains", headers=owner_h)
+        assert sorted(d["name"] for d in res.json()) == ["alpha.nl", "beta.nl"], res.text

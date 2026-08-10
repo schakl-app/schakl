@@ -97,35 +97,34 @@
 /* ---- sections ---- */
 .section { margin: 0 0 26px; break-inside: auto; }
 
-/* Every other section on a band.
+/* Every section wears the same mark, and the mark is its heading.
  *
- * "Separated by air" holds for three sections and stops holding at nine, which is what a
- * client report actually runs to: heading, paragraph, tiles, chart, table, and then the same
- * five again, with nothing but a gap saying where one ended. The band is the cheapest mark
- * that survives being read on paper, in greyscale, and out of order.
+ * This replaces a full-bleed wash on every *other* section, which was right about the problem
+ * and wrong about the fix. "Separated by air" really does stop holding at nine sections — but
+ * a background that begins and ends at content boundaries gets cut by page breaks that know
+ * nothing about them, and what the reader actually got was a grey strip containing one table
+ * row at the top of page five, a section that turned grey two thirds of the way down page
+ * three, and a rhythm that reads as arbitrary rather than as alternating. A stripe nobody can
+ * perceive as a stripe is not a stripe; it is a printing fault.
  *
- * It bleeds to the sheet edge rather than sitting in the text column, because a wash that
- * stops at the margin reads as a *box around this section* — a container, which claims a
- * relationship between its contents that a plain background does not. The negative margin is
- * the page margin (`@page`, 14mm) and the screen padding (`_shell.html`, 14mm) — one number
- * because they are deliberately the same number, and the preview and the print have to agree
- * about where the paper ends.
+ * So the wash moved to the one block whose height is bounded and whose break behaviour we
+ * control: the heading strip. Every section now looks like every other, the bleed is still
+ * there (a wash that stops at the text column reads as a *box around this section*, claiming a
+ * containment its contents do not have), and `break-inside: avoid` on a strip one line tall
+ * costs nothing and can never be split across a sheet.
  *
- * No `break-inside: avoid`: a band is allowed to run onto the next page, and the alternative
- * is a nine-section report that throws a page after every other one. */
-.section.band {
-  background: var(--wash);
-  margin-left: -14mm;
-  margin-right: -14mm;
-  padding: 14px 14mm 16px;
-}
+ * The negative margin is the page margin (`@page`, 14mm) and the screen padding
+ * (`_shell.html`, 14mm) — one number because they are deliberately the same number, and the
+ * preview and the print have to agree about where the paper ends. */
 .section > h2 {
   font-size: 12pt;
+  background: var(--wash);
   border-left: 3px solid var(--accent);
-  padding-left: 9px;
-  margin-bottom: 10px;
+  margin: 0 -14mm 12px;
+  padding: 7px 14mm 7px calc(14mm - 3px);
   /* A heading is never the last thing on a page, and its opening paragraph goes with it. */
   break-after: avoid;
+  break-inside: avoid;
 }
 .section .narrative { break-after: avoid; }
 /* The KPI strip and its chart belong to the section above them, not to whatever page they
@@ -154,6 +153,38 @@
 
 /* ---- tables ---- */
 table.data { font-size: 8pt; margin-top: 6px; }
+
+/* A sheet of A4 has a width, and nothing inside a cell gets a vote about it.
+ *
+ * `width: 100%` is a *preferred* width: a table whose minimum content width exceeds the column
+ * still lays out wider and prints past the edge of the paper, silently. Two ordinary things
+ * did it — `customerportaljames-zzmf4gsdzaew.a.run.app` in a referrer list, and the header
+ * BELANGRIJKE GEBEURTENISSEN, which is one unbreakable word at 7pt with letter-spacing — and
+ * the last column of both traffic tables was simply cut off at the margin. Nothing about the
+ * page said so; the table just stopped.
+ *
+ * `anywhere` rather than `break-word`, because only `anywhere` counts toward the *minimum*
+ * content width and therefore actually changes the layout. And rather than `break-all`,
+ * because it breaks a word only when there is no other way to fit it: an ordinary name still
+ * wraps between words.
+ *
+ * **Cells only.** Granted to the headings too, the table fitted and read `SESSI/ES`,
+ * `GEBRUIK/ERS`, `BETROKKE/NHEID` — every column heading snapped mid-word, which is a worse
+ * document than the one with a column missing. A heading is a phrase and wraps between its own
+ * words; that is enough room, and the measurement says so. Verified against WeasyPrint on the
+ * document itself rather than in a harness — `tests/test_reporting.py` asserts that no
+ * laid-out box crosses the right page margin. */
+table.data td { overflow-wrap: anywhere; }
+
+/* And the name column gets a share of the table stated up front.
+ *
+ * `anywhere` has a side effect worth naming: it drops a column's *minimum* width to one
+ * character, which is exactly what stops the overflow and exactly what let the auto layout
+ * hand the first column almost nothing and spend the room on `BELANGRIJKE GEBEURTENISSEN`
+ * instead. Every referrer then broke over three lines — `mail.googl / e.com` — in a table with
+ * white space to spare two columns to its right. A preferred width steers the allocation back;
+ * `anywhere` stays underneath it as the escape hatch for the one genuinely enormous name. */
+table.data th:first-child, table.data td:first-child { width: 26%; }
 table.data thead th {
   background: var(--ink);
   color: #fff;

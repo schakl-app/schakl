@@ -31,7 +31,13 @@ from app.core.cache import get_redis
 from app.core.crypto import decrypt, encrypt
 from app.core.jobs import enqueue
 from app.core.narratives import latest_narrative
-from app.core.periods import ComparePeriod, compare_window, resolve_compare
+from app.core.periods import (
+    ComparePeriod,
+    compare_window,
+    period_days,
+    resolve_compare,
+    resolve_period,
+)
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
 from app.errors import AppError
@@ -96,6 +102,10 @@ _WEIGHT_BY_METRIC = {"ctr": "impressions", "position": "impressions", "engagemen
 #: The picker's option list is cached briefly — the same 10 minutes the Google path uses.
 _ACCOUNTS_CACHE_SECONDS = 600
 
+#: The longest trailing window a caller may ask for. A named month or quarter is bounded by the
+#: calendar and needs no cap; only ``<n>d`` can be typed into a URL unbounded.
+MAX_RANGE_DAYS = 400
+
 
 def _org_key_error(exc: Exception, source: str) -> str:
     """Turn an org-key source's HTTP failure into something an admin can act on.
@@ -150,18 +160,18 @@ class CompanyPrefs(NamedTuple):
 
 
 def compare_windows(
-    today: date, range_days: int, mode: ComparePeriod
+    today: date, period: str | None, mode: ComparePeriod
 ) -> MarketingCompareWindow:
-    """The span a screen shows and the span it measures against (#312).
+    """The span a screen shows and the span it measures against (#312, #316).
 
     The current window ends **yesterday**, as it always has: today is partial, and comparing
     fourteen hours against twenty-four reads as a collapse in traffic every morning. What is new
-    is that the comparison window is no longer "the same length, immediately before" — it is
-    whatever the resolved mode says, and the pair travels to the client so the screen can name
-    it.
+    is that *neither* end is derived from a day count any more — ``period`` names the span
+    (``30d``, ``last_month``, ``2026-07``, ``2026-Q3``) and ``core.periods`` resolves it — and the
+    comparison is whatever the mode says rather than "the same length, immediately before". Both
+    spans travel to the client so the screen can name them.
     """
-    cur_end = today - timedelta(days=1)
-    cur_start = cur_end - timedelta(days=range_days - 1)
+    cur_start, cur_end = resolve_period(period, today, max_days=MAX_RANGE_DAYS)
     start, end = compare_window(cur_start, cur_end, mode)
     return MarketingCompareWindow(
         mode=mode,
@@ -170,6 +180,19 @@ def compare_windows(
         start=start,
         end=end,
     )
+
+
+def period_token(period: str | None, range_days: int | None) -> str | None:
+    """One period token from the two ways a caller can ask for a span.
+
+    ``range_days`` predates the period vocabulary (#316) and stays on every endpoint: it is in
+    shared URLs, in the MCP tool surface generated from the spec, and in whatever an automation
+    already calls. ``period`` wins when both arrive, because it is the more specific request —
+    "July" is not a number of days.
+    """
+    if period:
+        return period
+    return f"{range_days}d" if range_days else None
 
 
 def _failure_key(
@@ -920,10 +943,11 @@ class MarketingService:
         )
 
     # --- metrics for the panel + tab (#133), stored data only ----------------------------- #
-    async def company_marketing(self, company_id: uuid.UUID, range_days: int) -> CompanyMarketing:
+    async def company_marketing(
+        self, company_id: uuid.UUID, range_days: int, period: str | None = None
+    ) -> CompanyMarketing:
         self.ctx.require("marketing.metrics.read")
         await self._company_or_404(company_id)
-        range_days = max(1, min(range_days, 400))
         today = await self._today()
 
         prefs, org_default = await self._prefs_with_default(company_id)
@@ -931,9 +955,13 @@ class MarketingService:
         # nowhere else on this path, so the window the numbers came from and the window the
         # screen names are the same object rather than two computations that agree today.
         window = compare_windows(
-            today, range_days, resolve_compare(prefs.compare, org_default)
+            today, period_token(period, range_days), resolve_compare(prefs.compare, org_default)
         )
         cur_start, cur_end = window.current_start, window.current_end
+        # Derived from the resolved span, never echoed back from the request: a caller who asked
+        # for "2026-07" gets 31, and a screen that draws a chart off this cannot disagree with
+        # the dates beside it.
+        range_days = period_days(cur_start, cur_end)
         prev_start, prev_end = window.start, window.end
 
         show_key_events, layout = prefs.show_key_events, prefs.layout
@@ -1203,7 +1231,12 @@ class MarketingService:
         )
 
     async def drilldown(
-        self, company_id: uuid.UUID, link_id: uuid.UUID, kind: str, range_days: int
+        self,
+        company_id: uuid.UUID,
+        link_id: uuid.UUID,
+        kind: str,
+        range_days: int,
+        period: str | None = None,
     ) -> DrilldownResponse:
         self.ctx.require("marketing.metrics.read")
         link = await self.ctx.repo(MarketingLink).get_or_404(link_id)
@@ -1220,10 +1253,10 @@ class MarketingService:
         tiles = resolved_tiles(link.source, src_layout, show_key_events)
         if kind not in resolved_drilldowns(link.source, adapter.drilldowns, src_layout, tiles):
             raise AppError("validation", "errors.validation", status_code=422)
-        range_days = max(1, min(range_days, 400))
         today = await self._today()
-        end = today - timedelta(days=1)
-        start = end - timedelta(days=range_days - 1)
+        start, end = resolve_period(
+            period_token(period, range_days), today, max_days=MAX_RANGE_DAYS
+        )
         deep_link = adapter.deep_link(link.external_id, link.config or {})
         source = MarketingSource(link.source)
 
@@ -1244,7 +1277,10 @@ class MarketingService:
             )
 
         redis = get_redis()
-        cache_key = f"schakl:marketing:drill:{link.id}:{kind}:{range_days}"
+        # Keyed on the resolved **dates**, never on the day count: once a period can be named
+        # (#316), "2026-07" and "2026-06" are both 30-ish days, and a key that says only "31"
+        # would serve June's table for July — one number different, every row wrong.
+        cache_key = f"schakl:marketing:drill:{link.id}:{kind}:{start}:{end}"
         cached = await redis.get(cache_key)
         if cached is not None:
             payload = json.loads(cached)
@@ -1341,7 +1377,9 @@ class MarketingService:
         ]
 
     # --- cross-client overview (#133), stored data only ----------------------------------- #
-    async def overview(self, range_days: int, sort: str | None) -> OverviewResponse:
+    async def overview(
+        self, range_days: int, sort: str | None, period: str | None = None
+    ) -> OverviewResponse:
         """The cross-client grid (#133).
 
         Its deltas use the **org default** comparison, never each client's own override (#312):
@@ -1350,11 +1388,13 @@ class MarketingService:
         chosen for; here the grid names the one period it used, above the table.
         """
         self.ctx.require("marketing.overview.read")
-        range_days = max(1, min(range_days, 400))
         today = await self._today()
-        window = compare_windows(today, range_days, await self._org_default_compare())
+        window = compare_windows(
+            today, period_token(period, range_days), await self._org_default_compare()
+        )
         cur_start, cur_end = window.current_start, window.current_end
         prev_start, prev_end = window.start, window.end
+        range_days = period_days(cur_start, cur_end)
 
         # The cross-client board is hand-built (it pairs each link with its client's name and
         # folds the metrics per company), so it never travelled ``scoped_select()`` and carried
@@ -1462,7 +1502,9 @@ class MarketingService:
         present.sort(key=lambda r: r.metrics[key].current, reverse=descending)
         return present + sorted(absent, key=lambda r: r.company_name.lower())
 
-    async def summary(self, range_days: int, limit: int) -> MarketingSummary:
+    async def summary(
+        self, range_days: int, limit: int, period: str | None = None
+    ) -> MarketingSummary:
         """The My Day widget's digest (#254): top linked clients by one headline KPI each
         (GA4 sessions where linked and visible, else GSC clicks), from stored data only.
 
@@ -1476,11 +1518,13 @@ class MarketingService:
         is one list of several clients, and the card names the period once above all of them.
         """
         self.ctx.require("marketing.metrics.read")
-        range_days = max(1, min(range_days, 400))
         today = await self._today()
-        window = compare_windows(today, range_days, await self._org_default_compare())
+        window = compare_windows(
+            today, period_token(period, range_days), await self._org_default_compare()
+        )
         cur_start, cur_end = window.current_start, window.current_end
         prev_start, prev_end = window.start, window.end
+        range_days = period_days(cur_start, cur_end)
 
         stmt = (
             select(MarketingLink, Company.name)

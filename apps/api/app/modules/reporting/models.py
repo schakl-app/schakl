@@ -228,6 +228,19 @@ class ReportProfile(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Auditab
         ForeignKey("report_templates.id", ondelete="SET NULL"),
         nullable=True,
     )
+    #: What this client is **called on their report**. ``NULL`` = the company's own name.
+    #:
+    #: A CRM holds the name an invoice needs — the legal entity, its B.V., its holding — and a
+    #: document somebody reads is not an invoice. "Camping De Zeehoeve" and "Zeehoeve Recreatie
+    #: Beheer B.V." are the same client and only one of them belongs on the front of a monthly
+    #: report. Deliberately *not* a second name on ``companies``: the CRM's name is what every
+    #: other module means by it, and a global alias would quietly re-title invoices, contracts
+    #: and the client list along with the report.
+    #:
+    #: Resolved at generation and snapshotted into ``Report.company_name`` like every other
+    #: fact a report freezes — so a rename re-titles next month's document and leaves the twelve
+    #: already sent saying what they said.
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     #: The **document's** language, not the UI's. A Dutch agency reporting to a German client
     #: sends German from a Dutch screen (docs/INVOICING.md: formatting and language are
     #: properties of the document, not of whoever opens it).

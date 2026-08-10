@@ -385,6 +385,40 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   are inline SVG because the engine's fetcher answers `data:` and nothing else. `marketing`
   borrows the latest published report's paragraph per section through `app/core/narratives.py`,
   so a dashboard stops being a table on the other twenty-nine days of the month.
+- **A control that cannot fail visibly is worse than one that refuses**, and a document is only
+  as good as the page it prints on (`docs/REPORTING.md`). The first month of real reports found
+  four kinds of fault, and the first kind is the one worth generalising. **A checkbox posts its
+  `value`, and an unticked one posts nothing** — so every way of reading it that names a
+  *particular* value is a bug waiting for somebody to change the control. Reporting's forms
+  compared against `"on"` while drawing `FormCheckbox`, which sends `"true"`: every checkbox in
+  the module posted `false` whatever the user ticked. The "standaard" mark on a template never
+  stuck, so no template was ever the default, so generated reports quietly ignored the design,
+  the accent and the cover photograph the tenant had uploaded — three complaints, one line — and
+  the same read switched a client's reporting profile to inactive on every save. Invisible in
+  review (the string is plausible) and invisible in use (the box is ticked on screen; only the
+  next page load disagrees), so the fix is `$lib/core/forms.checked()` rather than a corrected
+  literal: **presence is the question, and asking it any other way is the bug.** Its sibling:
+  resolving to *no* template at all threw four settings away silently, so `resolve` now falls
+  back to the oldest of that audience and the first template of one *is* the default — nobody
+  makes one template and means "use none of it".
+  **The model was quoting its input faithfully, and its input was a database row**
+  (`app/modules/reporting/present.py`): a Dutch client read *"3781 totalUsers … De
+  engagementRate was 0.4595 … (compare_sessions 61, delta 21.3)"*. No tone could have fixed it —
+  a house style cannot teach a model this tenant's word for `keyEvents`, and asking it to render
+  `0.4595` as `46,0%` is asking for arithmetic, which `_GROUNDING` forbids. So the snapshot is
+  **presented** first: every key the label the table prints, every value the string it prints,
+  through the renderer's own formatters. The raw name cannot come back out because it is not in
+  front of it. **And a report is printed, so "it fits" is a measurement**: `width: 100%` is a
+  *preferred* width, and two ordinary things (an unbreakable hostname, the heading BELANGRIJKE
+  GEBEURTENISSEN) laid the traffic tables past the sheet edge with the last column cut and
+  nothing saying so — a test now asserts no laid-out box crosses the right page margin. A
+  category name that will not fit changes the chart's *form* (horizontal bars) rather than being
+  cut to `Paid…` twice over; a legend measures the canvas before it draws; and the alternating
+  full-bleed band became one heading strip per section, because a wash that begins and ends at
+  content boundaries is cut by page breaks that know nothing about them, and a stripe nobody
+  perceives as a stripe is a printing fault. Finally, **what a client is called on their report
+  is not what an invoice calls them** — `report_profiles.display_name`, resolved once at
+  generation and snapshotted, never a second name on `companies`.
 - **A percentage is a claim about two spans, so both of them have to be on the screen** (#312,
   `app/core/periods.py`). The marketing dashboard labelled every delta *"t.o.v. vorige periode"* —
   a sentence it could print over any two dates at all, which is why a comparison set to the wrong
@@ -409,6 +443,29 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   not a screen anyone can summarise — and the *cross-client* grid deliberately ignores the
   per-client half, since a column sorted on percentages whose denominators differ per row ranks
   nothing. The read follows (`docs/PERFORMANCE.md`): two bounded windows, never their hull.
+- **A period is a name, not a number of days** (#316, `app/core/periods.resolve_period`). #312
+  made the *comparison* nameable and left the period itself a trailing day count, so the one
+  question an agency is actually asked — "how did July go?" — had no answer on the screen: thirty
+  days back from 9 August is 11 July to 9 August, which is not a month anybody reports on, and
+  "deze maand" was days-so-far computed from `new Date().getDate()` **in the Node server's
+  timezone** (§8, in the one module that had already moved its clock to the org). One token now
+  names the span — a trailing window (`30d`), a rolling preset (`month`, `last_month`, `quarter`,
+  `last_quarter`) or a frozen calendar period (`2026-07`, `2026-Q3`) — and everything downstream
+  takes the two dates it resolves to. Four rules. **Rolling and frozen are different products and
+  both are wanted**: a tab must keep meaning "last month" next month, and a link you paste into a
+  chat must keep showing the month you were looking at, so presets live in the tab row and named
+  periods in the picker. **The label is decided by the dates, never by the token** — a whole month
+  prints "juli 2025", a whole quarter "Q3 2025", anything else its two dates — which is what makes
+  a month reached through the picker and the same month reached through the tab row impossible to
+  tell apart, and is the same rule #312 already applied to the compared span. **A period-to-date
+  with no complete day resolves to the previous whole one** (1 August has no August to show), but
+  a period the user *named* is never substituted: showing July to someone who asked for August is
+  worse than an empty chart, because the label is the only thing that could have told them. And
+  **an unparseable token falls back rather than raising** — a period arrives from a query string
+  anyone can edit and an old bookmark can carry, so a stale link shows the default instead of 422ing
+  a dashboard. The payload's `range_days` is now derived from the resolved span rather than echoed
+  from the request, `range_days` itself stays on every endpoint (shared URLs, the generated MCP
+  surface) with `period` winning when both arrive, and the dashboard **streams** behind its shell.
 - **Collecting money is three rules that outlive the provider** (epic #269, `docs/PAYMENTS.md` +
   `docs/MOLLIE.md`). #267 asked for Mollie and argued *against* an abstraction, since no second
   provider was on the roadmap; the owner reversed that, because the issue was right about
@@ -465,6 +522,25 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   finding is the ordinary one: `qr_appearance` is now the single resolution read by the document,
   the mail and the preview alike — before it, the mail drew the org's brand colour
   unconditionally, so a template set to `plain` printed mono on paper and mailed a coloured code.
+- **A ride-along write carries the gates of the module it writes into, not of the route it rode
+  in on** (#314). Finishing a task and recording the hours it took were two unrelated acts, so
+  the hours got logged later from memory or not at all; `TaskUpdate.log_time` makes them one
+  request and one transaction, the shape #175 already established for a contact moment. What is
+  worth stating is the gating, because the route says nothing about it: `PATCH /tasks/{id}`
+  declares `tasks.task.write` and carries `tasks`' licence gate, so the ride-along asks for
+  `time.entry.write` and checks the **`time`** sku itself — §18's "a bulk write must not be the
+  one way an uncovered module can still be written to", one layer down. It is refused on any
+  update that is not a *transition into* a finished status, or `PATCH` quietly becomes a second
+  way to write a time entry with none of the entry endpoint's own rules; a named `schedule_id`
+  is claimed through the block's own service, so #188's panel stops offering hours the finish
+  just booked; and `billable` left out defers to the project, which is why that resolution moved
+  to `time/system.py` — a second copy of #284 is how one write path starts billing a retainer
+  client for work the retainer covers. The other half is a performance decision worth copying:
+  **the offer suggests only from what the screen already has** (an unlogged passed block, the
+  unspent budget), because the alternative — a mounted `EntryForm`, a timer read, `POST
+  /ai/time/reconstruct` — puts a cost on every task page open to serve a dialog most opens never
+  see. Nothing was added to `GET /tasks/{id}`, and `tests/test_perf_query_budgets.py` now writes
+  that number down so the next feature under the same pressure has to argue with it.
 
 ## 11. Working agreement (for Claude Code)
 

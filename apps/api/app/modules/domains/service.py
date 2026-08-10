@@ -222,6 +222,32 @@ SORTABLE = {
 }
 
 
+def _blank_display_fields(domains: Sequence[Domain]) -> None:
+    """The ``meta=false`` branch: every field :meth:`DomainService._attach` would resolve, set to
+    its empty value without asking the database anything.
+
+    Written out rather than left to Pydantic's field defaults, because "the attribute is absent
+    so the schema's default applies" is a coincidence that a later ``model_config`` change would
+    quietly turn into a validation error — and because the billing pair has no empty value. Those
+    two take the *local* answer, exactly as :meth:`~DomainService._attach_register_facts` does
+    when no register module is enabled: what this row says about itself, with no register
+    consulted and ``invoiceable_source`` therefore never claiming one was.
+    """
+    for d in domains:
+        d.company_name = ""  # type: ignore[attr-defined]
+        d.registrar_provider_name = None  # type: ignore[attr-defined]
+        d.dns_provider_name = None  # type: ignore[attr-defined]
+        d.email_provider_name = None  # type: ignore[attr-defined]
+        d.registry_contact = None  # type: ignore[attr-defined]
+        d.email_contact = None  # type: ignore[attr-defined]
+        d.resolved_price = None  # type: ignore[attr-defined]
+        d.resolved_currency = None  # type: ignore[attr-defined]
+        d.invoiceable_effective = d.invoiceable is not False  # type: ignore[attr-defined]
+        d.invoiceable_source = source_of(d.invoiceable, has_authority=False)  # type: ignore[attr-defined]
+        d.registers = []  # type: ignore[attr-defined]
+        d.register_expires_on = None  # type: ignore[attr-defined]
+
+
 class DomainService:
     def __init__(self, ctx: RequestContext) -> None:
         self.ctx = ctx
@@ -292,6 +318,8 @@ class DomainService:
         status: str | None = None,
         registrar_provider_id: uuid.UUID | None = None,
         dns_provider_id: uuid.UUID | None = None,
+        count: bool = True,
+        meta: bool = True,
     ) -> tuple[Sequence[Domain], int]:
         conditions = []
         if company_id is not None:
@@ -320,9 +348,15 @@ class DomainService:
         stmt = stmt.limit(limit).offset(offset)
         items = list((await self.ctx.session.execute(stmt)).scalars().all())
 
-        count_stmt = self.repo.scoped_count_select().where(*conditions)
-        total = int(await self.ctx.session.scalar(count_stmt) or 0)
-        await self._attach(items)
+        if count:
+            count_stmt = self.repo.scoped_count_select().where(*conditions)
+            total = int(await self.ctx.session.scalar(count_stmt) or 0)
+        else:
+            total = len(items)
+        if meta:
+            await self._attach(items)
+        else:
+            _blank_display_fields(items)
         return items, total
 
     async def get(self, domain_id: uuid.UUID) -> Domain:
@@ -865,7 +899,12 @@ class DomainService:
             )
 
     async def _attach(self, domains: Sequence[Domain]) -> None:
-        """Populate the read-only display fields (company/provider names, party labels) in batch."""
+        """Populate the read-only display fields (company/provider names, party labels) in batch.
+
+        Six statements' worth of resolution, which is right for a screen that draws all of it and
+        pure waste for a picker that draws a name. :func:`_blank_display_fields` is the other
+        branch (``meta=false``).
+        """
         if not domains:
             return
         company_names = await self._company_names({d.company_id for d in domains})

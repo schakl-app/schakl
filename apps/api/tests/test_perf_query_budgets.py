@@ -29,12 +29,15 @@ async def _company(client, headers, name: str = "Acme") -> str:
     return res.json()["id"]
 
 
-async def _entry(client, headers, *, company_id: str, minutes: int, day: int) -> str:
+async def _entry(
+    client, headers, *, company_id: str, minutes: int, day: int, task_id: str | None = None
+) -> str:
     started = datetime(2026, 3, 2, 9, 0, tzinfo=UTC) + timedelta(days=day)
     res = await client.post(
         "/api/v1/time/entries",
         json={
             "company_id": company_id,
+            "task_id": task_id,
             "started_at": _iso(started),
             "ended_at": _iso(started + timedelta(minutes=minutes)),
             "billable": True,
@@ -45,9 +48,17 @@ async def _entry(client, headers, *, company_id: str, minutes: int, day: int) ->
     return res.json()["id"]
 
 
-async def _task(client, headers, *, company_id: str, title: str) -> str:
+async def _task(
+    client, headers, *, company_id: str, title: str, allocated_minutes: int | None = None
+) -> str:
     res = await client.post(
-        "/api/v1/tasks", json={"title": title, "company_id": company_id}, headers=headers
+        "/api/v1/tasks",
+        json={
+            "title": title,
+            "company_id": company_id,
+            "allocated_minutes": allocated_minutes,
+        },
+        headers=headers,
     )
     assert res.status_code == 201, res.text
     return res.json()["id"]
@@ -118,6 +129,54 @@ async def test_task_status_vocabulary_costs_one_statement_once_seeded(
             assert (await c.get("/api/v1/tasks", headers=headers)).status_code == 200
         reads = counter.matching("from task_statuses")
         assert len(reads) == 1, reads
+
+
+async def test_task_hour_budget_is_one_grouped_query_however_many_tasks(
+    client_for, count_queries
+) -> None:
+    """``?hours=true`` costs exactly one statement more than ``?hours=false``, at any page size.
+
+    The burn is opt-in (#313), so the ordinary list must pay nothing at all for it, and the
+    aggregate must be one ``GROUP BY task_id`` rather than the per-task ``GET /time/logged``
+    the card uses. Both halves are invisible in the JSON — three tasks and thirty return
+    identical rows either way, which is the whole reason this file exists.
+    """
+    t = await make_tenant("perf-task-hours")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers)
+        # Seed the status vocabulary, or the first read below pays for it (see above).
+        assert (await c.get("/api/v1/tasks", headers=headers)).status_code == 200
+
+        async def seed(count: int, offset: int) -> None:
+            for i in range(offset, offset + count):
+                task = await _task(
+                    c, headers, company_id=company, title=f"T{i}", allocated_minutes=120
+                )
+                await _entry(
+                    c, headers, company_id=company, task_id=task, minutes=30, day=i % 20
+                )
+
+        async def statements(query: str) -> tuple[int, list[str]]:
+            with count_queries() as counter:
+                res = await c.get(f"/api/v1/tasks?{query}", headers=headers)
+            assert res.status_code == 200, res.text
+            assert all(r["allocated_minutes"] == 120 for r in res.json()["items"])
+            return len(counter), counter.matching("group by time_entries.task_id")
+
+        await seed(3, 0)
+        plain_at_3, plain_burns = await statements("hours=false")
+        enriched_at_3, burns_at_3 = await statements("hours=true")
+        assert plain_burns == [], "hours=false paid for an aggregate nobody asked for"
+        assert len(burns_at_3) == 1, burns_at_3
+        assert enriched_at_3 == plain_at_3 + 1
+
+        # Ten times the rows, the same statement count. A per-row read would be +30 here.
+        await seed(27, 3)
+        plain_at_30, _ = await statements("hours=false")
+        enriched_at_30, burns_at_30 = await statements("hours=true")
+        assert len(burns_at_30) == 1, burns_at_30
+        assert (plain_at_30, enriched_at_30) == (plain_at_3, enriched_at_3)
 
 
 async def test_task_statuses_still_seed_for_a_fresh_org(client_for) -> None:
@@ -739,3 +798,172 @@ async def test_ticking_a_checklist_item_costs_the_same_however_long_the_list(
         large = await tick(first, done=False)
 
         assert small == large, (small, large)
+
+
+# --- the task card: one open, one fixed budget --------------------------------------------- #
+async def test_task_detail_costs_the_same_however_much_the_card_carries(
+    client_for, count_queries
+) -> None:
+    """``GET /tasks/{id}`` is the most expensive read on the busiest screen, so it is a budget.
+
+    Two properties, and the second is why the number is written down at all. The obvious one:
+    nothing on the card is fetched per row — comments, planned blocks (#188) and the logged-
+    minutes total are each one statement whether the task carries none or a dozen.
+
+    The written-down number is the guard against the *other* way this page gets slower, which is
+    the one that reads as a feature rather than as a regression: someone needs a fact the card
+    does not have yet — a running timer, an unlogged block's window, a budget remainder — and
+    reaches for one more round trip on the way in to serve a dialog most opens never see. #314
+    is exactly that pressure and deliberately paid nothing: everything the finish prompt suggests
+    from is already on this response. A rise here means the next feature did not.
+    """
+    t = await make_tenant("perf-task-detail")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers)
+        task = await _task(c, headers, company_id=company, title="Homepage herzien")
+
+        with count_queries() as bare:
+            assert (await c.get(f"/api/v1/tasks/{task}", headers=headers)).status_code == 200
+        assert len(bare) == 14, bare.statements
+
+        for i in range(5):
+            assert (
+                await c.post(
+                    f"/api/v1/tasks/{task}/comments", json={"body": f"Opmerking {i}"},
+                    headers=headers,
+                )
+            ).status_code == 201
+            assert (
+                await c.post(
+                    "/api/v1/tasks/schedules",
+                    json={
+                        "task_id": task,
+                        "day": "2026-07-20",
+                        "start_time": f"0{i + 1}:00",
+                        "duration_minutes": 60,
+                    },
+                    headers=headers,
+                )
+            ).status_code == 201
+
+        with count_queries() as loaded:
+            detail = await c.get(f"/api/v1/tasks/{task}", headers=headers)
+        assert detail.status_code == 200, detail.text
+        assert len(detail.json()["comments"]) == 5
+        assert len(loaded) == len(bare), (loaded.statements, bare.statements)
+
+
+# --- the websites/domains section layout: pickers pay picker prices (#290, extended) --------- #
+async def test_available_domains_is_one_statement_whatever_the_register_holds(
+    client_for, count_queries
+) -> None:
+    """The create picker's vocabulary is one query, and it does not grow with the portfolio.
+
+    It used to be a subtraction in the browser: every domain (200 rows, fully resolved) minus
+    every website (200 rows, fully resolved). Both halves ran their service's whole display
+    attach — register facts, TLD prices, party labels, provider and hosting names — to produce a
+    list of ``{id, name}``, and the subtraction was *wrong* past 200 websites, offering a taken
+    domain that then 409'd on save.
+
+    Pinned as a shape because the JSON is identical either way, which is this file's whole point.
+    """
+    t = await make_tenant("perf-available-domains")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers)
+
+        async def add_domain(i: int, *, with_site: bool) -> None:
+            domain = (
+                await c.post(
+                    "/api/v1/domains",
+                    json={"name": f"free-{i}.nl", "company_id": company},
+                    headers=headers,
+                )
+            ).json()["id"]
+            if with_site:
+                created = await c.post(
+                    "/api/v1/websites", json={"domain_id": domain}, headers=headers
+                )
+                assert created.status_code == 201, created.text
+
+        async def measure(expected_free: int) -> int:
+            with count_queries() as counter:
+                res = await c.get("/api/v1/websites/available-domains", headers=headers)
+            assert res.status_code == 200, res.text
+            assert len(res.json()) == expected_free, res.text
+            # Never the two list reads this replaced, and never their attach work.
+            flat = [" ".join(s.split()).lower() for s in counter.statements]
+            assert not [s for s in flat if "domain_tld_prices" in s], flat
+            return len(counter)
+
+        await add_domain(1, with_site=False)
+        await add_domain(2, with_site=True)
+        small = await measure(1)
+
+        for i in range(3, 9):
+            await add_domain(i, with_site=i % 2 == 0)
+        large = await measure(4)
+
+        assert small == large, (small, large)
+
+
+async def test_definitions_batch_reads_the_set_once_for_every_type(
+    client_for, count_queries
+) -> None:
+    """Five entity types, one read — not five reads of the same set.
+
+    ``definitions()`` loads the tenant's whole definition set and filters it in Python, so asking
+    per entity type cost a full read *and* a round-trip each. The websites section layout asked
+    five times on every entry to the section.
+    """
+    t = await make_tenant("perf-defs-batch")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        types = ["website", "hosting", "domain", "company", "contact"]
+        query = "&".join(f"entity_type={x}" for x in types)
+        with count_queries() as counter:
+            res = await c.get(f"/api/v1/custom-fields/definitions/batch?{query}", headers=headers)
+        assert res.status_code == 200, res.text
+        # Every requested type is a key, empty list included — a caller never has to tell
+        # "no definitions" from "did not come back".
+        assert sorted(res.json()) == sorted(types), res.text
+        assert len(counter.matching("from custom_field_definitions")) == 1, counter.statements
+
+
+async def test_meta_false_skips_the_display_attach_a_picker_discards(
+    client_for, count_queries
+) -> None:
+    """``meta=false`` (+ ``count=false``) is strictly fewer statements, and the ids still answer.
+
+    The rows a picker draws are ``{id, name}``; resolving the client name, the provider names,
+    the party labels, the register facts and the current TLD price is work it throws away.
+    """
+    t = await make_tenant("perf-domains-meta")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers)
+        for i in range(3):
+            res = await c.post(
+                "/api/v1/domains",
+                json={"name": f"meta-{i}.nl", "company_id": company},
+                headers=headers,
+            )
+            assert res.status_code == 201, res.text
+
+        with count_queries() as full:
+            res = await c.get("/api/v1/domains", headers=headers)
+        assert res.status_code == 200, res.text
+        assert res.json()["items"][0]["company_name"] == "Acme"
+
+        with count_queries() as slim:
+            res = await c.get("/api/v1/domains?meta=false&count=false", headers=headers)
+        assert res.status_code == 200, res.text
+        body = res.json()
+        # The rows are still there and still identify themselves — only the resolution is gone.
+        assert len(body["items"]) == 3, body
+        assert body["total"] == 3, body  # `count=false` reports the page length
+        assert all(d["name"] and d["company_id"] for d in body["items"]), body
+        assert all(d["company_name"] == "" for d in body["items"]), body
+        assert len(slim) < len(full), (len(slim), len(full))
+        assert slim.matching("from domain_tld_prices") == [], slim.statements

@@ -1,7 +1,7 @@
 <script lang="ts">
   /** My Day widget (#156): leave requests waiting on an approver — count + the next few,
    *  linking into the team review queue (deep-linked per request, like the notification). */
-  import { fmtDayMonth } from "$lib/core/format";
+  import { fmtDayMonth, RANGE_DASH } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import DashboardWidgetCard from "$lib/core/ui/DashboardWidgetCard.svelte";
 
@@ -33,7 +33,7 @@
           <a href={`/leave/team?request=${request.id}`} class="block min-w-0 hover:text-brand">
             <span class="block truncate text-sm text-text">{request.user_name ?? "—"}</span>
             <span class="block text-xs text-text-muted">
-              {fmtDayMonth(request.start_date)}–{fmtDayMonth(request.end_date)}
+              {fmtDayMonth(request.start_date)}{RANGE_DASH}{fmtDayMonth(request.end_date)}
             </span>
           </a>
         </li>

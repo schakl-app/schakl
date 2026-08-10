@@ -5,6 +5,7 @@ import { editHref } from "$lib/core/edit-intent";
 import { apiErrorKey } from "$lib/core/errors";
 import { t } from "$lib/core/i18n";
 import { impexAction } from "$lib/core/impex/actions.server";
+import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { resolvePaging } from "$lib/core/table/paging";
@@ -60,6 +61,17 @@ export const load: PageServerLoad = async (event) => {
   const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
   const paging = resolvePaging(event.url, pref);
 
+  // The hour budget's burn (#313), asked for only by a caller who may read hours — the API
+  // omits the two fields for anyone else, so paying for the grouped query would buy nothing.
+  //
+  // Deliberately *not* also gated on the `allocated` column being visible, which is how the
+  // projects list opts into its budget roll-up (docs/UX.md, "a hidden column costs nothing"):
+  // here the figure is not only a column. Below `sm` this list is `TaskRow`, which draws the
+  // same ⏱ pill and has no column picker anywhere near it, so a visibility gate would hide the
+  // burn from exactly the screen that cannot turn it on. One grouped query, on a page that
+  // already issues several.
+  const hours = can(event.locals.user, "time.entry.read");
+
   // Lookups (companies/projects/labels/members) come from the /tasks layout load.
   const { data: tasks } = await api.GET("/api/v1/tasks", {
     params: {
@@ -67,6 +79,7 @@ export const load: PageServerLoad = async (event) => {
         limit: paging.limit,
         offset: paging.offset,
         sort,
+        hours,
         ...filters,
         assignee_user_id: assigneeQuery,
       },

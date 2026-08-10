@@ -19,12 +19,14 @@
   import { createTableLayout } from "$lib/core/table/layout.svelte";
   import { resetPage } from "$lib/core/table/paging";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import BudgetBar from "$lib/core/ui/BudgetBar.svelte";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import Pagination from "$lib/core/ui/Pagination.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
+  import { taskBurn } from "$lib/modules/tasks/budget";
   import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
   import { TASK_COLUMNS } from "$lib/modules/tasks/columns";
   import { ALL_ASSIGNEES } from "$lib/modules/tasks/filters";
@@ -444,9 +446,24 @@
 {/snippet}
 
 {#snippet allocatedCell(task: Task)}
-  <span class={task.allocated_minutes ? "text-text" : "text-text-muted"}>
-    {task.allocated_minutes ? formatMinutes(task.allocated_minutes) : "—"}
-  </span>
+  {@const burn = taskBurn(task)}
+  {#if burn}
+    <!-- "1u 30m / 3u" on the one burn scale, so the column answers "can I pick this up?" rather
+         than only "how long was it meant to take?" (#313). -->
+    <BudgetBar
+      variant="inline"
+      spent={burn.spent}
+      budget={burn.budget}
+      spentText={burn.spentText}
+      remainingText={burn.remainingText}
+    />
+  {:else}
+    <!-- No burn to draw: the caller may not read hours, or nothing has been logged against an
+         unbudgeted task. Either way the plain allocation is the whole answer. -->
+    <span class={task.allocated_minutes ? "text-text" : "text-text-muted"}>
+      {task.allocated_minutes ? formatMinutes(task.allocated_minutes) : "—"}
+    </span>
+  {/if}
 {/snippet}
 
 {#snippet projectCell(task: Task)}

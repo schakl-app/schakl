@@ -28,7 +28,7 @@
     {#each websites as site (site.id)}
       <li class="flex items-center gap-2 py-2">
         <a
-          href={`/domains/${site.domain_id}#website`}
+          href={`/websites/${site.id}`}
           class="min-w-0 flex-1 truncate text-sm font-medium text-text hover:text-brand"
         >
           {site.root ? site.name : `www.${site.name}`}

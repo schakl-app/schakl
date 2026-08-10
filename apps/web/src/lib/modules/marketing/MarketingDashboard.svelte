@@ -17,8 +17,10 @@
   import { editLocales } from "$lib/core/i18n-edit.svelte";
   import I18nLocaleSwitcher from "$lib/core/ui/I18nLocaleSwitcher.svelte";
 
-  import { comparePeriodLabel, compareModeLabel } from "./format";
+  import { comparePeriodLabel, compareModeLabel, currentPeriodLabel } from "./format";
+  import MarketingPeriodPicker from "./MarketingPeriodPicker.svelte";
   import MarketingSourceSection from "./MarketingSourceSection.svelte";
+  import { anchorMonth, PERIOD_PRESETS } from "./periods";
   import {
     ALL_METRICS,
     COMPARE_PERIODS,
@@ -34,16 +36,18 @@
   let {
     companyId,
     metrics,
+    pending = false,
     range,
-    rangeDays,
     website,
     urlFor,
     manageHref,
   }: {
     companyId: string;
     metrics: CompanyMarketing | null;
+    /** The payload is still in flight (it streams — docs/PERFORMANCE.md). "Nothing linked yet" is
+     *  a wrong answer while that is true, not a slow one, so the shell says "loading" instead. */
+    pending?: boolean;
     range: string;
-    rangeDays: number;
     website: string;
     /** Builds the page's own URL for a range/website pick (the two hosts differ in query shape). */
     urlFor: (range: string, website: string) => string;
@@ -84,7 +88,6 @@
   });
   const showGroupHeadings = $derived(groups.some((g) => g.id !== null));
 
-  const RANGES = ["30d", "month", "quarter", "90d", "yoy"] as const;
   const rangeClass = (active: boolean) =>
     `rounded-lg px-3 py-1.5 text-sm font-medium ${
       active ? "bg-brand text-white" : "text-text-muted hover:bg-surface"
@@ -205,6 +208,15 @@
   // its own value rather than being skipped.
   const compare = $derived(metrics?.compare ?? null);
   const comparedPeriod = $derived(compare ? comparePeriodLabel(compare) : "");
+  // ---- The period (#316) --------------------------------------------------------------------
+  // The tab row holds the rolling presets; the picker holds the named months and quarters. Both
+  // are links, and both read their state out of the URL — nothing about the period lives in a
+  // component. The picker's option list is anchored on the API's own last complete day, so the
+  // browser's clock never decides which months exist.
+  const currentPeriod = $derived(compare ? currentPeriodLabel(compare) : "");
+  // Anchored on the tenant's own calendar rather than on the streamed payload, so the picker is
+  // part of the shell: a control that appears a second after the page did reads as a glitch.
+  const periodAnchor = anchorMonth();
   let compareForm: HTMLFormElement | undefined = $state();
   let compareValue = $state("");
   function persistCompare(event: Event) {
@@ -225,11 +237,17 @@
 
 <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
   <div class="flex flex-wrap items-center gap-1" data-sveltekit-preload-data="hover">
-    {#each RANGES as r (r)}
+    {#each PERIOD_PRESETS as r (r)}
       <a href={urlFor(r, website)} class={rangeClass(range === r)} data-sveltekit-noscroll>
         {t(`marketing.range.${r}`)}
       </a>
     {/each}
+    <MarketingPeriodPicker
+      anchor={periodAnchor}
+      active={range}
+      label={currentPeriod}
+      urlFor={(period) => urlFor(period, website)}
+    />
   </div>
   {#if metrics?.can_manage && filteredByWebsite.length > 0}
     <button
@@ -273,6 +291,16 @@
       </a>
     {/if}
   </div>
+{/if}
+
+{#if currentPeriod}
+  <!-- The span the numbers below actually cover, in words. A tab reading "Deze maand" says which
+       month it *means*; a picked "Q3 2026" says nothing about where it ends until the 30th of
+       September. Both are answered by naming the resolved dates (#316), which is also the only
+       way a shared link can be checked by whoever receives it. -->
+  <p class="mb-3 text-xs text-text-muted">
+    {t("marketing.period.caption", { period: currentPeriod })}
+  </p>
 {/if}
 
 {#if editMode}
@@ -319,7 +347,13 @@
   </div>
 {/if}
 
-{#if metrics?.needs_connection}
+{#if pending && !metrics}
+  <div
+    class="rounded-xl border border-dashed border-border bg-surface-raised p-8 text-center text-sm text-text-muted"
+  >
+    {t("common.loading")}
+  </div>
+{:else if metrics?.needs_connection}
   <div
     class="rounded-xl border border-dashed border-border bg-surface-raised p-8 text-sm text-text-muted"
   >
@@ -358,7 +392,7 @@
             <MarketingSourceSection
               {companyId}
               {src}
-              {rangeDays}
+              period={range}
               {compare}
               edit={editMode ? (edit[src.source] ?? null) : null}
               onchange={persist}

@@ -16,7 +16,7 @@
   import { CalendarClock, Ban, Pencil } from "@lucide/svelte";
 
   import { page } from "$app/state";
-  import { fmtClockTime, fmtNumericDate, fmtWeekdayShort } from "$lib/core/format";
+  import { fmtClockTime, fmtNumericDate, fmtWeekdayShort, RANGE_DASH } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -77,7 +77,7 @@
   /** Times through the shared formatter, so the personal 12h/24h preference holds here too. */
   function windowText(day: FreeTimeDay): string | null {
     if (day.start_time && day.end_time)
-      return `${fmtClockTime(day.start_time)} – ${fmtClockTime(day.end_time)}`;
+      return `${fmtClockTime(day.start_time)} ${RANGE_DASH} ${fmtClockTime(day.end_time)}`;
     if (day.start_time)
       return t("leave.recurring.from_time", { time: fmtClockTime(day.start_time) });
     if (day.end_time) return t("leave.recurring.until_time", { time: fmtClockTime(day.end_time) });

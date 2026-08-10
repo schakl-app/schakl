@@ -571,8 +571,41 @@ async def test_an_internal_document_says_so_and_wears_no_client_branding() -> No
     assert "Alt-teksten aanvullen" in html
 
 
-async def _render_snapshot(slug: str) -> str:
-    """The shipped design over ``_SNAPSHOT`` — two sections, the second of them banded."""
+#: A traffic-by-source table the way GA4 actually answers one: eight columns, a heading that is
+#: one long unbreakable word, and a hostname no line break has a natural place in. Both of those
+#: pushed the real table off the right-hand edge of the paper.
+_WIDE_SNAPSHOT = {
+    **_SNAPSHOT,
+    "order": ["marketing.referral"],
+    "sections": {
+        "marketing.referral": {
+            "kind": "referral_sources",
+            "columns": [
+                "sessions", "newUsers", "totalUsers", "screenPageViews",
+                "avg_engagement_time", "engagementRate", "keyEvents",
+            ],
+            "rows": [
+                {
+                    "label": "customerportaljames-zzmf4gsdzaew.a.run.app",
+                    "sessions": 1, "newUsers": 1, "totalUsers": 1, "screenPageViews": 1,
+                    "avg_engagement_time": 3.0, "engagementRate": 0.0, "keyEvents": 0,
+                },
+                {
+                    "label": "teams.public.onecdn.static.microsoft",
+                    "sessions": 1, "newUsers": 1, "totalUsers": 1, "screenPageViews": 1,
+                    "avg_engagement_time": 9.0, "engagementRate": 1.0, "keyEvents": 0,
+                },
+            ],
+            "totals": {},
+            "compare": None,
+            "chart": None,
+        }
+    },
+}
+
+
+async def _render_snapshot(slug: str, snapshot: dict | None = None) -> str:
+    """The shipped design over ``_SNAPSHOT`` — two sections, both drawn the same way."""
     from app.core.tenancy import RequestContext
     from app.modules.reporting.render import render_report_html
 
@@ -591,7 +624,7 @@ async def _render_snapshot(slug: str) -> str:
             title="Maandrapportage",
             period_start=date(2026, 7, 1),
             period_end=date(2026, 7, 31),
-            data_snapshot=_SNAPSHOT,
+            data_snapshot=snapshot if snapshot is not None else _SNAPSHOT,
             narrative={},
         )
         session.add(report)
@@ -620,13 +653,18 @@ async def test_a_channel_row_carries_the_colour_of_its_share() -> None:
     assert html.count("<td class=\"mark\"") == 2
 
 
-async def test_every_other_section_prints_on_a_band_that_reaches_the_sheet_edge() -> None:
-    """Asserted as geometry, because the markup cannot tell you whether a band *bled*.
+async def test_every_section_heading_bleeds_to_the_sheet_edge() -> None:
+    """Asserted as geometry, because the markup cannot tell you whether a wash *bled*.
 
     A wash that stops at the text column reads as a box around one section — a container,
     claiming a relationship its contents do not have. The negative margin that avoids that is
     the page margin restated, and "correct CSS, wrong engine" has already cost this design a
     stranded cover footer and four charts at 0×0. So this measures what WeasyPrint laid out.
+
+    It used to be every *other* section on a full-height band, which page breaks cut in half:
+    a grey strip carrying one table row at the top of a sheet is not a stripe anybody can read
+    as one. The mark is now the heading strip on **every** section — bounded, unsplittable, and
+    the same for all of them — so the assertion counts sections rather than alternate ones.
     """
     import asyncio
 
@@ -635,27 +673,69 @@ async def test_every_other_section_prints_on_a_band_that_reaches_the_sheet_edge(
     from app.core.documents.engine import no_network_fetcher
 
     html = await _render_snapshot("repbands")
-    # Two sections, so exactly one band — and it is the second, never the first.
-    assert html.count('class="section band"') == 1
-    assert html.index('class="section"') < html.index('class="section band"')
+    # Two sections, and neither is singled out: the old alternation is gone, class and all.
+    assert html.count('class="section"') == 2
+    assert "section band" not in html
 
-    def bands(box) -> list:
-        classes = (box.element.get("class") or "").split() if box.element is not None else []
-        found = [box] if "band" in classes else []
+    def headings(box) -> list:
+        # The block box only: its line and text boxes carry the same tag and no border box.
+        tag = str(getattr(box, "element_tag", "") or "")
+        found = [box] if tag == "h2" and type(box).__name__ == "BlockBox" else []
         for child in getattr(box, "children", []) or []:
-            found += bands(child)
+            found += headings(child)
         return found
 
     document = await asyncio.to_thread(
         lambda: WeasyHTML(string=html, url_fetcher=no_network_fetcher, base_url=None).render()
     )
-    drawn = [box for page in document.pages for box in bands(page._page_box)]
-    assert drawn, "the document declares a band and printed no box for it"
+    drawn = [box for page in document.pages for box in headings(page._page_box)]
+    # The cover's <h1> is not one of these; every section heading is.
+    assert len(drawn) == 2, [b.element_tag for b in drawn]
     mm = 96 / 25.4
     for box in drawn:
-        # A4 is 210mm wide; the band's border box is the whole of it, not the 182mm column.
+        # A4 is 210mm wide; the strip's border box is the whole of it, not the 182mm column.
         assert abs(box.border_width() / mm - 210) < 0.5, box.border_width() / mm
         assert abs(box.position_x / mm - 14) < 0.5, box.position_x / mm
+
+
+async def test_no_table_prints_past_the_edge_of_the_paper() -> None:
+    """A wide table is laid out, not clipped — so "it fits" is a measurement, never a look.
+
+    ``width: 100%`` is a *preferred* width. A table whose minimum content width exceeds the
+    text column lays out wider and prints off the sheet, and nothing in the HTML says so: the
+    last column of the referral and search-engine tables was simply cut at the margin on every
+    report that had a long referrer or a long column heading in it. Two ordinary things did
+    it — an unbreakable hostname, and BELANGRIJKE GEBEURTENISSEN — so the guard is a sweep over
+    every laid-out box rather than a rule about either of them.
+    """
+    import asyncio
+
+    from weasyprint import HTML as WeasyHTML
+
+    from app.core.documents.engine import no_network_fetcher
+
+    html = await _render_snapshot("repwide", snapshot=_WIDE_SNAPSHOT)
+    document = await asyncio.to_thread(
+        lambda: WeasyHTML(string=html, url_fetcher=no_network_fetcher, base_url=None).render()
+    )
+
+    def boxes(box):
+        yield box
+        for child in getattr(box, "children", []) or []:
+            yield from boxes(child)
+
+    mm = 96 / 25.4
+    edge = (210 - 14) * mm
+    over = [
+        (str(box.element_tag), round(box.position_x + box.width - edge, 1))
+        for page in document.pages
+        for box in boxes(page._page_box)
+        if isinstance(getattr(box, "width", None), int | float)
+        and isinstance(getattr(box, "position_x", None), int | float)
+        and str(getattr(box, "element_tag", "") or "") not in ("", "html", "body")
+        and box.position_x + box.width > edge + 0.5
+    ]
+    assert not over, f"boxes printed past the right page margin: {over[:5]}"
 
 
 # --------------------------------------------------------------------------------------- #
@@ -775,7 +855,9 @@ async def test_a_tenant_with_no_reports_yet_still_gets_a_page_to_design_against(
     assert response.status_code == 200
     assert "Voorbeeld B.V." in response.text
     # And the sample is rich enough to show what the design does *between* sections.
-    assert 'class="section band"' in response.text
+    # The registry's real headings, each on its own bleeding strip — the same treatment for
+    # every section, which is what the sample exists to show an author.
+    assert response.text.count('class="section"') >= 2
 
 
 # --------------------------------------------------------------------------------------- #
@@ -1201,7 +1283,7 @@ async def test_a_run_nobody_started_meters_its_tokens_against_nobody(monkeypatch
         org = await session.get(type(tenant.org), tenant.org.id)
         written, warnings = await narrative.write_narrative(
             AIService(SystemContext(org=org, session=session)),
-            snapshot={"period": {"label": "juli 2026"}, "sections": {}},
+            presented={"period": "juli 2026", "sections": {}},
             profile=None,
             tone=None,
             sections=[("intro", "Schrijf een inleiding.")],
@@ -1228,3 +1310,207 @@ async def test_a_run_nobody_started_meters_its_tokens_against_nobody(monkeypatch
     # a budget somebody can see being spent.
     assert rows[0].user_id is None
     assert (rows[0].feature, rows[0].tokens_in, rows[0].tokens_out) == ("reporting", 120, 45)
+
+
+# --------------------------------------------------------------------------------------- #
+# What the page prints, and what the model is handed to describe it
+# --------------------------------------------------------------------------------------- #
+def test_a_figure_is_formatted_the_same_way_wherever_it_appears() -> None:
+    """The formatters, at the four values that were each wrong in a delivered report.
+
+    None of these is a rounding preference. A monthly total printed ``626:10`` reads as ten
+    minutes; ``+91.300,0%`` is one session last July, and says nothing; a revenue tile of ``0``
+    with no unit is not a number; and an unsigned ``47,8%`` in a Verandering column is
+    ambiguous about which way it went.
+    """
+    from app.modules.reporting.render.context import fmt_delta, fmt_metric
+
+    # A month of engagement time gains an hour field; a per-session average does not.
+    assert fmt_metric("userEngagementDuration", 37570, "nl") == "10:26:10"
+    assert fmt_metric("avg_engagement_time", 55.09, "nl") == "00:55"
+    # Past a point a percentage is an artefact of its denominator, and says so as a multiplier.
+    assert fmt_delta(91300.0, "nl") == "×914"
+    assert fmt_delta(700.0, "nl") == "+700,0%"
+    assert fmt_delta(-72.9, "nl") == "-72,9%"
+    assert fmt_delta(None, "nl") == "-"
+    # Money is money in both directions of the same call.
+    assert fmt_metric("totalRevenue", 12400, "nl") == "€ 12.400"
+    # And one answer for a delta, wherever it is asked: the table's own cells go through here.
+    assert fmt_metric("delta", 47.8, "nl") == fmt_delta(47.8, "nl") == "+47,8%"
+
+
+def test_a_measurement_is_named_before_it_is_ever_printed_as_its_key() -> None:
+    """The raw-key fallback is a last resort, and a site audit must never reach it.
+
+    ``score`` / ``errors`` / ``warnings`` are a section's totals and have always been named in
+    ``reporting.doc.*`` rather than in the measurement catalogue, so looking in one place put
+    SCORE / ERRORS / WARNINGS beside PAGINA'S on a Dutch internal report — and handed the model
+    the same English identifiers to write prose around.
+    """
+    from app.modules.reporting.render.context import metric_label
+
+    assert metric_label("score", "nl") == "Score"
+    assert metric_label("errors", "nl") == "Fouten"
+    assert metric_label("warnings", "nl") == "Waarschuwingen"
+    assert metric_label("pages", "nl") == "Pagina's"
+    assert metric_label("sessions", "nl") == "Sessies"
+    # Genuinely uncatalogued: the metric's own name, never a message key on a client's page.
+    assert metric_label("bounceRate", "nl") == "bounceRate"
+
+
+def test_a_dutch_report_says_google_s_channel_names_in_dutch() -> None:
+    """A fixed Google vocabulary is translated; anything Google adds later prints as itself."""
+    from app.modules.reporting.render.context import channel_label, localise_section
+
+    assert channel_label("Paid Social", "nl") == "Betaald social"
+    assert channel_label("Cross-network", "nl") == "Cross-network"
+    assert channel_label("Unassigned", "nl") == "Niet toegewezen"
+    assert channel_label("Paid Social", "en") == "Paid social"
+    # Not catalogued: Google's own string, never a message key on a client's document.
+    assert channel_label("Quantum Telepathy", "nl") == "Quantum Telepathy"
+
+    # Rows and chart labels move together, or every colour dot lands on the wrong name.
+    section = _SNAPSHOT["sections"]["marketing.traffic_channels"]
+    localised = localise_section(section, "nl")
+    assert [row["label"] for row in localised["rows"]] == ["Organisch zoeken", "Direct"]
+    assert localised["chart"]["labels"] == ["Organisch zoeken", "Direct"]
+    # The stored snapshot is a record and is not rewritten.
+    assert section["rows"][0]["label"] == "Organic Search"
+
+
+def test_the_model_reads_the_document_and_never_the_database_row() -> None:
+    """``present`` is what stops ``totalUsers`` and ``0.4595`` reaching a Dutch paragraph.
+
+    The delivered report read *"3781 totalUsers, met 2810 newUsers … De engagementRate was
+    0.4595"*. The model was quoting its input faithfully; its input was a snapshot. So the
+    guard is on the payload rather than on the prose: a field name that is not in front of it
+    cannot come back out.
+    """
+    import json
+
+    from app.modules.reporting import present
+
+    document = present.document(
+        _SNAPSHOT,
+        locale="nl",
+        section_titles={"marketing.traffic_channels": "Verkeerskanalen"},
+    )
+    text = json.dumps(document, ensure_ascii=False)
+    for raw in ("totalUsers", "keyEvents", "compare_sessions", "engagementRate", "\"delta\""):
+        assert raw not in text, raw
+    channels = document["sections"]["marketing.traffic_channels"]
+    assert channels["title"] == "Verkeerskanalen"
+    # Every value is the string the table prints, in the document's own conventions.
+    assert channels["rows"][0]["Bron"] == "Organisch zoeken"
+    assert channels["rows"][0]["Sessies"] == "1.240"
+    assert channels["rows"][0]["Verandering"] == "+26,5%"
+    # A total carries what it is measured against, named by the period rather than by a key.
+    assert channels["totals"][0] == {
+        "metric": "Sessies", "value": "2.000", "juli 2025": "1.780", "change": "+12,4%",
+    }
+
+
+def test_a_metric_that_was_zero_in_both_periods_is_not_a_tile() -> None:
+    """An "OMZET 0" every month for ever is not a fact about this July.
+
+    The document and the model's copy drop it by the same predicate, so a paragraph can never
+    describe a figure the page does not print.
+    """
+    from app.modules.reporting import present
+    from app.modules.reporting.render.context import always_zero
+
+    assert always_zero(0, 0) is True
+    assert always_zero(0, 12) is False
+    assert always_zero(12, 0) is False
+
+    snapshot = {
+        **_SNAPSHOT,
+        "order": ["marketing.traffic_channels"],
+        "sections": {
+            "marketing.traffic_channels": {
+                **_SNAPSHOT["sections"]["marketing.traffic_channels"],
+                "totals": {"sessions": 2000, "totalRevenue": 0},
+                "compare": {"sessions": 1780, "totalRevenue": 0},
+            }
+        },
+    }
+    totals = present.document(snapshot, locale="nl")["sections"][
+        "marketing.traffic_channels"
+    ]["totals"]
+    assert [entry["metric"] for entry in totals] == ["Sessies"]
+
+
+def test_no_two_columns_of_one_section_share_a_label() -> None:
+    """A presented row is a dict keyed by label, so a clash is a *lost column*.
+
+    Not a cosmetic problem: the second write wins and the first value vanishes from the model's
+    copy without a trace, so the paragraph is written about a table with a column missing and
+    nothing anywhere says so. An audit row carrying both its ``section`` and the finding's
+    ``name`` did exactly that until the two stopped sharing "Bron".
+    """
+    import collections
+
+    from app.i18n import translate
+    from app.modules.reporting.present import _LABEL_KEYS
+    from app.modules.reporting.render.context import metric_label
+
+    shapes = {
+        "channels": (["sessions", "compare_sessions", "delta", "share"], ["label"]),
+        "split": (
+            ["sessions", "newUsers", "totalUsers", "screenPageViews", "avg_engagement_time",
+             "engagementRate", "keyEvents", "compare_sessions", "delta"],
+            ["label"],
+        ),
+        "conversions": (["keyEvents", "compare_keyEvents", "delta"], ["label"]),
+        "rankings": (["begin", "end", "change"], ["keyword", "landing_page"]),
+        "audit": (["pages"], ["section", "name"]),
+        "ai_search": (["link_percent", "mention_percent"], ["engine"]),
+        "search_console": (["clicks", "impressions", "ctr", "position"], ["label"]),
+    }
+    for locale in ("nl", "en"):
+        for shape, (columns, label_keys) in shapes.items():
+            labels = [translate(_LABEL_KEYS[key], locale) for key in label_keys]
+            labels += [metric_label(column, locale) for column in columns]
+            duplicates = [
+                label for label, count in collections.Counter(labels).items() if count > 1
+            ]
+            assert not duplicates, f"{locale}/{shape}: {duplicates}"
+
+
+def test_a_zero_that_was_never_compared_is_still_news() -> None:
+    """"Zero now and zero then" needs a "then" that was actually measured.
+
+    The site audit never carries a comparison, so reading its absent one as zero deleted
+    *Fouten 0* and *Waarschuwingen 0* from a clean site's internal report — the good news,
+    missing from the document whose whole job is listing faults, with nothing on the page to
+    say a tile had been withheld.
+    """
+    from app.modules.reporting import present
+    from app.modules.reporting.render.context import always_zero
+
+    assert always_zero(0, None) is False, "no comparison is not a comparison that said zero"
+
+    audit = {
+        "kind": "audit",
+        "columns": ["pages"],
+        "rows": [],
+        "totals": {"score": 92.0, "errors": 0.0, "warnings": 0.0, "pages": 210.0},
+        "compare": None,
+    }
+    totals = present.section(audit, locale="nl", title="Site-audit")["totals"]
+    assert [entry["metric"] for entry in totals] == [
+        "Score",
+        "Fouten",
+        "Waarschuwingen",
+        "Pagina's",
+    ]
+
+
+def test_an_amount_prints_in_the_account_s_own_currency() -> None:
+    """A GA4 property reports its own currency, and a euro sign over dollars is a wrong number."""
+    from app.modules.reporting.render.context import fmt_metric
+
+    assert fmt_metric("totalRevenue", 12400, "nl") == "€ 12.400"
+    assert fmt_metric("totalRevenue", 12400, "nl", "USD") == "$ 12.400"
+    # Uncatalogued symbol: the ISO code, which labels the number rather than mis-stating it.
+    assert fmt_metric("totalRevenue", 12400, "nl", "AUD") == "AUD 12.400"

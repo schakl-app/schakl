@@ -1,3 +1,4 @@
+import { RANGE_DASH } from "$lib/core/format";
 import { t } from "$lib/core/i18n";
 
 import type { components } from "$lib/core/api/schema";
@@ -89,7 +90,7 @@ export const PICKED_KINDS = ["hours", "subscription", "domain"] as const;
  *  (docs/UX.md), never the viewer's format: it becomes the line the client reads. */
 export function periodText(start: string | null | undefined, end: string): string {
   const dmy = (iso: string) => iso.split("-").reverse().join("-");
-  return start ? `${dmy(start)} – ${dmy(end)}` : dmy(end);
+  return start ? `${dmy(start)} ${RANGE_DASH} ${dmy(end)}` : dmy(end);
 }
 
 /**

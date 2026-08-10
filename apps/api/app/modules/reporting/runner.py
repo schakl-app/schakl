@@ -138,7 +138,7 @@ async def schedule_report(
         report = Report(
             org_id=org.id,
             company_id=company_id,
-            company_name=company.name,
+            company_name=generate.client_name(company.name, profile),
             template_id=template_id,
             audience=audience,
             status=ReportStatus.DRAFT.value,
@@ -362,12 +362,20 @@ async def _template(
         )
         if template is not None:
             return template
+    # The marked default first, then simply the oldest of that audience — the same order
+    # ``TemplateService.resolve`` takes, and for the same reason: a run that resolves to no
+    # template at all prints the shipped design and drops the tenant's accent, cover and intro
+    # without saying so.
     return await session.scalar(
         select(ReportTemplate)
         .where(
             ReportTemplate.org_id == org.id,
             ReportTemplate.audience == report.audience,
-            ReportTemplate.is_default.is_(True),
+        )
+        .order_by(
+            ReportTemplate.is_default.desc(),
+            ReportTemplate.created_at,
+            ReportTemplate.id,
         )
         .limit(1)
     )

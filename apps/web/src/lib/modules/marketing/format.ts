@@ -22,6 +22,26 @@ export function metricLabel(key: string): string {
   return t(`marketing.metric.${key}`);
 }
 
+/**
+ * One GA4 acquisition channel, in the reader's language — or exactly what Google called it.
+ *
+ * `sessionDefaultChannelGroup` is a fixed vocabulary Google defines: not tenant data, and not a
+ * name anybody here chose. It was printing verbatim — a dashboard row reading *Unassigned* next
+ * to one reading *Verwijzend verkeer*, and the same English words in the middle of a Dutch
+ * client report. The catalogue answers for the ones we know; anything else keeps Google's own
+ * string, because `t()` returns the *key* on a miss and `marketing.channel.audio_streaming` is
+ * a worse thing to print than the English name it stood in for. The API resolves the same key
+ * for the printed document (`reporting/render/context.channel_label`), so the screen and the
+ * PDF say the same word.
+ */
+export function channelLabel(name: string): string {
+  const raw = String(name ?? "");
+  if (!raw) return raw;
+  const key = `marketing.channel.${raw.toLowerCase().replace(/[-\s]+/g, "_")}`;
+  const label = t(key);
+  return label === key ? raw : label;
+}
+
 /** A tile's display label: the client's override in the viewer's locale (#192), else the
  *  built-in metric label. Overrides are tenant data ({nl, en}), so fall through sensibly. */
 export function tileLabel(
@@ -90,16 +110,28 @@ export function compareModeLabel(mode: ComparePeriod): string {
 const _LAST_DAY = (iso: string): number =>
   new Date(Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)), 0)).getUTCDate();
 
+/** The quarter (1-4) an ISO date falls in, or 0 when it is not a quarter's first/last day. */
+const _QUARTER_EDGE = (iso: string, edge: "start" | "end"): number => {
+  const month = Number(iso.slice(5, 7));
+  const day = Number(iso.slice(8, 10));
+  if (edge === "start") return day === 1 && month % 3 === 1 ? (month - 1) / 3 + 1 : 0;
+  return day === _LAST_DAY(iso) && month % 3 === 0 ? month / 3 : 0;
+};
+
 /**
- * Name a compared span the way a person would (#312).
+ * Name a span the way a person would (#312, #316).
  *
- * A whole calendar month is "juli 2025" and a whole year is "2025"; anything else falls back to
- * the shared date-range format ("11 jul – 9 aug 2025"). Naming the span rather than the *mode*
- * is the whole point of the issue: "t.o.v. vorige periode" was a label the screen could print
- * over any two dates at all, so a comparison set to the wrong thing looked exactly like one set
- * to the right thing. "t.o.v. juli 2025" is checkable at a glance.
+ * A whole calendar month is "juli 2025", a whole quarter "Q3 2025", a whole year "2025"; anything
+ * else falls back to the shared date-range format ("11 jul - 9 aug 2025"). Naming the span rather
+ * than the *mode* is the whole point of #312: "t.o.v. vorige periode" was a label the screen could
+ * print over any two dates at all, so a comparison set to the wrong thing looked exactly like one
+ * set to the right thing. "t.o.v. juli 2025" is checkable at a glance.
+ *
+ * It reads **dates**, never the token that produced them, so it names the current period and the
+ * compared one with the same function — and a month picked as "2025-07" and the same month
+ * arriving as "last_month" can never print differently.
  */
-export function comparePeriodLabel(window: Pick<CompareWindow, "start" | "end">): string {
+export function periodLabel(window: { start: string; end: string }): string {
   const { start, end } = window;
   if (
     start.slice(0, 7) === end.slice(0, 7) &&
@@ -111,7 +143,23 @@ export function comparePeriodLabel(window: Pick<CompareWindow, "start" | "end">)
   if (start.endsWith("-01-01") && end.endsWith("-12-31") && start.slice(0, 4) === end.slice(0, 4)) {
     return start.slice(0, 4);
   }
+  const quarter = _QUARTER_EDGE(start, "start");
+  if (quarter && quarter === _QUARTER_EDGE(end, "end") && start.slice(0, 4) === end.slice(0, 4)) {
+    return t("marketing.period.quarter", { quarter: String(quarter), year: start.slice(0, 4) });
+  }
   return fmtPeriod(start, end);
+}
+
+/** The span a payload's deltas were measured against. */
+export function comparePeriodLabel(window: Pick<CompareWindow, "start" | "end">): string {
+  return periodLabel(window);
+}
+
+/** The span a payload's numbers themselves cover (#316) — what the picker's summary names. */
+export function currentPeriodLabel(
+  window: Pick<CompareWindow, "current_start" | "current_end">,
+): string {
+  return periodLabel({ start: window.current_start, end: window.current_end });
 }
 
 /** The Tailwind text colour for a delta tone (semantic, theme-aware via the token). */

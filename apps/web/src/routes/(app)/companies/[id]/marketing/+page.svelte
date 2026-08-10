@@ -7,7 +7,23 @@
   let { data } = $props();
 
   const company = $derived(data.company);
-  const marketing = $derived(data.metrics as CompanyMarketing | null);
+  // The metrics stream in behind the shell (docs/PERFORMANCE.md). Resolved into `$state` rather
+  // than awaited in the markup: a raw `{#await}` falls back to its pending branch on every
+  // invalidation, and this dashboard's edit mode holds unsaved tile names and orders that a
+  // `?/saveLayout` round-trip would then throw away.
+  let marketing = $state<CompanyMarketing | null>(null);
+  let pending = $state(true);
+  $effect(() => {
+    const promise = data.metrics;
+    pending = true;
+    void promise.then((value) => {
+      // Ignore a resolution the user has already navigated away from — the period tabs are links,
+      // so a quick second click can land two in-flight loads out of order.
+      if (data.metrics !== promise) return;
+      marketing = value as CompanyMarketing | null;
+      pending = false;
+    });
+  });
 
   function urlFor(range: string, website: string): string {
     const params = new URLSearchParams();
@@ -30,8 +46,8 @@
 <MarketingDashboard
   companyId={company.id}
   metrics={marketing}
+  {pending}
   range={data.range}
-  rangeDays={data.rangeDays}
   website={data.website}
   {urlFor}
   manageHref={`/companies/${company.id}`}

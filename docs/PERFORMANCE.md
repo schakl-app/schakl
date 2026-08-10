@@ -30,6 +30,12 @@ Every section does this: companies, projects, contacts, interactions, subscripti
 websites, invoices, quotes, tasks, time, overview. Websites was the extreme case — twelve calls,
 of which the URL changed exactly one, so sorting a column refetched eleven pickers.
 
+**Moving a call into the layout bounds how often it runs; it does not make it cheap.** Websites
+still paid all twelve on every entry to the section and on every detail navigation inside it.
+Seven now: the two 200-row picker reads collapsed into one `NOT EXISTS` (below), the five
+definition calls into one batch, and what is left passes `count=false`/`meta=false`. Once a
+section layout is in place, the next question is what each of its calls still costs.
+
 Three rules that make it safe:
 
 - **A layout load never `await`s `parent()` before starting its own flight.** Do that and the
@@ -63,11 +69,34 @@ collect `data.<key>` and confirm each is produced by its own load or a layout ab
 - **Report bodies stream behind the shell.** The filters, range picker and column menu do not need
   500 rows to render. Say "loading", not "no results", while it is in flight — the second is a
   wrong answer, not a slow one.
+- **A dashboard is a shell plus a payload, and only one of them is slow.** The marketing dashboard
+  (#316) streams its metrics: the period tabs, the month/quarter picker, the website filter and
+  the heading render at once, and the fold of daily rows across every linked source arrives
+  behind them. Three details make it hold. **The controls may not depend on the payload** — the
+  picker's month list is anchored on the tenant's own calendar (`anchorMonth()`, the org zone off
+  the same plumbing `format.ts` uses), because a control that appears a second after the page did
+  reads as a glitch, and anchoring it on `compare.current_end` would have put it behind the very
+  thing being streamed. **A stale resolution loses**: the period tabs are links, so two quick
+  clicks leave two loads in flight, and the `.then` compares `data.metrics` against the promise it
+  captured before writing anything. And **the pending state is a state, not an absence** — the
+  shell says "laden", never the empty "nothing linked yet" screen, which is a different answer to
+  a different question.
 - **Nothing fetches on mount for a dropdown nobody opened.** `RichTextEditor` fetches its `@`/`#`
   candidates on first focus from a TTL cache (`lib/core/richtext/candidates.ts`); pass it a
   `scope`, never a pre-fetched list. Where several components on one page want the same browser-
   side lookup, cache the *promise* at module scope so they share one flight (safe in the browser,
   in one user's tab — the same cache on the server would be a tenant-isolation bug).
+- **An occasional dialog suggests from what the page already has, or it does not suggest.** The
+  finish prompt's "ook de uren registreren" (#314) prefills from an unlogged passed schedule block
+  and from `allocated_minutes − logged_minutes` — both already on `GET /tasks/{id}` — so the
+  feature costs the task page nothing. Every richer source was available and every one of them
+  taxes the way *in* to serve a dialog most opens never see: a mounted `EntryForm` needs the
+  companies/projects/tasks/members payload the `/time` layout fetches, the running-timer case is
+  its own call (fire it when the modal opens, or leave it to a follow-up), and
+  `POST /ai/time/reconstruct` is tens of seconds of model round trip. When a screen's most
+  expensive read is where the next feature will want one more fact, write the number down:
+  `test_task_detail_costs_the_same_however_much_the_card_carries` pins it, so the argument has to
+  be made rather than merged.
 
 ## A gesture repeated all day does not reload the page
 
@@ -111,6 +140,25 @@ discarded**, and **add one** when you find a list shipping something its screen 
   Pass it whenever you only need id/title/status/dates (grouping, pickers, the timesheet
   lookups). **Not** gated on column visibility: `TaskRow` draws those badges in its primary
   cell whatever the columns say, so a column-driven gate would silently remove them on mobile.
+- **`meta=false`** (domains, websites, hosting) — skip the display resolution a picker discards:
+  the client and provider *names*, the party labels, the parent domain's name, and on domains
+  the register facts and the current TLD price. Six statements on the domains list, all of it
+  thrown away to render `{id, name}`. The `_blank_display_fields` branch writes the empty values
+  out by hand rather than leaning on Pydantic's field defaults, because "the attribute is absent
+  so the default applies" is a coincidence a later `model_config` change would turn into a
+  validation error — and because domains' billing pair has no empty value, so it takes the
+  *local* answer (what the row says about itself, no register consulted).
+- **`hours=true`** (projects, tasks, companies — default **off**, the mirror image of the above):
+  an *opt-in* aggregate rather than an opt-out. One grouped query per page
+  (`TimeService.minutes_by_project` / `minutes_by_task` / `minutes_by_company`), never one per
+  row, so the cost is the same at three rows and three hundred. Projects gate it on their budget
+  column being visible; **tasks deliberately do not**, for the reason `meta=false` gives — the
+  ⏱ pill on `TaskRow` is the mobile list, and a column-driven gate would hide the burn from the
+  screen with no column picker on it. Both gate it on `time.entry.read`, on both ends: the load
+  does not ask when the caller cannot read hours, and the API **omits the fields rather than
+  refusing the request** if it is asked anyway. That asymmetry is the rule — an enrichment flag
+  rides a route the caller may otherwise call, so a 403 would break the ordinary list for
+  someone whose only sin is not being allowed to see hours.
 - **`with_body`** (interactions, default **off**) — a list row's `body_text` is a full e-mail
   body. The key stays in the payload as `null`; the detail view fetches the row it opens.
 - **`lines=false`** (invoices, quotes) — the index draws number, client, date, status and total,
@@ -119,6 +167,34 @@ discarded**, and **add one** when you find a list shipping something its screen 
 Two rules behind those: **don't fetch heavy aggregates to render a label**, and **don't request
 200 rows to show 5** — sort and cut server-side instead (`/tasks/dashboard-groups`,
 `/projects/dashboard-budgets`).
+
+## A picker's question is one query, never a subtraction
+
+The website create picker offers the domains that do not have a website yet. That was answered in
+the browser by fetching *every domain* (200 rows, fully resolved) and *every website* (200 rows,
+fully resolved) and intersecting the two — the section's two most expensive reads, both paying
+for display resolution to produce `{id, name}`.
+
+It was also **wrong**, and in the way a cap always goes wrong: past 200 websites, a domain whose
+website fell outside that page came back offered as free, and picking it 409'd on save. The cap
+was silently deciding *what counts as taken* rather than bounding what is offered.
+
+`GET /websites/available-domains` is one `NOT EXISTS`. Two rules generalise:
+
+- **When a picker's vocabulary is a predicate over rows, express the predicate in SQL.** Two
+  bounded lists and a `Set.has` is not the same question, and the difference only shows up at a
+  size no test seeds.
+- **A read that leaves the repository's path carries the horizon itself** (CLAUDE.md §15, failure
+  mode 3). `domains` is a bare table to the `websites` module, so nothing else would have narrowed
+  it and a restricted manager would have been offered every client's free domains. Pinned by
+  `test_available_domains_picker_stays_inside_the_horizon`, which fails when the clause is removed.
+
+Its sibling, one layer up: **asking a batch question one item at a time.** The custom-field
+definitions endpoint filters the tenant's whole definition set in Python, so the websites section
+layout spent five of its twelve round-trips re-reading the same rows for five entity types.
+`GET /custom-fields/definitions/batch` takes repeated `entity_type` and answers in one read,
+keyed by type — every requested type present, empty list included, so a caller never has to tell
+"no definitions" from "did not come back".
 
 **A payload the form posts back is not optional.** Dropping `body_text` from interaction list
 rows meant the edit form had to fetch the row *before* opening, or a save would have written an
@@ -151,6 +227,15 @@ what the screen draws.
 Its test asserts the **statement**, not the numbers: two lower bounds means two windows, one
 means the hull, and the KPIs are identical in both cases. The same shape as every other rule
 here — the regression is invisible in the JSON.
+
+Naming the period (#316) made the rule matter more, not less: "juli 2025" against last year is
+two windows twelve months apart, and it is now reachable from a picker rather than only from the
+12-month tab. Two things follow. The cap belongs on the **trailing** window only — a named month
+or quarter is bounded by the calendar, so `max_days` guards `<n>d` and nothing else — and any
+cache in front of a period must be keyed on the resolved **dates**. The drill-down cache keyed
+on `range_days`, which was fine while a day count identified a span; once "2026-07" and "2026-06"
+are both thirty-ish days, that key serves June's table for July: one number different, every row
+wrong, and no error anywhere.
 
 Its sibling: resolving a setting that has an org-level default and a per-row override is **one**
 statement, not two. Both are single-row unique-index lookups, so they ride as scalar subqueries

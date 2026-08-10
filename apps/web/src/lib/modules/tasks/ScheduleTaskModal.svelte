@@ -16,7 +16,7 @@
   import { enhance } from "$app/forms";
   import { untrack } from "svelte";
 
-  import { fmtDayMonth } from "$lib/core/format";
+  import { fmtDayMonth, RANGE_DASH } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { memberLabel } from "$lib/core/members";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -382,7 +382,7 @@
 
       <!-- Live preview: the block that will be stored (docs/UX.md: every number opens). -->
       <p class="rounded-lg bg-surface px-3 py-2 text-sm text-text">
-        {fmtDayMonth(day || todayIso())} · {startTime}–{endPreview.time}{endPreview.nextDay
+        {fmtDayMonth(day || todayIso())} · {startTime}{RANGE_DASH}{endPreview.time}{endPreview.nextDay
           ? " (+1)"
           : ""} · {formatMinutes(durationMinutes)}
       </p>

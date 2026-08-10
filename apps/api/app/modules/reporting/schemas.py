@@ -151,6 +151,8 @@ class ReportSchedule(BaseModel):
 
 
 class ReportProfileWrite(BaseModel):
+    #: What the document calls this client. ``None`` = the company's own name.
+    display_name: str | None = Field(default=None, max_length=255)
     tone_id: uuid.UUID | None = None
     template_id: uuid.UUID | None = None
     internal_template_id: uuid.UUID | None = None
@@ -175,6 +177,7 @@ class ReportProfileRead(BaseModel):
 
     id: uuid.UUID
     company_id: uuid.UUID
+    display_name: str | None = None
     tone_id: uuid.UUID | None = None
     template_id: uuid.UUID | None = None
     internal_template_id: uuid.UUID | None = None

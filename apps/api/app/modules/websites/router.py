@@ -12,7 +12,12 @@ from fastapi import APIRouter, Depends, Query
 
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
-from app.modules.websites.schemas import WebsiteCreate, WebsiteRead, WebsiteUpdate
+from app.modules.websites.schemas import (
+    AvailableDomain,
+    WebsiteCreate,
+    WebsiteRead,
+    WebsiteUpdate,
+)
 from app.modules.websites.service import WebsiteService
 from app.schemas import Page
 
@@ -36,6 +41,14 @@ async def list_websites(
         None,
         description="name | company | hosting | uptime | created_at | updated_at, '-' desc",
     ),
+    count: bool = Query(True, description="Compute total; set false for name-only lookups"),
+    meta: bool = Query(
+        True,
+        description=(
+            "Resolve the display fields a picker discards — the parent domain's name and client,"
+            " the hosting account's name and the technical owner's label."
+        ),
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[WebsiteRead]:
     items, total = await WebsiteService(ctx).list(
@@ -47,6 +60,8 @@ async def list_websites(
         hosting_id=hosting_id,
         uptime_enabled=uptime_enabled,
         sort=sort,
+        count=count,
+        meta=meta,
     )
     return Page(
         items=[WebsiteRead.model_validate(w) for w in items],
@@ -68,6 +83,26 @@ async def create_website(
 ) -> WebsiteRead:
     website = await WebsiteService(ctx).create(payload)
     return WebsiteRead.model_validate(website)
+
+
+@router.get(
+    "/available-domains",
+    response_model=list[AvailableDomain],
+    dependencies=[require_permission("websites.website.write")],
+)
+async def list_available_domains(
+    limit: int = Query(200, ge=1, le=500),
+    ctx: RequestContext = Depends(require_context),
+) -> list[AvailableDomain]:
+    """The domains that do not have a website yet — the create picker's options.
+
+    Declares the **write** permission, not the read one: this is the vocabulary of a form only a
+    writer can submit, so a read-only member's section layout skips the call entirely rather than
+    fetching options for a dialog they can never open.
+
+    Literal segment, so declared before ``/{website_id}``.
+    """
+    return await WebsiteService(ctx).available_domains(limit=limit)
 
 
 @router.get(

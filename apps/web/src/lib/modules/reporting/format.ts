@@ -1,4 +1,5 @@
 /** Display helpers for reporting (issue #300) — labels, badges and the one date format. */
+import { RANGE_DASH } from "$lib/core/format";
 import { t } from "$lib/core/i18n";
 
 import type { ReportCadence, ReportDelivery } from "./types";
@@ -71,7 +72,7 @@ export function periodLabel(
   const snapshot = report.data_snapshot as { period?: { label?: string } } | null | undefined;
   const stored = snapshot?.period?.label;
   if (stored) return stored;
-  return `${fmtDate(report.period_start, locale)} – ${fmtDate(report.period_end, locale)}`;
+  return `${fmtDate(report.period_start, locale)} ${RANGE_DASH} ${fmtDate(report.period_end, locale)}`;
 }
 
 /** A warning code + its detail, as one readable line for the review screen. */

@@ -84,7 +84,7 @@
         <MarketingSourceSection
           companyId={portal.companyId ?? ""}
           {src}
-          rangeDays={30}
+          period="30d"
           compare={portal.metrics?.compare ?? null}
         />
       {/each}

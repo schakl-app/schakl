@@ -34,6 +34,7 @@
     MAX_NAMESERVERS,
     MIN_NAMESERVERS,
     parseNameservers,
+    sameNameservers,
     type NameserverPushResult,
     type OxxaPanelData,
     type RegistrarStatus,
@@ -90,6 +91,29 @@
   /** What the delegation is (or was last asked to be), for the "nothing to suggest" case. */
   const currentNameservers = $derived(row?.ns_desired ?? row?.ns_observed ?? []);
 
+  /**
+   * **Whether there is anything to change at all.** The register's own answer (`ns_observed`) is
+   * the one that decides it — `ns_desired` is what we last *asked* for, and asking is not being.
+   *
+   * Without this the panel opened a form headed "Nameservers wijzigen bij OXXA", pre-filled with
+   * Cloudflare's pair, over a register that was already holding exactly that pair: an outstanding
+   * action where there was none, on the most common finished state this integration has (a zone
+   * adopted from a client who was already on Cloudflare, or a push that worked weeks ago).
+   *
+   * The three push problems are the exception and they must keep the form in front of the user:
+   * `drift` means the register has since been edited elsewhere, `missing` that the group backing
+   * these nameservers is gone at OXXA, `error` that the last attempt failed. In each of those the
+   * delegation can read correct and still need re-sending.
+   */
+  const pushProblem = $derived(
+    row?.ns_push_status === "drift" ||
+      row?.ns_push_status === "missing" ||
+      row?.ns_push_status === "error",
+  );
+  const alreadyOnCloudflare = $derived(
+    !pushProblem && sameNameservers(row?.ns_observed, cloudflareNameservers),
+  );
+
   // The push box, seeded once per domain-state change and then left alone — the user is editing
   // it. Cloudflare's pair wins when there is one: pushing it is the whole reason this box exists,
   // and a push that matches the live delegation is a no-op at the registrar anyway.
@@ -104,8 +128,19 @@
     nameservers = seed.join("\n");
   });
 
+  // Opened by hand when the delegation is already right: the ability to push something else must
+  // survive "there is nothing to do", because `missing` and `drift` are not the only reasons an
+  // agency re-points a domain — they may simply be moving it off Cloudflare.
+  let editAnyway = $state(false);
+  const showPushForm = $derived(!alreadyOnCloudflare || editAnyway);
+
   const pushCount = $derived(parseNameservers(nameservers).length);
   const pushValid = $derived(pushCount >= MIN_NAMESERVERS && pushCount <= MAX_NAMESERVERS);
+  // A control that would write what is already in the box does nothing, so it is not drawn
+  // (#253: a control that always refuses is a broken control).
+  const showFromCloudflare = $derived(
+    seedFromCloudflare && !sameNameservers(parseNameservers(nameservers), cloudflareNameservers),
+  );
 
   /**
    * With one active register the API resolves it itself; with several it refuses to pick
@@ -223,6 +258,11 @@
     <div class="min-w-0 sm:col-span-2">
       <dt class="text-xs text-text-muted">{t("oxxa.panel.nameservers")}</dt>
       <dd class="break-words text-text">{row.ns_observed?.join(", ") || "—"}</dd>
+      {#if alreadyOnCloudflare}
+        <!-- Said where the nameservers are, not down in the push section: this is a fact about
+             the delegation on screen, and it is what makes the missing form below make sense. -->
+        <dd class="mt-1 text-xs text-text-muted">{t("oxxa.panel.already_cloudflare")}</dd>
+      {/if}
     </div>
   </dl>
 
@@ -247,53 +287,67 @@
   {#if canManage}
     <section class="mt-5 border-t border-border pt-4">
       <h3 class="text-sm font-medium text-text">{t("oxxa.push.title")}</h3>
-      <form
-        method="POST"
-        action="?/oxxaPush"
-        use:enhance={busy.keep("push")}
-        class="mt-3 space-y-3"
-      >
-        {#if accounts.length > 1}
-          <div class="max-w-sm">
-            <label class={labelClass} for="oxxa-account">{t("oxxa.title")}</label>
-            <select id="oxxa-account" name="account_id" class={inputClass}>
-              {#each accounts as account (account.id)}
-                <option value={account.id}>{account.name}</option>
-              {/each}
-            </select>
-          </div>
-        {:else}
-          <input type="hidden" name="account_id" value={soleAccount} />
-        {/if}
-        <div class="min-w-0">
-          <label class={labelClass} for="oxxa-ns">{t("oxxa.push.nameservers")}</label>
-          <textarea
-            id="oxxa-ns"
-            name="nameservers"
-            rows={Math.max(MIN_NAMESERVERS, Math.min(MAX_NAMESERVERS, pushCount + 1))}
-            bind:value={nameservers}
-            spellcheck="false"
-            class="{inputClass} font-mono"></textarea>
-          <p class="mt-1 text-xs text-text-muted">{t("oxxa.push.help")}</p>
-          {#if seedFromCloudflare}
-            <!-- The composition, as a control rather than a note: the box already opens on
-                 Cloudflare's pair, and this puts it back after an edit or a failed attempt. -->
-            <div class="mt-2">
-              <Button
-                type="button"
-                variant="secondary"
-                size="xs"
-                onclick={() => (nameservers = cloudflareNameservers.join("\n"))}
-              >
-                {t("oxxa.push.from_cloudflare")}
-              </Button>
-            </div>
-          {/if}
+      {#if !showPushForm}
+        <!-- Nothing to change: the register already holds Cloudflare's pair. The section stays
+             (it is where this lives, and hiding it would make the panel's shape depend on state
+             nobody can see), but it states the outcome instead of asking for the action. -->
+        <p class="mt-2 text-sm text-text-muted">{t("oxxa.push.nothing_to_change")}</p>
+        <div class="mt-3">
+          <Button variant="secondary" size="sm" type="button" onclick={() => (editAnyway = true)}>
+            {t("oxxa.push.change_anyway")}
+          </Button>
         </div>
-        <Button type="submit" loading={busy.is("push")} disabled={busy.active || !pushValid}>
-          {t("oxxa.push.submit")}
-        </Button>
-      </form>
+      {:else}
+        <form
+          method="POST"
+          action="?/oxxaPush"
+          use:enhance={busy.keep("push")}
+          class="mt-3 space-y-3"
+        >
+          {#if accounts.length > 1}
+            <div class="max-w-sm">
+              <label class={labelClass} for="oxxa-account">{t("oxxa.title")}</label>
+              <select id="oxxa-account" name="account_id" class={inputClass}>
+                {#each accounts as account (account.id)}
+                  <option value={account.id}>{account.name}</option>
+                {/each}
+              </select>
+            </div>
+          {:else}
+            <input type="hidden" name="account_id" value={soleAccount} />
+          {/if}
+          <div class="min-w-0">
+            <label class={labelClass} for="oxxa-ns">{t("oxxa.push.nameservers")}</label>
+            <textarea
+              id="oxxa-ns"
+              name="nameservers"
+              rows={Math.max(MIN_NAMESERVERS, Math.min(MAX_NAMESERVERS, pushCount + 1))}
+              bind:value={nameservers}
+              spellcheck="false"
+              class="{inputClass} font-mono"></textarea>
+            <p class="mt-1 text-xs text-text-muted">{t("oxxa.push.help")}</p>
+            {#if showFromCloudflare}
+              <!-- The composition, as a control rather than a note: the box opens on Cloudflare's
+                   pair where there is one, and this puts it back after an edit or a failed
+                   attempt. Absent while the box already holds it, since pressing it would do
+                   nothing at all. -->
+              <div class="mt-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="xs"
+                  onclick={() => (nameservers = cloudflareNameservers.join("\n"))}
+                >
+                  {t("oxxa.push.from_cloudflare")}
+                </Button>
+              </div>
+            {/if}
+          </div>
+          <Button type="submit" loading={busy.is("push")} disabled={busy.active || !pushValid}>
+            {t("oxxa.push.submit")}
+          </Button>
+        </form>
+      {/if}
     </section>
   {/if}
 {/if}

@@ -40,7 +40,7 @@ from app.core.tenancy import RequestContext
 from app.core.timezone import org_today
 from app.i18n import translate
 from app.modules.reporting import narrative as narrative_mod
-from app.modules.reporting import prompts
+from app.modules.reporting import present, prompts
 from app.modules.reporting.models import (
     Report,
     ReportAudience,
@@ -197,6 +197,19 @@ def build_snapshot(
     }
 
 
+def client_name(company_name: str, profile: ReportProfile | None) -> str:
+    """What this client is called **on their report** — the profile's name, or the CRM's.
+
+    One function, because the answer has to be the same in five places at once: the title, the
+    cover, the PDF filename, the covering e-mail and the snapshot the model reads. It resolves
+    once, at creation, and is then snapshotted onto the row (``Report.company_name``);
+    everything downstream keeps reading the row, so a later rename cannot re-title a document a
+    client already has.
+    """
+    override = (profile.display_name or "").strip() if profile is not None else ""
+    return override or company_name
+
+
 def profile_facts(profile: ReportProfile | None) -> dict[str, Any]:
     """The client's own facts, as **data** for the model (see ``prompts``' injection stance)."""
     if profile is None:
@@ -269,7 +282,14 @@ async def write_prose(
     compare = snapshot.get("compare") or {}
     return await narrative_mod.write_narrative(
         service,
-        snapshot=snapshot,
+        presented=present.document(
+            snapshot,
+            locale=locale,
+            section_titles={
+                key: translate(spec.title_key, locale)
+                for key, spec in gathered.specs.items()
+            },
+        ),
         profile=profile_facts(profile),
         tone=tone_payload(tone),
         sections=section_briefs(gathered, locale, audience),

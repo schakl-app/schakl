@@ -497,6 +497,25 @@
   red; only the drawn bar's width clamps, because a bar cannot be 130 % long. A record with no
   budget shows an em-dash and still reports what it spent — never a fabricated total, and never a
   reassuring zero.
+- **And exactly one block that draws it**: `core/ui/BudgetBar.svelte` (#313), `variant="block"` for
+  a card, `variant="inline"` for a table cell. It exists because the scale being documented in one
+  module did not stop a fourth surface from hand-rolling it: the task card had its own
+  `bg-green-500`/amber/red ladder at 75/100 and its own `Math.min(100, pct)`, written before
+  `burn.ts` and never reconciled with it. The component is **unit-agnostic on purpose** — the
+  caller passes the two raw numbers (which decide the colour) and the formatted strings (which say
+  it in that module's unit and words), because a task budgets minutes and a project budgets hours.
+  Reach for it before writing a bar.
+- **A task's hour budget belongs where the hours are spent, not only on the task** (#313). The
+  allocation existed for a year and was drawn on exactly one screen — the task's own card, the one
+  place you are *not* when you are logging against it or deciding what to pick up. It is now on
+  the entry form under the task picker (beside the project's, because a task's budget is the
+  tighter constraint and neither answers the other's question), in the task list's budget column,
+  and on the compact row's ⏱ pill, which reads `1u 30m / 3u` instead of the allocation alone.
+  Every one of them **degrades to the plain allocation** rather than to a zero when the API
+  withholds the burn: `logged_minutes` is absent, not `0`, for a caller without `time.entry.read`
+  — which is how a client-portal login (it holds `tasks.task.read`) never sees what the agency
+  burned. Mirroring the *key* the API checks, not `!isPortal`, is what makes that one rule instead
+  of four (§15).
 - **Hours reach an agreement through its project, never through a second picker.** Logged time
   attaches to a **project**, and a project covered by an active subscription burns against that
   agreement's included hours (#225) — so the timesheet's entry form no longer offers a subscription
@@ -523,6 +542,23 @@
   re-asserts its own state after any form reset, so a forgotten callback can no longer strip
   checkbox marks — but radios and selects have no component guard; the form-level rule is the
   convention.
+  - **Read a posted checkbox by its presence, never by its value** — `checked(form, name)` from
+    `$lib/core/forms`. A checkbox posts *its own* `value` and an unticked one posts nothing at
+    all, so any comparison naming a particular string is a bug waiting for somebody to change
+    the control. `FormCheckbox` sends `"true"`; a bare `<input type="checkbox">` sends `"on"`;
+    reporting's actions compared against `"on"` while drawing `FormCheckbox`, so **every**
+    checkbox in the module posted `false` whatever the user ticked. It cost that module its
+    default report template — and therefore the design, accent and cover image of every
+    generated report — and it switched a client's reporting profile to inactive on every save.
+    Nothing about it is visible in review (the literal looks plausible) or in use (the box is
+    ticked on screen; only the next page load disagrees), which is exactly why it is a helper
+    rather than a corrected string.
+  - **A setting with three states is a select, not a checkbox.** `NULL` = inherit is the
+    house idiom (§14), and a box cannot tell "off" from "not chosen". `triflag(form, name)`
+    reads one; the empty option is inherit, beside the cadence and delivery fields that already
+    work that way. Reporting's per-client "publiceer in portaal" was read by an action that
+    expected a hidden marker field the page had never drawn, so the override existed everywhere
+    except where a user could reach it.
   - **A `bind:value` text field is the worst case: pressing Save empties it in front of you.**
     The rule above was written about *marks* (a checkbox rewinding, a select snapping back), which
     undersold it and let the same bug ship again on Instellingen → Bedrijven and → Facturatie
@@ -1123,3 +1159,14 @@
   page is the scope**: my transports live on my settings screen, the org's shared rooms on the org
   defaults screen, each under the matrix that routes it, so neither page ever shows a list it
   cannot act on. Suspect any screen rendering the same component twice with a boolean prop.
+
+- **Assigning `select.value` imperatively, on a select Svelte renders.** #314 gave the task card's
+  status select a second job: pick a finished status and it opens the finish prompt instead of
+  submitting, so the pick is put back until the confirm commits it. Putting it back with
+  `select.value = task.status` marks the control **dirty**, and the browser then ignores the
+  `selected` attribute Svelte rewrites on the next render — so confirming really did finish the
+  task, the budget bar and the activity trail updated, and the sidebar went on reading *Open*
+  until a hard reload. It looked exactly like a failed save. Bind the value
+  (`bind:value={statusValue}`, re-armed from the record in an `$effect`) and write to the state,
+  never to the DOM node; the same applies to any control a handler needs to rewind — a cancelled
+  picker, an optimistic toggle that has to go back.

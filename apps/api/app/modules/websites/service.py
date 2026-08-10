@@ -17,15 +17,29 @@ from sqlalchemy import bindparam, func, select, text
 from sqlalchemy.sql.expression import column as sa_column
 from sqlalchemy.sql.expression import table as sa_table
 
+from app.core.activity import ActivityService
+from app.core.activity.service import snapshot
 from app.core.customfields import CustomFieldsService
 from app.core.party import PartyService
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext
 from app.errors import AppError
 from app.modules.websites.models import Website
-from app.modules.websites.schemas import WebsiteCreate, WebsiteUpdate
+from app.modules.websites.schemas import AvailableDomain, WebsiteCreate, WebsiteUpdate
 
 ENTITY_TYPE = "website"
+
+#: The definition fields the activity trail tracks (§16) — the record's own columns, never the
+#: resolved display names beside them (those are somebody else's row changing, not an edit here).
+#:
+#: The ``technical_owner_party_*`` pair is deliberately absent, following domains, which audits
+#: neither of its own two party pairs: one logical field stored in two columns produces two trail
+#: lines, and both print internals (``agency``, and a bare UUID) that the reader cannot resolve.
+_AUDITED_FIELDS = (
+    "root",
+    "hosting_id",
+    "uptime_enabled",
+)
 
 # The parent domain, its company and the hosting account, as bare tables (§6): sorting by
 # them must not import another module's internals.
@@ -107,6 +121,21 @@ SORTABLE = {
 }
 
 
+def _blank_display_fields(websites: Sequence[Website]) -> None:
+    """The ``meta=false`` branch: what :meth:`WebsiteService._attach` resolves, left empty.
+
+    Written out rather than left to Pydantic's field defaults — see the twin in
+    ``domains/service.py`` for why. ``company_id`` is in here because a website has none of its
+    own: it is the parent domain's, and therefore resolved, not stored.
+    """
+    for w in websites:
+        w.domain_name = ""  # type: ignore[attr-defined]
+        w.hosting_name = None  # type: ignore[attr-defined]
+        w.company_id = None  # type: ignore[attr-defined]
+        w.company_name = None  # type: ignore[attr-defined]
+        w.technical_owner = None  # type: ignore[attr-defined]
+
+
 class WebsiteService:
     def __init__(self, ctx: RequestContext) -> None:
         self.ctx = ctx
@@ -130,6 +159,8 @@ class WebsiteService:
         hosting_id: uuid.UUID | None = None,
         uptime_enabled: bool | None = None,
         sort: str | None = None,
+        count: bool = True,
+        meta: bool = True,
     ) -> tuple[Sequence[Website], int]:
         conditions = []
         if domain_id is not None:
@@ -150,19 +181,66 @@ class WebsiteService:
         stmt = apply_sort(stmt, sort, SORTABLE, default=Website.created_at.desc())
         stmt = stmt.limit(limit).offset(offset)
         items = list((await self.ctx.session.execute(stmt)).scalars().all())
-        total = int(
-            await self.ctx.session.scalar(
-                self.repo.scoped_count_select().where(*conditions)
+        if count:
+            total = int(
+                await self.ctx.session.scalar(
+                    self.repo.scoped_count_select().where(*conditions)
+                )
+                or 0
             )
-            or 0
-        )
-        await self._attach(items)
+        else:
+            total = len(items)
+        if meta:
+            await self._attach(items)
+        else:
+            _blank_display_fields(items)
         return items, total
 
     async def get(self, website_id: uuid.UUID) -> Website:
         website = await self.repo.get_or_404(website_id)
         await self._attach([website])
         return website
+
+    async def available_domains(self, *, limit: int) -> list[AvailableDomain]:
+        """The domains that may still be given a website — the create picker's whole vocabulary.
+
+        This is one question, and the browser used to answer it by subtraction: every domain
+        (200, fully resolved) minus every website (200, fully resolved), intersected client-side.
+        Both halves were wrong as well as expensive. The subtraction is a **lie past 200
+        websites** — a domain whose website fell outside that page came back offered as free, and
+        picking it 409s — and the two reads paid for register facts, TLD prices, party labels and
+        hosting names to build a list of ``{id, name}``.
+
+        One ``NOT EXISTS`` answers it exactly, and the cap now bounds the *offer* rather than
+        silently deciding what counts as taken (docs/PERFORMANCE.md — bound every read).
+
+        Company horizon is applied here by hand, which is the rule for any read that leaves the
+        repository's path (§15, failure mode 3): ``domains`` is a bare table to this module, so
+        nothing else would have narrowed it, and ``domains.company_id`` is ``NOT NULL`` — there
+        is no unattached domain to exempt.
+        """
+        conditions = [
+            _domains.c.org_id == self._org_id,
+            ~(
+                select(Website.id)
+                .where(Website.org_id == self._org_id, Website.domain_id == _domains.c.id)
+                .exists()
+            ),
+        ]
+        scope = self.ctx.company_scope
+        if scope is not None:
+            conditions.append(_domains.c.company_id.in_(scope))
+        rows = (
+            await self.ctx.session.execute(
+                select(_domains.c.id, _domains.c.name, _domains.c.company_id)
+                .where(*conditions)
+                .order_by(func.lower(_domains.c.name))
+                .limit(limit)
+            )
+        ).all()
+        return [
+            AvailableDomain(id=row[0], name=row[1], company_id=row[2]) for row in rows
+        ]
 
     async def for_domain(self, domain_id: uuid.UUID) -> Website | None:
         website = await self.ctx.session.scalar(
@@ -196,12 +274,14 @@ class WebsiteService:
             uptime_enabled=data.uptime_enabled,
             custom=custom,
         )
+        await ActivityService(self.ctx).record_created(ENTITY_TYPE, website.id)
         await self._attach([website])
         return website
 
     async def update(self, website_id: uuid.UUID, data: WebsiteUpdate) -> Website:
         self.ctx.require("websites.website.write")
         website = await self.repo.get_or_404(website_id)
+        before = snapshot(website, _AUDITED_FIELDS)
         sent = data.model_dump(exclude_unset=True)
         values: dict[str, Any] = {}
 
@@ -219,6 +299,9 @@ class WebsiteService:
             values["custom"] = await self.custom_fields.validate(ENTITY_TYPE, data.custom or {})
 
         website = await self.repo.update(website, **values)
+        await ActivityService(self.ctx).record_update(
+            ENTITY_TYPE, website.id, before, snapshot(website, _AUDITED_FIELDS)
+        )
         await self._attach([website])
         return website
 

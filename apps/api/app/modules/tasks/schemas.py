@@ -49,6 +49,30 @@ class TaskCreate(TaskBase):
     recurrence: Recurrence | None = None
 
 
+class TaskLogTime(BaseModel):
+    """"Ook de uren registreren" (#314): the hours the task took, written in the same
+    transaction as the finish that offered to record them.
+
+    The shape ``InteractionCreate.log_time`` already established (#175), plus the two things a
+    task knows that a contact moment does not. ``schedule_id`` names an unlogged planned block
+    (#188) this confirms, so the same hours can never be booked twice — through the finish
+    prompt *and* again from the schedule panel. ``billable`` left out defers to the project
+    (#284): a task on a subscription-covered project bills nobody, and a finish prompt that
+    silently posted ``true`` would be the one write path that forgot.
+
+    Times follow the *time* module's wall-clock-as-UTC convention, like every other entry.
+    """
+
+    started_at: datetime
+    ended_at: datetime
+    #: Blank falls back to the task's own title — a timesheet row reading "Homepage herzien"
+    #: beats an empty one, and the task is the only thing the entry is about.
+    description: str | None = Field(default=None, max_length=2000)
+    billable: bool | None = None
+    entry_type_key: str | None = Field(None, min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$")
+    schedule_id: uuid.UUID | None = None
+
+
 class TaskUpdate(BaseModel):
     company_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
@@ -73,6 +97,10 @@ class TaskUpdate(BaseModel):
     # The contact moment this close is justified by (#157) — must be linked to this task and
     # team-visible; required by statuses flagged ``requires_interaction``.
     closing_interaction_id: uuid.UUID | None = None
+    # The hours this task took (#314), recorded with the finish rather than from memory a week
+    # later. A *completion* ride-along, refused on any update that is not a move into a finished
+    # status — never a general "create a time entry via PATCH" back door.
+    log_time: TaskLogTime | None = None
 
 
 class TaskRead(TaskBase):
@@ -88,6 +116,14 @@ class TaskRead(TaskBase):
     recurrence: Recurrence | None
     created_at: datetime
     updated_at: datetime
+    # The hour budget's burn (#313). On a list row only when asked for (``?hours=true``) — a row
+    # carries only what its screen draws (§9) — and on any surface only for a caller holding
+    # ``time.entry.read``. **Absent, never zero**: "nobody may tell you" and "nothing logged yet"
+    # are different answers, and a client-portal login (which holds ``tasks.task.read``) gets the
+    # first one. ``remaining_minutes`` is unclamped, like ``remaining_hours``: over budget reads
+    # negative, and is ``None`` when there is no allocation to remain of.
+    logged_minutes: int | None = None
+    remaining_minutes: int | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -403,8 +439,9 @@ class TaskDetail(TaskRead):
     comments: list[CommentRead] = Field(default_factory=list)
     activities: list[ActivityRead] = Field(default_factory=list)
     links: list[LinkRead] = Field(default_factory=list)
-    # Minutes booked on this task (from time tracking) — drives the budget colour.
-    logged_minutes: int = 0
+    # ``logged_minutes``/``remaining_minutes`` are inherited from ``TaskRead``. The card always
+    # asks for them — one row, one grouped query — but they stay gated on ``time.entry.read``,
+    # so the same burn a client cannot see on the list is not handed to them on the card.
 
 
 # --------------------------------------------------------------------------- #

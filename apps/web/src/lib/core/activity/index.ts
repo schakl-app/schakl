@@ -27,8 +27,9 @@ registerCoreCompanyPanel({
 
 // The entity types whose detail pages compose typed panels (projects, contacts, the
 // invoicing documents — an audit trail on money is what the trail exists for, #207 —
-// and domains, whose pricing fields are audited since #250).
-for (const entityType of ["project", "contact", "invoice", "quote", "domain"] as const) {
+// domains, whose pricing fields are audited since #250, and websites, which got a detail
+// page of their own and therefore a place to render one).
+for (const entityType of ["project", "contact", "invoice", "quote", "domain", "website"] as const) {
   registerCoreEntityPanel({
     key: "activity.trail",
     module: "activity",

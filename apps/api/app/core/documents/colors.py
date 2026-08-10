@@ -59,7 +59,7 @@ def document_accent(color: RGB) -> RGB:
     """The tenant's colour, darkened in HSL until it reads on paper — hue preserved.
 
     Paper is white, so a pale-yellow or mint brand would otherwise print an invisible heading
-    and an unreadable section band. The threshold is 4.5:1 because the accent carries *small*
+    and an unreadable section rule. The threshold is 4.5:1 because the accent carries *small*
     text (section labels, the total), not only rules.
     """
     if contrast_on_white(color) >= 4.5:

@@ -6,9 +6,11 @@
    */
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
+  import { burnPct, burnTextClass } from "$lib/core/burn";
   import Avatar from "$lib/core/ui/Avatar.svelte";
   import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { taskBurn } from "$lib/modules/tasks/budget";
   import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
   import { canWriteTask } from "$lib/modules/tasks/permissions";
   import { labelChipClass } from "$lib/modules/tasks/labels";
@@ -32,6 +34,9 @@
     priority: string;
     due_date?: string | null;
     allocated_minutes?: number | null;
+    // Only when the caller's load asked for `hours=true` and may read hours (#313).
+    logged_minutes?: number | null;
+    remaining_minutes?: number | null;
     assignee_user_id?: string | null;
     labels?: Label[];
     checklist_done?: number;
@@ -87,6 +92,10 @@
   );
   const overdue = $derived(!done && !!task.due_date && task.due_date < today);
   const assignee = $derived(members.find((m) => m.user_id === task.assignee_user_id));
+  // `null` wherever the load did not ask for the burn (the project to-do list, the dashboard
+  // widget) or the caller may not read hours — the pill then shows the plain allocation it
+  // always did, rather than a zero that would read as "nothing logged".
+  const burn = $derived(taskBurn(task));
 
   // The complete toggle is a task-status write (PATCH /api/v1/tasks/{id}), so it mirrors the API's
   // `tasks.task.write`. This row is shared across the tasks list, the project to-do and the company
@@ -174,7 +183,19 @@
     {#if (task.comment_count ?? 0) > 0}
       <span class="text-[11px] tabular-nums text-text-muted">💬 {task.comment_count}</span>
     {/if}
-    {#if task.allocated_minutes}
+    {#if burn}
+      <!-- "⏱ 1u 30m / 3u" (#313). No bar: this pill is 20 px tall on a phone, so the state is
+           carried by the figure and the one text colour that shouts — `burnTextClass` is red
+           only over budget, which is exactly the state worth interrupting someone for. -->
+      <span
+        class="rounded bg-surface px-1.5 py-0.5 text-[11px] font-medium tabular-nums {burnTextClass(
+          burnPct(burn.spent, burn.budget),
+        )}"
+        title={burn.remainingText}
+      >
+        ⏱ {burn.spentText}
+      </span>
+    {:else if task.allocated_minutes}
       <span
         class="rounded bg-surface px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-text-muted"
       >

@@ -6,7 +6,7 @@
 import { registerWebModule, type CalendarEvent, type CalendarPerson } from "$lib/core/registry";
 import { isoAddDays } from "$lib/core/calendar";
 import { apiErrorKey } from "$lib/core/errors";
-import { fmtClockTime } from "$lib/core/format";
+import { fmtClockTime, RANGE_DASH } from "$lib/core/format";
 import { hasPermission } from "$lib/core/permissions";
 import { getTimeZone } from "$lib/core/timezone";
 import { t } from "$lib/core/i18n";
@@ -135,10 +135,10 @@ registerWebModule({
             const bounded = singleDay && Boolean(item.start_time || item.end_time);
             const window = bounded
               ? item.resolved_start_time && item.resolved_end_time
-                ? `${fmtClockTime(item.resolved_start_time)}–${fmtClockTime(item.resolved_end_time)} `
+                ? `${fmtClockTime(item.resolved_start_time)}${RANGE_DASH}${fmtClockTime(item.resolved_end_time)} `
                 : item.start_time
-                  ? `${fmtClockTime(item.start_time)} – `
-                  : `– ${fmtClockTime(item.end_time ?? "")} `
+                  ? `${fmtClockTime(item.start_time)} ${RANGE_DASH} `
+                  : `${RANGE_DASH} ${fmtClockTime(item.end_time ?? "")} `
               : "";
             // Draw this type by the hour rather than as a full-day bar (#270)? A tenant choice per
             // leave type, and the only way free time / vrije tijd can be drawn per hour at all:

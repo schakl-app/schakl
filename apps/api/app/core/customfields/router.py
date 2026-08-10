@@ -52,6 +52,35 @@ async def list_definitions(
     return [CustomFieldDefinitionRead.model_validate(d) for d in defs]
 
 
+@router.get(
+    "/definitions/batch",
+    response_model=dict[str, list[CustomFieldDefinitionRead]],
+    dependencies=[require_permission("settings.customfields.read")],
+)
+async def list_definitions_batch(
+    entity_type: list[str] = Query(..., min_length=1),
+    include_inactive: bool = Query(False),
+    ctx: RequestContext = Depends(require_context),
+) -> dict[str, list[CustomFieldDefinitionRead]]:
+    """Several entity types' definitions in one call, keyed by entity type.
+
+    A section layout draws its own custom-field columns *and* opens quick-create dialogs for the
+    entities its pickers create (a client, a contact, a hosting account), each of which renders
+    that entity's definitions. Asking one type at a time made the websites layout spend five of
+    its twelve round-trips here, and each one re-read the tenant's whole definition set to filter
+    it in Python (docs/PERFORMANCE.md). One call, one read.
+
+    Literal segment, so declared before ``/definitions/{definition_id}``.
+    """
+    grouped = await CustomFieldsService(ctx).definitions_for(
+        entity_type, include_inactive=include_inactive
+    )
+    return {
+        key: [CustomFieldDefinitionRead.model_validate(d) for d in defs]
+        for key, defs in grouped.items()
+    }
+
+
 @router.post(
     "/definitions",
     response_model=CustomFieldDefinitionRead,

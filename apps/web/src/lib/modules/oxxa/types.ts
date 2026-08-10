@@ -31,12 +31,35 @@ export interface OxxaPanelData {
 export const MIN_NAMESERVERS = 2;
 export const MAX_NAMESERVERS = 6;
 
+/** One hostname, compared the way DNS reads it: case-insensitive, root dot optional. */
+export function normalizeNameserver(host: string): string {
+  return host.trim().toLowerCase().replace(/\.$/, "");
+}
+
 /** Split the textarea into hostnames. Whitespace *or* commas: people paste both. */
 export function parseNameservers(raw: string): string[] {
   const seen: string[] = [];
   for (const part of raw.split(/[\s,;]+/)) {
-    const host = part.trim().toLowerCase().replace(/\.$/, "");
+    const host = normalizeNameserver(part);
     if (host && !seen.includes(host)) seen.push(host);
   }
   return seen;
+}
+
+/**
+ * Whether two delegations are the same one. **Order is not part of it**: a registrar returns its
+ * nameservers in whatever order it stores them, and a set that differs only in order is the same
+ * delegation — comparing the joined strings would call an unchanged domain changed.
+ *
+ * An empty side is never "the same": nothing known cannot match something known, and treating it
+ * as agreement is how a panel would fall silent about a delegation it has not read yet.
+ */
+export function sameNameservers(
+  a: readonly string[] | null | undefined,
+  b: readonly string[] | null | undefined,
+): boolean {
+  const left = new Set((a ?? []).map(normalizeNameserver).filter(Boolean));
+  const right = new Set((b ?? []).map(normalizeNameserver).filter(Boolean));
+  if (left.size === 0 || left.size !== right.size) return false;
+  return [...left].every((host) => right.has(host));
 }

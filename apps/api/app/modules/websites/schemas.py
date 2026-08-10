@@ -31,6 +31,19 @@ class WebsiteUpdate(BaseModel):
     custom: dict[str, Any] | None = None
 
 
+class AvailableDomain(BaseModel):
+    """A domain with no website yet — the create picker's option, and nothing more.
+
+    Deliberately not a ``DomainRead`` subset: a picker that borrows another module's read schema
+    inherits every field somebody adds to it, and this one crosses a module boundary already
+    (§6 — a bare-table bridge, not an import).
+    """
+
+    id: uuid.UUID
+    name: str
+    company_id: uuid.UUID
+
+
 class WebsiteRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -12,7 +12,7 @@
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { CALENDAR_VIEWS, shiftDate, weekGrid, type CalendarView } from "$lib/core/calendar";
-  import { dateLocale, fmtDayMonth } from "$lib/core/format";
+  import { dateLocale, fmtDayMonth, RANGE_DASH } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
   import { pageTitle } from "$lib/core/title";
@@ -110,7 +110,7 @@
     }
     if (data.view === "week") {
       const days = weekGrid(data.date);
-      return `${fmtDayMonth(days[0])} – ${fmtDayMonth(days[days.length - 1])}`;
+      return `${fmtDayMonth(days[0])} ${RANGE_DASH} ${fmtDayMonth(days[days.length - 1])}`;
     }
     if (data.view === "month") {
       return new Intl.DateTimeFormat(dateLocale(), {

@@ -40,6 +40,7 @@ from app.modules.time.schemas import (
     TimesheetRow,
     TimeSummary,
 )
+from app.modules.time.system import resolve_billable
 
 
 @dataclass(frozen=True)
@@ -178,22 +179,13 @@ class TimeService:
         return (await self.ctx.session.execute(stmt)).scalars().first()
 
     async def _billable(self, billable: bool | None, project_id: uuid.UUID | None) -> bool:
-        """Resolve a new entry's ``billable`` (issue #284). Stated by the client, it stands;
-        left out, the project answers — and a project a subscription covers answers *no*,
-        because the retainer already pays for that work.
+        """Resolve a new entry's ``billable`` (issue #284).
 
-        The API decides, not the browser (§14's rule, generalised): an MCP call, an import and
-        the entry form all get the same answer. The projects module is reached through its
-        published service, imported here rather than at module scope — nothing outside this
-        branch should drag `projects` in (CLAUDE.md §6).
+        The API decides, not the browser (§14's rule, generalised): an MCP call, an import, the
+        entry form and a ride-along entry all get the same answer — which is why the rule itself
+        lives in ``system.py``, the surface the ride-alongs come in through, and this is one hop.
         """
-        if billable is not None:
-            return billable
-        if project_id is None:
-            return True
-        from app.modules.projects.service import ProjectService
-
-        return await ProjectService(self.ctx).billable_default(project_id)
+        return await resolve_billable(self.ctx, billable, project_id)
 
     async def start_timer(self, data: TimerStart) -> TimeEntry:
         self.ctx.require("time.entry.write")
@@ -470,6 +462,49 @@ class TimeService:
             )
             .group_by(TimeEntry.project_id)
         )
+        rows = (await self.ctx.session.execute(stmt)).all()
+        return {
+            r[0]: LoggedMinutes(int(r[1]), int(r[2]), int(r[3]), int(r[4])) for r in rows
+        }
+
+    async def minutes_by_task(
+        self, task_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, LoggedMinutes]:
+        """All-time logged minutes per task — the burn behind a task's hour budget (#313).
+
+        Simpler than :meth:`minutes_by_project` by one whole join: a task's allocation has no
+        period, so there are no per-row bounds to carry and one grouped scan answers the page.
+        ``total`` and ``all_time`` are therefore the same number, which is what "no period"
+        means here.
+
+        Two things it carries deliberately. **The horizon**, for the reason :meth:`logged`
+        spells out: an aggregate replaces a ``scoped_select()``, so it has to ask for
+        ``horizon_condition()`` by name or a company-scoped login reads a total over rows it
+        cannot see (§15, failure mode 3). And **``ended_at IS NOT NULL``**, like every other sum
+        here — a running timer has not spent the budget yet.
+        """
+        if not task_ids:
+            return {}
+        total = self._sum()
+        stmt = (
+            select(
+                TimeEntry.task_id,
+                total,
+                self._sum(TimeEntry.billable.is_(True)),
+                self._sum(TimeEntry.approved_at.is_(None)),
+                total,
+            )
+            .select_from(TimeEntry)
+            .where(
+                TimeEntry.org_id == self.ctx.org.id,
+                TimeEntry.ended_at.is_not(None),
+                TimeEntry.task_id.in_(list(task_ids)),
+            )
+            .group_by(TimeEntry.task_id)
+        )
+        horizon = self.repo.horizon_condition()
+        if horizon is not None:
+            stmt = stmt.where(horizon)
         rows = (await self.ctx.session.execute(stmt)).all()
         return {
             r[0]: LoggedMinutes(int(r[1]), int(r[2]), int(r[3]), int(r[4])) for r in rows

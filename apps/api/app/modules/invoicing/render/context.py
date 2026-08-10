@@ -401,7 +401,7 @@ def build_context(
     period = ""
     if period_end:
         period = (
-            f"{fmt_date(period_start)} – {fmt_date(period_end)}"
+            f"{fmt_date(period_start)} - {fmt_date(period_end)}"
             if period_start
             else fmt_date(period_end)
         )
