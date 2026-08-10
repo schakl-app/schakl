@@ -25,11 +25,12 @@ Importing this package self-registers the module.
 
 from __future__ import annotations
 
-from arq import cron
+from arq import cron, func
 
 from app.core.narratives import register_narrative_provider
 from app.modules.reporting.emails import REPORTING_EMAIL_KINDS
 from app.modules.reporting.jobs import (
+    reporting_reap_stale_runs,
     reporting_run_report,
     reporting_schedule_report,
     reporting_tick,
@@ -37,6 +38,7 @@ from app.modules.reporting.jobs import (
 from app.modules.reporting.panels import reporting_company_panel
 from app.modules.reporting.permissions import REPORTING_PERMISSIONS
 from app.modules.reporting.router import router
+from app.modules.reporting.runner import RUN_TIMEOUT_SECONDS
 from app.modules.reporting.service import latest_company_narrative
 from app.registry import ModuleDescriptor, registry
 
@@ -52,9 +54,23 @@ module = ModuleDescriptor(
     # clock is UTC, so a tenant in Lisbon and one in Warsaw asking for 08:00 mean two
     # different instants. The tick itself is cheap — one query per org, and on most hours it
     # matches nothing.
-    cron_jobs=[cron(reporting_tick, minute=5)],
+    cron_jobs=[
+        cron(reporting_tick, minute=5),
+        # Off the tick's minute, and often enough that a crashed run is a few minutes of
+        # "bezig" rather than an afternoon of it.
+        cron(reporting_reap_stale_runs, minute={10, 25, 40, 55}),
+    ],
     # Enqueued by name: the per-client scheduling decision, and the run itself.
-    worker_functions=[reporting_schedule_report, reporting_run_report],
+    #
+    # The run declares its own timeout instead of inheriting arq's 300 s default, which was
+    # less than a real run takes: several external sources, a model call, and a WeasyPrint
+    # render. Past it arq *cancels* the job, and a cancellation is not an `Exception` — so the
+    # default was killing healthy runs by a route that skipped the runner's own failure
+    # handling and left the report on `generating` for good.
+    worker_functions=[
+        reporting_schedule_report,
+        func(reporting_run_report, timeout=RUN_TIMEOUT_SECONDS),
+    ],
 )
 
 registry.register(module)

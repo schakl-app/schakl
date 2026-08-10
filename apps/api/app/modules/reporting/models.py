@@ -293,6 +293,14 @@ class Report(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, AuditableMixin
         ),
         Index("ix_reports_org_status", "org_id", "status"),
         Index("ix_reports_org_company_period", "org_id", "company_id", "period_start"),
+        # The reaper asks one question every quarter of an hour — "which runs have been in
+        # flight too long?" — and without this it reads every report ever written to answer it.
+        Index(
+            "ix_reports_generating",
+            "org_id",
+            "generation_started_at",
+            postgresql_where=text("status = 'generating'"),
+        ),
     )
 
     company_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False, index=True)
@@ -335,6 +343,15 @@ class Report(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, AuditableMixin
     #: client's document (§17: a cap that truncates says so — to the agency, not to the client).
     warnings: Mapped[list] = mapped_column(
         JSONB, nullable=False, default=list, server_default="[]"
+    )
+
+    #: When a worker was last handed this run. Two things need it and ``updated_at`` can answer
+    #: neither, because editing a paragraph moves that: the run job's per-attempt id (so a retry
+    #: is a *new* job rather than one arq drops as a duplicate of the last one), and the reaper's
+    #: "has this been in flight longer than a run can possibly take". ``NULL`` on a report from
+    #: before this column existed, which the reaper reads as *fall back to* ``updated_at``.
+    generation_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     pdf_file_id: Mapped[uuid.UUID | None] = mapped_column(

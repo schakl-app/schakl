@@ -910,3 +910,247 @@ async def test_gathering_twice_costs_one_gather() -> None:
         assert first is second
         report_sections.clear_cache(ctx)
         assert await report_sections.gather(ctx, window) is not first
+
+
+# --------------------------------------------------------------------------------------- #
+# A run nobody is running
+#
+# `generating` is a claim about a *process*, and the row cannot see processes. Every test here
+# is one way the claim outlived the thing it described, and each of them read to the user as
+# the same thing: a spinner that never stops.
+# --------------------------------------------------------------------------------------- #
+class _FakeJob:
+    def __init__(self, job_id: str) -> None:
+        self.job_id = job_id
+
+
+def _queue(monkeypatch, *, accept: bool = True) -> list[str]:
+    """Stand in for arq, recording the job ids it was offered.
+
+    ``accept=False`` is arq declining — which it does, silently and by returning ``None``,
+    whenever the id names a job still queued *or a result still in Redis* (an hour, by default).
+    """
+    seen: list[str] = []
+
+    async def fake_enqueue(function: str, *args, **kwargs):  # noqa: ANN002, ANN003, ARG001
+        job_id = str(kwargs.get("_job_id"))
+        seen.append(job_id)
+        return _FakeJob(job_id) if accept else None
+
+    monkeypatch.setattr("app.modules.reporting.service.enqueue", fake_enqueue)
+    return seen
+
+
+async def _age_run(report_id: uuid.UUID, org_id: uuid.UUID, *, seconds: int) -> None:
+    """Push this run's start time into the past, as a dead worker's would be."""
+    from datetime import UTC, datetime, timedelta
+
+    async with async_session_maker() as session:
+        await set_current_org(session, org_id)
+        report = await session.get(Report, report_id)
+        report.generation_started_at = datetime.now(UTC) - timedelta(seconds=seconds)
+        await session.commit()
+
+
+async def test_a_retry_is_its_own_job_not_a_duplicate_of_the_last_one(
+    client_for, monkeypatch
+) -> None:
+    """Two attempts, two job ids.
+
+    The run job used to be enqueued under an id derived from the report alone, and arq refuses
+    an id whose result is still in Redis. So the second press inside the hour set the row to
+    ``generating`` and queued nothing at all — the exact shape of "it says bezig and never
+    finishes", with no failure anywhere to find.
+    """
+    from tests.conftest import auth_cookie
+
+    tenant = await make_tenant("repretry")
+    company = await _company(tenant.org.id)
+    headers = await auth_cookie(tenant.user, tenant.org.id)
+    offered = _queue(monkeypatch)
+
+    async with client_for(tenant.host) as client:
+        first = await client.post(
+            "/api/v1/reporting/reports/generate",
+            headers=headers,
+            json={"company_id": str(company)},
+        )
+        assert first.status_code == 200, first.text
+        assert first.json()["queued"] is True
+        report_id = uuid.UUID(first.json()["report"]["id"])
+
+        # The worker died without ever writing a status. Nothing in Redis says so.
+        await _age_run(report_id, tenant.org.id, seconds=4000)
+
+        second = await client.post(
+            "/api/v1/reporting/reports/generate",
+            headers=headers,
+            json={"company_id": str(company), "refresh_data": True},
+        )
+        assert second.status_code == 200, second.text
+        assert second.json()["queued"] is True
+
+    assert len(offered) == 2
+    assert offered[0] != offered[1], "a retry reused the first attempt's job id"
+
+
+async def test_a_run_already_in_flight_is_not_started_a_second_time(
+    client_for, monkeypatch
+) -> None:
+    """Per-attempt job ids mean the *row* has to hold the line against a double-click.
+
+    Two workers on one report is two renders and two AI bills for one document.
+    """
+    from tests.conftest import auth_cookie
+
+    tenant = await make_tenant("repflight")
+    company = await _company(tenant.org.id)
+    headers = await auth_cookie(tenant.user, tenant.org.id)
+    offered = _queue(monkeypatch)
+
+    async with client_for(tenant.host) as client:
+        body = {"company_id": str(company), "refresh_data": True}
+        first = await client.post(
+            "/api/v1/reporting/reports/generate", headers=headers, json=body
+        )
+        second = await client.post(
+            "/api/v1/reporting/reports/generate", headers=headers, json=body
+        )
+
+    assert first.json()["queued"] is True
+    assert second.json()["queued"] is False, "a second press started a second run"
+    assert len(offered) == 1
+
+
+async def test_nothing_queued_never_leaves_the_row_claiming_a_worker_has_it(
+    client_for, monkeypatch
+) -> None:
+    """A declined enqueue is an answer, and the caller has to act on it.
+
+    ``enqueue`` used to discard arq's return value, so "queued nothing" and "queued it" were
+    the same code path — and the row was already committed as ``generating`` either way.
+    """
+    from tests.conftest import auth_cookie
+
+    tenant = await make_tenant("repnoqueue")
+    company = await _company(tenant.org.id)
+    headers = await auth_cookie(tenant.user, tenant.org.id)
+    _queue(monkeypatch, accept=False)
+
+    async with client_for(tenant.host) as client:
+        response = await client.post(
+            "/api/v1/reporting/reports/generate",
+            headers=headers,
+            json={"company_id": str(company)},
+        )
+    assert response.status_code == 503
+    assert response.json()["error"]["message"] == "errors.reporting.not_queued"
+
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        report = (
+            await session.execute(select(Report).where(Report.org_id == tenant.org.id))
+        ).scalar_one()
+        # Back where it was, with a note — not `generating`, and not `failed` either: nothing
+        # was generated, so nothing was lost.
+        assert report.status == ReportStatus.DRAFT.value
+        assert report.generation_started_at is None
+        assert {w["code"] for w in report.warnings} == {"reporting.warning.not_queued"}
+
+
+async def test_a_cancelled_run_still_records_that_it_failed() -> None:
+    """The one an ``except Exception`` could not catch.
+
+    Past its timeout arq *cancels* the job, and ``asyncio.CancelledError`` has not been an
+    ``Exception`` since 3.8 — so the handler whose whole purpose is that a run never dies
+    silently was the one thing a timeout skipped, and the report kept ``generating`` for ever.
+    """
+    import asyncio
+
+    from app.modules.reporting import runner
+
+    tenant = await make_tenant("repcancel")
+    company = await _company(tenant.org.id)
+    report_id = await _report(tenant.org.id, company, published=False)
+
+    async def _cancelled(*args, **kwargs):  # noqa: ANN002, ANN003, ARG001
+        raise asyncio.CancelledError
+
+    original, runner._run = runner._run, _cancelled
+    try:
+        async with async_session_maker() as session:
+            await set_current_org(session, tenant.org.id)
+            org = await session.get(type(tenant.org), tenant.org.id)
+            with pytest.raises(asyncio.CancelledError):
+                await runner.run_report(session, org, report_id)
+    finally:
+        runner._run = original
+
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        report = await session.get(Report, report_id)
+        assert report.status == ReportStatus.FAILED.value
+        assert {w["code"] for w in report.warnings} == {"reporting.warning.run_timeout"}
+
+
+async def test_the_reaper_fails_runs_nobody_is_running_and_leaves_the_rest_alone() -> None:
+    """The backstop that does not live in the process it is answering for.
+
+    Every in-process guard narrows the window and none closes it: a worker that is OOM-killed
+    runs no ``except`` block at all. A row with a ``NULL`` stamp is one from before the column
+    existed — i.e. one of the reports already stuck when this shipped — and is reaped off
+    ``updated_at``, which is what clears the backlog without a hand-written ``UPDATE``.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import update
+
+    from app.modules.reporting.jobs import _reap_org
+
+    tenant = await make_tenant("repreap")
+    company = await _company(tenant.org.id)
+    stale = await _report(tenant.org.id, company, period=date(2026, 5, 1))
+    legacy = await _report(tenant.org.id, company, period=date(2026, 6, 1))
+    running = await _report(tenant.org.id, company, period=date(2026, 7, 1))
+
+    # One transaction: `set_config(..., true)` is transaction-local, so a commit in the middle
+    # of this setup would unbind RLS and every statement after it would match nothing.
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        for report_id in (stale, legacy, running):
+            await session.execute(
+                update(Report)
+                .where(Report.id == report_id)
+                .values(status=ReportStatus.GENERATING.value)
+            )
+        await session.execute(
+            update(Report)
+            .where(Report.id == stale)
+            .values(generation_started_at=datetime.now(UTC) - timedelta(seconds=3600))
+        )
+        await session.execute(
+            update(Report)
+            .where(Report.id == running)
+            .values(generation_started_at=datetime.now(UTC))
+        )
+        # A pre-column row: no stamp, and an `updated_at` from before anyone was watching.
+        await session.execute(
+            update(Report)
+            .where(Report.id == legacy)
+            .values(generation_started_at=None, updated_at=datetime.now(UTC) - timedelta(days=1))
+        )
+        await session.commit()
+
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        org = await session.get(type(tenant.org), tenant.org.id)
+        await _reap_org(org, session)
+        await session.commit()
+
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        assert (await session.get(Report, stale)).status == ReportStatus.FAILED.value
+        assert (await session.get(Report, legacy)).status == ReportStatus.FAILED.value
+        # Still generating, and genuinely so: a reaper that races a healthy run is worse than
+        # no reaper, because it fails a report that was about to succeed.
+        assert (await session.get(Report, running)).status == ReportStatus.GENERATING.value

@@ -19,6 +19,8 @@ const REPORTS_TABLE_ID = "reports";
  * be a second copy of that rule, and the wrong one (docs/UX.md).
  */
 export const load: PageServerLoad = async (event) => {
+  // Named so the list can re-read itself while any row is still generating; see `poll.svelte.ts`.
+  event.depends("reporting:reports");
   const api = apiFor(event);
   const { prefs } = await event.parent();
   const pref = readTablePref(prefs, REPORTS_TABLE_ID);

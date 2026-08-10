@@ -22,6 +22,7 @@ from app.core.events import emit
 from app.core.jobs import enqueue
 from app.core.tenancy import RequestContext, TenantScopedRepository
 from app.core.timezone import org_today
+from app.db import set_current_org
 from app.errors import AppError
 from app.i18n import translate
 from app.modules.companies.models import Company
@@ -71,6 +72,17 @@ _SLUG = re.compile(r"[^a-z0-9]+")
 
 def _slugify(value: str) -> str:
     return _SLUG.sub("-", (value or "").strip().lower()).strip("-")[:64] or "tone"
+
+
+def _run_in_flight(report: Report) -> bool:
+    """One copy of "is a worker still on this?", declared in ``runner`` beside the timeouts.
+
+    Imported inside the function rather than at module scope: ``runner`` reaches back into this
+    module for the tone fallback, and a top-level import would close the circle.
+    """
+    from app.modules.reporting.runner import run_in_flight
+
+    return run_in_flight(report)
 
 
 # --------------------------------------------------------------------------------------- #
@@ -645,12 +657,21 @@ class ReportService:
             self.ctx, data.company_id, schedule=schedule, locale=locale, period=period
         )
         existing = await self.ctx.session.scalar(
-            self.repo.scoped_select().where(
+            self.repo.scoped_select()
+            .where(
                 Report.company_id == data.company_id,
                 Report.audience == data.audience.value,
                 Report.period_start == window.start,
             )
+            # The lock is what makes "is a run already in flight?" answerable. Two clicks a
+            # moment apart both read a row that is not `generating` yet, both stamp it, and —
+            # now that each attempt gets its own job id — both get a worker, so the same report
+            # is generated twice at once. In READ COMMITTED the loser of this lock re-reads the
+            # committed row, sees `generating`, and returns the run that is already going.
+            .with_for_update()
         )
+        if existing is not None and _run_in_flight(existing):
+            return await self._read(existing), False
         if existing is not None and not data.refresh_data:
             if existing.status in (ReportStatus.READY.value, ReportStatus.SENT.value):
                 # A report is a record. Handing back the one that exists is what stops a
@@ -681,14 +702,51 @@ class ReportService:
             )
             report.title = generate.report_title(report)
             await self.activity.record_created(Report.__entity_type__, report.id)
+        previous_status = report.status
+        started_at = datetime.now(UTC)
         report.status = ReportStatus.GENERATING.value
+        report.generation_started_at = started_at
         await self.ctx.session.flush()
-        await enqueue(
-            "reporting_run_report",
-            str(self.ctx.org.id),
-            str(report.id),
-            _job_id=f"reporting-run-{report.id}",
-        )
+
+        from app.modules.reporting.runner import run_job_id
+
+        # `release_db` is exactly the right seam here, for both of the things it does.
+        #
+        # It **commits on entry**, which is what the worker needs: it opens its own session and
+        # its own transaction, so a job handed over from inside this one races it — and for a
+        # report created here the worker wins by reading a row that does not exist yet, then
+        # returning silently and leaving the `generating` we are about to commit with nobody
+        # working on it. And it is a call to Redis, so holding a pooled connection across it is
+        # the drain `docs/PERFORMANCE.md` describes. Exit rebinds the RLS GUC, which a bare
+        # commit would not: `set_config(..., true)` is transaction-local, so every statement
+        # after it — including the failure write below — would match no rows at all.
+        job = None
+        try:
+            async with self.ctx.release_db():
+                job = await enqueue(
+                    "reporting_run_report",
+                    str(self.ctx.org.id),
+                    str(report.id),
+                    _job_id=run_job_id(report.id, started_at),
+                )
+        except Exception as exc:  # noqa: BLE001 — Redis being down is not this report's fault
+            logger.warning("reporting: could not queue run for %s: %s", report.id, exc)
+        if job is None:
+            # Nothing is coming. Put the row back where it was — `failed` would hide a document
+            # that is still perfectly good, and the only thing that actually happened is that
+            # we could not schedule the work — say so, and commit *before* raising, or the
+            # rollback the error triggers takes the correction with it.
+            report.status = previous_status
+            report.generation_started_at = None
+            report.warnings = [
+                *(report.warnings or []),
+                {"code": "reporting.warning.not_queued", "detail": ""},
+            ]
+            await self.ctx.session.commit()
+            # Rebind after the commit that just dropped the GUC, so whatever the error handling
+            # does next runs tenant-bound rather than tenant-blind.
+            await set_current_org(self.ctx.session, self.ctx.org.id)
+            raise AppError("not_queued", "errors.reporting.not_queued", status_code=503)
         return await self._read(report), True
 
     async def generate_batch(self, data: ReportRunBatchRequest) -> ReportRunBatchResult:

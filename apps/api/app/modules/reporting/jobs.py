@@ -6,6 +6,16 @@
   for 08:00 mean two different instants.
 * ``reporting_run_report`` — gathers, snapshots, narrates, renders, and (if the profile says
   so) sends. One report per job.
+* ``reporting_reap_stale_runs`` — every quarter of an hour, per org. Fails the runs that are
+  in flight with nobody flying them.
+
+**A status a process owns needs a process-independent way back.** ``generating`` says "a worker
+has this", and the row itself cannot tell the difference between a worker that is busy and a
+worker that was restarted, OOM-killed, or shut down between the flush and the first ``await``.
+Every in-process guard — ``run_report``'s ``except BaseException``, the model call's own
+timeout, the API's write-back when nothing queued — narrows the window and none of them closes
+it, because the failure mode is *the process is not there any more*. The reaper is the answer
+that does not run in the process it is answering for.
 
 **One job per client, never a loop.** The workflow this replaces ran thirty clients inside one
 execution, so a single SE Ranking timeout took the whole month's reporting with it. Here each
@@ -21,9 +31,9 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.entitlements.service import license_state
@@ -122,7 +132,7 @@ async def reporting_schedule_report(
     """
     if not await _licensed():
         return
-    from app.modules.reporting.runner import schedule_report
+    from app.modules.reporting.runner import run_job_id, schedule_report
 
     async with async_session_maker() as session:
         org = await _active_org(session, org_id)
@@ -130,21 +140,27 @@ async def reporting_schedule_report(
             return
         await set_current_org(session, org.id)
         try:
-            report_id = await schedule_report(
+            scheduled = await schedule_report(
                 session, org, uuid.UUID(company_id), audience
             )
+            # Committed here rather than after the enqueue below, for the reason the request
+            # path commits early too: the run job opens its own session, and a row it cannot
+            # see yet is a run it silently declines to do.
             await session.commit()
         except Exception:
             logger.exception("reporting: could not schedule %s/%s", company_id, audience)
             await session.rollback()
             return
-    if report_id is not None:
-        await enqueue(
-            "reporting_run_report",
-            org_id,
-            str(report_id),
-            _job_id=f"reporting-run-{report_id}",
-        )
+    if scheduled is None:
+        return
+    report_id, started_at = scheduled
+    if await enqueue(
+        "reporting_run_report", org_id, str(report_id), _job_id=run_job_id(report_id, started_at)
+    ) is None:
+        # The row now claims a worker has it and none does; the reaper would eventually say so,
+        # but twenty minutes of "bezig met genereren" for something we know right now is worse.
+        logger.warning("reporting: run for %s was not queued; failing it", report_id)
+        await _fail_unqueued(org_id, report_id)
 
 
 async def reporting_run_report(ctx: dict, org_id: str, report_id: str) -> None:  # noqa: ARG001
@@ -161,6 +177,69 @@ async def reporting_run_report(ctx: dict, org_id: str, report_id: str) -> None: 
         await run_report(session, org, uuid.UUID(report_id))
 
 
+async def _fail_unqueued(org_id: str, report_id: uuid.UUID) -> None:
+    """Undo a ``generating`` nothing is going to act on. Best effort; the reaper is the backstop."""
+    async with async_session_maker() as session:
+        org = await _active_org(session, org_id)
+        if org is None:
+            return
+        await set_current_org(session, org.id)
+        report = await session.scalar(
+            select(Report).where(Report.org_id == org.id, Report.id == report_id)
+        )
+        if report is None or report.status != ReportStatus.GENERATING.value:
+            return
+        report.status = ReportStatus.FAILED.value
+        report.warnings = [
+            *(report.warnings or []),
+            {"code": "reporting.warning.not_queued", "detail": ""},
+        ]
+        await session.commit()
+
+
+async def _reap_org(org: Org, session: AsyncSession) -> None:
+    """Fail this org's runs that have been ``generating`` longer than a run can possibly take.
+
+    ``COALESCE(generation_started_at, updated_at)`` on purpose: reports generated before that
+    column existed carry ``NULL``, and those are exactly the ones stuck right now. Reading
+    ``updated_at`` for them is what makes the first tick after the upgrade clean up the backlog
+    instead of leaving it to a hand-written ``UPDATE``.
+    """
+    from app.modules.reporting.runner import STALE_RUN_SECONDS
+
+    cutoff = datetime.now(UTC) - timedelta(seconds=STALE_RUN_SECONDS)
+    stale = (
+        await session.execute(
+            select(Report).where(
+                Report.org_id == org.id,
+                Report.status == ReportStatus.GENERATING.value,
+                func.coalesce(Report.generation_started_at, Report.updated_at) < cutoff,
+            )
+        )
+    ).scalars().all()
+    for report in stale:
+        report.status = ReportStatus.FAILED.value
+        report.warnings = [
+            *(report.warnings or []),
+            {"code": "reporting.warning.run_timeout", "detail": ""},
+        ]
+    if stale:
+        logger.warning(
+            "reporting: reaped %d stale run(s) for org %s", len(stale), org.slug
+        )
+
+
+async def reporting_reap_stale_runs(ctx: dict) -> None:  # noqa: ARG001
+    """Quarter-hourly ARQ entrypoint for the sweep above.
+
+    **Deliberately not licence-gated.** The other two jobs write new work and must stand down
+    when a licence lapses (#140); this one only corrects a status the platform itself set and
+    then failed to finish. Refusing to do that would leave an unlicensed tenant staring at
+    "bezig met genereren" until they renewed — punishing them for our crash.
+    """
+    await run_per_org(_reap_org)
+
+
 async def _active_org(session: AsyncSession, org_id: str) -> Org | None:
     return await session.scalar(
         select(Org).where(
@@ -173,6 +252,7 @@ __all__ = [
     "ReportDelivery",
     "ReportStatus",
     "Report",
+    "reporting_reap_stale_runs",
     "reporting_run_report",
     "reporting_schedule_report",
     "reporting_tick",
