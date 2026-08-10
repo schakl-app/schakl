@@ -17,7 +17,7 @@
   import { localeLabel, t } from "$lib/core/i18n";
   import { editLocale } from "$lib/core/i18n-edit.svelte";
 
-  import { drilldownLabel, fmtMetric, metricLabel, sourceLabel } from "./format";
+  import { channelLabel, drilldownLabel, fmtMetric, metricLabel, sourceLabel } from "./format";
   import type { DrilldownResponse, MarketingSource, SourceEditState } from "./types";
 
   let {
@@ -193,7 +193,11 @@
                       {row.label}
                     </a>
                   {:else}
-                    <span class="block truncate">{row.label}</span>
+                    <!-- Only the channel drill-down carries Google's own fixed vocabulary; a
+                         page path or an event name is the client's and stays as written. -->
+                    <span class="block truncate">
+                      {kind === "channels" ? channelLabel(row.label) : row.label}
+                    </span>
                   {/if}
                 </td>
                 {#each data.columns as col (col)}

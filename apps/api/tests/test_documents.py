@@ -195,3 +195,21 @@ def test_report_sections_compose_from_enabled_modules_only() -> None:
     assert [s.key for s in registry.report_sections_for("client", ["beta"])] == ["beta.one"]
     assert registry.report_section("alpha.one", ["beta"]) is None
     assert registry.report_section("beta.one", ["beta"]).title_key == "t"
+
+
+def test_a_share_that_is_not_zero_never_prints_as_zero() -> None:
+    """A folded tail below one per cent is still sessions, and "Overig 0%" reads as a fault.
+
+    The threshold is what the *rounding* produces rather than a number guessed beside it:
+    exactly 0,5 % rounds to "0%" under banker's rounding, so a `< 0.005` guard would let
+    through the one value it was written to catch.
+    """
+    import re
+
+    def texts(svg: str) -> list[str]:
+        return re.findall(r">([^<>]+)</text>", svg)
+
+    assert "b &lt;1%" in texts(share_bar([("a", 199), ("b", 1)], style=STYLE))
+    assert "b &lt;1%" in texts(share_bar([("a", 999), ("b", 1)], style=STYLE))
+    # An honest quarter still prints as one.
+    assert "b 25%" in texts(share_bar([("a", 3), ("b", 1)], style=STYLE))

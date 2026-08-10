@@ -523,6 +523,23 @@
   re-asserts its own state after any form reset, so a forgotten callback can no longer strip
   checkbox marks — but radios and selects have no component guard; the form-level rule is the
   convention.
+  - **Read a posted checkbox by its presence, never by its value** — `checked(form, name)` from
+    `$lib/core/forms`. A checkbox posts *its own* `value` and an unticked one posts nothing at
+    all, so any comparison naming a particular string is a bug waiting for somebody to change
+    the control. `FormCheckbox` sends `"true"`; a bare `<input type="checkbox">` sends `"on"`;
+    reporting's actions compared against `"on"` while drawing `FormCheckbox`, so **every**
+    checkbox in the module posted `false` whatever the user ticked. It cost that module its
+    default report template — and therefore the design, accent and cover image of every
+    generated report — and it switched a client's reporting profile to inactive on every save.
+    Nothing about it is visible in review (the literal looks plausible) or in use (the box is
+    ticked on screen; only the next page load disagrees), which is exactly why it is a helper
+    rather than a corrected string.
+  - **A setting with three states is a select, not a checkbox.** `NULL` = inherit is the
+    house idiom (§14), and a box cannot tell "off" from "not chosen". `triflag(form, name)`
+    reads one; the empty option is inherit, beside the cadence and delivery fields that already
+    work that way. Reporting's per-client "publiceer in portaal" was read by an action that
+    expected a hidden marker field the page had never drawn, so the override existed everywhere
+    except where a user could reach it.
   - **A `bind:value` text field is the worst case: pressing Save empties it in front of you.**
     The rule above was written about *marks* (a checkbox rewinding, a select snapping back), which
     undersold it and let the same bug ship again on Instellingen → Bedrijven and → Facturatie

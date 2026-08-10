@@ -22,6 +22,26 @@ export function metricLabel(key: string): string {
   return t(`marketing.metric.${key}`);
 }
 
+/**
+ * One GA4 acquisition channel, in the reader's language — or exactly what Google called it.
+ *
+ * `sessionDefaultChannelGroup` is a fixed vocabulary Google defines: not tenant data, and not a
+ * name anybody here chose. It was printing verbatim — a dashboard row reading *Unassigned* next
+ * to one reading *Verwijzend verkeer*, and the same English words in the middle of a Dutch
+ * client report. The catalogue answers for the ones we know; anything else keeps Google's own
+ * string, because `t()` returns the *key* on a miss and `marketing.channel.audio_streaming` is
+ * a worse thing to print than the English name it stood in for. The API resolves the same key
+ * for the printed document (`reporting/render/context.channel_label`), so the screen and the
+ * PDF say the same word.
+ */
+export function channelLabel(name: string): string {
+  const raw = String(name ?? "");
+  if (!raw) return raw;
+  const key = `marketing.channel.${raw.toLowerCase().replace(/[-\s]+/g, "_")}`;
+  const label = t(key);
+  return label === key ? raw : label;
+}
+
 /** A tile's display label: the client's override in the viewer's locale (#192), else the
  *  built-in metric label. Overrides are tenant data ({nl, en}), so fall through sensibly. */
 export function tileLabel(

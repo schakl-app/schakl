@@ -247,21 +247,182 @@ def _category_labels(
     return "".join(out)
 
 
-def _legend(style: ChartStyle, entries: Sequence[tuple[str, str]], x: float, y: float) -> str:
-    """A legend is always present for two or more series — identity is never colour alone."""
+#: One legend row's height, key included.
+_LEGEND_LINE = 14.0
+
+
+def _legend_span(style: ChartStyle, label: str) -> float:
+    return 12 + len(label) * _CHAR_W * style.font_size + 18
+
+
+def _legend_rows(
+    style: ChartStyle, entries: Sequence[tuple[str, str]], width: float
+) -> list[list[tuple[str, str]]]:
+    rows: list[list[tuple[str, str]]] = [[]]
+    cursor = 0.0
+    for entry in entries:
+        span = _legend_span(style, entry[1])
+        if rows[-1] and cursor + span > width:
+            rows.append([])
+            cursor = 0.0
+        rows[-1].append(entry)
+        cursor += span
+    return rows
+
+
+def _legend_depth(
+    style: ChartStyle, entries: Sequence[tuple[str, str]], width: float
+) -> float:
+    """The room these keys need. Measured, so a caller can buy it before drawing."""
+    return _LEGEND_LINE * len(_legend_rows(style, entries, width))
+
+
+def _legend(
+    style: ChartStyle,
+    entries: Sequence[tuple[str, str]],
+    x: float,
+    y: float,
+    width: float = 1e9,
+) -> str:
+    """A legend is always present for two or more series — identity is never colour alone.
+
+    **And it wraps.** Laid out on one line without ever asking how wide the canvas was, a share
+    bar with six named segments ran its last two keys clean off the right-hand edge of the
+    page: the reader was shown four colours out of six, with nothing to say the others existed.
+    Rows are measured the same way the entries are drawn, so the wrap lands where the glyphs
+    actually reach it.
+    """
     out: list[str] = []
-    cursor = x
-    for colour, label in entries:
-        out.append(
-            f'<rect x="{cursor:.1f}" y="{y - 6:.1f}" width="8" height="8" rx="2" '
-            f'fill="{colour}" />'
-        )
-        out.append(
-            f'<text x="{cursor + 12:.1f}" y="{y + 1:.1f}" font-size="{style.font_size:.1f}" '
-            f'fill="{style.muted}">{_esc(label)}</text>'
-        )
-        cursor += 12 + len(label) * _CHAR_W * style.font_size + 18
+    for index, row in enumerate(_legend_rows(style, entries, width)):
+        cursor = x
+        line = y + index * _LEGEND_LINE
+        for colour, label in row:
+            out.append(
+                f'<rect x="{cursor:.1f}" y="{line - 6:.1f}" width="8" height="8" rx="2" '
+                f'fill="{colour}" />'
+            )
+            out.append(
+                f'<text x="{cursor + 12:.1f}" y="{line + 1:.1f}" '
+                f'font-size="{style.font_size:.1f}" '
+                f'fill="{style.muted}">{_esc(label)}</text>'
+            )
+            cursor += _legend_span(style, label)
     return "".join(out)
+
+
+#: A category name longer than this is cut wherever it is drawn — at some point a label stops
+#: being a label. It is generous, because the horizontal form has room for real names.
+_MAX_ROW_LABEL = 30
+#: One category's band in the horizontal form: two bars, their gap, and air around the pair.
+_ROW_BAND = 21.0
+#: How much of a horizontal chart the names may take before the bars stop being comparable.
+_NAME_COLUMN = 0.36
+#: The horizontal form's own canvas, wider than the column form's.
+#:
+#: A chart is scaled by its container (`standard.css`: 150 mm), so the viewBox width is really a
+#: *type size* control — 320 user units across 150 mm draws 8-unit text at about 10.5 pt, half
+#: again the size of the table underneath it, and makes ten rows fill a third of the sheet. At
+#: 440 the same text lands near the document's own 8 pt and the chart takes the room it is
+#: worth. Nothing about the drawing changes; only how much paper it is stretched over.
+_ROWS_WIDTH = 440.0
+
+
+def _truncates(style: ChartStyle, labels: Sequence[str], band: float) -> bool:
+    """Would the vertical form have to cut a name to fit it under a bar?
+
+    Rotation buys room and then runs out of it, and what the reader gets when it does is
+    ``Paid…`` twice over — two different channels printed identically, on a chart whose whole
+    job is telling them apart. That is the signal to change *form* rather than to keep
+    shortening: a horizontal bar chart writes every name out in full, and the only thing it
+    costs is a shape the reader is equally used to.
+    """
+    if not _rotates(style, labels, band):
+        return False
+    budget = band * 1.41
+    return any(_ellipsized(label, budget, style.font_size) != label for label in labels)
+
+
+def _row_label(text: str) -> str:
+    return text if len(text) <= _MAX_ROW_LABEL else text[: _MAX_ROW_LABEL - 1].rstrip() + "…"
+
+
+def _bars(
+    labels: Sequence[str],
+    series: Sequence[tuple[str, Sequence[float]]],
+    *,
+    style: ChartStyle,
+    title: str,
+    fmt: Formatter,
+    width: float = _ROWS_WIDTH,
+) -> str:
+    """Categories down the side, bars across — the form long names belong in.
+
+    Everything the column form decides about ink is kept: one colour per series, the comparison
+    in its de-emphasised grey, gridlines as solid hairlines, and no value stamped on a mark
+    (the table below carries every number). Only the axis the names sit on has changed, and
+    with it the ceiling on how long a name may be.
+    """
+    columns = [[max(0.0, float(v or 0)) for v in values] for _, values in series]
+    top, ticks = _nice_ceiling(max((max(c, default=0.0) for c in columns), default=0.0))
+    names = [_row_label(label) for label in labels]
+    left = min(width * _NAME_COLUMN, max(len(n) for n in names) * _CHAR_W * style.font_size + 10)
+    right = width - 24.0
+    plot_top = 16.0
+    band = _ROW_BAND if len(series) > 1 else _ROW_BAND * 0.8
+    baseline = plot_top + band * len(labels)
+    colours = [style.accent, style.comparison][: len(series)]
+    legend_entries = [(colours[i], name) for i, (name, _) in enumerate(series)]
+    legend = _legend_depth(style, legend_entries, width) if len(series) > 1 else 0.0
+    height = baseline + 18.0 + legend
+
+    body: list[str] = []
+    for tick in ticks:
+        x = left + (tick / top) * (right - left) if top else left
+        body.append(
+            f'<line x1="{x:.1f}" y1="{plot_top:.1f}" x2="{x:.1f}" y2="{baseline:.1f}" '
+            f'stroke="{style.rule}" stroke-width="1" />'
+        )
+        body.append(
+            f'<text x="{x:.1f}" y="{plot_top - 5:.1f}" text-anchor="middle" '
+            f'font-size="{style.font_size:.1f}" fill="{style.muted}" '
+            f'style="font-variant-numeric:tabular-nums">{_esc(fmt(tick))}</text>'
+        )
+    bar = min(_MAX_BAR * 0.5, (band - _GAP * 3) / len(series))
+    for index, name in enumerate(names):
+        centre = plot_top + band * (index + 0.5)
+        body.append(
+            f'<text x="{left - 7:.1f}" y="{centre + 3:.1f}" text-anchor="end" '
+            f'font-size="{style.font_size:.1f}" fill="{style.muted}">{_esc(name)}</text>'
+        )
+        group = bar * len(series) + _GAP * (len(series) - 1)
+        for slot, values in enumerate(columns):
+            value = values[index] if index < len(values) else 0.0
+            length = (value / top) * (right - left) if top else 0.0
+            y = centre - group / 2 + slot * (bar + _GAP)
+            path = _row_path(left, y, length, bar)
+            if path:
+                body.append(f'<path d="{path}" fill="{colours[slot]}" />')
+    body.append(
+        f'<line x1="{left:.1f}" y1="{plot_top:.1f}" x2="{left:.1f}" y2="{baseline:.1f}" '
+        f'stroke="{style.rule}" stroke-width="1" />'
+    )
+    if len(series) > 1:
+        body.append(_legend(style, legend_entries, left, baseline + 14.0, width - left))
+    return _svg(width, height, "".join(body), title)
+
+
+def _row_path(x: float, y: float, length: float, thickness: float) -> str:
+    """A bar with a rounded end and a square foot — the column path, laid on its side."""
+    if length <= 0:
+        return ""
+    radius = min(_RADIUS, thickness / 2, length)
+    end = x + length
+    return (
+        f"M{x:.2f},{y:.2f} H{end - radius:.2f} "
+        f"Q{end:.2f},{y:.2f} {end:.2f},{y + radius:.2f} "
+        f"V{y + thickness - radius:.2f} Q{end:.2f},{y + thickness:.2f} "
+        f"{end - radius:.2f},{y + thickness:.2f} H{x:.2f} Z"
+    )
 
 
 def column_chart(
@@ -278,8 +439,10 @@ def column_chart(
     labels, values = list(labels)[:12], [max(0.0, float(v or 0)) for v in list(values)[:12]]
     if not labels:
         return ""
-    top, ticks = _nice_ceiling(max(values, default=0.0))
     left, right, plot_top = 44.0, width - 6.0, 8.0
+    if _truncates(style, labels, (right - left) / len(labels)):
+        return _bars(labels, [("", values)], style=style, title=title, fmt=fmt)
+    top, ticks = _nice_ceiling(max(values, default=0.0))
     band = (right - left) / len(labels)
     height, baseline = _fit_baseline(height, _label_depth(style, labels, band), 0.0)
     bar = min(_MAX_BAR, band - _GAP * 2)
@@ -320,10 +483,25 @@ def grouped_columns(
     if not labels or not series:
         return ""
     columns = [[max(0.0, float(v or 0)) for v in list(vals)[:10]] for _, vals in series]
-    top, ticks = _nice_ceiling(max((max(c, default=0.0) for c in columns), default=0.0))
     left, right, plot_top = 44.0, width - 6.0, 8.0
+    if _truncates(style, labels, (right - left) / len(labels)):
+        return _bars(
+            labels,
+            [(name, columns[i]) for i, (name, _) in enumerate(series)],
+            style=style,
+            title=title,
+            fmt=fmt,
+        )
+    top, ticks = _nice_ceiling(max((max(c, default=0.0) for c in columns), default=0.0))
     band = (right - left) / len(labels)
-    height, baseline = _fit_baseline(height, _label_depth(style, labels, band), _LEGEND_STRIP)
+    legend_entries = [
+        ([style.accent, style.comparison][i], name) for i, (name, _) in enumerate(series)
+    ]
+    height, baseline = _fit_baseline(
+        height,
+        _label_depth(style, labels, band),
+        _legend_depth(style, legend_entries, right - left),
+    )
     colours = [style.accent, style.comparison][: len(series)]
     bar = min(_MAX_BAR, (band - _GAP * 3) / len(series))
     body = [_axis(style, left, right, plot_top, baseline, ticks, top, fmt)]
@@ -347,9 +525,10 @@ def grouped_columns(
     body.append(
         _legend(
             style,
-            [(colours[i], name) for i, (name, _) in enumerate(series)],
+            legend_entries,
             left,
-            height - 6.0,
+            height - _legend_depth(style, legend_entries, right - left) + 8.0,
+            right - left,
         )
     )
     return _svg(width, height, "".join(body), title)
@@ -458,7 +637,14 @@ def share_bar(
             f'<rect x="{cursor:.2f}" y="{bar_top:.1f}" width="{segment:.2f}" '
             f'height="{bar_height:.1f}" rx="2" fill="{share.colour}" />'
         )
+        # A share that is not zero must not print as "0%": the folded tail below one per cent
+        # is still two sessions, and a legend reading "Overig 0%" invites the reader to wonder
+        # what it is doing there. The test is what the *rounding* produces, not a threshold
+        # guessed at beside it — exactly 0,5 % rounds to "0%" under banker's rounding, so a
+        # `< 0.005` guard lets through the one value it was written to catch.
         percent = f"{share.fraction * 100:.0f}%"
+        if share.fraction > 0 and percent == "0%":
+            percent = "<1%"
         if _fits(percent, segment, style.font_size):
             # Inside a colored fill is the one place a label may not wear an ink token: pick
             # white or ink by the fill's own luminance so it always clears contrast.
@@ -470,7 +656,11 @@ def share_bar(
             )
         legend.append((share.colour, f"{share.label} {percent}"))
         cursor += segment + _GAP
-    body.append(_legend(style, legend, left, height - 8.0))
+    # The canvas grows to whatever the keys need. Six named segments do not fit on one line at
+    # this width, and the alternative to growing is the one that shipped: two of them drawn
+    # past the right-hand edge of the paper.
+    height = bar_top + bar_height + 10.0 + _legend_depth(style, legend, span)
+    body.append(_legend(style, legend, left, bar_top + bar_height + 18.0, span))
     return _svg(width, height, "".join(body), title)
 
 

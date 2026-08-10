@@ -1,6 +1,7 @@
 import { fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
+import { checked, triflag } from "$lib/core/forms";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 
@@ -22,7 +23,7 @@ export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const company_id = event.params.id;
 
-  const [profile, tones, templates, reports, contacts] = await Promise.all([
+  const [profile, tones, templates, reports, contacts, company] = await Promise.all([
     api.GET("/api/v1/reporting/companies/{company_id}/profile", {
       params: { path: { company_id } },
     }),
@@ -36,10 +37,14 @@ export const load: PageServerLoad = async (event) => {
     api.GET("/api/v1/contacts", {
       params: { query: { company_id, limit: 100, meta: false, count: false } },
     }),
+    // For the display-name placeholder: the name a report carries when nobody overrides it.
+    // A field whose "leave empty" behaviour is invisible is a field people fill in twice.
+    api.GET("/api/v1/companies/{company_id}", { params: { path: { company_id } } }),
   ]);
 
   return {
     companyId: company_id,
+    companyName: company.data?.name ?? "",
     profile: profile.data ?? null,
     tones: tones.data ?? [],
     templates: templates.data ?? [],
@@ -78,6 +83,7 @@ export const actions: Actions = {
     const { error } = await apiFor(event).PUT("/api/v1/reporting/companies/{company_id}/profile", {
       params: { path: { company_id: event.params.id } },
       body: {
+        display_name: inherited(form.get("display_name")),
         tone_id: inherited(form.get("tone_id")),
         template_id: inherited(form.get("template_id")),
         internal_template_id: inherited(form.get("internal_template_id")),
@@ -104,13 +110,10 @@ export const actions: Actions = {
           hour: form.get("hour") === "" ? null : Number(form.get("hour")),
           compare: inherited(form.get("compare")) as "year" | "previous" | null,
           delivery: delivery as "review" | "auto" | null,
-          publish_to_portal:
-            form.get("publish_to_portal_set") === "on"
-              ? form.get("publish_to_portal") === "on"
-              : null,
+          publish_to_portal: triflag(form, "publish_to_portal"),
         },
-        internal_enabled: form.get("internal_enabled") === "on",
-        active: form.get("active") === "on",
+        internal_enabled: checked(form, "internal_enabled"),
+        active: checked(form, "active"),
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });

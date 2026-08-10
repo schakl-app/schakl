@@ -115,31 +115,32 @@ def banned_phrases_used(text: str, banned: list[str]) -> list[str]:
     return found
 
 
-def _document(snapshot: dict[str, Any], profile: dict[str, Any] | None) -> str:
-    """The user message: the numbers and the client's facts, as one JSON document.
+def _document(presented: dict[str, Any], profile: dict[str, Any] | None) -> str:
+    """The user message: the report **as the document prints it**, and the client's facts.
+
+    ``presented`` is :mod:`app.modules.reporting.present`'s output, never the raw snapshot —
+    every key a label, every value the exact string the table carries. Handing over the
+    snapshot is what put ``totalUsers``, ``0.4595`` and ``compare_sessions 61, delta 21.3``
+    into a client's Dutch paragraph: the model was quoting its input faithfully, and its input
+    was a database row.
 
     The profile rides *inside* it, under its own key, because that is what makes it data. The
-    system prompt has already said that everything in here is data; putting the profile
-    anywhere else would quietly contradict that.
+    system prompt has already said everything in here is data; putting the profile anywhere
+    else would quietly contradict that.
     """
-    payload = {"client_profile": profile or {}, "report": snapshot}
+    payload = {"client_profile": profile or {}, "report": presented}
     text = json.dumps(payload, ensure_ascii=False, default=str)
     if len(text) > MAX_INPUT_CHARS:
-        # Trim the biggest tables rather than the whole document: a report whose rankings
-        # section is long should still get a traffic paragraph.
-        trimmed = dict(snapshot)
-        for key, section in list(trimmed.get("sections", {}).items()):
-            if isinstance(section, dict) and isinstance(section.get("rows"), list):
-                trimmed["sections"][key] = {**section, "rows": section["rows"][:20]}
-        payload["report"] = trimmed
-        text = json.dumps(payload, ensure_ascii=False, default=str)[:MAX_INPUT_CHARS]
+        # Presenting already caps every table at `present.MAX_ROWS`, so overrunning here means
+        # a report with a great many *sections*. Truncating is the last resort it always was.
+        text = text[:MAX_INPUT_CHARS]
     return text
 
 
 async def write_narrative(
     service: AIService,
     *,
-    snapshot: dict[str, Any],
+    presented: dict[str, Any],
     profile: dict[str, Any] | None,
     tone: dict[str, Any] | None,
     sections: list[tuple[str, str]],
@@ -178,7 +179,7 @@ async def write_narrative(
         text, _ = await service.complete(
             FEATURE,
             system=system,
-            messages=[ChatMessage(role="user", content=_document(snapshot, profile))],
+            messages=[ChatMessage(role="user", content=_document(presented, profile))],
             disable_tools=True,
             max_tokens=MAX_OUTPUT_TOKENS,
         )
@@ -210,7 +211,7 @@ async def write_narrative(
 async def rewrite_section(
     service: AIService,
     *,
-    snapshot_section: dict[str, Any],
+    presented_section: dict[str, Any],
     profile: dict[str, Any] | None,
     tone: dict[str, Any] | None,
     section_key: str,
@@ -237,7 +238,7 @@ async def rewrite_section(
             messages=[
                 ChatMessage(
                     role="user",
-                    content=_document({"sections": {section_key: snapshot_section}}, profile),
+                    content=_document({"sections": {section_key: presented_section}}, profile),
                 )
             ],
             disable_tools=True,

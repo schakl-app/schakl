@@ -20,6 +20,7 @@
 
   import MarketingDrilldown from "./MarketingDrilldown.svelte";
   import {
+    channelLabel,
     comparePeriodLabel,
     deltaClass,
     deltaView,
@@ -394,7 +395,7 @@
         <ul class="space-y-1.5">
           {#each channelEntries as [name, value] (name)}
             <li class="flex items-center gap-2 text-sm">
-              <span class="w-32 shrink-0 truncate text-text-muted">{name}</span>
+              <span class="w-32 shrink-0 truncate text-text-muted">{channelLabel(name)}</span>
               <span class="h-2 flex-1 overflow-hidden rounded-full bg-surface">
                 <span
                   class="block h-full rounded-full bg-brand"

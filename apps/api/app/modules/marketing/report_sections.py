@@ -172,35 +172,40 @@ async def _stored(
 ) -> dict[str, Any]:
     """Both periods of one link's daily rows, aggregated. Two indexed reads, never per day."""
 
-    async def totals(start: date | None, end: date | None) -> tuple[dict, dict, int]:
+    async def totals(
+        start: date | None, end: date | None
+    ) -> tuple[dict, dict, int, str | None]:
         if start is None or end is None:
-            return {}, {}, 0
-        rows = list(
-            (
-                await ctx.session.execute(
-                    select(MarketingMetricDaily.metrics).where(
-                        MarketingMetricDaily.org_id == ctx.org.id,
-                        MarketingMetricDaily.link_id == link.id,
-                        MarketingMetricDaily.date >= start,
-                        MarketingMetricDaily.date <= end,
-                    )
+            return {}, {}, 0, None
+        result = list(
+            await ctx.session.execute(
+                select(
+                    MarketingMetricDaily.metrics, MarketingMetricDaily.currency
+                ).where(
+                    MarketingMetricDaily.org_id == ctx.org.id,
+                    MarketingMetricDaily.link_id == link.id,
+                    MarketingMetricDaily.date >= start,
+                    MarketingMetricDaily.date <= end,
                 )
             )
-            .scalars()
-            .all()
         )
+        rows = [metrics for metrics, _ in result]
+        # The account's own currency, carried so a document prints what the property reports
+        # rather than what the agency happens to invoice in (#124: label it, never convert it).
+        currency = next((code for _, code in result if code), None)
         channels: dict[str, float] = {}
         for row in rows:
             for name, sessions in (row.get("channels") or {}).items():
                 channels[name] = channels.get(name, 0.0) + float(sessions or 0)
-        return aggregate(link.source, rows), channels, len(rows)
+        return aggregate(link.source, rows), channels, len(rows), currency
 
-    current, channels, days = await totals(window.start, window.end)
-    compare, compare_channels, compare_days = await totals(
+    current, channels, days, currency = await totals(window.start, window.end)
+    compare, compare_channels, compare_days, _ = await totals(
         window.compare_start, window.compare_end
     )
     return {
         "totals": current,
+        "currency": currency or (link.config or {}).get("currency"),
         "channels": channels,
         "compare": compare if compare_days else None,
         "compare_channels": compare_channels,
@@ -334,6 +339,7 @@ async def _traffic_channels(
         "columns": ["sessions", "compare_sessions", "delta", "share"],
         "rows": rows,
         "totals": stored["totals"],
+        "currency": stored.get("currency"),
         "compare": stored["compare"],
         "chart": {
             "type": "grouped",
@@ -345,6 +351,20 @@ async def _traffic_channels(
         },
         "notes": data.notes,
     }
+
+
+#: GA4 answers with a *total* engagement time per row, and printing it under a column headed
+#: "gemiddelde sessieduur" is simply false: 37.570 seconds of Google traffic in July is not how
+#: long anybody stayed. The number a reader wants — and the one GA4's own screens show — is that
+#: total over the sessions it covers, which the row already carries. Derived rather than merely
+#: relabelled, because "how long is a visit" is the question the column was put there to answer.
+_ENGAGEMENT_TOTAL = "userEngagementDuration"
+_ENGAGEMENT_AVG = "avg_engagement_time"
+
+
+def _per_session(row: dict[str, Any]) -> float:
+    sessions = float(row.get("sessions") or 0)
+    return float(row.get(_ENGAGEMENT_TOTAL) or 0) / sessions if sessions else 0.0
 
 
 def _split_section(kind: str, chart: str | None, limit: int):  # noqa: ANN202
@@ -362,6 +382,7 @@ def _split_section(kind: str, chart: str | None, limit: int):  # noqa: ANN202
             rows.append(
                 {
                     **row,
+                    _ENGAGEMENT_AVG: _per_session(row),
                     "compare_sessions": (previous or {}).get("sessions"),
                     "delta": _delta(
                         float(row.get("sessions") or 0),
@@ -372,7 +393,10 @@ def _split_section(kind: str, chart: str | None, limit: int):  # noqa: ANN202
         rows = _capped(rows, limit, data, kind)
         payload: dict[str, Any] = {
             "kind": kind,
-            "columns": live["columns"],
+            "columns": [
+                _ENGAGEMENT_AVG if column == _ENGAGEMENT_TOTAL else column
+                for column in live["columns"]
+            ],
             "rows": rows,
             "totals": {},
             "compare": None,
@@ -390,15 +414,15 @@ def _split_section(kind: str, chart: str | None, limit: int):  # noqa: ANN202
         elif chart == "grouped":
             payload["chart"] = {
                 "type": "grouped",
-                "labels": [row["label"] for row in rows[:8]],
+                "labels": [row["label"] for row in rows[:10]],
                 "series": [
                     {
                         "key": "current",
-                        "values": [float(r.get("sessions") or 0) for r in rows[:8]],
+                        "values": [float(r.get("sessions") or 0) for r in rows[:10]],
                     },
                     {
                         "key": "compare",
-                        "values": [float(r.get("compare_sessions") or 0) for r in rows[:8]],
+                        "values": [float(r.get("compare_sessions") or 0) for r in rows[:10]],
                     },
                 ],
             }
@@ -439,10 +463,10 @@ async def _conversions(ctx: RequestContext, window: ReportWindow) -> dict[str, A
         "compare": None,
         "chart": {
             "type": "grouped",
-            "labels": [row["label"] for row in rows[:8]],
+            "labels": [row["label"] for row in rows[:10]],
             "series": [
-                {"key": "current", "values": [row["keyEvents"] for row in rows[:8]]},
-                {"key": "compare", "values": [row["compare_keyEvents"] for row in rows[:8]]},
+                {"key": "current", "values": [row["keyEvents"] for row in rows[:10]]},
+                {"key": "compare", "values": [row["compare_keyEvents"] for row in rows[:10]]},
             ],
         },
         "notes": data.notes,

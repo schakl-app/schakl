@@ -26,7 +26,7 @@ from app.db import set_current_org
 from app.errors import AppError
 from app.i18n import translate
 from app.modules.companies.models import Company
-from app.modules.reporting import generate, seeds
+from app.modules.reporting import generate, present, seeds
 from app.modules.reporting.models import (
     Report,
     ReportAudience,
@@ -62,7 +62,7 @@ from app.registry import registry
 logger = logging.getLogger("schakl.reporting")
 
 _TRACKED_PROFILE_FIELDS = (
-    "locale", "tone_id", "template_id", "internal_enabled", "active",
+    "display_name", "locale", "tone_id", "template_id", "internal_enabled", "active",
     "business_context", "goals", "seo_focus", "sea_focus",
 )
 _TRACKED_REPORT_FIELDS = ("status", "title", "published_at", "sent_at")
@@ -247,26 +247,56 @@ class TemplateService:
     async def resolve(
         self, template_id: uuid.UUID | None, audience: str
     ) -> ReportTemplate | None:
+        """The template a run of this audience prints with — chosen, marked, or simply the one.
+
+        The fallback past ``is_default`` is not tidiness. A template carries the design, the
+        accent, the cover photograph and the intro paragraph, and resolving to ``None`` throws
+        **all four away silently**: the run renders the shipped design on the org's brand colour
+        and nothing on screen says why the photograph the tenant uploaded is missing. A tenant
+        who has made exactly one template for an audience has unambiguously said which one to
+        use, whether or not they also found the "standaard" box — so oldest-first is the answer,
+        and it is deterministic rather than "whatever the planner returned".
+        """
         if template_id is not None:
             template = await self.ctx.repo(ReportTemplate).get(template_id)
             if template is not None:
                 return template
-        return await self.ctx.session.scalar(
+        stmt = (
             self.ctx.repo(ReportTemplate)
             .scoped_select()
-            .where(
-                ReportTemplate.audience == audience, ReportTemplate.is_default.is_(True)
+            .where(ReportTemplate.audience == audience)
+            .order_by(
+                ReportTemplate.is_default.desc(),
+                ReportTemplate.created_at,
+                ReportTemplate.id,
             )
             .limit(1)
         )
+        return await self.ctx.session.scalar(stmt)
 
     async def create(self, data: ReportTemplateWrite) -> ReportTemplateRead:
         self.ctx.require("reporting.settings.manage")
         self._validate(data)
         if data.is_default:
             await self._clear_default(data.audience.value)
-        row = await self.ctx.repo(ReportTemplate).create(**_template_values(data))
+        values = _template_values(data)
+        # The first template of an audience *is* the default. Nobody makes one template and
+        # means "use none of it", and leaving the mark off by default is what let a tenant
+        # design a cover, save it, and get a report that ignored the lot.
+        if not values["is_default"] and not await self._any(data.audience.value):
+            values["is_default"] = True
+        row = await self.ctx.repo(ReportTemplate).create(**values)
         return ReportTemplateRead.model_validate(row)
+
+    async def _any(self, audience: str) -> bool:
+        return (
+            await self.ctx.session.scalar(
+                self.ctx.repo(ReportTemplate)
+                .scoped_select()
+                .where(ReportTemplate.audience == audience)
+                .limit(1)
+            )
+        ) is not None
 
     async def update(self, template_id: uuid.UUID, data: ReportTemplateWrite) -> ReportTemplateRead:
         self.ctx.require("reporting.settings.manage")
@@ -688,7 +718,7 @@ class ReportService:
             )
             report = await self.repo.create(
                 company_id=data.company_id,
-                company_name=company.name,
+                company_name=generate.client_name(company.name, profile),
                 template_id=template.id if template else None,
                 audience=data.audience.value,
                 status=ReportStatus.DRAFT.value,
@@ -864,7 +894,15 @@ class ReportService:
         tone = await self.tones.resolve(profile.tone_id if profile else None)
         text, warnings = await narrative_mod.rewrite_section(
             AIService(self.ctx),
-            snapshot_section=section,
+            presented_section=present.section(
+                section,
+                locale=report.locale,
+                title=translate(spec.title_key, report.locale),
+                # `or {}`, never a default: `compare` is stored as an explicit null when the
+                # window has nothing to compare against, so `.get("compare", {})` returns None
+                # and the next `.get` raises on exactly the reports that need it least.
+                compare_label=((report.data_snapshot or {}).get("compare") or {}).get("label"),
+            ),
             profile=generate.profile_facts(profile),
             tone=generate.tone_payload(tone),
             section_key=section_key,

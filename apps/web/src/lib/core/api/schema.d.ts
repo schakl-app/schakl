@@ -19368,6 +19368,8 @@ export interface components {
             company_id: string;
             /** Conversion Goals */
             conversion_goals?: string | null;
+            /** Display Name */
+            display_name?: string | null;
             /** Effective Schedule */
             effective_schedule?: {
                 [key: string]: unknown;
@@ -19429,6 +19431,8 @@ export interface components {
             business_context?: string | null;
             /** Conversion Goals */
             conversion_goals?: string | null;
+            /** Display Name */
+            display_name?: string | null;
             /** Goals */
             goals?: string | null;
             /**

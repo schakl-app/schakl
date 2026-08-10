@@ -67,6 +67,17 @@ _GROUNDING = (
     "comparing it to nothing."
 )
 
+#: The document arrives already written the way the page prints it — see ``present.py``. Saying
+#: so is belt to that braces: the raw field names are no longer in the payload at all, so the
+#: failure this describes is now unreachable rather than merely discouraged.
+_AS_PRINTED = (
+    "Every figure in the document is already written exactly as the report prints it, in the "
+    "reader's own conventions. Quote those strings as they stand — thousands separators, "
+    "decimal commas, percent signs and all — and never reformat, round, convert or recompute "
+    "one. Use the names the document gives things: never write a field name from an analytics "
+    "tool, and never invent a technical name for a measurement that has one here."
+)
+
 
 def _tone_block(tone: dict[str, Any] | None) -> list[str]:
     """Layer 2, verbatim from the tenant's record."""
@@ -112,6 +123,7 @@ def client_system(
         f"The report covers {period_label}."
         + (f" It is compared with {compare_label}." if compare_label else ""),
         _GROUNDING,
+        _AS_PRINTED,
         "Your job is to make the overall picture understandable to someone who is not a "
         "marketer. Describe what the figures show as a whole. Do not walk through the table "
         "row by row — the reader has the table.",
@@ -150,6 +162,7 @@ def internal_system(
         f"The report covers {period_label}."
         + (f" It is compared with {compare_label}." if compare_label else ""),
         _GROUNDING,
+        _AS_PRINTED,
         "Be direct, concrete and short. Name the page, the keyword, the channel or the "
         "measurement. Vague advice — 'improve the content', 'do more link building' — is "
         "worthless here and must not appear.",
@@ -198,6 +211,7 @@ def section_system(
         + ".",
         f"Write in {language_name(locale)}. The report covers {period_label}.",
         _GROUNDING,
+        _AS_PRINTED,
         f"Write only the passage for the section '{section_key}': {brief}",
         "Return the passage as plain text. No JSON, no markdown, no heading, no preamble.",
         *([] if internal else _tone_block(tone)),

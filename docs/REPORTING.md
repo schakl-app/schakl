@@ -151,12 +151,97 @@ draft-invoice leak came through, and a predicate that lives in one place cannot 
 somebody forgot. `ReportService._PortalReportRepository` overrides `horizon_condition`, so the
 list, its total, the detail and the PDF download all take one answer.
 
+## What the model is handed is the document, not the row
+
+`present.py`. The prose and the tables describe the same figures *by construction* — that was
+always the claim, and it was true of the numbers and false of everything around them, because
+the model was handed the raw snapshot. A delivered report read:
+
+> in juli 2026 waren er 4124 sessies en 3781 **totalUsers**, met 2810 **newUsers** en 879
+> **keyEvents** … De **engagementRate** was **0.4595** … een **userEngagementDuration** van
+> **37570.0** seconden … (**compare_sessions** 61, **delta** 21.3)
+
+Every one of those is the same defect. The model was quoting its input faithfully; its input was
+a database row. Neither editable layer of the prompt stack could have fixed it: no tone can
+teach a model that `keyEvents` is spelled *belangrijke gebeurtenissen* in this tenant's
+catalogue, and asking it to render `0.4595` as `46,0%` is asking it to do arithmetic — the one
+thing `_GROUNDING` forbids, for reasons that have not changed.
+
+So the snapshot is **presented** before it travels: every key the label the table prints, every
+value the string the table prints, resolved through the renderer's own `fmt_metric` /
+`fmt_delta` / `metric_label`. `totalUsers` cannot come back out, because the word is not in
+front of it. The two surfaces agree because there is one formatter — the shared-renderer
+argument, one layer up. It is also *smaller* than what it replaced, which matters against
+`MAX_INPUT_CHARS`.
+
+The snapshot itself is untouched: `data_snapshot` still holds the raw numbers, because that is
+what makes a report a record, and re-rendering it next December must not depend on a locale
+decision taken today.
+
+A prompt line (`_AS_PRINTED`) says the rule as well. That is belt to these braces, not the
+control: the failure it describes is now unreachable rather than discouraged.
+
+## What a client is called
+
+`report_profiles.display_name`. A CRM holds the name an invoice needs — the legal entity, its
+B.V., its holding — and a document somebody reads is not an invoice. "Camping De Zeehoeve" and
+"Zeehoeve Recreatie Beheer B.V." are one client, and only one of them belongs on the front of a
+monthly report.
+
+Deliberately **not** a second name on `companies`: the CRM's name is what every other module
+means by it, and a global alias would quietly re-title invoices, contracts and the client list
+along with the report. It resolves once at generation (`generate.client_name`) and is
+snapshotted onto `Report.company_name`, like every other fact a report freezes — so a rename
+re-titles next month's document and leaves the twelve already sent saying what they said. The
+title, the cover, the PDF filename and the covering e-mail all read that one column.
+
 ## The document
 
 One artefact: `render_report_html` is what the preview serves *and* what WeasyPrint prints, so a
 preview and its download cannot drift. The engine is `app/core/documents/` — shared with
 invoicing since #300, because a second copy is the mistake docs/INVOICING.md opens by saying was
 already corrected once.
+
+**Four things about how it prints were wrong in a way only a printed page shows.** Each fix is
+stated where it is enforced rather than remembered:
+
+- **A wide table laid out past the edge of the paper.** `width: 100%` is a *preferred* width, so
+  a table whose minimum content width exceeds the text column prints off the sheet with its last
+  column cut — silently, on any report holding a long referrer or the heading BELANGRIJKE
+  GEBEURTENISSEN. `overflow-wrap: anywhere` on the **cells** fixes the minimum (`break-word`
+  does not count toward it; `break-all` breaks words that would have fitted), and the name
+  column takes a stated `width: 26%` so `anywhere` does not hand its room to the numbers. Not on
+  the headings — there it produced `SESSI/ES`, `GEBRUIK/ERS`. A test asserts that no laid-out
+  box crosses the right page margin.
+- **A category name the chart could not fit was cut, twice identically.** Ten channels under a
+  150 mm chart printed `Paid…` above `Paid…`, on a chart whose whole job is telling them apart.
+  Past the point rotation stops working, `charts._bars` draws the same data as horizontal bars,
+  where the names are written out in full. The trigger is measured (`_truncates`), never a
+  per-section list.
+- **A legend never asked how wide the canvas was.** Six named share segments ran two of their
+  keys off the page: the reader saw four colours and nothing saying the others existed. It wraps
+  now, and the canvas buys the height first (`_legend_depth`).
+- **Every *other* section on a full-bleed band** was the right diagnosis and the wrong fix.
+  "Separated by air" does stop holding at nine sections — but a wash that begins and ends at
+  content boundaries is cut by page breaks that know nothing about them: a grey strip carrying
+  one table row at the top of page five, a section that turns grey two thirds of the way down
+  page three. A stripe nobody perceives as a stripe is a printing fault. The mark moved to the
+  **heading strip of every section**: bounded, `break-inside: avoid`, identical for all of them,
+  and still bleeding to the sheet edge, because a wash that stops at the text column claims a
+  containment its contents do not have.
+
+And two about what the numbers *said*:
+
+- **A total labelled as an average.** GA4 answers `userEngagementDuration` per row as a total,
+  and the column was headed *Gem. sessieduur*: 37.570 seconds of Google traffic in July is not
+  how long anybody stayed. The report derives `avg_engagement_time` instead (the figure GA4's
+  own screens show), and `fmt_duration` grew an hour field — `626:10` reads as ten minutes to
+  anyone who does not stop to count the digits.
+- **A percentage that had stopped being a comparison.** `+91.300,0%` is one session last July
+  against 914 this July. Past 1000 % the same fact prints as `×914`, which is what a person
+  would say out loud. A metric that is zero in both periods drops its tile entirely, on the same
+  argument that stops an empty section printing: an "OMZET 0" every month for ever is not a fact
+  about this July.
 
 - **Branding is runtime, per tenant** (Golden Rule 4). The gold, the wordmark and the hero photo
   in the workflow's HTML were *one agency's* brand; here they come from `org_settings`, the

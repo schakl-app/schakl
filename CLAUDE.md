@@ -385,6 +385,40 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   are inline SVG because the engine's fetcher answers `data:` and nothing else. `marketing`
   borrows the latest published report's paragraph per section through `app/core/narratives.py`,
   so a dashboard stops being a table on the other twenty-nine days of the month.
+- **A control that cannot fail visibly is worse than one that refuses**, and a document is only
+  as good as the page it prints on (`docs/REPORTING.md`). The first month of real reports found
+  four kinds of fault, and the first kind is the one worth generalising. **A checkbox posts its
+  `value`, and an unticked one posts nothing** — so every way of reading it that names a
+  *particular* value is a bug waiting for somebody to change the control. Reporting's forms
+  compared against `"on"` while drawing `FormCheckbox`, which sends `"true"`: every checkbox in
+  the module posted `false` whatever the user ticked. The "standaard" mark on a template never
+  stuck, so no template was ever the default, so generated reports quietly ignored the design,
+  the accent and the cover photograph the tenant had uploaded — three complaints, one line — and
+  the same read switched a client's reporting profile to inactive on every save. Invisible in
+  review (the string is plausible) and invisible in use (the box is ticked on screen; only the
+  next page load disagrees), so the fix is `$lib/core/forms.checked()` rather than a corrected
+  literal: **presence is the question, and asking it any other way is the bug.** Its sibling:
+  resolving to *no* template at all threw four settings away silently, so `resolve` now falls
+  back to the oldest of that audience and the first template of one *is* the default — nobody
+  makes one template and means "use none of it".
+  **The model was quoting its input faithfully, and its input was a database row**
+  (`app/modules/reporting/present.py`): a Dutch client read *"3781 totalUsers … De
+  engagementRate was 0.4595 … (compare_sessions 61, delta 21.3)"*. No tone could have fixed it —
+  a house style cannot teach a model this tenant's word for `keyEvents`, and asking it to render
+  `0.4595` as `46,0%` is asking for arithmetic, which `_GROUNDING` forbids. So the snapshot is
+  **presented** first: every key the label the table prints, every value the string it prints,
+  through the renderer's own formatters. The raw name cannot come back out because it is not in
+  front of it. **And a report is printed, so "it fits" is a measurement**: `width: 100%` is a
+  *preferred* width, and two ordinary things (an unbreakable hostname, the heading BELANGRIJKE
+  GEBEURTENISSEN) laid the traffic tables past the sheet edge with the last column cut and
+  nothing saying so — a test now asserts no laid-out box crosses the right page margin. A
+  category name that will not fit changes the chart's *form* (horizontal bars) rather than being
+  cut to `Paid…` twice over; a legend measures the canvas before it draws; and the alternating
+  full-bleed band became one heading strip per section, because a wash that begins and ends at
+  content boundaries is cut by page breaks that know nothing about them, and a stripe nobody
+  perceives as a stripe is a printing fault. Finally, **what a client is called on their report
+  is not what an invoice calls them** — `report_profiles.display_name`, resolved once at
+  generation and snapshotted, never a second name on `companies`.
 - **A percentage is a claim about two spans, so both of them have to be on the screen** (#312,
   `app/core/periods.py`). The marketing dashboard labelled every delta *"t.o.v. vorige periode"* —
   a sentence it could print over any two dates at all, which is why a comparison set to the wrong

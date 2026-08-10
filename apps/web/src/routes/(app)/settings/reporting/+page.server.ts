@@ -1,6 +1,7 @@
 import { fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
+import { checked } from "$lib/core/forms";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 
@@ -46,7 +47,7 @@ function toneBody(form: FormData) {
     instructions: String(form.get("instructions") ?? ""),
     banned_phrases: lines(form.get("banned_phrases")),
     preferred_phrases: lines(form.get("preferred_phrases")),
-    is_default: form.get("is_default") === "on",
+    is_default: checked(form, "is_default"),
     active: form.get("active") !== "off",
     position: Number(form.get("position") ?? 0) || 0,
   };
@@ -65,7 +66,7 @@ export const actions: Actions = {
           hour: Number(form.get("hour") ?? 8) || 0,
           compare: String(form.get("compare") ?? "year") as "year" | "previous",
           delivery: String(form.get("delivery") ?? "review") as "review" | "auto",
-          publish_to_portal: form.get("publish_to_portal") === "on",
+          publish_to_portal: checked(form, "publish_to_portal"),
         },
       },
     });
@@ -148,7 +149,7 @@ export const actions: Actions = {
       accent_color: String(form.get("accent_color") ?? "").trim() || null,
       cover_image_file_id: field("cover_image_file_id", current?.cover_image_file_id),
       intro_text: String(form.get("intro_text") ?? "").trim() || null,
-      is_default: form.get("is_default") === "on",
+      is_default: checked(form, "is_default"),
     };
     if (!body.name) return fail(400, { error: "errors.validation" });
     const { error } = id

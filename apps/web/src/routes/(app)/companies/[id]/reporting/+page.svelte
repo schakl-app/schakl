@@ -136,6 +136,23 @@
     <h2 class="mb-1 text-base font-semibold text-text">{t("reporting.profile.voice")}</h2>
     <p class="mb-4 text-sm text-text-muted">{t("reporting.profile.voice_hint")}</p>
 
+    <!-- The name the document carries. First, because it is the first thing a reader sees and
+         the one field on this page whose absence is invisible until a report has gone out
+         under a legal name nobody uses in conversation. -->
+    <div class="mb-4">
+      <label for="display_name" class="mb-1 block text-sm font-medium text-text">
+        {t("reporting.profile.display_name")}
+      </label>
+      <input
+        id="display_name"
+        name="display_name"
+        class={inputClass}
+        placeholder={data.companyName}
+        value={profile?.display_name ?? ""}
+      />
+      <p class="mt-1 text-xs text-text-muted">{t("reporting.profile.display_name_hint")}</p>
+    </div>
+
     <div class="grid gap-4 sm:grid-cols-2">
       <div>
         <label for="tone_id" class="mb-1 block text-sm font-medium text-text">
@@ -278,6 +295,27 @@
           <option value="">{t("reporting.profile.inherit")}</option>
           <option value="review">{t("reporting.delivery.review")}</option>
           <option value="auto">{t("reporting.delivery.auto")}</option>
+        </select>
+      </div>
+      <!-- Three-way, and a select rather than a checkbox for that reason: the profile is
+           allowed to say nothing and follow the org default, and a box cannot tell "off"
+           apart from "unset". The save action read a per-client override this page had never
+           drawn, so the setting existed everywhere except where anyone could reach it. -->
+      <div>
+        <label for="p-portal" class="mb-1 block text-sm font-medium text-text">
+          {t("settings.reporting.publish_to_portal")}
+        </label>
+        <select
+          id="p-portal"
+          name="publish_to_portal"
+          class={inputClass}
+          value={own.publish_to_portal === undefined || own.publish_to_portal === null
+            ? ""
+            : String(own.publish_to_portal)}
+        >
+          <option value="">{t("reporting.profile.inherit")}</option>
+          <option value="true">{t("common.yes")}</option>
+          <option value="false">{t("common.no")}</option>
         </select>
       </div>
     </div>
