@@ -23,6 +23,7 @@
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import {
     CAPABILITIES,
+    capabilityRefusals,
     capabilityState,
     type AccountRead,
     type PagesProject,
@@ -35,6 +36,16 @@
   const zones = $derived((data.zones ?? []) as ZoneRead[]);
   const providers = $derived(data.providers ?? []);
   const projects = $derived((data.projects ?? []) as PagesProject[]);
+
+  /**
+   * Sync warnings this screen words itself. Everything else is Cloudflare's own text and is
+   * printed as-is: a Pages or Registrar read that failed is collected as a warning and used to
+   * be rendered nowhere, so an unreadable list and an empty one both came out as "0
+   * Pages-projecten" — §17's "a silent zero reads exactly like nothing found", one layer out.
+   */
+  const WORDED_WARNINGS = new Set(["no_account_id", "pages_domains_truncated"]);
+  const syncNotes = (warnings: string[] | null | undefined) =>
+    (warnings ?? []).filter((w) => !WORDED_WARNINGS.has(w));
 
   const busy = new InFlight();
   let adding = $state(false);
@@ -131,6 +142,16 @@
     {#if form.sync.warnings?.includes("pages_domains_truncated")}
       <span class="mt-1 block text-amber-600">
         {t("cloudflare.accounts.synced_pages_truncated")}
+      </span>
+    {/if}
+    <!-- Whatever else the sync could not read, in Cloudflare's own words. The zone half still
+         worked, so this is a degraded sync and not a failed one — but the counts above it are
+         only true of what answered, and until this line existed nothing said which half that was. -->
+    {#if syncNotes(form.sync.warnings).length}
+      <span class="mt-1 block text-amber-600">
+        {t("cloudflare.accounts.synced_warnings", {
+          details: syncNotes(form.sync.warnings).join(" · "),
+        })}
       </span>
     {/if}
   </p>
@@ -296,6 +317,23 @@
           </span>
         {/each}
       </div>
+
+      <!-- What Cloudflare actually answered, for each ✗. Without it "niet toegekend" is the same
+           sentence whether a scope is missing, an IP filter is refusing every call, or the probe
+           asked something the endpoint would not take — three different fixes, one indistinguishable
+           line, and an admin left re-minting a token that was never the problem. Cloudflare's text
+           is not translatable and never enters an error envelope (§9); it is evidence, and it is
+           shown where the ✗ is. -->
+      {#if capabilityRefusals(account.capabilities, account.capability_errors).length}
+        <div class="mt-2 space-y-0.5 text-xs text-text-muted">
+          {#each capabilityRefusals(account.capabilities, account.capability_errors) as refusal (refusal.key)}
+            <p>
+              <span class="text-text">{t(`cloudflare.capability.${refusal.key}`)}</span>
+              — {refusal.reason}
+            </p>
+          {/each}
+        </div>
+      {/if}
 
       {#if editing === account.id}
         <form

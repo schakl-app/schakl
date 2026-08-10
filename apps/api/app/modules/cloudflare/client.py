@@ -126,6 +126,28 @@ def set_transport(transport: httpx.AsyncBaseTransport | None) -> None:
     _transport = transport
 
 
+def describe_failure(exc: CloudflareError) -> str:
+    """A refusal as one line an admin can act on: the status, the code, and Cloudflare's own text.
+
+    The status and the code are *the* diagnosis and neither is in ``str(exc)``. "Actor is not
+    authorized" is a scope to add; a 400 naming a query parameter is our bug; ``9109`` is an IP
+    filter and nothing to do with either. A probe that recorded only the message would keep the
+    least useful third of what Cloudflare said.
+    """
+    head = " ".join(
+        part
+        for part in (
+            f"HTTP {exc.status}" if exc.status is not None else "",
+            f"(code {exc.code})" if exc.code is not None else "",
+        )
+        if part
+    )
+    text = str(exc).strip()
+    if not head:
+        return text[:200]
+    return (f"{head}: {text}" if text else head)[:200]
+
+
 def _flatten_errors(body: Any) -> tuple[str, int | None]:
     """Cloudflare's error envelope → (text, first numeric code). Defensive: an edge error page
     is HTML, and a gateway timeout is not JSON at all."""
@@ -266,7 +288,7 @@ class CloudflareClient:
 
     async def probe_capabilities(
         self, account_id: str | None = None, zone_id: str | None = None
-    ) -> tuple[dict[str, bool], dict | None]:
+    ) -> tuple[dict[str, bool], dict | None, dict[str, str]]:
         """What this token can be observed to do, plus the account it belongs to (if visible).
 
         A handful of cheap calls, **each failing softly and none of them the gate**. A token
@@ -280,8 +302,16 @@ class CloudflareClient:
         to every call this module actually makes. So a successful read is taken as the better
         evidence it is, and only a token that was refused by **every** probe raises: that is
         the one state where "invalid" is the honest word rather than a guess.
+
+        **Every refusal is kept** (the third return value, capability → :func:`describe_failure`).
+        Failing softly used to mean discarding the answer: a probe that ended ``False`` said so
+        with no status, no code and no text, anywhere — not on the row, not in a log — so a ✗
+        against a token whose Cloudflare screen plainly grants that permission left nothing to
+        diagnose it with, and the only remaining move was to widen a token that was already wide
+        enough. Soft is about not raising, not about not remembering.
         """
         caps = dict.fromkeys((c for c in CAPABILITIES if c not in ZONE_CAPABILITIES), False)
+        errors: dict[str, str] = {}
         rejection: CloudflareAuthError | None = None
 
         # Accounts first, because the account-owned verify endpoint needs an id to address.
@@ -290,6 +320,7 @@ class CloudflareClient:
             accounts = await self.list_accounts()
         except CloudflareAuthError as exc:
             rejection = exc
+            errors["accounts_read"] = describe_failure(exc)
             accounts = []
         else:
             caps["accounts_read"] = True
@@ -307,6 +338,7 @@ class CloudflareClient:
             await self.verify_token(account_id)
         except CloudflareAuthError as exc:
             rejection = rejection or exc
+            errors["token_valid"] = describe_failure(exc)
         else:
             caps["token_valid"] = True
 
@@ -314,6 +346,7 @@ class CloudflareClient:
             await self.request("GET", "/zones", params={"per_page": 1})
         except CloudflareAuthError as exc:
             rejection = rejection or exc
+            errors["zones_read"] = describe_failure(exc)
         else:
             caps["zones_read"] = True
 
@@ -322,11 +355,12 @@ class CloudflareClient:
                 await self.request(
                     "GET", f"/accounts/{account_id}/pages/projects", params={"per_page": 1}
                 )
-            except CloudflareAuthError:
-                pass
-            except CloudflareError:
-                # Pages not enabled on the account answers 4xx, not 403 — same conclusion.
-                pass
+            except CloudflareAuthError as exc:
+                errors["pages_read"] = describe_failure(exc)
+            except CloudflareError as exc:
+                # Pages not enabled on the account answers 4xx, not 403 — same conclusion, and
+                # the two are worth telling apart on the screen, which is what the text is for.
+                errors["pages_read"] = describe_failure(exc)
             else:
                 caps["pages_read"] = True
 
@@ -334,11 +368,11 @@ class CloudflareClient:
                 await self.request(
                     "GET", f"/accounts/{account_id}/registrar/domains", params={"per_page": 1}
                 )
-            except CloudflareError:
+            except CloudflareError as exc:
                 # Registrar is its own token permission (#298) and an account that has never
                 # registered anything through Cloudflare may answer 4xx outright. Either way
                 # the conclusion is the same: this token is not evidence about registrations.
-                pass
+                errors["registrar_read"] = describe_failure(exc)
             else:
                 caps["registrar_read"] = True
 
@@ -355,9 +389,17 @@ class CloudflareClient:
                 # is an answer. Absent stays reserved for the case above, where nothing was asked.
                 caps[capability] = False
                 try:
-                    await self.request("GET", path, params={"per_page": 1})
+                    # **No query parameters.** A probe must differ from the call it stands in
+                    # for as little as possible, and ``per_page=1`` was the only thing here that
+                    # no real call does (``paginate`` sends 50). Cloudflare's current schema
+                    # documents ``minimum: 1``, so it *should* be accepted — but the retired
+                    # reference documented a minimum of 5 for this very endpoint, "should" is
+                    # not evidence, and a probe is the wrong place to spend a difference that
+                    # buys nothing. Asking plainly costs one page of records once per verify.
+                    await self.request("GET", path)
                 except CloudflareAuthError as exc:
                     rejection = rejection or exc
+                    errors[capability] = describe_failure(exc)
                 except CloudflareError as exc:
                     # A zone with no redirect rules has no entrypoint ruleset and answers 404
                     # (:meth:`get_redirect_ruleset`) — a normal state, and the token was plainly
@@ -366,6 +408,8 @@ class CloudflareClient:
                     # the answer False rather than inventing a ✓ — and, below, leaves the
                     # "every probe refused" check able to fire.
                     caps[capability] = exc.status == 404
+                    if not caps[capability]:
+                        errors[capability] = describe_failure(exc)
                 else:
                     caps[capability] = True
 
@@ -378,7 +422,10 @@ class CloudflareClient:
             # verify endpoint that would say so out loud. The reads are better evidence anyway
             # — they are the calls the module makes.
             caps["token_valid"] = True
-        return caps, account
+        # A capability that ended True has nothing to explain, and ``token_valid`` reaches here
+        # having been overruled by better evidence: keeping its refusal would print a failure
+        # beside a ✓.
+        return caps, account, {k: v for k, v in errors.items() if not caps.get(k)}
 
     # --- zones ---------------------------------------------------------------------------- #
     async def list_zones(self, *, account_id: str | None = None) -> list[dict]:

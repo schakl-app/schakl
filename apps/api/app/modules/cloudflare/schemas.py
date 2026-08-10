@@ -38,6 +38,10 @@ class AccountRead(BaseModel):
     status: str
     #: Observed at verify time — see ``client.CAPABILITIES``. A missing key means "not probed".
     capabilities: dict[str, bool] = Field(default_factory=dict)
+    #: Why a probe answered no, keyed the same way: Cloudflare's status, code and own text. Only
+    #: ever holds keys whose capability is ``False`` — a ✗ with no explanation is the one state
+    #: an admin cannot act on, and Cloudflare's text is the only thing that names the fix.
+    capability_errors: dict[str, str] = Field(default_factory=dict)
     last_verified_at: datetime | None = None
     last_synced_at: datetime | None = None
     last_error: str | None = None
@@ -89,6 +93,8 @@ class AccountVerifyResult(BaseModel):
 
     ok: bool
     capabilities: dict[str, bool] = Field(default_factory=dict)
+    #: Cloudflare's own words for each refusal — see :class:`AccountRead.capability_errors`.
+    capability_errors: dict[str, str] = Field(default_factory=dict)
     cf_account_id: str | None = None
     cf_account_name: str | None = None
     #: More than one account behind the token: the admin must pick, so both are named.

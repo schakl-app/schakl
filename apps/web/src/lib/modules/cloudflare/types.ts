@@ -48,3 +48,24 @@ export function capabilityState(
   if (value === undefined) return "unprobed";
   return value ? "granted" : "missing";
 }
+
+/**
+ * The refusals worth printing in full: capability key + what Cloudflare answered.
+ *
+ * A ✗ on its own is unactionable — it reads as "add this permission" whatever the cause, so an
+ * admin whose token already carries the permission has nowhere left to look. Cloudflare's own
+ * text separates the three things that produce the same ✗: a scope never granted, an IP filter
+ * refusing every call, and a request of ours the endpoint would not take. Untranslatable by
+ * nature, and rendered as evidence rather than as a message (the same rule `last_error` follows).
+ *
+ * Driven by `CAPABILITIES` so the order matches the list above it, and filtered on the state so a
+ * stale explanation can never print beside a ✓.
+ */
+export function capabilityRefusals(
+  capabilities: Record<string, boolean> | null | undefined,
+  errors: Record<string, string> | null | undefined,
+): { key: string; reason: string }[] {
+  return CAPABILITIES.filter((key) => capabilityState(capabilities, key) === "missing")
+    .map((key) => ({ key, reason: errors?.[key] ?? "" }))
+    .filter((entry) => entry.reason !== "");
+}

@@ -465,6 +465,7 @@ class CloudflareService:
                 "active": a.active,
                 "status": a.status,
                 "capabilities": a.capabilities or {},
+                "capability_errors": a.capability_errors or {},
                 "last_verified_at": a.last_verified_at,
                 "last_synced_at": a.last_synced_at,
                 "last_error": a.last_error,
@@ -527,6 +528,7 @@ class CloudflareService:
             # empty one.
             values.update(
                 capabilities={},
+                capability_errors={},
                 last_verified_at=None,
                 status=CloudflareAccountStatus.ACTIVE.value,
                 last_error=None,
@@ -664,7 +666,7 @@ class CloudflareService:
         try:
             # The pinned id is handed in because an account-owned token verifies at its own
             # account's endpoint and nowhere else (``client.verify_token``).
-            capabilities, discovered = await client.probe_capabilities(
+            capabilities, discovered, capability_errors = await client.probe_capabilities(
                 account.cf_account_id, zone_id=probe_zone
             )
         except CloudflareError as exc:
@@ -672,6 +674,7 @@ class CloudflareService:
                 account,
                 status=CloudflareAccountStatus.ERROR.value,
                 capabilities={},
+                capability_errors={},
                 last_error=str(exc)[:500],
                 last_verified_at=datetime.now(UTC),
             )
@@ -680,6 +683,9 @@ class CloudflareService:
         choices: list[dict[str, str]] = []
         values: dict[str, Any] = {
             "capabilities": capabilities,
+            # Replaced wholesale, never merged: an explanation for a refusal that is no longer
+            # happening is worse than none, and this verify is the whole of what is known now.
+            "capability_errors": capability_errors,
             "status": CloudflareAccountStatus.ACTIVE.value,
             "last_error": None,
             "last_verified_at": datetime.now(UTC),
@@ -699,6 +705,7 @@ class CloudflareService:
         return AccountVerifyResult(
             ok=True,
             capabilities=capabilities,
+            capability_errors=capability_errors,
             cf_account_id=account.cf_account_id,
             cf_account_name=account.cf_account_name,
             account_choices=choices,
@@ -2192,6 +2199,11 @@ class CloudflareService:
         # The two halves of "does this domain redirect" disagreeing is its own finding — it is
         # how a redirect wired outside schakl (#96's webhook flow, a hand-made Page Rule) shows
         # up, and how a rule someone deleted at Cloudflare does.
+        # **What this knows is that schakl holds no rule** — ``redirect`` is the stored record,
+        # not a live read — so the wording says that and not "nothing is set at Cloudflare",
+        # which is a claim about Cloudflare that nothing here checked. It is also the claim a
+        # token missing the redirect scope *cannot* check, so the sentence was at its most
+        # confident exactly where it was least entitled to be.
         if domain.status == "redirect" and redirect is None:
             issues.append(ISSUE_DOMAIN_SAYS_REDIRECT)
         if redirect is not None and domain.status != "redirect":

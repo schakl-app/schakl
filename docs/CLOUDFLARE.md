@@ -78,6 +78,46 @@ synced none (`client.ZONE_CAPABILITIES`, rendered as *niet gecontroleerd*). "We 
 "not granted" send an admin to different places, which is §6's rule about Pages links stated
 about a token instead of a hostname.
 
+### Failing softly is not the same as forgetting
+
+Every probe fails softly, and until `capability_errors` each one also **discarded what Cloudflare
+said**. A refused capability was recorded as a bare `False`: no status, no code, no text, nowhere —
+not on the row, not in a log. On the screen that is *"DNS van een zone lezen: niet toegekend"*, one
+sentence that reads as *add this permission* whatever actually happened, printed beside a Cloudflare
+token screen that grants DNS Read. Nothing about it can be checked, so the only move left is
+re-minting a credential that was never the problem — the same dead end as 9109, arrived at from the
+other direction.
+
+`probe_capabilities` now returns a third value, capability → `describe_failure(exc)`: **status,
+numeric code and Cloudflare's own words**. All three matter and none of them is in `str(exc)` —
+*"Actor is not authorized"* is a scope to add, a `400` naming a query parameter is our bug, `9109`
+is neither. It is stored on the account beside `capabilities`, keyed identically, replaced whole by
+each verify (a stale explanation beside a fixed permission is worse than none) and rendered under
+the ✗ list. Cloudflare's text is untranslatable and never enters an error envelope (§9); it is
+evidence, and it goes where the ✗ is — the rule `last_error` already follows on the redirect panel.
+
+Same reasoning one layer out, for `sync`: a Pages or Registrar read that fails is collected into
+`warnings`, and the settings screen worded only two known keys and dropped the rest. So an
+unreadable Pages list and an empty one both printed *"0 Pages-projecten"* — §17's "a silent zero
+reads exactly like nothing found", against the one number an agency uses to decide whether the
+integration works. Whatever the screen cannot word itself is now printed in Cloudflare's words.
+
+**Two things the zone probes still cannot settle**, and both need a live credential rather than a
+guess (the `docs/OXXA.md` §1 pattern):
+
+- **`per_page` is gone from them.** A probe should differ from the call it stands in for as little
+  as possible, and `per_page=1` was the only thing here that no real call does — `paginate` sends
+  50. Cloudflare's current OpenAPI schema declares `minimum: 1` for `dns-records_per_page`, so it
+  *should* be accepted; the retired `api.cloudflare.com` reference documented a minimum of **5** for
+  that same endpoint. "Should" is not evidence, and the parameter bought nothing.
+- **`GET /zones/{id}/dns_records` answers auth failures with `400`, not `401`/`403`** — observed
+  directly: a bogus token gets `400` with code `9106`, *"Authentication failed"*. `_unwrap` classes
+  only 401/403 as `CloudflareAuthError`, so a genuine *scope* problem on this endpoint would surface
+  as `errors.cloudflare_request_failed` (and a `502`, which blames Cloudflare) rather than as the
+  scope message. Not mapped yet on purpose: whether `9106` also means "this token may not do this
+  here", or only "this is not a token", is exactly the kind of thing this module has twice guessed
+  wrong. The probe now records the code, so the next real occurrence answers it.
+
 ### No probe is the gate
 
 Cloudflare has **two kinds of API token and they do not verify at the same URL**. A *user* token

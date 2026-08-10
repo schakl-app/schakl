@@ -9405,6 +9405,10 @@ export interface components {
             capabilities?: {
                 [key: string]: boolean;
             };
+            /** Capability Errors */
+            capability_errors?: {
+                [key: string]: string;
+            };
             /** Cf Account Id */
             cf_account_id?: string | null;
             /** Cf Account Name */
@@ -9528,6 +9532,10 @@ export interface components {
             /** Capabilities */
             capabilities?: {
                 [key: string]: boolean;
+            };
+            /** Capability Errors */
+            capability_errors?: {
+                [key: string]: string;
             };
             /** Cf Account Id */
             cf_account_id?: string | null;
