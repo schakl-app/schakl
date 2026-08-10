@@ -19,6 +19,14 @@ jobs:
       contents: read
       packages: write
     strategy:
+      # The two images are independent, so one failing is no reason to cancel the other.
+      # fail-fast did exactly that on v0.25.0: GHCR rate-limited the api job on its fourth
+      # tag and the web job was cancelled with its build already finished and nothing
+      # pushed — so the retry had to rebuild an image that had been ready, and the release
+      # sat with one image published and the other absent. The `release` job still needs
+      # both, so a genuine failure blocks the Release either way; all this changes is that
+      # the innocent half gets to finish.
+      fail-fast: false
       matrix:
         include:
           - name: api
@@ -57,7 +65,12 @@ jobs:
             type=sha
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
 
+      # `continue-on-error` makes this attempt non-fatal, NOT optional: when it fails, the
+      # retry below runs and *that* one decides the job. See the retry step for why one
+      # exists at all.
       - name: Build and push
+        id: push
+        continue-on-error: true
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -92,6 +105,51 @@ jobs:
           # `vite build`, `uv sync` of the project — is invalidated by definition. Measured:
           # a warm cache after a one-file source change restores `pnpm install` and rebuilds
           # everything below it. ~12s recovered on the critical path against a ~51s export.
+
+      # GHCR refuses a rate-limited push with `denied: permission_denied` and HTTP 403 — a
+      # message naming the one cause it is not, so a transient limit reads as a broken
+      # GITHUB_TOKEN or a revoked package permission. Only the response *body* says what
+      # happened: "You have exceeded a secondary rate limit."
+      #
+      # It is provoked by the shape of a release rather than by anything wrong. Each image
+      # publishes four tags, every one of them a multi-arch index plus its attestation
+      # manifest, and both matrix jobs push into the same namespace at the same time — so a
+      # release writes some two dozen manifests in a few seconds, and the limit lands on
+      # whichever write is unlucky. On v0.25.0 that was the api image's `{{major}}.{{minor}}`
+      # tag, after every layer had already uploaded and `{{version}}` had already landed.
+      #
+      # So wait out the window and push again rather than failing a build that had done all
+      # of its work. The blobs are in the registry by then, so the retry re-uploads nothing
+      # and rewrites manifests. The rebuild it repeats is the price of not carrying build
+      # state between steps, and a release is rare enough to pay it.
+      #
+      # This step is NOT `continue-on-error`: if the second attempt fails, the job fails,
+      # `release` stays gated on it, and no Release is cut against images that are not there.
+      #
+      # The retry is unconditional on purpose. The action does not hand back *why* it failed,
+      # so telling a rate limit from a compile error would mean scraping the log — and a
+      # genuine build failure paying one wasted rebuild and three minutes before it reports
+      # is a far better trade than a transient 403 costing a hand-driven re-run of a release.
+      - name: Wait out GHCR's secondary rate limit
+        if: steps.push.outcome == 'failure'
+        run: |
+          echo "::warning::Push failed — see above. Waiting 3 minutes for GHCR's secondary rate limit, then retrying."
+          sleep 180
+
+      - name: Build and push (retry)
+        if: steps.push.outcome == 'failure'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            SCHAKL_VERSION=${{ steps.meta.outputs.version }}
+            SCHAKL_GIT_SHA=${{ github.sha }}
+            SCHAKL_BUILT_AT=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
 
   release:
     # Only publish the Release once both images are actually in GHCR, so the notes
