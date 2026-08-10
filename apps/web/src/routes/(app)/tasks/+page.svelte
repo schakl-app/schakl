@@ -13,6 +13,7 @@
   import type { BulkFieldDef } from "$lib/core/bulk/types";
   import { fmtDayMonth, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { memberLabel } from "$lib/core/members";
   import { can } from "$lib/core/permissions";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
@@ -103,7 +104,7 @@
 
   const memberName = (id?: string | null) => {
     const member = data.members.find((m) => m.user_id === id);
-    return member ? member.full_name || member.email : "";
+    return member ? memberLabel(member) : "";
   };
   const projectName = (id?: string | null) => data.projects.find((p) => p.id === id)?.name ?? "";
   const companyName = (id?: string | null) => data.companies.find((c) => c.id === id)?.name ?? "";
@@ -112,7 +113,7 @@
   const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
   const projectItems = $derived(data.projects.map((p) => ({ value: p.id, label: p.name })));
   const memberItems = $derived(
-    data.members.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
+    data.members.map((m) => ({ value: m.user_id, label: memberLabel(m) })),
   );
 
   // --- bulk (the ✎ selection mode in the toolbar) --------------------------------------
@@ -180,8 +181,14 @@
   // `event.locals.user.id` server-side); reflect that resolved value here too, so the picker
   // shows you pre-selected rather than empty. Explicitly clearing it writes `ALL_ASSIGNEES`
   // instead of deleting the param — deleting it would just resolve back to yourself.
+  //
+  // A client-portal login has no such default (the load skips it: a client is never an employee
+  // assignee), so this mirrors that rather than pre-selecting a person whose tasks do not exist.
+  // The control itself is staff-only below — picking "who at the agency is on it" is not a client
+  // filter, and `/members/lookup` is the agency's roster.
+  const isPortal = $derived(page.data.user?.isPortal ?? false);
   const assigneeFilterValue = $derived(
-    data.filters.assignee_user_id === ALL_ASSIGNEES
+    data.filters.assignee_user_id === ALL_ASSIGNEES || isPortal
       ? ""
       : (data.filters.assignee_user_id ?? page.data.user?.id ?? ""),
   );
@@ -268,16 +275,18 @@
       id="filter-project"
     />
   </div>
-  <div class="w-full sm:w-44">
-    <Combobox
-      items={memberItems}
-      name="_filter_assignee"
-      value={assigneeFilterValue}
-      placeholder={t("tasks.field.assignee")}
-      onselect={setAssigneeFilter}
-      id="filter-assignee"
-    />
-  </div>
+  {#if !isPortal}
+    <div class="w-full sm:w-44">
+      <Combobox
+        items={memberItems}
+        name="_filter_assignee"
+        value={assigneeFilterValue}
+        placeholder={t("tasks.field.assignee")}
+        onselect={setAssigneeFilter}
+        id="filter-assignee"
+      />
+    </div>
+  {/if}
   {#each dueOptions as option (option)}
     <button
       class="rounded-full px-3 py-1 text-xs font-medium
@@ -341,7 +350,11 @@
          turn off (#41's rule): "a client is reading this" is the one piece of task metadata you
          need *before* you write in the card, and a marker that can be switched off is exactly the
          one nobody will have on the day it matters. -->
-    <ClientVisibilityIcon visible={task.visible_to_client} companyId={task.company_id} />
+    <ClientVisibilityIcon
+      visible={task.visible_to_client}
+      companyId={task.company_id}
+      projectId={task.project_id}
+    />
   </div>
 {/snippet}
 

@@ -38,13 +38,16 @@
     checklist_total?: number;
     comment_count?: number;
     company_id?: string | null;
+    // The client anchor is two columns, not one: a task with no `company_id` still reaches its
+    // *project's* client, which is what decides whether the visibility marker warns.
+    project_id?: string | null;
     visible_to_client?: boolean;
   }
 
   interface Member {
     user_id: string;
     full_name: string | null;
-    email: string;
+    email: string | null;
     avatar_url?: string | null;
   }
 
@@ -131,6 +134,7 @@
       <ClientVisibilityIcon
         visible={task.visible_to_client ?? false}
         companyId={task.company_id}
+        projectId={task.project_id}
         size={13}
       />
       {#each task.labels ?? [] as label (label.id)}

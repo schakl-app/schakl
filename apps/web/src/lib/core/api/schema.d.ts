@@ -16139,12 +16139,17 @@ export interface components {
         /**
          * MemberLookup
          * @description Minimal member identity for pickers (assignee, approver) — safe for any staff role.
+         *
+         *     ``email`` is nullable because an **external (client) login** is answered without it: a
+         *     client reads staff *names* off their own screens and has no use for the agency's address
+         *     book. Optional rather than a second schema, so one shape serves both callers and a
+         *     consumer that falls back to the address gets ``None`` instead of somebody's mailbox.
          */
         MemberLookup: {
             /** Avatar Url */
             avatar_url?: string | null;
             /** Email */
-            email: string;
+            email: string | null;
             /** Full Name */
             full_name: string | null;
             /** User Id */

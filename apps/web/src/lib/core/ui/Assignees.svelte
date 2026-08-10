@@ -9,12 +9,13 @@
    * tooltip), never the names off the people it keeps.
    */
   import { t } from "$lib/core/i18n";
+  import { memberLabel } from "$lib/core/members";
   import PersonChip from "$lib/core/ui/PersonChip.svelte";
 
   interface Member {
     user_id: string;
     full_name?: string | null;
-    email: string;
+    email: string | null;
     avatar_url?: string | null;
   }
   interface Assignee {
@@ -50,7 +51,7 @@
         is_primary: a.is_primary,
         name: member?.full_name ?? null,
         email: member?.email ?? null,
-        label: member ? member.full_name || member.email : t("assignees.unknown"),
+        label: member ? memberLabel(member) : t("assignees.unknown"),
         avatarUrl: member?.avatar_url ?? null,
       };
     }),

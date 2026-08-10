@@ -3089,7 +3089,7 @@
   "tasks.field.visible_to_client_hint": "A portal contact of this client can see this task and comment on it. Off by default.",
   "tasks.client_visibility.visible": "Visible in the client portal",
   "tasks.client_visibility.hidden": "Not visible in the client portal",
-  "tasks.client_visibility.all_clients": "Visible in the portal to every client: this task is not linked to one",
+  "tasks.client_visibility.no_audience": "Ticked as visible, but no client can read it: this task is linked to neither a client nor a project",
   "module.hr.label": "HR",
   "header.my_page": "My page",
   "permissions.group.hr": "HR",

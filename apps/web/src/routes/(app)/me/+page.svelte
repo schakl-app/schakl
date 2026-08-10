@@ -11,6 +11,7 @@
   import { page } from "$app/state";
   import { fmtDayMonthYear, fmtNumber } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { memberLabel } from "$lib/core/members";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -31,7 +32,7 @@
           ""),
   );
   const memberItems = $derived(
-    data.members.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
+    data.members.map((m) => ({ value: m.user_id, label: memberLabel(m) })),
   );
   // The combined balance's label (#265): the message-catalog copy for a known group, else the
   // API/representative label the server resolved for a tenant's own group.

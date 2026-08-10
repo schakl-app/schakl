@@ -422,6 +422,7 @@
           <ClientVisibilityIcon
             visible={task.visible_to_client}
             companyId={task.company_id}
+            projectId={task.project_id}
             size={16}
           />
         {/if}
@@ -1346,6 +1347,7 @@
                   <ClientVisibilityIcon
                     visible={task.visible_to_client}
                     companyId={task.company_id}
+                    projectId={task.project_id}
                     size={13}
                   />
                   {task.visible_to_client ? t("common.yes") : t("common.no")}

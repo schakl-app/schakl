@@ -3089,7 +3089,7 @@
   "tasks.field.visible_to_client_hint": "Een portaalcontact van deze klant kan deze taak zien en erop reageren. Standaard uit.",
   "tasks.client_visibility.visible": "Zichtbaar in het klantportaal",
   "tasks.client_visibility.hidden": "Niet zichtbaar in het klantportaal",
-  "tasks.client_visibility.all_clients": "Zichtbaar in het portaal voor elke klant: deze taak hangt niet aan één klant",
+  "tasks.client_visibility.no_audience": "Aangevinkt als zichtbaar, maar geen enkele klant kan de taak lezen: deze taak hangt niet aan een klant of project",
   "module.hr.label": "HR",
   "header.my_page": "Mijn pagina",
   "permissions.group.hr": "HR",

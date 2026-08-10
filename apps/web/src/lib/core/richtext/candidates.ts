@@ -19,7 +19,7 @@ export interface CandidateScope {
 interface MemberRow {
   user_id: string;
   full_name: string | null;
-  email: string;
+  email: string | null;
 }
 interface StatusRow {
   key: string;
@@ -89,16 +89,21 @@ export function loadMentionCandidates(scope: CandidateScope = {}): Promise<Candi
       members(),
       companyId ? get(`/api/v1/contacts?limit=200&company_id=${companyId}`) : null,
     ]);
-    const contacts = ((contactsPage as { items?: ContactRow[] } | null)?.items ?? []).map(
-      (c) => ({
-        id: c.id,
-        name: `${c.first_name} ${c.last_name ?? ""}`.trim(),
-        kind: "contact" as const,
-        subtitle: c.companies?.[0]?.name,
-      }),
-    );
+    const contacts = ((contactsPage as { items?: ContactRow[] } | null)?.items ?? []).map((c) => ({
+      id: c.id,
+      name: `${c.first_name} ${c.last_name ?? ""}`.trim(),
+      kind: "contact" as const,
+      subtitle: c.companies?.[0]?.name,
+    }));
     return [
-      ...team.map((m) => ({ id: m.user_id, name: m.full_name || m.email, kind: "user" as const })),
+      // `email` is absent for a client-portal login (`/members/lookup` withholds the agency's
+      // address book), so the chain ends in "" rather than in `null`: a colleague who has not
+      // set a name yet reads as blank, never as somebody's mailbox.
+      ...team.map((m) => ({
+        id: m.user_id,
+        name: m.full_name || m.email || "",
+        kind: "user" as const,
+      })),
       ...contacts,
     ];
   });
@@ -124,7 +129,7 @@ export function loadTaskCandidates(scope: CandidateScope = {}): Promise<Candidat
     const today = new Date().toISOString().slice(0, 10);
     const memberName = (id: string) => {
       const m = team.find((row) => row.user_id === id);
-      return m ? m.full_name || m.email : undefined;
+      return m ? m.full_name || m.email || undefined : undefined;
     };
     return ((page as { items?: TaskRow[] } | null)?.items ?? []).map((row) => {
       const def = defs.find((s) => s.key === row.status);

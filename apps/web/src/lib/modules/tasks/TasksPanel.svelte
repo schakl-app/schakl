@@ -27,6 +27,10 @@
     checklist_total?: number;
     comment_count?: number;
     visible_to_client?: boolean;
+    // The indirect client anchor: on this panel every row already has `companyId`, so it only
+    // ever decides whether an *unattached* tick is inert — but the marker asks every caller the
+    // same question, and a panel that answered "no project" for all of them would be lying.
+    project_id?: string | null;
   }
   const tasks = $derived((data.tasks ?? []) as PanelTask[]);
   const today = new Date().toISOString().slice(0, 10);
@@ -50,7 +54,12 @@
           >
             {task.title}
           </a>
-          <ClientVisibilityIcon visible={task.visible_to_client ?? false} {companyId} size={13} />
+          <ClientVisibilityIcon
+            visible={task.visible_to_client ?? false}
+            {companyId}
+            projectId={task.project_id}
+            size={13}
+          />
         </span>
         {#each task.labels ?? [] as label (label.id)}
           <span

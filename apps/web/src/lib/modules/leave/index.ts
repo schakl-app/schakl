@@ -204,7 +204,7 @@ registerWebModule({
         // gets an individual colour + show/hide row (#281).
         if (!hasPermission(user?.permissions, "leave.request.read", "any")) return [];
         const { data } = await api.GET("/api/v1/members/lookup");
-        return (data ?? []).map((m) => ({ id: m.user_id, name: m.full_name || m.email }));
+        return (data ?? []).map((m) => ({ id: m.user_id, name: m.full_name || m.email || "" }));
       },
     },
     {

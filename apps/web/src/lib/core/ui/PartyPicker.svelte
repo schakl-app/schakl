@@ -14,6 +14,7 @@
    */
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import { t } from "$lib/core/i18n";
+  import { memberLabel } from "$lib/core/members";
   import type { PartyType } from "$lib/core/party";
 
   interface Company {
@@ -23,7 +24,7 @@
   interface Employee {
     user_id: string;
     full_name: string | null;
-    email: string;
+    email: string | null;
   }
   interface Contact {
     id: string;
@@ -111,7 +112,7 @@
     type === "company"
       ? companies.map((c) => ({ value: c.id, label: c.name }))
       : type === "employee"
-        ? employees.map((e) => ({ value: e.user_id, label: e.full_name || e.email }))
+        ? employees.map((e) => ({ value: e.user_id, label: memberLabel(e) }))
         : type === "contact"
           ? contacts.map((c) => ({ value: c.id, label: c.name }))
           : [],

@@ -551,3 +551,117 @@ async def test_portal_sees_only_client_visible_tasks(client_for) -> None:
             for r in (await c.get("/api/v1/tasks?limit=50", headers=headers)).json()["items"]
         }
         assert {"Zichtbaar", "Intern"} <= staff_titles
+
+
+async def test_portal_task_count_matches_its_list(client_for) -> None:
+    """Every *count* a client reads is the portal rule's count, not the org's.
+
+    The visibility filter used to hang off ``_scoped()``, which feeds the reads and not
+    ``scoped_count_select()`` / ``count()`` — those build their own statement and AND the
+    horizon on directly. So the company panel's ``open_count`` and the list's ``total`` were
+    computed org-wide: a client saw "Taken (12)" above a list of one (§285's failure mode (2),
+    reached through a subclass seam rather than a hand-built query).
+    """
+    t, headers, contact, company_ids = await _tenant_with_contact(client_for, "portal-count")
+    company = company_ids[0]
+
+    async with client_for(t.host) as c:
+        for i in range(4):
+            await c.post(
+                "/api/v1/tasks",
+                json={
+                    "title": f"Taak {i}",
+                    "company_id": company,
+                    # Exactly one is ticked; the other three are the agency's own business.
+                    "visible_to_client": i == 0,
+                },
+                headers=headers,
+            )
+
+        await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
+        async with async_session_maker() as session:
+            portal_user = await session.scalar(
+                select(User).where(User.email == contact["email"])
+            )
+        portal_headers = await auth_cookie(portal_user)
+
+        listed = (await c.get("/api/v1/tasks?limit=50", headers=portal_headers)).json()
+        assert listed["total"] == len(listed["items"]) == 1
+
+        # The company hub's panel is the other reader of that count, and a client can open it.
+        panels = (
+            await c.get(f"/api/v1/companies/{company}/panels", headers=portal_headers)
+        ).json()
+        tasks_panel = next(p for p in panels if p["key"] == "tasks.company")
+        assert tasks_panel["data"]["open_count"] == len(tasks_panel["data"]["tasks"]) == 1
+
+
+async def test_portal_task_horizon_is_the_client_s_own_companies(client_for) -> None:
+    """A ticked task reaches the client it belongs to, and only that one.
+
+    ``Task.company_id`` is nullable, so the column-matched horizon exempts a NULL as "not
+    company data" — right for staff, and exactly wrong for a client: an agency's own to-do
+    item ticked visible was visible to *every* client of the tenant. Dropping every NULL is
+    the mirror-image bug, though, because a task on a project inherits its client from the
+    project and nothing fills the column in — so that one still arrives.
+    """
+    t, headers, contact, company_ids = await _tenant_with_contact(
+        client_for, "portal-horizon", companies=2
+    )
+    mine, theirs = company_ids  # the contact is linked to the first only
+
+    async with client_for(t.host) as c:
+        project = (
+            await c.post(
+                "/api/v1/projects",
+                json={"name": "Herbouw site", "company_id": mine},
+                headers=headers,
+            )
+        ).json()
+        for payload in (
+            {"title": "Van mij", "company_id": mine},
+            # No company at all: the project is the only thing that says whose task this is.
+            {"title": "Via project", "project_id": project["id"]},
+            {"title": "Van een andere klant", "company_id": theirs},
+            # Attached to nothing — the agency's own housekeeping, ticked by mistake or on
+            # purpose. It belongs to no client, so it reaches none of them.
+            {"title": "Intern werk"},
+        ):
+            await c.post(
+                "/api/v1/tasks",
+                json={**payload, "visible_to_client": True},
+                headers=headers,
+            )
+
+        await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
+        async with async_session_maker() as session:
+            portal_user = await session.scalar(
+                select(User).where(User.email == contact["email"])
+            )
+        portal_headers = await auth_cookie(portal_user)
+
+        listed = (await c.get("/api/v1/tasks?limit=50", headers=portal_headers)).json()
+        assert {r["title"] for r in listed["items"]} == {"Van mij", "Via project"}
+        assert listed["total"] == 2
+
+
+async def test_portal_lookup_withholds_staff_email(client_for) -> None:
+    """``/members/lookup`` declares no permission, so a client can call it. They get the names
+    their own screens draw (a task's assignee, a note's author) and not the address book."""
+    t, headers, contact, _ = await _tenant_with_contact(client_for, "portal-lookup")
+
+    async with client_for(t.host) as c:
+        await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
+        async with async_session_maker() as session:
+            portal_user = await session.scalar(
+                select(User).where(User.email == contact["email"])
+            )
+        portal_headers = await auth_cookie(portal_user)
+
+        staff = (await c.get("/api/v1/members/lookup", headers=headers)).json()
+        assert staff and all(row["email"] for row in staff)
+
+        client_view = (await c.get("/api/v1/members/lookup", headers=portal_headers)).json()
+        # Same people, same names — the addresses are gone.
+        assert {row["user_id"] for row in client_view} == {row["user_id"] for row in staff}
+        assert all(row["email"] is None for row in client_view)

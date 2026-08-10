@@ -84,7 +84,7 @@ export interface CompanyPanelSpec {
 export interface PanelMember {
   user_id: string;
   full_name: string | null;
-  email: string;
+  email: string | null;
   /** Effective avatar (#122); rides the members lookup, no per-person fetch. */
   avatar_url?: string | null;
 }

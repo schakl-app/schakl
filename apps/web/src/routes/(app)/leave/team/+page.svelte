@@ -6,6 +6,7 @@
   import { fmtPeriod } from "$lib/core/format";
   import { can } from "$lib/core/permissions";
   import { t } from "$lib/core/i18n";
+  import { memberLabel } from "$lib/core/members";
   import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
@@ -56,10 +57,10 @@
   const typeById = $derived(Object.fromEntries(types.map((lt) => [lt.id, lt])));
   const trackedTypes = $derived(types.filter((lt) => lt.tracks_balance && lt.active));
   const memberName = $derived(
-    Object.fromEntries(data.members.map((m) => [m.user_id, m.full_name || m.email])),
+    Object.fromEntries(data.members.map((m) => [m.user_id, memberLabel(m)])),
   );
   const memberOptions = $derived(
-    data.members.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
+    data.members.map((m) => ({ value: m.user_id, label: memberLabel(m) })),
   );
   // `data.profiles` is null when the caller may not read them (`leave.profile.manage`) — the
   // column then shows a placeholder rather than pretending everyone works the default week.
@@ -423,7 +424,7 @@
           {@const expanded = expandedRows.includes(member.user_id)}
           <tr>
             <td class="px-4 py-2 font-medium text-text">
-              {member.full_name || member.email}
+              {memberLabel(member)}
             </td>
             <td class="px-2 py-2 text-right tabular-nums text-text-muted">
               {data.profiles === null
