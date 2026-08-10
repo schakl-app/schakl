@@ -325,7 +325,30 @@ nameserver box opens **pre-filled with Cloudflare's pair**, read out of the page
 importing that module's types: §6 forbids the import, an absent panel must read as "no
 suggestion" rather than a broken page, and it costs no extra API call because the page is holding
 that data either way. A "Nameservers van Cloudflare gebruiken" button puts the pair back after an
-edit or a failed attempt.
+edit or a failed attempt — and it is absent while the box already holds that pair, because a
+control that would write what is already there does nothing (#253).
+
+**A finished state must read as finished.** The same section headed *"Nameservers wijzigen bij
+OXXA"* over a register already holding Cloudflare's pair, with the form pre-filled with the values
+it was showing one line above: an outstanding action where there was none, on the *most common*
+end state this integration has — a zone adopted from a client who was already on Cloudflare, or a
+push that worked weeks ago. So the panel compares the two and says so instead
+(`oxxa.push.nothing_to_change`, with "Toch wijzigen" opening the form anyway: moving a domain
+*off* Cloudflare is a legitimate push, and "there is nothing to do" must not become "you may not").
+
+Three things decide it, and each is a way of getting it wrong:
+
+- **`ns_observed`, never `ns_desired`.** What we last *asked* for is not what the register holds;
+  reading the wish would call the delegation finished the moment a push was sent, which is exactly
+  the window where the panel is worth watching.
+- **A set, not a sequence** (`sameNameservers`). A registrar returns its nameservers in whatever
+  order it stores them, and comparing joined strings would call an unchanged domain changed. Case
+  and the root dot are not part of a hostname's identity either. An **empty** side never matches:
+  a domain with no Cloudflare zone, or a register never read, must keep the ordinary form rather
+  than fall quiet about a delegation nobody has looked up.
+- **`drift` / `missing` / `error` keep the form in front of the user.** In each of those the
+  delegation can read perfectly correct and still need re-sending — the group backing it is gone,
+  the register was edited elsewhere, the last attempt failed.
 
 What is deliberately **not** built is a single button that fires both endpoints. The composition
 is a pre-filled form, which is better than an orchestration: the user sees exactly what will be
