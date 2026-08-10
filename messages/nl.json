@@ -719,6 +719,8 @@
   "projects.field.assignees": "Toegewezen medewerkers",
   "projects.filter.mine": "Mijn projecten",
   "projects.filter.company": "Filter op klant",
+  "projects.group.no_company": "Zonder klant",
+  "projects.groups_page_only": "De klantsecties tellen de projecten op deze pagina.",
   "projects.field.description": "Omschrijving",
   "projects.field.status": "Status",
   "projects.field.budget_hours": "Budget (uren)",

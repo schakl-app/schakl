@@ -18161,6 +18161,8 @@ export interface components {
             color?: string | null;
             /** Company Id */
             company_id?: string | null;
+            /** Company Name */
+            company_name?: string | null;
             /**
              * Created At
              * Format: date-time

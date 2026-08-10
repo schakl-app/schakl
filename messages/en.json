@@ -719,6 +719,8 @@
   "projects.field.assignees": "Assigned employees",
   "projects.filter.mine": "My projects",
   "projects.filter.company": "Filter by client",
+  "projects.group.no_company": "No client",
+  "projects.groups_page_only": "The client sections count the projects on this page.",
   "projects.field.description": "Description",
   "projects.field.status": "Status",
   "projects.field.budget_hours": "Budget (hours)",
