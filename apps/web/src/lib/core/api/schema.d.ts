@@ -6744,6 +6744,120 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/notifications/push/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Push Config
+         * @description The org's VAPID public key, minting the keypair on first use.
+         *
+         *     Public by definition — it is handed to every subscribing browser as its
+         *     ``applicationServerKey``. Fetched only when a browser is about to subscribe or is refreshing
+         *     an already-granted subscription, so it costs nothing for the majority who never turn this on.
+         */
+        get: operations["push_config_api_v1_notifications_push_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/push/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Push Subscriptions
+         * @description This person's registered devices. The endpoint and key material never come back — the row
+         *     exists to be recognised and revoked, and returning it would hand any XSS a push target.
+         */
+        get: operations["list_push_subscriptions_api_v1_notifications_push_subscriptions_get"];
+        put?: never;
+        /**
+         * Register Push Subscription
+         * @description Register (or refresh) the calling browser. Idempotent on the endpoint: the client
+         *     re-presents it every session because endpoints rotate silently, and a rotated endpoint that
+         *     nobody re-registered is a device that has stopped receiving without saying so.
+         */
+        post: operations["register_push_subscription_api_v1_notifications_push_subscriptions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/push/subscriptions/{subscription_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Push Subscription */
+        delete: operations["revoke_push_subscription_api_v1_notifications_push_subscriptions__subscription_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/push/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Push
+         * @description Push a test notification to every device this person has registered.
+         *
+         *     The one place a push leaves the API process rather than the worker cron, and worth the
+         *     exception for the same reason the channel test-send is (#17): "did connecting this browser
+         *     actually work?" cannot be answered by looking at the settings screen.
+         */
+        post: operations["test_push_api_v1_notifications_push_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/push/unsubscribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unsubscribe Push
+         * @description Drop the device by the endpoint the browser itself holds — the only identifier it has
+         *     after ``PushSubscription.unsubscribe()``. Scoped to the caller, and silent on a miss:
+         *     unsubscribing twice is not an error.
+         */
+        post: operations["unsubscribe_push_api_v1_notifications_push_unsubscribe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notifications/unread-count": {
         parameters: {
             query?: never;
@@ -12757,7 +12871,11 @@ export interface components {
         };
         /**
          * EmailSchedule
-         * @description The scope's global e-mail digest schedule: when its daily/weekly mails leave (#245).
+         * @description A scope's global digest schedule for one implicit channel: when its bundles leave (#245).
+         *
+         *     One of these per pushed implicit channel — e-mail has its own, web push has its own (#309).
+         *     Someone who wants their mail at 08:00 and their phone at 09:30 is asking for two ordinary
+         *     things, so the two schedules are not coupled.
          */
         EmailSchedule: {
             /** Digest Time */
@@ -17316,6 +17434,7 @@ export interface components {
             /** Events */
             events: components["schemas"]["PreferenceRow"][];
             general: components["schemas"]["GeneralPreference"];
+            push: components["schemas"]["EmailSchedule"];
         };
         /**
          * PreferenceRow
@@ -17355,6 +17474,27 @@ export interface components {
             enabled: boolean;
             /** Event Type */
             event_type: string;
+            /**
+             * Push Delay Minutes
+             * @default 0
+             */
+            push_delay_minutes: number;
+            /**
+             * Push Digest
+             * @default immediate
+             */
+            push_digest: string;
+            /**
+             * Push Enabled
+             * @default false
+             */
+            push_enabled: boolean;
+            /**
+             * Push Source
+             * @default default
+             * @enum {string}
+             */
+            push_source: "default" | "org" | "user";
             /**
              * Source
              * @enum {string}
@@ -17407,6 +17547,9 @@ export interface components {
             /** Events */
             events?: components["schemas"]["PreferenceRowWrite"][];
             general?: components["schemas"]["GeneralPreferenceWrite"] | null;
+            push?: components["schemas"]["EmailScheduleWrite"] | null;
+            /** Push Events */
+            push_events?: components["schemas"]["PushPreferenceRowWrite"][];
         };
         /** PriceIncreaseItem */
         PriceIncreaseItem: {
@@ -18054,6 +18197,115 @@ export interface components {
         PurgeRequest: {
             /** Confirm */
             confirm: string;
+        };
+        /**
+         * PushConfig
+         * @description What a browser needs before it can subscribe.
+         *
+         *     ``vapid_public_key`` is public by definition — every subscribing browser receives it as its
+         *     ``applicationServerKey``. ``supported`` is false when the instance cannot mint a keypair at
+         *     all, so the settings screen explains rather than offering a button that will fail.
+         */
+        PushConfig: {
+            /**
+             * Supported
+             * @default true
+             */
+            supported: boolean;
+            /** Vapid Public Key */
+            vapid_public_key: string;
+        };
+        /**
+         * PushPreferenceRowWrite
+         * @description One event's web-push override (#309). The digest schedule is global, so no time/weekday.
+         */
+        PushPreferenceRowWrite: {
+            /**
+             * Delay Minutes
+             * @default 0
+             */
+            delay_minutes: number;
+            /**
+             * Digest
+             * @default immediate
+             */
+            digest: string;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /** Event Type */
+            event_type: string;
+        };
+        /**
+         * PushSubscriptionCreate
+         * @description One browser registering itself, straight from ``PushSubscription.toJSON()``.
+         *
+         *     Every field is attacker-controlled — the request comes from a browser, but nothing about it
+         *     proves that — so ``endpoint`` is length-capped here and SSRF-guarded in the service. The key
+         *     material is the *recipient's* public half, so it is bounded but not secret.
+         */
+        PushSubscriptionCreate: {
+            /** Auth */
+            auth: string;
+            /** Endpoint */
+            endpoint: string;
+            /** P256Dh */
+            p256dh: string;
+            /** User Agent */
+            user_agent?: string | null;
+        };
+        /**
+         * PushSubscriptionRead
+         * @description A registered device. **The endpoint and key material never come back**: the row exists to
+         *     be revoked and recognised, and returning it would hand any XSS a working push target.
+         */
+        PushSubscriptionRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Current
+             * @default false
+             */
+            current: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            /** Last Success At */
+            last_success_at: string | null;
+            /** User Agent */
+            user_agent: string | null;
+        };
+        /** PushTestResult */
+        PushTestResult: {
+            /**
+             * Delivered
+             * @default 0
+             */
+            delivered: number;
+            /** Error */
+            error?: string | null;
+            /** Ok */
+            ok: boolean;
+        };
+        /**
+         * PushUnsubscribe
+         * @description A browser dropping itself, identified by the only thing it still knows: its endpoint.
+         */
+        PushUnsubscribe: {
+            /** Endpoint */
+            endpoint: string;
         };
         /**
          * QrPreview
@@ -36578,6 +36830,171 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PreferenceMatrix"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    push_config_api_v1_notifications_push_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushConfig"];
+                };
+            };
+        };
+    };
+    list_push_subscriptions_api_v1_notifications_push_subscriptions_get: {
+        parameters: {
+            query?: {
+                /** @description the calling browser's own endpoint, so its row can be marked `current` */
+                endpoint?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushSubscriptionRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_push_subscription_api_v1_notifications_push_subscriptions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushSubscriptionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushSubscriptionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_push_subscription_api_v1_notifications_push_subscriptions__subscription_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subscription_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_push_api_v1_notifications_push_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushTestResult"];
+                };
+            };
+        };
+    };
+    unsubscribe_push_api_v1_notifications_push_unsubscribe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushUnsubscribe"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

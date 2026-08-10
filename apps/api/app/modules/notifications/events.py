@@ -126,6 +126,11 @@ CHANNEL_EMAIL = "email"
 #: the two above it is not implicit: each one is a ``notification_channels`` row, and a
 #: *personal* one carries its own per-event preference rows keyed by ``channel_config_id`` (#283).
 CHANNEL_EXTERNAL = "external"
+#: The browser's own notifications (Web Push, #309) — implicit like in-app and e-mail: every
+#: member has it, there is nothing to connect. What *is* per device is the subscription, which
+#: lives in ``push_subscriptions`` rather than in ``notification_channels``: a browser mints it,
+#: it rotates, and it dies with a ``410`` — none of which is true of a URL somebody typed.
+CHANNEL_WEB_PUSH = "web_push"
 
 #: Reserved payload keys the emitter uses to carry recipients/dedup to the subscriber. They
 #: are stripped before the event row is persisted (they are routing, not content).

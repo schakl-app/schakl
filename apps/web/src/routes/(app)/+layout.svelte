@@ -56,6 +56,17 @@
     !isPortal && (theme?.enabledModules?.includes("notifications") ?? false),
   );
 
+  // Re-present an already-granted push subscription, once per session (#309). A push endpoint
+  // rotates without telling anyone, and a rotated endpoint nobody re-registered is a device that
+  // has quietly stopped receiving — the user sees nothing and assumes it still works. Costs one
+  // call for people who turned this on, and **no network call at all** for everyone else: the
+  // module returns before fetching if the permission was never granted. Dynamically imported so
+  // the browser-only module never enters the SSR bundle.
+  $effect(() => {
+    if (!hasNotifications) return;
+    void import("$lib/modules/notifications/push").then((push) => push.refresh());
+  });
+
   // AI affordance gate (epic #131): shared components (RichTextEditor's assist) read this
   // through context so no consumer needs per-module wiring. Off means invisible (#126).
   setContext(AI_CONTEXT_KEY, { enabled: (feature: AIFeature) => aiEnabled(user, feature) });

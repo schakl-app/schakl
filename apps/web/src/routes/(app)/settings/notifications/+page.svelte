@@ -3,6 +3,7 @@
   import { pageTitle } from "$lib/core/title";
   import ChannelSection from "$lib/modules/notifications/ChannelSection.svelte";
   import PreferenceMatrixForm from "$lib/modules/notifications/PreferenceMatrixForm.svelte";
+  import PushSection from "$lib/modules/notifications/PushSection.svelte";
 
   let { data, form } = $props();
 </script>
@@ -22,6 +23,11 @@
   error={form?.error ?? null}
   saved={form?.saved ?? false}
 />
+
+<!-- This browser's own enrolment. Above the channel list because it needs no configuring: it is
+     a permission and a device, not a URL somebody pastes (#309). Which events actually push is
+     the `web_push` column in the matrix, exactly like e-mail's — the two are separate decisions. -->
+<PushSection />
 
 <!-- One list, under the matrix that routes it: each of these is a column above (#295). -->
 {#if data.canManageOwnChannels}

@@ -12,9 +12,11 @@ from collections.abc import Sequence
 
 from fastapi import APIRouter, Depends, Query
 
+from app.config import settings
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.errors import AppError
+from app.i18n import translate
 from app.modules.notifications.channel_admin import ChannelService
 from app.modules.notifications.defaults import ResolvedPref
 from app.modules.notifications.prefs import (
@@ -25,6 +27,7 @@ from app.modules.notifications.prefs import (
     effective_channel_matrix,
     effective_email_matrix,
     effective_matrix,
+    effective_web_push_matrix,
     replace_overrides,
     scope_channels,
 )
@@ -47,12 +50,18 @@ from app.modules.notifications.schemas import (
     PreferenceMatrix,
     PreferenceRow,
     PreferenceUpdate,
+    PushConfig,
+    PushSubscriptionCreate,
+    PushSubscriptionRead,
+    PushTestResult,
+    PushUnsubscribe,
     ReadUpdate,
     UnreadCount,
     WatchRead,
     WatchUpdate,
 )
 from app.modules.notifications.service import NotificationService
+from app.modules.notifications.webpush import PushSubscriptionService, vapid_keys
 from app.schemas import Page
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -62,15 +71,17 @@ def _matrix(
     in_app: dict[str, ResolvedPref],
     email: dict[str, ResolvedPref],
     schedule: object,
+    push: dict[str, ResolvedPref],
+    push_schedule: object,
     configs: Sequence[object] = (),
     channel_events: dict[uuid.UUID, dict[str, ResolvedPref]] | None = None,
 ) -> PreferenceMatrix:
     """Every event, always — so the settings table renders complete and badges inheritance.
 
-    Each row carries both implicit channels' resolved rules and their independent inheritance
-    sources; ``schedule`` is the scope's global e-mail digest schedule (a ``prefs.EmailSchedule``).
-    ``configs`` are this scope's external channels (#283, #295) — each becomes one more column,
-    with its own per-event cadence and its own digest schedule.
+    Each row carries all three implicit channels' resolved rules and their independent inheritance
+    sources; ``schedule`` / ``push_schedule`` are the scope's global digest schedules for e-mail
+    and browser push (``prefs.EmailSchedule`` each). ``configs`` are this scope's external channels
+    (#283, #295) — each becomes one more column, with its own per-event cadence and schedule.
     """
     rows = [
         PreferenceRow(
@@ -85,6 +96,10 @@ def _matrix(
             email_delay_minutes=email[event_type].delay_minutes,
             email_digest=email[event_type].digest,
             email_source=email[event_type].source,
+            push_enabled=push[event_type].enabled,
+            push_delay_minutes=push[event_type].delay_minutes,
+            push_digest=push[event_type].digest,
+            push_source=push[event_type].source,
         )
         for event_type, pref in in_app.items()
     ]
@@ -103,6 +118,11 @@ def _matrix(
             digest_time=schedule.digest_time,
             digest_weekday=schedule.digest_weekday,
             source=schedule.source,
+        ),
+        push=EmailSchedule(
+            digest_time=push_schedule.digest_time,
+            digest_weekday=push_schedule.digest_weekday,
+            source=push_schedule.source,
         ),
         channels=[
             ChannelPreference(
@@ -150,16 +170,17 @@ async def _load_matrix(  # noqa: ANN001
 ) -> PreferenceMatrix:
     """Resolve every channel's matrix for one scope, then compose.
 
-    Four queries flat, whatever the number of channels: the in-app rows, the e-mail rows, the
-    scope's channel configs, and every per-channel preference in one go (docs/PERFORMANCE.md —
-    never one query per channel). ``include_channels=False`` skips the last two entirely — a
-    caller who may not configure them has no use for the answer, and not asking is cheaper.
+    Five queries flat, whatever the number of channels: the in-app rows, the e-mail rows, the
+    web-push rows, the scope's channel configs, and every per-channel preference in one go
+    (docs/PERFORMANCE.md — never one query per channel). ``include_channels=False`` skips the
+    last two entirely — a caller who may not configure them has no use for the answer.
     """
     in_app = await effective_matrix(session, org_id, user_id)
     email, schedule = await effective_email_matrix(session, org_id, user_id)
+    push, push_schedule = await effective_web_push_matrix(session, org_id, user_id)
     configs = await scope_channels(session, org_id, user_id) if include_channels else []
     channel_events = await effective_channel_matrix(session, org_id, configs)
-    return _matrix(in_app, email, schedule, configs, channel_events)
+    return _matrix(in_app, email, schedule, push, push_schedule, configs, channel_events)
 
 
 async def _channel_writes(
@@ -199,7 +220,14 @@ async def _channel_writes(
 
 def _writes(
     payload: PreferenceUpdate,
-) -> tuple[list[PrefWrite], list[EmailWrite], GeneralWrite | None, EmailScheduleData | None]:
+) -> tuple[
+    list[PrefWrite],
+    list[EmailWrite],
+    GeneralWrite | None,
+    EmailScheduleData | None,
+    list[EmailWrite],
+    EmailScheduleData | None,
+]:
     events = [
         PrefWrite(
             event_type=row.event_type,
@@ -237,7 +265,26 @@ def _writes(
         if payload.email is not None
         else None
     )
-    return events, email_events, general, email_schedule
+    # Web push reuses the e-mail write shapes: same three fields, same wholesale semantics. A
+    # third near-identical dataclass would only be a fourth place to forget a field (#309).
+    push_events = [
+        EmailWrite(
+            event_type=row.event_type,
+            enabled=row.enabled,
+            delay_minutes=row.delay_minutes,
+            digest=row.digest,
+        )
+        for row in payload.push_events
+    ]
+    push_schedule = (
+        EmailScheduleData(
+            digest_time=payload.push.digest_time,
+            digest_weekday=payload.push.digest_weekday,
+        )
+        if payload.push is not None
+        else None
+    )
+    return events, email_events, general, email_schedule, push_events, push_schedule
 
 
 # --- inbox ---------------------------------------------------------------------------- #
@@ -372,7 +419,7 @@ async def get_preferences(ctx: RequestContext = Depends(require_context)) -> Pre
 async def set_preferences(
     payload: PreferenceUpdate, ctx: RequestContext = Depends(require_context)
 ) -> PreferenceMatrix:
-    events, email_events, general, email_schedule = _writes(payload)
+    events, email_events, general, email_schedule, push_events, push_schedule = _writes(payload)
     await replace_overrides(
         ctx.session,
         ctx.org.id,
@@ -382,6 +429,8 @@ async def set_preferences(
         general,
         email_schedule,
         await _channel_writes(ctx, payload, ctx.user.id),
+        push_events,
+        push_schedule,
     )
     return await _load_matrix(
         ctx.session,
@@ -417,7 +466,7 @@ async def get_default_preferences(
 async def set_default_preferences(
     payload: PreferenceUpdate, ctx: RequestContext = Depends(require_context)
 ) -> PreferenceMatrix:
-    events, email_events, general, email_schedule = _writes(payload)
+    events, email_events, general, email_schedule, push_events, push_schedule = _writes(payload)
     await replace_overrides(
         ctx.session,
         ctx.org.id,
@@ -427,10 +476,138 @@ async def set_default_preferences(
         general,
         email_schedule,
         await _channel_writes(ctx, payload, None),
+        push_events,
+        push_schedule,
     )
     return await _load_matrix(
         ctx.session, ctx.org.id, None, include_channels=_manages_channels(ctx, None)
     )
+
+
+# --- browser push (#309): declared before ``/{notification_id}`` -------------------------- #
+# Every route here serves the caller's own devices and declares
+# ``notifications.notification.write`` — registering my browser is the same act as reading and
+# marking my own inbox. Deliberately **not** ``channels.manage_own``: that key gates a URL a
+# person types, with an SSRF surface behind it, and the ``client`` role does not hold it. A
+# subscription is minted by the person's own browser, so a portal login enrols like anyone else.
+@router.get(
+    "/push/config",
+    response_model=PushConfig,
+    dependencies=[require_permission("notifications.notification.read")],
+)
+async def push_config(ctx: RequestContext = Depends(require_context)) -> PushConfig:
+    """The org's VAPID public key, minting the keypair on first use.
+
+    Public by definition — it is handed to every subscribing browser as its
+    ``applicationServerKey``. Fetched only when a browser is about to subscribe or is refreshing
+    an already-granted subscription, so it costs nothing for the majority who never turn this on.
+    """
+    keys = await vapid_keys(ctx.session, ctx.org.id)
+    return PushConfig(vapid_public_key=keys.public_key)
+
+
+@router.get(
+    "/push/subscriptions",
+    response_model=list[PushSubscriptionRead],
+    dependencies=[require_permission("notifications.notification.read")],
+)
+async def list_push_subscriptions(
+    endpoint: str | None = Query(
+        None,
+        description="the calling browser's own endpoint, so its row can be marked `current`",
+    ),
+    ctx: RequestContext = Depends(require_context),
+) -> list[PushSubscriptionRead]:
+    """This person's registered devices. The endpoint and key material never come back — the row
+    exists to be recognised and revoked, and returning it would hand any XSS a push target."""
+    rows = await PushSubscriptionService(ctx).list()
+    return [
+        PushSubscriptionRead(
+            id=row.id,
+            user_agent=row.user_agent,
+            created_at=row.created_at,
+            last_seen_at=row.last_seen_at,
+            last_success_at=row.last_success_at,
+            current=endpoint is not None and row.endpoint == endpoint,
+        )
+        for row in rows
+    ]
+
+
+@router.post(
+    "/push/subscriptions",
+    response_model=PushSubscriptionRead,
+    status_code=201,
+    dependencies=[require_permission("notifications.notification.write")],
+)
+async def register_push_subscription(
+    payload: PushSubscriptionCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> PushSubscriptionRead:
+    """Register (or refresh) the calling browser. Idempotent on the endpoint: the client
+    re-presents it every session because endpoints rotate silently, and a rotated endpoint that
+    nobody re-registered is a device that has stopped receiving without saying so."""
+    row = await PushSubscriptionService(ctx).register(
+        endpoint=payload.endpoint,
+        p256dh=payload.p256dh,
+        auth=payload.auth,
+        user_agent=payload.user_agent,
+    )
+    return PushSubscriptionRead(
+        id=row.id,
+        user_agent=row.user_agent,
+        created_at=row.created_at,
+        last_seen_at=row.last_seen_at,
+        last_success_at=row.last_success_at,
+        current=True,
+    )
+
+
+@router.delete(
+    "/push/subscriptions/{subscription_id}",
+    status_code=204,
+    dependencies=[require_permission("notifications.notification.write")],
+)
+async def revoke_push_subscription(
+    subscription_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> None:
+    await PushSubscriptionService(ctx).revoke(subscription_id)
+
+
+@router.post(
+    "/push/unsubscribe",
+    status_code=204,
+    dependencies=[require_permission("notifications.notification.write")],
+)
+async def unsubscribe_push(
+    payload: PushUnsubscribe,
+    ctx: RequestContext = Depends(require_context),
+) -> None:
+    """Drop the device by the endpoint the browser itself holds — the only identifier it has
+    after ``PushSubscription.unsubscribe()``. Scoped to the caller, and silent on a miss:
+    unsubscribing twice is not an error."""
+    await PushSubscriptionService(ctx).revoke_endpoint(payload.endpoint)
+
+
+@router.post(
+    "/push/test",
+    response_model=PushTestResult,
+    dependencies=[require_permission("notifications.notification.write")],
+)
+async def test_push(ctx: RequestContext = Depends(require_context)) -> PushTestResult:
+    """Push a test notification to every device this person has registered.
+
+    The one place a push leaves the API process rather than the worker cron, and worth the
+    exception for the same reason the channel test-send is (#17): "did connecting this browser
+    actually work?" cannot be answered by looking at the settings screen.
+    """
+    locale = getattr(ctx.user, "locale", None) or settings.default_locale
+    delivered, error = await PushSubscriptionService(ctx).test(
+        title=translate("notifications.push.test_title", locale),
+        body=translate("notifications.push.test_body", locale),
+    )
+    return PushTestResult(ok=delivered > 0, delivered=delivered, error=error)
 
 
 # --- external channels (#17, #283): declared before ``/{notification_id}`` ---------------- #

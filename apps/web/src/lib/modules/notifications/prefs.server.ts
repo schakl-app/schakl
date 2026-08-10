@@ -45,6 +45,8 @@ export interface MatrixChannelWrite {
 export interface MatrixWrite {
   events: MatrixEventWrite[];
   email_events: MatrixEmailEventWrite[];
+  /** One event's browser-push override (#309). Same three fields as e-mail's. */
+  push_events: MatrixEmailEventWrite[];
   general: {
     due_soon_days: number | null;
     quiet_hours_start: string | null;
@@ -52,6 +54,11 @@ export interface MatrixWrite {
   } | null;
   /** The scope's global e-mail digest schedule; null = inherit. */
   email: {
+    digest_time: string | null;
+    digest_weekday: number | null;
+  } | null;
+  /** The scope's global browser-push digest schedule (#309); null = inherit. */
+  push: {
     digest_time: string | null;
     digest_weekday: number | null;
   } | null;
@@ -77,6 +84,11 @@ export const EMPTY_MATRIX: {
     digest_weekday: number | null;
     source: string;
   };
+  push: {
+    digest_time: string | null;
+    digest_weekday: number | null;
+    source: string;
+  };
   channels: never[];
 } = {
   events: [],
@@ -87,6 +99,11 @@ export const EMPTY_MATRIX: {
     source: "default",
   },
   email: {
+    digest_time: null,
+    digest_weekday: null,
+    source: "default",
+  },
+  push: {
     digest_time: null,
     digest_weekday: null,
     source: "default",
@@ -128,19 +145,25 @@ export function parseMatrixPayload(raw: FormDataEntryValue | null): MatrixWrite 
     });
   }
 
-  const emailEvents: MatrixEmailEventWrite[] = [];
-  if (Array.isArray(parsed.email_events)) {
-    for (const entry of parsed.email_events) {
+  /** E-mail and browser push post the same three fields, so they decode the same way (#309). */
+  function pushedEvents(raw: unknown): MatrixEmailEventWrite[] {
+    const rows: MatrixEmailEventWrite[] = [];
+    if (!Array.isArray(raw)) return rows;
+    for (const entry of raw) {
       if (!isPlainObject(entry) || typeof entry.event_type !== "string") continue;
       const delay = Number(entry.delay_minutes);
-      emailEvents.push({
+      rows.push({
         event_type: entry.event_type,
         enabled: entry.enabled === true,
         delay_minutes: Number.isFinite(delay) && delay >= 0 ? Math.trunc(delay) : 0,
         digest: typeof entry.digest === "string" ? entry.digest : "immediate",
       });
     }
+    return rows;
   }
+
+  const emailEvents = pushedEvents(parsed.email_events);
+  const pushEvents = pushedEvents(parsed.push_events);
 
   let general: MatrixWrite["general"] = null;
   if (isPlainObject(parsed.general)) {
@@ -152,14 +175,18 @@ export function parseMatrixPayload(raw: FormDataEntryValue | null): MatrixWrite 
     };
   }
 
-  let email: MatrixWrite["email"] = null;
-  if (isPlainObject(parsed.email)) {
-    const weekday = Number(parsed.email.digest_weekday);
-    email = {
-      digest_time: asTime(parsed.email.digest_time),
+  /** A scope's digest schedule block; the two implicit pushed channels each have one. */
+  function schedule(raw: unknown): MatrixWrite["email"] {
+    if (!isPlainObject(raw)) return null;
+    const weekday = Number(raw.digest_weekday);
+    return {
+      digest_time: asTime(raw.digest_time),
       digest_weekday: Number.isInteger(weekday) && weekday >= 0 && weekday <= 6 ? weekday : null,
     };
   }
+
+  const email = schedule(parsed.email);
+  const push = schedule(parsed.push);
 
   const channels: MatrixChannelWrite[] = [];
   if (Array.isArray(parsed.channels)) {
@@ -182,5 +209,13 @@ export function parseMatrixPayload(raw: FormDataEntryValue | null): MatrixWrite 
     }
   }
 
-  return { events, email_events: emailEvents, general, email, channels };
+  return {
+    events,
+    email_events: emailEvents,
+    push_events: pushEvents,
+    general,
+    email,
+    push,
+    channels,
+  };
 }

@@ -15,6 +15,13 @@ export default defineConfig({
       injectRegister: "auto",
       workbox: {
         globPatterns: ["**/*.{js,css,html,svg,png,webp,woff2}"],
+        // Browser push (#309) needs `push` + `notificationclick` listeners inside the service
+        // worker, and workbox generates that worker for us. Importing a static file is the
+        // smallest way in: the precache manifest and every runtime caching strategy stay
+        // workbox's, and the diff is one line plus `static/push-sw.js`. Switching to
+        // `injectManifest` would hand us all of that to maintain, for two event listeners, in
+        // an app already installed on real devices.
+        importScripts: ["/push-sw.js"],
       },
     }),
   ],

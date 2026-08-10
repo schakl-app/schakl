@@ -220,7 +220,10 @@ class ExternalChannel:
                     channel=CHANNEL_EXTERNAL,
                     channel_config_id=config.id,
                     status="pending",
-                    deliver_after=compute_visible_at(pref, now, tz=tz),
+                    # Quiet hours apply to every *pushed* channel and not to the bell (#309):
+                    # a room or a phone that pings at 03:00 is what the setting was collected
+                    # for, and it had been stored and read by nothing since #16.
+                    deliver_after=compute_visible_at(pref, now, tz=tz, quiet_hours=True),
                 )
             )
 
@@ -268,7 +271,8 @@ class EmailChannel:
                     notification_id=row.id,
                     channel=CHANNEL_EMAIL,
                     status="pending",
-                    deliver_after=compute_visible_at(pref, now, tz=tz),
+                    # Pushed channel → quiet hours apply (#309); see ExternalChannel above.
+                    deliver_after=compute_visible_at(pref, now, tz=tz, quiet_hours=True),
                 )
             )
 

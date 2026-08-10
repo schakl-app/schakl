@@ -17,6 +17,8 @@ Five org-scoped tables, RLS-forced like every domain table:
   the per-scope "general" block (quiet hours + due-soon threshold).
 * ``notification_deliveries`` — the seam issue #17 (external transports) writes to; the
   in-app channel is pull, so it never writes a delivery row.
+* ``push_subscriptions`` / ``push_vapid_keys`` — browser Web Push (#309). A device is not a
+  configured channel, so it gets its own table rather than a ``notification_channels`` row.
 
 All user-facing text is an i18n key rendered in the *recipient's* locale — ``event_type`` maps
 to ``notifications.event.*`` and the payload carries only i18n params + snapshotted titles.
@@ -312,6 +314,76 @@ class NotificationDelivery(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, 
     #: E-mail digest scheduling (#17): the worker holds the row until this passes, then sends
     #: everything due for a recipient as one mail. ``NULL`` = due immediately (all other channels).
     deliver_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PushSubscription(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """One browser on one device, subscribed to Web Push (#309).
+
+    Deliberately **not** a ``notification_channels`` row. A push subscription is nothing a person
+    types: a browser mints it, it belongs to a *device* rather than to a person, it rotates
+    without warning, and it dies with a ``410 Gone``. As a channel row an ordinary auto-prune
+    would delete a user's channel — and with it, by cascade, the ``notification_preferences``
+    rows that carry its routing.
+
+    ``p256dh`` and ``auth`` are the **recipient's** key material, not ours: the payload is
+    encrypted *to* them (RFC 8291, ``app.core.webpush``), so they need no encryption at rest. The
+    thing worth protecting here is the org's VAPID private key, one table down.
+
+    ``endpoint`` is attacker-supplied — it arrives from a browser, but nothing about the request
+    proves that — so it is SSRF-guarded on write and again at send time.
+    """
+
+    __tablename__ = "push_subscriptions"
+    __table_args__ = (
+        # A browser re-presenting the same endpoint is the same device, not a second one.
+        UniqueConstraint("org_id", "endpoint", name="uq_push_subscriptions_endpoint"),
+        # The sweep's only question: "every live device of these recipients".
+        Index("ix_push_subscriptions_user", "org_id", "user_id"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    endpoint: Mapped[str] = mapped_column(Text, nullable=False)
+    #: The browser's public key (base64url, uncompressed P-256 point).
+    p256dh: Mapped[str] = mapped_column(String(160), nullable=False)
+    #: The browser's shared authentication secret (base64url, 16 bytes).
+    auth: Mapped[str] = mapped_column(String(40), nullable=False)
+    #: Whatever the browser called itself, so "which of my four browsers is this?" is answerable.
+    user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: Refreshed whenever the browser re-presents this subscription — an endpoint rotates, and a
+    #: rotated one is a silent death, so the client re-registers on every session.
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    last_success_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class PushVapidKey(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """The org's application-server identity to the push services (RFC 8292, #309).
+
+    One row per org, generated lazily on first use. Per org rather than per instance because two
+    env vars plus a keygen command means the feature is silently off after every unattended
+    upgrade (``docs/WORKFLOW.md``) — the worst of the available failure modes — and because the
+    tenancy layer is already the thing that hands out per-org secrets.
+
+    **Never rotated.** A browser binds its subscription to the ``applicationServerKey`` it
+    subscribed with, so a new keypair does not re-key anything: it silently orphans every device
+    already registered. Deleting the row is therefore a decision to re-enrol everyone.
+    """
+
+    __tablename__ = "push_vapid_keys"
+    __table_args__ = (UniqueConstraint("org_id", name="uq_push_vapid_keys_org"),)
+
+    #: base64url, uncompressed P-256 point. Public by definition — it reaches every browser.
+    public_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    #: PKCS#8 PEM, encrypted at rest (``app.core.crypto``, the ``*_enc`` convention).
+    private_key_enc: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class NotificationChannelConfig(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
