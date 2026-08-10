@@ -10,6 +10,7 @@
   import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
+  import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
   import { labelChipClass } from "$lib/modules/tasks/labels";
   import {
     defaultStatusKey,
@@ -36,6 +37,8 @@
     checklist_done?: number;
     checklist_total?: number;
     comment_count?: number;
+    company_id?: string | null;
+    visible_to_client?: boolean;
   }
 
   interface Member {
@@ -76,7 +79,9 @@
         : "done",
   );
   // A pill for a status that is neither the resting default nor a finished one (was: in_progress).
-  const pill = $derived(statusDef && !statusDef.is_terminal && !statusDef.is_default ? statusDef : null);
+  const pill = $derived(
+    statusDef && !statusDef.is_terminal && !statusDef.is_default ? statusDef : null,
+  );
   const overdue = $derived(!done && !!task.due_date && task.due_date < today);
   const assignee = $derived(members.find((m) => m.user_id === task.assignee_user_id));
 
@@ -121,6 +126,13 @@
           ? 'text-text-muted line-through'
           : 'text-text hover:text-brand'}">{task.title}</a
       >
+      <!-- Beside the title, not out in the badge cluster: "a client is reading this" is a fact
+           about the task itself, and it has to survive the row wrapping on a phone. -->
+      <ClientVisibilityIcon
+        visible={task.visible_to_client ?? false}
+        companyId={task.company_id}
+        size={13}
+      />
       {#each task.labels ?? [] as label (label.id)}
         <span class="rounded-full px-2 py-0.5 text-[11px] font-medium {labelChipClass(label.color)}"
           >{label.name}</span

@@ -20,6 +20,7 @@
   import Modal from "$lib/core/ui/Modal.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
+  import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
   import { LABEL_COLORS, labelChipClass, labelDotClass } from "$lib/modules/tasks/labels";
   import TaskAssigneePicker from "$lib/modules/tasks/TaskAssigneePicker.svelte";
   import TaskSchedulePanel from "$lib/modules/tasks/TaskSchedulePanel.svelte";
@@ -416,6 +417,13 @@
           >
             {task.title}
           </h1>
+          <!-- Use mode only: while editing, the checkbox below is the live answer and a header
+               marker still showing the *stored* one would contradict it mid-edit. -->
+          <ClientVisibilityIcon
+            visible={task.visible_to_client}
+            companyId={task.company_id}
+            size={16}
+          />
         {/if}
 
         {#if !isPortal}
@@ -1326,6 +1334,24 @@
               <dt class="text-xs font-medium text-text-muted">{t("tasks.field.priority")}</dt>
               <dd class="text-text">{t(`tasks.priority.${task.priority}`)}</dd>
             </div>
+            {#if !isPortal}
+              <!-- The card's own statement of what the header marker draws: an icon carries its
+                   meaning in a `title=`, which a phone has no way to show. Staff-only — a client
+                   reading their own task learns nothing from "yes, you can see this". -->
+              <div class="flex items-center justify-between gap-2">
+                <dt class="text-xs font-medium text-text-muted">
+                  {t("tasks.field.visible_to_client")}
+                </dt>
+                <dd class="flex items-center gap-1.5 text-text">
+                  <ClientVisibilityIcon
+                    visible={task.visible_to_client}
+                    companyId={task.company_id}
+                    size={13}
+                  />
+                  {task.visible_to_client ? t("common.yes") : t("common.no")}
+                </dd>
+              </div>
+            {/if}
             {#if task.requires_interaction}
               <div class="flex items-center justify-between gap-2">
                 <dt class="text-xs font-medium text-text-muted">

@@ -5,6 +5,7 @@
   import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
+  import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
   import { ALL_ASSIGNEES } from "$lib/modules/tasks/filters";
   import { labelChipClass } from "$lib/modules/tasks/labels";
 
@@ -25,6 +26,7 @@
     checklist_done?: number;
     checklist_total?: number;
     comment_count?: number;
+    visible_to_client?: boolean;
   }
   const tasks = $derived((data.tasks ?? []) as PanelTask[]);
   const today = new Date().toISOString().slice(0, 10);
@@ -37,12 +39,19 @@
     {#each tasks as task (task.id)}
       {@const overdue = task.due_date != null && task.due_date < today}
       <li class="flex items-center gap-2 py-2">
-        <a
-          href={`/tasks/${task.id}`}
-          class="min-w-0 flex-1 truncate text-sm font-medium text-text hover:text-brand"
-        >
-          {task.title}
-        </a>
+        <!-- Title and marker share the flexible cell: left to the row's own `flex-1`, the icon
+             drifted to the far right edge and read as one more badge beside the deadline. Every
+             row here hangs off this panel's client, so it reads against a real audience: this
+             client's portal contacts. -->
+        <span class="flex min-w-0 flex-1 items-center gap-1.5">
+          <a
+            href={`/tasks/${task.id}`}
+            class="min-w-0 truncate text-sm font-medium text-text hover:text-brand"
+          >
+            {task.title}
+          </a>
+          <ClientVisibilityIcon visible={task.visible_to_client ?? false} {companyId} size={13} />
+        </span>
         {#each task.labels ?? [] as label (label.id)}
           <span
             class="rounded-full px-2 py-0.5 text-[11px] font-medium {labelChipClass(label.color)}"

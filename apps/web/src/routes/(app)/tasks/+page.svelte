@@ -24,6 +24,7 @@
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import Pagination from "$lib/core/ui/Pagination.svelte";
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
+  import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
   import { TASK_COLUMNS } from "$lib/modules/tasks/columns";
   import { ALL_ASSIGNEES } from "$lib/modules/tasks/filters";
   import { labelChipClass } from "$lib/modules/tasks/labels";
@@ -336,6 +337,11 @@
         ? 'text-text-muted line-through'
         : 'text-text hover:text-brand'}">{task.title}</a
     >
+    <!-- Client-portal visibility rides the title cell rather than becoming a column the user can
+         turn off (#41's rule): "a client is reading this" is the one piece of task metadata you
+         need *before* you write in the card, and a marker that can be switched off is exactly the
+         one nobody will have on the day it matters. -->
+    <ClientVisibilityIcon visible={task.visible_to_client} companyId={task.company_id} />
   </div>
 {/snippet}
 
