@@ -488,6 +488,25 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   finding is the ordinary one: `qr_appearance` is now the single resolution read by the document,
   the mail and the preview alike — before it, the mail drew the org's brand colour
   unconditionally, so a template set to `plain` printed mono on paper and mailed a coloured code.
+- **A ride-along write carries the gates of the module it writes into, not of the route it rode
+  in on** (#314). Finishing a task and recording the hours it took were two unrelated acts, so
+  the hours got logged later from memory or not at all; `TaskUpdate.log_time` makes them one
+  request and one transaction, the shape #175 already established for a contact moment. What is
+  worth stating is the gating, because the route says nothing about it: `PATCH /tasks/{id}`
+  declares `tasks.task.write` and carries `tasks`' licence gate, so the ride-along asks for
+  `time.entry.write` and checks the **`time`** sku itself — §18's "a bulk write must not be the
+  one way an uncovered module can still be written to", one layer down. It is refused on any
+  update that is not a *transition into* a finished status, or `PATCH` quietly becomes a second
+  way to write a time entry with none of the entry endpoint's own rules; a named `schedule_id`
+  is claimed through the block's own service, so #188's panel stops offering hours the finish
+  just booked; and `billable` left out defers to the project, which is why that resolution moved
+  to `time/system.py` — a second copy of #284 is how one write path starts billing a retainer
+  client for work the retainer covers. The other half is a performance decision worth copying:
+  **the offer suggests only from what the screen already has** (an unlogged passed block, the
+  unspent budget), because the alternative — a mounted `EntryForm`, a timer read, `POST
+  /ai/time/reconstruct` — puts a cost on every task page open to serve a dialog most opens never
+  see. Nothing was added to `GET /tasks/{id}`, and `tests/test_perf_query_budgets.py` now writes
+  that number down so the next feature under the same pressure has to argue with it.
 
 ## 11. Working agreement (for Claude Code)
 

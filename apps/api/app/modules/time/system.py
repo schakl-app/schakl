@@ -87,6 +87,26 @@ async def ensure_type_for_kind(
     return key
 
 
+async def resolve_billable(
+    ctx: EmitContext, billable: bool | None, project_id: uuid.UUID | None
+) -> bool:
+    """Resolve a new entry's ``billable`` (issue #284), for every path that writes one.
+
+    Stated by the caller, it stands; left out, the project answers — and a project a
+    subscription covers answers *no*, because the retainer already pays for that work. It lives
+    here rather than only in ``TimeService`` because a ride-along entry (#175's contact moment,
+    #314's finished task) is the same entry: a second copy of this rule is how one write path
+    quietly starts billing a retainer client for hours the retainer already covers.
+    """
+    if billable is not None:
+        return billable
+    if project_id is None:
+        return True
+    from app.modules.projects.service import ProjectService
+
+    return await ProjectService(ctx).billable_default(project_id)
+
+
 async def record_entry(
     ctx: EmitContext,
     *,
@@ -99,10 +119,12 @@ async def record_entry(
     description: str | None = None,
     entry_type_key: str | None = None,
     interaction_id: uuid.UUID | None = None,
+    billable: bool | None = None,
 ) -> TimeEntry:
     """Insert one stopped entry. Times follow the time module's own convention
     (wall-clock-as-UTC); an end at or before the start rolls forward a day, like the
-    manual-entry path. A zero-length span is a validation error, not a stored zero."""
+    manual-entry path. A zero-length span is a validation error, not a stored zero.
+    ``billable`` left out defers to the project, exactly as the entry form does (#284)."""
     if ended_at <= started_at:
         ended_at += timedelta(days=1)
     minutes = max(0, round((ended_at - started_at).total_seconds() / 60))
@@ -125,6 +147,7 @@ async def record_entry(
         description=description,
         entry_type_key=entry_type_key,
         interaction_id=interaction_id,
+        billable=await resolve_billable(ctx, billable, project_id),
     )
     ctx.session.add(row)
     await ctx.session.flush()

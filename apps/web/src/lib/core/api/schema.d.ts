@@ -21381,6 +21381,40 @@ export interface components {
             visible_to_client: boolean;
         };
         /**
+         * TaskLogTime
+         * @description "Ook de uren registreren" (#314): the hours the task took, written in the same
+         *     transaction as the finish that offered to record them.
+         *
+         *     The shape ``InteractionCreate.log_time`` already established (#175), plus the two things a
+         *     task knows that a contact moment does not. ``schedule_id`` names an unlogged planned block
+         *     (#188) this confirms, so the same hours can never be booked twice — through the finish
+         *     prompt *and* again from the schedule panel. ``billable`` left out defers to the project
+         *     (#284): a task on a subscription-covered project bills nobody, and a finish prompt that
+         *     silently posted ``true`` would be the one write path that forgot.
+         *
+         *     Times follow the *time* module's wall-clock-as-UTC convention, like every other entry.
+         */
+        TaskLogTime: {
+            /** Billable */
+            billable?: boolean | null;
+            /** Description */
+            description?: string | null;
+            /**
+             * Ended At
+             * Format: date-time
+             */
+            ended_at: string;
+            /** Entry Type Key */
+            entry_type_key?: string | null;
+            /** Schedule Id */
+            schedule_id?: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+        };
+        /**
          * TaskPriority
          * @enum {string}
          */
@@ -21463,6 +21497,7 @@ export interface components {
             due_change_reason?: string | null;
             /** Due Date */
             due_date?: string | null;
+            log_time?: components["schemas"]["TaskLogTime"] | null;
             /** Position */
             position?: number | null;
             priority?: components["schemas"]["TaskPriority"] | null;

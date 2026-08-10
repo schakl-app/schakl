@@ -18,6 +18,7 @@ from sqlalchemy.orm import aliased
 
 from app.core.auth.models import User
 from app.core.directory import visible_ids
+from app.core.entitlements import license_state
 from app.core.events import emit
 from app.core.models import Membership
 from app.core.parent import ensure_parent_in_tenant
@@ -48,6 +49,7 @@ from app.modules.tasks.models import (
     TaskPriority,
     TaskStatusDef,
 )
+from app.modules.tasks.scheduling import TaskScheduleService
 from app.modules.tasks.schemas import (
     ActivityRead,
     ChecklistCreate,
@@ -78,6 +80,7 @@ from app.modules.tasks.schemas import (
     TaskCreate,
     TaskDetail,
     TaskListItem,
+    TaskLogTime,
     TaskUpdate,
     TemplateChecklistItem,
 )
@@ -931,6 +934,8 @@ class TaskService:
     async def update(self, task_id: uuid.UUID, data: TaskUpdate) -> Task:
         task = await self._writable_task_or_403(task_id)
         values = data.model_dump(exclude_unset=True)
+        # A ride-along, not a column: pop it before anything reaches ``repo.update`` (#314).
+        values.pop("log_time", None)
         for _fk, _tbl in (("company_id", "companies"), ("project_id", "projects")):
             if _fk in values:
                 await ensure_parent_in_tenant(
@@ -1008,7 +1013,20 @@ class TaskService:
                 fields={"status": "errors.tasks_closing_interaction_required"},
             )
 
-        if old_status not in terminal and new_status in terminal:
+        finishing = old_status not in terminal and new_status in terminal
+        # "Ook de uren registreren" (#314) is a *completion* ride-along. Refused on anything
+        # else — a task already finished, a retitle, a reopen — so ``PATCH /tasks/{id}`` never
+        # becomes a second way to write a time entry, with none of the entry endpoint's own
+        # rules. Checked before the write so the refusal is about the request, not a rollback.
+        if data.log_time is not None and not finishing:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"log_time": "errors.tasks_log_time_not_finishing"},
+            )
+
+        if finishing:
             values["completed_at"] = datetime.now(UTC)
         elif old_status in terminal and new_status not in terminal:
             values["completed_at"] = None
@@ -1072,6 +1090,11 @@ class TaskService:
         if changed:
             await self._record(task.id, "updated", {"changed": changed})
 
+        # The hours the task took, in this same transaction (#314): a finished task with no
+        # hours because a second request failed is the exact thing this feature exists to stop.
+        if data.log_time is not None:
+            await self._log_time(task, data.log_time)
+
         if (
             status_changed
             and new_status in terminal
@@ -1088,6 +1111,43 @@ class TaskService:
             # defaults so serialization never lazy-loads.
             await self.ctx.session.refresh(task)
         return task
+
+    async def _log_time(self, task: Task, log_time: TaskLogTime) -> None:
+        """Record the hours a just-finished task took (#314), through the time module's
+        published surface (§6) — never its internals, exactly as #175's contact-moment
+        ride-along does.
+
+        Three gates, none of them implied by having been allowed to finish the task:
+
+        * ``time.entry.write`` — writing a task is not writing a timesheet. Unscoped, because
+          the entry is always the caller's own (§15: ``:any`` satisfies ``:own``).
+        * the ``time`` sku must still be writable. The task PATCH carries ``tasks``' licence
+          gate, not ``time``'s, and a ride-along must never be the one way an uncovered module
+          can still be written to (§18). A 402 refuses the whole request, finish included: the
+          user asked for both in one act, and half of it is not what they asked for.
+        * a named schedule block is claimed, so #188's panel stops offering the same hours.
+        """
+        self.ctx.require("time.entry.write")
+        if not (await license_state()).writable("time"):
+            raise AppError("license_expired", "errors.license_expired", status_code=402)
+        from app.modules.time import system as time_system
+
+        entry = await time_system.record_entry(
+            self.ctx,
+            user_id=self.ctx.user.id,
+            started_at=log_time.started_at,
+            ended_at=log_time.ended_at,
+            company_id=task.company_id,
+            project_id=task.project_id,
+            task_id=task.id,
+            description=(log_time.description or "").strip() or task.title,
+            entry_type_key=log_time.entry_type_key,
+            billable=log_time.billable,
+        )
+        if log_time.schedule_id is not None:
+            await TaskScheduleService(self.ctx).mark_logged(
+                log_time.schedule_id, task_id=task.id, entry_id=entry.id
+            )
 
     async def delete(self, task_id: uuid.UUID) -> None:
         self.ctx.require("tasks.task.delete")

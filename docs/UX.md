@@ -1123,3 +1123,14 @@
   page is the scope**: my transports live on my settings screen, the org's shared rooms on the org
   defaults screen, each under the matrix that routes it, so neither page ever shows a list it
   cannot act on. Suspect any screen rendering the same component twice with a boolean prop.
+
+- **Assigning `select.value` imperatively, on a select Svelte renders.** #314 gave the task card's
+  status select a second job: pick a finished status and it opens the finish prompt instead of
+  submitting, so the pick is put back until the confirm commits it. Putting it back with
+  `select.value = task.status` marks the control **dirty**, and the browser then ignores the
+  `selected` attribute Svelte rewrites on the next render — so confirming really did finish the
+  task, the budget bar and the activity trail updated, and the sidebar went on reading *Open*
+  until a hard reload. It looked exactly like a failed save. Bind the value
+  (`bind:value={statusValue}`, re-armed from the record in an `$effect`) and write to the state,
+  never to the DOM node; the same applies to any control a handler needs to rewind — a cancelled
+  picker, an optimistic toggle that has to go back.

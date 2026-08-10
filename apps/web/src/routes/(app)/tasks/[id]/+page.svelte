@@ -29,10 +29,12 @@
   import Markdown from "$lib/core/ui/Markdown.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
+  import TimeInput from "$lib/core/ui/TimeInput.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
   import { LABEL_COLORS, labelChipClass, labelDotClass } from "$lib/modules/tasks/labels";
   import { canWriteTask } from "$lib/modules/tasks/permissions";
+  import { localDayTime } from "$lib/modules/tasks/schedule";
   import TaskAssigneePicker from "$lib/modules/tasks/TaskAssigneePicker.svelte";
   import TaskSchedulePanel from "$lib/modules/tasks/TaskSchedulePanel.svelte";
   import { formatMinutes } from "$lib/modules/time/format";
@@ -114,20 +116,167 @@
   const statuses = $derived(data.statuses);
   const statusName = (key: string) => statuses.find((s) => s.key === key)?.name ?? key;
   const isDone = $derived(statuses.find((s) => s.key === task.status)?.is_terminal ?? false);
+  // The sidebar select's live value, Svelte-owned rather than read off the DOM: the finish
+  // prompt puts the pick back while it asks (#314), and the record is the authority again the
+  // moment a write lands. A *writable* derived is exactly that pair of rules in one line — it
+  // follows the record, and an assignment holds only until the record next moves.
+  let statusValue = $derived(task.status);
 
   // Ticking the *last* open to-do offers to finish the task (the to-dos and the status should
   // not drift apart silently). If finishing is gated on a closing contact moment (#157 — the
   // task's own flag, or the terminal status's), the prompt says so instead of offering a move
   // that the API would refuse.
   let showFinishPrompt = $state(false);
+  // How it opened, because the two paths are asking different questions: "every to-do is
+  // ticked, shall we finish?" versus "you picked a finished status, shall we?".
+  let finishReason = $state<"checklist" | "status">("checklist");
   // `openItemCount` counts the rows the *screen* holds (`dndItems`, declared below) rather than
   // the ones the load returned: a tick is optimistic now, so the record is a round trip behind
   // the checkbox and counting it would arm the finish prompt one tick late.
   const finishStatus = $derived(statuses.find((s) => s.is_terminal) ?? null);
-  const finishNeedsMoment = $derived(
-    (task.requires_interaction || (finishStatus?.requires_interaction ?? false)) &&
-      !task.closing_interaction_id,
+  // Which finished status the confirm will post. The checklist path has no opinion and takes
+  // the first one; the status select carries the one the user actually picked, or the prompt
+  // would quietly move the task somewhere else.
+  let finishTargetKey = $state("");
+  const finishTarget = $derived(
+    statuses.find((s) => s.key === finishTargetKey && s.is_terminal) ?? finishStatus,
   );
+  const needsClosingMoment = (target: { requires_interaction?: boolean } | null | undefined) =>
+    (task.requires_interaction || (target?.requires_interaction ?? false)) &&
+    !task.closing_interaction_id;
+  const finishNeedsMoment = $derived(needsClosingMoment(finishTarget));
+
+  // --- "Ook de uren registreren" (#314) ------------------------------------------------- //
+  // Finishing a task and recording the hours it took are one act, so they are one form and one
+  // request. Nothing here costs the page load a thing: every source the suggestion draws on is
+  // already on `data` (the task's own budget, its planned blocks), which is the whole reason
+  // this is a small dedicated fieldset rather than a mounted `EntryForm` — that one needs the
+  // companies/projects/tasks/members payload the /time layout fetches, and pulling it onto
+  // every task page to serve one occasional dialog is a cost nobody would get back.
+  //
+  // The offer is skipped entirely where it could not lead anywhere. A dialog that appears on
+  // every single tick and can only be dismissed is how this feature would die.
+  const entitledModules = $derived(page.data.theme?.entitledModules ?? []);
+  const canLogHours = $derived(
+    !isPortal &&
+      can(page.data.user, "time.entry.write") &&
+      enabledModules.includes("time") &&
+      // A lapsed licence makes `time` read-only (#137): hidden rather than locked, because a
+      // padlock inside a confirm dialog is noise on a screen that is not about buying anything.
+      entitledModules.includes("time"),
+  );
+  const offerLogTime = $derived(
+    canLogHours &&
+      // Already at or over budget: the hours are evidently being kept somewhere, and a prompt
+      // that argues with a full bar is worse than no prompt.
+      !(task.allocated_minutes != null && task.logged_minutes >= task.allocated_minutes),
+  );
+
+  let logTime = $state(false);
+  let logDate = $state("");
+  let logStart = $state("");
+  let logEnd = $state("");
+  let logDescription = $state("");
+  let logScheduleId = $state("");
+  const logMinutes = $derived(spanMinutes(logStart, logEnd));
+
+  /** "HH:MM" → minutes past midnight, or null when it is not a full time yet. */
+  function clockMinutes(value: string): number | null {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(value);
+    if (!m) return null;
+    const minutes = Number(m[1]) * 60 + Number(m[2]);
+    return minutes >= 0 && minutes <= 24 * 60 ? minutes : null;
+  }
+
+  function clock(minutes: number): string {
+    return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  }
+
+  /** What the entry will be worth, so the dialog shows the number before it stores it. */
+  function spanMinutes(start: string, end: string): number | null {
+    const from = clockMinutes(start);
+    const to = clockMinutes(end);
+    if (from == null || to == null) return null;
+    // The API rolls an end at or before the start forward a day, like every other entry path.
+    return to > from ? to - from : 24 * 60 - from + to;
+  }
+
+  /**
+   * Open the finish prompt, with the hours it can suggest for free (#314).
+   *
+   * In order: an unlogged block of mine whose time has passed (#188 — the hours are already
+   * agreed, so the box is ticked and the block travels along to be marked logged); otherwise
+   * the unspent part of the budget, laid backwards from the last quarter-hour, unticked because
+   * a pre-ticked box on a number nobody agreed writes hours nobody agreed to; otherwise blank.
+   *
+   * Computed here rather than in a `$derived` on purpose: "has this block passed?" reads the
+   * clock, and a clock read during SSR is a different answer from the same read after hydration.
+   */
+  function openFinishPrompt(reason: "checklist" | "status", statusKey?: string) {
+    finishReason = reason;
+    finishTargetKey = statusKey ?? finishStatus?.key ?? "";
+    logScheduleId = "";
+    logTime = false;
+    logDescription = task.title;
+    const now = new Date();
+    const today = localDayTime(now.toISOString());
+    logDate = today.day;
+    logStart = "";
+    logEnd = "";
+    if (!offerLogTime) {
+      showFinishPrompt = true;
+      return;
+    }
+    const block = (data.schedules ?? [])
+      .filter(
+        (b) =>
+          b.user_id === userId && !b.time_entry_id && new Date(b.ends_at).getTime() < now.getTime(),
+      )
+      .sort((a, b) => b.starts_at.localeCompare(a.starts_at))[0];
+    if (block) {
+      const from = localDayTime(block.starts_at);
+      const to = localDayTime(block.ends_at);
+      logDate = from.day;
+      logStart = from.time;
+      logEnd = to.time;
+      logScheduleId = block.id;
+      logTime = true;
+    } else if (task.allocated_minutes != null && task.allocated_minutes > task.logged_minutes) {
+      const nowMinutes = clockMinutes(today.time) ?? 0;
+      const end = Math.floor(nowMinutes / 15) * 15;
+      // Clamped at midnight rather than wrapped: an overnight span is a real thing the API
+      // supports and never what "the rest of the budget" means.
+      const start = Math.max(0, end - (task.allocated_minutes - task.logged_minutes));
+      if (end - start >= 1) {
+        logStart = clock(start);
+        logEnd = clock(end);
+      }
+    }
+    showFinishPrompt = true;
+  }
+
+  /**
+   * Moving the status by hand into a finished state is the *other* way a task gets finished —
+   * and probably the commoner one — so it gets the same offer (#314).
+   *
+   * It opens the prompt only when there is actually something to offer. A confirm dialog whose
+   * only content is a button that repeats what the user just did is friction, and this select
+   * has always been a one-click control; so where the hours cannot be logged anyway (no
+   * permission, module off, budget already met) it submits exactly as it did before.
+   */
+  function onStatusPicked(event: Event & { currentTarget: HTMLSelectElement }) {
+    const target = statuses.find((s) => s.key === statusValue);
+    if (target?.is_terminal && !isDone && offerLogTime && !needsClosingMoment(target)) {
+      // The prompt is what commits the move, so put the control back to what is still true —
+      // through the binding, never `select.value`: an imperative assignment marks the control
+      // dirty and it then keeps that value through the re-render the confirm triggers, so the
+      // sidebar went on reading the old status until a hard reload.
+      statusValue = task.status;
+      openFinishPrompt("status", target.key);
+      return;
+    }
+    event.currentTarget.form?.requestSubmit();
+  }
   // The @ and # candidate lists are the editor's own business (#237, #290). This page used to
   // fire two mount-time fetches — 200 contacts and 200 tasks — on *every* open, to fill
   // dropdowns most opens never trigger. `RichTextEditor` fetches them on first focus from the
@@ -989,7 +1138,7 @@
                               if (result.type !== "success") item.done = !next;
                               await applyAction(result);
                               if (result.type === "success" && completesLast) {
-                                showFinishPrompt = true;
+                                openFinishPrompt("checklist");
                               }
                             };
                           }}
@@ -1570,10 +1719,11 @@
                 id="status"
                 name="status"
                 class={inputClass}
-                onchange={(e) => e.currentTarget.form?.requestSubmit()}
+                bind:value={statusValue}
+                onchange={onStatusPicked}
               >
                 {#each statuses as s (s.key)}
-                  <option value={s.key} selected={task.status === s.key}>{s.name}</option>
+                  <option value={s.key}>{s.name}</option>
                 {/each}
               </select>
             </form>
@@ -2097,9 +2247,17 @@
   </form>
 </Modal>
 
-<!-- The last to-do was just ticked: offer to move the task along — or, when finishing is gated
-     on a closing contact moment (#157), say exactly that instead of offering a doomed move. -->
-<Modal bind:open={showFinishPrompt} title={t("tasks.finish_prompt.title")}>
+<!-- The task is being finished — the last to-do was ticked, or a finished status was picked by
+     hand. Offer to move it along and, in the same confirm, to record the hours it took (#314);
+     or, when finishing is gated on a closing contact moment (#157), say exactly that instead of
+     offering a doomed move. Never a second modal stacked on the first: finishing stays one
+     confirm, which is the whole reason the hours get written down at all. -->
+<Modal
+  bind:open={showFinishPrompt}
+  title={finishReason === "status"
+    ? t("tasks.finish_prompt.title_status")
+    : t("tasks.finish_prompt.title")}
+>
   {#if finishNeedsMoment}
     <p class="text-sm text-text">{t("tasks.finish_prompt.needs_interaction")}</p>
     <div class="mt-4 flex justify-end">
@@ -2112,31 +2270,82 @@
       </button>
     </div>
   {:else}
-    <p class="text-sm text-text">
-      {t("tasks.finish_prompt.message", { status: finishStatus?.name ?? "" })}
-    </p>
-    <div class="mt-4 flex justify-end gap-2">
-      <button
-        type="button"
-        class="rounded-lg border border-border px-4 py-2 text-sm text-text"
-        onclick={() => (showFinishPrompt = false)}
-      >
-        {t("tasks.finish_prompt.not_now")}
-      </button>
-      <form
-        method="POST"
-        action="?/update"
-        use:enhance={busy.wrap("finish", () => ({ update }) => {
-          showFinishPrompt = false;
-          return update();
-        })}
-      >
-        <input type="hidden" name="status" value={finishStatus?.key ?? ""} />
+    <form
+      method="POST"
+      action="?/update"
+      use:enhance={busy.wrap("finish", () => ({ update }) => {
+        showFinishPrompt = false;
+        // One-shot: the dialog closes and the page reloads the finished task, so there is
+        // nothing left to keep. Stated rather than inherited (docs/UX.md, forms:check).
+        return update({ reset: true });
+      })}
+    >
+      <p class="text-sm text-text">
+        {finishReason === "status"
+          ? t("tasks.finish_prompt.message_status", { status: finishTarget?.name ?? "" })
+          : t("tasks.finish_prompt.message", { status: finishTarget?.name ?? "" })}
+      </p>
+      <input type="hidden" name="status" value={finishTarget?.key ?? ""} />
+
+      {#if offerLogTime}
+        <div class="mt-4 space-y-3 rounded-lg border border-border bg-surface p-3">
+          <label class="flex items-center gap-2 text-sm text-text">
+            <input type="checkbox" name="log_time" value="1" bind:checked={logTime} />
+            {t("tasks.finish_prompt.log_time")}
+          </label>
+          {#if logTime}
+            <input type="hidden" name="log_date" value={logDate} />
+            <input type="hidden" name="log_schedule_id" value={logScheduleId} />
+            <!-- Two columns rather than a wrapping row: this modal is narrower than the
+                 contact-moment form the shape comes from, and the pair belongs side by side —
+                 a start above an end reads as two questions instead of one span. -->
+            <div class="grid grid-cols-2 items-end gap-3">
+              <label class="block min-w-0 text-sm">
+                <span class="mb-1 block font-medium text-text">{t("time.field.start")}</span>
+                <TimeInput name="log_start" bind:value={logStart} required />
+              </label>
+              <label class="block min-w-0 text-sm">
+                <span class="mb-1 flex items-baseline justify-between gap-2 font-medium text-text">
+                  {t("time.field.end")}
+                  <span
+                    class="text-xs font-semibold tabular-nums {logMinutes
+                      ? 'text-brand'
+                      : 'text-text-muted'}"
+                  >
+                    {logMinutes != null
+                      ? t("time.worked", { duration: formatMinutes(logMinutes) })
+                      : "—"}
+                  </span>
+                </span>
+                <TimeInput name="log_end" bind:value={logEnd} required />
+              </label>
+            </div>
+            <label class="block text-sm">
+              <span class="mb-1 block font-medium text-text">{t("time.field.description")}</span>
+              <input name="log_description" bind:value={logDescription} class={inputClass} />
+            </label>
+            <p class="text-xs text-text-muted">
+              {logScheduleId
+                ? t("tasks.finish_prompt.log_time_hint_block", { date: fmtDayMonth(logDate) })
+                : t("tasks.finish_prompt.log_time_hint", { date: fmtDayMonth(logDate) })}
+            </p>
+          {/if}
+        </div>
+      {/if}
+
+      <div class="mt-4 flex justify-end gap-2">
+        <button
+          type="button"
+          class="rounded-lg border border-border px-4 py-2 text-sm text-text"
+          onclick={() => (showFinishPrompt = false)}
+        >
+          {t("tasks.finish_prompt.not_now")}
+        </button>
         <Button loading={busy.is("finish")}>
           {t("tasks.finish_prompt.confirm")}
         </Button>
-      </form>
-    </div>
+      </div>
+    </form>
   {/if}
 </Modal>
 

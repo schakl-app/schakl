@@ -739,3 +739,57 @@ async def test_ticking_a_checklist_item_costs_the_same_however_long_the_list(
         large = await tick(first, done=False)
 
         assert small == large, (small, large)
+
+
+# --- the task card: one open, one fixed budget --------------------------------------------- #
+async def test_task_detail_costs_the_same_however_much_the_card_carries(
+    client_for, count_queries
+) -> None:
+    """``GET /tasks/{id}`` is the most expensive read on the busiest screen, so it is a budget.
+
+    Two properties, and the second is why the number is written down at all. The obvious one:
+    nothing on the card is fetched per row — comments, planned blocks (#188) and the logged-
+    minutes total are each one statement whether the task carries none or a dozen.
+
+    The written-down number is the guard against the *other* way this page gets slower, which is
+    the one that reads as a feature rather than as a regression: someone needs a fact the card
+    does not have yet — a running timer, an unlogged block's window, a budget remainder — and
+    reaches for one more round trip on the way in to serve a dialog most opens never see. #314
+    is exactly that pressure and deliberately paid nothing: everything the finish prompt suggests
+    from is already on this response. A rise here means the next feature did not.
+    """
+    t = await make_tenant("perf-task-detail")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers)
+        task = await _task(c, headers, company_id=company, title="Homepage herzien")
+
+        with count_queries() as bare:
+            assert (await c.get(f"/api/v1/tasks/{task}", headers=headers)).status_code == 200
+        assert len(bare) == 14, bare.statements
+
+        for i in range(5):
+            assert (
+                await c.post(
+                    f"/api/v1/tasks/{task}/comments", json={"body": f"Opmerking {i}"},
+                    headers=headers,
+                )
+            ).status_code == 201
+            assert (
+                await c.post(
+                    "/api/v1/tasks/schedules",
+                    json={
+                        "task_id": task,
+                        "day": "2026-07-20",
+                        "start_time": f"0{i + 1}:00",
+                        "duration_minutes": 60,
+                    },
+                    headers=headers,
+                )
+            ).status_code == 201
+
+        with count_queries() as loaded:
+            detail = await c.get(f"/api/v1/tasks/{task}", headers=headers)
+        assert detail.status_code == 200, detail.text
+        assert len(detail.json()["comments"]) == 5
+        assert len(loaded) == len(bare), (loaded.statements, bare.statements)

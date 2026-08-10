@@ -143,6 +143,25 @@ export const actions: Actions = {
           }
         : null;
     }
+    // "Ook de uren registreren" (#314): the entry rides along on the finish, in one request and
+    // one transaction — a finished task whose hours were lost to a second, failed call is the
+    // exact thing this exists to prevent. Times are the time module's wall-clock-as-UTC
+    // convention on the dialog's own date, like the interaction ride-along (#175/#184).
+    const logDate = String(form.get("log_date") ?? "").trim();
+    const logStart = String(form.get("log_start") ?? "").trim();
+    const logEnd = String(form.get("log_end") ?? "").trim();
+    if (form.get("log_time") === "1" && logDate && logStart && logEnd) {
+      const scheduleId = String(form.get("log_schedule_id") ?? "").trim();
+      body.log_time = {
+        started_at: `${logDate}T${logStart}:00Z`,
+        ended_at: `${logDate}T${logEnd}:00Z`,
+        // Blank falls back to the task's title, server-side — so an MCP or script caller gets
+        // the same row a person would.
+        description: String(form.get("log_description") ?? "").trim() || null,
+        // The planned block these hours confirm (#188), so it stops offering them again.
+        schedule_id: scheduleId || null,
+      };
+    }
     const { error: apiError } = await apiFor(event).PATCH("/api/v1/tasks/{task_id}", {
       params: { path: { task_id: event.params.id } },
       body,
@@ -156,6 +175,7 @@ export const actions: Actions = {
           e.fields?.status ??
           e.fields?.closing_interaction_id ??
           e.fields?.assignee_contact_id ??
+          e.fields?.log_time ??
           e.key,
       });
     }

@@ -80,6 +80,17 @@ collect `data.<key>` and confirm each is produced by its own load or a layout ab
   `scope`, never a pre-fetched list. Where several components on one page want the same browser-
   side lookup, cache the *promise* at module scope so they share one flight (safe in the browser,
   in one user's tab — the same cache on the server would be a tenant-isolation bug).
+- **An occasional dialog suggests from what the page already has, or it does not suggest.** The
+  finish prompt's "ook de uren registreren" (#314) prefills from an unlogged passed schedule block
+  and from `allocated_minutes − logged_minutes` — both already on `GET /tasks/{id}` — so the
+  feature costs the task page nothing. Every richer source was available and every one of them
+  taxes the way *in* to serve a dialog most opens never see: a mounted `EntryForm` needs the
+  companies/projects/tasks/members payload the `/time` layout fetches, the running-timer case is
+  its own call (fire it when the modal opens, or leave it to a follow-up), and
+  `POST /ai/time/reconstruct` is tens of seconds of model round trip. When a screen's most
+  expensive read is where the next feature will want one more fact, write the number down:
+  `test_task_detail_costs_the_same_however_much_the_card_carries` pins it, so the argument has to
+  be made rather than merged.
 
 ## A gesture repeated all day does not reload the page
 
