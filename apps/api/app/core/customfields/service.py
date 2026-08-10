@@ -43,11 +43,33 @@ class CustomFieldsService:
     async def definitions(
         self, entity_type: str, *, include_inactive: bool = False
     ) -> Sequence[CustomFieldDefinition]:
+        grouped = await self.definitions_for(
+            [entity_type], include_inactive=include_inactive
+        )
+        return grouped[entity_type]
+
+    async def definitions_for(
+        self, entity_types: Sequence[str], *, include_inactive: bool = False
+    ) -> dict[str, list[CustomFieldDefinition]]:
+        """The definitions of **several** entity types, in one read.
+
+        The tenant's whole definition set is one query either way — this method exists because
+        the single-type call filters it in Python, so asking about five types cost five identical
+        full reads and five round-trips. A section layout that opens quick-creates for four other
+        entities needs exactly that (docs/PERFORMANCE.md): the websites layout asked five times.
+
+        Every requested type is a key in the result, empty list included, so a caller never has
+        to distinguish "no definitions" from "did not come back".
+        """
+        wanted = list(dict.fromkeys(entity_types))
         items = await self.repo.list(limit=500, offset=0, order_by=CustomFieldDefinition.position)
-        defs = [d for d in items if d.entity_type == entity_type]
-        if not include_inactive:
-            defs = [d for d in defs if d.active]
-        return sorted(defs, key=lambda d: (d.position, d.key))
+        grouped: dict[str, list[CustomFieldDefinition]] = {t: [] for t in wanted}
+        for d in items:
+            if d.entity_type in grouped and (include_inactive or d.active):
+                grouped[d.entity_type].append(d)
+        for defs in grouped.values():
+            defs.sort(key=lambda d: (d.position, d.key))
+        return grouped
 
     async def get_definition(self, definition_id: uuid.UUID) -> CustomFieldDefinition:
         return await self.repo.get_or_404(definition_id)

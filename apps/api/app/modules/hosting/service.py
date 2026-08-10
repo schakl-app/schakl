@@ -54,6 +54,8 @@ class HostingService:
         company_id: uuid.UUID | None = None,
         q: str | None = None,
         sort: str | None = None,
+        count: bool = True,
+        meta: bool = True,
     ) -> tuple[Sequence[Hosting], int]:
         conditions = []
         if company_id is not None:
@@ -66,13 +68,22 @@ class HostingService:
         stmt = stmt.limit(limit).offset(offset)
         items = list((await self.ctx.session.execute(stmt)).scalars().all())
 
-        total = int(
-            await self.ctx.session.scalar(
-                self.repo.scoped_count_select().where(*conditions)
+        if count:
+            total = int(
+                await self.ctx.session.scalar(
+                    self.repo.scoped_count_select().where(*conditions)
+                )
+                or 0
             )
-            or 0
-        )
-        await self._attach(items)
+        else:
+            total = len(items)
+        if meta:
+            await self._attach(items)
+        else:
+            for h in items:
+                h.company_name = None  # type: ignore[attr-defined]
+                h.provider_name = None  # type: ignore[attr-defined]
+                h.contact = None  # type: ignore[attr-defined]
         return items, total
 
     async def get(self, hosting_id: uuid.UUID) -> Hosting:

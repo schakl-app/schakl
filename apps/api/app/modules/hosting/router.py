@@ -31,10 +31,24 @@ async def list_hosting(
     sort: str | None = Query(
         None, description="name | ip_address | created_at | updated_at, '-' desc"
     ),
+    count: bool = Query(True, description="Compute total; set false for name-only lookups"),
+    meta: bool = Query(
+        True,
+        description=(
+            "Resolve the display fields a picker discards — the client's and provider's names"
+            " and the contact's label."
+        ),
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[HostingRead]:
     items, total = await HostingService(ctx).list(
-        limit=limit, offset=offset, company_id=company_id, q=q, sort=sort
+        limit=limit,
+        offset=offset,
+        company_id=company_id,
+        q=q,
+        sort=sort,
+        count=count,
+        meta=meta,
     )
     return Page(
         items=[HostingRead.model_validate(h) for h in items],

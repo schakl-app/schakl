@@ -33,7 +33,7 @@ const STATUS_NAMESPACE: Record<string, string> = {
 };
 
 /** FK-to-a-record fields: show the label, never the raw id behind it. */
-const LABEL_ONLY_FIELDS = new Set(["responsible_user_id", "company_id"]);
+const LABEL_ONLY_FIELDS = new Set(["responsible_user_id", "company_id", "hosting_id"]);
 
 /** Date-only fields, printed as a European day. */
 const DATE_FIELDS = new Set(["start_date", "end_date", "due_date"]);

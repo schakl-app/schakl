@@ -1137,3 +1137,49 @@ async def test_horizon_reaches_references_into_another_module(client_for) -> Non
 
         row = await session.get(Interaction, uuid.UUID(mentioned.json()["id"]))
         assert row.mentioned_contact_ids == [made["a"]["contact"]["id"]]
+
+
+async def test_available_domains_picker_stays_inside_the_horizon(client_for) -> None:
+    """The website create picker is a hand-built cross-client read, so it carries the horizon.
+
+    ``GET /websites/available-domains`` answers "which domains may still be given a website" with
+    a ``NOT EXISTS`` over the ``domains`` **bare table** (§6 — the bridge this module already
+    uses). That is failure mode 3 of §15: the read leaves the repository's path, so nothing else
+    would narrow it, and a restricted manager would have been offered every client's free
+    domains — then created a website they could not see.
+
+    ``role="admin"`` because a plain member cannot write a website at all, and the route declares
+    the write permission: a leak would otherwise hide behind a 403.
+    """
+    t, member, membership, owner_h, member_h, a, b, group = await _setup(
+        client_for, "horiz-avail", role="admin"
+    )
+
+    async with client_for(t.host) as c:
+        for name, company in (("alpha.nl", a), ("beta.nl", b)):
+            res = await c.post(
+                "/api/v1/domains",
+                json={"name": name, "company_id": company["id"]},
+                headers=owner_h,
+            )
+            assert res.status_code == 201, res.text
+
+        # Unassigned, the member sees both — the horizon is empty, not closed.
+        res = await c.get("/api/v1/websites/available-domains", headers=member_h)
+        assert res.status_code == 200, res.text
+        assert sorted(d["name"] for d in res.json()) == ["alpha.nl", "beta.nl"], res.text
+
+        assert (
+            await c.put(
+                f"/api/v1/companies/groups/{group['id']}/memberships",
+                json={"membership_ids": [str(membership.id)]},
+                headers=owner_h,
+            )
+        ).status_code == 204
+
+        res = await c.get("/api/v1/websites/available-domains", headers=member_h)
+        assert res.status_code == 200, res.text
+        assert [d["name"] for d in res.json()] == ["alpha.nl"], res.text
+        # The owner is unaffected — a horizon narrows a membership, never the org.
+        res = await c.get("/api/v1/websites/available-domains", headers=owner_h)
+        assert sorted(d["name"] for d in res.json()) == ["alpha.nl", "beta.nl"], res.text

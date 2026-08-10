@@ -85,6 +85,11 @@ function entityLabel(data: Record<string, unknown>): string | null {
     if (full) return full;
   }
   if (d.task && typeof d.task.title === "string" && d.task.title) return d.task.title;
+  // A website has no name of its own — the host it answers on is the name, resolved exactly as
+  // its page title and its list row do (`root` decides whether the `www.` prefix is part of it).
+  if (d.website && typeof d.website.domain_name === "string" && d.website.domain_name) {
+    return d.website.root ? d.website.domain_name : `www.${d.website.domain_name}`;
+  }
   if (d.invoice) {
     return (d.invoice.number as string) || t("invoicing.status.draft");
   }

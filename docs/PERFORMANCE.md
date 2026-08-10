@@ -30,6 +30,12 @@ Every section does this: companies, projects, contacts, interactions, subscripti
 websites, invoices, quotes, tasks, time, overview. Websites was the extreme case — twelve calls,
 of which the URL changed exactly one, so sorting a column refetched eleven pickers.
 
+**Moving a call into the layout bounds how often it runs; it does not make it cheap.** Websites
+still paid all twelve on every entry to the section and on every detail navigation inside it.
+Seven now: the two 200-row picker reads collapsed into one `NOT EXISTS` (below), the five
+definition calls into one batch, and what is left passes `count=false`/`meta=false`. Once a
+section layout is in place, the next question is what each of its calls still costs.
+
 Three rules that make it safe:
 
 - **A layout load never `await`s `parent()` before starting its own flight.** Do that and the
@@ -134,6 +140,14 @@ discarded**, and **add one** when you find a list shipping something its screen 
   Pass it whenever you only need id/title/status/dates (grouping, pickers, the timesheet
   lookups). **Not** gated on column visibility: `TaskRow` draws those badges in its primary
   cell whatever the columns say, so a column-driven gate would silently remove them on mobile.
+- **`meta=false`** (domains, websites, hosting) — skip the display resolution a picker discards:
+  the client and provider *names*, the party labels, the parent domain's name, and on domains
+  the register facts and the current TLD price. Six statements on the domains list, all of it
+  thrown away to render `{id, name}`. The `_blank_display_fields` branch writes the empty values
+  out by hand rather than leaning on Pydantic's field defaults, because "the attribute is absent
+  so the default applies" is a coincidence a later `model_config` change would turn into a
+  validation error — and because domains' billing pair has no empty value, so it takes the
+  *local* answer (what the row says about itself, no register consulted).
 - **`with_body`** (interactions, default **off**) — a list row's `body_text` is a full e-mail
   body. The key stays in the payload as `null`; the detail view fetches the row it opens.
 - **`lines=false`** (invoices, quotes) — the index draws number, client, date, status and total,
@@ -142,6 +156,34 @@ discarded**, and **add one** when you find a list shipping something its screen 
 Two rules behind those: **don't fetch heavy aggregates to render a label**, and **don't request
 200 rows to show 5** — sort and cut server-side instead (`/tasks/dashboard-groups`,
 `/projects/dashboard-budgets`).
+
+## A picker's question is one query, never a subtraction
+
+The website create picker offers the domains that do not have a website yet. That was answered in
+the browser by fetching *every domain* (200 rows, fully resolved) and *every website* (200 rows,
+fully resolved) and intersecting the two — the section's two most expensive reads, both paying
+for display resolution to produce `{id, name}`.
+
+It was also **wrong**, and in the way a cap always goes wrong: past 200 websites, a domain whose
+website fell outside that page came back offered as free, and picking it 409'd on save. The cap
+was silently deciding *what counts as taken* rather than bounding what is offered.
+
+`GET /websites/available-domains` is one `NOT EXISTS`. Two rules generalise:
+
+- **When a picker's vocabulary is a predicate over rows, express the predicate in SQL.** Two
+  bounded lists and a `Set.has` is not the same question, and the difference only shows up at a
+  size no test seeds.
+- **A read that leaves the repository's path carries the horizon itself** (CLAUDE.md §15, failure
+  mode 3). `domains` is a bare table to the `websites` module, so nothing else would have narrowed
+  it and a restricted manager would have been offered every client's free domains. Pinned by
+  `test_available_domains_picker_stays_inside_the_horizon`, which fails when the clause is removed.
+
+Its sibling, one layer up: **asking a batch question one item at a time.** The custom-field
+definitions endpoint filters the tenant's whole definition set in Python, so the websites section
+layout spent five of its twelve round-trips re-reading the same rows for five entity types.
+`GET /custom-fields/definitions/batch` takes repeated `entity_type` and answers in one read,
+keyed by type — every requested type present, empty list included, so a caller never has to tell
+"no definitions" from "did not come back".
 
 **A payload the form posts back is not optional.** Dropping `body_text` from interaction list
 rows meant the edit form had to fetch the row *before* opening, or a save would have written an

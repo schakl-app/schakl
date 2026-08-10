@@ -1784,6 +1784,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/custom-fields/definitions/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Definitions Batch
+         * @description Several entity types' definitions in one call, keyed by entity type.
+         *
+         *     A section layout draws its own custom-field columns *and* opens quick-create dialogs for the
+         *     entities its pickers create (a client, a contact, a hosting account), each of which renders
+         *     that entity's definitions. Asking one type at a time made the websites layout spend five of
+         *     its twelve round-trips here, and each one re-read the tenant's whole definition set to filter
+         *     it in Python (docs/PERFORMANCE.md). One call, one read.
+         *
+         *     Literal segment, so declared before ``/definitions/{definition_id}``.
+         */
+        get: operations["list_definitions_batch_api_v1_custom_fields_definitions_batch_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/custom-fields/definitions/{definition_id}": {
         parameters: {
             query?: never;
@@ -9231,6 +9259,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/websites/available-domains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Available Domains
+         * @description The domains that do not have a website yet — the create picker's options.
+         *
+         *     Declares the **write** permission, not the read one: this is the vocabulary of a form only a
+         *     writer can submit, so a read-only member's section layout skips the call entirely rather than
+         *     fetching options for a dialog they can never open.
+         *
+         *     Literal segment, so declared before ``/{website_id}``.
+         */
+        get: operations["list_available_domains_api_v1_websites_available_domains_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/websites/{website_id}": {
         parameters: {
             query?: never;
@@ -9980,6 +10034,28 @@ export interface components {
             display_name: string;
             /** External Id */
             external_id: string;
+        };
+        /**
+         * AvailableDomain
+         * @description A domain with no website yet — the create picker's option, and nothing more.
+         *
+         *     Deliberately not a ``DomainRead`` subset: a picker that borrows another module's read schema
+         *     inherits every field somebody adds to it, and this one crosses a module boundary already
+         *     (§6 — a bare-table bridge, not an import).
+         */
+        AvailableDomain: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
         };
         /** BacklogSourceTotal */
         BacklogSourceTotal: {
@@ -27452,6 +27528,40 @@ export interface operations {
             };
         };
     };
+    list_definitions_batch_api_v1_custom_fields_definitions_batch_get: {
+        parameters: {
+            query: {
+                entity_type: string[];
+                include_inactive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: components["schemas"]["CustomFieldDefinitionRead"][];
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_definition_api_v1_custom_fields_definitions__definition_id__delete: {
         parameters: {
             query?: never;
@@ -27655,6 +27765,10 @@ export interface operations {
                 status?: string | null;
                 registrar_provider_id?: string | null;
                 dns_provider_id?: string | null;
+                /** @description Compute total; set false for name-only lookups */
+                count?: boolean;
+                /** @description Resolve the display fields a picker discards — client/provider names, party labels, the register facts and the resolved price. False leaves them at their empty values. */
+                meta?: boolean;
             };
             header?: never;
             path?: never;
@@ -28693,6 +28807,10 @@ export interface operations {
                 q?: string | null;
                 /** @description name | ip_address | created_at | updated_at, '-' desc */
                 sort?: string | null;
+                /** @description Compute total; set false for name-only lookups */
+                count?: boolean;
+                /** @description Resolve the display fields a picker discards — the client's and provider's names and the contact's label. */
+                meta?: boolean;
             };
             header?: never;
             path?: never;
@@ -43146,6 +43264,10 @@ export interface operations {
                 uptime_enabled?: boolean | null;
                 /** @description name | company | hosting | uptime | created_at | updated_at, '-' desc */
                 sort?: string | null;
+                /** @description Compute total; set false for name-only lookups */
+                count?: boolean;
+                /** @description Resolve the display fields a picker discards — the parent domain's name and client, the hosting account's name and the technical owner's label. */
+                meta?: boolean;
             };
             header?: never;
             path?: never;
@@ -43193,6 +43315,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WebsiteRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_available_domains_api_v1_websites_available_domains_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailableDomain"][];
                 };
             };
             /** @description Validation Error */

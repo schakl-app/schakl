@@ -54,7 +54,14 @@ async def _domains_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
                 "name": d.name,
                 "status": d.status,
                 "email_enabled": d.email_enabled,
-                "has_website": d.id in website_by_domain,
+                # The website's **id**, not just whether there is one: it was already resolved
+                # here (the map below is keyed by domain and valued by website), and a website
+                # has had its own detail page since it stopped sharing the domain's. Emitting
+                # the boolean meant the panel could only link at the domain and let the reader
+                # find the site from there.
+                "website_id": (
+                    str(website_by_domain[d.id]) if d.id in website_by_domain else None
+                ),
                 # Renewal + resolved price (#250): what this domain costs and when it next
                 # bills — the numbers the client conversation is about.
                 "next_invoice_date": (

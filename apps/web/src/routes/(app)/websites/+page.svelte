@@ -1,8 +1,8 @@
 <script lang="ts">
   /**
    * Websites overview (owner request): every client website in one list — a website is a
-   * 0/1 child of a domain, so creating one here is connecting it to a domain. The detail
-   * surface stays the domain page (#94); rows link through to it.
+   * 0/1 child of a domain, so creating one here is connecting it to a domain. Rows link to the
+   * website's **own** detail page, which links back to the domain: two records, two pages.
    */
   import { Pencil, Trash2 } from "@lucide/svelte";
 
@@ -92,14 +92,12 @@
     qcProviderOpen = true;
   }
 
-  // A domain carries at most one website, so the picker offers only unclaimed domains. The
-  // claimed set comes from the layout load, not from `data.websites`: those rows are a filtered
-  // slice, and a picker whose vocabulary changed with the list's filters would start offering
-  // domains that 409 on save (see the layout's own note).
-  const takenDomainIds = $derived(new Set(data.claimedDomainIds));
+  // A domain carries at most one website, so the picker offers only unclaimed domains — which
+  // the API now answers directly (`GET /websites/available-domains`). Subtracting a claimed set
+  // here was both the section's two heaviest reads and wrong past 200 websites, since a domain
+  // whose website fell outside that page came back offered as free and 409'd on save.
   const domainItems = $derived(
-    data.domains
-      .filter((d) => !takenDomainIds.has(d.id))
+    data.availableDomains
       .filter((d) => !initialCompanyId || d.company_id === initialCompanyId)
       .map((d) => ({ value: d.id, label: d.name })),
   );
@@ -128,14 +126,14 @@
   });
   const ownerCompanyName = $derived.by(() => {
     if (editing) return editing.company_name ?? "";
-    const domain = data.domains.find((d) => d.id === selectedDomainId);
+    const domain = data.availableDomains.find((d) => d.id === selectedDomainId);
     return data.companies.find((c) => c.id === domain?.company_id)?.name ?? "";
   });
   // The website's own client (#247): a hosting account quick-created from this form belongs to
   // the same client — the edited site's, else the picked domain's, else the deep-link filter.
   const ownerCompanyId = $derived.by(() => {
     if (editing) return editing.company_id ?? "";
-    const domain = data.domains.find((d) => d.id === selectedDomainId);
+    const domain = data.availableDomains.find((d) => d.id === selectedDomainId);
     return domain?.company_id ?? initialCompanyId ?? "";
   });
 
@@ -250,11 +248,7 @@
 </script>
 
 {#snippet nameCell(site: Website)}
-  <!-- The detail surface stays the domain page (#94); the row links through to it. -->
-  <a
-    href={`/domains/${site.domain_id}#website`}
-    class="block truncate font-medium text-text hover:text-brand"
-  >
+  <a href={`/websites/${site.id}`} class="block truncate font-medium text-text hover:text-brand">
     {site.root ? site.domain_name : `www.${site.domain_name}`}
   </a>
 {/snippet}
@@ -310,7 +304,7 @@
 {#snippet mobileRow(site: Website)}
   <!-- A phone gets the concept's row, not a sideways-scrolling grid (docs/UX.md). -->
   <div class="flex items-center gap-3">
-    <a href={`/domains/${site.domain_id}#website`} class="min-w-0 flex-1">
+    <a href={`/websites/${site.id}`} class="min-w-0 flex-1">
       <span class="block truncate font-medium text-text">
         {site.root ? site.domain_name : `www.${site.domain_name}`}
       </span>
@@ -402,7 +396,7 @@
   widths={table.widths}
   definitions={data.definitions}
   locale={data.locale}
-  rowHref={(site) => `/domains/${site.domain_id}#website`}
+  rowHref={(site) => `/websites/${site.id}`}
   actions={canWrite || canDelete ? rowActions : undefined}
   {mobileRow}
   empty={emptyState}

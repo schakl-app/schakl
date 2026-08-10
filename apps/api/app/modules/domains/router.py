@@ -58,6 +58,14 @@ async def list_domains(
     ),
     registrar_provider_id: uuid.UUID | None = Query(None),
     dns_provider_id: uuid.UUID | None = Query(None),
+    count: bool = Query(True, description="Compute total; set false for name-only lookups"),
+    meta: bool = Query(
+        True,
+        description=(
+            "Resolve the display fields a picker discards — client/provider names, party labels,"
+            " the register facts and the resolved price. False leaves them at their empty values."
+        ),
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[DomainRead]:
     items, total = await DomainService(ctx).list(
@@ -70,6 +78,8 @@ async def list_domains(
         status=status,
         registrar_provider_id=registrar_provider_id,
         dns_provider_id=dns_provider_id,
+        count=count,
+        meta=meta,
     )
     return Page(
         items=[DomainRead.model_validate(d) for d in items],

@@ -793,3 +793,118 @@ async def test_task_detail_costs_the_same_however_much_the_card_carries(
         assert detail.status_code == 200, detail.text
         assert len(detail.json()["comments"]) == 5
         assert len(loaded) == len(bare), (loaded.statements, bare.statements)
+
+
+# --- the websites/domains section layout: pickers pay picker prices (#290, extended) --------- #
+async def test_available_domains_is_one_statement_whatever_the_register_holds(
+    client_for, count_queries
+) -> None:
+    """The create picker's vocabulary is one query, and it does not grow with the portfolio.
+
+    It used to be a subtraction in the browser: every domain (200 rows, fully resolved) minus
+    every website (200 rows, fully resolved). Both halves ran their service's whole display
+    attach — register facts, TLD prices, party labels, provider and hosting names — to produce a
+    list of ``{id, name}``, and the subtraction was *wrong* past 200 websites, offering a taken
+    domain that then 409'd on save.
+
+    Pinned as a shape because the JSON is identical either way, which is this file's whole point.
+    """
+    t = await make_tenant("perf-available-domains")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers)
+
+        async def add_domain(i: int, *, with_site: bool) -> None:
+            domain = (
+                await c.post(
+                    "/api/v1/domains",
+                    json={"name": f"free-{i}.nl", "company_id": company},
+                    headers=headers,
+                )
+            ).json()["id"]
+            if with_site:
+                created = await c.post(
+                    "/api/v1/websites", json={"domain_id": domain}, headers=headers
+                )
+                assert created.status_code == 201, created.text
+
+        async def measure(expected_free: int) -> int:
+            with count_queries() as counter:
+                res = await c.get("/api/v1/websites/available-domains", headers=headers)
+            assert res.status_code == 200, res.text
+            assert len(res.json()) == expected_free, res.text
+            # Never the two list reads this replaced, and never their attach work.
+            flat = [" ".join(s.split()).lower() for s in counter.statements]
+            assert not [s for s in flat if "domain_tld_prices" in s], flat
+            return len(counter)
+
+        await add_domain(1, with_site=False)
+        await add_domain(2, with_site=True)
+        small = await measure(1)
+
+        for i in range(3, 9):
+            await add_domain(i, with_site=i % 2 == 0)
+        large = await measure(4)
+
+        assert small == large, (small, large)
+
+
+async def test_definitions_batch_reads_the_set_once_for_every_type(
+    client_for, count_queries
+) -> None:
+    """Five entity types, one read — not five reads of the same set.
+
+    ``definitions()`` loads the tenant's whole definition set and filters it in Python, so asking
+    per entity type cost a full read *and* a round-trip each. The websites section layout asked
+    five times on every entry to the section.
+    """
+    t = await make_tenant("perf-defs-batch")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        types = ["website", "hosting", "domain", "company", "contact"]
+        query = "&".join(f"entity_type={x}" for x in types)
+        with count_queries() as counter:
+            res = await c.get(f"/api/v1/custom-fields/definitions/batch?{query}", headers=headers)
+        assert res.status_code == 200, res.text
+        # Every requested type is a key, empty list included — a caller never has to tell
+        # "no definitions" from "did not come back".
+        assert sorted(res.json()) == sorted(types), res.text
+        assert len(counter.matching("from custom_field_definitions")) == 1, counter.statements
+
+
+async def test_meta_false_skips_the_display_attach_a_picker_discards(
+    client_for, count_queries
+) -> None:
+    """``meta=false`` (+ ``count=false``) is strictly fewer statements, and the ids still answer.
+
+    The rows a picker draws are ``{id, name}``; resolving the client name, the provider names,
+    the party labels, the register facts and the current TLD price is work it throws away.
+    """
+    t = await make_tenant("perf-domains-meta")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers)
+        for i in range(3):
+            res = await c.post(
+                "/api/v1/domains",
+                json={"name": f"meta-{i}.nl", "company_id": company},
+                headers=headers,
+            )
+            assert res.status_code == 201, res.text
+
+        with count_queries() as full:
+            res = await c.get("/api/v1/domains", headers=headers)
+        assert res.status_code == 200, res.text
+        assert res.json()["items"][0]["company_name"] == "Acme"
+
+        with count_queries() as slim:
+            res = await c.get("/api/v1/domains?meta=false&count=false", headers=headers)
+        assert res.status_code == 200, res.text
+        body = res.json()
+        # The rows are still there and still identify themselves — only the resolution is gone.
+        assert len(body["items"]) == 3, body
+        assert body["total"] == 3, body  # `count=false` reports the page length
+        assert all(d["name"] and d["company_id"] for d in body["items"]), body
+        assert all(d["company_name"] == "" for d in body["items"]), body
+        assert len(slim) < len(full), (len(slim), len(full))
+        assert slim.matching("from domain_tld_prices") == [], slim.statements

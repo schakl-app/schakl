@@ -347,36 +347,45 @@
 <section id="website" class="mt-4 rounded-xl border border-border bg-surface-raised p-5">
   <div class="mb-4 flex items-center justify-between">
     <h2 class="text-sm font-semibold text-text">{t("websites.title")}</h2>
-    {#if website && !editingWebsite && (canWriteWebsite || canDeleteWebsite)}
-      <ActionsMenu
-        items={[
-          ...(canWriteWebsite
-            ? [
-                {
-                  label: t("common.edit"),
-                  onclick: () => {
-                    websiteHost = website?.root ? "root" : "www";
-                    editingWebsite = true;
+    <div class="flex items-center gap-3">
+      {#if website && !editingWebsite}
+        <!-- The site has its own page now; this section stays because "does this domain run a
+             site" belongs on the domain, but the record itself lives one click away. -->
+        <a href={`/websites/${website.id}`} class="text-sm text-brand hover:underline">
+          {t("websites.open")}
+        </a>
+      {/if}
+      {#if website && !editingWebsite && (canWriteWebsite || canDeleteWebsite)}
+        <ActionsMenu
+          items={[
+            ...(canWriteWebsite
+              ? [
+                  {
+                    label: t("common.edit"),
+                    onclick: () => {
+                      websiteHost = website?.root ? "root" : "www";
+                      editingWebsite = true;
+                    },
                   },
-                },
-              ]
-            : []),
-          ...(canDeleteWebsite
-            ? [
-                {
-                  label: t("common.delete"),
-                  icon: Trash2,
-                  danger: true,
-                  onclick: () =>
-                    (
-                      document.getElementById("delete-website-form") as HTMLFormElement | null
-                    )?.requestSubmit(),
-                },
-              ]
-            : []),
-        ]}
-      />
-    {/if}
+                ]
+              : []),
+            ...(canDeleteWebsite
+              ? [
+                  {
+                    label: t("common.delete"),
+                    icon: Trash2,
+                    danger: true,
+                    onclick: () =>
+                      (
+                        document.getElementById("delete-website-form") as HTMLFormElement | null
+                      )?.requestSubmit(),
+                  },
+                ]
+              : []),
+          ]}
+        />
+      {/if}
+    </div>
   </div>
 
   {#if website && !editingWebsite}
