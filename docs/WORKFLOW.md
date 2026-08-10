@@ -65,6 +65,29 @@ git config core.hooksPath .githooks
 Fix a failure with `(cd apps/api && uv run ruff check --fix app tests)`, then re-stage. Bypass
 only in a genuine emergency with `git commit --no-verify` (CI still enforces it).
 
+## The API suite runs sharded in CI
+
+`.github/workflows/ci.yml` runs the API tests as four parallel jobs, each on its own runner with
+its own Postgres and Redis. Every commit still runs every test — the split is only about wall
+clock, which went from ~32 minutes to under ten. Locally, `uv run pytest` is unchanged.
+
+The shards are balanced by **recorded duration**, not test count: a WeasyPrint render costs
+orders of magnitude more than a schema assertion, so an equal-count split would leave one shard
+running long after the other three finished. The timings live in `apps/api/.test_durations` and
+are committed.
+
+A test that isn't in that file is assigned the average and still runs — durations decide *which*
+shard a test lands in, never *whether* it runs — so adding tests never needs a matching durations
+update. Regenerate only when the shards visibly drift apart (one finishing minutes before the
+rest), against a database you don't mind truncating:
+
+```bash
+cd apps/api && uv run pytest --store-durations --durations-path .test_durations
+```
+
+Changing the shard count means editing two places that YAML cannot keep in step for you: the
+`matrix.shard` list and the `--splits` argument beside it.
+
 ## Commits
 
 Conventional, small, scoped: `feat(time): add weekly timesheet grid`,

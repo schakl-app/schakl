@@ -133,11 +133,52 @@ jobs:
           node-version: 22
       - run: node scripts/license-check.mjs
 
-  api:
-    name: API (ruff + migrations + pytest)
+  # Ruff is its own job, ahead of the tests and without a database, because it is the step that
+  # actually fails: a red CI here is nearly always lint drift, and behind the service containers
+  # and the migrations that answer took ten minutes to arrive. Now it lands in about two.
+  api-lint:
+    name: API (ruff)
     needs: changes
     if: ${{ needs.changes.outputs.api == 'true' || needs.changes.outputs.run_all == 'true' }}
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.27"
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+      - name: Install dependencies
+        working-directory: apps/api
+        run: uv sync --frozen
+      - name: Ruff
+        working-directory: apps/api
+        run: uv run ruff check app tests
+
+  # The suite is ~170 files against a real Postgres and took 32 minutes as one serial run — long
+  # enough that people stopped waiting for it. It is split four ways instead of thinned out:
+  # every commit still runs every test, on four runners that each get their own Postgres and
+  # Redis, so the shards are isolated by construction rather than by anything in the harness.
+  #
+  # The split is by *recorded duration* (`apps/api/.test_durations`, pytest-split), not by test
+  # count: a WeasyPrint render or a migration guard costs orders of magnitude more than a schema
+  # assertion, and an equal-count split leaves one shard running long after the other three are
+  # idle. A test missing from that file is assigned the average and still runs — durations decide
+  # *which* shard, never *whether*. Regenerate the file when the shards drift apart:
+  # `uv run pytest --store-durations --durations-path .test_durations` (docs/WORKFLOW.md).
+  #
+  # `fail-fast: false` because a shard is not a step: cancelling the other three on the first red
+  # one hides three quarters of what actually broke, which is the whole report you came for.
+  api:
+    name: API tests (${{ matrix.shard }}/4)
+    needs: changes
+    if: ${{ needs.changes.outputs.api == 'true' || needs.changes.outputs.run_all == 'true' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Keep in step with `--splits` below — GitHub exposes no count of its own matrix.
+        shard: [1, 2, 3, 4]
     services:
       postgres:
         image: postgres:16-alpine
@@ -177,18 +218,17 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           version: "0.11.27"
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
       - name: Install dependencies
         working-directory: apps/api
         run: uv sync --frozen
-      - name: Ruff
-        working-directory: apps/api
-        run: uv run ruff check app tests
       - name: Migrations
         working-directory: apps/api
         run: uv run alembic upgrade head
       - name: Tests
         working-directory: apps/api
-        run: uv run pytest
+        run: uv run pytest --splits 4 --group ${{ matrix.shard }} --durations-path .test_durations
 
   web:
     name: Web (svelte-check + build)
@@ -256,6 +296,8 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           version: "0.11.27"
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:

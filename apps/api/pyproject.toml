@@ -58,6 +58,11 @@ dev = [
     # tests/test_migration_lock.py asserts the deploy shape of the swarm stacks. Present
     # transitively already; declared so the guard cannot vanish with someone else's dependency.
     "pyyaml>=6.0",
+    # CI runs the suite as four parallel shards (`--splits 4 --group N`). The split is by
+    # *recorded duration*, not test count: the PDF/WeasyPrint and migration tests cost orders of
+    # magnitude more than a schema assertion, so an equal-count split leaves one shard running
+    # the whole time the other three idle. See `.test_durations` and docs/WORKFLOW.md.
+    "pytest-split>=0.9",
 ]
 
 [tool.uv]
