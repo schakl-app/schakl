@@ -23,6 +23,7 @@
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import {
     CAPABILITIES,
+    capabilityState,
     type AccountRead,
     type PagesProject,
     type ZoneRead,
@@ -283,9 +284,15 @@
            scoped, and this is where an admin reads which permission to add. -->
       <div class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
         {#each CAPABILITIES as capability (capability)}
-          <span class={account.capabilities?.[capability] ? "text-text" : "text-text-muted"}>
+          {@const state = capabilityState(account.capabilities, capability)}
+          <!-- Three states. The zone-scoped probes cannot run before this account has synced a
+               zone, and the API omits them rather than answering false — "we did not look" and
+               "not granted" send an admin to two different places. -->
+          <span class={state === "granted" ? "text-text" : "text-text-muted"}>
             {t(`cloudflare.capability.${capability}`)}:
-            {account.capabilities?.[capability] ? "✓" : t("cloudflare.capability.missing")}
+            {#if state === "granted"}✓{:else if state === "missing"}{t(
+                "cloudflare.capability.missing",
+              )}{:else}{t("cloudflare.capability.unprobed")}{/if}
           </span>
         {/each}
       </div>

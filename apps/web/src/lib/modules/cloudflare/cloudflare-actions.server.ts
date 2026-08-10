@@ -52,11 +52,30 @@ export const cloudflareActions = {
    * The explicit "go look at Cloudflare" action. Its answer is returned to the page rather than
    * reloaded from `load`, because `load` deliberately reads only stored rows — a domain page
    * must not depend on Cloudflare being up (docs/PERFORMANCE.md).
+   *
+   * **Public DNS is refreshed first, and that is a different module's call.** Half of what this
+   * button is asked — "do the nameservers point here yet?" — is not Cloudflare's to answer: the
+   * observed side comes from the domains module's own resolver, which otherwise runs once a
+   * night. So pressing this after changing nameservers at the registrar compared a freshly-read
+   * Cloudflare against an observation up to a day old, and reported the delegation as wrong.
+   *
+   * The two calls are composed here rather than joined in the API, because `cloudflare` may not
+   * reach into `domains` (CLAUDE.md §6) and runs no second resolver (docs/CLOUDFLARE.md §5).
+   * The refresh is **best-effort on purpose**: it needs `domains.domain.write`, which a
+   * Cloudflare-only admin may not hold, and a refusal there must not cost them the Cloudflare
+   * check they *can* run. When it does not happen the report says so itself —
+   * `nameservers_checked_at` carries the observation's age, and the verdict reads "unknown"
+   * rather than "wrong".
    */
   cfCheck: async (event: RequestEvent) => {
-    const { data, error } = await apiFor(event).POST(
+    const api = apiFor(event);
+    const domain_id = event.params.id as string;
+    await api
+      .POST("/api/v1/domains/{domain_id}/refresh", { params: { path: { domain_id } } })
+      .catch(() => null);
+    const { data, error } = await api.POST(
       "/api/v1/cloudflare/domains/{domain_id}/check",
-      { params: { path: { domain_id: event.params.id as string } } },
+      { params: { path: { domain_id } } },
     );
     if (error) return fail(400, { cfError: apiErrorKey(error).key });
     return { cfStatus: data };

@@ -8,10 +8,11 @@ asserts on what the module *reports* rather than on what it overwrites.
 
 from __future__ import annotations
 
+import json
 import uuid
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.core.auth.models import User
 from app.db import async_session_maker, set_current_org
@@ -1683,3 +1684,206 @@ async def test_an_unknown_domain_is_404_not_500(client_for, cloudflare) -> None:
                 f"/api/v1/cloudflare/domains/{missing}/connect", json={}, headers=headers
             )
         ).status_code == 404
+
+
+# --------------------------------------------------------------------------------------- #
+# A scope refusal is not a rejected token, and never costs a rule that was already made
+# --------------------------------------------------------------------------------------- #
+async def _set_observed_nameservers(org_id, domain_id: str, hosts: list[str]) -> None:
+    """Write what public DNS answers, the way the domains module's own resolver would.
+
+    That column is the *other half* of the delegation verdict and no Cloudflare call touches it
+    — which is exactly what these tests are about, so they set it directly rather than pretend
+    a resolver ran.
+    """
+    async with async_session_maker() as session:
+        await set_current_org(session, org_id)
+        await session.execute(
+            text(
+                "UPDATE domains SET nameservers = CAST(:ns AS jsonb), dns_checked_at = now() "
+                "WHERE id = CAST(:id AS uuid) AND org_id = CAST(:org AS uuid)"
+            ).bindparams(ns=json.dumps(hosts), id=domain_id, org=str(org_id))
+        )
+        await session.commit()
+
+
+async def test_a_dns_refusal_keeps_the_redirect_it_already_pushed(client_for, cloudflare) -> None:
+    """The placeholder's scope is DNS; the rule's is redirects. They must fail separately.
+
+    Inside one ``try`` the DNS 403 failed the whole request **after** the rule existed at
+    Cloudflare — and the raise rolled back the row that was the only record of it, so the next
+    press appended a second rule to a live client's zone, and the next a third, while the screen
+    said the token had been rejected.
+    """
+    t = await make_tenant("cf-scope-dns")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        account, domain, _ = await _connected(c, headers, cloudflare)
+        zone_id = next(iter(cloudflare.zones))
+        cloudflare.deny.add("/dns_records")
+
+        res = await c.put(
+            f"/api/v1/cloudflare/domains/{domain['id']}/redirect",
+            json={"target_url": "https://nieuw.nl", "ensure_origin": True},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        # The rule is what was asked for and it is live; the placeholder's refusal is a note.
+        assert res.json()["last_status"] == "active"
+        assert "not authorized" in (res.json()["last_error"] or "")
+        assert len(cloudflare.rulesets[zone_id]["rules"]) == 1
+
+        # And the note lands on the *redirect*, never on the account: a missing DNS scope is
+        # degraded, not a broken credential. This is the half that keeps the two failure
+        # writes apart — they are gated on opposite outcomes of the same call, so a regression
+        # that wired ``_record_failure`` into the placeholder path would redden a token that is
+        # working. Asserting it here rather than against a credential Cloudflare refuses
+        # outright, where the push fails and nothing downstream runs at all.
+        listed = (await c.get("/api/v1/cloudflare/accounts", headers=headers)).json()
+        row = next(a for a in listed if a["id"] == account["id"])
+        assert row["status"] == "active"
+        assert row["last_error"] is None
+
+        # And the retry updates the rule it knows about instead of appending another.
+        again = await c.put(
+            f"/api/v1/cloudflare/domains/{domain['id']}/redirect",
+            json={"target_url": "https://nieuwer.nl", "ensure_origin": True},
+            headers=headers,
+        )
+        assert again.status_code == 200, again.text
+        assert len(cloudflare.rulesets[zone_id]["rules"]) == 1
+
+
+async def test_a_missing_scope_and_a_dead_token_say_different_things(
+    client_for, cloudflare
+) -> None:
+    """403 is "not scoped for *this call*"; 401 is "I do not accept this token at all".
+
+    Collapsed into one key, a token missing one zone permission told an admin their credential
+    had been refused — the one thing that had not happened, since every other call it makes
+    works. That is what "the token seems to have the right permissions" describes.
+    """
+    t = await make_tenant("cf-scope-msg")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        account, domain, _ = await _connected(c, headers, cloudflare)
+
+        cloudflare.deny.add("/rulesets")
+        scoped = await c.put(
+            f"/api/v1/cloudflare/domains/{domain['id']}/redirect",
+            json={"target_url": "https://nieuw.nl"},
+            headers=headers,
+        )
+        assert scoped.status_code == 409
+        assert scoped.json()["error"]["code"] == "cloudflare_scope_missing"
+
+        # Cloudflare's own text survives the rollback, so the settings screen can say which
+        # permission is missing — a sentence no i18n key can write (§9).
+        listed = (await c.get("/api/v1/cloudflare/accounts", headers=headers)).json()
+        row = next(a for a in listed if a["id"] == account["id"])
+        assert "not authorized" in (row["last_error"] or "")
+        # ...and a plain 403 does not redden the row: degraded, not broken.
+        assert row["status"] == "active"
+
+        cloudflare.deny.clear()
+        cloudflare.revoked = True
+        dead = await c.put(
+            f"/api/v1/cloudflare/domains/{domain['id']}/redirect",
+            json={"target_url": "https://nieuw.nl"},
+            headers=headers,
+        )
+        assert dead.status_code == 409
+        assert dead.json()["error"]["code"] == "cloudflare_token_rejected"
+
+
+# --------------------------------------------------------------------------------------- #
+# Delegation is tri-state
+# --------------------------------------------------------------------------------------- #
+async def test_an_unanswered_lookup_is_unknown_delegation_not_wrong_delegation(
+    client_for, cloudflare
+) -> None:
+    """``fetch_dns`` returns ``[]`` for a timeout exactly as it does for a domain that really
+    delegates nowhere, so an empty observation is not evidence. As a plain boolean it produced a
+    confident "change your nameservers at the registrar" over a lookup that never answered."""
+    t = await make_tenant("cf-ns-unknown")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, domain, _ = await _connected(c, headers, cloudflare)
+
+        checked = (
+            await c.post(f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers)
+        ).json()
+        assert checked["observed_nameservers"] == []
+        assert checked["nameservers_delegated"] is None
+        assert "nameservers_not_delegated" not in checked["issues"]
+
+
+async def test_delegation_answers_true_and_false_when_both_sides_spoke(
+    client_for, cloudflare
+) -> None:
+    """With both halves present the verdict is a real one — and it says *when* the public-DNS
+    half was read, which ``checked_at`` (the Cloudflare half) never covered."""
+    t = await make_tenant("cf-ns-known")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, domain, _ = await _connected(c, headers, cloudflare)
+
+        await _set_observed_nameservers(t.org.id, domain["id"], ["ns1.oudehoster.nl"])
+        elsewhere = (
+            await c.post(f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers)
+        ).json()
+        assert elsewhere["nameservers_delegated"] is False
+        assert "nameservers_not_delegated" in elsewhere["issues"]
+        assert elsewhere["nameservers_checked_at"] is not None
+
+        # Mid-propagation: one of Cloudflare's pair beside one of the old host's is delegation
+        # happening, not delegation absent — hence an intersection rather than an equality.
+        await _set_observed_nameservers(
+            t.org.id, domain["id"], ["ana.ns.cloudflare.com", "ns1.oudehoster.nl"]
+        )
+        moving = (
+            await c.post(f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers)
+        ).json()
+        assert moving["nameservers_delegated"] is True
+        assert "nameservers_not_delegated" not in moving["issues"]
+
+
+# --------------------------------------------------------------------------------------- #
+# The capability list covers the scopes the buttons use
+# --------------------------------------------------------------------------------------- #
+async def test_verify_probes_the_two_scopes_the_domain_page_actually_uses(
+    client_for, cloudflare
+) -> None:
+    """They were the conspicuous hole: an admin read ✓ down every line of "Wat dit token mag"
+    and still got a token error at the redirect button, because neither DNS nor the redirect
+    ruleset was ever probed. Both need a zone to address, so both are **absent** rather than
+    false before this account has synced one — "we did not look" is not "not granted"."""
+    t = await make_tenant("cf-caps")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        account = await _account(c, headers)
+        cloudflare.add_zone("klant.nl")
+
+        before = (
+            await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/verify", headers=headers)
+        ).json()
+        assert "dns_read" not in before["capabilities"]
+        assert "redirect_read" not in before["capabilities"]
+
+        await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers)
+        after = (
+            await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/verify", headers=headers)
+        ).json()
+        # A zone with no redirect rules has no entrypoint ruleset and answers 404 — a normal
+        # state, and the token was plainly allowed to ask.
+        assert after["capabilities"]["dns_read"] is True
+        assert after["capabilities"]["redirect_read"] is True
+
+        cloudflare.deny.add("/dns_records")
+        refused = (
+            await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/verify", headers=headers)
+        ).json()
+        assert refused["capabilities"]["dns_read"] is False
+        assert refused["capabilities"]["redirect_read"] is True
+        # A scoped token is still a working token: the rest of the list is unaffected.
+        assert refused["capabilities"]["zones_read"] is True

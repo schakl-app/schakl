@@ -41,14 +41,42 @@ as a 403 at a button three screens away. Only four things can be observed cheapl
 |---|---|
 | Zone → Zone → **Read** | listing and adopting zones (the minimum) |
 | Zone → DNS → **Edit** | the DNS table, the export, the redirect placeholder records |
-| Zone → Dynamic Redirect → **Edit** | reading and writing the domain-wide redirect rule |
+| Zone → **Single Redirect** → **Edit** | reading and writing the domain-wide redirect rule |
 | Zone → Page Rules → **Read** | *optional*: detecting a legacy forwarding Page Rule as a conflict |
 | Account → Zone → **Edit** | *optional*: creating a zone that does not exist yet |
 | Account → Cloudflare Pages → **Read/Edit** | *optional*: the Pages project list and hostname linking |
 
+**The redirect scope's name has moved and this table used to name the old one.** Cloudflare's
+token editor calls it *Single Redirect* today; the API permission list calls the same thing
+*Dynamic URL Redirects Write*, and this file said *Dynamic Redirect*, which is what it was called
+when the module was written. An admin hunting a label that no longer exists tends to grant
+*Transform Rules* instead — a genuinely different permission that does not cover the
+`http_request_dynamic_redirect` phase — and then reports, correctly as far as they can see, that
+the token has the right permissions. Cloudflare states the minimum on
+[Create a redirect rule via the API](https://developers.cloudflare.com/rules/url-forwarding/single-redirects/create-api/);
+that page is the authority, not this table, and reports of it still needing more are common
+enough that the module must degrade rather than argue.
+
 A token scoped to less is **degraded, not broken**. Every probe in the status check fails softly
 and names itself in `unavailable`, because losing the whole screen to one optional 403 pushes an
 admin to mint a wider token than they need.
+
+### The two scopes the buttons use were the two the screen never mentioned
+
+`CAPABILITIES` listed `token_valid`, `accounts_read`, `zones_read`, `pages_read` and
+`registrar_read` — five things an admin could read a ✓ against while the redirect button
+answered *"Cloudflare weigert het API-token"*, because neither DNS nor the redirect ruleset was
+ever probed. That is the whole content of "the token seems to have the right permissions": the
+screen agreed with them.
+
+`dns_read` and `redirect_read` close it, and they carry two properties worth keeping. **They are
+reads, and the label says so** — an *edit* scope cannot be observed without writing something,
+and this module will not create a record on a client's zone to find out; what a read catches is
+the case that actually happens, a permission never granted at all. And **they need a zone to
+address**, so they are *absent* from `capabilities` rather than `False` when the account has
+synced none (`client.ZONE_CAPABILITIES`, rendered as *niet gecontroleerd*). "We did not look" and
+"not granted" send an admin to different places, which is §6's rule about Pages links stated
+about a token instead of a hostname.
 
 ### No probe is the gate
 
@@ -172,6 +200,19 @@ because they need account-level scopes and make per-zone drift detection much ha
   default) adds Cloudflare's documented placeholder — a proxied `AAAA 100::` — where there is no
   proxied record, and the status check reports `origin_missing` when someone greys the cloud
   later. An existing record is never replaced.
+  **The placeholder is a second step, and a step that can fail on its own scope must be allowed
+  to.** It writes DNS, which is a different token permission from the one that writes the rule,
+  and it used to run inside the same `try` — so a token scoped for redirects and not for DNS
+  failed the whole request *after the rule had already been created at Cloudflare*. The raise
+  rolled the transaction back, so schakl kept no record of the rule it had just made: the panel
+  still showed no redirect, the next press appended a second rule to a live client's zone, and
+  the next a third, each one reported as "Cloudflare rejected the token". Two rules generalise.
+  **A failure after the durable half is done is a note, never a rollback** — the rule exists and
+  it is what was asked for, so the row is written and the refusal is recorded on it
+  (`CloudflareRedirect.last_error`, rendered on the panel with Cloudflare's own text, because
+  *which* permission is missing is a sentence only Cloudflare can write). And **an optimisation
+  must not be able to fail its own precondition**: the missing origin is already a finding of its
+  own (`origin_missing`), so nothing is lost by letting the check report it.
   **The placeholder covers the apex and `www`, and deliberately nothing else.** The rule matches
   every subdomain, but a set of them cannot be enumerated; `www` is the one that is always meant.
   The two hostnames also fail *separately*, so they are checked separately: a proxied apex beside
@@ -204,7 +245,7 @@ The report's `issues` are stable keys the client resolves to `cloudflare.issue.*
 | `not_connected` / `no_account` | nothing to check yet |
 | `duplicate_zone` | this apex exists in more than one of the tenant's accounts |
 | `zone_pending` / `zone_paused` | Cloudflare has the zone but is not serving it |
-| `nameservers_not_delegated` | public DNS still points elsewhere (from the domains module's own periodic lookup — this module runs no second resolver) |
+| `nameservers_not_delegated` | public DNS still points elsewhere — and **only when it definitely does**, see below |
 | `redirect_not_pushed` / `redirect_missing` / `redirect_drift` | our rule was never sent / is gone / has been edited at Cloudflare |
 | `redirect_conflict` | some *other* rule on the zone redirects: another rule in the ruleset, or a legacy forwarding Page Rule |
 | `origin_missing` | the rule exists and no traffic reaches it |
@@ -219,6 +260,35 @@ client. A domain marked `redirect` here with nothing behind it at Cloudflare is 
 webhook-era state this whole module exists to replace, and it was the one state with no way to
 discover it. The not-connected branch now renders the same list minus `not_connected`, which the
 paragraph above it already says.
+
+### The delegation verdict is tri-state, and half of it is not Cloudflare's to give
+
+"Do the nameservers point here yet?" is answered by two lists, and only one of them comes from
+Cloudflare. `expected_nameservers` is the zone's; `observed_nameservers` is what public DNS says,
+which belongs to the `domains` module's own resolver — this module still runs no second one. Two
+things followed from that and both were wrong.
+
+**A `bool` had no way to say "I do not know".** `dns.fetch_dns` returns `[]` for a timeout or a
+SERVFAIL exactly as it does for a domain that truly delegates nowhere (that module made `dnssec`
+tri-state for this reason and left the nameserver list flat), and an empty `expected` means
+Cloudflare has assigned nothing yet. Either way the answer was `False`, which the panel rendered
+as *"Nameservers wijzen nog niet naar Cloudflare. Wijzig ze bij de registrar."* — an instruction
+to go and change something that was very possibly already correct, on the strength of a lookup
+that never answered. `_delegation` now returns `None` when either side is silent, `_issues` fires
+only on a definite `False`, and the panel has a third sentence. The comparison stays an
+intersection: a registrar mid-propagation answers one of Cloudflare's pair beside one of the old
+host's, and that is delegation happening.
+
+**And "Controleren bij Cloudflare" did not refresh the half it was being judged on.** The
+observed list is written by a daily cron (04:30) and by the domains page's own "DNS vernieuwen",
+so the obvious sequence — change the nameservers at the registrar, come back, press the Cloudflare
+check — compared a freshly-read Cloudflare against an observation up to a day old, and then
+printed *"Gecontroleerd zojuist"* over it. The web action now calls `POST /domains/{id}/refresh`
+before the check: composed in the page's own action rather than joined in the API, because
+`cloudflare` may not reach into `domains` (§6). It is **best-effort** — that route needs
+`domains.domain.write`, which a Cloudflare-only admin may not hold, and a 403 there must not cost
+them the check they can run. Which is why the report also carries `nameservers_checked_at`, the
+observed side's own age: `checked_at` is the Cloudflare half and was never about this one.
 
 Conflicts are **reported, never resolved**. Cloudflare evaluates redirect rules top-down and we
 cannot evaluate a tenant's filter expression to know whether it catches this hostname. Naming it

@@ -12452,11 +12452,10 @@ export interface components {
              * @default false
              */
             live: boolean;
-            /**
-             * Nameservers Delegated
-             * @default false
-             */
-            nameservers_delegated: boolean;
+            /** Nameservers Checked At */
+            nameservers_checked_at?: string | null;
+            /** Nameservers Delegated */
+            nameservers_delegated?: boolean | null;
             /** Observed Nameservers */
             observed_nameservers?: string[];
             origin?: components["schemas"]["OriginState"] | null;
