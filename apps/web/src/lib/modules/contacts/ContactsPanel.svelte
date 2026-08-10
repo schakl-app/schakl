@@ -91,6 +91,12 @@
   // Use mode is the default; the ⋯ menu opens edit mode (docs/UX.md §3).
   let editing = $state(false);
 
+  // Two keys, because the panel does two things: attaching or detaching someone who already
+  // exists is `contacts.link.write`, while the dialog behind "＋ nieuw" writes a contact *and*
+  // attaches it in one call and therefore needs both.
+  const canLink = $derived(can(page.data.user, "contacts.link.write"));
+  const canCreate = $derived(canLink && can(page.data.user, "contacts.contact.write"));
+
   // --- quick-create dialog (opened by typing an unknown name) ------------------
   let showCreate = $state(false);
   let draftFirst = $state("");
@@ -111,10 +117,15 @@
 
 <!-- The panel's <h2> is rendered by the host page, so the toggle sits at the top of the body.
      The edit toggle is the *only* switch that reveals LinkField's link/unlink/promote and the
-     create-contact dialog — all `contacts.contact.write` acts — so it must carry the same gate as
-     the quick-add below, or a read-only portal client (#244) could enter edit mode. The company
-     detail page renders panels without an isPortal filter, so the panel self-gates (CLAUDE.md §15). -->
-{#if can(page.data.user, "contacts.contact.write")}
+     create-contact dialog, so it must carry the same gate as the quick-add below, or a read-only
+     portal client (#244) could enter edit mode. The company detail page renders panels without an
+     isPortal filter, so the panel self-gates (CLAUDE.md §15).
+
+     Every act behind it attaches to *this* client, which the API demands `contacts.link.write`
+     for — including the create dialog, whose action posts `company_ids: [this company]`. Gated on
+     `contacts.contact.write` alone, the whole panel was a control that 403s for anyone holding
+     only the write, with a message naming neither permission (#310). -->
+{#if canLink}
   <div class="mb-3 flex justify-end">
     <ActionsMenu
       compact
@@ -149,14 +160,14 @@
     makePrimary: t("contacts.make_primary"),
     remove: t("contacts.unlink"),
   }}
-  oncreate={openCreate}
+  oncreate={canCreate ? openCreate : undefined}
   onsearch={searchContacts}
   {searching}
 />
 
 <!-- Quick-add without entering edit mode (owner feedback): the same full create-and-attach
      dialog the type-ahead opens, one click away like every other panel's add button. -->
-{#if !editing && can(page.data.user, "contacts.contact.write")}
+{#if !editing && canCreate}
   <button
     type="button"
     class="mt-3 inline-block text-xs text-brand hover:underline"

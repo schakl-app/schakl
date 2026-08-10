@@ -104,7 +104,6 @@ def test_seeded_defaults_match_the_documented_posture() -> None:
     # The deliberate restriction (issue #19 ⚠️1): a member reads but does not write these.
     assert "companies.company.read" in member
     assert "companies.company.write" not in member
-    assert "contacts.contact.write" not in member
     assert "projects.project.write" not in member
     assert "tasks.task.write:any" not in member
     # …and keeps exactly the writes the plan names.
@@ -115,6 +114,12 @@ def test_seeded_defaults_match_the_documented_posture() -> None:
         "time.entry.write:own",
         "leave.request.write:own",
     } <= member
+    # The contact writes are the deliberate exception (#310): the *client* is a definition an
+    # admin owns, the people at it are the work. Both halves, because creating a contact from a
+    # client page attaches it in the same call — one without the other is a 403 on the flow the
+    # grant was for. Deleting one stays admin-only.
+    assert {"contacts.contact.write", "contacts.link.write"} <= member
+    assert "contacts.contact.delete" not in member
 
     client = set(default_permissions_for("client"))
     assert not any(p.startswith(("time.", "leave.", "members.")) for p in client)

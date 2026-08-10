@@ -95,6 +95,17 @@ REVISIONS: tuple[DefaultsRevision, ...] = (
         marker="@rev:300-marketing-overview-read",
         rescope={"marketing.report.read": "marketing.overview.read"},
     ),
+    DefaultsRevision(
+        # #310: keeping a client's people current is ordinary work, so `member` now holds both
+        # contact writes by default. Every existing org was already offered both keys as
+        # admin-only, so the key diff sees nothing to do — exactly the widening this mechanism
+        # exists for. A tenant who had already granted them keeps them (``grant`` is
+        # ``ON CONFLICT DO NOTHING``); one who deliberately took them away gets them back once,
+        # which is the known cost of a widening and the reason it is recorded rather than
+        # re-applied on every boot.
+        marker="@rev:310-contacts-member-write",
+        grants={"member": ("contacts.contact.write", "contacts.link.write")},
+    ),
 )
 
 

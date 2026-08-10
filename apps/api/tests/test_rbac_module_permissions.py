@@ -53,7 +53,9 @@ async def test_admin_can_write_all_three_modules(client_for) -> None:
         ).status_code == 204
 
 
-async def test_member_reads_but_cannot_write_companies_contacts_projects(client_for) -> None:
+async def test_member_reads_but_cannot_write_companies_and_projects(client_for) -> None:
+    """Contacts are the deliberate exception since #310 — the people at a client are the work,
+    the client itself is a definition an admin owns (tests/test_contacts_member_defaults.py)."""
     tenant = await make_tenant("rbac-member-ro", role="admin")
     admin_headers = await auth_cookie(tenant.user)
 
@@ -101,9 +103,14 @@ async def test_member_reads_but_cannot_write_companies_contacts_projects(client_
         assert (
             await client.delete(f"/api/v1/companies/{company_id}", headers=member_headers)
         ).status_code == 403
+        # …but a contact person is theirs to add: deleting one is still refused.
+        added = await client.post(
+            "/api/v1/contacts", json={"first_name": "Ada"}, headers=member_headers
+        )
+        assert added.status_code == 201, added.text
         assert (
-            await client.post(
-                "/api/v1/contacts", json={"first_name": "Nope"}, headers=member_headers
+            await client.delete(
+                f"/api/v1/contacts/{added.json()['id']}", headers=member_headers
             )
         ).status_code == 403
         assert (
