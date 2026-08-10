@@ -18,8 +18,11 @@ from app.modules.tasks.scheduling import scheduling_router
 from app.modules.tasks.schemas import (
     ChecklistCreate,
     ChecklistItemCreate,
+    ChecklistItemOrder,
     ChecklistItemRead,
     ChecklistItemUpdate,
+    ChecklistOrder,
+    ChecklistOrderRead,
     ChecklistRead,
     ChecklistTemplateCreate,
     ChecklistTemplateRead,
@@ -539,6 +542,25 @@ async def add_checklist(
     return ChecklistRead.model_validate(await TaskService(ctx).add_checklist(task_id, payload))
 
 
+@router.post(
+    "/{task_id}/checklists/order",
+    response_model=ChecklistOrderRead,
+    dependencies=[require_permission("tasks.task.write")],
+)
+async def reorder_checklists(
+    task_id: uuid.UUID,
+    payload: ChecklistOrder,
+    ctx: RequestContext = Depends(require_context),
+) -> ChecklistOrderRead:
+    """Set the order of a task's checklists in one call (``ChecklistOrder`` for the contract).
+
+    ``/order`` rather than a ``PATCH`` per row: the two sibling paths that carry a
+    ``{checklist_id}`` segment are ``PATCH`` and ``DELETE``, so no ``POST`` can be ambiguous
+    with it, and a whole order is what both the drag and the arrow buttons produce.
+    """
+    return await TaskService(ctx).reorder_checklists(task_id, payload)
+
+
 @router.patch(
     "/{task_id}/checklists/{checklist_id}",
     response_model=ChecklistRead,
@@ -583,6 +605,21 @@ async def add_checklist_item(
     return ChecklistItemRead.model_validate(
         await TaskService(ctx).add_checklist_item(task_id, checklist_id, payload)
     )
+
+
+@router.post(
+    "/{task_id}/checklists/{checklist_id}/items/order",
+    response_model=ChecklistOrderRead,
+    dependencies=[require_permission("tasks.task.write")],
+)
+async def reorder_checklist_items(
+    task_id: uuid.UUID,
+    checklist_id: uuid.UUID,
+    payload: ChecklistItemOrder,
+    ctx: RequestContext = Depends(require_context),
+) -> ChecklistOrderRead:
+    """Set the order of one checklist's items in one call."""
+    return await TaskService(ctx).reorder_checklist_items(task_id, checklist_id, payload)
 
 
 @router.patch(

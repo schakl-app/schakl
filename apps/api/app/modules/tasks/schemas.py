@@ -248,6 +248,38 @@ class ChecklistRead(BaseModel):
     items: list[ChecklistItemRead] = Field(default_factory=list)
 
 
+class ChecklistOrder(BaseModel):
+    """The task's checklists in their new order — the whole order, not one moved row.
+
+    A board of tasks reorders by fractional ``position`` midpoints (docs/UX.md) because it is
+    long and renumbering it is a large write. A checklist is neither: a handful of rows, so one
+    renumbering statement is cheaper than the float column it would take to avoid it, and an id
+    list cannot drift the way two clients trading midpoints can.
+
+    Ids this task does not own are a 404. Ids it *does* own that the payload omits keep their
+    relative order **after** the named ones, so a checklist added in another tab mid-drag is
+    appended rather than 409-ing a save the user cannot repair.
+    """
+
+    checklist_ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
+
+
+class ChecklistItemOrder(BaseModel):
+    """One checklist's items in their new order — same contract as ``ChecklistOrder``."""
+
+    item_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+
+
+class ChecklistOrderRead(BaseModel):
+    """The resulting order, including rows the payload did not name (see ``ChecklistOrder``).
+
+    Ids rather than whole records: a reorder changes exactly one field, and the caller that
+    needs the rest already has them.
+    """
+
+    ids: list[uuid.UUID]
+
+
 class TemplateChecklistItem(BaseModel):
     """One item of a checklist template — a title and an optional markdown description (issue #66).
 

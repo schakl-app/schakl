@@ -171,7 +171,22 @@
   concept appears.
 - **Drag-and-drop with graceful fallback**: reorder tasks and dashboard tiles by dragging
   (fractional `position` midpoints — never renumber); keep an arrow/menu alternative where
-  dragging is impractical.
+  dragging is impractical. The arrows are not a fallback nobody uses — they are the only reorder a
+  keyboard or a screen reader can reach, so both gestures ship together and both produce the same
+  thing.
+  **A short, bounded list states the whole order instead** (a task's checklists and the items
+  inside one, `POST …/checklists/order`): midpoints exist to avoid a large write, and there is no
+  large write here — a handful of rows renumber in one statement, which is also the only shape that
+  cannot half-apply or drift between two clients trading midpoints. The payload is a statement
+  about *order*, never about membership: a row it omits keeps its relative place after the named
+  ones, so a list a colleague added mid-drag is appended rather than dropped or 409'd.
+  Two traps in the Svelte half, each of which shipped a bug once (`tasks/[id]/+page.svelte`):
+  **`$state([])` filled by an `$effect` server-renders nothing** — an effect does not run on the
+  server, so the whole section appeared a frame after hydration — while **a writable `$derived`
+  renders but hands `svelte-dnd-action` an array it does not own, and the drag never starts.**
+  Initialise the state inline *and* re-arm it from the record with an effect. And a zone whose rows
+  hold checkboxes, menus or inputs stays `dragDisabled` until a grip takes the pointer down, with
+  its **own** flag per nesting level — one shared flag lets an item's grip arm the list around it.
 - **Every dashboard widget is a bordered card, via `core/ui/DashboardWidgetCard`** (#166). The
   dashboard grid wraps each tile in a bare `<div>` — the card chrome (border, `bg-surface-raised`,
   padding, title row with an optional "show all" link) is the widget's own responsibility, and the

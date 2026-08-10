@@ -52,8 +52,11 @@ from app.modules.tasks.schemas import (
     ActivityRead,
     ChecklistCreate,
     ChecklistItemCreate,
+    ChecklistItemOrder,
     ChecklistItemRead,
     ChecklistItemUpdate,
+    ChecklistOrder,
+    ChecklistOrderRead,
     ChecklistRead,
     ChecklistTemplateCreate,
     ChecklistTemplateRead,
@@ -198,6 +201,40 @@ def _rich_items(
     if rich:
         return rich
     return [{"title": title, "description": None} for title in (legacy or [])]
+
+
+#: Ceiling on the rows one reorder renumbers. Every read is capped (CLAUDE.md §9); it sits above
+#: the payload's own ``max_length`` so a full order is never silently truncated to a prefix.
+_ORDER_CAP = 1000
+
+
+def _renumber[PositionedT: (TaskChecklist, TaskChecklistItem)](
+    rows: Sequence[PositionedT], ordered_ids: list[uuid.UUID]
+) -> list[PositionedT]:
+    """Assign ``position`` 0..n-1 following ``ordered_ids``, then whatever it did not name.
+
+    The payload is a *statement about order*, not a statement about membership: rows the caller
+    omitted keep their relative order after the named ones (``ChecklistOrder`` says why), so a
+    row created after the page loaded is appended instead of vanishing or 409-ing the save. An id
+    that belongs to nothing here is a 404 — the same answer reading it gets, so an ordering call
+    cannot probe for another task's checklists (CLAUDE.md §15).
+    """
+    by_id = {row.id: row for row in rows}
+    if any(entity_id not in by_id for entity_id in ordered_ids):
+        raise AppError("not_found", "errors.not_found", status_code=404)
+    if len(set(ordered_ids)) != len(ordered_ids):
+        raise AppError(
+            "validation",
+            "errors.validation",
+            status_code=422,
+            fields={"order": "errors.duplicate"},
+        )
+    named = set(ordered_ids)
+    ordered = [by_id[entity_id] for entity_id in ordered_ids]
+    ordered += [row for row in rows if row.id not in named]
+    for index, row in enumerate(ordered):
+        row.position = index
+    return ordered
 
 
 class TaskService:
@@ -1354,6 +1391,49 @@ class TaskService:
         item = await self._item_or_404(task_id, checklist_id, item_id)
         await self.ctx.repo(TaskChecklistItem).delete(item)
         await self._record(task_id, "checklist_item_deleted", {"title": item.title})
+
+    async def reorder_checklists(
+        self, task_id: uuid.UUID, data: ChecklistOrder
+    ) -> ChecklistOrderRead:
+        """Renumber this task's checklists. One call, so a dragged list cannot half-save.
+
+        No activity entry: a reorder is noise, the same reason ``position`` is excluded from
+        ``_TRACKED_FIELDS`` and ``update_checklist`` records only a rename.
+        """
+        await self._writable_task_or_403(task_id)
+        rows = (
+            await self.ctx.session.execute(
+                self.ctx.repo(TaskChecklist)
+                .scoped_select()
+                .where(TaskChecklist.task_id == task_id)
+                # The order the card reads them in, so "what the payload did not name" is
+                # appended in the order the user was actually looking at.
+                .order_by(TaskChecklist.position.asc(), TaskChecklist.created_at.asc())
+                .limit(_ORDER_CAP)
+            )
+        ).scalars().all()
+        ordered = _renumber(rows, data.checklist_ids)
+        await self.ctx.session.flush()
+        return ChecklistOrderRead(ids=[row.id for row in ordered])
+
+    async def reorder_checklist_items(
+        self, task_id: uuid.UUID, checklist_id: uuid.UUID, data: ChecklistItemOrder
+    ) -> ChecklistOrderRead:
+        """Renumber one checklist's items — same contract as ``reorder_checklists``."""
+        await self._writable_task_or_403(task_id)
+        await self._checklist_or_404(task_id, checklist_id)
+        rows = (
+            await self.ctx.session.execute(
+                self.ctx.repo(TaskChecklistItem)
+                .scoped_select()
+                .where(TaskChecklistItem.checklist_id == checklist_id)
+                .order_by(TaskChecklistItem.position.asc(), TaskChecklistItem.created_at.asc())
+                .limit(_ORDER_CAP)
+            )
+        ).scalars().all()
+        ordered = _renumber(rows, data.item_ids)
+        await self.ctx.session.flush()
+        return ChecklistOrderRead(ids=[row.id for row in ordered])
 
     # ------------------------------------------------------------------ #
     # Comments

@@ -19,6 +19,14 @@ import {
 
 import type { Actions, PageServerLoad } from "./$types";
 
+/** A hidden field's comma-joined ids, cleaned — the reorder forms' one input shape. */
+function idList(raw: FormDataEntryValue | null): string[] {
+  return String(raw ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const task_id = event.params.id;
@@ -436,6 +444,34 @@ export const actions: Actions = {
         { params: { path: { task_id: event.params.id, checklist_id, item_id } } },
       );
     }
+    return { checklist: true };
+  },
+
+  // Both reorders post the *whole* new order as one comma-joined id list — the shape the API
+  // takes (`ChecklistOrder`), and the shape a drag and an arrow press produce alike, so neither
+  // gesture can leave half an order behind.
+  reorderChecklists: async (event) => {
+    const form = await event.request.formData();
+    const checklist_ids = idList(form.get("ids"));
+    if (checklist_ids.length === 0) return fail(400, { error: "errors.required" });
+    const { error: apiError } = await apiFor(event).POST(
+      "/api/v1/tasks/{task_id}/checklists/order",
+      { params: { path: { task_id: event.params.id } }, body: { checklist_ids } },
+    );
+    if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
+    return { checklist: true };
+  },
+
+  reorderItems: async (event) => {
+    const form = await event.request.formData();
+    const checklist_id = String(form.get("checklist_id") ?? "");
+    const item_ids = idList(form.get("ids"));
+    if (!checklist_id || item_ids.length === 0) return fail(400, { error: "errors.required" });
+    const { error: apiError } = await apiFor(event).POST(
+      "/api/v1/tasks/{task_id}/checklists/{checklist_id}/items/order",
+      { params: { path: { task_id: event.params.id, checklist_id } }, body: { item_ids } },
+    );
+    if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
     return { checklist: true };
   },
 

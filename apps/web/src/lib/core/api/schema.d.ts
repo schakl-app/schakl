@@ -8550,6 +8550,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/{task_id}/checklists/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reorder Checklists
+         * @description Set the order of a task's checklists in one call (``ChecklistOrder`` for the contract).
+         *
+         *     ``/order`` rather than a ``PATCH`` per row: the two sibling paths that carry a
+         *     ``{checklist_id}`` segment are ``PATCH`` and ``DELETE``, so no ``POST`` can be ambiguous
+         *     with it, and a whole order is what both the drag and the arrow buttons produce.
+         */
+        post: operations["reorder_checklists_api_v1_tasks__task_id__checklists_order_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/{task_id}/checklists/{checklist_id}": {
         parameters: {
             query?: never;
@@ -8579,6 +8603,26 @@ export interface paths {
         put?: never;
         /** Add Checklist Item */
         post: operations["add_checklist_item_api_v1_tasks__task_id__checklists__checklist_id__items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/checklists/{checklist_id}/items/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reorder Checklist Items
+         * @description Set the order of one checklist's items in one call.
+         */
+        post: operations["reorder_checklist_items_api_v1_tasks__task_id__checklists__checklist_id__items_order_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11222,6 +11266,14 @@ export interface components {
             /** Title */
             title: string;
         };
+        /**
+         * ChecklistItemOrder
+         * @description One checklist's items in their new order — same contract as ``ChecklistOrder``.
+         */
+        ChecklistItemOrder: {
+            /** Item Ids */
+            item_ids: string[];
+        };
         /** ChecklistItemRead */
         ChecklistItemRead: {
             /** Description */
@@ -11248,6 +11300,34 @@ export interface components {
             position?: number | null;
             /** Title */
             title?: string | null;
+        };
+        /**
+         * ChecklistOrder
+         * @description The task's checklists in their new order — the whole order, not one moved row.
+         *
+         *     A board of tasks reorders by fractional ``position`` midpoints (docs/UX.md) because it is
+         *     long and renumbering it is a large write. A checklist is neither: a handful of rows, so one
+         *     renumbering statement is cheaper than the float column it would take to avoid it, and an id
+         *     list cannot drift the way two clients trading midpoints can.
+         *
+         *     Ids this task does not own are a 404. Ids it *does* own that the payload omits keep their
+         *     relative order **after** the named ones, so a checklist added in another tab mid-drag is
+         *     appended rather than 409-ing a save the user cannot repair.
+         */
+        ChecklistOrder: {
+            /** Checklist Ids */
+            checklist_ids: string[];
+        };
+        /**
+         * ChecklistOrderRead
+         * @description The resulting order, including rows the payload did not name (see ``ChecklistOrder``).
+         *
+         *     Ids rather than whole records: a reorder changes exactly one field, and the caller that
+         *     needs the rest already has them.
+         */
+        ChecklistOrderRead: {
+            /** Ids */
+            ids: string[];
         };
         /** ChecklistRead */
         ChecklistRead: {
@@ -41200,6 +41280,41 @@ export interface operations {
             };
         };
     };
+    reorder_checklists_api_v1_tasks__task_id__checklists_order_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChecklistOrder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChecklistOrderRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_checklist_api_v1_tasks__task_id__checklists__checklist_id__delete: {
         parameters: {
             query?: never;
@@ -41289,6 +41404,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChecklistItemRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_checklist_items_api_v1_tasks__task_id__checklists__checklist_id__items_order_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                checklist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChecklistItemOrder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChecklistOrderRead"];
                 };
             };
             /** @description Validation Error */
