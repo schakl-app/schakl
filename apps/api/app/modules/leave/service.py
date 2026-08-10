@@ -3258,6 +3258,7 @@ class LeaveService:
             hours_per_week=hours_week,
             hours_per_day=sched.average_day_hours(schedule),
             pending_count=int(pending or 0),
+            next_leave_id=next_leave.id if next_leave else None,
             next_leave_start=next_leave.start_date if next_leave else None,
             next_leave_end=next_leave.end_date if next_leave else None,
         )

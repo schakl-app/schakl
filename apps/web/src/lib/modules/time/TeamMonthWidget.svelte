@@ -26,33 +26,38 @@
   {#if !stats}
     <p class="text-sm text-text-muted">{t("dashboard.team_month.empty")}</p>
   {:else}
+    <!-- Every figure opens the report it is a total of (issue #15). The overview defaults to the
+         running month, which is exactly the period this tile sums; "open" carries its own status
+         filter, and omzet has its own page. -->
     <div class="grid grid-cols-2 gap-3">
-      <div>
-        <p class="text-xs text-text-muted">{t("time.overview.total.minutes")}</p>
-        <p class="text-lg font-semibold tabular-nums text-text">
+      <a href="/overview" class="group">
+        <span class="block text-xs text-text-muted">{t("time.overview.total.minutes")}</span>
+        <span class="block text-lg font-semibold tabular-nums text-text group-hover:text-brand">
           {formatMinutes(stats.minutes)}
-        </p>
-      </div>
-      <div>
-        <p class="text-xs text-text-muted">{t("time.overview.total.billable")}</p>
-        <p class="text-lg font-semibold tabular-nums text-text">{billablePct}%</p>
-      </div>
-      <div>
-        <p class="text-xs text-text-muted">{t("dashboard.team_month.revenue")}</p>
-        <p class="text-lg font-semibold tabular-nums text-text">
+        </span>
+      </a>
+      <a href="/overview" class="group">
+        <span class="block text-xs text-text-muted">{t("time.overview.total.billable")}</span>
+        <span class="block text-lg font-semibold tabular-nums text-text group-hover:text-brand"
+          >{billablePct}%</span
+        >
+      </a>
+      <a href="/overview/revenue" class="group">
+        <span class="block text-xs text-text-muted">{t("dashboard.team_month.revenue")}</span>
+        <span class="block text-lg font-semibold tabular-nums text-text group-hover:text-brand">
           {fmtMoney(stats.revenue_month)}
-        </p>
-      </div>
-      <div>
-        <p class="text-xs text-text-muted">{t("time.overview.total.open")}</p>
-        <p
-          class="text-lg font-semibold tabular-nums {stats.open_minutes
+        </span>
+      </a>
+      <a href="/overview?status=open" class="group">
+        <span class="block text-xs text-text-muted">{t("time.overview.total.open")}</span>
+        <span
+          class="block text-lg font-semibold tabular-nums group-hover:text-brand {stats.open_minutes
             ? 'text-amber-600 dark:text-amber-400'
             : 'text-text'}"
         >
           {formatMinutes(stats.open_minutes)}
-        </p>
-      </div>
+        </span>
+      </a>
     </div>
   {/if}
 </div>

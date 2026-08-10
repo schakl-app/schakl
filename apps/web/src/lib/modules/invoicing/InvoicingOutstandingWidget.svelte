@@ -26,7 +26,11 @@
     {fmtMoney(summary.open_total)}
   </a>
   <p class="mt-1 text-sm text-text-muted">
-    {t("invoicing.widget.open_count", { count: summary.open_count })}
+    <!-- "Open" here is *owing* — several statuses, not one key — so this opens the register the
+         figure is drawn from rather than a filter that would answer a different question. -->
+    <a href="/invoices" class="hover:text-brand hover:underline">
+      {t("invoicing.widget.open_count", { count: summary.open_count })}
+    </a>
   </p>
   {#if summary.overdue_count > 0}
     <a

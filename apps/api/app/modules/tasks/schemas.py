@@ -176,6 +176,12 @@ class DashboardTaskGroup(BaseModel):
     entity_type: str
     entity_id: uuid.UUID | None
     label: str | None
+    # The client a *project* row belongs to. A project name alone is not a name: two clients each
+    # having an "Algemeen" or a "Website" project drew two identical rows on the tile, and the
+    # only way to tell them apart was to open one. Null on a company row (its own label is the
+    # client) and on the unlinked bucket.
+    company_id: uuid.UUID | None = None
+    company_name: str | None = None
     count: int
     overdue: int
 

@@ -12142,6 +12142,10 @@ export interface components {
          * @description Compact open-task aggregate for the dashboard; no 200-row lookup payloads.
          */
         DashboardTaskGroup: {
+            /** Company Id */
+            company_id?: string | null;
+            /** Company Name */
+            company_name?: string | null;
             /** Count */
             count: number;
             /** Entity Id */
@@ -15677,6 +15681,8 @@ export interface components {
             hours_per_week: string;
             /** Next Leave End */
             next_leave_end: string | null;
+            /** Next Leave Id */
+            next_leave_id?: string | null;
             /** Next Leave Start */
             next_leave_start: string | null;
             /** Pending Count */
@@ -40172,6 +40178,8 @@ export interface operations {
                 offset?: number;
                 company_id?: string | null;
                 project_id?: string | null;
+                /** @description Only tasks with no client and no project */
+                unlinked?: boolean;
                 assignee_user_id?: string | null;
                 assignee_contact_id?: string | null;
                 /** @description A configured status key */

@@ -20,6 +20,9 @@ export const load: PageServerLoad = async (event) => {
   const filters = {
     company_id: q.get("company_id") || undefined,
     project_id: q.get("project_id") || undefined,
+    // "Hangs off no client and no project" — the dashboard tile's own bucket, made addressable
+    // (#15). An absent `company_id` means *any* client, so it could never express this.
+    unlinked: q.get("unlinked") === "1" || undefined,
     assignee_user_id: q.get("assignee_user_id") || undefined,
     label_id: q.get("label_id") || undefined,
     due: (q.get("due") as "overdue" | "today" | "week" | null) || undefined,

@@ -177,6 +177,20 @@
   padding, title row with an optional "show all" link) is the widget's own responsibility, and the
   shared wrapper is how it stops being re-typed per widget. Both the empty and the populated state
   render inside the card; a bare `<p>` sitting naked in the grid is the bug this rule exists for.
+- **Nothing on a dashboard tile is a dead end** (#15, extended). A tile exists to be left: a
+  *record* it names opens that record, and an *aggregate* opens the list it is a total of — with
+  the filter that makes the two numbers agree, not the module's front door. So a per-client count
+  carries `company_id`, an overdue badge adds `due=overdue`, "team deze maand" splits into the
+  time report and the omzet page, and a client's next invoice opens the subscriptions list
+  filtered to them. Two rules keep it honest. **A bucket with no record behind it still needs a
+  destination**: the open-tasks tile's "everything hanging off no client and no project" row had
+  none, so the API grew `?unlinked=1` — inventing the filter is the fix, dumping the reader on an
+  unfiltered list is not. And **a fallback label may never be a word a tenant could have used**:
+  that same row borrowed `time.general` ("Algemeen"), which read as a real project, sat beside
+  real projects, and on an instance that *had* one appeared twice. It says
+  `tasks.filter.unlinked` now — the same words as the chip on the list it opens, so the
+  destination confirms where you landed. The only text left unlinked is empty-state copy and a
+  restatement of a figure already linked beside it.
 - **Record actions live behind the ⋯ menu, never as bare buttons.** Every record-level
   **Edit** and **Delete** (on a list row, a card, or a detail header) is reached through the
   shared overflow menu (`core/ui/ActionsMenu`, the ⋯ / three-dots kebab) — never a standalone

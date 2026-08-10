@@ -559,6 +559,7 @@
   "tasks.due.today": "Due today",
   "tasks.due.week": "This week",
   "tasks.filter.clear": "Clear filters",
+  "tasks.filter.unlinked": "No client or project",
   "tasks.detail.description_placeholder": "Add a description…",
   "tasks.detail.delete": "Delete task",
   "tasks.detail.delete_confirm": "Delete this task, including its checklists and comments? This cannot be undone.",

@@ -98,10 +98,46 @@ async def test_dashboard_groups_are_compact_and_exclude_terminal_tasks(client_fo
                 "entity_type": "project",
                 "entity_id": project["id"],
                 "label": "Grouped Project",
+                # A project row names its client too: two clients may each run a "Website", and
+                # the tile drew them as two identical rows (issue #15).
+                "company_id": company["id"],
+                "company_name": "Grouped Co",
                 "count": 1,
                 "overdue": 1,
             }
         ]
+
+
+async def test_dashboard_group_without_client_or_project_is_addressable(client_for) -> None:
+    """The tile's fallback bucket has a list to open: ``?unlinked=1``, not a bare /tasks."""
+    t = await make_tenant("task-unlinked")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Someone"}, headers=headers)
+        ).json()
+        await c.post(
+            "/api/v1/tasks",
+            json={"title": "Client work", "company_id": company["id"]},
+            headers=headers,
+        )
+        await c.post("/api/v1/tasks", json={"title": "Loose end"}, headers=headers)
+
+        groups = (await c.get("/api/v1/tasks/dashboard-groups", headers=headers)).json()
+        loose = [g for g in groups if g["entity_type"] == "none"]
+        assert len(loose) == 1
+        assert loose[0]["entity_id"] is None
+        assert loose[0]["label"] is None
+        assert loose[0]["company_name"] is None
+        assert loose[0]["count"] == 1
+
+        filtered = await c.get("/api/v1/tasks?unlinked=true", headers=headers)
+        assert filtered.status_code == 200
+        assert [row["title"] for row in filtered.json()["items"]] == ["Loose end"]
+        assert filtered.json()["total"] == loose[0]["count"]
+
+        # Absent means "any client", which is the question the bucket is *not* asking.
+        assert (await c.get("/api/v1/tasks", headers=headers)).json()["total"] == 2
 
 
 async def test_tasks_panel_on_company(client_for) -> None:

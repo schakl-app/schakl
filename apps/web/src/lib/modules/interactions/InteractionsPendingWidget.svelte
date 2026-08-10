@@ -63,7 +63,12 @@
     <ul class="divide-y divide-border">
       {#each payload.items as row (row.id)}
         <li class="py-1.5">
-          <a href="/interactions?status=pending" class="block min-w-0 hover:text-brand">
+          <!-- The email itself, not the queue it sits in (issue #15): `?interaction=` opens that
+               row's detail modal, where it is read and approved. -->
+          <a
+            href="/interactions?status=pending&interaction={row.id}"
+            class="block min-w-0 hover:text-brand"
+          >
             <span class="block truncate text-sm text-text">{row.subject || "—"}</span>
             <span class="block truncate text-xs text-text-muted">
               {sender(row)}{#if row.company_name}&nbsp;· {row.company_name}{/if}

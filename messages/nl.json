@@ -559,6 +559,7 @@
   "tasks.due.today": "Vandaag",
   "tasks.due.week": "Deze week",
   "tasks.filter.clear": "Filters wissen",
+  "tasks.filter.unlinked": "Zonder klant of project",
   "tasks.detail.description_placeholder": "Voeg een omschrijving toe…",
   "tasks.detail.delete": "Taak verwijderen",
   "tasks.detail.delete_confirm": "Deze taak verwijderen, inclusief checklists en reacties? Dit kan niet ongedaan worden gemaakt.",

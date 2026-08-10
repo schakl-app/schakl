@@ -297,6 +297,16 @@
       >{t(`tasks.due.${option}`)}</button
     >
   {/each}
+  <!-- The dashboard tile's "no client or project" bucket arrives here as `?unlinked=1`; the chip
+       is what makes that a visible filter rather than a silently narrowed list. -->
+  <button
+    class="rounded-full px-3 py-1 text-xs font-medium
+      {data.filters.unlinked
+      ? 'bg-brand text-white'
+      : 'border border-border text-text-muted hover:border-brand hover:text-brand'}"
+    onclick={() => setFilter("unlinked", data.filters.unlinked ? "" : "1")}
+    >{t("tasks.filter.unlinked")}</button
+  >
   {#each data.labels as label (label.id)}
     <button
       class="rounded-full px-3 py-1 text-xs font-medium

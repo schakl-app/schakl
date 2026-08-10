@@ -127,6 +127,7 @@ _dashboard_projects = table(
     column("id"),
     column("org_id"),
     column("name"),
+    column("company_id"),
 )
 _dashboard_companies = table(
     "companies",
@@ -134,6 +135,9 @@ _dashboard_companies = table(
     column("org_id"),
     column("name"),
 )
+# The client behind a *project* row, joined a second time: a project's own name does not say
+# whose it is (see ``DashboardTaskGroup.company_name``).
+_dashboard_project_companies = _dashboard_companies.alias("dashboard_project_companies")
 
 # Status is no longer a fixed vocabulary, so its rank is built per request from the org's
 # configured order (see ``list``). Everything else is static.
@@ -368,6 +372,7 @@ class TaskService:
         offset: int,
         company_id: uuid.UUID | None = None,
         project_id: uuid.UUID | None = None,
+        unlinked: bool = False,
         assignee_user_id: uuid.UUID | None = None,
         assignee_contact_id: uuid.UUID | None = None,
         status: str | None = None,
@@ -387,6 +392,11 @@ class TaskService:
             stmt = stmt.where(Task.company_id == company_id)
         if project_id is not None:
             stmt = stmt.where(Task.project_id == project_id)
+        # The dashboard's own bucket, addressable (#15): the tile counts tasks hanging off no
+        # client and no project, so the count has a list to open. An absent ``company_id`` means
+        # "any client", which is a different question and could never express this one.
+        if unlinked:
+            stmt = stmt.where(Task.company_id.is_(None), Task.project_id.is_(None))
         if assignee_user_id is not None:
             stmt = stmt.where(Task.assignee_user_id == assignee_user_id)
         if assignee_contact_id is not None:
@@ -483,6 +493,14 @@ class TaskService:
             (visible.c.project_id.is_not(None), _dashboard_projects.c.name),
             (visible.c.company_id.is_not(None), _dashboard_companies.c.name),
         )
+        # A project row names its client too, so the tile can say "Website · Bakkerij Jansen"
+        # instead of two indistinguishable "Website" rows. A company row is already its client.
+        group_company_id = case(
+            (visible.c.project_id.is_not(None), _dashboard_projects.c.company_id),
+        )
+        group_company_name = case(
+            (visible.c.project_id.is_not(None), _dashboard_project_companies.c.name),
+        )
         count = func.count()
         overdue = func.count().filter(visible.c.due_date < today)
         stmt = (
@@ -490,6 +508,8 @@ class TaskService:
                 entity_type.label("entity_type"),
                 entity_id.label("entity_id"),
                 label.label("label"),
+                group_company_id.label("company_id"),
+                group_company_name.label("company_name"),
                 count.label("count"),
                 overdue.label("overdue"),
             )
@@ -502,6 +522,13 @@ class TaskService:
                 ),
             )
             .outerjoin(
+                _dashboard_project_companies,
+                and_(
+                    _dashboard_project_companies.c.org_id == _dashboard_projects.c.org_id,
+                    _dashboard_project_companies.c.id == _dashboard_projects.c.company_id,
+                ),
+            )
+            .outerjoin(
                 _dashboard_companies,
                 and_(
                     _dashboard_companies.c.org_id == visible.c.org_id,
@@ -509,7 +536,7 @@ class TaskService:
                 ),
             )
             .where(visible.c.status.in_(open_keys))
-            .group_by(entity_type, entity_id, label)
+            .group_by(entity_type, entity_id, label, group_company_id, group_company_name)
             .order_by(count.desc(), label.asc().nulls_last())
         )
         rows = (await self.ctx.session.execute(stmt)).all()
@@ -518,6 +545,8 @@ class TaskService:
                 entity_type=row.entity_type,
                 entity_id=row.entity_id,
                 label=row.label,
+                company_id=row.company_id,
+                company_name=row.company_name,
                 count=int(row.count),
                 overdue=int(row.overdue),
             )

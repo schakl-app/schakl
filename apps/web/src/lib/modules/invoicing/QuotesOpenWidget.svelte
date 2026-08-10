@@ -18,10 +18,14 @@
   href="/quotes"
   linkLabel={t("invoicing.quotes")}
 >
-  <a href="/quotes" class="block text-2xl font-semibold text-text hover:text-brand">
+  <!-- Both figures count the *open* quotes, so both open that filter — not the whole register
+       with the drafts and the ones already accepted (issue #15). -->
+  <a href="/quotes?status=open" class="block text-2xl font-semibold text-text hover:text-brand">
     {fmtMoney(summary.quotes_open_total)}
   </a>
   <p class="mt-1 text-sm text-text-muted">
-    {t("invoicing.widget.quotes_open_count", { count: summary.quotes_open_count })}
+    <a href="/quotes?status=open" class="hover:text-brand hover:underline">
+      {t("invoicing.widget.quotes_open_count", { count: summary.quotes_open_count })}
+    </a>
   </p>
 </DashboardWidgetCard>
