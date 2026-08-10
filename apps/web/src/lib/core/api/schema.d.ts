@@ -6085,11 +6085,15 @@ export interface paths {
         get?: never;
         /**
          * Set Company Settings
-         * @description Per-client marketing preferences: the curated tab layout (#192) and the legacy
-         *     key-events toggle (#134, expand release).
+         * @description Per-client marketing preferences: the curated tab layout (#192), the comparison this
+         *     client's dashboard measures against (#312) and the legacy key-events toggle (#134).
          *
          *     Configuration rides ``marketing.link.manage`` like linking. Hidden tiles stop being
          *     returned for this client — panel, tab and overview — until they're back on.
+         *
+         *     ``compare`` is the one field where an explicit ``null`` differs from omitting it: it clears
+         *     the override back to the org default, which is a choice the dashboard's select offers. Hence
+         *     ``model_fields_set`` rather than a ``None`` check (CLAUDE.md §18).
          */
         put: operations["set_company_settings_api_v1_marketing_companies__company_id__settings_put"];
         post?: never;
@@ -11609,6 +11613,10 @@ export interface components {
              * Format: uuid
              */
             company_id: string;
+            compare: components["schemas"]["MarketingCompareWindow"];
+            /** @default year */
+            compare_default: components["schemas"]["ComparePeriod"];
+            compare_setting?: components["schemas"]["ComparePeriod"] | null;
             /** Layout */
             layout?: {
                 [key: string]: unknown;
@@ -11740,6 +11748,9 @@ export interface components {
              * Format: uuid
              */
             company_id: string;
+            compare?: components["schemas"]["ComparePeriod"] | null;
+            /** @default year */
+            compare_resolved: components["schemas"]["ComparePeriod"];
             /** Layout */
             layout?: {
                 [key: string]: unknown;
@@ -11749,12 +11760,19 @@ export interface components {
         };
         /**
          * CompanySettingsUpdate
-         * @description Per-client marketing preferences. Both fields optional: send what changes.
+         * @description Per-client marketing preferences. Every field optional: send what changes.
          *
          *     ``layout`` replaces the stored layout wholesale (``{"sources": {}}`` clears it); the
          *     legacy ``show_key_events`` keeps working during the expand release (#192).
+         *
+         *     ``compare`` follows the bulk-edit rule (CLAUDE.md §18): **absent means leave alone, an
+         *     explicit ``null`` means clear back to the org default**. It has to, because ``None`` is a
+         *     meaningful stored value here — the dashboard's select posts "volg standaard" as a real
+         *     choice, and a payload that could not express it would leave a client pinned to whatever was
+         *     set once, forever. The service reads ``model_fields_set`` to tell the two apart.
          */
         CompanySettingsUpdate: {
+            compare?: components["schemas"]["ComparePeriod"] | null;
             /** Layout */
             layout?: {
                 [key: string]: unknown;
@@ -11808,6 +11826,12 @@ export interface components {
             /** Website */
             website?: string | null;
         };
+        /**
+         * ComparePeriod
+         * @description Which span a period is measured against.
+         * @enum {string}
+         */
+        ComparePeriod: "year" | "previous";
         /**
          * ConnectRequest
          * @description "Connect this domain to Cloudflare" — adopt the existing zone, or create one.
@@ -16189,6 +16213,42 @@ export interface components {
             updated: number;
         };
         /**
+         * MarketingCompareWindow
+         * @description Which two spans a screen's deltas actually measured (#312).
+         *
+         *     Every payload that carries a ``delta_pct`` carries this, because a percentage with no named
+         *     denominator is the thing this issue was filed about: "t.o.v. vorige periode" was a label the
+         *     screen could print whatever it had compared, and it printed it while the same client's PDF
+         *     said "vorig jaar". Both spans travel, not just the comparison one — the web names the period
+         *     a delta is *against*, and a screen that can only say one of the two can never be checked.
+         *
+         *     Dates rather than a mode name: the mode is configuration, the dates are what happened. A
+         *     reader who sees "t.o.v. jul 2025" needs no vocabulary at all.
+         */
+        MarketingCompareWindow: {
+            /**
+             * Current End
+             * Format: date
+             */
+            current_end: string;
+            /**
+             * Current Start
+             * Format: date
+             */
+            current_start: string;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            mode: components["schemas"]["ComparePeriod"];
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+        };
+        /**
          * MarketingSettingsRead
          * @description The org's marketing settings. The Ads developer token is write-only — like the Google
          *     client secret, the API reports only whether one is configured, never the value.
@@ -16199,6 +16259,8 @@ export interface components {
              * @default false
              */
             ads_developer_token_configured: boolean;
+            /** @default year */
+            default_compare: components["schemas"]["ComparePeriod"];
             /**
              * Env Ads Token Configured
              * @default false
@@ -16214,6 +16276,7 @@ export interface components {
         MarketingSettingsWrite: {
             /** Ads Developer Token */
             ads_developer_token?: string | null;
+            default_compare?: components["schemas"]["ComparePeriod"] | null;
             /** Seranking Api Key */
             seranking_api_key?: string | null;
         };
@@ -16229,6 +16292,7 @@ export interface components {
         MarketingSource: "ga4" | "gsc" | "gads" | "seranking";
         /** MarketingSummary */
         MarketingSummary: {
+            compare: components["schemas"]["MarketingCompareWindow"];
             /**
              * Linked Total
              * @default 0
@@ -16963,6 +17027,7 @@ export interface components {
         };
         /** OverviewResponse */
         OverviewResponse: {
+            compare: components["schemas"]["MarketingCompareWindow"];
             /** Range Days */
             range_days: number;
             /** Rows */
@@ -19052,6 +19117,12 @@ export interface components {
         ReportCadence: "off" | "monthly" | "quarterly";
         /**
          * ReportCompare
+         * @description This module's name for ``app.core.periods.ComparePeriod`` — same values, one for one.
+         *
+         *     Kept as its own enum because these values are already stored in every tenant's template
+         *     schedules and named ``ReportCompare`` in the generated client; the *date math* is shared
+         *     (:func:`app.core.periods.compare_window`), which is the part that must not diverge from what
+         *     the marketing dashboard shows for the same client (#312).
          * @enum {string}
          */
         ReportCompare: "year" | "previous";

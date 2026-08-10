@@ -137,6 +137,28 @@ leaves the repository's path — a window fold, a report, a summary tile, a pane
 predicate from `horizon_condition()` explicitly (CLAUDE.md §15, and `scoped_count_select()` for
 plain counts).
 
+## Read the windows, not their hull
+
+A screen that compares two spans reads *two ranges*, never `[earliest, latest]`. While the
+comparison was always the span immediately before, the two were the same statement and the hull
+was free. Once the comparison could be **the same span a year earlier** (#312), the hull became a
+year of daily rows fetched to print thirty — three years' worth on the 12-month range — and
+nothing in the response would have shown it, because the Python that buckets the rows filters
+correctly either way. `MarketingService._metrics_for_links` takes a list of spans and ORs two
+bounded predicates, which keeps the index scan on `(org_id, link_id, date)` and the row count at
+what the screen draws.
+
+Its test asserts the **statement**, not the numbers: two lower bounds means two windows, one
+means the hull, and the KPIs are identical in both cases. The same shape as every other rule
+here — the regression is invisible in the JSON.
+
+Its sibling: resolving a setting that has an org-level default and a per-row override is **one**
+statement, not two. Both are single-row unique-index lookups, so they ride as scalar subqueries
+on one FROM-less `SELECT` (which Postgres answers with exactly one row whether or not either row
+exists — the distinction the read needs anyway, since absent means *the default* on both sides).
+Two would have been invisible everywhere except the company hub, which composes a provider per
+enabled module in sequence and is exactly where "+1 each" adds up.
+
 ## Bound every read; a truncated count is a lie
 
 A panel or a detail response that grows with the tenant's history will be fine for a year and

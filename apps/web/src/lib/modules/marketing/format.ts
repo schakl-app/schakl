@@ -6,8 +6,10 @@
  * percentages; average position is one decimal and lower is better; counts are whole numbers.
  * A delta's tone flips for a lower-is-better metric so an improving average position reads green.
  */
-import { dateLocale, fmtNumber } from "$lib/core/format";
+import { dateLocale, fmtMonthYear, fmtNumber, fmtPeriod } from "$lib/core/format";
 import { t } from "$lib/core/i18n";
+
+import type { CompareWindow, ComparePeriod } from "./types";
 
 const MONEY_METRICS = new Set(["cost", "totalRevenue", "conversionsValue"]);
 const PERCENT_METRICS = new Set(["ctr", "engagementRate"]);
@@ -78,6 +80,38 @@ export function deltaView(
   if (deltaPct > 0) tone = lowerIsBetter ? "down" : "up";
   else if (deltaPct < 0) tone = lowerIsBetter ? "up" : "down";
   return { text, tone };
+}
+
+/** The setting's own name, for the two selects that configure it (#312). */
+export function compareModeLabel(mode: ComparePeriod): string {
+  return t(`marketing.compare.${mode}`);
+}
+
+const _LAST_DAY = (iso: string): number =>
+  new Date(Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)), 0)).getUTCDate();
+
+/**
+ * Name a compared span the way a person would (#312).
+ *
+ * A whole calendar month is "juli 2025" and a whole year is "2025"; anything else falls back to
+ * the shared date-range format ("11 jul – 9 aug 2025"). Naming the span rather than the *mode*
+ * is the whole point of the issue: "t.o.v. vorige periode" was a label the screen could print
+ * over any two dates at all, so a comparison set to the wrong thing looked exactly like one set
+ * to the right thing. "t.o.v. juli 2025" is checkable at a glance.
+ */
+export function comparePeriodLabel(window: Pick<CompareWindow, "start" | "end">): string {
+  const { start, end } = window;
+  if (
+    start.slice(0, 7) === end.slice(0, 7) &&
+    start.endsWith("-01") &&
+    Number(end.slice(8, 10)) === _LAST_DAY(end)
+  ) {
+    return fmtMonthYear(start.slice(0, 7));
+  }
+  if (start.endsWith("-01-01") && end.endsWith("-12-31") && start.slice(0, 4) === end.slice(0, 4)) {
+    return start.slice(0, 4);
+  }
+  return fmtPeriod(start, end);
 }
 
 /** The Tailwind text colour for a delta tone (semantic, theme-aware via the token). */

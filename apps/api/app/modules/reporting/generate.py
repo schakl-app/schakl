@@ -33,6 +33,7 @@ from typing import Any
 
 from app.config import settings as app_settings
 from app.core.ai.service import AIService
+from app.core.periods import ComparePeriod, compare_window
 from app.core.storage.models import StoredFile
 from app.core.storage.service import write_file
 from app.core.tenancy import RequestContext
@@ -75,36 +76,16 @@ def previous_quarter(today: date) -> tuple[date, date]:
     return start, date(year, last_month, monthrange(year, last_month)[1])
 
 
-def _is_whole_month(start: date, end: date) -> bool:
-    return (
-        start.day == 1
-        and start.year == end.year
-        and start.month == end.month
-        and end.day == monthrange(end.year, end.month)[1]
-    )
-
-
 def comparison(start: date, end: date, mode: str) -> tuple[date | None, date | None]:
-    """The span this period is measured against.
+    """The span this period is measured against — ``app/core/periods.py`` (#312).
 
-    ``year`` is the default because it is the comparison a client asks about and the one that
-    survives seasonality: a campsite's July has nothing to say to its June. ``previous`` is for
-    a business without a season.
+    Kept as a named function here because the reporting pipeline reads better for it, but the
+    date math moved to core the moment a *second* surface needed the same two rules: the
+    marketing dashboard compares the same client's same numbers, and the two disagreeing about
+    what "vorige periode" means is exactly the confusion this file's own docstring warns about.
+    ``ReportCompare``'s members mirror :class:`ComparePeriod`'s values one for one.
     """
-    if mode == ReportCompare.PREVIOUS.value:
-        compare_end = start - _ONE_DAY
-        if _is_whole_month(start, end):
-            # A whole month compares to a whole month. Subtracting 31 days from 1 July lands
-            # on 31 May, so a "previous period" would straddle two of them and be neither.
-            return compare_end.replace(day=1), compare_end
-        return compare_end - (end - start), compare_end
-    try:
-        compare_start = start.replace(year=start.year - 1)
-        compare_end = end.replace(year=end.year - 1)
-    except ValueError:  # 29 February
-        compare_start = start.replace(year=start.year - 1, day=28)
-        compare_end = end.replace(year=end.year - 1, day=28)
-    return compare_start, compare_end
+    return compare_window(start, end, ComparePeriod(mode))
 
 
 # --------------------------------------------------------------------------------------- #

@@ -200,13 +200,15 @@ async def test_metrics_aggregation_and_deltas(client_for) -> None:
         ).json()
 
         link_id = uuid.UUID(ga4["id"])
-        # Current window (safely inside [today-30, today-1]) vs previous ([today-60, today-31]).
+        # Current window (safely inside [today-30, today-1]) against the same days a year
+        # earlier — the default comparison since #312. The comparison the dashboard *used* to
+        # make lives in tests/test_marketing_compare.py, where it is a per-client setting.
         await _seed_metrics(
             t.org.id,
             link_id,
             {
                 today - timedelta(days=2): {"sessions": 120, "conversions": 10},
-                today - timedelta(days=40): {"sessions": 80, "conversions": 5},
+                today - timedelta(days=367): {"sessions": 80, "conversions": 5},
             },
         )
         # GSC: two current days — period position is impression-weighted, not the mean of 5 & 8.
@@ -1162,7 +1164,8 @@ async def test_summary_top_clients_headline_fallback_and_cap(client_for) -> None
             uuid.UUID(ga4["id"]),
             {
                 today - timedelta(days=2): {"sessions": 120},
-                today - timedelta(days=40): {"sessions": 80},
+                # A year back: the widget's delta follows the org default comparison (#312).
+                today - timedelta(days=367): {"sessions": 80},
             },
         )
         await _seed_metrics(

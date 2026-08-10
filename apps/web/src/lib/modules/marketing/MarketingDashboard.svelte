@@ -17,9 +17,11 @@
   import { editLocales } from "$lib/core/i18n-edit.svelte";
   import I18nLocaleSwitcher from "$lib/core/ui/I18nLocaleSwitcher.svelte";
 
+  import { comparePeriodLabel, compareModeLabel } from "./format";
   import MarketingSourceSection from "./MarketingSourceSection.svelte";
   import {
     ALL_METRICS,
+    COMPARE_PERIODS,
     DRILLDOWNS,
     connectHref,
     type CompanyMarketing,
@@ -195,11 +197,30 @@
     layoutValue = serializedLayout();
     setTimeout(() => layoutForm?.requestSubmit(), 0);
   }
+
+  // ---- The comparison (#312) --------------------------------------------------------------
+  // Dashboard-level, not per source: one screen where GA4 reads against last year and Search
+  // Console against last month is not a screen anyone can summarise. `""` is "follow the org
+  // default" and is a real stored state (null), not an empty field — which is why it posts as
+  // its own value rather than being skipped.
+  const compare = $derived(metrics?.compare ?? null);
+  const comparedPeriod = $derived(compare ? comparePeriodLabel(compare) : "");
+  let compareForm: HTMLFormElement | undefined = $state();
+  let compareValue = $state("");
+  function persistCompare(event: Event) {
+    compareValue = (event.currentTarget as HTMLSelectElement).value;
+    setTimeout(() => compareForm?.requestSubmit(), 0);
+  }
 </script>
 
 <form method="POST" action="?/saveLayout" use:enhance bind:this={layoutForm} class="hidden">
   <input type="hidden" name="company_id" value={companyId} />
   <input type="hidden" name="layout" value={layoutValue} />
+</form>
+
+<form method="POST" action="?/saveCompare" use:enhance bind:this={compareForm} class="hidden">
+  <input type="hidden" name="company_id" value={companyId} />
+  <input type="hidden" name="compare" value={compareValue} />
 </form>
 
 <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -260,6 +281,42 @@
     <p class="text-xs text-text-muted">{t("marketing.layout.edit_hint")}</p>
     <I18nLocaleSwitcher hint={false} />
   </div>
+
+  <!-- The comparison is a property of this client's dashboard, so it is edited with the rest of
+       it rather than hidden in Instellingen — and it persists on change like every other control
+       here. Inheriting is an option, not a blank: the label says what it inherits. -->
+  <div
+    class="mb-4 flex flex-wrap items-end justify-between gap-3 rounded-xl border border-brand/40 bg-surface-raised p-4"
+  >
+    <div class="min-w-0">
+      <label for="marketing-compare" class="mb-1 block text-sm font-medium text-text">
+        {t("marketing.compare.label")}
+      </label>
+      <select
+        id="marketing-compare"
+        value={metrics?.compare_setting ?? ""}
+        onchange={persistCompare}
+        class="w-full min-w-64 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text outline-none focus:border-brand"
+      >
+        <option value="">
+          {t("marketing.compare.inherit", {
+            mode: compareModeLabel(metrics?.compare_default ?? "year"),
+          })}
+        </option>
+        {#each COMPARE_PERIODS as mode (mode)}
+          <option value={mode}>{compareModeLabel(mode)}</option>
+        {/each}
+      </select>
+    </div>
+    <p class="max-w-md text-xs text-text-muted">
+      {t("marketing.compare.hint")}
+      {#if comparedPeriod}
+        <span class="mt-1 block text-text"
+          >{t("marketing.compare.caption", { period: comparedPeriod })}</span
+        >
+      {/if}
+    </p>
+  </div>
 {/if}
 
 {#if metrics?.needs_connection}
@@ -302,6 +359,7 @@
               {companyId}
               {src}
               {rangeDays}
+              {compare}
               edit={editMode ? (edit[src.source] ?? null) : null}
               onchange={persist}
             />

@@ -385,6 +385,30 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   are inline SVG because the engine's fetcher answers `data:` and nothing else. `marketing`
   borrows the latest published report's paragraph per section through `app/core/narratives.py`,
   so a dashboard stops being a table on the other twenty-nine days of the month.
+- **A percentage is a claim about two spans, so both of them have to be on the screen** (#312,
+  `app/core/periods.py`). The marketing dashboard labelled every delta *"t.o.v. vorige periode"* —
+  a sentence it could print over any two dates at all, which is why a comparison set to the wrong
+  thing looked exactly like one set to the right thing. It was also *a different answer from the
+  document built out of the same numbers*: `reporting` had already decided (#300) that a client
+  asks about last year, because that is the comparison seasonality survives — a campsite's July
+  has nothing to say to its June. Same client, same July, up in the PDF and down on the screen.
+  Three rules. **The vocabulary and the date math are shared, once** (`ComparePeriod`,
+  `compare_window`), so the two surfaces cannot drift again; `ReportCompare` stays as reporting's
+  name for the same two values because tenants' stored schedules already say them, and only the
+  arithmetic moved — carrying its two easy-to-get-wrong rules with it (a whole month steps to a
+  whole month, since 1 July minus 31 days lands on 31 May and straddles two; and stepping a year
+  moves **only** 29 February, resolved per endpoint — the shape it was lifted from stepped both
+  ends inside one `try`, so 29 Feb – 31 Mar quietly came back three days short). **The payload
+  carries the dates, and the screen names them**: "t.o.v. 11 jul – 9 aug 2025" is checkable and
+  "t.o.v. vorige periode" is not, and re-deriving the span in the browser would be a second
+  opinion about a question the API already answered with the tenant's timezone, the client's
+  setting and the org's default in hand. **What is configurable is the dashboard, not the tile**:
+  a house default in Instellingen → Marketing with a per-client override in the dashboard's own
+  edit mode (`NULL` = inherit, and an explicit `null` is how "volg de standaard" is posted, §18),
+  because one screen where GA4 reads against last year and Search Console against last month is
+  not a screen anyone can summarise — and the *cross-client* grid deliberately ignores the
+  per-client half, since a column sorted on percentages whose denominators differ per row ranks
+  nothing. The read follows (`docs/PERFORMANCE.md`): two bounded windows, never their hull.
 - **Collecting money is three rules that outlive the provider** (epic #269, `docs/PAYMENTS.md` +
   `docs/MOLLIE.md`). #267 asked for Mollie and argued *against* an abstraction, since no second
   provider was on the roadmap; the owner reversed that, because the issue was right about

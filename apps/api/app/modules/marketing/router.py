@@ -138,14 +138,22 @@ async def set_company_settings(
     payload: CompanySettingsUpdate,
     ctx: RequestContext = Depends(require_context),
 ) -> CompanySettingsRead:
-    """Per-client marketing preferences: the curated tab layout (#192) and the legacy
-    key-events toggle (#134, expand release).
+    """Per-client marketing preferences: the curated tab layout (#192), the comparison this
+    client's dashboard measures against (#312) and the legacy key-events toggle (#134).
 
     Configuration rides ``marketing.link.manage`` like linking. Hidden tiles stop being
     returned for this client — panel, tab and overview — until they're back on.
+
+    ``compare`` is the one field where an explicit ``null`` differs from omitting it: it clears
+    the override back to the org default, which is a choice the dashboard's select offers. Hence
+    ``model_fields_set`` rather than a ``None`` check (CLAUDE.md §18).
     """
     return await MarketingService(ctx).set_company_settings(
-        company_id, show_key_events=payload.show_key_events, layout=payload.layout
+        company_id,
+        show_key_events=payload.show_key_events,
+        layout=payload.layout,
+        compare=payload.compare,
+        compare_set="compare" in payload.model_fields_set,
     )
 
 

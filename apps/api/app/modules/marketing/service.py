@@ -19,9 +19,9 @@ from collections import defaultdict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import Any, NamedTuple
 
-from sqlalchemy import bindparam, func, select, text
+from sqlalchemy import and_, bindparam, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -31,6 +31,7 @@ from app.core.cache import get_redis
 from app.core.crypto import decrypt, encrypt
 from app.core.jobs import enqueue
 from app.core.narratives import latest_narrative
+from app.core.periods import ComparePeriod, compare_window, resolve_compare
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
 from app.errors import AppError
@@ -67,6 +68,7 @@ from app.modules.marketing.schemas import (
     KpiValue,
     LinkCreate,
     LinkRead,
+    MarketingCompareWindow,
     MarketingSettingsRead,
     MarketingSettingsWrite,
     MarketingSummary,
@@ -136,6 +138,38 @@ def _delta_pct(current: float, previous: float) -> float | None:
     if not previous:
         return None
     return round((current - previous) / previous * 100, 1)
+
+
+class CompanyPrefs(NamedTuple):
+    """One client's marketing display preferences, as the read paths need them."""
+
+    show_key_events: bool = True
+    layout: dict | None = None
+    #: The stored comparison override; ``None`` = follow the org default (#312).
+    compare: str | None = None
+
+
+def compare_windows(
+    today: date, range_days: int, mode: ComparePeriod
+) -> MarketingCompareWindow:
+    """The span a screen shows and the span it measures against (#312).
+
+    The current window ends **yesterday**, as it always has: today is partial, and comparing
+    fourteen hours against twenty-four reads as a collapse in traffic every morning. What is new
+    is that the comparison window is no longer "the same length, immediately before" — it is
+    whatever the resolved mode says, and the pair travels to the client so the screen can name
+    it.
+    """
+    cur_end = today - timedelta(days=1)
+    cur_start = cur_end - timedelta(days=range_days - 1)
+    start, end = compare_window(cur_start, cur_end, mode)
+    return MarketingCompareWindow(
+        mode=mode,
+        current_start=cur_start,
+        current_end=cur_end,
+        start=start,
+        end=end,
+    )
 
 
 def _failure_key(
@@ -414,11 +448,12 @@ class MarketingService:
 
     async def _settings_map(
         self, company_ids: list[uuid.UUID]
-    ) -> dict[uuid.UUID, tuple[bool, dict | None]]:
-        """``{company_id: (show_key_events, layout)}`` for the given companies — one query.
+    ) -> dict[uuid.UUID, CompanyPrefs]:
+        """``{company_id: CompanyPrefs}`` for the given companies — one query.
 
-        A company with **no** settings row falls back to the defaults (``True``, no layout):
-        absence means the pre-existing behaviour, so nothing changes until someone edits.
+        A company with **no** settings row falls back to the defaults (key events shown, no
+        layout, no comparison override): absence means the pre-existing behaviour, so nothing
+        changes until someone edits.
         """
         if not company_ids:
             return {}
@@ -428,19 +463,79 @@ class MarketingService:
                     MarketingCompanySettings.company_id,
                     MarketingCompanySettings.show_key_events,
                     MarketingCompanySettings.layout,
+                    MarketingCompanySettings.compare,
                 ).where(
                     MarketingCompanySettings.org_id == self.ctx.org.id,
                     MarketingCompanySettings.company_id.in_(company_ids),
                 )
             )
         ).all()
-        return {company_id: (bool(flag), layout) for company_id, flag, layout in rows}
+        return {
+            company_id: CompanyPrefs(bool(flag), layout, compare)
+            for company_id, flag, layout, compare in rows
+        }
 
-    async def _company_settings(self, company_id: uuid.UUID) -> tuple[bool, dict | None]:
-        return (await self._settings_map([company_id])).get(company_id, (True, None))
+    async def _company_settings(self, company_id: uuid.UUID) -> CompanyPrefs:
+        return (await self._settings_map([company_id])).get(company_id, CompanyPrefs())
 
     async def _show_key_events(self, company_id: uuid.UUID) -> bool:
-        return (await self._company_settings(company_id))[0]
+        return (await self._company_settings(company_id)).show_key_events
+
+    async def _prefs_with_default(
+        self, company_id: uuid.UUID
+    ) -> tuple[CompanyPrefs, ComparePeriod]:
+        """This client's preferences **and** the org default, in one statement (#312).
+
+        Two single-row lookups is the obvious shape and it costs the company hub a query it does
+        not need to spend: that page composes a provider per enabled module in sequence, so
+        "+1 each" is precisely how it gets slow, and #290's budget exists to catch it. Both rows
+        are unique-index lookups, so they ride as scalar subqueries on one FROM-less ``SELECT``,
+        which Postgres answers with exactly one row whether or not either row exists — the
+        distinction the read needs anyway, since absent means *the defaults* on both sides.
+        """
+        org_id = self.ctx.org.id
+
+        def of_company(column: Any) -> Any:
+            return (
+                select(column)
+                .where(
+                    MarketingCompanySettings.org_id == org_id,
+                    MarketingCompanySettings.company_id == company_id,
+                )
+                .scalar_subquery()
+            )
+
+        show_key_events, layout, compare, org_default = (
+            await self.ctx.session.execute(
+                select(
+                    of_company(MarketingCompanySettings.show_key_events),
+                    of_company(MarketingCompanySettings.layout),
+                    of_company(MarketingCompanySettings.compare),
+                    select(MarketingSettings.default_compare)
+                    .where(MarketingSettings.org_id == org_id)
+                    .scalar_subquery(),
+                )
+            )
+        ).one()
+        prefs = CompanyPrefs(
+            show_key_events=True if show_key_events is None else bool(show_key_events),
+            layout=layout,
+            compare=compare,
+        )
+        return prefs, resolve_compare(org_default)
+
+    async def _org_default_compare(self) -> ComparePeriod:
+        """The agency's house comparison (#312) — the code default while nothing is stored.
+
+        One scalar read of the org's own settings row, which is why the per-client resolution
+        below takes it as an argument: a cross-client grid asks for it once, not once per row.
+        """
+        stored = await self.ctx.session.scalar(
+            select(MarketingSettings.default_compare).where(
+                MarketingSettings.org_id == self.ctx.org.id
+            )
+        )
+        return resolve_compare(stored)
 
     # --- links (#132) --------------------------------------------------------------------- #
     async def list_links_read(self, company_id: uuid.UUID) -> list[LinkRead]:
@@ -596,8 +691,14 @@ class MarketingService:
         *,
         show_key_events: bool | None = None,
         layout: dict | None = None,
+        compare: ComparePeriod | None = None,
+        compare_set: bool = False,
     ) -> CompanySettingsRead:
         """Per-client marketing preferences (upsert, one row per org+company).
+
+        ``compare_set`` is what lets ``compare=None`` mean *clear back to the org default*
+        rather than *leave alone* (#312, the §18 rule) — the router passes the payload's
+        ``model_fields_set``, so "volg standaard" is a choice the dashboard can actually post.
 
         Gated on ``marketing.link.manage`` — it's configuration, like linking. Two writers,
         kept coherent during the expand release (#192):
@@ -629,6 +730,10 @@ class MarketingService:
             "ga4", source_layout(row.layout, "ga4"), bool(row.show_key_events)
         )
         previous_layout = row.layout
+        previous_compare = row.compare
+
+        if compare_set:
+            row.compare = compare.value if compare is not None else None
 
         if layout is not None:
             parsed = CompanyLayout.model_validate(layout)
@@ -678,8 +783,22 @@ class MarketingService:
             )
         if layout is not None and previous_layout != row.layout:
             await activity.record("company", company_id, "marketing.layout_changed", {})
+        if compare_set and previous_compare != row.compare:
+            # Worth a trail line of its own: it silently re-bases every percentage on the
+            # client's dashboard *and* on the report a colleague reads next to it, and "these
+            # numbers changed and nobody touched the data" is the question it answers (§16).
+            await activity.record(
+                "company",
+                company_id,
+                "marketing.compare_changed",
+                {"changes": {"compare": {"from": previous_compare, "to": row.compare}}},
+            )
         return CompanySettingsRead(
-            company_id=company_id, show_key_events=row.show_key_events, layout=row.layout
+            company_id=company_id,
+            show_key_events=row.show_key_events,
+            layout=row.layout,
+            compare=ComparePeriod(row.compare) if row.compare else None,
+            compare_resolved=resolve_compare(row.compare, await self._org_default_compare()),
         )
 
     # --- pickers (#132) ------------------------------------------------------------------- #
@@ -806,12 +925,18 @@ class MarketingService:
         await self._company_or_404(company_id)
         range_days = max(1, min(range_days, 400))
         today = await self._today()
-        cur_end = today - timedelta(days=1)
-        cur_start = cur_end - timedelta(days=range_days - 1)
-        prev_end = cur_start - timedelta(days=1)
-        prev_start = prev_end - timedelta(days=range_days - 1)
 
-        show_key_events, layout = await self._company_settings(company_id)
+        prefs, org_default = await self._prefs_with_default(company_id)
+        # The client's own choice wins, then the agency's, then ours (#312). Resolved here and
+        # nowhere else on this path, so the window the numbers came from and the window the
+        # screen names are the same object rather than two computations that agree today.
+        window = compare_windows(
+            today, range_days, resolve_compare(prefs.compare, org_default)
+        )
+        cur_start, cur_end = window.current_start, window.current_end
+        prev_start, prev_end = window.start, window.end
+
+        show_key_events, layout = prefs.show_key_events, prefs.layout
         links = await self._links(company_id=company_id)
         connections, owners = await self._connections_by_id()
         # The client's websites: group labels for linked sources + options for the pickers.
@@ -821,7 +946,7 @@ class MarketingService:
         sources: list[SourceMetrics] = []
         if links:
             metrics_by_link = await self._metrics_for_links(
-                [link.id for link in links], prev_start, cur_end
+                [link.id for link in links], window.spans()
             )
             for link in links:
                 hidden = source_hidden(layout, link.source)
@@ -851,6 +976,15 @@ class MarketingService:
         return CompanyMarketing(
             company_id=company_id,
             range_days=range_days,
+            compare=window,
+            # The stored value, not the resolved one: the editor's select must be able to show
+            # "volg standaard" as the state it actually is (#312), and only a manager configures.
+            compare_setting=(
+                ComparePeriod(prefs.compare)
+                if can_manage and prefs.compare in tuple(ComparePeriod)
+                else None
+            ),
+            compare_default=org_default,
             sources=sources,
             needs_connection=not await self._any_connection(),
             can_manage=can_manage,
@@ -863,13 +997,22 @@ class MarketingService:
         )
 
     async def _metrics_for_links(
-        self, link_ids: list[uuid.UUID], start: date, end: date
+        self, link_ids: list[uuid.UUID], spans: list[tuple[date, date]]
     ) -> dict[uuid.UUID, dict[date, dict[str, Any]]]:
-        """One query for every link's daily rows in ``[start, end]`` → {link_id: {day: metrics}}."""
-        if not link_ids:
+        """One query for every link's daily rows in ``spans`` → {link_id: {day: metrics}}.
+
+        **The spans, not their hull.** This used to take one contiguous ``[prev_start, cur_end]``,
+        which was the same thing while the comparison was always the span immediately before.
+        Under a year-over-year comparison (#312) the two windows are a year apart, and reading
+        the hull would drag eleven months of rows nobody looks at through the session on every
+        dashboard render — on the 12-month range, three years of them. An ``OR`` of two bounded
+        ranges keeps the index scan on ``(org_id, link_id, date)`` and the row count at what the
+        screen actually draws (docs/PERFORMANCE.md).
+        """
+        if not link_ids or not spans:
             return {}
         rows = (
-            
+
                 await self.ctx.session.execute(
                     select(
                         MarketingMetricDaily.link_id,
@@ -879,11 +1022,18 @@ class MarketingService:
                     ).where(
                         MarketingMetricDaily.org_id == self.ctx.org.id,
                         MarketingMetricDaily.link_id.in_(link_ids),
-                        MarketingMetricDaily.date >= start,
-                        MarketingMetricDaily.date <= end,
+                        or_(
+                            *(
+                                and_(
+                                    MarketingMetricDaily.date >= start,
+                                    MarketingMetricDaily.date <= end,
+                                )
+                                for start, end in spans
+                            )
+                        ),
                     )
                 )
-            
+
         ).all()
         out: dict[uuid.UUID, dict[date, dict[str, Any]]] = defaultdict(dict)
         for link_id, day, metrics, currency in rows:
@@ -1064,7 +1214,8 @@ class MarketingService:
             raise AppError("validation", "errors.validation", status_code=422)
         # The client's layout decides which drill-downs exist (#192) — including the legacy
         # key-events gate (#134): a hidden keyEvents tile takes its breakdown with it.
-        show_key_events, layout = await self._company_settings(company_id)
+        prefs = await self._company_settings(company_id)
+        show_key_events, layout = prefs.show_key_events, prefs.layout
         src_layout = source_layout(layout, link.source)
         tiles = resolved_tiles(link.source, src_layout, show_key_events)
         if kind not in resolved_drilldowns(link.source, adapter.drilldowns, src_layout, tiles):
@@ -1191,13 +1342,19 @@ class MarketingService:
 
     # --- cross-client overview (#133), stored data only ----------------------------------- #
     async def overview(self, range_days: int, sort: str | None) -> OverviewResponse:
+        """The cross-client grid (#133).
+
+        Its deltas use the **org default** comparison, never each client's own override (#312):
+        a board whose rows are sorted against denominators that differ per row ranks nothing.
+        The per-client setting governs that client's own dashboard, which is the screen it was
+        chosen for; here the grid names the one period it used, above the table.
+        """
         self.ctx.require("marketing.overview.read")
         range_days = max(1, min(range_days, 400))
         today = await self._today()
-        cur_end = today - timedelta(days=1)
-        cur_start = cur_end - timedelta(days=range_days - 1)
-        prev_end = cur_start - timedelta(days=1)
-        prev_start = prev_end - timedelta(days=range_days - 1)
+        window = compare_windows(today, range_days, await self._org_default_compare())
+        cur_start, cur_end = window.current_start, window.current_end
+        prev_start, prev_end = window.start, window.end
 
         # The cross-client board is hand-built (it pairs each link with its client's name and
         # folds the metrics per company), so it never travelled ``scoped_select()`` and carried
@@ -1213,12 +1370,14 @@ class MarketingService:
             stmt = stmt.where(horizon)
         pairs = (await self.ctx.session.execute(stmt)).all()
         if not pairs:
-            return OverviewResponse(range_days=range_days, rows=[], total=0)
+            return OverviewResponse(
+                range_days=range_days, compare=window, rows=[], total=0
+            )
 
         links = [pair[0] for pair in pairs]
         names = {pair[0].company_id: pair[1] for pair in pairs}
         metrics_by_link = await self._metrics_for_links(
-            [link.id for link in links], prev_start, cur_end
+            [link.id for link in links], window.spans()
         )
 
         # company -> source -> (current rows, previous rows)
@@ -1231,12 +1390,18 @@ class MarketingService:
             daily = metrics_by_link.get(link.id, {})
             cur, prev = by_company[link.company_id][link.source]
             for day, m in daily.items():
-                (cur if cur_start <= day <= cur_end else prev).append(m)
+                # Both windows are tested, never "current else previous": the two are no longer
+                # adjacent, so an else-branch would file a day from neither window as previous.
+                if cur_start <= day <= cur_end:
+                    cur.append(m)
+                if prev_start <= day <= prev_end:
+                    prev.append(m)
 
         settings = await self._settings_map(list(by_company.keys()))
         rows: list[OverviewRow] = []
         for company_id, per_source in by_company.items():
-            show_key_events, layout = settings.get(company_id, (True, None))
+            prefs = settings.get(company_id, CompanyPrefs())
+            show_key_events, layout = prefs.show_key_events, prefs.layout
             agg_cur = {s: aggregate(s, buckets[0]) for s, buckets in per_source.items()}
             agg_prev = {s: aggregate(s, buckets[1]) for s, buckets in per_source.items()}
             # Which metric keys this client's layout leaves visible, per source (#192) — the
@@ -1276,7 +1441,9 @@ class MarketingService:
                 )
             )
         rows = self._sort_overview(rows, sort)
-        return OverviewResponse(range_days=range_days, rows=rows, total=len(rows))
+        return OverviewResponse(
+            range_days=range_days, compare=window, rows=rows, total=len(rows)
+        )
 
     def _sort_overview(self, rows: list[OverviewRow], sort: str | None) -> list[OverviewRow]:
         key = (sort or "company_name").lstrip("-")
@@ -1304,14 +1471,16 @@ class MarketingService:
         horizon (#191): the portal ``client`` role holds the same read, and this may never
         return a row its caller could not fetch client-by-client. Per-client curation (#192)
         applies exactly like the panel/tab: a hidden tile feeds no number here either.
+
+        The comparison is the org default, like the grid's and for the same reason (#312): this
+        is one list of several clients, and the card names the period once above all of them.
         """
         self.ctx.require("marketing.metrics.read")
         range_days = max(1, min(range_days, 400))
         today = await self._today()
-        cur_end = today - timedelta(days=1)
-        cur_start = cur_end - timedelta(days=range_days - 1)
-        prev_end = cur_start - timedelta(days=1)
-        prev_start = prev_end - timedelta(days=range_days - 1)
+        window = compare_windows(today, range_days, await self._org_default_compare())
+        cur_start, cur_end = window.current_start, window.current_end
+        prev_start, prev_end = window.start, window.end
 
         stmt = (
             select(MarketingLink, Company.name)
@@ -1322,7 +1491,9 @@ class MarketingService:
             stmt = stmt.where(MarketingLink.company_id.in_(self.ctx.company_scope))
         pairs = (await self.ctx.session.execute(stmt)).all()
         if not pairs:
-            return MarketingSummary(range_days=range_days, linked_total=0, rows=[])
+            return MarketingSummary(
+                range_days=range_days, compare=window, linked_total=0, rows=[]
+            )
 
         names = {pair[0].company_id: pair[1] for pair in pairs}
         headline_links = [
@@ -1331,10 +1502,11 @@ class MarketingService:
             if pair[0].source in (MarketingSource.GA4.value, MarketingSource.GSC.value)
         ]
         metrics_by_link = await self._metrics_for_links(
-            [link.id for link in headline_links], prev_start, cur_end
+            [link.id for link in headline_links], window.spans()
         )
 
-        # company -> source -> (current rows, previous rows), the overview's bucketing.
+        # company -> source -> (current rows, previous rows), the overview's bucketing — both
+        # windows tested, because they need not be adjacent (#312).
         by_company: dict[uuid.UUID, dict[str, tuple[list, list]]] = defaultdict(
             lambda: defaultdict(lambda: ([], []))
         )
@@ -1342,12 +1514,16 @@ class MarketingService:
             daily = metrics_by_link.get(link.id, {})
             cur, prev = by_company[link.company_id][link.source]
             for day, m in daily.items():
-                (cur if cur_start <= day <= cur_end else prev).append(m)
+                if cur_start <= day <= cur_end:
+                    cur.append(m)
+                if prev_start <= day <= prev_end:
+                    prev.append(m)
 
         settings_map = await self._settings_map(list(by_company.keys()))
         rows: list[MarketingSummaryRow] = []
         for company_id, per_source in by_company.items():
-            show_key_events, layout = settings_map.get(company_id, (True, None))
+            prefs = settings_map.get(company_id, CompanyPrefs())
+            show_key_events, layout = prefs.show_key_events, prefs.layout
             for source, metric in (
                 (MarketingSource.GA4.value, "sessions"),
                 (MarketingSource.GSC.value, "clicks"),
@@ -1377,7 +1553,10 @@ class MarketingService:
         # A client whose links feed neither headline (Ads-only, or both tiles curated away)
         # still counts: the "top n of this" note must name what the list leaves out.
         return MarketingSummary(
-            range_days=range_days, linked_total=len(names), rows=rows[:limit]
+            range_days=range_days,
+            compare=window,
+            linked_total=len(names),
+            rows=rows[:limit],
         )
 
 
@@ -1401,6 +1580,8 @@ class MarketingSettingsService:
             ads_developer_token_configured=bool(row and row.ads_developer_token_encrypted),
             env_ads_token_configured=bool(settings.google_ads_developer_token),
             seranking_api_key_configured=bool(row and row.seranking_api_key_encrypted),
+            # Always resolved: the settings select has two options and no third "unset" state.
+            default_compare=resolve_compare(row.default_compare if row else None),
         )
 
     async def get(self) -> MarketingSettingsRead:
@@ -1444,6 +1625,11 @@ class MarketingSettingsService:
         else:
             row.ads_developer_token_encrypted = ads
             row.seranking_api_key_encrypted = seranking
+        # Omitted keeps the stored value, like both secrets above — this screen saves every
+        # field at once, so a form that could only submit all three would make setting the
+        # comparison require retyping a developer token nobody can read back.
+        if data.default_compare is not None:
+            row.default_compare = data.default_compare.value
         await self.ctx.session.flush()
         return self._read(row)
 

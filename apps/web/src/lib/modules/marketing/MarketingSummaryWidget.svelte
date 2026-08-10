@@ -8,7 +8,8 @@
   import { t } from "$lib/core/i18n";
   import DashboardWidgetCard from "$lib/core/ui/DashboardWidgetCard.svelte";
 
-  import { deltaClass, deltaView, fmtMetric, metricLabel } from "./format";
+  import { comparePeriodLabel, deltaClass, deltaView, fmtMetric, metricLabel } from "./format";
+  import type { CompareWindow } from "./types";
 
   let { data }: { data: unknown } = $props();
 
@@ -26,10 +27,13 @@
   }
   interface Summary {
     range_days: number;
+    /** The one comparison behind every row (#312) — the org default, named once below. */
+    compare?: CompareWindow | null;
     linked_total: number;
     rows: Row[];
   }
   const summary = $derived((data ?? { range_days: 30, linked_total: 0, rows: [] }) as Summary);
+  const comparedPeriod = $derived(summary.compare ? comparePeriodLabel(summary.compare) : "");
 </script>
 
 <DashboardWidgetCard
@@ -64,8 +68,13 @@
         </li>
       {/each}
     </ul>
-    {#if summary.linked_total > summary.rows.length}
+    {#if comparedPeriod}
       <p class="mt-2 text-xs text-text-muted">
+        {t("marketing.compare.caption", { period: comparedPeriod })}
+      </p>
+    {/if}
+    {#if summary.linked_total > summary.rows.length}
+      <p class="mt-1 text-xs text-text-muted">
         {t("marketing.widget.more", {
           shown: summary.rows.length,
           total: summary.linked_total,

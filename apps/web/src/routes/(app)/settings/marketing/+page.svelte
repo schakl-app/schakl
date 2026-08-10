@@ -11,6 +11,8 @@
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import Button from "$lib/core/ui/Button.svelte";
+  import { compareModeLabel } from "$lib/modules/marketing/format";
+  import { COMPARE_PERIODS } from "$lib/modules/marketing/types";
 
   let { data, form } = $props();
   const settings = $derived(data.settings);
@@ -29,7 +31,10 @@
 <p class="mb-6 text-sm text-text-muted">{t("settings.marketing.subtitle")}</p>
 
 <section class="max-w-2xl rounded-xl border border-border bg-surface-raised p-5">
-  <form method="POST" action="?/save" use:enhance={busy.wrap()} class="space-y-5">
+  <!-- keep(): this edits settings that already exist. The two secrets load empty by design, but
+       the comparison select carries a real saved value that a reset would rewind to the first
+       option (docs/UX.md, "Saving must never blank the form"). -->
+  <form method="POST" action="?/save" use:enhance={busy.keep()} class="space-y-5">
     <div>
       <label for="ads-developer-token" class="mb-1 block text-sm font-medium text-text">
         {t("settings.marketing.ads_developer_token")}
@@ -65,6 +70,25 @@
         class={inputClass}
       />
       <p class="mt-1 text-xs text-text-muted">{t("marketing.settings.seranking_key_hint")}</p>
+    </div>
+
+    <!-- The agency's house comparison (#312). A client's own dashboard overrides it in its edit
+         mode; this is what the other fifty-nine clients inherit without anyone touching them. -->
+    <div class="border-t border-border pt-5">
+      <label for="default-compare" class="mb-1 block text-sm font-medium text-text">
+        {t("settings.marketing.default_compare")}
+      </label>
+      <select
+        id="default-compare"
+        name="default_compare"
+        value={settings?.default_compare ?? "year"}
+        class={inputClass}
+      >
+        {#each COMPARE_PERIODS as mode (mode)}
+          <option value={mode}>{compareModeLabel(mode)}</option>
+        {/each}
+      </select>
+      <p class="mt-1 text-xs text-text-muted">{t("settings.marketing.default_compare_hint")}</p>
     </div>
 
     {#if form?.saved}

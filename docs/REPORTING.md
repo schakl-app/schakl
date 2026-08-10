@@ -49,6 +49,14 @@ The comparison defaults to the same span a year earlier: it is the question a cl
 survives seasonality — a campsite's July has nothing to say to its June. `previous` compares a
 whole month to a whole month rather than to a 31-day span ending on the 30th.
 
+Both the vocabulary and that date math now live in **`app/core/periods.py`**
+(`ComparePeriod`, `compare_window`), shared with the marketing dashboard (#312). They had to be:
+this document and that screen report the same client's same numbers, and they disagreed. The PDF
+said *vorig jaar* while the dashboard printed *t.o.v. vorige periode* over a comparison it had
+made silently — so the same July was up in one place and down in the other, with nothing on
+either surface to explain it. `ReportCompare` stays as this module's name for the same two
+values (it is what tenants' stored schedules already say); only the arithmetic is shared.
+
 ## The prompt is three layers, and keeping them apart is the point
 
 | Layer | Example | Lives in | Editable by |

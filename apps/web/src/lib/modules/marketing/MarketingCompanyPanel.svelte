@@ -18,6 +18,7 @@
 
   import MarketingAccountPicker from "./MarketingAccountPicker.svelte";
   import {
+    comparePeriodLabel,
     deltaClass,
     deltaView,
     fmtMetric,
@@ -68,17 +69,28 @@
   );
 
   const headline = (sourceKey: MarketingSource): string[] => HEADLINE_METRICS[sourceKey] ?? [];
+
+  // The panel's deltas are bare percentages with no room for a suffix per tile, so the period
+  // they measured against is named once for the panel (#312). Named it must be: this is the
+  // first place anyone reads a client's numbers, and "−4%" against an unstated span is the
+  // sentence this issue was filed about.
+  const comparedPeriod = $derived(m.compare ? comparePeriodLabel(m.compare) : "");
 </script>
 
 {#if m.forbidden}
   <!-- Metrics are permission-gated; the panel stays quiet rather than erroring the page. -->
 {:else}
   <div class="mb-3 flex items-center justify-between gap-2">
-    <div class="flex items-center gap-3">
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
       {#if sources.length > 0}
         <a href={tabHref} class="text-sm font-medium text-brand hover:underline">
           {t("marketing.tab.title")} →
         </a>
+        {#if comparedPeriod}
+          <span class="text-xs text-text-muted">
+            {t("marketing.compare.caption", { period: comparedPeriod })}
+          </span>
+        {/if}
       {/if}
     </div>
     {#if canManage}

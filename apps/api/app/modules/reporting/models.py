@@ -88,6 +88,14 @@ class ReportCadence(StrEnum):
 
 
 class ReportCompare(StrEnum):
+    """This module's name for ``app.core.periods.ComparePeriod`` — same values, one for one.
+
+    Kept as its own enum because these values are already stored in every tenant's template
+    schedules and named ``ReportCompare`` in the generated client; the *date math* is shared
+    (:func:`app.core.periods.compare_window`), which is the part that must not diverge from what
+    the marketing dashboard shows for the same client (#312).
+    """
+
     #: The same span a year earlier. What a client asks about ("is dit beter dan vorig jaar?")
     #: and what survives seasonality — a campsite's July is not comparable to its June.
     YEAR = "year"

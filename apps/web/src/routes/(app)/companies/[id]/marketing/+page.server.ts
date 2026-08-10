@@ -64,4 +64,23 @@ export const actions: Actions = {
     if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
     return { saved: true };
   },
+  // What this client's dashboard measures against (#312). An empty value is *sent* as `null`,
+  // never omitted: omitting means "leave alone" at the API, so a user picking "volg de standaard"
+  // would silently keep whatever override was there.
+  saveCompare: async (event) => {
+    const form = await event.request.formData();
+    const company_id = String(form.get("company_id") ?? event.params.id);
+    const raw = String(form.get("compare") ?? "");
+    if (raw && raw !== "year" && raw !== "previous")
+      return fail(400, { error: "errors.validation" });
+    const { error: apiError } = await apiFor(event).PUT(
+      "/api/v1/marketing/companies/{company_id}/settings",
+      {
+        params: { path: { company_id } },
+        body: { compare: raw ? (raw as "year" | "previous") : null },
+      },
+    );
+    if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
+    return { saved: true };
+  },
 };
