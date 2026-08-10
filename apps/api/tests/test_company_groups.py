@@ -660,7 +660,7 @@ async def test_horizon_survives_every_filter_a_list_screen_offers(client_for) ->
     )
 
     async with client_for(t.host) as c:
-        await _seed_for_both(c, owner_h, a, b)
+        made = await _seed_for_both(c, owner_h, a, b)
         assert (
             await c.put(
                 f"/api/v1/companies/groups/{group['id']}/memberships",
@@ -692,6 +692,35 @@ async def test_horizon_survives_every_filter_a_list_screen_offers(client_for) ->
             # so every empty answer above is the horizon and not an empty database.
             _, owner_total = await rows(f"/api/v1/{module}?q=klant", owner_h)
             assert owner_total == 2
+
+        # The perf opt-outs are two more ways to phrase the read, so they are two more ways to
+        # get this wrong. `count=false` replaces the counted total with the page length — which
+        # must be the length of the *narrowed* page — and `meta=false` skips the display
+        # resolution, which must not also skip the filtering. Neither touches `conditions`, and
+        # that is exactly the kind of "obviously fine" that #285 is a list of.
+        #
+        # Asserted on **ids**, not names: `meta=false` blanks the resolved display fields on
+        # purpose, so a name-based assertion here would be checking the opt-out rather than the
+        # horizon — and would pass for an empty string just as happily as for a leak.
+        async def ids(url: str, headers) -> tuple[list[str], int]:
+            res = await c.get(url, headers=headers)
+            assert res.status_code == 200, f"{url}: {res.status_code} {res.text}"
+            body = res.json()
+            return [r["id"] for r in body["items"]], body["total"]
+
+        for module, mine, theirs in (
+            ("domains", made["a"]["domain"], made["b"]["domain"]),
+            ("websites", made["a"]["website"], made["b"]["website"]),
+        ):
+            for extra in ("count=false", "meta=false", "count=false&meta=false"):
+                seen, total = await ids(f"/api/v1/{module}?{extra}", member_h)
+                assert seen == [mine["id"]], f"{module}?{extra}: {seen}"
+                assert total == 1, f"{module}?{extra}: total {total}"
+                assert theirs["id"] not in seen, f"{module}?{extra} leaked the other client"
+                # The owner sees both under the *same* parameters, so every "1" above is the
+                # horizon narrowing and not the opt-out emptying the list.
+                _, owner_total = await ids(f"/api/v1/{module}?{extra}", owner_h)
+                assert owner_total == 2, f"{module}?{extra}: owner {owner_total}"
 
         # The panel carries a `total` now, and a card's count is the same fact as a list's.
         assert (
