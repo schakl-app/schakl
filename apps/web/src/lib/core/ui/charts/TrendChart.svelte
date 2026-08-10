@@ -13,7 +13,7 @@
   import { fmtDayMonth } from "$lib/core/format";
   import { resolvedTheme } from "$lib/core/theme-mode.svelte";
 
-  import { chartHeight, chartWidth } from "./geometry";
+  import { chartWidth } from "./geometry";
 
   let {
     dates,
@@ -32,10 +32,10 @@
   /** Container width in CSS px; 0 until measured (SSR + first paint), hence the fallback. */
   let box = $state(0);
   const W = $derived(chartWidth(box, 720, 280));
-  const H = $derived(chartHeight(W, 200, 300));
+  const H = 200;
   const PAD = { top: 12, right: 12, bottom: 22, left: 52 };
   const plotW = $derived(W - PAD.left - PAD.right);
-  const plotH = $derived(H - PAD.top - PAD.bottom);
+  const plotH = H - PAD.top - PAD.bottom;
 
   const max = $derived(Math.max(...values, 1));
   const step = $derived(Math.pow(10, Math.floor(Math.log10(max || 1))));

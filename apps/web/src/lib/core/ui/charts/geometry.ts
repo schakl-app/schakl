@@ -9,9 +9,17 @@
  *
  * The fix is to stop letting the viewBox imply a scale: measure the container and draw at
  * **1 user unit = 1 CSS px**, so 10px type is 10px type at every width and a stroke stays the
- * weight it was drawn at. Width still fills the container — the height is what stops being a
- * function of it, growing only gently and to a cap so a wide chart neither towers nor flattens
- * into an unreadable strip.
+ * weight it was drawn at. Width fills the container; the height is simply the design height.
+ *
+ * **The height is deliberately a constant, not a function of the width.** An earlier pass grew
+ * it with the container to keep a very wide chart from flattening, and that is a scrollbar
+ * oscillation waiting to happen: a taller chart makes the page taller, a vertical scrollbar
+ * appears, the container narrows by ~15px, the chart shortens, the scrollbar goes away, and the
+ * page flickers forever on whatever screen happens to sit at the knife-edge. It also stopped
+ * being *needed* once the app shell capped its content measure (`--container-content` in
+ * app.css), because no chart is handed 3000px any more. If a chart ever renders outside that
+ * measure and reads as a strip, give it a taller design height — never one derived from its own
+ * width.
  *
  * The math lives here rather than in the components because it is the part worth pinning: a
  * chart that is the wrong size is perfectly valid SVG and passes every functional test.
@@ -30,18 +38,6 @@ export function chartWidth(measured: number, fallback: number, min: number): num
 }
 
 /**
- * Drawing height for a given width.
- *
- * `base` is the design height and the floor: a narrow container gets the full height rather
- * than a squashed one (the phone case above). Beyond `base * ratio` wide, the height grows with
- * the width so the plot keeps a readable aspect, and stops at `cap` so a very wide screen gets a
- * chart, not a wall.
- */
-export function chartHeight(width: number, base: number, cap: number, ratio = 4): number {
-  return Math.round(Math.min(cap, Math.max(base, width / ratio)));
-}
-
-/**
  * Width of one bar in a grouped bar chart, given the width of its category slot.
  *
  * A fixed pixel width would be the naive companion to "stop scaling the type", and it is wrong
@@ -50,6 +46,8 @@ export function chartHeight(width: number, base: number, cap: number, ratio = 4)
  * worse chart than the one this replaced. So the bar is a proportion of its slot, floored at the
  * design width so narrow and mid-size containers are untouched, and never wider than the slot
  * can hold with `gap` between the pair.
+ *
+ * Unlike a height, this cannot oscillate: nothing about a bar's width changes the page's height.
  */
 export function barWidth(slot: number, design: number, gap: number, share = 0.24): number {
   return Math.min(Math.max(design, slot * share), (slot - gap) / 2);

@@ -10,7 +10,7 @@
    */
   import { fmtMoney, monthLabels } from "$lib/core/format";
 
-  import { barWidth, chartHeight, chartWidth } from "./geometry";
+  import { barWidth, chartWidth } from "./geometry";
 
   let {
     current,
@@ -30,10 +30,10 @@
   /** Container width in CSS px; 0 until measured (SSR + first paint), hence the fallback. */
   let box = $state(0);
   const W = $derived(chartWidth(box, 760, 320));
-  const H = $derived(chartHeight(W, 240, 340));
+  const H = 240;
   const PAD = { top: 12, right: 8, bottom: 24, left: 56 };
   const plotW = $derived(W - PAD.left - PAD.right);
-  const plotH = $derived(H - PAD.top - PAD.bottom);
+  const plotH = H - PAD.top - PAD.bottom;
 
   const months = monthLabels();
   const max = $derived(Math.max(...current, ...previous, 1));
