@@ -8592,6 +8592,26 @@ export interface paths {
         patch: operations["update_checklist_api_v1_tasks__task_id__checklists__checklist_id__patch"];
         trace?: never;
     };
+    "/api/v1/tasks/{task_id}/checklists/{checklist_id}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Duplicate Checklist
+         * @description Copy a checklist beside its source, items and all — a second run of the same steps.
+         */
+        post: operations["duplicate_checklist_api_v1_tasks__task_id__checklists__checklist_id__duplicate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/{task_id}/checklists/{checklist_id}/items": {
         parameters: {
             query?: never;
@@ -11256,6 +11276,19 @@ export interface components {
             description?: string | null;
             /** Template Id */
             template_id?: string | null;
+            /** Title */
+            title?: string | null;
+        };
+        /**
+         * ChecklistDuplicate
+         * @description Copy an existing checklist into the same task.
+         *
+         *     The caller names the copy — the roles precedent (§15): a "(kopie)" suffix invented in the
+         *     API would be user-facing text written in one language, in a column no catalog reaches.
+         *     Omitted means the source's title verbatim, which is what an unattended caller (MCP, a
+         *     script) gets and can rename afterwards.
+         */
+        ChecklistDuplicate: {
             /** Title */
             title?: string | null;
         };
@@ -41363,6 +41396,42 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChecklistRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    duplicate_checklist_api_v1_tasks__task_id__checklists__checklist_id__duplicate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                checklist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChecklistDuplicate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

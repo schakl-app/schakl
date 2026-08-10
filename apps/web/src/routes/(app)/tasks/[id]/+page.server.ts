@@ -282,6 +282,24 @@ export const actions: Actions = {
     return { checklist: true };
   },
 
+  /** Copy a checklist beside its source (title, description, items — never the ticks). The
+   *  title is the user's: the API deliberately invents no "(kopie)" suffix. */
+  duplicateChecklist: async (event) => {
+    const form = await event.request.formData();
+    const checklist_id = String(form.get("checklist_id") ?? "");
+    const title = String(form.get("title") ?? "").trim();
+    if (!checklist_id || !title) return fail(400, { error: "errors.required" });
+    const { error: apiError } = await apiFor(event).POST(
+      "/api/v1/tasks/{task_id}/checklists/{checklist_id}/duplicate",
+      {
+        params: { path: { task_id: event.params.id, checklist_id } },
+        body: { title },
+      },
+    );
+    if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
+    return { checklist: true };
+  },
+
   addLink: async (event) => {
     const form = await event.request.formData();
     const url = String(form.get("url") ?? "").trim();

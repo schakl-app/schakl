@@ -51,6 +51,7 @@ from app.modules.tasks.models import (
 from app.modules.tasks.schemas import (
     ActivityRead,
     ChecklistCreate,
+    ChecklistDuplicate,
     ChecklistItemCreate,
     ChecklistItemOrder,
     ChecklistItemRead,
@@ -1233,6 +1234,78 @@ class TaskService:
             await self.ctx.session.flush()
         await self._record(task_id, "checklist_created", {"title": checklist.title})
         return checklist
+
+    async def duplicate_checklist(
+        self, task_id: uuid.UUID, checklist_id: uuid.UUID, data: ChecklistDuplicate
+    ) -> ChecklistRead:
+        """Copy a checklist — title, description and every item — beside its source.
+
+        Returns the read shape rather than the row: the items are already in hand, and a
+        ``ChecklistRead.model_validate(row)`` would answer a duplicate with an empty list.
+
+        Ticks do **not** travel. A duplicate is the same work to be done again — carrying
+        ``done`` across would hand someone a record of work that never happened, and unticking
+        a copied list by hand is the friction this feature exists to remove.
+        """
+        await self._writable_task_or_403(task_id)
+        source = await self._checklist_or_404(task_id, checklist_id)
+
+        repo = self.ctx.repo(TaskChecklist)
+        siblings = (
+            await self.ctx.session.execute(
+                repo.scoped_select()
+                .where(TaskChecklist.task_id == task_id)
+                .order_by(TaskChecklist.position.asc(), TaskChecklist.created_at.asc())
+            )
+        ).scalars().all()
+        source_items = (
+            await self.ctx.session.execute(
+                self.ctx.repo(TaskChecklistItem)
+                .scoped_select()
+                .where(TaskChecklistItem.checklist_id == checklist_id)
+                .order_by(
+                    TaskChecklistItem.position.asc(), TaskChecklistItem.created_at.asc()
+                )
+            )
+        ).scalars().all()
+
+        copy = await repo.create(
+            task_id=task_id,
+            title=data.title or source.title,
+            description=source.description,
+            position=source.position,
+        )
+        # Renumber the whole task through the same helper a drag does, rather than shifting from
+        # the source down: positions go stale on every delete, so a copy that merely inherited
+        # ``source.position`` would tie with it and fall back to ``created_at`` — landing under
+        # whatever else shares that number. Stating the order the card already reads, with the
+        # copy spliced in after its source, puts it there by construction.
+        ordered = list(siblings)
+        ordered.insert(ordered.index(source) + 1, copy)
+        _renumber([*siblings, copy], [checklist.id for checklist in ordered])
+
+        items = [
+            TaskChecklistItem(
+                org_id=self.ctx.org.id,
+                checklist_id=copy.id,
+                title=item.title,
+                description=item.description,
+                done=False,
+                position=index,
+            )
+            for index, item in enumerate(source_items)
+        ]
+        self.ctx.session.add_all(items)
+        await self.ctx.session.flush()
+
+        # ``from``/``to``, the shape ``checklist_renamed`` already uses: the trail is only
+        # worth reading if it says which list the copy came from.
+        await self._record(
+            task_id, "checklist_duplicated", {"from": source.title, "to": copy.title}
+        )
+        read = ChecklistRead.model_validate(copy)
+        read.items = [ChecklistItemRead.model_validate(i) for i in items]
+        return read
 
     # ------------------------------------------------------------------ #
     # Checklist templates (org-wide repository)

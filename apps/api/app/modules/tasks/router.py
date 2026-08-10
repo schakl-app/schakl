@@ -17,6 +17,7 @@ from app.core.tenancy import RequestContext, require_context
 from app.modules.tasks.scheduling import scheduling_router
 from app.modules.tasks.schemas import (
     ChecklistCreate,
+    ChecklistDuplicate,
     ChecklistItemCreate,
     ChecklistItemOrder,
     ChecklistItemRead,
@@ -575,6 +576,22 @@ async def update_checklist(
     return ChecklistRead.model_validate(
         await TaskService(ctx).update_checklist(task_id, checklist_id, payload)
     )
+
+
+@router.post(
+    "/{task_id}/checklists/{checklist_id}/duplicate",
+    response_model=ChecklistRead,
+    status_code=201,
+    dependencies=[require_permission("tasks.task.write")],
+)
+async def duplicate_checklist(
+    task_id: uuid.UUID,
+    checklist_id: uuid.UUID,
+    payload: ChecklistDuplicate,
+    ctx: RequestContext = Depends(require_context),
+) -> ChecklistRead:
+    """Copy a checklist beside its source, items and all — a second run of the same steps."""
+    return await TaskService(ctx).duplicate_checklist(task_id, checklist_id, payload)
 
 
 @router.delete(

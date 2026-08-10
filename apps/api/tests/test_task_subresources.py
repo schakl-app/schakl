@@ -253,6 +253,65 @@ async def test_reorder_refuses_foreign_and_duplicate_ids(client_for) -> None:
         ).status_code == 404
 
 
+async def test_duplicate_checklist(client_for) -> None:
+    """A copy carries the items and their descriptions, drops the ticks, and lands directly
+    under its source — never at the end, behind whatever was added since."""
+    t = await make_tenant("checklist-dup")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        task = (await c.post("/api/v1/tasks", json={"title": "T"}, headers=headers)).json()
+        source = (
+            await c.post(
+                f"/api/v1/tasks/{task['id']}/checklists",
+                json={"title": "Launch", "description": "Elke release"},
+                headers=headers,
+            )
+        ).json()
+        base = f"/api/v1/tasks/{task['id']}/checklists/{source['id']}"
+        item = (
+            await c.post(
+                f"{base}/items", json={"title": "One", "description": "Hoe"}, headers=headers
+            )
+        ).json()
+        await c.post(f"{base}/items", json={"title": "Two"}, headers=headers)
+        await c.patch(f"{base}/items/{item['id']}", json={"done": True}, headers=headers)
+        # A third checklist added after the source: the copy must slot between them.
+        await c.post(
+            f"/api/v1/tasks/{task['id']}/checklists", json={"title": "Aftercare"}, headers=headers
+        )
+
+        created = await c.post(f"{base}/duplicate", json={"title": "Launch 2"}, headers=headers)
+        assert created.status_code == 201
+        copy = created.json()
+        assert copy["id"] != source["id"]
+        assert copy["title"] == "Launch 2"
+        assert copy["description"] == "Elke release"
+        # The POST answers with the items it just wrote, unticked.
+        assert [(i["title"], i["description"], i["done"]) for i in copy["items"]] == [
+            ("One", "Hoe", False),
+            ("Two", None, False),
+        ]
+
+        detail = (await c.get(f"/api/v1/tasks/{task['id']}", headers=headers)).json()
+        assert [cl["title"] for cl in detail["checklists"]] == ["Launch", "Launch 2", "Aftercare"]
+        # The source keeps its own ticks: a duplicate reads nothing back onto it.
+        assert [i["done"] for i in detail["checklists"][0]["items"]] == [True, False]
+        assert any(a["action"] == "checklist_duplicated" for a in detail["activities"])
+
+        # Omitted title reuses the source's — the API invents no "(kopie)" (CLAUDE.md §2).
+        same_name = (await c.post(f"{base}/duplicate", json={}, headers=headers)).json()
+        assert same_name["title"] == "Launch"
+
+        # A checklist belonging to another task is a 404, not somebody else's copy.
+        other = (await c.post("/api/v1/tasks", json={"title": "Other"}, headers=headers)).json()
+        stray = await c.post(
+            f"/api/v1/tasks/{other['id']}/checklists/{source['id']}/duplicate",
+            json={},
+            headers=headers,
+        )
+        assert stray.status_code == 404
+
+
 async def test_comments_permissions_and_activity(client_for) -> None:
     t = await make_tenant("comments")
     owner_headers = await auth_cookie(t.user)

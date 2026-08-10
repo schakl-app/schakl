@@ -2,6 +2,7 @@
   import {
     ArrowDown,
     ArrowUp,
+    Copy,
     GripVertical,
     Link as LinkIcon,
     Pencil,
@@ -361,6 +362,17 @@
     subConfirm = { action, fields, message };
     subConfirmOpen = true;
   }
+  // Duplicating a checklist asks for the copy's name up front, the way duplicating a role does:
+  // two lists called "Website check" side by side is exactly what the user is trying to avoid.
+  let duplicateOpen = $state(false);
+  let duplicateChecklistId = $state("");
+  let duplicateTitle = $state("");
+  function askDuplicate(id: string, title: string) {
+    duplicateChecklistId = id;
+    duplicateTitle = title;
+    duplicateOpen = true;
+  }
+
   let showLabelPicker = $state(false);
   let newLabelColor = $state("blue");
 
@@ -464,7 +476,11 @@
       const fields = changed.map((f) => t(`tasks.field.${names[f] ?? f}`)).join(", ");
       return t("tasks.activity.updated", { fields });
     }
-    if (a.action === "checklist_renamed" || a.action === "checklist_item_renamed") {
+    if (
+      a.action === "checklist_renamed" ||
+      a.action === "checklist_item_renamed" ||
+      a.action === "checklist_duplicated"
+    ) {
       return t(`tasks.activity.${a.action}`, {
         from: String(a.payload.from ?? ""),
         to: String(a.payload.to ?? ""),
@@ -753,6 +769,11 @@
                           onclick: () =>
                             (editingChecklistId =
                               editingChecklistId === checklist.id ? null : checklist.id),
+                        },
+                        {
+                          label: t("tasks.checklist.duplicate"),
+                          icon: Copy,
+                          onclick: () => askDuplicate(checklist.id, checklist.title),
                         },
                         {
                           label: t("common.delete"),
@@ -1812,6 +1833,46 @@
   action={subConfirm.action}
   fields={subConfirm.fields}
 />
+
+<!-- Duplicate a checklist: one field, because the only thing the copy needs from the user is its
+     name. What travels (items and their descriptions) and what does not (the ticks) is stated,
+     not left to be discovered after the fact. -->
+<Modal bind:open={duplicateOpen} title={t("tasks.checklist.duplicate")}>
+  <form
+    method="POST"
+    action="?/duplicateChecklist"
+    use:enhance={busy.wrap("duplicateChecklist", () => async ({ result, update }) => {
+      if (result.type === "success") duplicateOpen = false;
+      // The copy is a new record, not this form's subject, so the field may empty — and
+      // reopening the dialog fills it from the checklist that was picked anyway.
+      await update({ reset: true });
+    })}
+    class="space-y-3"
+  >
+    <input type="hidden" name="checklist_id" value={duplicateChecklistId} />
+    <div>
+      <label for="checklist-duplicate-title" class="mb-1 block text-sm font-medium text-text"
+        >{t("tasks.checklist.duplicate_title")}</label
+      >
+      <input
+        id="checklist-duplicate-title"
+        name="title"
+        bind:value={duplicateTitle}
+        required
+        class={inputClass}
+      />
+    </div>
+    <p class="text-xs text-text-muted">{t("tasks.checklist.duplicate_hint")}</p>
+    <div class="flex justify-end gap-2">
+      <button
+        type="button"
+        class="rounded-lg border border-border px-4 py-2 text-sm"
+        onclick={() => (duplicateOpen = false)}>{t("common.cancel")}</button
+      >
+      <Button loading={busy.is("duplicateChecklist")}>{t("tasks.checklist.duplicate")}</Button>
+    </div>
+  </form>
+</Modal>
 
 <!-- The last to-do was just ticked: offer to move the task along — or, when finishing is gated
      on a closing contact moment (#157), say exactly that instead of offering a doomed move. -->

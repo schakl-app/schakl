@@ -238,6 +238,18 @@ class ChecklistUpdate(BaseModel):
     position: int | None = None
 
 
+class ChecklistDuplicate(BaseModel):
+    """Copy an existing checklist into the same task.
+
+    The caller names the copy — the roles precedent (§15): a "(kopie)" suffix invented in the
+    API would be user-facing text written in one language, in a column no catalog reaches.
+    Omitted means the source's title verbatim, which is what an unattended caller (MCP, a
+    script) gets and can rename afterwards.
+    """
+
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+
+
 class ChecklistRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
