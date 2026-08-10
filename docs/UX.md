@@ -991,6 +991,19 @@
 - **A toolbar that cannot wrap.** Title + a fixed-width `SearchInput` + the Kolommen picker + the
   primary button on one flex line has a min-content width around 490 px, which no phone has. Give
   the toolbar its own `flex-wrap` row, the way the clients list does.
+- **An inline-SVG chart with a constant `viewBox` and `class="w-full"`.** That pair does not size a
+  chart, it fixes its *aspect ratio*, and the browser then scales every user unit inside it —
+  gridlines, strokes and, fatally, type. The marketing trend chart was drawn 720×200; on a 3178 px
+  screen it rendered 3130×869 with 59 px axis labels, a single chart taller than the fold, and on a
+  390 px phone the same labels came out at 6 px. One bug at both ends, invisible on the laptop it
+  was built on and invisible to every test, because the SVG was valid and only its size was absurd.
+  Measure the container (`bind:clientWidth`) and draw at **1 user unit = 1 CSS px**, so 10 px type
+  is 10 px everywhere; the height is then a real height, growing gently with width to a cap
+  (`$lib/core/ui/charts/geometry.ts`, pinned by `tests/unit/chart-geometry.test.ts`). The companion
+  half is worth stating because it is the obvious over-correction: **type has an absolute legible
+  size and a bar does not.** Freezing bar widths too would leave twelve 14 px threads spaced 250 px
+  apart — a mark read against its neighbours stays a proportion of its slot. A chart with a fixed
+  pixel box (`Sparkline`, `DonutChart`) never had this and needs no measuring.
 - **A flex `<input>` without `min-w-0`.** `flex-1` alone cannot shrink it: a form control keeps its
   browser-default width (~228 px) as its min-content floor, so the row it sits in never fits a
   phone. This is not the same thing as an explicit `min-w-[12rem]`, and it is easy to clear the

@@ -4,8 +4,13 @@
    * Palette validated (dataviz six checks): current #2563eb, previous #d97706 — re-validated
    * against the dark surface (#171717) for issue #14 and left unchanged, both clear 3:1+
    * contrast and CVD separation there too. Gridlines/tooltip/labels use semantic tokens.
+   *
+   * The viewBox is measured rather than fixed — see `geometry.ts`: a constant one scales every
+   * user unit with the container, so a wide screen inflated the chart and its type together.
    */
   import { fmtMoney, monthLabels } from "$lib/core/format";
+
+  import { barWidth, chartHeight, chartWidth } from "./geometry";
 
   let {
     current,
@@ -22,11 +27,13 @@
   const CURRENT_COLOR = "#2563eb";
   const PREVIOUS_COLOR = "#d97706";
 
-  const W = 760;
-  const H = 240;
+  /** Container width in CSS px; 0 until measured (SSR + first paint), hence the fallback. */
+  let box = $state(0);
+  const W = $derived(chartWidth(box, 760, 320));
+  const H = $derived(chartHeight(W, 240, 340));
   const PAD = { top: 12, right: 8, bottom: 24, left: 56 };
-  const plotW = W - PAD.left - PAD.right;
-  const plotH = H - PAD.top - PAD.bottom;
+  const plotW = $derived(W - PAD.left - PAD.right);
+  const plotH = $derived(H - PAD.top - PAD.bottom);
 
   const months = monthLabels();
   const max = $derived(Math.max(...current, ...previous, 1));
@@ -35,8 +42,8 @@
   const top = $derived(Math.ceil(max / step) * step);
   const ticks = $derived([0, top / 2, top]);
 
-  const groupW = plotW / 12;
-  const barW = Math.min(14, (groupW - 8) / 2);
+  const groupW = $derived(plotW / 12);
+  const barW = $derived(barWidth(groupW, 14, 8));
 
   const y = $derived((v: number) => PAD.top + plotH - (v / top) * plotH);
   const barH = $derived((v: number) => Math.max(v > 0 ? 2 : 0, (v / top) * plotH));
@@ -57,8 +64,8 @@
   }
 </script>
 
-<figure class="relative">
-  <svg viewBox="0 0 {W} {H}" class="w-full" role="img">
+<figure class="relative" bind:clientWidth={box}>
+  <svg viewBox="0 0 {W} {H}" class="w-full" height={H} role="img">
     <!-- recessive gridlines + € tick labels -->
     {#each ticks as tick (tick)}
       <line
