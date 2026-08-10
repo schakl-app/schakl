@@ -28,6 +28,14 @@ def _ok(result: Any, status: int = 200) -> httpx.Response:
     return httpx.Response(status, json={"success": True, "errors": [], "result": result})
 
 
+#: What a **single-page** Cloudflare endpoint answers to a paged request. Several list endpoints
+#: — Registrar's domains among them, which is why Cloudflare's own SDK types it ``SinglePage`` —
+#: hand back the whole collection at once and refuse ``page``/``per_page`` outright. No numeric
+#: code here on purpose: the sentence is what the client matches on, because the code differs per
+#: product and inventing a stable one would be a fake asserting something Cloudflare does not.
+LIST_OPTIONS_ERROR = "Invalid list options provided. Review the `page` or `per_page` parameter."
+
+
 def _err(status: int, message: str, code: int | None = None) -> httpx.Response:
     error: dict[str, Any] = {"message": message}
     if code is not None:
@@ -63,6 +71,16 @@ class FakeCloudflare:
         self.registrar: dict[str, list[dict]] = {}
         #: Path fragments this token is not allowed to touch → 403.
         self.deny: set[str] = set()
+        #: Path fragments whose endpoint is **single page**: it answers the whole list at once
+        #: and refuses ``page``/``per_page`` with a 400. Registrar is one in real life, so it is
+        #: one here by default — a fake that paged everything is a fake in which the failure
+        #: cannot happen, and the only test that could catch it would pass against a Cloudflare
+        #: that does not exist.
+        self.single_page: set[str] = {"/registrar/domains"}
+        #: Path fragment → the ``total_count`` its answer reports, for the case a single-page
+        #: endpoint hands back *less* than it says it holds. The fallback read must call that an
+        #: error rather than a complete list (CLAUDE.md §17: never a silent truncation).
+        self.single_page_total: dict[str, int] = {}
         #: Path fragment → ``(status, message, code)``, for a refusal that is **not** about the
         #: token: a query parameter Cloudflare will not take, a product not enabled on the
         #: account, a 5xx. ``deny``'s 403 is the easy case and the one every test reached for;
@@ -195,11 +213,26 @@ class FakeCloudflare:
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self.handle)
 
-    def handle(self, request: httpx.Request) -> httpx.Response:  # noqa: PLR0911, PLR0912
+    def handle(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path[len(PREFIX):]
-        method = request.method
-        self.calls.append((method, path))
+        self.calls.append((request.method, path))
         self.queries.append((path, request.url.query.decode()))
+        return self._with_result_info(path, self._route(request, path))
+
+    def _with_result_info(self, path: str, response: httpx.Response) -> httpx.Response:
+        """Attach the ``result_info`` a test asked this path to report."""
+        for fragment, total in self.single_page_total.items():
+            if fragment not in path or response.status_code != 200:
+                continue
+            if not response.headers.get("content-type", "").startswith("application/json"):
+                continue
+            body = json.loads(response.content)
+            if isinstance(body, dict) and body.get("success"):
+                return httpx.Response(200, json={**body, "result_info": {"total_count": total}})
+        return response
+
+    def _route(self, request: httpx.Request, path: str) -> httpx.Response:  # noqa: PLR0911, PLR0912
+        method = request.method
         token = request.headers.get("Authorization", "").removeprefix("Bearer ")
         if self.malformed_token:
             return _err(400, "Invalid format for Authorization header", 6003)
@@ -221,6 +254,13 @@ class FakeCloudflare:
         for fragment, (status, message, code) in self.fail.items():
             if fragment in path:
                 return _err(status, message, code)
+        # Authentication first, then the query string: a single-page endpoint refuses the *page*,
+        # and it only gets that far for a token Cloudflare accepts.
+        params = request.url.params
+        if ("page" in params or "per_page" in params) and any(
+            fragment in path for fragment in self.single_page
+        ):
+            return _err(400, LIST_OPTIONS_ERROR)
         body = json.loads(request.content) if request.content else {}
         parts = [p for p in path.split("/") if p]
 

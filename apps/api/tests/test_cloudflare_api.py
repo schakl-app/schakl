@@ -2078,13 +2078,14 @@ async def test_a_refused_capability_records_what_cloudflare_answered(
         assert healed["capability_errors"] == {}
 
 
-async def test_the_zone_probes_ask_plainly(client_for, cloudflare) -> None:
+async def test_the_probes_ask_plainly(client_for, cloudflare) -> None:
     """A probe must differ from the call it stands in for as little as possible.
 
-    ``per_page=1`` was the only thing the zone probes did that no real call does (``paginate``
-    sends 50), on an endpoint whose retired reference documented a minimum of 5. It bought
+    ``per_page=1`` was the only thing the probes did that no real call does (``paginate`` sends
+    50), on endpoints of which one — Registrar — refuses list options altogether. It bought
     nothing and it is exactly the kind of difference that makes a probe answer "not granted"
-    about a permission the token holds.
+    about a permission the token holds. The zone pair shed it first; every probe now asks
+    plainly, which is why this test sweeps them all rather than the two that were fixed.
     """
     t = await make_tenant("cf-probe-plain")
     headers = await auth_cookie(t.user)
@@ -2098,7 +2099,91 @@ async def test_the_zone_probes_ask_plainly(client_for, cloudflare) -> None:
         probed = [
             (path, query)
             for path, query in cloudflare.queries
-            if "dns_records" in path or "rulesets" in path
+            if any(
+                fragment in path
+                for fragment in ("dns_records", "rulesets", "/zones", "pages/projects",
+                                 "registrar/domains")
+            )
         ]
-        assert probed, "the zone-scoped capabilities were not probed at all"
-        assert all(query == "" for _, query in probed), probed
+        assert probed, "the capabilities were not probed at all"
+        assert all("per_page" not in query for _, query in probed), probed
+
+
+async def test_a_single_page_endpoint_is_read_whole(client_for, cloudflare) -> None:
+    """Not every Cloudflare list takes a page, and one that does not must still be read.
+
+    Registrar answers the whole register at once and refuses ``page``/``per_page`` with
+    ``400 Invalid list options provided`` — so asking for page 1 of it failed the read outright,
+    and the sync said *"Niet alles kon gelezen worden"* about an endpoint that was willing to
+    answer, over a token that was scoped for it. The refusal now costs one plain retry.
+    """
+    t = await make_tenant("cf-single-page")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        company = await _company(c, headers)
+        account = await _account(c, headers)
+        cloudflare.add_zone("klant.nl")
+        cloudflare.add_registration("klant.nl")
+        await _domain(c, headers, "klant.nl", company)
+
+        body = (
+            await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers)
+        ).json()
+
+        assert body["warnings"] == []
+        assert body["registrar_read"] is True
+        assert body["registrar_domains_synced"] == 1
+        assert body["registrar_domains_matched"] == 1
+        # The paged attempt happened, was refused, and was followed by the plain one — the point
+        # being that nothing had to know in advance which endpoints page.
+        asked = [q for p, q in cloudflare.queries if "registrar/domains" in p]
+        assert any("per_page" in q for q in asked), asked
+        assert "" in asked, asked
+
+
+async def test_a_refused_page_never_becomes_a_silent_prefix(client_for, cloudflare) -> None:
+    """The fallback is a whole read or an error, never the first slice of one.
+
+    An endpoint that refuses pagination and then hands back part of its collection cannot be
+    paged *at all*, so there is no next page to ask for. Returning what arrived would be §17's
+    worst outcome: a truncation that looks exactly like a complete answer.
+    """
+    t = await make_tenant("cf-single-page-short")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        account = await _account(c, headers)
+        cloudflare.add_zone("klant.nl")
+        cloudflare.add_registration("klant.nl")
+        cloudflare.single_page_total["registrar/domains"] = 7
+
+        body = (
+            await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers)
+        ).json()
+
+        # Registrar is optional, so the sync still reports its zones — with the read named as
+        # the failure it is, rather than as a register holding one domain.
+        assert body["registrar_read"] is False
+        assert body["registrar_domains_synced"] == 0
+        assert any("1 of 7" in w for w in body["warnings"]), body["warnings"]
+
+
+async def test_a_bad_request_that_is_not_about_paging_still_fails(client_for, cloudflare) -> None:
+    """The retry is narrow on purpose: only a 400 that names the list options earns one.
+
+    A 400 about anything else is an honest error, and asking again without the page parameters
+    would turn it into two — a second call, the same refusal, and a longer wait for it.
+    """
+    t = await make_tenant("cf-bad-request")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        account = await _account(c, headers)
+        cloudflare.add_zone("klant.nl")
+        cloudflare.fail["registrar/domains"] = (400, "Account is not entitled to Registrar", 1099)
+        cloudflare.queries.clear()
+
+        body = (
+            await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers)
+        ).json()
+
+        assert any("not entitled" in w for w in body["warnings"]), body["warnings"]
+        assert len([q for p, q in cloudflare.queries if "registrar/domains" in p]) == 1

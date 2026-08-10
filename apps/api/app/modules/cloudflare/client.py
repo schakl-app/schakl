@@ -171,6 +171,39 @@ def _flatten_errors(body: Any) -> tuple[str, int | None]:
     return "; ".join(p for p in parts if p), code
 
 
+def _rejects_list_options(exc: CloudflareError) -> bool:
+    """Whether Cloudflare refused the *pagination*, rather than the call.
+
+    ``400 Invalid list options provided. Review the `page` or `per_page` parameter.`` is what a
+    single-page endpoint answers to a paged request. Matched on the text, because the numeric
+    code differs per product while the sentence does not, and because the neighbouring shape —
+    ``per_page must be between 5 and 100`` — deserves the same answer: both say the query
+    parameters were the problem, and both are cured by asking without them.
+
+    Deliberately narrow. A ``400`` that names neither is about the request itself and must still
+    fail: retrying it plainly would turn one honest error into two.
+    """
+    if exc.status != 400:
+        return False
+    text = str(exc).lower()
+    return "list options" in text or "per_page" in text
+
+
+def _is_last_page(result: list[Any], info: dict) -> bool:
+    """Whether Cloudflare has anything after the page just read.
+
+    ``result_info`` answers it outright where Cloudflare sends one, and that is worth preferring:
+    an endpoint that *accepts* ``per_page`` and then ignores it answers every page identically,
+    so a row count alone would ask twenty times for the same rows and end in the cap's error.
+    The count stays as the fallback for the endpoints that report nothing.
+    """
+    page = info.get("page")
+    total_pages = info.get("total_pages")
+    if isinstance(page, int) and isinstance(total_pages, int) and total_pages >= 1:
+        return page >= total_pages
+    return len(result) < PER_PAGE
+
+
 class CloudflareClient:
     """One tenant token's worth of Cloudflare access. Cheap to construct, one per operation."""
 
@@ -211,6 +244,23 @@ class CloudflareClient:
         json: Any = None,
         params: dict[str, Any] | None = None,
     ) -> Any:
+        result, _info = await self._send_envelope(http, method, path, json=json, params=params)
+        return result
+
+    async def _send_envelope(
+        self,
+        http: httpx.AsyncClient,
+        method: str,
+        path: str,
+        *,
+        json: Any = None,
+        params: dict[str, Any] | None = None,
+    ) -> tuple[Any, dict]:
+        """The ``result``, plus the ``result_info`` it arrived with (``{}`` when there is none).
+
+        Only :meth:`paginate` wants the second half, and it wants it for one reason: Cloudflare's
+        own count of what it is holding is the only way to tell a last page from a truncated one.
+        """
         for attempt in (1, 2):
             try:
                 response = await http.request(method, path, json=json, params=params)
@@ -224,7 +274,7 @@ class CloudflareClient:
             return self._unwrap(response)
         raise CloudflareError("Cloudflare unreachable")  # pragma: no cover — loop returns
 
-    def _unwrap(self, response: httpx.Response) -> Any:
+    def _unwrap(self, response: httpx.Response) -> tuple[Any, dict]:
         try:
             body = response.json()
         except ValueError:
@@ -244,22 +294,57 @@ class CloudflareClient:
                 status=response.status_code,
                 code=code,
             )
-        return body.get("result")
+        info = body.get("result_info")
+        return body.get("result"), info if isinstance(info, dict) else {}
 
     async def paginate(self, path: str, params: dict[str, Any] | None = None) -> list[dict]:
         """Every page of a list endpoint, capped at :data:`MAX_PAGES` (never truncated silently
-        — hitting the cap raises, per CLAUDE.md §17's "over the limit is an error")."""
+        — hitting the cap raises, per CLAUDE.md §17's "over the limit is an error").
+
+        **Not every list endpoint takes a page.** Cloudflare's own SDK types a handful of them —
+        Registrar's domains, several account-level lists — as *single page*: they answer the whole
+        collection at once and reject ``page``/``per_page`` outright with
+        ``400 Invalid list options provided``. Asking for a page of one of those failed the read
+        completely, which on a sync surfaced as *"Niet alles kon gelezen worden"* over a token
+        that was scoped for it and an account Cloudflare was perfectly willing to describe.
+
+        So a refusal that names the list options is not fatal: the same path is asked **plainly**,
+        once, and what comes back is the answer. That is a fallback and not a truncation — if
+        Cloudflare's ``result_info`` says it is holding more rows than it handed over, this raises
+        rather than returning a prefix, because a slice presented as the whole list is the one
+        outcome worse than an error (§17).
+        """
         rows: list[dict] = []
         async with self._http() as http:
             for page in range(1, MAX_PAGES + 1):
                 query = {**(params or {}), "page": page, "per_page": PER_PAGE}
-                result = await self._send(http, "GET", path, params=query) or []
+                try:
+                    result, info = await self._send_envelope(http, "GET", path, params=query)
+                except CloudflareError as exc:
+                    if page > 1 or not _rejects_list_options(exc):
+                        raise
+                    return await self._read_whole(http, path, params)
+                result = result or []
                 rows.extend(r for r in result if isinstance(r, dict))
-                if len(result) < PER_PAGE:
+                if _is_last_page(result, info):
                     return rows
         raise CloudflareError(
             f"Cloudflare returned more than {MAX_PAGES * PER_PAGE} rows for {path}"
         )
+
+    async def _read_whole(
+        self, http: httpx.AsyncClient, path: str, params: dict[str, Any] | None
+    ) -> list[dict]:
+        """One unpaged read of a list endpoint that refuses paging, checked for completeness."""
+        result, info = await self._send_envelope(http, "GET", path, params=params)
+        rows = [r for r in (result or []) if isinstance(r, dict)]
+        total = info.get("total_count")
+        if isinstance(total, int) and total > len(rows):
+            raise CloudflareError(
+                f"Cloudflare refused page parameters for {path} and then answered "
+                f"{len(rows)} of {total} rows"
+            )
+        return rows
 
     # --- identity & capabilities ---------------------------------------------------------- #
     async def verify_token(self, account_id: str | None = None) -> dict:
@@ -342,19 +427,28 @@ class CloudflareClient:
         else:
             caps["token_valid"] = True
 
+        # **No `per_page` on any of these three, for the reason the zone probes shed theirs**: a
+        # probe must differ as little as possible from the call it stands in for, and a page size
+        # is exactly the kind of difference that answers a question nobody asked — Registrar
+        # refuses list options outright, so `per_page=1` made "may this token read the register?"
+        # depend on a parameter the register does not have. Asking plainly costs one page once.
         try:
-            await self.request("GET", "/zones", params={"per_page": 1})
+            await self.request("GET", "/zones")
         except CloudflareAuthError as exc:
             rejection = rejection or exc
+            errors["zones_read"] = describe_failure(exc)
+        except CloudflareError as exc:
+            # Not every refusal here is about the token, and one that is not must still land in
+            # `errors` rather than escaping: this probe was the only one in the list that let a
+            # non-auth failure out, so a 400 from `/zones` failed the whole verify screen instead
+            # of marking one capability — the screen exists precisely to degrade per probe.
             errors["zones_read"] = describe_failure(exc)
         else:
             caps["zones_read"] = True
 
         if account_id:
             try:
-                await self.request(
-                    "GET", f"/accounts/{account_id}/pages/projects", params={"per_page": 1}
-                )
+                await self.request("GET", f"/accounts/{account_id}/pages/projects")
             except CloudflareAuthError as exc:
                 errors["pages_read"] = describe_failure(exc)
             except CloudflareError as exc:
@@ -365,9 +459,7 @@ class CloudflareClient:
                 caps["pages_read"] = True
 
             try:
-                await self.request(
-                    "GET", f"/accounts/{account_id}/registrar/domains", params={"per_page": 1}
-                )
+                await self.request("GET", f"/accounts/{account_id}/registrar/domains")
             except CloudflareError as exc:
                 # Registrar is its own token permission (#298) and an account that has never
                 # registered anything through Cloudflare may answer 4xx outright. Either way
