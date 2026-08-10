@@ -1184,6 +1184,26 @@
               {/each}
             </select>
           </div>
+          <!-- The client comes first because it narrows both fields under it: the contact half of
+               the assignee picker, and the project list. Picking it last meant choosing from an
+               unnarrowed set and then watching it shrink. -->
+          <div>
+            <label for="company" class="mb-1 block text-xs font-medium text-text-muted"
+              >{t("tasks.field.company")}</label
+            >
+            <Combobox
+              items={companyItems}
+              name="company_id"
+              value={fCompany}
+              id="company"
+              formId="task-edit"
+              onselect={onCompanyPicked}
+              oncreate={(name) => {
+                qcCompanyName = name;
+                qcCompanyOpen = true;
+              }}
+            />
+          </div>
           <div>
             <label for="assignee-entity" class="mb-1 block text-xs font-medium text-text-muted"
               >{t("tasks.field.assignee")}</label
@@ -1213,23 +1233,6 @@
               oncreate={(name) => {
                 qcProjectName = name;
                 qcProjectOpen = true;
-              }}
-            />
-          </div>
-          <div>
-            <label for="company" class="mb-1 block text-xs font-medium text-text-muted"
-              >{t("tasks.field.company")}</label
-            >
-            <Combobox
-              items={companyItems}
-              name="company_id"
-              value={fCompany}
-              id="company"
-              formId="task-edit"
-              onselect={onCompanyPicked}
-              oncreate={(name) => {
-                qcCompanyName = name;
-                qcCompanyOpen = true;
               }}
             />
           </div>
@@ -1288,6 +1291,17 @@
         {:else}
           <!-- Use mode: compact read-only summary -->
           <dl class="space-y-2 text-sm">
+            <!-- Same order as the edit form above: client, assignee, project. -->
+            <div class="flex items-center justify-between gap-2">
+              <dt class="text-xs font-medium text-text-muted">{t("tasks.field.company")}</dt>
+              <dd class="truncate text-text">
+                {#if task.company_id}
+                  <a href={`/companies/${task.company_id}`} class="hover:text-brand"
+                    >{companyName(task.company_id) ?? "—"}</a
+                  >
+                {:else}—{/if}
+              </dd>
+            </div>
             <div class="flex items-center justify-between gap-2">
               <dt class="text-xs font-medium text-text-muted">{t("tasks.field.assignee")}</dt>
               <dd class="text-text">
@@ -1307,16 +1321,6 @@
                 {#if task.project_id}
                   <a href={`/projects/${task.project_id}`} class="hover:text-brand"
                     >{projectName(task.project_id) ?? "—"}</a
-                  >
-                {:else}—{/if}
-              </dd>
-            </div>
-            <div class="flex items-center justify-between gap-2">
-              <dt class="text-xs font-medium text-text-muted">{t("tasks.field.company")}</dt>
-              <dd class="truncate text-text">
-                {#if task.company_id}
-                  <a href={`/companies/${task.company_id}`} class="hover:text-brand"
-                    >{companyName(task.company_id) ?? "—"}</a
                   >
                 {:else}—{/if}
               </dd>
