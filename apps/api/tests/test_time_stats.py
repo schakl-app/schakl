@@ -180,10 +180,13 @@ async def test_project_cost_from_employee_rates(client_for) -> None:
     now = datetime.now(UTC)
 
     async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Bouwer"}, headers=owner_headers)
+        ).json()
         project = (
             await c.post(
                 "/api/v1/projects",
-                json={"name": "Bouw", "currency": "EUR"},
+                json={"name": "Bouw", "company_id": company["id"], "currency": "EUR"},
                 headers=owner_headers,
             )
         ).json()
