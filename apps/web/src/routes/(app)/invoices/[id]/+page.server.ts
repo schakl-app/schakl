@@ -25,7 +25,7 @@ export const load: PageServerLoad = async (event) => {
    * (`isPortal ? [] : data.panels`). `activity.read` is a client default, so the *panel*
    * gate is what stops it here.
    */
-  const panels = isPortal ? [] : entityPanelsFor(enabled, "invoice");
+  const panels = isPortal ? [] : entityPanelsFor(enabled, "invoice", event.locals.user);
   /**
    * Coming back from a provider's checkout (#304). The API stamps `?return=1` on the URL it
    * hands the provider, so this runs on exactly that hop and on no ordinary view of an invoice.

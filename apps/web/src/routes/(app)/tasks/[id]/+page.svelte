@@ -31,11 +31,12 @@
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
   import { LABEL_COLORS, labelChipClass, labelDotClass } from "$lib/modules/tasks/labels";
+  import { canWriteTask } from "$lib/modules/tasks/permissions";
   import TaskAssigneePicker from "$lib/modules/tasks/TaskAssigneePicker.svelte";
   import TaskSchedulePanel from "$lib/modules/tasks/TaskSchedulePanel.svelte";
   import { formatMinutes } from "$lib/modules/time/format";
 
-  import { entityPanelsFor } from "$lib/core/registry";
+  import { entityPanelComponent } from "$lib/core/registry";
 
   let { data, form } = $props();
 
@@ -44,8 +45,7 @@
   // Panels contributed by enabled modules (CLAUDE.md §6) — contactmomenten, Drive, and
   // whatever ships later, composed exactly like the project page does.
   const enabledModules = $derived(page.data.theme?.enabledModules ?? []);
-  const panelSpecs = $derived(entityPanelsFor(enabledModules, "task"));
-  const panelComponent = (key: string) => panelSpecs.find((spec) => spec.key === key)?.component;
+  const panelComponent = (key: string) => entityPanelComponent(enabledModules, "task", key);
   const panelLookups = $derived({
     members: data.members,
     companies: data.companies,
@@ -86,11 +86,27 @@
   // mode (docs/UX.md), but they are still task writes (the API gates the item PATCH/POST on
   // `tasks.task.write`). A read-only portal client (#244) reaches this page for a client-visible
   // task, so the controls mirror the API: shown to a writer, read-only for everyone else.
-  const canWriteTask = $derived(can(page.data.user, "tasks.task.write"));
+  //
+  // `canWriteTask` refines by row (`:own` means assignee), which is the whole answer on a detail
+  // page: this screen is *about* one record, so every write control on it — the ⋯ → Bewerken
+  // included — asks about that record rather than about the module.
+  const canEditTask = $derived(canWriteTask(page.data.user, task));
+  // Deleting is its own, genuinely unscoped permission (admin by default): a `:own` assignee
+  // may finish their task, never destroy it. It was ungated here — the ⋯ menu offered Bewerken
+  // and Verwijderen to any staff viewer and let the API say no.
+  const canDeleteTask = $derived(can(page.data.user, "tasks.task.delete"));
+  // Commenting is a third key again, and the one thing a portal client *may* write (#193).
+  const canComment = $derived(can(page.data.user, "tasks.comment.write"));
+  // Attaching a document is the storage core's permission, not the task's — the same split the
+  // project page already makes. Being allowed to edit the task is not being allowed to upload.
+  const canWriteFile = $derived(can(page.data.user, "files.file.write"));
   // Saving a checklist into the org-wide repository is a *different* capability from editing this
   // task — its own permission, held by nobody by default but admin. Without this gate a member in
   // edit mode was offered "Als sjabloon opslaan" and got a 403 for their trouble.
   const canSaveChecklistTemplate = $derived(can(page.data.user, "tasks.checklist_template.write"));
+  // Same story for the org's label vocabulary: applying labels to this task is a task write,
+  // minting a new one is `tasks.label.write`.
+  const canWriteLabels = $derived(can(page.data.user, "tasks.label.write"));
 
   // The org's configured status vocabulary (issue #62), from the /tasks layout load.
   const statuses = $derived(data.statuses);
@@ -215,8 +231,11 @@
   // recurrence, checklist structure, links and file attachments. Empty structural sections
   // don't render in use mode at all — their create forms live behind the pencil.
   // Arriving with the `?edit=1` marker (#78; a fresh create lands here with it, #230) opens
-  // edit mode once — never for a portal login, whose surface is use-only.
-  let editMode = $state(editIntent() && !(page.data.user?.isPortal ?? false));
+  // edit mode once — and only for someone who may actually edit *this* task. A URL is not a
+  // grant: the ⋯ that sets the marker is gated, but a pasted link would otherwise open a form
+  // whose every save 403s, for a portal login and for a `:own` holder on a colleague's task alike.
+  // svelte-ignore state_referenced_locally
+  let editMode = $state(editIntent() && canWriteTask(page.data.user, data.task));
   const busy = new InFlight();
   let confirmDelete = $state(false);
   // Inline create from the relation pickers (#115, docs/UX.md — per-picker definition of
@@ -563,27 +582,39 @@
           />
         {/if}
 
-        {#if !isPortal}
-          <!-- A portal contact works the task (read, comment) — never its definition. -->
+        <!-- Each item asks the key its own call declares, and the menu disappears when nothing
+             survives (#253). It used to hang off `!isPortal` alone — which is right about a
+             portal contact (they work the task, never its definition) and wrong about everyone
+             else: a member holding `tasks.task.write:own` was offered Bewerken on a colleague's
+             task, and *every* staff viewer was offered Verwijderen, an admin-only permission. -->
+        {#if canEditTask || canDeleteTask}
           <ActionsMenu
             items={[
-              {
-                label: editMode ? t("tasks.detail.done_editing") : t("common.edit"),
-                icon: Pencil,
-                onclick: () => {
-                  // Re-arm the relation picks so a stale pick never overrides the stored
-                  // relation on a later edit session.
-                  fCompany = task.company_id ?? "";
-                  fProject = task.project_id ?? "";
-                  editMode = !editMode;
-                },
-              },
-              {
-                label: t("tasks.detail.delete"),
-                icon: Trash2,
-                danger: true,
-                onclick: () => (confirmDelete = true),
-              },
+              ...(canEditTask
+                ? [
+                    {
+                      label: editMode ? t("tasks.detail.done_editing") : t("common.edit"),
+                      icon: Pencil,
+                      onclick: () => {
+                        // Re-arm the relation picks so a stale pick never overrides the stored
+                        // relation on a later edit session.
+                        fCompany = task.company_id ?? "";
+                        fProject = task.project_id ?? "";
+                        editMode = !editMode;
+                      },
+                    },
+                  ]
+                : []),
+              ...(canDeleteTask
+                ? [
+                    {
+                      label: t("tasks.detail.delete"),
+                      icon: Trash2,
+                      danger: true,
+                      onclick: () => (confirmDelete = true),
+                    },
+                  ]
+                : []),
             ]}
           />
         {/if}
@@ -858,7 +889,7 @@
                           <GripVertical size={13} />
                         </button>
                       {/if}
-                      {#if canWriteTask}
+                      {#if canEditTask}
                         <form
                           method="POST"
                           action="?/toggleItem"
@@ -977,7 +1008,7 @@
                   </li>
                 {/each}
               </ul>
-              {#if canWriteTask}
+              {#if canEditTask}
                 <!-- Quick-add is a task write (POST item); hidden from a read-only portal client (#244). -->
                 <form
                   method="POST"
@@ -1130,7 +1161,7 @@
               uploadAction="?/uploadFile"
               deleteAction="?/deleteFile"
               error={form?.fileError ?? null}
-              readonly={!editMode}
+              readonly={!editMode || !canWriteFile}
             />
           </div>
           {#if editMode}
@@ -1146,36 +1177,45 @@
         {t("tasks.comments.title")}
       </h3>
 
-      <form
-        method="POST"
-        action="?/addComment"
-        use:enhance={busy.wrap("addComment", () => ({ update, result }) => {
-          // Reset the editor by remounting it; its internal state survives a plain form reset.
-          if (result.type === "success") newCommentKey += 1;
-          void update({ reset: true });
-        })}
-        class="mb-4"
-      >
-        {#key newCommentKey}
-          <RichTextEditor
-            name="body"
-            rows={2}
-            required
-            placeholder={t("tasks.comments.placeholder")}
-            scope={candidateScope}
-          />
-        {/key}
-        <div class="mt-2 flex justify-end">
-          <Button size="sm" loading={busy.is("addComment")}>{t("tasks.comments.send")}</Button>
-        </div>
-      </form>
+      <!-- POST /tasks/{id}/comments declares `tasks.comment.write`, and the editor was drawn for
+           everyone who could read the task: a role without it typed a comment and lost it to a
+           403 on send. The scope is not consulted — a comment you post is your own, so the API
+           refines nothing here (`TaskService.add_comment`). -->
+      {#if canComment}
+        <form
+          method="POST"
+          action="?/addComment"
+          use:enhance={busy.wrap("addComment", () => ({ update, result }) => {
+            // Reset the editor by remounting it; its internal state survives a plain form reset.
+            if (result.type === "success") newCommentKey += 1;
+            void update({ reset: true });
+          })}
+          class="mb-4"
+        >
+          {#key newCommentKey}
+            <RichTextEditor
+              name="body"
+              rows={2}
+              required
+              placeholder={t("tasks.comments.placeholder")}
+              scope={candidateScope}
+            />
+          {/key}
+          <div class="mt-2 flex justify-end">
+            <Button size="sm" loading={busy.is("addComment")}>{t("tasks.comments.send")}</Button>
+          </div>
+        </form>
+      {/if}
 
       {#if (task.comments ?? []).length === 0}
         <p class="text-sm text-text-muted">{t("tasks.comments.empty")}</p>
       {:else}
         <ul class="space-y-3">
           {#each task.comments ?? [] as comment (comment.id)}
-            {@const canEditComment = comment.author_user_id === userId}
+            <!-- Being the author is half of it: `update_comment` refuses a non-author outright
+                 and still requires the key from the author. Deleting your own needs the same
+                 key; deleting someone else's needs it at `:any`. -->
+            {@const canEditComment = comment.author_user_id === userId && canComment}
             {@const canDeleteComment = canEditComment || canDeleteAnyComment}
             <li id="comment-{comment.id}" class="rounded-lg border border-border bg-surface/50 p-3">
               <div class="mb-1 flex items-center justify-between gap-2">
@@ -1337,12 +1377,15 @@
   >
     <section class="rounded-xl border border-border bg-surface-raised p-4">
       <div class="space-y-3">
-        <!-- Status is core workflow → always editable for staff; a portal contact reads it. -->
+        <!-- Status is core workflow → editable outside edit mode, but it is still a task write
+             (PATCH /tasks/{id}), so it asks the same per-row question every other write control
+             on this page does. `!isPortal` gave a `:own` member a live status dropdown on a
+             colleague's task; everyone else reads the value. -->
         <div>
           <label for="status" class="mb-1 block text-xs font-medium text-text-muted"
             >{t("tasks.field.status")}</label
           >
-          {#if isPortal}
+          {#if !canEditTask}
             <p id="status" class="text-sm text-text">
               {statuses.find((s) => s.key === task.status)?.name ?? task.status}
             </p>
@@ -1660,46 +1703,51 @@
             >
           </form>
 
-          <form
-            method="POST"
-            action="?/createLabel"
-            use:enhance={busy.wrap("createLabel", () => ({ update }) => {
-              showLabelPicker = false;
-              void update();
-            })}
-            class="mt-3 border-t border-border pt-3"
-          >
-            {#each currentLabelIds as id (id)}
-              <input type="hidden" name="current_label_ids" value={id} />
-            {/each}
-            <input
-              name="name"
-              placeholder={t("tasks.labels.new_placeholder")}
-              required
-              class="w-full rounded-lg border border-border px-2 py-1 text-sm"
-            />
-            <input type="hidden" name="color" value={newLabelColor} />
-            <div class="mt-2 flex flex-wrap gap-1">
-              {#each LABEL_COLORS as color (color)}
-                <button
-                  type="button"
-                  aria-label={color}
-                  class="h-5 w-5 rounded-full {labelDotClass(color)} {newLabelColor === color
-                    ? 'ring-2 ring-text ring-offset-1'
-                    : ''}"
-                  onclick={() => (newLabelColor = color)}
-                ></button>
-              {/each}
-            </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={busy.is("createLabel")}
-              class="mt-2 w-full"
+          <!-- Ticking labels onto this task is `tasks.task.write` (above); *minting* one adds a
+               row to the org's vocabulary and is `tasks.label.write`, which nobody but an admin
+               holds by default. Same split as "Als sjabloon opslaan" further up the page. -->
+          {#if canWriteLabels}
+            <form
+              method="POST"
+              action="?/createLabel"
+              use:enhance={busy.wrap("createLabel", () => ({ update }) => {
+                showLabelPicker = false;
+                void update();
+              })}
+              class="mt-3 border-t border-border pt-3"
             >
-              {t("tasks.labels.create")}
-            </Button>
-          </form>
+              {#each currentLabelIds as id (id)}
+                <input type="hidden" name="current_label_ids" value={id} />
+              {/each}
+              <input
+                name="name"
+                placeholder={t("tasks.labels.new_placeholder")}
+                required
+                class="w-full rounded-lg border border-border px-2 py-1 text-sm"
+              />
+              <input type="hidden" name="color" value={newLabelColor} />
+              <div class="mt-2 flex flex-wrap gap-1">
+                {#each LABEL_COLORS as color (color)}
+                  <button
+                    type="button"
+                    aria-label={color}
+                    class="h-5 w-5 rounded-full {labelDotClass(color)} {newLabelColor === color
+                      ? 'ring-2 ring-text ring-offset-1'
+                      : ''}"
+                    onclick={() => (newLabelColor = color)}
+                  ></button>
+                {/each}
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={busy.is("createLabel")}
+                class="mt-2 w-full"
+              >
+                {t("tasks.labels.create")}
+              </Button>
+            </form>
+          {/if}
         {:else if (task.labels ?? []).length === 0}
           <p class="text-sm text-text-muted">{t("tasks.labels.empty")}</p>
         {:else}

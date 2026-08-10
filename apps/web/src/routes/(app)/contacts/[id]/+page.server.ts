@@ -16,11 +16,13 @@ export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const contact_id = event.params.id;
 
-  // Panels contributed to a contact (CLAUDE.md §6) — today just the core activity trail (#67).
-  // A contact has no aggregate period, so `periodStart` is null.
+  // Panels contributed to a contact (CLAUDE.md §6) — the core activity trail (#67) and the
+  // contactmomenten timeline. A contact has no aggregate period, so `periodStart` is null.
+  // Narrowed to what *this viewer* may read: a panel whose load would 403 is neither fetched
+  // nor drawn, so nobody gets an empty block with a create control on it.
   const context = { entityId: contact_id, periodStart: null };
   const enabled = event.locals.theme?.enabledModules ?? [];
-  const panels = entityPanelsFor(enabled, "contact");
+  const panels = entityPanelsFor(enabled, "contact", event.locals.user);
 
   // The contact custom fields, the company ones and the client picker all come from the section
   // layout now (#290) — they do not change between contacts, so refetching them per row click

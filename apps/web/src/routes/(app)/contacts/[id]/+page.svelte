@@ -7,7 +7,7 @@
   import { t } from "$lib/core/i18n";
   import { formatPhone } from "$lib/core/phone";
   import { can } from "$lib/core/permissions";
-  import { entityPanelsFor } from "$lib/core/registry";
+  import { entityPanelComponent } from "$lib/core/registry";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -45,8 +45,9 @@
 
   // Panels contributed to a contact page (CLAUDE.md §6) — the core activity trail today (#67).
   const enabled = $derived(page.data.theme?.enabledModules ?? []);
-  const panelSpecs = $derived(entityPanelsFor(enabled, "contact"));
-  const panelComponent = (key: string) => panelSpecs.find((spec) => spec.key === key)?.component;
+  // Which component draws a panel the load already decided to return — the load is where the
+  // viewer's read permission was applied, so this lookup asks about the key and nothing else.
+  const panelComponent = (key: string) => entityPanelComponent(enabled, "contact", key);
   // The activity panel reads no lookups; hand it the id/name shapes the page already holds.
   const panelLookups = $derived({
     members: data.members,

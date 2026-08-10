@@ -35,7 +35,7 @@ export const load: PageServerLoad = async (event) => {
   // The activity trail rides the core entity-panel seam (§16) — composed, never imported.
   const context = { entityId: domain_id, periodStart: null };
   const enabled = event.locals.theme?.enabledModules ?? [];
-  const panels = entityPanelsFor(enabled, "domain");
+  const panels = entityPanelsFor(enabled, "domain", event.locals.user);
   // Only what is about *this* domain. Every picker and definition set that does not vary by id
   // — clients, providers, employees, contacts, the domain custom fields, the two inline
   // quick-create sets, the TLD prices — comes from the section layout, which does not rerun

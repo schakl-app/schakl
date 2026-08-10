@@ -10,6 +10,13 @@ export interface ProjectOption extends LinkOption {
 export interface TaskOption extends LinkOption {
   project_id: string | null;
   company_id: string | null;
+  /**
+   * Who the task is assigned to — because "sluit deze taak" is a task write, and
+   * `tasks.task.write:own` means *assignee*. Without it the checkbox rendered for a member on
+   * every colleague's task and the close came back refused. It rides the list response
+   * already (`TaskListItem`, `meta=false` and all), so carrying it costs nothing.
+   */
+  assignee_user_id: string | null;
 }
 
 /**
@@ -60,11 +67,13 @@ export async function loadLinkLookups(
         title: string;
         project_id?: string | null;
         company_id?: string | null;
+        assignee_user_id?: string | null;
       }) => ({
         value: task.id,
         label: task.title,
         project_id: task.project_id ?? null,
         company_id: task.company_id ?? null,
+        assignee_user_id: task.assignee_user_id ?? null,
       }),
     ),
   };

@@ -52,6 +52,7 @@ registerWebModule({
       entityType: "project",
       titleKey: "subscriptions.panel.title",
       position: 20,
+      requiresPermission: "subscriptions.subscription.read",
       load: async (api, { entityId }) => {
         const { data } = await api.GET("/api/v1/subscriptions", {
           params: {

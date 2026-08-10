@@ -35,6 +35,7 @@
     terminalKeys,
     terminalStatusKey,
   } from "$lib/modules/tasks/statuses";
+  import { canWriteTask } from "$lib/modules/tasks/permissions";
   import TaskRow from "$lib/modules/tasks/TaskRow.svelte";
   import TasksNav from "$lib/modules/tasks/TasksNav.svelte";
   import { formatMinutes } from "$lib/modules/time/format";
@@ -48,10 +49,11 @@
 
   // Actions render only for holders of the matching permission (#253). The complete toggle is a
   // task-status write (PATCH /api/v1/tasks/{id}), so it mirrors `tasks.task.write` — a read-only
-  // portal client (#244) sees a static status marker, never a clickable checkbox.
+  // portal client (#244) sees a static status marker, never a clickable checkbox. That check is
+  // per *row* (`canWriteTask`, below in `titleCell`), because `:own` means assignee: the seeded
+  // `member` role would otherwise get a live checkbox on all forty of their colleagues' tasks.
   const canCreate = $derived(can(page.data.user, "tasks.task.create"));
   const canDelete = $derived(can(page.data.user, "tasks.task.delete"));
-  const canWrite = $derived(can(page.data.user, "tasks.task.write"));
 
   const dueOptions = ["overdue", "today", "week"] as const;
 
@@ -330,7 +332,7 @@
 {#snippet titleCell(task: Task)}
   {@const done = isDone(task)}
   <div class="flex items-center gap-2.5">
-    {#if canWrite}
+    {#if canWriteTask(page.data.user, task)}
       <form method="POST" action="?/toggle" use:enhance>
         <input type="hidden" name="id" value={task.id} />
         <input type="hidden" name="status" value={toggleTarget(task)} />
@@ -343,7 +345,8 @@
         >
       </form>
     {:else}
-      <!-- Read-only viewer (portal client, #244): the status shows, the toggle does not. -->
+      <!-- Somebody else's task, or a read-only viewer (portal client, #244): the status shows,
+           the toggle does not. -->
       <span
         class="flex h-5 w-5 items-center justify-center rounded border text-xs
           {done ? 'border-brand bg-brand text-white' : 'border-border text-transparent'}"

@@ -32,6 +32,7 @@
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import ProjectQuickCreate from "$lib/modules/projects/ProjectQuickCreate.svelte";
+  import { canWriteTask } from "$lib/modules/tasks/permissions";
   import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
 
   import { minutesBetween } from "$lib/modules/time/duration";
@@ -189,6 +190,9 @@
                 label: own.task_title,
                 project_id: own.project_id ?? null,
                 company_id: own.company_id ?? null,
+                // Unknown, and it never has to be known: this option only exists while editing
+                // an existing moment, and the close checkbox is create-only (`!own` below).
+                assignee_user_id: null,
               },
               ...l.tasks,
             ]
@@ -283,7 +287,13 @@
   // which stays the boundary. Create-only: the link pickers reach the edit form now (#263),
   // but `?/updateInteraction` runs no close — an existing row closes its task through the
   // panel's own CloseTaskDialog, and a checkbox that silently did nothing would be worse.
-  const canCloseTask = $derived(!own && Boolean(fTask) && can(page.data.user, "tasks.task.write"));
+  // Per *task*: `tasks.task.write:own` means assignee, so the base key offered the box on every
+  // colleague's task and the close came back refused. `linkTasks` carries the assignee for this.
+  const canCloseTask = $derived(
+    !own &&
+      Boolean(fTask) &&
+      canWriteTask(page.data.user, linkTasks.find((task) => task.value === fTask) ?? null),
+  );
   // Terminal statuses load when the box is first ticked — never on page load (PERFORMANCE.md).
   $effect(() => {
     if (closeTask && !terminalLoaded) {
@@ -415,6 +425,7 @@
           name?: string;
           project_id?: string | null;
           company_id?: string | null;
+          assignee_user_id?: string | null;
         }
       | undefined;
     if (!created || created.id === handledCreate) return;
@@ -456,6 +467,7 @@
             label: created.name ?? (taskDraft || "—"),
             project_id: created.project_id ?? null,
             company_id: created.company_id ?? null,
+            assignee_user_id: created.assignee_user_id ?? null,
           },
         ];
       }

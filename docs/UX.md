@@ -910,6 +910,34 @@
   declared permission, base key only (a scoped `:own` holder must still see their button). The
   ⋯ menu hides entirely when no item survives; `DataTable` gets `actions={... ? rowActions :
   undefined}` so the empty column disappears too.
+- **The base key on a control that belongs to a *row*.** "Base key only" is right for the list's
+  own controls — Nieuw, the bulk ✎, the section's tabs — and wrong for every control attached to
+  one record, because that is the layer where the API refines the scope. `tasks.task.write:own`
+  means **assignee** (#12), and it is what the seeded `member` role holds: so
+  `can(user, "tasks.task.write")` answered `true` on every row, and the tasks list drew a live
+  complete-toggle on all forty of a member's colleagues' tasks, the card offered them ⋯ →
+  Bewerken, and every checklist tick posted a 403. So a control the service refines per row asks
+  per row — `canWriteTask(page.data.user, task)`
+  (`$lib/modules/tasks/permissions.ts`, the browser's mirror of
+  `TaskService._ensure_task_writable`), the same shape the calendar's task feed already used for
+  `draggable` (`mine ? writeOwn : writeAny`). Two corollaries. A **shared row component**
+  self-gates on the row it was handed, so no caller can reintroduce it. And a control over a
+  *set* of rows — the project to-do's drag-reorder — needs the write on **every** row in it: a
+  list you can reorder halfway is worse than a plain one, because the handles claim the order is
+  yours to set. The API is still the boundary; what this fixes is a screen that lied about it.
+- **Panels composed for everyone, whatever the viewer may read.** Nav items and dashboard widgets
+  have always declared `requiresPermission`; contributed detail-page panels did not, so a contact,
+  project or task page rendered every enabled module's panel for every viewer — a member without
+  `interactions.interaction.read` got an empty *Contactmomenten* block, with its create control
+  beside the heading and a wasted 403 behind it. `EntityPanelSpec.requiresPermission` closes it,
+  and `entityPanelsFor(enabled, entityType, user)` takes the viewer as a **required** argument
+  rather than an optional one, because an optional one is exactly how the next detail page ships
+  the ungated version. The browser-side "which component draws this key" lookup is a separate
+  function (`entityPanelComponent`) that needs no viewer — the load already decided. Skipping the
+  panel skips its `load`, so this is a round-trip saved as well as a lie removed. Omit the
+  declaration only where the endpoint needs no permission, or where the panel deliberately draws
+  its own refusal state because that state is worth telling apart from an empty one (`oxxa`
+  distinguishes "you may not look" from "there is no register account yet").
 - **A write control that leaks to the client portal because it's a *shared* component or a
   "use-mode" affordance.** The portal (a `client`-role login, #193) is not a separate UI: it
   renders the **same** components as staff, and detail pages compose them without a portal filter —

@@ -35,7 +35,7 @@ export const load: PageServerLoad = async (event) => {
   // contacts compose; a task has no aggregate period, so `periodStart` is null.
   const context = { entityId: task_id, periodStart: null };
   const enabled = event.locals.theme?.enabledModules ?? [];
-  const panels = entityPanelsFor(enabled, "task");
+  const panels = entityPanelsFor(enabled, "task", event.locals.user);
 
   // Lookups come from the /tasks layout load (data.labels doubles as allLabels).
   // The task keeps its own legacy TaskActivity trail, but contact-moment milestones (#152) are

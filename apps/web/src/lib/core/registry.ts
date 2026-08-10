@@ -144,6 +144,22 @@ export interface EntityPanelSpec {
   position?: number;
   /** i18n key for the panel heading. */
   titleKey: string;
+  /**
+   * The permission `load` calls behind. Nav items and dashboard widgets have always declared
+   * this; panels did not, and a host page composed every enabled module's panel for every
+   * viewer — so a member without `interactions.interaction.read` got an empty Contactmomenten
+   * block on each contact, project and task, with its "＋ nieuw" beside the heading and a
+   * wasted 403 round-trip behind it. A panel that renders nothing but a heading is a screen
+   * lying about what the visitor may do (docs/UX.md), and the load it skips is free.
+   *
+   * Omit it only where the endpoint needs no permission, or where the panel deliberately draws
+   * its own refusal state because that state is worth telling apart from an empty one — `oxxa`
+   * distinguishes "you may not look" from "there is no register account yet", and only the
+   * second is fixed by adding a credential.
+   */
+  requiresPermission?: string;
+  /** The scope that permission is required at — omitted means "holds it at some scope". */
+  requiresScope?: PermissionScope;
   /** Server-side loader; runs inside the host page's `load`, API-only. */
   load: (api: ApiClient, context: EntityPanelContext) => Promise<unknown>;
   component: Component<{
@@ -417,11 +433,40 @@ export function companyPanelComponent(
   ].find((p) => p.key === key);
 }
 
-/** The panels attached to `entityType`, in display order — core's plus the enabled modules'. */
-export function entityPanelsFor(enabled: string[], entityType: string): EntityPanelSpec[] {
+/**
+ * The panels attached to `entityType` that **this viewer may read**, in display order — core's
+ * plus the enabled modules'.
+ *
+ * `user` is required rather than optional on purpose: this is the function a host page's `load`
+ * calls, and an optional argument is exactly how a new detail page would quietly ship the
+ * ungated version. The client-side "which component draws this key" lookup is
+ * {@link entityPanelComponent}, which needs no viewer — the server already decided.
+ */
+export function entityPanelsFor(
+  enabled: string[],
+  entityType: string,
+  user: SessionUser | null | undefined,
+): EntityPanelSpec[] {
   return [..._coreEntityPanels, ...enabledWebModules(enabled).flatMap((m) => m.entityPanels ?? [])]
     .filter((p) => p.entityType === entityType)
+    .filter((p) => !p.requiresPermission || can(user, p.requiresPermission, p.requiresScope))
     .sort((a, b) => (a.position ?? 100) - (b.position ?? 100));
+}
+
+/**
+ * The component that draws one panel key — the browser-side half, mirroring
+ * {@link companyPanelComponent}. No permission filter: the page renders the panels its `load`
+ * returned, and those were already narrowed to the viewer.
+ */
+export function entityPanelComponent(
+  enabled: string[],
+  entityType: string,
+  key: string,
+): EntityPanelSpec["component"] | undefined {
+  return [
+    ..._coreEntityPanels,
+    ...enabledWebModules(enabled).flatMap((m) => m.entityPanels ?? []),
+  ].find((p) => p.entityType === entityType && p.key === key)?.component;
 }
 
 export function dashboardWidgetsFor(

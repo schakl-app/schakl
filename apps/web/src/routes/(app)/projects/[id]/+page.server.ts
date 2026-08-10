@@ -49,7 +49,7 @@ export const load: PageServerLoad = async (event) => {
   // Panels contributed by the enabled modules (CLAUDE.md §6). A tenant without `time` gets no
   // Uren panel and pays for no call — the loaders below simply don't exist.
   const enabled = event.locals.theme?.enabledModules ?? [];
-  const panels = entityPanelsFor(enabled, "project");
+  const panels = entityPanelsFor(enabled, "project", event.locals.user);
 
   // Cost from employee rates (#111) is salary-derived: fetched only for someone the API would
   // let see it (the guard is UX; the API stays the boundary), and only inside the same flight.

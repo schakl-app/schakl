@@ -6,7 +6,7 @@
   import { editIntent } from "$lib/core/edit-intent";
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
-  import { entityPanelsFor } from "$lib/core/registry";
+  import { entityPanelComponent } from "$lib/core/registry";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -41,9 +41,8 @@
   let qcContactCompany = $state<{ id: string; name: string } | null>(null);
 
   const enabled = $derived(page.data.theme?.enabledModules ?? []);
-  const panelSpecs = $derived(entityPanelsFor(enabled, "quote"));
   function panelComponent(key: string) {
-    return panelSpecs.find((spec) => spec.key === key)?.component;
+    return entityPanelComponent(enabled, "quote", key);
   }
   const emptyLookups = { members: [], companies: [], projects: [], tasks: [] };
 

@@ -39,6 +39,10 @@ const entityPanels: EntityPanelSpec[] = Object.entries(ENTITY_FIELDS).map(
     entityType,
     titleKey: "interactions.panel.title",
     position: ENTITY_POSITIONS[entityType as keyof typeof ENTITY_FIELDS] ?? POSITION,
+    // The key `GET /api/v1/interactions` declares — the same one the nav item above carries.
+    // A contact page composed this panel for everyone, so a member without it read an empty
+    // Contactmomenten block with a create control beside the heading.
+    requiresPermission: "interactions.interaction.read",
     load: async (api, { entityId }) => {
       const { data } = await api.GET("/api/v1/interactions", {
         params: {
