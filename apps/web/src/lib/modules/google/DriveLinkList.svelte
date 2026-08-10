@@ -20,6 +20,9 @@
     name: string;
     mime_type?: string | null;
     is_folder: boolean;
+    /** This link *is* the record's folder — a decision, not "the first folder linked here". */
+    is_root?: boolean;
+    entity_id?: string;
     created_by_name?: string | null;
   }
 

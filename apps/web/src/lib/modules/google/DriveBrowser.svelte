@@ -13,9 +13,22 @@
    * - **Creating a folder** posts to `/api/v1/google/drive/folders` from here (same viewer-scoped
    *   API, same-origin cookie), then re-lists — it needs no host action and no page data.
    *
-   * **Host contract:** the page exposes `?/linkDriveFile` (spread `driveActions`).
+   * In **pick mode** (`pick`) the same browser chooses a *folder* instead of linking files:
+   * every folder row offers "choose", and so does the folder you are standing in — the folder
+   * you want is usually the one you just navigated into, not one you can see listed.
+   *
+   * **Host contract:** the page exposes `?/linkDriveFile`, and `?/setDriveFolder` when the
+   * host renders this in pick mode (spread `driveActions`).
    */
-  import { ChevronLeft, ExternalLink, FolderPlus, Link2, RefreshCw, Upload } from "@lucide/svelte";
+  import {
+    Check,
+    ChevronLeft,
+    ExternalLink,
+    FolderPlus,
+    Link2,
+    RefreshCw,
+    Upload,
+  } from "@lucide/svelte";
   import { onMount } from "svelte";
 
   import { enhance } from "$app/forms";
@@ -45,6 +58,8 @@
     entityType,
     entityId,
     canWrite = false,
+    pick = false,
+    onpicked,
   }: {
     /** Where browsing starts; null = the org's client-folders parent. */
     rootFolderId?: string | null;
@@ -52,7 +67,20 @@
     entityType: string;
     entityId: string;
     canWrite?: boolean;
+    /** Choose a folder for the record (`?/setDriveFolder`) instead of linking files. */
+    pick?: boolean;
+    /** Fired once a folder was actually chosen, so the host can leave pick mode. */
+    onpicked?: () => void;
   } = $props();
+
+  // Only a *successful* pick closes the picker: a refused one (a member without
+  // `google.drive.manage` re-pointing a folder) must leave the browser where it stands.
+  const picked =
+    () =>
+    async ({ result, update }: { result: { type: string }; update: () => Promise<void> }) => {
+      await update();
+      if (result.type === "success") onpicked?.();
+    };
 
   // Deliberately the *initial* root: the breadcrumb is navigation state owned here, and a
   // remount (the {#key} the host controls) is how a new root arrives.
@@ -198,7 +226,9 @@
   class="rounded-lg border border-border"
   use:filedrop={{
     input: () => fileInput,
-    disabled: !canWrite || uploading || !listing?.folder?.id,
+    // `pick` for the same reason the Upload button hides in it: while you are choosing a
+    // folder, a dropped file would land in whichever one you happen to be passing through.
+    disabled: pick || !canWrite || uploading || !listing?.folder?.id,
   }}
 >
   <div class="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
@@ -225,6 +255,22 @@
         </button>
       {/each}
     </nav>
+    {#if pick && listing?.folder?.id}
+      <!-- The folder you are standing in. Navigating into "Klanten/Acme" and then hunting for
+           an "Acme" row that is one level up was the whole trap this avoids. -->
+      <form method="POST" action="?/setDriveFolder" use:enhance={picked}>
+        <input type="hidden" name="entity_type" value={entityType} />
+        <input type="hidden" name="entity_id" value={entityId} />
+        <input type="hidden" name="drive_file_id" value={listing.folder.id} />
+        <button
+          type="submit"
+          class="inline-flex items-center gap-1 rounded-lg bg-brand px-2.5 py-1 text-xs font-medium text-white hover:opacity-90"
+        >
+          <Check size={13} aria-hidden="true" />
+          {t("google.drive.choose_this_folder")}
+        </button>
+      </form>
+    {/if}
     {#if canWrite}
       <input
         bind:this={fileInput}
@@ -241,16 +287,19 @@
         <FolderPlus size={13} aria-hidden="true" />
         {t("google.drive.new_folder")}
       </button>
-      <button
-        type="button"
-        class="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-text hover:border-brand disabled:opacity-50"
-        onclick={() => fileInput?.click()}
-        disabled={uploading || !listing?.folder?.id}
-      >
-        <Upload size={13} aria-hidden="true" />
-        {uploading ? t("google.drive.uploading") : t("google.drive.upload")}
-      </button>
-      <span class="hidden text-xs text-text-muted sm:inline">{t("common.drop_hint")}</span>
+      {#if !pick}
+        <!-- Picking a folder is not the moment to drop a file into whatever you are passing. -->
+        <button
+          type="button"
+          class="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-text hover:border-brand disabled:opacity-50"
+          onclick={() => fileInput?.click()}
+          disabled={uploading || !listing?.folder?.id}
+        >
+          <Upload size={13} aria-hidden="true" />
+          {uploading ? t("google.drive.uploading") : t("google.drive.upload")}
+        </button>
+        <span class="hidden text-xs text-text-muted sm:inline">{t("common.drop_hint")}</span>
+      {/if}
     {/if}
     <button
       type="button"
@@ -339,7 +388,22 @@
                 {fmtNumericDate(item.modified_at.slice(0, 10))}
               </span>
             {/if}
-            {#if canWrite}
+            {#if pick}
+              {#if item.is_folder}
+                <!-- Choose this folder without descending into it first. -->
+                <form method="POST" action="?/setDriveFolder" use:enhance={picked}>
+                  <input type="hidden" name="entity_type" value={entityType} />
+                  <input type="hidden" name="entity_id" value={entityId} />
+                  <input type="hidden" name="drive_file_id" value={item.id} />
+                  <button
+                    type="submit"
+                    class="rounded px-2 py-1 text-xs font-medium text-brand hover:underline"
+                  >
+                    {t("google.drive.choose_folder")}
+                  </button>
+                </form>
+              {/if}
+            {:else if canWrite}
               <!-- Link this file/folder to the record the panel hangs off. -->
               <form method="POST" action="?/linkDriveFile" use:enhance>
                 <input type="hidden" name="entity_type" value={entityType} />

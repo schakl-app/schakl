@@ -31,4 +31,11 @@ GOOGLE_PERMISSIONS: list[PermissionSpec] = [
         position=50,
         default_roles=(ROLE_ADMIN, ROLE_MEMBER),
     ),
+    # Giving a record its *first* Drive folder is ordinary work and stays on
+    # ``google.drive.write``; **re-pointing or detaching one** is this permission (#21
+    # follow-up). The two are different acts: the first is additive, the second silently
+    # redirects where every colleague's uploads land and where project folders nest, while the
+    # history stays behind in a folder nobody is looking at any more. Admin-only by default,
+    # like the org-wide Drive layout it is the per-client half of.
+    PermissionSpec("google.drive.manage", position=60),
 ]

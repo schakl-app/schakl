@@ -41,7 +41,12 @@
   );
   const canWrite = $derived(can(page.data.user, "google.drive.write"));
 
-  const ownFolder = $derived(panel.links.find((link) => link.is_folder) ?? null);
+  // This record's *own* folder. Both halves matter: `is_root` because a subfolder linked as an
+  // attachment is not the record's folder, and the entity match because a project's list rolls
+  // up its tasks' links (#21) — a task's folder is not the project's.
+  const ownFolder = $derived(
+    panel.links.find((link) => link.is_root && link.entity_id === context.entityId) ?? null,
+  );
 
   // A task walks up to its project (the host page hands the current task down in `lookups.tasks`);
   // both a project and a task then reach their client through `lookups.projects` — no fetch (#150).
@@ -73,7 +78,7 @@
       );
       if (!response.ok) return null;
       const links = (await response.json()) as DriveLinkItem[];
-      return links.find((link) => link.is_folder) ?? null;
+      return links.find((link) => link.is_root) ?? null;
     } catch {
       return null;
     }
@@ -138,7 +143,9 @@
             {t("google.drive.create_project_folder")}
           </Button>
         </form>
-        <form method="POST" action="?/linkDriveFile" use:enhance={busy.wrap("link")}>
+        <!-- Adopting the client's folder *is* giving this project its folder — the same act
+             the picker performs, so it takes the same route (`?/setDriveFolder`). -->
+        <form method="POST" action="?/setDriveFolder" use:enhance={busy.wrap("link")}>
           <input type="hidden" name="entity_type" value="project" />
           <input type="hidden" name="entity_id" value={context.entityId} />
           <input type="hidden" name="drive_file_id" value={parentFolder.drive_file_id} />

@@ -46,12 +46,21 @@ class DriveLinkRead(BaseModel):
     name: str
     mime_type: str | None = None
     is_folder: bool = False
+    #: This link *is* the record's folder (at most one per record) — not merely a folder.
+    is_root: bool = False
     created_by_name: str | None = None
 
 
 class DriveLinkCreate(BaseModel):
     entity_type: str = Field(..., pattern="^(company|project|task)$")
     entity_id: uuid.UUID
+    drive_file_id: str = Field(..., min_length=1, max_length=128)
+
+
+class DriveFolderSet(BaseModel):
+    entity_type: str = Field(..., pattern="^(company|project|task)$")
+    entity_id: uuid.UUID
+    #: An **existing** Drive folder, chosen in the browser.
     drive_file_id: str = Field(..., min_length=1, max_length=128)
 
 
@@ -129,6 +138,27 @@ async def create_link(
     ctx: RequestContext = Depends(require_context),
 ) -> DriveLinkRead:
     link = await DriveService(ctx).create_link(
+        payload.entity_type, payload.entity_id, payload.drive_file_id
+    )
+    return DriveLinkRead.model_validate(link)
+
+
+@router.put(
+    "/folder",
+    response_model=DriveLinkRead,
+    dependencies=[require_permission("google.drive.write")],
+)
+async def set_folder(
+    payload: DriveFolderSet,
+    ctx: RequestContext = Depends(require_context),
+) -> DriveLinkRead:
+    """Point a record at an existing Drive folder — the picker's target.
+
+    The declared key is the base one, so deny-by-default stays enumerable; the service adds
+    ``google.drive.manage`` when the record **already has** a folder, because re-pointing one
+    is a different act from giving it its first (CLAUDE.md §15's two layers).
+    """
+    link = await DriveService(ctx).set_folder(
         payload.entity_type, payload.entity_id, payload.drive_file_id
     )
     return DriveLinkRead.model_validate(link)

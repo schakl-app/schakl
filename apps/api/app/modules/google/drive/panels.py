@@ -24,6 +24,7 @@ def _present(link: DriveLink) -> dict:
         "name": link.name,
         "mime_type": link.mime_type,
         "is_folder": link.is_folder,
+        "is_root": link.is_root,
         "created_by_name": link.created_by_name,
     }
 
@@ -35,7 +36,9 @@ async def _drive_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
     if row is None or not row.drive_enabled:
         return {"links": [], "disabled": True}
     links = await DriveService(ctx).links_for("company", company_id)
-    folder = next((link for link in links if link.is_folder), None)
+    # The client's folder is the one somebody decided on, never the first folder that happens
+    # to be linked here — a subfolder linked as an attachment must not hijack the panel.
+    folder = next((link for link in links if link.is_root), None)
     from app.modules.google.client import connection_for
     from app.modules.google.models import ConnectionStatus
 
@@ -48,6 +51,11 @@ async def _drive_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
             connection and connection.status == ConnectionStatus.ACTIVE.value
         ),
         "can_provision": bool(row.automation_connection_user_id and ctx.can("google.drive.write")),
+        # Choosing the client's *first* folder is ordinary write work; changing or detaching an
+        # existing one is not. The panel draws each control on the gate that will answer it —
+        # never a lock the API would then contradict.
+        "can_pick": ctx.can("google.drive.write"),
+        "can_manage": ctx.can("google.drive.manage"),
     }
 
 

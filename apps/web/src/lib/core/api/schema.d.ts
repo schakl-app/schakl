@@ -2175,6 +2175,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google/drive/folder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Folder
+         * @description Point a record at an existing Drive folder — the picker's target.
+         *
+         *     The declared key is the base one, so deny-by-default stays enumerable; the service adds
+         *     ``google.drive.manage`` when the record **already has** a folder, because re-pointing one
+         *     is a different act from giving it its first (CLAUDE.md §15's two layers).
+         */
+        put: operations["set_folder_api_v1_google_drive_folder_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/google/drive/folders": {
         parameters: {
             query?: never;
@@ -12727,6 +12751,18 @@ export interface components {
             /** Parent Id */
             parent_id: string;
         };
+        /** DriveFolderSet */
+        DriveFolderSet: {
+            /** Drive File Id */
+            drive_file_id: string;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+        };
         /** DriveLinkCreate */
         DriveLinkCreate: {
             /** Drive File Id */
@@ -12764,6 +12800,11 @@ export interface components {
              * @default false
              */
             is_folder: boolean;
+            /**
+             * Is Root
+             * @default false
+             */
+            is_root: boolean;
             /** Mime Type */
             mime_type?: string | null;
             /** Name */
@@ -27929,6 +27970,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DriveBrowseResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_folder_api_v1_google_drive_folder_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveFolderSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveLinkRead"];
                 };
             };
             /** @description Validation Error */

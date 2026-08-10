@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 
 import httpx
 
+from app.core.auth.models import User
 from app.core.crypto import encrypt
 from app.core.events import SystemContext, emit
 from app.db import async_session_maker, set_current_org
@@ -14,7 +15,7 @@ from app.modules.google.drive.models import DriveFolderJob, DriveLink
 from app.modules.google.drive.service import provision_folder
 from app.modules.google.models import GoogleConnection, GoogleSettings
 from app.modules.google.oauth import SCOPE_DRIVE
-from tests.conftest import auth_cookie, make_tenant
+from tests.conftest import add_membership, auth_cookie, make_tenant
 
 FOLDER_MIME = "application/vnd.google-apps.folder"
 
@@ -380,6 +381,9 @@ async def test_bulk_provision_queues_only_folderless_companies(client_for, monke
                     drive_url="https://drive/x",
                     name="Heeft map",
                     is_folder=True,
+                    # "Has a folder" is ``is_root``, not "some folder is linked here": a
+                    # subfolder attached as a file must not make the client look provisioned.
+                    is_root=True,
                 )
             )
             await session.commit()
@@ -550,3 +554,294 @@ async def test_provision_request_409s_without_any_root(client_for, monkeypatch) 
         )
         assert response.status_code == 409, response.text
         assert response.json()["error"]["code"] == "google_drive_no_folder"
+
+
+# --------------------------------------------------------------------------- #
+# The folder picker: a record's folder is a stored decision, and re-pointing one
+# is `google.drive.manage` while giving a record its first is not.
+# --------------------------------------------------------------------------- #
+def _folder_meta(file_id: str, name: str) -> _StubResponse:
+    return _StubResponse(
+        200,
+        {
+            "id": file_id,
+            "name": name,
+            "mimeType": FOLDER_MIME,
+            "webViewLink": f"https://drive.google.com/drive/folders/{file_id}",
+            "driveId": "sd-1",
+        },
+    )
+
+
+async def _add_member_with_connection(org_id: uuid.UUID, email: str) -> User:
+    """A colleague on the `member` role — holds ``google.drive.write``, never ``.manage``."""
+    from pwdlib import PasswordHash
+
+    async with async_session_maker() as session:
+        user = User(
+            id=uuid.uuid4(),
+            email=email,
+            hashed_password=PasswordHash.recommended().hash("secret1234"),
+            is_active=True,
+            is_verified=True,
+        )
+        session.add(user)
+        await session.flush()
+        await set_current_org(session, org_id)
+        await add_membership(session, org_id, user.id, "member")
+        session.add(
+            GoogleConnection(
+                org_id=org_id,
+                user_id=user.id,
+                google_sub=f"sub-{email}",
+                email=email,
+                scopes=["openid", "email", SCOPE_DRIVE],
+                refresh_token_encrypted=encrypt("rt"),
+            )
+        )
+        await session.commit()
+        return User(id=user.id, email=user.email, hashed_password="", is_active=True)
+
+
+async def test_picking_an_existing_folder_sets_the_client_folder(client_for, monkeypatch) -> None:
+    """The picker's happy path: an existing Drive folder becomes *the* client folder, a file is
+    refused, and a second linked folder never hijacks the decision."""
+    t = await make_tenant("gdrive-pick")
+    await _seed(t)
+    headers = await auth_cookie(t.user)
+
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Klant BV"}, headers=headers)
+        ).json()
+
+        monkeypatch.setattr(
+            "app.modules.google.drive.service.acting_as",
+            _stub_acting_as(_StubClient([("GET", _folder_meta("folder-1", "Klant BV"))])),
+        )
+        picked = await c.put(
+            "/api/v1/google/drive/folder",
+            json={
+                "entity_type": "company",
+                "entity_id": company["id"],
+                "drive_file_id": "folder-1",
+            },
+            headers=headers,
+        )
+        assert picked.status_code == 200, picked.text
+        assert picked.json()["is_root"] is True and picked.json()["name"] == "Klant BV"
+
+        # A file is not a folder — refused on the field, never stored to be puzzled over later.
+        monkeypatch.setattr(
+            "app.modules.google.drive.service.acting_as",
+            _stub_acting_as(
+                _StubClient(
+                    [
+                        (
+                            "GET",
+                            _StubResponse(
+                                200,
+                                {
+                                    "id": "file-9",
+                                    "name": "Offerte.pdf",
+                                    "mimeType": "application/pdf",
+                                },
+                            ),
+                        )
+                    ]
+                )
+            ),
+        )
+        refused = await c.put(
+            "/api/v1/google/drive/folder",
+            json={
+                "entity_type": "company",
+                "entity_id": company["id"],
+                "drive_file_id": "file-9",
+            },
+            headers=headers,
+        )
+        assert refused.status_code == 422, refused.text
+        assert refused.json()["error"]["code"] == "google_drive_not_a_folder"
+
+        # A *subfolder* linked as an attachment stays an ordinary link and must not become the
+        # client folder — the ambiguity `is_root` exists to remove.
+        monkeypatch.setattr(
+            "app.modules.google.drive.service.acting_as",
+            _stub_acting_as(_StubClient([("GET", _folder_meta("folder-2", "Facturen"))])),
+        )
+        assert (
+            await c.post(
+                "/api/v1/google/drive/links",
+                json={
+                    "entity_type": "company",
+                    "entity_id": company["id"],
+                    "drive_file_id": "folder-2",
+                },
+                headers=headers,
+            )
+        ).status_code == 201
+        links = (
+            await c.get(
+                "/api/v1/google/drive/links",
+                params={"entity_type": "company", "entity_id": company["id"]},
+                headers=headers,
+            )
+        ).json()
+        assert [link["drive_file_id"] for link in links if link["is_root"]] == ["folder-1"]
+        # The record's own folder sorts first, so "the folder" never depends on row order.
+        assert links[0]["drive_file_id"] == "folder-1"
+
+        # And the decision is on the client's trail (CLAUDE.md §16).
+        trail = (
+            await c.get(
+                "/api/v1/activity",
+                params={"entity_type": "company", "entity_id": company["id"]},
+                headers=headers,
+            )
+        ).json()
+        entry = next(item for item in trail if item["action"] == "drive.folder_set")
+        assert entry["payload"]["name"] == "Klant BV"
+
+
+async def test_replacing_or_detaching_a_folder_needs_manage(client_for, monkeypatch) -> None:
+    """The permission boundary: a member gives a client its *first* folder, and can neither
+    re-point nor detach one that is already set."""
+    t = await make_tenant("gdrive-pickperm")
+    await _seed(t)
+    owner_headers = await auth_cookie(t.user)
+    member = await _add_member_with_connection(t.org.id, "collega@gdrive-pickperm.test")
+    member_headers = await auth_cookie(member)
+
+    async with client_for(t.host) as c:
+        first = (
+            await c.post("/api/v1/companies", json={"name": "Eerste"}, headers=owner_headers)
+        ).json()
+        second = (
+            await c.post("/api/v1/companies", json={"name": "Tweede"}, headers=owner_headers)
+        ).json()
+
+        # A member may fill an empty slot: no folder yet, so this is ordinary write work.
+        monkeypatch.setattr(
+            "app.modules.google.drive.service.acting_as",
+            _stub_acting_as(_StubClient([("GET", _folder_meta("folder-a", "Eerste"))])),
+        )
+        assert (
+            await c.put(
+                "/api/v1/google/drive/folder",
+                json={
+                    "entity_type": "company",
+                    "entity_id": first["id"],
+                    "drive_file_id": "folder-a",
+                },
+                headers=member_headers,
+            )
+        ).status_code == 200
+
+        # Re-pointing it is a different act. Refused before any Drive call is made — the empty
+        # stub script is the assertion that nothing was fetched.
+        monkeypatch.setattr(
+            "app.modules.google.drive.service.acting_as", _stub_acting_as(_StubClient([]))
+        )
+        denied = await c.put(
+            "/api/v1/google/drive/folder",
+            json={
+                "entity_type": "company",
+                "entity_id": first["id"],
+                "drive_file_id": "folder-b",
+            },
+            headers=member_headers,
+        )
+        assert denied.status_code == 403, denied.text
+
+        # Nor may they detach it through the ordinary unlink route — the same act, reached from
+        # the other side.
+        root_id = next(
+            link["id"]
+            for link in (
+                await c.get(
+                    "/api/v1/google/drive/links",
+                    params={"entity_type": "company", "entity_id": first["id"]},
+                    headers=member_headers,
+                )
+            ).json()
+            if link["is_root"]
+        )
+        assert (
+            await c.delete(f"/api/v1/google/drive/links/{root_id}", headers=member_headers)
+        ).status_code == 403
+
+        # The owner may do both.
+        monkeypatch.setattr(
+            "app.modules.google.drive.service.acting_as",
+            _stub_acting_as(_StubClient([("GET", _folder_meta("folder-b", "Eerste v2"))])),
+        )
+        replaced = await c.put(
+            "/api/v1/google/drive/folder",
+            json={
+                "entity_type": "company",
+                "entity_id": first["id"],
+                "drive_file_id": "folder-b",
+            },
+            headers=owner_headers,
+        )
+        assert replaced.status_code == 200, replaced.text
+        after = (
+            await c.get(
+                "/api/v1/google/drive/links",
+                params={"entity_type": "company", "entity_id": first["id"]},
+                headers=owner_headers,
+            )
+        ).json()
+        # One folder per record: the old one does not linger as a loose attachment.
+        assert [link["drive_file_id"] for link in after] == ["folder-b"]
+
+        # An unrelated client is untouched by any of it.
+        assert (
+            await c.get(
+                "/api/v1/google/drive/links",
+                params={"entity_type": "company", "entity_id": second["id"]},
+                headers=owner_headers,
+            )
+        ).json() == []
+
+
+async def test_provision_refuses_a_second_folder(client_for, monkeypatch) -> None:
+    """A record has one folder: provisioning a second is refused rather than landing a folder
+    in Drive that nothing points at."""
+    t = await make_tenant("gdrive-second")
+    await _seed(t, automation=True)
+    headers = await auth_cookie(t.user)
+
+    async def _quiet_enqueue(function: str, *args, **kwargs) -> None:  # noqa: ARG001
+        return None
+
+    monkeypatch.setattr("app.core.jobs.enqueue", _quiet_enqueue)
+
+    async with client_for(t.host) as c:
+        company = (
+            await c.post("/api/v1/companies", json={"name": "Klant BV"}, headers=headers)
+        ).json()
+        monkeypatch.setattr(
+            "app.modules.google.drive.service.acting_as",
+            _stub_acting_as(_StubClient([("GET", _folder_meta("folder-1", "Klant BV"))])),
+        )
+        assert (
+            await c.put(
+                "/api/v1/google/drive/folder",
+                json={
+                    "entity_type": "company",
+                    "entity_id": company["id"],
+                    "drive_file_id": "folder-1",
+                },
+                headers=headers,
+            )
+        ).status_code == 200
+
+        response = await c.post(
+            "/api/v1/google/drive/provision",
+            json={"entity_type": "company", "entity_id": company["id"]},
+            headers=headers,
+        )
+        assert response.status_code == 409, response.text
+        assert response.json()["error"]["code"] == "google_drive_folder_exists"

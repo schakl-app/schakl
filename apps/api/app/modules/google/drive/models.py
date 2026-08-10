@@ -47,6 +47,16 @@ class DriveLink(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
             name="uq_drive_links_org_entity_file",
         ),
         Index("ix_drive_links_org_entity", "org_id", "entity_type", "entity_id"),
+        # A record has **at most one** Drive folder, and which one is a decision, not row
+        # order. Before this, "the client folder" was ``next(link for link in links if
+        # link.is_folder)`` over an unordered query, so linking a second folder made the
+        # answer a coin flip — and no permission could guard a choice nothing stored.
+        Index(
+            "uq_drive_links_org_entity_root",
+            "org_id", "entity_type", "entity_id",
+            unique=True,
+            postgresql_where=text("is_root"),
+        ),
     )
 
     entity_type: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -57,6 +67,11 @@ class DriveLink(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(500), nullable=False)
     mime_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_folder: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    #: This link *is* the record's folder — where its browser opens, where uploads land, and
+    #: what a child's folder nests under. Only ever true for a folder.
+    is_root: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
     shared_drive_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
