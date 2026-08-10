@@ -137,6 +137,29 @@ usually the client's own name.
 (the narrow `drive.file` only sees files the app itself created). That's a restricted scope —
 fine under the "Internal" OAuth app above, but note it.
 
+### A Drive 403 is three different problems, and the body says which
+
+`scopes_for` only asks for `drive` when `drive_enabled` was **already on at consent time**, so
+an org that connected Google for Calendar or the marketing sources and switched Drive on
+afterwards holds connections that are `active`, refresh cleanly, and are refused by every Drive
+call. That is one of three ordinary 403s, each fixed somewhere else:
+
+| Google's `reason` | What is actually wrong | The fix |
+|---|---|---|
+| `ACCESS_TOKEN_SCOPE_INSUFFICIENT` | the token was minted without `drive` | reconnect (Instellingen → Account) |
+| `SERVICE_DISABLED` / `accessNotConfigured` | the Drive API is off in the OAuth client's Cloud project | enable it there — §7's trap, one surface further |
+| *(none)* | this account cannot see that folder or shared drive | share it in Drive |
+
+They are indistinguishable in the status line, which is exactly what `raise_for_status()` at a
+call site preserves: the picker showed "Drive is niet beschikbaar" and the API logged an httpx
+traceback naming the URL. Every Drive round-trip now runs inside `DriveService._call`, which
+reads the reason with `describe_api_error`, logs it verbatim next to `oauth_client_hint` (the
+message names the Cloud **project number** — decisive when an org is silently riding the
+instance env client), and answers a 409 whose key states the fix. The scope case is refused
+before the round-trip, from `connection.scopes`, and the provisioning worker skips rather than
+burning five attempts on it. **An empty `scopes` list is not evidence** — it means we never
+recorded the grant — so those are still left to Google to judge.
+
 *When would object storage in front be right?* Only for offline access, full-text indexing of
 file contents, or serving files to people without Drive accounts. None apply to an internal
 agency tool — so, direct.

@@ -15,6 +15,19 @@ at its client's. **Re-pointing or detaching one is ``google.drive.manage``**, be
 silently moves where every colleague's uploads land while the history stays behind in a folder
 nobody is looking at any more. The route declares the base key and the service refines on the
 row, the two layers of CLAUDE.md §15.
+
+And a fourth arrived with that picker's first 403: **Google's own account of a refusal is the
+diagnosis, so it may not be discarded**. A bare ``raise_for_status()`` at a call site turned
+every Drive refusal into one unhandled 500 whose traceback carries the status line and the URL
+and nothing else, and *"Drive is op dit moment niet beschikbaar"* on screen — while the three
+ordinary causes are each fixed somewhere different: the token was minted before Drive was
+enabled (reconnect), the Drive API is off in the org's Cloud project (a Google Cloud console
+visit), or the viewer simply is not a member of that shared drive. Every Drive round-trip here
+now runs inside :meth:`DriveService._call`, which reads the reason out of the error body
+(``describe_api_error``), logs it verbatim beside the OAuth client the call was made with
+(``oauth_client_hint`` — the project it names is half the answer), and raises a key that states
+the fix. The scope case is additionally refused *before* the round-trip, because the connection
+row already knows (``missing_drive_scope``).
 """
 
 from __future__ import annotations
@@ -22,8 +35,11 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
+import httpx
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,7 +53,9 @@ from app.modules.google.client import (
     acting_as,
     active_connection_or_409,
     connection_for,
+    describe_api_error,
     mark_connection_error,
+    oauth_client_hint,
 )
 from app.modules.google.drive.models import (
     DRIVE_ENTITY_TYPES,
@@ -45,8 +63,8 @@ from app.modules.google.drive.models import (
     DriveLink,
     FolderJobStatus,
 )
-from app.modules.google.models import ConnectionStatus, GoogleSettings
-from app.modules.google.oauth import google_settings_row
+from app.modules.google.models import ConnectionStatus, GoogleConnection, GoogleSettings
+from app.modules.google.oauth import google_settings_row, missing_drive_scope
 
 logger = logging.getLogger("schakl.google.drive")
 
@@ -82,6 +100,69 @@ class DriveService:
             )
         return row
 
+    async def _connection(self) -> GoogleConnection:
+        """The viewer's connection, refused up front when it provably lacks Drive.
+
+        ``active`` only says the *grant* still works: a connection made for Calendar or the
+        marketing sources before Drive was switched on is perfectly healthy and answers 403 to
+        every call in this file. That is a reconnect, and saying so here costs no round-trip.
+        """
+        connection = await active_connection_or_409(
+            self.ctx.session, self._org_id, self.ctx.user.id
+        )
+        if missing_drive_scope(connection.scopes):
+            raise AppError(
+                "google_drive_scope_missing",
+                "errors.google_drive_scope_missing",
+                status_code=409,
+            )
+        return connection
+
+    @asynccontextmanager
+    async def _call(self) -> AsyncIterator[None]:
+        """Wrap Drive round-trips so a refusal arrives as its reason, not as a 500.
+
+        Enters *outside* ``acting_as`` / ``release_db()``, so by the time this handles the
+        error the session holds a pool connection again and may be read.
+        """
+        try:
+            yield
+        except httpx.HTTPStatusError as exc:
+            raise await self._translate(exc) from exc
+
+    async def _translate(self, exc: httpx.HTTPStatusError) -> AppError:
+        detail = describe_api_error(exc)
+        hint = await oauth_client_hint(self.ctx.session, self._org_id)
+        # Verbatim, because Google's message names the Cloud project — which is the whole
+        # answer when an org rides the instance env client by accident.
+        logger.warning("Drive call refused (%s): %s", hint, detail or exc)
+        if detail is not None:
+            if detail.api_disabled:
+                return AppError(
+                    "google_drive_api_disabled",
+                    "errors.google_drive_api_disabled",
+                    status_code=409,
+                )
+            if detail.scope_insufficient:
+                return AppError(
+                    "google_drive_scope_missing",
+                    "errors.google_drive_scope_missing",
+                    status_code=409,
+                )
+            if detail.status_code in (401, 403):
+                # Drive's own permission answer: this account cannot see that folder or drive.
+                # Not our 403 — nothing an org admin grants in schakl changes it.
+                return AppError(
+                    "google_drive_forbidden",
+                    "errors.google_drive_forbidden",
+                    status_code=409,
+                )
+            if detail.status_code == 404:
+                return AppError("not_found", "errors.not_found", status_code=404)
+        return AppError(
+            "google_drive_unavailable", "errors.google_drive_unavailable", status_code=502
+        )
+
     # --- browse (as the viewing user) ------------------------------------------- #
     async def browse(self, folder_id: str | None, *, refresh: bool = False) -> dict[str, Any]:
         settings_row = await self._settings()
@@ -90,9 +171,7 @@ class DriveService:
             raise AppError(
                 "google_drive_no_folder", "errors.google_drive_no_folder", status_code=409
             )
-        connection = await active_connection_or_409(
-            self.ctx.session, self._org_id, self.ctx.user.id
-        )
+        connection = await self._connection()
 
         cache_key = f"schakl:gdrive:browse:{self._org_id}:{self.ctx.user.id}:{target}"
         if not refresh:
@@ -112,19 +191,20 @@ class DriveService:
             "includeItemsFromAllDrives": "true",
         }
         # Drive round-trips run with the pool connection released (docs/PERFORMANCE.md).
-        async with (
-            acting_as(self.ctx.session, self.ctx.org, connection) as client,
-            self.ctx.release_db(),
-        ):
-            response = await client.get(f"{DRIVE_API}/files", params=params)
-            response.raise_for_status()
-            body = response.json()
-            folder_meta = await client.get(
-                f"{DRIVE_API}/files/{target}",
-                params={"fields": "id,name,webViewLink", "supportsAllDrives": "true"},
-            )
-            folder_meta.raise_for_status()
-            meta = folder_meta.json()
+        async with self._call():
+            async with (
+                acting_as(self.ctx.session, self.ctx.org, connection) as client,
+                self.ctx.release_db(),
+            ):
+                response = await client.get(f"{DRIVE_API}/files", params=params)
+                response.raise_for_status()
+                body = response.json()
+                folder_meta = await client.get(
+                    f"{DRIVE_API}/files/{target}",
+                    params={"fields": "id,name,webViewLink", "supportsAllDrives": "true"},
+                )
+                folder_meta.raise_for_status()
+                meta = folder_meta.json()
 
         listing = {
             "folder": {
@@ -201,27 +281,26 @@ class DriveService:
             raise AppError("validation", "errors.validation", status_code=422)
         await self._ensure_entity(entity_type, entity_id)
         await self._settings()
-        connection = await active_connection_or_409(
-            self.ctx.session, self._org_id, self.ctx.user.id
-        )
+        connection = await self._connection()
         # Metadata comes from Drive as the caller — authoritative, and it proves they can
         # actually see the file they are linking. Fetched with the pool connection
         # released (docs/PERFORMANCE.md).
-        async with (
-            acting_as(self.ctx.session, self.ctx.org, connection) as client,
-            self.ctx.release_db(),
-        ):
-            response = await client.get(
-                f"{DRIVE_API}/files/{drive_file_id}",
-                params={
-                    "fields": "id,name,mimeType,webViewLink,driveId",
-                    "supportsAllDrives": "true",
-                },
-            )
-            if response.status_code == 404:
-                raise AppError("not_found", "errors.not_found", status_code=404)
-            response.raise_for_status()
-            meta = response.json()
+        async with self._call():
+            async with (
+                acting_as(self.ctx.session, self.ctx.org, connection) as client,
+                self.ctx.release_db(),
+            ):
+                response = await client.get(
+                    f"{DRIVE_API}/files/{drive_file_id}",
+                    params={
+                        "fields": "id,name,mimeType,webViewLink,driveId",
+                        "supportsAllDrives": "true",
+                    },
+                )
+                if response.status_code == 404:
+                    raise AppError("not_found", "errors.not_found", status_code=404)
+                response.raise_for_status()
+                meta = response.json()
 
         existing = await self.ctx.session.scalar(
             select(DriveLink).where(
@@ -314,24 +393,23 @@ class DriveService:
         if current is not None:
             self.ctx.require("google.drive.manage")
 
-        connection = await active_connection_or_409(
-            self.ctx.session, self._org_id, self.ctx.user.id
-        )
-        async with (
-            acting_as(self.ctx.session, self.ctx.org, connection) as client,
-            self.ctx.release_db(),
-        ):
-            response = await client.get(
-                f"{DRIVE_API}/files/{drive_file_id}",
-                params={
-                    "fields": "id,name,mimeType,webViewLink,driveId",
-                    "supportsAllDrives": "true",
-                },
-            )
-            if response.status_code == 404:
-                raise AppError("not_found", "errors.not_found", status_code=404)
-            response.raise_for_status()
-            meta = response.json()
+        connection = await self._connection()
+        async with self._call():
+            async with (
+                acting_as(self.ctx.session, self.ctx.org, connection) as client,
+                self.ctx.release_db(),
+            ):
+                response = await client.get(
+                    f"{DRIVE_API}/files/{drive_file_id}",
+                    params={
+                        "fields": "id,name,mimeType,webViewLink,driveId",
+                        "supportsAllDrives": "true",
+                    },
+                )
+                if response.status_code == 404:
+                    raise AppError("not_found", "errors.not_found", status_code=404)
+                response.raise_for_status()
+                meta = response.json()
         if meta.get("mimeType") != FOLDER_MIME:
             raise AppError(
                 "google_drive_not_a_folder",
@@ -397,27 +475,26 @@ class DriveService:
     ) -> str:
         self.ctx.require("google.drive.write")
         await self._settings()
-        connection = await active_connection_or_409(
-            self.ctx.session, self._org_id, self.ctx.user.id
-        )
+        connection = await self._connection()
         headers = {"X-Upload-Content-Type": mime_type or "application/octet-stream"}
         if origin:
             # Google echoes this origin on the session's CORS headers, which is what lets
             # the browser PUT the bytes straight to googleusercontent (issue #21: no proxying).
             headers["Origin"] = origin
         # Session creation runs with the pool connection released (docs/PERFORMANCE.md).
-        async with (
-            acting_as(self.ctx.session, self.ctx.org, connection) as client,
-            self.ctx.release_db(),
-        ):
-            response = await client.post(
-                f"{UPLOAD_API}/files",
-                params={"uploadType": "resumable", "supportsAllDrives": "true"},
-                json={"name": name, "parents": [folder_id]},
-                headers=headers,
-            )
-            response.raise_for_status()
-            session_uri = response.headers.get("location")
+        async with self._call():
+            async with (
+                acting_as(self.ctx.session, self.ctx.org, connection) as client,
+                self.ctx.release_db(),
+            ):
+                response = await client.post(
+                    f"{UPLOAD_API}/files",
+                    params={"uploadType": "resumable", "supportsAllDrives": "true"},
+                    json={"name": name, "parents": [folder_id]},
+                    headers=headers,
+                )
+                response.raise_for_status()
+                session_uri = response.headers.get("location")
         if not session_uri:
             raise AppError("google_upload_failed", "errors.google_upload_failed", status_code=502)
         return session_uri
@@ -442,17 +519,16 @@ class DriveService:
                 status_code=422,
                 fields={"name": "errors.required"},
             )
-        connection = await active_connection_or_409(
-            self.ctx.session, self._org_id, self.ctx.user.id
-        )
+        connection = await self._connection()
         # Find-or-create runs with the pool connection released (docs/PERFORMANCE.md).
-        async with (
-            acting_as(self.ctx.session, self.ctx.org, connection) as client,
-            self.ctx.release_db(),
-        ):
-            folder = await _find_or_create_folder(
-                client, parent_id, cleaned, template_id=None
-            )
+        async with self._call():
+            async with (
+                acting_as(self.ctx.session, self.ctx.org, connection) as client,
+                self.ctx.release_db(),
+            ):
+                folder = await _find_or_create_folder(
+                    client, parent_id, cleaned, template_id=None
+                )
         # Bust this viewer's cached listing of the parent so the new folder appears at once.
         try:
             await get_redis().delete(
@@ -664,6 +740,13 @@ async def provision_folder(session: AsyncSession, org: Org, job: DriveFolderJob)
         job.last_error = "automation_connection_unavailable"
         await session.flush()
         return
+    if missing_drive_scope(connection.scopes):
+        # An automation account picked before Drive was switched on is ``active`` and cannot
+        # make a folder. Five attempts of 403 would say the same thing five times over.
+        job.status = FolderJobStatus.SKIPPED.value
+        job.last_error = "automation_connection_missing_drive_scope"
+        await session.flush()
+        return
 
     # A project folder nests under its company's folder when that exists.
     parent = drive_root(settings_row)
@@ -696,12 +779,21 @@ async def provision_folder(session: AsyncSession, org: Org, job: DriveFolderJob)
         from app.modules.google.client import is_oauth_error
 
         job.attempts += 1
-        job.last_error = str(exc)[:500]
+        # Google's reason, not httpx's status line: ``str(exc)`` on an HTTP error is the URL and
+        # nothing else, and this string is the only account of the failure a human ever reads.
+        detail = describe_api_error(exc)
+        job.last_error = str(detail or exc)[:500]
         if await is_oauth_error(exc):
             await mark_connection_error(session, org, connection, str(exc))
         if job.attempts >= MAX_ATTEMPTS:
             job.status = FolderJobStatus.FAILED.value
-        logger.warning("drive provisioning failed for job %s (attempt %s)", job.id, job.attempts)
+        logger.warning(
+            "drive provisioning failed for job %s (attempt %s, %s): %s",
+            job.id,
+            job.attempts,
+            await oauth_client_hint(session, org.id),
+            detail or exc,
+        )
         await session.flush()
         return
 

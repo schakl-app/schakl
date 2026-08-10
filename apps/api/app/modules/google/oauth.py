@@ -82,6 +82,22 @@ def has_calendar_write_scope(scopes: list[str] | None) -> bool:
     return any(scope in granted for scope in CALENDAR_WRITE_SCOPES)
 
 
+def missing_drive_scope(scopes: list[str] | None) -> bool:
+    """True when this connection provably cannot reach Drive — *provably* being the point.
+
+    Drive's scope only rides a consent asked while ``drive_enabled`` was already on
+    (:func:`scopes_for`), so an org that connected Google for marketing and switched Drive on
+    afterwards holds live, ``active`` connections that Google answers ``403`` for. Deciding
+    that here turns an unexplained failure into "reconnect your account".
+
+    An **empty** scope list is not evidence: it means we never recorded what was granted (a row
+    predating the column, or a callback Google answered without ``scope``). Those are left to
+    Google to judge, which :func:`app.modules.google.client.describe_api_error` then reads.
+    """
+    granted = set(scopes or [])
+    return bool(granted) and SCOPE_DRIVE not in granted
+
+
 def scopes_for(
     row: GoogleSettings | None,
     *,

@@ -195,7 +195,11 @@
         }),
       });
       if (!session.ok) {
-        errorKey = "errors.google_upload_failed";
+        // The API's own key when it has one: minting the session is where "reconnect your
+        // account" and "the Drive API is off" surface, and both are actionable where the
+        // generic upload failure is not.
+        const body = await session.json().catch(() => null);
+        errorKey = body?.error?.message ?? "errors.google_upload_failed";
         return;
       }
       const { session_uri } = (await session.json()) as { session_uri: string };
