@@ -135,6 +135,9 @@
     <p class="text-sm text-text-muted">{t("settings.push.unsupported")}</p>
   {:else if pushState === "needs-install"}
     <p class="text-sm text-text-muted">{t("settings.push.needs_install")}</p>
+  {:else if pushState === "no-worker"}
+    <!-- The browser can do this; the service worker that would receive the push is not running. -->
+    <p class="text-sm text-text-muted">{t("settings.push.no_worker")}</p>
   {:else if pushState === "denied"}
     <!-- A browser setting we cannot reopen: say so instead of offering a control that refuses. -->
     <p class="text-sm text-text-muted">{t("settings.push.denied")}</p>

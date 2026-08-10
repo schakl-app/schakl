@@ -17,6 +17,29 @@ export interface KpiValue {
   lower_is_better: boolean;
 }
 
+/** Which comparison a dashboard measures against (#312) — mirrors `app.core.periods`. */
+export type ComparePeriod = "year" | "previous";
+
+export const COMPARE_PERIODS: readonly ComparePeriod[] = ["year", "previous"];
+
+/**
+ * The two spans behind every `delta_pct` in a payload (#312).
+ *
+ * Carried rather than re-derived in the browser: the API resolved the client's setting, the
+ * org's default and the org's timezone to pick these dates, and a second computation here would
+ * be a second opinion — which is the bug the issue is about, one screen labelling its delta
+ * "vorige periode" while the document built from the same numbers said "vorig jaar".
+ */
+export interface CompareWindow {
+  mode: ComparePeriod;
+  /** The period the numbers cover. */
+  current_start: string;
+  current_end: string;
+  /** The span they were measured against. */
+  start: string;
+  end: string;
+}
+
 export interface SeriesData {
   dates: string[];
   metrics: Record<string, number[]>;
@@ -103,6 +126,12 @@ export interface SourceEditState {
 export interface CompanyMarketing {
   company_id: string;
   range_days: number;
+  /** The spans every delta below was computed from (#312) — what the screen names. */
+  compare: CompareWindow;
+  /** The *stored* per-client override; `null` = follows the org default. Manager-only. */
+  compare_setting?: ComparePeriod | null;
+  /** The org default, so the editor's inherit option can say what it inherits. */
+  compare_default: ComparePeriod;
   sources: SourceMetrics[];
   needs_connection: boolean;
   can_manage: boolean;

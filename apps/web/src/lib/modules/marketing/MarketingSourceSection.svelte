@@ -20,6 +20,7 @@
 
   import MarketingDrilldown from "./MarketingDrilldown.svelte";
   import {
+    comparePeriodLabel,
     deltaClass,
     deltaView,
     drilldownLabel,
@@ -28,23 +29,38 @@
     sourceLabel,
     tileLabel,
   } from "./format";
-  import { ALL_METRICS, DRILLDOWNS, type SourceEditState, type SourceMetrics } from "./types";
+  import {
+    ALL_METRICS,
+    DRILLDOWNS,
+    type CompareWindow,
+    type SourceEditState,
+    type SourceMetrics,
+  } from "./types";
 
   let {
     companyId,
     src,
     rangeDays,
+    compare,
     edit = null,
     onchange,
   }: {
     companyId: string;
     src: SourceMetrics;
     rangeDays: number;
+    /** The spans behind every delta on this section (#312) — the tiles name the one they used.
+     *  Nullable only for the payload-less edit-before-first-sync case; a tile then shows its
+     *  delta unlabelled rather than inventing a period. */
+    compare: CompareWindow | null;
     /** The source's edit state while the dashboard's edit mode is on; null = plain view. */
     edit?: SourceEditState | null;
     /** Called after every edit-state mutation — the host serializes and persists. */
     onchange?: () => void;
   } = $props();
+
+  // Resolved once for the whole section rather than per tile: it is the same span on every one
+  // of them, and Intl formatting a date eight times to print the same eight words is waste.
+  const comparedPeriod = $derived(compare ? comparePeriodLabel(compare) : "");
 
   // The charted metric: the source's primary until the user picks another. A plain override
   // (not a reset-on-src effect) keeps the choice when only the *range* changes — the section is
@@ -346,8 +362,14 @@
               {fmtMetric(key, kpi.current, src.currency)}
             </p>
             {#if delta}
+              <!-- The period, not the mode: a delta whose denominator is named can be checked. -->
               <p class="text-xs tabular-nums {deltaClass(delta.tone)}">
-                {delta.text} <span class="text-text-muted">{t("marketing.vs_previous")}</span>
+                {delta.text}
+                {#if comparedPeriod}
+                  <span class="text-text-muted">
+                    {t("marketing.vs_period", { period: comparedPeriod })}
+                  </span>
+                {/if}
               </p>
             {/if}
           </button>

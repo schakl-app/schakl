@@ -29,7 +29,12 @@
     <ul class="space-y-1.5">
       {#each absences as absence (absence.id)}
         <li class="flex items-center justify-between gap-2 text-sm">
-          <span class="min-w-0 truncate text-text">{absence.user_name}</span>
+          <!-- The absence, not "the leave module" (issue #15): `?request=` is the same deep link
+               the calendar chip and the approval notification use. -->
+          <a
+            href="/leave/team?request={absence.id}"
+            class="min-w-0 truncate text-text hover:text-brand">{absence.user_name}</a
+          >
           <!-- Single-day spans only, like the calendar feed: a Thu-15:00 → Fri-12:00 request
                snapshots (15:00, 12:00), a window that describes neither day. Times follow the
                personal clock preference (#13). -->

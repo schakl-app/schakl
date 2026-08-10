@@ -20,6 +20,7 @@
 export type PushState =
   | "unsupported" // no service worker or no PushManager: nothing to offer
   | "needs-install" // iOS: Web Push exists only inside a home-screen PWA
+  | "no-worker" // the browser can, but no service worker is running here to receive a push
   | "denied" // the browser's own setting, which we cannot reopen
   | "off" // supported, permitted or not asked, not subscribed here
   | "on"; // this browser is registered
@@ -93,12 +94,39 @@ function deviceLabel(): string {
   return platform ? `${browser} — ${platform}` : browser;
 }
 
+/**
+ * How long a registration is given to appear before we stop waiting. `injectRegister: "auto"`
+ * registers the worker on window load, so a settings page opened early is legitimately waiting
+ * on one — but for a moment, never indefinitely.
+ */
+export const REGISTRATION_TIMEOUT_MS = 3000;
+
+/**
+ * The active service-worker registration, or `null` if this browser has none.
+ *
+ * **`navigator.serviceWorker.ready` is raced, not awaited.** It resolves only once a worker is
+ * active for the scope, and it has no other outcome: with nothing registered it stays pending
+ * for the life of the page — it does not reject, so a `catch` around it catches nothing and a
+ * caller awaiting it bare simply never returns. That is what left the settings section on its
+ * loading sentence forever anywhere the worker is absent: every `pnpm dev` session (the PWA
+ * plugin's `devOptions` is off, `docs/WEBPUSH.md` §7), and any real tab where registration
+ * failed or was unregistered by hand. A promise that only ever settles on success needs a
+ * floor, and the floor is the answer — "no worker here" is a state, not an error.
+ */
 async function registration(): Promise<ServiceWorkerRegistration | null> {
   if (!supported()) return null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    return await navigator.serviceWorker.ready;
+    return await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), REGISTRATION_TIMEOUT_MS);
+      }),
+    ]);
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -109,7 +137,11 @@ export async function status(): Promise<PushStatus> {
   }
   if (Notification.permission === "denied") return { state: "denied", endpoint: null };
   const reg = await registration();
-  const subscription = (await reg?.pushManager.getSubscription()) ?? null;
+  // Its own state rather than `off`: `off` draws an Enable button that would ask for permission
+  // and then fail on the missing worker anyway, which is #253's control that always refuses. And
+  // not `unsupported` either — the browser supports this fine, the worker is what is missing.
+  if (!reg) return { state: "no-worker", endpoint: null };
+  const subscription = (await reg.pushManager.getSubscription()) ?? null;
   return {
     state: subscription ? "on" : "off",
     endpoint: subscription?.endpoint ?? null,
@@ -124,13 +156,16 @@ export async function subscribe(): Promise<PushStatus> {
   if (!supported()) {
     return { state: needsInstall() ? "needs-install" : "unsupported", endpoint: null };
   }
+  // The prompt goes first and stays first: it needs the click's transient activation, which an
+  // await for the registration would spend before we ever got to ask. `status()` is what keeps
+  // this path from being offered at all when there is no worker to enrol against.
   const permission = await Notification.requestPermission();
   if (permission !== "granted") {
     return { state: permission === "denied" ? "denied" : "off", endpoint: null };
   }
 
   const reg = await registration();
-  if (!reg) return { state: "unsupported", endpoint: null };
+  if (!reg) return { state: "no-worker", endpoint: null };
 
   const config = await fetch("/api/v1/notifications/push/config");
   if (!config.ok) return { state: "off", endpoint: null };

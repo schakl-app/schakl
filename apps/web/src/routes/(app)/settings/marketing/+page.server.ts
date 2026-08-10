@@ -22,8 +22,17 @@ export const actions: Actions = {
     const token = String(form.get("ads_developer_token") ?? "").trim() || null;
     // Same write-only rule for the SE Ranking key (#300): empty keeps what is stored.
     const seranking = String(form.get("seranking_api_key") ?? "").trim() || null;
+    // The house comparison every client dashboard inherits (#312). Unlike the two secrets it is
+    // a plain choice with no "keep what is stored" state to preserve, so an unrecognised value
+    // is dropped rather than written.
+    const raw = String(form.get("default_compare") ?? "");
+    const default_compare = raw === "year" || raw === "previous" ? raw : null;
     const { error } = await apiFor(event).PUT("/api/v1/marketing/settings", {
-      body: { ads_developer_token: token, seranking_api_key: seranking },
+      body: {
+        ads_developer_token: token,
+        seranking_api_key: seranking,
+        default_compare,
+      },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { saved: true };

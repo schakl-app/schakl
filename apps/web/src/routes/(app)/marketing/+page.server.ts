@@ -66,4 +66,24 @@ export const actions: Actions = {
     if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
     return { saved: true };
   },
+  // The same comparison write as the client tab's dashboard, so editing works identically on
+  // both surfaces (#312). An empty value posts an explicit `null` — that is what clears the
+  // override back to the org default; omitting it would mean "leave alone".
+  saveCompare: async (event) => {
+    const form = await event.request.formData();
+    const company_id = String(form.get("company_id") ?? "");
+    if (!company_id) return fail(400, { error: "errors.validation" });
+    const raw = String(form.get("compare") ?? "");
+    if (raw && raw !== "year" && raw !== "previous")
+      return fail(400, { error: "errors.validation" });
+    const { error: apiError } = await apiFor(event).PUT(
+      "/api/v1/marketing/companies/{company_id}/settings",
+      {
+        params: { path: { company_id } },
+        body: { compare: raw ? (raw as "year" | "previous") : null },
+      },
+    );
+    if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
+    return { saved: true };
+  },
 };

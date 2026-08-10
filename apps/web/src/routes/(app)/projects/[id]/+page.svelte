@@ -13,7 +13,7 @@
   import { memberLabel } from "$lib/core/members";
   import { pageTitle } from "$lib/core/title";
   import { can } from "$lib/core/permissions";
-  import { entityPanelsFor } from "$lib/core/registry";
+  import { entityPanelComponent } from "$lib/core/registry";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import AssigneePicker from "$lib/core/ui/AssigneePicker.svelte";
   import Assignees from "$lib/core/ui/Assignees.svelte";
@@ -28,6 +28,7 @@
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import InteractionForm from "$lib/modules/interactions/InteractionForm.svelte";
   import { PROJECT_STATUSES } from "$lib/modules/projects/status";
+  import { canWriteTask } from "$lib/modules/tasks/permissions";
   import { terminalKeys } from "$lib/modules/tasks/statuses";
   import TaskRow from "$lib/modules/tasks/TaskRow.svelte";
 
@@ -35,8 +36,7 @@
 
   // Panels are contributed by enabled modules and composed here — this page never names `time`.
   const enabled = $derived(page.data.theme?.enabledModules ?? []);
-  const panelSpecs = $derived(entityPanelsFor(enabled, "project"));
-  const panelComponent = (key: string) => panelSpecs.find((spec) => spec.key === key)?.component;
+  const panelComponent = (key: string) => entityPanelComponent(enabled, "project", key);
   // The lookups this page already holds, handed down so a panel never refetches them.
   const panelLookups = $derived({
     members: data.members,
@@ -56,7 +56,6 @@
   // read-only portal client (#244) reaches this page for a readable project but holds none of
   // these, so each control mirrors its own API permission.
   const canCreateTask = $derived(can(page.data.user, "tasks.task.create"));
-  const canWriteTask = $derived(can(page.data.user, "tasks.task.write"));
   const canWriteFile = $derived(can(page.data.user, "files.file.write"));
   let confirmDelete = $state(false);
 
@@ -75,6 +74,11 @@
 
   const project = $derived(data.project);
   const tasks = $derived(data.tasks);
+  // Reordering posts a write per task, and `tasks.task.write:own` means assignee — so the drag
+  // zone appears only when the viewer may write *every* row in it. A list they can reorder
+  // halfway is worse than a plain one: the handles say the order is theirs to set, and the API
+  // refuses the rows they do not own. Their own rows still toggle (`TaskRow` self-gates).
+  const canReorderTasks = $derived(tasks.every((task) => canWriteTask(page.data.user, task)));
   // "Done" is any terminal configured status (issue #62), not the literal "done".
   const terminalSet = $derived(new Set(terminalKeys(data.statuses)));
   const doneCount = $derived(tasks.filter((t) => terminalSet.has(t.status)).length);
@@ -578,7 +582,7 @@
 
   {#if tasks.length === 0}
     <p class="text-sm text-text-muted">{t("tasks.empty")}</p>
-  {:else if canWriteTask}
+  {:else if canReorderTasks}
     <form method="POST" action="?/reorderTask" use:enhance bind:this={reorderForm} class="hidden">
       <input type="hidden" name="id" value={reorderId} />
       <input type="hidden" name="position" value={reorderPosition} />
@@ -606,8 +610,9 @@
       {/each}
     </div>
   {:else}
-    <!-- Read-only viewer (portal client, #244): a plain, non-reorderable list. TaskRow self-gates
-         its own complete-toggle, so the row shows a static status marker. -->
+    <!-- A viewer who may not write every row (a portal client, #244; a `:own` holder looking at
+         a mixed list): a plain, non-reorderable list. TaskRow self-gates its own complete-toggle
+         per row, so their own tasks still tick and the rest show a static status marker. -->
     <div class="divide-y divide-border">
       {#each tasks as task (task.id)}
         <div class="flex items-center bg-surface-raised">

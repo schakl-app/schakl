@@ -184,6 +184,14 @@ class MarketingCompanySettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMix
     #: per-tile label_i18n overrides, enabled drill-downs and the default charted metric.
     #: NULL = no curation, today's behaviour. Shape validated in modules/marketing/layout.py.
     layout: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    #: What this client's dashboard measures a period against (#312) — an
+    #: ``app.core.periods.ComparePeriod`` value. **NULL = follow the org default**, not
+    #: "unfilled": the agency sets a house comparison once in Instellingen → Marketing and
+    #: overrides it only where a client needs the other one (a site with no year of history
+    #: behind it, a business with no season). Per client rather than per source, because one
+    #: dashboard where GA4 reads against last year and Search Console against last month is not
+    #: a screen anyone can summarise.
+    compare: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
 
 class MarketingSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
@@ -208,3 +216,8 @@ class MarketingSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Bas
     #: client project, which is why it belongs here and not on the link: an agency holds one
     #: SE Ranking account and links each client's project out of it.
     seranking_api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: The house comparison every client's dashboard inherits (#312) — an
+    #: ``app.core.periods.ComparePeriod`` value; NULL = the code default (``year``). An agency
+    #: reports the same way for nearly all of its clients, so this is set once and overridden
+    #: per client only where the client's own history says otherwise.
+    default_compare: Mapped[str | None] = mapped_column(String(16), nullable=True)

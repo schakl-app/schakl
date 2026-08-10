@@ -47,8 +47,12 @@
             >
               {project.name}
             </a>
-            <span
-              class="shrink-0 tabular-nums {project.pct != null && project.pct >= 100
+            <!-- The burn is a total of time entries, so it opens the report those entries are
+                 in — filtered to this project (issue #15). -->
+            <a
+              href="/overview?project_id={project.id}"
+              class="shrink-0 tabular-nums hover:underline {project.pct != null &&
+              project.pct >= 100
                 ? 'font-medium text-red-600 dark:text-red-400'
                 : 'text-text-muted'}"
             >
@@ -56,7 +60,7 @@
                 spent: fmtNumber(project.spent, 1),
                 budget: fmtNumber(project.budget, 1),
               })}
-            </span>
+            </a>
           </div>
           {#if project.pct != null}
             <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-surface">

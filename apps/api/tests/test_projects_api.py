@@ -205,3 +205,84 @@ async def test_a_project_can_move_client_but_never_lose_one(client_for) -> None:
         assert detached.status_code == 422
         body = detached.json()["error"]
         assert body["fields"]["company_id"] == "errors.projects_company_required"
+
+
+async def test_a_project_row_names_its_client(client_for) -> None:
+    """The list is sectioned by client, so the client's *name* is part of a project row.
+
+    The browser used to resolve it against the page's client picker, which is capped at 200 and
+    is a different query — every project of the 201st client printed "—" for its client and, once
+    the list groups, would have fallen into "Overig". Pinned on all four paths that answer with a
+    ``ProjectRead``, because a field that is only sometimes populated reads as "no client".
+    """
+    t = await make_tenant("proj-company-name")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        first = (
+            await c.post("/api/v1/companies", json={"name": "Zeewolde BV"}, headers=headers)
+        ).json()["id"]
+        second = (
+            await c.post("/api/v1/companies", json={"name": "Almere BV"}, headers=headers)
+        ).json()["id"]
+
+        created = await c.post(
+            "/api/v1/projects", json={"name": "Huisstijl", "company_id": first}, headers=headers
+        )
+        assert created.status_code == 201
+        assert created.json()["company_name"] == "Zeewolde BV"
+        project_id = created.json()["id"]
+
+        detail = await c.get(f"/api/v1/projects/{project_id}", headers=headers)
+        assert detail.json()["company_name"] == "Zeewolde BV"
+
+        listed = await c.get("/api/v1/projects", headers=headers)
+        assert [p["company_name"] for p in listed.json()["items"]] == ["Zeewolde BV"]
+
+        # Moving the client moves the section it lands in, so the name has to move with it.
+        moved = await c.patch(
+            f"/api/v1/projects/{project_id}", json={"company_id": second}, headers=headers
+        )
+        assert moved.json()["company_name"] == "Almere BV"
+
+
+async def test_naming_the_clients_of_a_page_costs_one_query(client_for, count_queries) -> None:
+    """One lookup over the page's distinct clients, never one per project.
+
+    Invisible in the JSON — a per-row resolve returns the identical body (docs/PERFORMANCE.md),
+    which is why this counts statements instead of reading them.
+    """
+    t = await make_tenant("proj-company-name-budget")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        companies = [
+            (
+                await c.post("/api/v1/companies", json={"name": f"Klant {i}"}, headers=headers)
+            ).json()["id"]
+            for i in range(3)
+        ]
+        for i in range(3):
+            await c.post(
+                "/api/v1/projects",
+                json={"name": f"Klein {i}", "company_id": companies[i]},
+                headers=headers,
+            )
+
+        with count_queries() as small:
+            assert (await c.get("/api/v1/projects", headers=headers)).status_code == 200
+
+        for i in range(3, 30):
+            await c.post(
+                "/api/v1/projects",
+                json={"name": f"Groot {i}", "company_id": companies[i % 3]},
+                headers=headers,
+            )
+
+        with count_queries() as large:
+            res = await c.get("/api/v1/projects", headers=headers, params={"limit": "50"})
+        assert len(res.json()["items"]) == 30
+        assert all(p["company_name"] for p in res.json()["items"])
+
+    assert len(large.statements) == len(small.statements), (
+        f"{len(small.statements)} queries for 3 projects, {len(large.statements)} for 30 — "
+        "something resolves per row"
+    )

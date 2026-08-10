@@ -26,6 +26,7 @@ const driveEntityPanels: EntityPanelSpec[] = (
   entityType,
   titleKey: "google.drive.panel.title",
   position: DRIVE_POSITION,
+  requiresPermission: "google.drive.read",
   load: async (api, { entityId }) => {
     const { data } = await api.GET("/api/v1/google/drive/links", {
       params: { query: { entity_type: entityType, entity_id: entityId, rollup } },

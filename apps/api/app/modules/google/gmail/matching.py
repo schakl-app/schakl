@@ -44,8 +44,55 @@ def parse_participants(headers: dict[str, str]) -> list[dict[str, str]]:
     return participants
 
 
-def direction_of(label_ids: list[str]) -> str:
-    return "outbound" if "SENT" in label_ids else "inbound"
+def direction_of(label_ids: list[str], *, sender_internal: bool = False) -> str:
+    """Which way the mail went — a property of the *message*, not of the copy we happened
+    to fetch.
+
+    ``SENT`` answers it for the sender's own copy. It does not for anyone else's: a colleague
+    Bcc'd on our outgoing mail holds an ordinary inbox message with no ``SENT`` label, and
+    logging that as *inbound* says a client wrote to us when we wrote to them. So a mail whose
+    ``From`` is one of ours is outbound whichever mailbox produced the copy.
+    """
+    return "outbound" if "SENT" in label_ids or sender_internal else "inbound"
+
+
+def sender_of(participants: list[dict[str, str]]) -> str | None:
+    """The ``From`` address, or ``None`` on a message that somehow has no sender."""
+    for participant in participants:
+        if participant["role"] == "from":
+            return participant["email"]
+    return None
+
+
+def intended_owner(
+    participants: list[dict[str, str]], ours: AbstractSet[str]
+) -> str | None:
+    """Whose email this is, read from the headers — never from which mailbox fetched it.
+
+    The feed logs one row per email (the RFC-822 dedup), so when two colleagues both hold a
+    copy the owner used to be decided by *poll order*: an ``info@`` address Bcc'd on everything
+    polled first and claimed the lot, and the person who actually wrote the mail never saw it
+    in their review queue — a pending row has no admin escape, so it was not merely misfiled
+    but invisible.
+
+    The headers say it without a race:
+
+    - **Outgoing** — the ``From``, when the sender is one of ours. A mail someone sent is
+      theirs however many colleagues were copied on it.
+    - **Incoming** — the first ``To`` that is one of ours, then the first such ``Cc``. Header
+      order is the addressing order, so a mail *to* Jan with the shared mailbox in Cc is Jan's.
+
+    ``None`` when no colleague is named on any of the three headers at all — the shape of a
+    Bcc-only copy, which is precisely the copy that must not claim an email it can't name.
+    """
+    sender = sender_of(participants)
+    if sender is not None and sender in ours:
+        return sender
+    for role in ("to", "cc"):
+        for participant in participants:
+            if participant["role"] == role and participant["email"] in ours:
+                return participant["email"]
+    return None
 
 
 def is_relevant(label_ids: list[str], excluded_label_id: str | None) -> bool:

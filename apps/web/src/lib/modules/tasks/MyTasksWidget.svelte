@@ -48,28 +48,34 @@
 <div class="rounded-xl border border-border bg-surface-raised p-5">
   <div class="mb-3 flex items-center justify-between">
     <h2 class="text-sm font-semibold text-text">{t("dashboard.my_day.tasks")}</h2>
-    <a href="/tasks" class="text-xs text-brand hover:underline">{t("common.actions")}</a>
+    <a href="/tasks" class="text-xs text-brand hover:underline">{t("nav.tasks")}</a>
   </div>
 
   {#if tasks.length === 0}
     <p class="text-sm text-text-muted">{t("dashboard.my_day.no_tasks")}</p>
   {:else}
     {#if overdue.length > 0}
-      <h3
-        class="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-red-600 dark:text-red-400"
+      <!-- A partition heading is an aggregate, and an aggregate opens the list it totals
+           (issue #15): /tasks defaults to the signed-in user, so these are the same tasks. -->
+      <a
+        href="/tasks?due=overdue"
+        class="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-red-600 hover:underline dark:text-red-400"
       >
         {t("dashboard.my_day.overdue")}
         <span
           class="rounded-full bg-red-100 px-1.5 text-[10px] tabular-nums dark:bg-red-950 dark:text-red-300"
           >{overdue.length}</span
         >
-      </h3>
+      </a>
       {@render taskList(overdue, true)}
     {/if}
     {#if dueToday.length > 0}
-      <h3 class="mt-3 mb-1 text-xs font-semibold uppercase tracking-wide text-brand">
+      <a
+        href="/tasks?due=today"
+        class="mt-3 mb-1 block text-xs font-semibold uppercase tracking-wide text-brand hover:underline"
+      >
         {t("dashboard.my_day.due_today")}
-      </h3>
+      </a>
       {@render taskList(dueToday, false)}
     {/if}
     {#if upcoming.length > 0}

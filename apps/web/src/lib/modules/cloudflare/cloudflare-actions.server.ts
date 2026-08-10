@@ -104,6 +104,37 @@ export const cloudflareActions = {
     return { cfRedirectSaved: true };
   },
 
+  /**
+   * Claim a Redirect Rule the zone already has, instead of appending a second one beside it.
+   *
+   * Carries the *same* intent fields as the save, because that is what the API compares the live
+   * rule against: adoption succeeds only where Cloudflare already holds exactly the rule schakl
+   * would have written. There is no `ensure_origin` — adopting writes nothing at Cloudflare, and
+   * a checkbox implying otherwise would be the control lying about what it does.
+   */
+  cfAdoptRedirect: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const target_url = String(form.get("target_url") ?? "").trim();
+    const rule_id = String(form.get("rule_id") ?? "");
+    if (!target_url || !rule_id) return fail(400, { cfError: "errors.required" });
+    const { error } = await apiFor(event).POST(
+      "/api/v1/cloudflare/domains/{domain_id}/redirect/adopt",
+      {
+        params: { path: { domain_id: event.params.id as string } },
+        body: {
+          rule_id,
+          target_url,
+          status_code: statusCode(form.get("status_code")),
+          preserve_path: form.get("preserve_path") !== null,
+          preserve_query: form.get("preserve_query") !== null,
+          include_subdomains: form.get("include_subdomains") !== null,
+        },
+      },
+    );
+    if (error) return fail(400, { cfError: apiErrorKey(error).key });
+    return { cfRedirectAdopted: true };
+  },
+
   cfRemoveRedirect: async (event: RequestEvent) => {
     const { error } = await apiFor(event).DELETE(
       "/api/v1/cloudflare/domains/{domain_id}/redirect",

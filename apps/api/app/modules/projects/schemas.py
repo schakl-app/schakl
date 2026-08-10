@@ -87,6 +87,12 @@ class ProjectRead(ProjectBase):
     org_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    # The client's name, resolved for the page in one batched query (`hosting`/`domains` do the
+    # same). A row carries what its screen draws (CLAUDE.md §9): the list sections *by* client,
+    # and a browser resolving the name against a capped picker list prints "—" for every client
+    # past the cap — which, once the list is sectioned, silently drops those projects into
+    # "Overig". ``None`` only for the rows predating "a project has a client".
+    company_name: str | None = None
     # Primary first, then oldest assignment first.
     assignees: list[AssigneeRead] = Field(default_factory=list)
     # Budget burn for the current period. Only present when asked for (``?hours=true``).

@@ -23,6 +23,9 @@ registerWebModule({
       entityType: "domain",
       titleKey: "cloudflare.panel.title",
       position: 30,
+      // All three calls below are `cloudflare.dns.read`; without it the panel was three 403s
+      // and an empty box.
+      requiresPermission: "cloudflare.dns.read",
       load: async (api, { entityId }) => {
         // Three calls, all stored-state reads. `accounts/options` is names-only on purpose:
         // choosing an account is `zone.manage`, not the credential screen's permission.

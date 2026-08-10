@@ -45,6 +45,7 @@ registerWebModule({
       entityType: "project",
       titleKey: "time.panel.entries_title",
       position: 10,
+      requiresPermission: "time.entry.read",
       load: async (api, { entityId, periodStart }) => {
         // One call. `total` is the API's count over the whole period, so the panel can say it
         // truncated; summing the rows it holds could only ever count the rows it holds.

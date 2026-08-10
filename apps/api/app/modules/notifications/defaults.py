@@ -31,6 +31,7 @@ from app.modules.notifications.events import (
     TASK_ASSIGNED,
     TASK_MENTIONED,
     TASK_OVERDUE,
+    TASK_REPLIED,
     TASK_SCHEDULED,
 )
 
@@ -58,6 +59,11 @@ _IMMEDIATE_EVENTS: frozenset[str] = frozenset(
         INTERACTION_EMAIL_PENDING,
         # A mention is addressed to you by name (#151), like TASK_MENTIONED.
         INTERACTION_MENTIONED,
+        # An answer to your own words in a thread you are holding (#312). TASK_COMMENTED stays on
+        # the digest — being told a task was commented on is news — but a conversation that
+        # arrives tomorrow morning is not a conversation. The narrower audience is what makes
+        # this affordable: only the thread's participants get it, never the whole task audience.
+        TASK_REPLIED,
     }
 )
 

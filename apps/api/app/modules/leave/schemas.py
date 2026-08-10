@@ -709,5 +709,8 @@ class LeaveSummary(BaseModel):
     #: The average scheduled working day — the widget's "≈ n dagen" divides by this (#46).
     hours_per_day: Decimal
     pending_count: int
+    #: The request behind the dates, so the widget's "next leave" line opens that request rather
+    #: than the year it happens to fall in (`/leave?request=<id>`, the calendar chip's deep link).
+    next_leave_id: uuid.UUID | None = None
     next_leave_start: date | None
     next_leave_end: date | None

@@ -9,8 +9,8 @@
   import Avatar from "$lib/core/ui/Avatar.svelte";
   import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
-  import { can } from "$lib/core/permissions";
   import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
+  import { canWriteTask } from "$lib/modules/tasks/permissions";
   import { labelChipClass } from "$lib/modules/tasks/labels";
   import {
     defaultStatusKey,
@@ -92,7 +92,10 @@
   // `tasks.task.write`. This row is shared across the tasks list, the project to-do and the company
   // panel — all of which a read-only portal client can reach (#244) — so it self-gates here rather
   // than trusting each caller to pass a flag: a viewer without the write sees a static marker.
-  const canToggle = $derived(can(page.data.user, "tasks.task.write"));
+  //
+  // Per *row*, not per screen: `:own` means assignee, so the base-key check drew a live checkbox
+  // on every colleague's task for the seeded `member` role, and ticking one 403'd.
+  const canToggle = $derived(canWriteTask(page.data.user, task));
 </script>
 
 <!-- `flex-wrap` + a real flex-basis on the title block: with every badge `shrink-0`, a busy row

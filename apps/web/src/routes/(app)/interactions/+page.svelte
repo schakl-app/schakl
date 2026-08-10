@@ -247,8 +247,16 @@
   // Clicking a row opens the shared detail modal (#184): the email reads with its line breaks,
   // no sideways scroll, and a pending gmail row is assigned + approved (or rejected) in place —
   // the exact review flow the per-record panels use, now on the standalone list too.
-  let showDetail = $state(false);
-  let detailItem = $state<InteractionItem | null>(null);
+  // Deep link from the dashboard tile (issue #15) and anything else naming one moment:
+  // `?interaction=<id>` opens that row's detail modal on arrival, the same shape the leave
+  // calendar's `?request=` uses. A `$state` initializer rather than a `$derived`, so closing the
+  // modal does not reopen it while the param is still in the URL; an id the current page does
+  // not hold simply lands on the list.
+  const deepLinked = () =>
+    items.find((item) => item.id === page.url.searchParams.get("interaction")) ?? null;
+  const initialDetail = deepLinked();
+  let showDetail = $state(initialDetail !== null);
+  let detailItem = $state<InteractionItem | null>(initialDetail);
   function openDetail(item: InteractionItem) {
     detailItem = item;
     showDetail = true;

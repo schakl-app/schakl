@@ -678,3 +678,64 @@ async def test_credit_links_are_batched_and_the_list_never_pays_for_them(
             ).json()
         assert len(detail["credit_notes"]) == 2
         assert len(counter.matching("credit_for_id in")) == 1, "one grouped read, never per note"
+
+
+# --- ticking a to-do: the task page's most-repeated write ---------------------------------- #
+async def test_ticking_a_checklist_item_costs_the_same_however_long_the_list(
+    client_for, count_queries
+) -> None:
+    """A tick is the gesture a task page gets dozens of times a day, so it is a budget.
+
+    It used to be free to be sloppy here, because the browser paid for a whole page reload on
+    top of it: the toggle called SvelteKit's ``update()``, which invalidates every load above
+    it — the two layouts and the task page, sixteen GETs, one of them the eight-round-trip
+    ``GET /tasks/{id}`` — before the checkbox even changed colour. The tick is optimistic now
+    and invalidates nothing, so this PATCH *is* the cost of the gesture.
+
+    The property is that nothing on the path reads the item's siblings: a checklist of eleven
+    must cost exactly what a checklist of one costs. Invisible in the JSON, as ever.
+    """
+    t = await make_tenant("perf-checklist-tick")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers)
+        task = await _task(c, headers, company_id=company, title="Onboarding")
+        created = await c.post(
+            f"/api/v1/tasks/{task}/checklists", json={"title": "Stappen"}, headers=headers
+        )
+        assert created.status_code == 201, created.text
+        checklist = created.json()["id"]
+
+        async def add_item(title: str) -> str:
+            res = await c.post(
+                f"/api/v1/tasks/{task}/checklists/{checklist}/items",
+                json={"title": title},
+                headers=headers,
+            )
+            assert res.status_code == 201, res.text
+            return res.json()["id"]
+
+        async def tick(item_id: str, *, done: bool) -> int:
+            with count_queries() as counter:
+                res = await c.patch(
+                    f"/api/v1/tasks/{task}/checklists/{checklist}/items/{item_id}",
+                    json={"done": done},
+                    headers=headers,
+                )
+            assert res.status_code == 200, res.text
+            assert res.json()["done"] is done
+            # Whatever else moves, the write is one UPDATE plus the trail line the tick owes
+            # the activity feed (#61) — never a re-read of the list it belongs to.
+            assert len(counter.matching("update task_checklist_items")) == 1, counter.statements
+            assert len(counter.matching("insert into task_activities")) == 1, counter.statements
+            assert counter.matching("checklist_id in") == [], counter.statements
+            return len(counter)
+
+        first = await add_item("Stap 1")
+        small = await tick(first, done=True)
+
+        for i in range(2, 12):
+            await add_item(f"Stap {i}")
+        large = await tick(first, done=False)
+
+        assert small == large, (small, large)

@@ -78,7 +78,15 @@
   {#if sources.length > 0}
     <div class="space-y-5">
       {#each sources as src (src.link_id)}
-        <MarketingSourceSection companyId={portal.companyId ?? ""} {src} rangeDays={30} />
+        <!-- The client sees the period their deltas were measured against, like staff (#312):
+             the agency chose the comparison for them, so it is the one number on this card they
+             cannot check unless it is written down. -->
+        <MarketingSourceSection
+          companyId={portal.companyId ?? ""}
+          {src}
+          rangeDays={30}
+          compare={portal.metrics?.compare ?? null}
+        />
       {/each}
     </div>
   {:else}

@@ -1282,6 +1282,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cloudflare/domains/{domain_id}/redirect/adopt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Adopt Redirect
+         * @description Take ownership of a Redirect Rule the zone already has. Writes nothing at Cloudflare.
+         */
+        post: operations["adopt_redirect_api_v1_cloudflare_domains__domain_id__redirect_adopt_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cloudflare/domains/{domain_id}/status": {
         parameters: {
             query?: never;
@@ -6065,11 +6085,15 @@ export interface paths {
         get?: never;
         /**
          * Set Company Settings
-         * @description Per-client marketing preferences: the curated tab layout (#192) and the legacy
-         *     key-events toggle (#134, expand release).
+         * @description Per-client marketing preferences: the curated tab layout (#192), the comparison this
+         *     client's dashboard measures against (#312) and the legacy key-events toggle (#134).
          *
          *     Configuration rides ``marketing.link.manage`` like linking. Hidden tiles stop being
          *     returned for this client — panel, tab and overview — until they're back on.
+         *
+         *     ``compare`` is the one field where an explicit ``null`` differs from omitting it: it clears
+         *     the override back to the org default, which is a choice the dashboard's select offers. Hence
+         *     ``model_fields_set`` rather than a ``None`` check (CLAUDE.md §18).
          */
         put: operations["set_company_settings_api_v1_marketing_companies__company_id__settings_put"];
         post?: never;
@@ -8550,6 +8574,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/{task_id}/checklists/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reorder Checklists
+         * @description Set the order of a task's checklists in one call (``ChecklistOrder`` for the contract).
+         *
+         *     ``/order`` rather than a ``PATCH`` per row: the two sibling paths that carry a
+         *     ``{checklist_id}`` segment are ``PATCH`` and ``DELETE``, so no ``POST`` can be ambiguous
+         *     with it, and a whole order is what both the drag and the arrow buttons produce.
+         */
+        post: operations["reorder_checklists_api_v1_tasks__task_id__checklists_order_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/{task_id}/checklists/{checklist_id}": {
         parameters: {
             query?: never;
@@ -8568,6 +8616,26 @@ export interface paths {
         patch: operations["update_checklist_api_v1_tasks__task_id__checklists__checklist_id__patch"];
         trace?: never;
     };
+    "/api/v1/tasks/{task_id}/checklists/{checklist_id}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Duplicate Checklist
+         * @description Copy a checklist beside its source, items and all — a second run of the same steps.
+         */
+        post: operations["duplicate_checklist_api_v1_tasks__task_id__checklists__checklist_id__duplicate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/{task_id}/checklists/{checklist_id}/items": {
         parameters: {
             query?: never;
@@ -8579,6 +8647,26 @@ export interface paths {
         put?: never;
         /** Add Checklist Item */
         post: operations["add_checklist_item_api_v1_tasks__task_id__checklists__checklist_id__items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/checklists/{checklist_id}/items/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reorder Checklist Items
+         * @description Set the order of one checklist's items in one call.
+         */
+        post: operations["reorder_checklist_items_api_v1_tasks__task_id__checklists__checklist_id__items_order_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -9405,6 +9493,10 @@ export interface components {
             capabilities?: {
                 [key: string]: boolean;
             };
+            /** Capability Errors */
+            capability_errors?: {
+                [key: string]: string;
+            };
             /** Cf Account Id */
             cf_account_id?: string | null;
             /** Cf Account Name */
@@ -9528,6 +9620,10 @@ export interface components {
             /** Capabilities */
             capabilities?: {
                 [key: string]: boolean;
+            };
+            /** Capability Errors */
+            capability_errors?: {
+                [key: string]: string;
             };
             /** Cf Account Id */
             cf_account_id?: string | null;
@@ -11207,12 +11303,33 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /**
+         * ChecklistDuplicate
+         * @description Copy an existing checklist into the same task.
+         *
+         *     The caller names the copy — the roles precedent (§15): a "(kopie)" suffix invented in the
+         *     API would be user-facing text written in one language, in a column no catalog reaches.
+         *     Omitted means the source's title verbatim, which is what an unattended caller (MCP, a
+         *     script) gets and can rename afterwards.
+         */
+        ChecklistDuplicate: {
+            /** Title */
+            title?: string | null;
+        };
         /** ChecklistItemCreate */
         ChecklistItemCreate: {
             /** Description */
             description?: string | null;
             /** Title */
             title: string;
+        };
+        /**
+         * ChecklistItemOrder
+         * @description One checklist's items in their new order — same contract as ``ChecklistOrder``.
+         */
+        ChecklistItemOrder: {
+            /** Item Ids */
+            item_ids: string[];
         };
         /** ChecklistItemRead */
         ChecklistItemRead: {
@@ -11240,6 +11357,34 @@ export interface components {
             position?: number | null;
             /** Title */
             title?: string | null;
+        };
+        /**
+         * ChecklistOrder
+         * @description The task's checklists in their new order — the whole order, not one moved row.
+         *
+         *     A board of tasks reorders by fractional ``position`` midpoints (docs/UX.md) because it is
+         *     long and renumbering it is a large write. A checklist is neither: a handful of rows, so one
+         *     renumbering statement is cheaper than the float column it would take to avoid it, and an id
+         *     list cannot drift the way two clients trading midpoints can.
+         *
+         *     Ids this task does not own are a 404. Ids it *does* own that the payload omits keep their
+         *     relative order **after** the named ones, so a checklist added in another tab mid-drag is
+         *     appended rather than 409-ing a save the user cannot repair.
+         */
+        ChecklistOrder: {
+            /** Checklist Ids */
+            checklist_ids: string[];
+        };
+        /**
+         * ChecklistOrderRead
+         * @description The resulting order, including rows the payload did not name (see ``ChecklistOrder``).
+         *
+         *     Ids rather than whole records: a reorder changes exactly one field, and the caller that
+         *     needs the rest already has them.
+         */
+        ChecklistOrderRead: {
+            /** Ids */
+            ids: string[];
         };
         /** ChecklistRead */
         ChecklistRead: {
@@ -11321,6 +11466,8 @@ export interface components {
         CommentCreate: {
             /** Body */
             body: string;
+            /** Parent Id */
+            parent_id?: string | null;
         };
         /** CommentRead */
         CommentRead: {
@@ -11355,8 +11502,14 @@ export interface components {
             mentioned_task_ids?: string[];
             /** Mentioned User Ids */
             mentioned_user_ids?: string[];
+            /** Parent Id */
+            parent_id?: string | null;
         };
-        /** CommentUpdate */
+        /**
+         * CommentUpdate
+         * @description An edit changes the words, never the conversation they were said in — so no ``parent_id``
+         *     (#312). Moving a message between threads rewrites what both threads said.
+         */
         CommentUpdate: {
             /** Body */
             body: string;
@@ -11460,6 +11613,10 @@ export interface components {
              * Format: uuid
              */
             company_id: string;
+            compare: components["schemas"]["MarketingCompareWindow"];
+            /** @default year */
+            compare_default: components["schemas"]["ComparePeriod"];
+            compare_setting?: components["schemas"]["ComparePeriod"] | null;
             /** Layout */
             layout?: {
                 [key: string]: unknown;
@@ -11591,6 +11748,9 @@ export interface components {
              * Format: uuid
              */
             company_id: string;
+            compare?: components["schemas"]["ComparePeriod"] | null;
+            /** @default year */
+            compare_resolved: components["schemas"]["ComparePeriod"];
             /** Layout */
             layout?: {
                 [key: string]: unknown;
@@ -11600,12 +11760,19 @@ export interface components {
         };
         /**
          * CompanySettingsUpdate
-         * @description Per-client marketing preferences. Both fields optional: send what changes.
+         * @description Per-client marketing preferences. Every field optional: send what changes.
          *
          *     ``layout`` replaces the stored layout wholesale (``{"sources": {}}`` clears it); the
          *     legacy ``show_key_events`` keeps working during the expand release (#192).
+         *
+         *     ``compare`` follows the bulk-edit rule (CLAUDE.md §18): **absent means leave alone, an
+         *     explicit ``null`` means clear back to the org default**. It has to, because ``None`` is a
+         *     meaningful stored value here — the dashboard's select posts "volg standaard" as a real
+         *     choice, and a payload that could not express it would leave a client pinned to whatever was
+         *     set once, forever. The service reads ``model_fields_set`` to tell the two apart.
          */
         CompanySettingsUpdate: {
+            compare?: components["schemas"]["ComparePeriod"] | null;
             /** Layout */
             layout?: {
                 [key: string]: unknown;
@@ -11659,6 +11826,12 @@ export interface components {
             /** Website */
             website?: string | null;
         };
+        /**
+         * ComparePeriod
+         * @description Which span a period is measured against.
+         * @enum {string}
+         */
+        ComparePeriod: "year" | "previous";
         /**
          * ConnectRequest
          * @description "Connect this domain to Cloudflare" — adopt the existing zone, or create one.
@@ -12134,6 +12307,10 @@ export interface components {
          * @description Compact open-task aggregate for the dashboard; no 200-row lookup payloads.
          */
         DashboardTaskGroup: {
+            /** Company Id */
+            company_id?: string | null;
+            /** Company Name */
+            company_name?: string | null;
             /** Count */
             count: number;
             /** Entity Id */
@@ -15669,6 +15846,8 @@ export interface components {
             hours_per_week: string;
             /** Next Leave End */
             next_leave_end: string | null;
+            /** Next Leave Id */
+            next_leave_id?: string | null;
             /** Next Leave Start */
             next_leave_start: string | null;
             /** Pending Count */
@@ -16034,6 +16213,42 @@ export interface components {
             updated: number;
         };
         /**
+         * MarketingCompareWindow
+         * @description Which two spans a screen's deltas actually measured (#312).
+         *
+         *     Every payload that carries a ``delta_pct`` carries this, because a percentage with no named
+         *     denominator is the thing this issue was filed about: "t.o.v. vorige periode" was a label the
+         *     screen could print whatever it had compared, and it printed it while the same client's PDF
+         *     said "vorig jaar". Both spans travel, not just the comparison one — the web names the period
+         *     a delta is *against*, and a screen that can only say one of the two can never be checked.
+         *
+         *     Dates rather than a mode name: the mode is configuration, the dates are what happened. A
+         *     reader who sees "t.o.v. jul 2025" needs no vocabulary at all.
+         */
+        MarketingCompareWindow: {
+            /**
+             * Current End
+             * Format: date
+             */
+            current_end: string;
+            /**
+             * Current Start
+             * Format: date
+             */
+            current_start: string;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            mode: components["schemas"]["ComparePeriod"];
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+        };
+        /**
          * MarketingSettingsRead
          * @description The org's marketing settings. The Ads developer token is write-only — like the Google
          *     client secret, the API reports only whether one is configured, never the value.
@@ -16044,6 +16259,8 @@ export interface components {
              * @default false
              */
             ads_developer_token_configured: boolean;
+            /** @default year */
+            default_compare: components["schemas"]["ComparePeriod"];
             /**
              * Env Ads Token Configured
              * @default false
@@ -16059,6 +16276,7 @@ export interface components {
         MarketingSettingsWrite: {
             /** Ads Developer Token */
             ads_developer_token?: string | null;
+            default_compare?: components["schemas"]["ComparePeriod"] | null;
             /** Seranking Api Key */
             seranking_api_key?: string | null;
         };
@@ -16074,6 +16292,7 @@ export interface components {
         MarketingSource: "ga4" | "gsc" | "gads" | "seranking";
         /** MarketingSummary */
         MarketingSummary: {
+            compare: components["schemas"]["MarketingCompareWindow"];
             /**
              * Linked Total
              * @default 0
@@ -16277,6 +16496,16 @@ export interface components {
             licensed_modules?: string[];
             /** Local Login Enabled */
             local_login_enabled: boolean;
+            /**
+             * Mcp Enabled
+             * @default false
+             */
+            mcp_enabled: boolean;
+            /**
+             * Mcp Entitled
+             * @default false
+             */
+            mcp_entitled: boolean;
             /** Oidc Enabled */
             oidc_enabled: boolean;
             /** Oidc Name */
@@ -16798,6 +17027,7 @@ export interface components {
         };
         /** OverviewResponse */
         OverviewResponse: {
+            compare: components["schemas"]["MarketingCompareWindow"];
             /** Range Days */
             range_days: number;
             /** Rows */
@@ -17931,6 +18161,8 @@ export interface components {
             color?: string | null;
             /** Company Id */
             company_id?: string | null;
+            /** Company Name */
+            company_name?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -18656,6 +18888,41 @@ export interface components {
             truncated: boolean;
         };
         /**
+         * RedirectAdopt
+         * @description Take ownership of a Redirect Rule that already exists on the zone.
+         *
+         *     The rule is named by **id**, never by description (``redirects.find_our_rule``), and it is
+         *     adopted **only when it is exactly the rule schakl would have written** for this intent — so
+         *     an agency inheriting a client's Cloudflare stops re-creating a redirect that is already
+         *     live, and adoption can never quietly change what a visitor's browser does.
+         */
+        RedirectAdopt: {
+            /**
+             * Include Subdomains
+             * @default true
+             */
+            include_subdomains: boolean;
+            /**
+             * Preserve Path
+             * @default true
+             */
+            preserve_path: boolean;
+            /**
+             * Preserve Query
+             * @default true
+             */
+            preserve_query: boolean;
+            /** Rule Id */
+            rule_id: string;
+            /**
+             * Status Code
+             * @default 301
+             */
+            status_code: number;
+            /** Target Url */
+            target_url: string;
+        };
+        /**
          * RedirectConflict
          * @description Something *else* on this zone that already redirects, or could.
          *
@@ -18679,6 +18946,8 @@ export interface components {
              * @enum {string}
              */
             kind: "redirect_rule" | "page_rule";
+            /** Rule Id */
+            rule_id?: string | null;
         };
         /**
          * RedirectObservation
@@ -18735,7 +19004,7 @@ export interface components {
         };
         /**
          * RedirectWrite
-         * @description The tenant's intent for a domain-wide redirect.
+         * @description The tenant's intent for a domain-wide redirect, plus how to push it.
          */
         RedirectWrite: {
             /**
@@ -18850,6 +19119,12 @@ export interface components {
         ReportCadence: "off" | "monthly" | "quarterly";
         /**
          * ReportCompare
+         * @description This module's name for ``app.core.periods.ComparePeriod`` — same values, one for one.
+         *
+         *     Kept as its own enum because these values are already stored in every tenant's template
+         *     schedules and named ``ReportCompare`` in the generated client; the *date math* is shared
+         *     (:func:`app.core.periods.compare_window`), which is the part that must not diverge from what
+         *     the marketing dashboard shows for the same client (#312).
          * @enum {string}
          */
         ReportCompare: "year" | "previous";
@@ -25718,6 +25993,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    adopt_redirect_api_v1_cloudflare_domains__domain_id__redirect_adopt_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RedirectAdopt"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RedirectRead"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -40164,6 +40474,8 @@ export interface operations {
                 offset?: number;
                 company_id?: string | null;
                 project_id?: string | null;
+                /** @description Only tasks with no client and no project */
+                unlinked?: boolean;
                 assignee_user_id?: string | null;
                 assignee_contact_id?: string | null;
                 /** @description A configured status key */
@@ -41184,6 +41496,41 @@ export interface operations {
             };
         };
     };
+    reorder_checklists_api_v1_tasks__task_id__checklists_order_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChecklistOrder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChecklistOrderRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_checklist_api_v1_tasks__task_id__checklists__checklist_id__delete: {
         parameters: {
             query?: never;
@@ -41250,6 +41597,42 @@ export interface operations {
             };
         };
     };
+    duplicate_checklist_api_v1_tasks__task_id__checklists__checklist_id__duplicate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                checklist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChecklistDuplicate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChecklistRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     add_checklist_item_api_v1_tasks__task_id__checklists__checklist_id__items_post: {
         parameters: {
             query?: never;
@@ -41273,6 +41656,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChecklistItemRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_checklist_items_api_v1_tasks__task_id__checklists__checklist_id__items_order_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                checklist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChecklistItemOrder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChecklistOrderRead"];
                 };
             };
             /** @description Validation Error */

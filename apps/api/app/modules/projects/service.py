@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select
+from sqlalchemy import bindparam, func, select, text
 
 from app.core.activity import ActivityService
 from app.core.activity.service import snapshot
@@ -137,6 +137,30 @@ class ProjectService:
         grouped = await self.assignees.for_entities([p.id for p in projects])
         for project in projects:
             project.assignees = grouped.get(project.id, [])
+
+    async def _attach_company_names(self, projects: Sequence[Project]) -> None:
+        """The client's name for the page, in one query over its distinct clients.
+
+        Read as a bare column select rather than through the companies module's models: a module
+        never imports another's internals (CLAUDE.md §6), which is why `hosting` and `domains`
+        both do exactly this. It is a *label* lookup, not a horizon decision — the ids come from
+        rows this caller has already been allowed to read, so the company horizon has had its
+        say before we get here.
+        """
+        ids = {p.company_id for p in projects if p.company_id is not None}
+        names: dict[uuid.UUID, str] = {}
+        if ids:
+            stmt = text(
+                "SELECT id, name FROM companies WHERE org_id = :oid AND id IN :ids"
+            ).bindparams(bindparam("ids", expanding=True))
+            rows = (
+                await self.ctx.session.execute(stmt, {"oid": self.ctx.org.id, "ids": list(ids)})
+            ).all()
+            names = {row[0]: row[1] for row in rows}
+        for project in projects:
+            project.company_name = (  # type: ignore[attr-defined]
+                names.get(project.company_id) if project.company_id else None
+            )
 
     async def _attach_subscription_sources(self, projects: Sequence[Project]) -> dict:
         """The active subscriptions each project's hours derive from (issue #225), attached as
@@ -291,6 +315,7 @@ class ProjectService:
             else len(items)
         )
         await self._attach_assignees(items)
+        await self._attach_company_names(items)
         if hours:
             await self._attach_hours(items)
         return items, total
@@ -326,6 +351,7 @@ class ProjectService:
     async def get(self, project_id: uuid.UUID, *, hours: bool = False) -> Project:
         project = await self.repo.get_or_404(project_id)
         await self._attach_assignees([project])
+        await self._attach_company_names([project])
         # Opt-in, exactly as on the list. The detail page asks for it because its budget bar and
         # its Uren panel must both count from the *same* period start (#43) — one the API resolves
         # on the org's own clock (budget.py), which a browser recomputing it in UTC gets wrong twice
@@ -366,6 +392,9 @@ class ProjectService:
         project = await self.repo.create(**values)
         await self.assignees.replace(project.id, links)
         project.assignees = await self.assignees.for_entity(project.id)
+        # Written on every path that answers with a ``ProjectRead``: a field that is only
+        # sometimes populated reads as "this project has no client" on the paths that skip it.
+        await self._attach_company_names([project])
         await ActivityService(self.ctx).record_created(ENTITY_TYPE, project.id)
         # Bus-only creation signal for cross-module reactions (the Drive folder, #21/#22).
         # Not in the notifications vocabulary; the roster hears via project.assigned below.
@@ -475,6 +504,7 @@ class ProjectService:
         elif "responsible_user_id" in values:
             await self.assignees.set_primary(project.id, values["responsible_user_id"])
         project.assignees = await self.assignees.for_entity(project.id)
+        await self._attach_company_names([project])
         after = {a.user_id for a in project.assignees}
         await ActivityService(self.ctx).record_update(
             ENTITY_TYPE, project.id, before_fields, snapshot(project, _AUDITED_FIELDS)

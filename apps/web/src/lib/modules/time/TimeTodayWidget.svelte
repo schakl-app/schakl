@@ -11,25 +11,28 @@
     running: { id: string; description: string | null } | null;
   }
   const summary = $derived((data ?? { minutes: 0, running: null }) as Summary);
+  // The day this tile totals, not "the time page": /time opens on `?date=`, so the link lands on
+  // the same day the figure describes even when the widget was rendered before midnight.
+  const dayHref = $derived(summary.date ? `/time?date=${summary.date}` : "/time");
 </script>
 
 <div class="rounded-xl border border-border bg-surface-raised p-5">
   <div class="mb-3 flex items-center justify-between">
     <h2 class="text-sm font-semibold text-text">{t("dashboard.my_day.time")}</h2>
-    <a href="/time" class="text-xs text-brand hover:underline">{t("nav.time")}</a>
+    <a href={dayHref} class="text-xs text-brand hover:underline">{t("nav.time")}</a>
   </div>
   <!-- The figure links to the time list it totals (issue #15 — aggregates link to their list). -->
-  <a href="/time" class="block text-2xl font-semibold text-text hover:text-brand"
+  <a href={dayHref} class="block text-2xl font-semibold text-text hover:text-brand"
     >{formatMinutes(summary.minutes)}</a
   >
   <p class="mt-1 text-sm text-text-muted">
     {#if summary.running}
-      <span class="inline-flex items-center gap-1.5">
+      <a href={dayHref} class="inline-flex items-center gap-1.5 hover:text-brand">
         <span class="h-2 w-2 animate-pulse rounded-full bg-green-500 dark:bg-green-400"></span>
         {t("time.timer.running")}
-      </span>
+      </a>
     {:else}
-      {t("dashboard.my_day.no_timer")}
+      <a href={dayHref} class="hover:text-brand">{t("dashboard.my_day.no_timer")}</a>
     {/if}
   </p>
 </div>

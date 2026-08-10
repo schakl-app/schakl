@@ -131,6 +131,187 @@ async def test_checklists_and_items(client_for) -> None:
         assert (await c.delete(base, headers=headers)).status_code == 204
 
 
+async def test_checklists_and_items_reorder(client_for) -> None:
+    """One call sets a whole order, for the checklists of a task and the items of a checklist."""
+    t = await make_tenant("checklist-order")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        task = (await c.post("/api/v1/tasks", json={"title": "T"}, headers=headers)).json()
+        tid = task["id"]
+
+        async def checklist(title: str) -> dict:
+            return (
+                await c.post(
+                    f"/api/v1/tasks/{tid}/checklists", json={"title": title}, headers=headers
+                )
+            ).json()
+
+        async def titles() -> list[str]:
+            detail = (await c.get(f"/api/v1/tasks/{tid}", headers=headers)).json()
+            return [cl["title"] for cl in detail["checklists"]]
+
+        first, second, third = (
+            await checklist("First"),
+            await checklist("Second"),
+            await checklist("Third"),
+        )
+        assert await titles() == ["First", "Second", "Third"]
+
+        ordered = await c.post(
+            f"/api/v1/tasks/{tid}/checklists/order",
+            json={"checklist_ids": [third["id"], first["id"], second["id"]]},
+            headers=headers,
+        )
+        assert ordered.status_code == 200
+        assert ordered.json()["ids"] == [third["id"], first["id"], second["id"]]
+        assert await titles() == ["Third", "First", "Second"]
+
+        # An id the payload omits keeps its relative place *after* the named ones — a checklist
+        # added in another tab mid-drag is appended, never dropped and never a 409.
+        appended = await c.post(
+            f"/api/v1/tasks/{tid}/checklists/order",
+            json={"checklist_ids": [second["id"]]},
+            headers=headers,
+        )
+        assert appended.json()["ids"] == [second["id"], third["id"], first["id"]]
+
+        # Items of one checklist, same contract.
+        base = f"/api/v1/tasks/{tid}/checklists/{first['id']}"
+        items = [
+            (await c.post(f"{base}/items", json={"title": title}, headers=headers)).json()
+            for title in ("One", "Two", "Three")
+        ]
+        await c.post(
+            f"{base}/items/order",
+            json={"item_ids": [items[2]["id"], items[0]["id"], items[1]["id"]]},
+            headers=headers,
+        )
+        detail = (await c.get(f"/api/v1/tasks/{tid}", headers=headers)).json()
+        listed = next(cl for cl in detail["checklists"] if cl["id"] == first["id"])
+        assert [i["title"] for i in listed["items"]] == ["Three", "One", "Two"]
+
+        # A reorder is not activity (the same rule as `position` on a task, #61).
+        assert "updated" not in [a["action"] for a in detail["activities"]]
+
+
+async def test_reorder_refuses_foreign_and_duplicate_ids(client_for) -> None:
+    """An ordering call may not probe for rows it cannot see, and a repeat is a bad payload."""
+    t = await make_tenant("checklist-order-guard")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        mine = (await c.post("/api/v1/tasks", json={"title": "Mine"}, headers=headers)).json()
+        other = (await c.post("/api/v1/tasks", json={"title": "Other"}, headers=headers)).json()
+        ours = (
+            await c.post(
+                f"/api/v1/tasks/{mine['id']}/checklists", json={"title": "A"}, headers=headers
+            )
+        ).json()
+        theirs = (
+            await c.post(
+                f"/api/v1/tasks/{other['id']}/checklists", json={"title": "B"}, headers=headers
+            )
+        ).json()
+
+        # Another task's checklist is a 404 — the answer reading it through this task gives.
+        assert (
+            await c.post(
+                f"/api/v1/tasks/{mine['id']}/checklists/order",
+                json={"checklist_ids": [theirs["id"]]},
+                headers=headers,
+            )
+        ).status_code == 404
+        assert (
+            await c.post(
+                f"/api/v1/tasks/{mine['id']}/checklists/order",
+                json={"checklist_ids": [ours["id"], ours["id"]]},
+                headers=headers,
+            )
+        ).status_code == 422
+        # An empty order says nothing; the schema refuses it rather than storing a no-op.
+        assert (
+            await c.post(
+                f"/api/v1/tasks/{mine['id']}/checklists/order",
+                json={"checklist_ids": []},
+                headers=headers,
+            )
+        ).status_code == 422
+
+        # An item of another checklist is a 404 too, not a silent no-op.
+        item = (
+            await c.post(
+                f"/api/v1/tasks/{other['id']}/checklists/{theirs['id']}/items",
+                json={"title": "X"},
+                headers=headers,
+            )
+        ).json()
+        assert (
+            await c.post(
+                f"/api/v1/tasks/{mine['id']}/checklists/{ours['id']}/items/order",
+                json={"item_ids": [item["id"]]},
+                headers=headers,
+            )
+        ).status_code == 404
+
+
+async def test_duplicate_checklist(client_for) -> None:
+    """A copy carries the items and their descriptions, drops the ticks, and lands directly
+    under its source — never at the end, behind whatever was added since."""
+    t = await make_tenant("checklist-dup")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        task = (await c.post("/api/v1/tasks", json={"title": "T"}, headers=headers)).json()
+        source = (
+            await c.post(
+                f"/api/v1/tasks/{task['id']}/checklists",
+                json={"title": "Launch", "description": "Elke release"},
+                headers=headers,
+            )
+        ).json()
+        base = f"/api/v1/tasks/{task['id']}/checklists/{source['id']}"
+        item = (
+            await c.post(
+                f"{base}/items", json={"title": "One", "description": "Hoe"}, headers=headers
+            )
+        ).json()
+        await c.post(f"{base}/items", json={"title": "Two"}, headers=headers)
+        await c.patch(f"{base}/items/{item['id']}", json={"done": True}, headers=headers)
+        # A third checklist added after the source: the copy must slot between them.
+        await c.post(
+            f"/api/v1/tasks/{task['id']}/checklists", json={"title": "Aftercare"}, headers=headers
+        )
+
+        created = await c.post(f"{base}/duplicate", json={"title": "Launch 2"}, headers=headers)
+        assert created.status_code == 201
+        copy = created.json()
+        assert copy["id"] != source["id"]
+        assert copy["title"] == "Launch 2"
+        assert copy["description"] == "Elke release"
+        # The POST answers with the items it just wrote, unticked.
+        assert [(i["title"], i["description"], i["done"]) for i in copy["items"]] == [
+            ("One", "Hoe", False),
+            ("Two", None, False),
+        ]
+
+        detail = (await c.get(f"/api/v1/tasks/{task['id']}", headers=headers)).json()
+        assert [cl["title"] for cl in detail["checklists"]] == ["Launch", "Launch 2", "Aftercare"]
+        # The source keeps its own ticks: a duplicate reads nothing back onto it.
+        assert [i["done"] for i in detail["checklists"][0]["items"]] == [True, False]
+        assert any(a["action"] == "checklist_duplicated" for a in detail["activities"])
+
+        # Omitted title reuses the source's — the API invents no "(kopie)" (CLAUDE.md §2).
+        same_name = (await c.post(f"{base}/duplicate", json={}, headers=headers)).json()
+        assert same_name["title"] == "Launch"
+
+        # A checklist belonging to another task is a 404, not somebody else's copy.
+        other = (await c.post("/api/v1/tasks", json={"title": "Other"}, headers=headers)).json()
+        stray = await c.post(
+            f"/api/v1/tasks/{other['id']}/checklists/{source['id']}/duplicate",
+            json={},
+            headers=headers,
+        )
+        assert stray.status_code == 404
+
+
 async def test_comments_permissions_and_activity(client_for) -> None:
     t = await make_tenant("comments")
     owner_headers = await auth_cookie(t.user)

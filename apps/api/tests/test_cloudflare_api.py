@@ -675,6 +675,143 @@ async def test_setting_a_redirect_appends_and_never_wipes_the_tenants_rules(
         assert [c_["description"] for c_ in checked["conflicts"]] == ["eigen regel van de klant"]
 
 
+async def _hand_made_rule(cloudflare, zone_id: str, *, apex: str, target: str) -> dict:
+    """The redirect an agency inherits: made in Cloudflare's dashboard, described by a human.
+
+    Built through ``rules.build_rule`` so it is byte-for-byte what schakl would have written —
+    except the description, which is what a person typed. That difference is deliberate: it is
+    the reason ``find_our_rule`` matches on id and never on description.
+    """
+    body = rules.build_rule(
+        apex=apex,
+        target_url=target,
+        status_code=301,
+        preserve_path=True,
+        preserve_query=True,
+        include_subdomains=True,
+    )
+    return cloudflare.add_redirect_rule(zone_id, {**body, "description": f"Redirect {apex}"})
+
+
+async def test_adopting_an_existing_rule_writes_nothing_at_cloudflare(
+    client_for, cloudflare
+) -> None:
+    """The redirect an agency takes over is usually already right.
+
+    Until adoption the only button appended a *second* rule to the same phase — where Cloudflare
+    takes the first match, so the obvious press could leave the zone with two redirects and no
+    change in behaviour. Adopting claims the rule by id and touches Cloudflare not at all.
+    """
+    t = await make_tenant("cf-adopt")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, domain, _ = await _connected(c, headers, cloudflare)
+        zone_id = next(iter(cloudflare.zones))
+        theirs = await _hand_made_rule(cloudflare, zone_id, apex="klant.nl", target="https://nieuw.nl")
+
+        # The status report offers the id, which is the only safe way to name a rule.
+        checked = (
+            await c.post(f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers)
+        ).json()
+        assert "redirect_conflict" in checked["issues"]
+        assert checked["conflicts"][0]["rule_id"] == theirs["id"]
+
+        cloudflare.calls.clear()
+        adopted = await c.post(
+            f"/api/v1/cloudflare/domains/{domain['id']}/redirect/adopt",
+            json={"rule_id": theirs["id"], "target_url": "https://nieuw.nl", "status_code": 301},
+            headers=headers,
+        )
+        assert adopted.status_code == 200, adopted.text
+        assert adopted.json()["last_status"] == "active"
+        assert adopted.json()["target_url"] == "https://nieuw.nl"
+
+        # Nothing was created, updated, re-ordered or deleted: one read, no writes.
+        assert [m for m, _ in cloudflare.calls if m != "GET"] == []
+        assert len(cloudflare.rulesets[zone_id]["rules"]) == 1
+
+        # It is ours now, so it stops reading as somebody else's rule.
+        after = (
+            await c.post(f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers)
+        ).json()
+        assert after["conflicts"] == []
+        assert "redirect_conflict" not in after["issues"]
+        assert "domain_says_redirect" not in after["issues"]
+        assert after["redirect_live"]["present"] is True
+        assert after["redirect_live"]["differences"] == []
+        # And the domain agrees, exactly as it does after a save.
+        assert after["domain_status"] == "redirect"
+
+
+async def test_adoption_refuses_a_rule_that_is_not_what_we_would_have_written(
+    client_for, cloudflare
+) -> None:
+    """"Adopt whatever is there" would import somebody's 302 as this domain's redirect, and the
+    next save would then "fix" a live client's redirect to something nobody asked for. The
+    difference is reported by field so the admin can match it or overwrite it deliberately."""
+    t = await make_tenant("cf-adopt-diff")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, domain, _ = await _connected(c, headers, cloudflare)
+        zone_id = next(iter(cloudflare.zones))
+        theirs = await _hand_made_rule(cloudflare, zone_id, apex="klant.nl", target="https://nieuw.nl")
+
+        refused = await c.post(
+            f"/api/v1/cloudflare/domains/{domain['id']}/redirect/adopt",
+            # Same rule, different intent: a 302 where Cloudflare holds a 301.
+            json={"rule_id": theirs["id"], "target_url": "https://nieuw.nl", "status_code": 302},
+            headers=headers,
+        )
+        assert refused.status_code == 409, refused.text
+        body = refused.json()["error"]
+        assert body["code"] == "cloudflare_redirect_differs"
+        assert "status_code" in body["fields"]
+        # Refused means refused: no row, and their rule untouched.
+        status = (
+            await c.get(f"/api/v1/cloudflare/domains/{domain['id']}/status", headers=headers)
+        ).json()
+        assert status["redirect"] is None
+        assert len(cloudflare.rulesets[zone_id]["rules"]) == 1
+
+        # A rule that vanished between reading the report and pressing the button is a 404, not
+        # a stored redirect pointing at nothing.
+        cloudflare.rulesets[zone_id]["rules"] = []
+        gone = await c.post(
+            f"/api/v1/cloudflare/domains/{domain['id']}/redirect/adopt",
+            json={"rule_id": theirs["id"], "target_url": "https://nieuw.nl", "status_code": 301},
+            headers=headers,
+        )
+        assert gone.status_code == 404
+
+
+async def test_adoption_never_orphans_a_rule_we_already_own(client_for, cloudflare) -> None:
+    """Adopting over our own live rule would leave a rule at Cloudflare that nothing here knows
+    about, on a client's zone — the exact state this module exists to prevent."""
+    t = await make_tenant("cf-adopt-own")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, domain, _ = await _connected(c, headers, cloudflare)
+        zone_id = next(iter(cloudflare.zones))
+        assert (
+            await c.put(
+                f"/api/v1/cloudflare/domains/{domain['id']}/redirect",
+                json={"target_url": "https://nieuw.nl", "status_code": 301},
+                headers=headers,
+            )
+        ).status_code == 200
+        theirs = await _hand_made_rule(
+            cloudflare, zone_id, apex="klant.nl", target="https://anders.nl"
+        )
+
+        refused = await c.post(
+            f"/api/v1/cloudflare/domains/{domain['id']}/redirect/adopt",
+            json={"rule_id": theirs["id"], "target_url": "https://anders.nl", "status_code": 301},
+            headers=headers,
+        )
+        assert refused.status_code == 409
+        assert refused.json()["error"]["code"] == "cloudflare_redirect_owned"
+
+
 async def test_a_redirect_sets_the_domains_own_status(client_for, cloudflare) -> None:
     """Setting a domain-wide redirect *is* the domain redirecting. Leaving ``Domain.status``
     on "active" would put two screens in disagreement about the same fact."""
@@ -1887,3 +2024,81 @@ async def test_verify_probes_the_two_scopes_the_domain_page_actually_uses(
         assert refused["capabilities"]["redirect_read"] is True
         # A scoped token is still a working token: the rest of the list is unaffected.
         assert refused["capabilities"]["zones_read"] is True
+
+
+async def test_a_refused_capability_records_what_cloudflare_answered(
+    client_for, cloudflare
+) -> None:
+    """A ✗ with no explanation is the one state an admin cannot act on.
+
+    "Niet toegekend" reads as *add this permission* whatever the cause — so against a token whose
+    Cloudflare screen plainly grants it, the sentence is unfalsifiable and the only move left is
+    re-minting a credential that was never the problem. The status, the code and Cloudflare's own
+    text separate the three things that produce the same ✗, and none of them is in ``str(exc)``.
+    """
+    t = await make_tenant("cf-caps-why")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        account = await _account(c, headers)
+        cloudflare.add_zone("klant.nl")
+        await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers)
+
+        # Two refusals of different kinds, which is the whole point: a scope this token was never
+        # granted, and a call the endpoint would not take. Both used to be a bare False.
+        cloudflare.deny.add("/rulesets")
+        cloudflare.fail["/dns_records"] = (400, "per_page must be between 5 and 100", 1003)
+        body = (
+            await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/verify", headers=headers)
+        ).json()
+
+        assert body["capabilities"]["redirect_read"] is False
+        assert body["capabilities"]["dns_read"] is False
+        assert "HTTP 403" in body["capability_errors"]["redirect_read"]
+        assert "code 10000" in body["capability_errors"]["redirect_read"]
+        assert "not authorized" in body["capability_errors"]["redirect_read"]
+        assert "HTTP 400" in body["capability_errors"]["dns_read"]
+        assert "per_page" in body["capability_errors"]["dns_read"]
+        # Only refusals. A capability that answered yes has nothing to explain, and an
+        # explanation printed beside a ✓ is worse than none.
+        assert set(body["capability_errors"]) == {"redirect_read", "dns_read"}
+
+        # It is stored, not just returned: the settings screen renders it on a page load that
+        # ran no verify of its own.
+        listed = (await c.get("/api/v1/cloudflare/accounts", headers=headers)).json()[0]
+        assert listed["capability_errors"]["dns_read"] == body["capability_errors"]["dns_read"]
+
+        # And it is replaced wholesale, never merged: a fixed permission leaves no trace of the
+        # refusal it used to have.
+        cloudflare.deny.clear()
+        cloudflare.fail.clear()
+        healed = (
+            await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/verify", headers=headers)
+        ).json()
+        assert healed["capabilities"]["dns_read"] is True
+        assert healed["capability_errors"] == {}
+
+
+async def test_the_zone_probes_ask_plainly(client_for, cloudflare) -> None:
+    """A probe must differ from the call it stands in for as little as possible.
+
+    ``per_page=1`` was the only thing the zone probes did that no real call does (``paginate``
+    sends 50), on an endpoint whose retired reference documented a minimum of 5. It bought
+    nothing and it is exactly the kind of difference that makes a probe answer "not granted"
+    about a permission the token holds.
+    """
+    t = await make_tenant("cf-probe-plain")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        account = await _account(c, headers)
+        cloudflare.add_zone("klant.nl")
+        await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers)
+        cloudflare.queries.clear()
+        await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/verify", headers=headers)
+
+        probed = [
+            (path, query)
+            for path, query in cloudflare.queries
+            if "dns_records" in path or "rulesets" in path
+        ]
+        assert probed, "the zone-scoped capabilities were not probed at all"
+        assert all(query == "" for _, query in probed), probed

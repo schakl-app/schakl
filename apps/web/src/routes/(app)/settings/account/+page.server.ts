@@ -59,14 +59,12 @@ export const load: PageServerLoad = async (event) => {
     event.cookies.set(FORMAT_COOKIE, serializeFormatCookie(persistedFormat), FORMAT_COOKIE_OPTIONS);
   }
 
-  // Personal API keys (#20). A member may hold apikeys.personal.manage; the offerable scopes are
-  // the ones they actually hold (a key can never grant more than its owner), built from the
-  // code-defined catalog. The catalog ships in the open-source repo — no tenant data.
+  // Personal API keys (#20) live on their own screen now (`settings/api`); this page keeps only
+  // the pointer to it, so it renders on the same permission and fetches none of the key data.
   const canManageKeys = can(event.locals.user, "apikeys.personal.manage");
   // The per-user Google connection card (docs/GOOGLE.md §1) — only when the org runs the module.
   const googleEnabled = (event.locals.theme?.enabledModules ?? []).includes("google");
-  const [keys, google, modules, twoFactor] = await Promise.all([
-    canManageKeys ? api.GET("/api/v1/api-keys") : Promise.resolve({ data: null }),
+  const [google, modules, twoFactor] = await Promise.all([
     googleEnabled ? api.GET("/api/v1/google/connections/me") : Promise.resolve({ data: null }),
     // Whether this org allows local password login (#161): an SSO-enforced org hides the
     // change-password card — there is no local password to change.
@@ -76,22 +74,9 @@ export const load: PageServerLoad = async (event) => {
     api.GET("/api/v1/auth/2fa"),
   ]);
 
-  const scopeOptions: { value: string; label_key: string }[] = [];
-  for (const perm of parent.permissionCatalog?.permissions ?? []) {
-    const variants =
-      perm.scopes.length > 0 ? perm.scopes.map((s) => `${perm.key}:${s}`) : [perm.key];
-    for (const value of variants) {
-      const [base, suffix] = value.split(":");
-      if (can(event.locals.user, base, suffix as "own" | "any" | undefined)) {
-        scopeOptions.push({ value, label_key: perm.label_key });
-      }
-    }
-  }
-
   // The personal sidebar layout (#169): the (app) layout already resolved the effective pref.
   const navPref = parent.navPref as
-    | { items: { key: string; hidden?: boolean }[] | null; source: string }
-    | undefined;
+    { items: { key: string; hidden?: boolean }[] | null; source: string } | undefined;
 
   return {
     personalNavItems: navPref?.source === "user" ? (navPref.items ?? null) : null,
@@ -104,8 +89,6 @@ export const load: PageServerLoad = async (event) => {
     clocks: CLOCKS,
     dateFormats: DATE_FORMATS,
     canManageKeys,
-    apiKeys: keys.data ?? [],
-    scopeOptions,
     google: google.data ?? null,
     googleStatus: event.url.searchParams.get("google"),
     localLogin: modules.data?.local_login_enabled ?? true,
@@ -258,23 +241,6 @@ export const actions: Actions = {
     return { twoFactorSmsDisabled: true };
   },
 
-  createKey: async (event) => {
-    const form = await event.request.formData();
-    const name = String(form.get("name") ?? "").trim();
-    const scopes = form.getAll("scopes").map(String).filter(Boolean);
-    const expires = String(form.get("expires_at") ?? "").trim();
-    if (!name || scopes.length === 0) return fail(400, { error: "errors.required" });
-    // A date input gives a day; store it as end-of-day UTC so "expires 2026-08-01" lasts that
-    // day. Left empty, the key never expires (an explicit choice; revoke stays the kill switch).
-    const expires_at = expires ? new Date(`${expires}T23:59:59Z`).toISOString() : null;
-    const { data, error } = await apiFor(event).POST("/api/v1/api-keys", {
-      body: { name, scopes, expires_at },
-    });
-    if (error) return fail(400, { error: apiErrorKey(error).key });
-    // The full secret is returned exactly once — hand it straight to the page to reveal.
-    return { createdSecret: data?.secret, createdName: data?.name };
-  },
-
   /** Profile picture override (#122): upload through the storage core (#123), or clear back
    *  to the OIDC picture / initials. */
   saveAvatar: async (event) => {
@@ -314,18 +280,6 @@ export const actions: Actions = {
     });
     if (error) return fail(400, { avatarError: apiErrorKey(error).key });
     return { avatarSaved: true };
-  },
-
-  revokeKey: async (event) => {
-    const form = await event.request.formData();
-    const id = String(form.get("key_id") ?? "");
-    if (id) {
-      const { error } = await apiFor(event).POST("/api/v1/api-keys/{key_id}/revoke", {
-        params: { path: { key_id: id } },
-      });
-      if (error) return fail(400, { error: apiErrorKey(error).key });
-    }
-    return { revoked: true };
   },
 
   // Google connection card contract (lib/modules/google/GoogleAccountCard.svelte).

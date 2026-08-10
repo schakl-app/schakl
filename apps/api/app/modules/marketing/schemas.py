@@ -7,6 +7,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.periods import ComparePeriod
 from app.modules.marketing.models import MarketingSource
 
 
@@ -108,6 +109,37 @@ class AccountsResponse(BaseModel):
 
 
 # --- metrics (#133): panel + tab ------------------------------------------------------------- #
+class MarketingCompareWindow(BaseModel):
+    """Which two spans a screen's deltas actually measured (#312).
+
+    Every payload that carries a ``delta_pct`` carries this, because a percentage with no named
+    denominator is the thing this issue was filed about: "t.o.v. vorige periode" was a label the
+    screen could print whatever it had compared, and it printed it while the same client's PDF
+    said "vorig jaar". Both spans travel, not just the comparison one — the web names the period
+    a delta is *against*, and a screen that can only say one of the two can never be checked.
+
+    Dates rather than a mode name: the mode is configuration, the dates are what happened. A
+    reader who sees "t.o.v. jul 2025" needs no vocabulary at all.
+    """
+
+    mode: ComparePeriod
+    #: The period the numbers themselves cover (``range_days`` back from yesterday).
+    current_start: date
+    current_end: date
+    #: The span those numbers were measured against.
+    start: date
+    end: date
+
+    def spans(self) -> list[tuple[date, date]]:
+        """Both windows, for a reader that must fetch exactly these days and nothing between.
+
+        Two entries even when they are adjacent (``previous`` mode): a caller that special-cased
+        the contiguous shape would be one config change away from silently reading a year of
+        rows it does not use.
+        """
+        return [(self.current_start, self.current_end), (self.start, self.end)]
+
+
 class KpiValue(BaseModel):
     current: float = 0.0
     previous: float = 0.0
@@ -165,6 +197,16 @@ class CompanyMarketing(BaseModel):
 
     company_id: uuid.UUID
     range_days: int
+    #: The two spans every ``delta_pct`` below was computed from (#312) — so the screen names
+    #: the period it compared against instead of an unfalsifiable "vorige periode".
+    compare: MarketingCompareWindow
+    #: What is *stored* for this client: ``None`` = follow the org default. Present only for a
+    #: caller who may manage it (like ``layout``), because it is the value the editor's select
+    #: binds to and "inherit" must stay distinguishable from "explicitly set to the default".
+    compare_setting: ComparePeriod | None = None
+    #: The org's house default, so the editor's inherit option can name what it inherits
+    #: ("Volg standaard (vorig jaar)") rather than being a blank the user has to go and look up.
+    compare_default: ComparePeriod = ComparePeriod.YEAR
     sources: list[SourceMetrics] = Field(default_factory=list)
     #: No Google connection anywhere in the org — the panel teaches how to connect.
     needs_connection: bool = False
@@ -190,14 +232,21 @@ class CompanyMarketing(BaseModel):
 
 # --- per-client settings (#134, layout #192) -------------------------------------------------- #
 class CompanySettingsUpdate(BaseModel):
-    """Per-client marketing preferences. Both fields optional: send what changes.
+    """Per-client marketing preferences. Every field optional: send what changes.
 
     ``layout`` replaces the stored layout wholesale (``{"sources": {}}`` clears it); the
     legacy ``show_key_events`` keeps working during the expand release (#192).
+
+    ``compare`` follows the bulk-edit rule (CLAUDE.md §18): **absent means leave alone, an
+    explicit ``null`` means clear back to the org default**. It has to, because ``None`` is a
+    meaningful stored value here — the dashboard's select posts "volg standaard" as a real
+    choice, and a payload that could not express it would leave a client pinned to whatever was
+    set once, forever. The service reads ``model_fields_set`` to tell the two apart.
     """
 
     show_key_events: bool | None = None
     layout: dict | None = None
+    compare: ComparePeriod | None = None
 
 
 class CompanySettingsRead(BaseModel):
@@ -206,6 +255,10 @@ class CompanySettingsRead(BaseModel):
     company_id: uuid.UUID
     show_key_events: bool
     layout: dict | None = None
+    #: The stored override; ``None`` = follows the org default (which ``compare_resolved`` is).
+    compare: ComparePeriod | None = None
+    #: What that resolves to today — the editor shows the stored value, the screen shows this.
+    compare_resolved: ComparePeriod = ComparePeriod.YEAR
 
 
 # --- org-level settings (#134) --------------------------------------------------------------- #
@@ -220,6 +273,10 @@ class MarketingSettingsRead(BaseModel):
     #: Whether the agency's SE Ranking API key is stored (#300). One key covers every client
     #: project; the value itself is never returned, like the token above.
     seranking_api_key_configured: bool = False
+    #: The house comparison every client's dashboard inherits (#312) — always resolved, never
+    #: null: a settings screen offering "niets gekozen" beside two real options would be a third
+    #: state nobody means. A client overrides it on their own dashboard.
+    default_compare: ComparePeriod = ComparePeriod.YEAR
 
 
 class MarketingSettingsWrite(BaseModel):
@@ -228,6 +285,9 @@ class MarketingSettingsWrite(BaseModel):
     ads_developer_token: str | None = Field(default=None, max_length=1024)
     #: The agency's SE Ranking API key (#300). Same write-only rule.
     seranking_api_key: str | None = Field(default=None, max_length=1024)
+    #: The org's default comparison (#312). Omitted keeps the stored one — unlike the per-client
+    #: field there is nothing above this to inherit from, so ``null`` has no second meaning here.
+    default_compare: ComparePeriod | None = None
 
 
 class DrilldownRowOut(BaseModel):
@@ -266,6 +326,12 @@ class OverviewRow(BaseModel):
 
 class OverviewResponse(BaseModel):
     range_days: int
+    #: The one comparison every row on this grid used — the **org default**, never each client's
+    #: own override (#312). A cross-client board sorted on numbers whose denominators differ per
+    #: row is a ranking of nothing; the per-client setting governs that client's own dashboard,
+    #: which is the screen it was chosen for. The grid names the period, so the difference is
+    #: visible rather than assumed.
+    compare: MarketingCompareWindow
     rows: list[OverviewRow] = Field(default_factory=list)
     total: int = 0
 
@@ -282,6 +348,8 @@ class MarketingSummaryRow(BaseModel):
 
 class MarketingSummary(BaseModel):
     range_days: int
+    #: The comparison behind every row's delta — the org default, for the grid's reason above.
+    compare: MarketingCompareWindow
     #: Linked clients in the caller's view. ``rows`` is capped, so the widget says
     #: "top n of this" instead of implying the cap is everything (docs/UX.md, no silent caps).
     linked_total: int = 0

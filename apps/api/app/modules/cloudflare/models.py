@@ -142,6 +142,14 @@ class CloudflareAccount(
     capabilities: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict, server_default="{}"
     )
+    #: Why a probe answered *no*, keyed by the same capability name: Cloudflare's status, code and
+    #: own text (``client.describe_failure``). A refused probe used to be recorded as a bare
+    #: ``False``, which is the one shape an admin cannot act on — "niet toegekend" against a
+    #: permission their token screen plainly grants leaves nothing to check but the token, and the
+    #: token is what they were already looking at. Only ever holds keys that answered ``False``.
+    capability_errors: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
     last_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

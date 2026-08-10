@@ -46,6 +46,7 @@ from app.modules.notifications.events import (
     ENTITY_INTERACTION,
     ENTITY_LEAVE,
     ENTITY_TYPES,
+    EXCLUDE_KEY,
     INTERACTION_EMAIL_PENDING,
     LEAVE_REQUESTED,
     PROJECT_BUDGET_THRESHOLD,
@@ -75,6 +76,7 @@ ENTITY_ID_KEY: dict[str, str] = {
     "task.unassigned": "task_id",
     "task.status_changed": "task_id",
     "task.commented": "task_id",
+    "task.replied": "task_id",
     "task.mentioned": "task_id",
     "task.due_soon": "task_id",
     "task.overdue": "task_id",
@@ -183,6 +185,7 @@ class NotificationService:
         # next handler (the tasks module's company-status automation shares these events).
         data = dict(payload)
         hinted = data.pop(RECIPIENTS_KEY, None) or []
+        excluded_hint = data.pop(EXCLUDE_KEY, None) or []
         dedup_key = data.pop(DEDUP_KEY, None)
         # Every ``_``-prefixed key is routing by convention (``_recipients``, ``_dedup_key``,
         # the automation engine's ``_depth`` loop counter — issue #27), never content: none of
@@ -201,6 +204,10 @@ class NotificationService:
         recipients = {uid for uid in (_as_uuid(u) for u in hinted) if uid is not None}
         recipients |= watching
         recipients -= muted
+        # Told the same thing in more specific words by the same write (#312) — subtracted after
+        # the watcher union, because being a watcher is exactly how these people would otherwise
+        # hear it twice. An emitter that says nothing here behaves as it always has.
+        recipients -= {uid for uid in (_as_uuid(u) for u in excluded_hint) if uid is not None}
         recipients.discard(self.actor_id)
         # A hint is data from another module; only people who can actually open the record
         # may be told about it (Golden Rule 1 — never trust the payload for authorization).

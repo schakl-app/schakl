@@ -199,6 +199,7 @@
           name?: string;
           project_id?: string | null;
           company_id?: string | null;
+          assignee_user_id?: string | null;
         }
       | undefined;
     if (!created || created.id === handledCreate) return;
@@ -217,6 +218,7 @@
             label: created.name ?? (taskDraft || "—"),
             project_id: created.project_id ?? null,
             company_id: created.company_id ?? null,
+            assignee_user_id: created.assignee_user_id ?? null,
           },
         ];
       }

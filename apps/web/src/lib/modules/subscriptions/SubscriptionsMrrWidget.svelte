@@ -8,6 +8,7 @@
 
   interface Upcoming {
     subscription_id: string;
+    company_id: string;
     name: string;
     company_name: string;
     next_invoice_date: string;
@@ -26,22 +27,32 @@
   href="/subscriptions"
   linkLabel={t("nav.subscriptions")}
 >
-  <a href="/subscriptions" class="block text-2xl font-semibold text-text hover:text-brand">
+  <!-- MRR counts the *active* subscriptions, so both figures open exactly that list (issue #15) —
+       not the whole register with drafts and cancellations mixed in. -->
+  <a
+    href="/subscriptions?status=active"
+    class="block text-2xl font-semibold text-text hover:text-brand"
+  >
     {fmtMoney(summary.mrr)}
   </a>
   <p class="mt-1 text-sm text-text-muted">
-    {t("subscriptions.widget.arr_active", {
-      arr: fmtMoney(summary.arr),
-      count: summary.active_count,
-    })}
+    <a href="/subscriptions?status=active" class="hover:text-brand hover:underline">
+      {t("subscriptions.widget.arr_active", {
+        arr: fmtMoney(summary.arr),
+        count: summary.active_count,
+      })}
+    </a>
   </p>
   {#if summary.upcoming.length > 0}
     {@const next = summary.upcoming[0]}
     <p class="mt-1 text-sm text-text-muted">
-      {t("subscriptions.widget.next", {
-        name: next.company_name || next.name,
-        date: fmtDayMonthYear(next.next_invoice_date),
-      })}
+      <!-- The client whose invoice is next, filtered to them. -->
+      <a href="/subscriptions?company={next.company_id}" class="hover:text-brand hover:underline">
+        {t("subscriptions.widget.next", {
+          name: next.company_name || next.name,
+          date: fmtDayMonthYear(next.next_invoice_date),
+        })}
+      </a>
     </p>
   {/if}
 </DashboardWidgetCard>

@@ -12,8 +12,14 @@
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import { MARKETING_OVERVIEW_COLUMNS } from "$lib/modules/marketing/columns";
-  import { deltaClass, deltaView, fmtMetric, sourceLabel } from "$lib/modules/marketing/format";
-  import type { KpiValue, OverviewRow } from "$lib/modules/marketing/types";
+  import {
+    comparePeriodLabel,
+    deltaClass,
+    deltaView,
+    fmtMetric,
+    sourceLabel,
+  } from "$lib/modules/marketing/format";
+  import type { CompareWindow, KpiValue, OverviewRow } from "$lib/modules/marketing/types";
 
   let { data } = $props();
 
@@ -42,6 +48,13 @@
 
   const canManage = $derived(Boolean(data.canManage));
 
+  // Every cell on this grid carries a delta and none of them has room to say against what, so
+  // the period is named once for the whole board (#312). It is the org default rather than each
+  // client's own setting — a column sorted on numbers with per-row denominators ranks nothing —
+  // which is exactly why the note below says a client's own dashboard may differ.
+  const compare = $derived((data.overview as { compare?: CompareWindow | null }).compare ?? null);
+  const comparedPeriod = $derived(compare ? comparePeriodLabel(compare) : "");
+
   const RANGES = ["30d", "month", "quarter", "90d", "yoy"] as const;
   const rangeClass = (active: boolean) =>
     `rounded-lg px-3 py-1.5 text-sm font-medium ${
@@ -62,10 +75,7 @@
 {/snippet}
 
 {#snippet companyCell(row: Row)}
-  <a
-    href={`/companies/${row.company_id}/marketing`}
-    class="font-medium text-brand hover:underline"
-  >
+  <a href={`/companies/${row.company_id}/marketing`} class="font-medium text-brand hover:underline">
     {row.company_name}
   </a>
 {/snippet}
@@ -82,7 +92,10 @@
 {#snippet clicksCell(row: Row)}{@render kpiCell(row.metrics.clicks, "clicks")}{/snippet}
 {#snippet positionCell(row: Row)}{@render kpiCell(row.metrics.position, "position")}{/snippet}
 {#snippet costCell(row: Row)}{@render kpiCell(row.metrics.cost, "cost")}{/snippet}
-{#snippet conversionsCell(row: Row)}{@render kpiCell(row.metrics.conversions, "conversions")}{/snippet}
+{#snippet conversionsCell(row: Row)}{@render kpiCell(
+    row.metrics.conversions,
+    "conversions",
+  )}{/snippet}
 
 {#snippet keyEventsCell(row: Row)}
   {#if !row.sources_present.includes("ga4")}
@@ -129,10 +142,17 @@
     <p class="font-medium text-text">{row.company_name}</p>
     <div class="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-text-muted">
       {#if row.metrics.sessions}
-        <span>{t("marketing.metric.sessions")}: {fmtMetric("sessions", row.metrics.sessions.current)}</span>
+        <span
+          >{t("marketing.metric.sessions")}: {fmtMetric(
+            "sessions",
+            row.metrics.sessions.current,
+          )}</span
+        >
       {/if}
       {#if row.metrics.clicks}
-        <span>{t("marketing.metric.clicks")}: {fmtMetric("clicks", row.metrics.clicks.current)}</span>
+        <span
+          >{t("marketing.metric.clicks")}: {fmtMetric("clicks", row.metrics.clicks.current)}</span
+        >
       {/if}
       {#if row.metrics.cost}
         <span>{t("marketing.metric.cost")}: {fmtMetric("cost", row.metrics.cost.current)}</span>
@@ -172,6 +192,14 @@
     onsort={table.onSort}
   />
 </div>
+
+{#if comparedPeriod}
+  <p class="mb-3 text-xs text-text-muted">
+    {t("marketing.compare.caption", { period: comparedPeriod })} · {t(
+      "marketing.compare.grid_note",
+    )}
+  </p>
+{/if}
 
 <DataTable
   {rows}

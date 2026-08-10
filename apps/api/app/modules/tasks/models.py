@@ -426,6 +426,18 @@ class TaskComment(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
     )
+    # The comment this one answers (#312) — NULL for a comment that opens a thread. **One level
+    # deep, and that is a product rule, not a schema shortcut**: a reply to a reply indents itself
+    # off the screen and gives two readers two different reading orders, so the service re-roots it
+    # onto the same parent rather than refusing it. CASCADE because a thread is one conversation:
+    # the answers to a question that is gone are not a record of anything, and the confirm counts
+    # them out loud before it happens (docs/UX.md).
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("task_comments.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     # SET NULL so the thread survives a user's removal.
     author_user_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True),

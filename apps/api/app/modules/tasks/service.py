@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, case, column, func, select, table
+from sqlalchemy import and_, case, column, func, or_, select, table
 from sqlalchemy import text as sql_text
 from sqlalchemy.orm import aliased
 
@@ -51,9 +51,13 @@ from app.modules.tasks.models import (
 from app.modules.tasks.schemas import (
     ActivityRead,
     ChecklistCreate,
+    ChecklistDuplicate,
     ChecklistItemCreate,
+    ChecklistItemOrder,
     ChecklistItemRead,
     ChecklistItemUpdate,
+    ChecklistOrder,
+    ChecklistOrderRead,
     ChecklistRead,
     ChecklistTemplateCreate,
     ChecklistTemplateRead,
@@ -127,6 +131,7 @@ _dashboard_projects = table(
     column("id"),
     column("org_id"),
     column("name"),
+    column("company_id"),
 )
 _dashboard_companies = table(
     "companies",
@@ -134,6 +139,9 @@ _dashboard_companies = table(
     column("org_id"),
     column("name"),
 )
+# The client behind a *project* row, joined a second time: a project's own name does not say
+# whose it is (see ``DashboardTaskGroup.company_name``).
+_dashboard_project_companies = _dashboard_companies.alias("dashboard_project_companies")
 
 # Status is no longer a fixed vocabulary, so its rank is built per request from the org's
 # configured order (see ``list``). Everything else is static.
@@ -194,6 +202,40 @@ def _rich_items(
     if rich:
         return rich
     return [{"title": title, "description": None} for title in (legacy or [])]
+
+
+#: Ceiling on the rows one reorder renumbers. Every read is capped (CLAUDE.md §9); it sits above
+#: the payload's own ``max_length`` so a full order is never silently truncated to a prefix.
+_ORDER_CAP = 1000
+
+
+def _renumber[PositionedT: (TaskChecklist, TaskChecklistItem)](
+    rows: Sequence[PositionedT], ordered_ids: list[uuid.UUID]
+) -> list[PositionedT]:
+    """Assign ``position`` 0..n-1 following ``ordered_ids``, then whatever it did not name.
+
+    The payload is a *statement about order*, not a statement about membership: rows the caller
+    omitted keep their relative order after the named ones (``ChecklistOrder`` says why), so a
+    row created after the page loaded is appended instead of vanishing or 409-ing the save. An id
+    that belongs to nothing here is a 404 — the same answer reading it gets, so an ordering call
+    cannot probe for another task's checklists (CLAUDE.md §15).
+    """
+    by_id = {row.id: row for row in rows}
+    if any(entity_id not in by_id for entity_id in ordered_ids):
+        raise AppError("not_found", "errors.not_found", status_code=404)
+    if len(set(ordered_ids)) != len(ordered_ids):
+        raise AppError(
+            "validation",
+            "errors.validation",
+            status_code=422,
+            fields={"order": "errors.duplicate"},
+        )
+    named = set(ordered_ids)
+    ordered = [by_id[entity_id] for entity_id in ordered_ids]
+    ordered += [row for row in rows if row.id not in named]
+    for index, row in enumerate(ordered):
+        row.position = index
+    return ordered
 
 
 class TaskService:
@@ -368,6 +410,7 @@ class TaskService:
         offset: int,
         company_id: uuid.UUID | None = None,
         project_id: uuid.UUID | None = None,
+        unlinked: bool = False,
         assignee_user_id: uuid.UUID | None = None,
         assignee_contact_id: uuid.UUID | None = None,
         status: str | None = None,
@@ -387,6 +430,11 @@ class TaskService:
             stmt = stmt.where(Task.company_id == company_id)
         if project_id is not None:
             stmt = stmt.where(Task.project_id == project_id)
+        # The dashboard's own bucket, addressable (#15): the tile counts tasks hanging off no
+        # client and no project, so the count has a list to open. An absent ``company_id`` means
+        # "any client", which is a different question and could never express this one.
+        if unlinked:
+            stmt = stmt.where(Task.company_id.is_(None), Task.project_id.is_(None))
         if assignee_user_id is not None:
             stmt = stmt.where(Task.assignee_user_id == assignee_user_id)
         if assignee_contact_id is not None:
@@ -483,6 +531,14 @@ class TaskService:
             (visible.c.project_id.is_not(None), _dashboard_projects.c.name),
             (visible.c.company_id.is_not(None), _dashboard_companies.c.name),
         )
+        # A project row names its client too, so the tile can say "Website · Bakkerij Jansen"
+        # instead of two indistinguishable "Website" rows. A company row is already its client.
+        group_company_id = case(
+            (visible.c.project_id.is_not(None), _dashboard_projects.c.company_id),
+        )
+        group_company_name = case(
+            (visible.c.project_id.is_not(None), _dashboard_project_companies.c.name),
+        )
         count = func.count()
         overdue = func.count().filter(visible.c.due_date < today)
         stmt = (
@@ -490,6 +546,8 @@ class TaskService:
                 entity_type.label("entity_type"),
                 entity_id.label("entity_id"),
                 label.label("label"),
+                group_company_id.label("company_id"),
+                group_company_name.label("company_name"),
                 count.label("count"),
                 overdue.label("overdue"),
             )
@@ -502,6 +560,13 @@ class TaskService:
                 ),
             )
             .outerjoin(
+                _dashboard_project_companies,
+                and_(
+                    _dashboard_project_companies.c.org_id == _dashboard_projects.c.org_id,
+                    _dashboard_project_companies.c.id == _dashboard_projects.c.company_id,
+                ),
+            )
+            .outerjoin(
                 _dashboard_companies,
                 and_(
                     _dashboard_companies.c.org_id == visible.c.org_id,
@@ -509,7 +574,7 @@ class TaskService:
                 ),
             )
             .where(visible.c.status.in_(open_keys))
-            .group_by(entity_type, entity_id, label)
+            .group_by(entity_type, entity_id, label, group_company_id, group_company_name)
             .order_by(count.desc(), label.asc().nulls_last())
         )
         rows = (await self.ctx.session.execute(stmt)).all()
@@ -518,6 +583,8 @@ class TaskService:
                 entity_type=row.entity_type,
                 entity_id=row.entity_id,
                 label=row.label,
+                company_id=row.company_id,
+                company_name=row.company_name,
                 count=int(row.count),
                 overdue=int(row.overdue),
             )
@@ -567,7 +634,15 @@ class TaskService:
         # *first* 200 would have shown the oldest and hidden the conversation people came for.
         # A second alias for whoever was signed in as the author (#296) — one statement, not a
         # lookup per comment.
+        #
+        # The cap is taken **by thread, not by row** (#312). Sorting on the *root's* timestamp
+        # keeps a reply adjacent to the comment it answers, so the 200th row falls between two
+        # conversations instead of inside one — a plain ``created_at`` cut would strand a January
+        # reply above a parent that had dropped off the end, and the client would draw it as a new
+        # thread. Reversed, this reads exactly as the card renders: threads oldest-first, each
+        # opener followed by its answers in the order they were written.
         comment_impersonator = aliased(User)
+        comment_root = aliased(TaskComment)
         comment_rows = list(
             reversed(
                 (
@@ -578,11 +653,15 @@ class TaskService:
                             comment_impersonator,
                             comment_impersonator.id == TaskComment.impersonator_user_id,
                         )
+                        .outerjoin(comment_root, comment_root.id == TaskComment.parent_id)
                         .where(
                             TaskComment.org_id == self.ctx.org.id,
                             TaskComment.task_id == task_id,
                         )
-                        .order_by(TaskComment.created_at.desc())
+                        .order_by(
+                            func.coalesce(comment_root.created_at, TaskComment.created_at).desc(),
+                            TaskComment.created_at.desc(),
+                        )
                         .limit(_COMMENT_CAP)
                     )
                 ).all()
@@ -1168,6 +1247,78 @@ class TaskService:
         await self._record(task_id, "checklist_created", {"title": checklist.title})
         return checklist
 
+    async def duplicate_checklist(
+        self, task_id: uuid.UUID, checklist_id: uuid.UUID, data: ChecklistDuplicate
+    ) -> ChecklistRead:
+        """Copy a checklist — title, description and every item — beside its source.
+
+        Returns the read shape rather than the row: the items are already in hand, and a
+        ``ChecklistRead.model_validate(row)`` would answer a duplicate with an empty list.
+
+        Ticks do **not** travel. A duplicate is the same work to be done again — carrying
+        ``done`` across would hand someone a record of work that never happened, and unticking
+        a copied list by hand is the friction this feature exists to remove.
+        """
+        await self._writable_task_or_403(task_id)
+        source = await self._checklist_or_404(task_id, checklist_id)
+
+        repo = self.ctx.repo(TaskChecklist)
+        siblings = (
+            await self.ctx.session.execute(
+                repo.scoped_select()
+                .where(TaskChecklist.task_id == task_id)
+                .order_by(TaskChecklist.position.asc(), TaskChecklist.created_at.asc())
+            )
+        ).scalars().all()
+        source_items = (
+            await self.ctx.session.execute(
+                self.ctx.repo(TaskChecklistItem)
+                .scoped_select()
+                .where(TaskChecklistItem.checklist_id == checklist_id)
+                .order_by(
+                    TaskChecklistItem.position.asc(), TaskChecklistItem.created_at.asc()
+                )
+            )
+        ).scalars().all()
+
+        copy = await repo.create(
+            task_id=task_id,
+            title=data.title or source.title,
+            description=source.description,
+            position=source.position,
+        )
+        # Renumber the whole task through the same helper a drag does, rather than shifting from
+        # the source down: positions go stale on every delete, so a copy that merely inherited
+        # ``source.position`` would tie with it and fall back to ``created_at`` — landing under
+        # whatever else shares that number. Stating the order the card already reads, with the
+        # copy spliced in after its source, puts it there by construction.
+        ordered = list(siblings)
+        ordered.insert(ordered.index(source) + 1, copy)
+        _renumber([*siblings, copy], [checklist.id for checklist in ordered])
+
+        items = [
+            TaskChecklistItem(
+                org_id=self.ctx.org.id,
+                checklist_id=copy.id,
+                title=item.title,
+                description=item.description,
+                done=False,
+                position=index,
+            )
+            for index, item in enumerate(source_items)
+        ]
+        self.ctx.session.add_all(items)
+        await self.ctx.session.flush()
+
+        # ``from``/``to``, the shape ``checklist_renamed`` already uses: the trail is only
+        # worth reading if it says which list the copy came from.
+        await self._record(
+            task_id, "checklist_duplicated", {"from": source.title, "to": copy.title}
+        )
+        read = ChecklistRead.model_validate(copy)
+        read.items = [ChecklistItemRead.model_validate(i) for i in items]
+        return read
+
     # ------------------------------------------------------------------ #
     # Checklist templates (org-wide repository)
     # ------------------------------------------------------------------ #
@@ -1326,6 +1477,49 @@ class TaskService:
         await self.ctx.repo(TaskChecklistItem).delete(item)
         await self._record(task_id, "checklist_item_deleted", {"title": item.title})
 
+    async def reorder_checklists(
+        self, task_id: uuid.UUID, data: ChecklistOrder
+    ) -> ChecklistOrderRead:
+        """Renumber this task's checklists. One call, so a dragged list cannot half-save.
+
+        No activity entry: a reorder is noise, the same reason ``position`` is excluded from
+        ``_TRACKED_FIELDS`` and ``update_checklist`` records only a rename.
+        """
+        await self._writable_task_or_403(task_id)
+        rows = (
+            await self.ctx.session.execute(
+                self.ctx.repo(TaskChecklist)
+                .scoped_select()
+                .where(TaskChecklist.task_id == task_id)
+                # The order the card reads them in, so "what the payload did not name" is
+                # appended in the order the user was actually looking at.
+                .order_by(TaskChecklist.position.asc(), TaskChecklist.created_at.asc())
+                .limit(_ORDER_CAP)
+            )
+        ).scalars().all()
+        ordered = _renumber(rows, data.checklist_ids)
+        await self.ctx.session.flush()
+        return ChecklistOrderRead(ids=[row.id for row in ordered])
+
+    async def reorder_checklist_items(
+        self, task_id: uuid.UUID, checklist_id: uuid.UUID, data: ChecklistItemOrder
+    ) -> ChecklistOrderRead:
+        """Renumber one checklist's items — same contract as ``reorder_checklists``."""
+        await self._writable_task_or_403(task_id)
+        await self._checklist_or_404(task_id, checklist_id)
+        rows = (
+            await self.ctx.session.execute(
+                self.ctx.repo(TaskChecklistItem)
+                .scoped_select()
+                .where(TaskChecklistItem.checklist_id == checklist_id)
+                .order_by(TaskChecklistItem.position.asc(), TaskChecklistItem.created_at.asc())
+                .limit(_ORDER_CAP)
+            )
+        ).scalars().all()
+        ordered = _renumber(rows, data.item_ids)
+        await self.ctx.session.flush()
+        return ChecklistOrderRead(ids=[row.id for row in ordered])
+
     # ------------------------------------------------------------------ #
     # Comments
     # ------------------------------------------------------------------ #
@@ -1373,9 +1567,28 @@ class TaskService:
         )
         return [tid for tid in ids if tid in found]
 
+    async def _resolve_parent(
+        self, task_id: uuid.UUID, parent_id: uuid.UUID | None
+    ) -> uuid.UUID | None:
+        """Which comment a new one answers, as the thread's *root* (#312).
+
+        Threads are one level deep, so replying to a reply attaches to the same root rather than
+        raising: the person clicked "reply" under words that are on their screen, and refusing
+        that is a rule the UI would have to explain to be usable. Re-rooting keeps every thread
+        readable in one indent and costs the writer nothing.
+
+        A parent on another task — or in another tenant, which the repository already refuses — is
+        a 404, not a re-root: it is not a reading order problem, it is a wrong id.
+        """
+        if parent_id is None:
+            return None
+        parent = await self._comment_or_404(task_id, parent_id)
+        return parent.parent_id or parent.id
+
     async def add_comment(self, task_id: uuid.UUID, data: CommentCreate) -> CommentRead:
         self.ctx.require("tasks.comment.write")
         task = await self.repo.get_or_404(task_id)
+        parent_id = await self._resolve_parent(task_id, data.parent_id)
         body = sanitize_markdown(data.body) or ""
         excerpt = _excerpt(body)
         # Mentions are captured structurally from the `@[Name](mention:<uuid>)` markers, validated
@@ -1386,6 +1599,7 @@ class TaskService:
         impersonator = self.ctx.impersonated_by
         comment = await self.ctx.repo(TaskComment).create(
             task_id=task_id,
+            parent_id=parent_id,
             author_user_id=self.ctx.user.id,
             author_name=_display_name(self.ctx.user),
             # Words written through this account by someone else keep both names (#296).
@@ -1398,18 +1612,55 @@ class TaskService:
         )
         # The excerpt the notification has always carried belongs in the trail too, with the id
         # to reach the comment by — "commented", on its own, sends you hunting for what (#61).
+        # A reply says so, and carries the thread it landed in, so the row reads "replied" and
+        # deep-links to the answer rather than to the top of a conversation (#312).
         await self._record(
-            task_id, "commented", {"comment_id": str(comment.id), "excerpt": excerpt}
+            task_id,
+            "replied" if parent_id else "commented",
+            {
+                "comment_id": str(comment.id),
+                "excerpt": excerpt,
+                **({"parent_id": str(parent_id)} if parent_id else {}),
+            },
         )
-        # A mention reads as its own sentence ("X mentioned you"), so a mentioned person gets
-        # `task.mentioned` even when they are neither the assignee nor a prior commenter — and is
-        # dropped from the generic `task.commented` fan-out so they aren't told twice (issue #63).
+        # Three sentences, and nobody hears two of them (issue #63, #312). A mention reads as its
+        # own ("X mentioned you"), so it wins outright. A reply is the next most specific: the
+        # people already in *that thread* are being answered, not merely told the task was
+        # commented on, so they get `task.replied` and drop out of the generic fan-out. Everyone
+        # else in the task's audience gets `task.commented`, exactly as before.
         mentioned_set = set(mentioned)
-        commented = [
-            uid for uid in await self._comment_audience(task) if uid not in mentioned_set
-        ]
+        replied = (
+            [
+                uid
+                for uid in await self._thread_audience(task, parent_id)
+                if uid not in mentioned_set
+            ]
+            if parent_id
+            else []
+        )
+        heard = mentioned_set | set(replied)
+        commented = [uid for uid in await self._comment_audience(task) if uid not in heard]
         if commented:
-            await self._emit_task("task.commented", task, commented, {"excerpt": excerpt})
+            # Leaving someone out of the recipient list is not enough to stop the general
+            # sentence reaching them: the fan-out unions in the task's *watchers*, and commenting
+            # auto-watches, so everyone in `heard` is very likely watching. `_exclude` is what
+            # actually says "these people already heard it, in better words" (#312) — which also
+            # closes the same hole for a mentioned watcher, who used to get both.
+            await self._emit_task(
+                "task.commented",
+                task,
+                commented,
+                {"excerpt": excerpt, "_exclude": list(heard)},
+            )
+        if replied:
+            # Same rule one rung up: a mentioned person in this thread is watching it, so the
+            # reply would reach them as a watcher despite being left out of the list.
+            await self._emit_task(
+                "task.replied",
+                task,
+                replied,
+                {"excerpt": excerpt, "_exclude": list(mentioned_set)},
+            )
         if mentioned:
             await self._emit_task("task.mentioned", task, mentioned, {"excerpt": excerpt})
         return CommentRead.model_validate(comment).model_copy(
@@ -1434,6 +1685,29 @@ class TaskService:
         if task.assignee_user_id is not None:
             authors.add(task.assignee_user_id)
         return list(authors)
+
+    async def _thread_audience(self, task: Task, root_id: uuid.UUID) -> list[uuid.UUID]:
+        """Who is in *this thread*: whoever opened it and everyone who has answered in it (#312).
+
+        Deliberately **not** the assignee. A reply answers the people holding the conversation;
+        an assignee who has never written in it is being told the task was commented on, which is
+        the sentence `task.commented` already says. Folding them in here would turn the whole
+        distinction back into one event with two names.
+        """
+        return list(
+            (
+                await self.ctx.session.execute(
+                    select(TaskComment.author_user_id)
+                    .where(
+                        TaskComment.org_id == self.ctx.org.id,
+                        TaskComment.task_id == task.id,
+                        or_(TaskComment.id == root_id, TaskComment.parent_id == root_id),
+                        TaskComment.author_user_id.is_not(None),
+                    )
+                    .distinct()
+                )
+            ).scalars()
+        )
 
     async def _comment_or_404(self, task_id: uuid.UUID, comment_id: uuid.UUID) -> TaskComment:
         comment = await self.ctx.repo(TaskComment).get_or_404(comment_id)
@@ -1477,6 +1751,30 @@ class TaskService:
         scope = None if comment.author_user_id == self.ctx.user.id else "any"
         self.ctx.require("tasks.comment.write", scope=scope)
         body = comment.body
+        # Deleting a thread opener takes its answers with it (``ON DELETE CASCADE``, #312), so the
+        # trail records how many words went with it — otherwise a five-message conversation
+        # vanishes behind a line describing one of them. Counted *before* the delete, obviously.
+        replies = await self.reply_count(task_id, comment_id) if comment.parent_id is None else 0
         await self.ctx.repo(TaskComment).delete(comment)
         # No id to link to — the row is gone. The excerpt is the only record of what was said.
-        await self._record(task_id, "comment_deleted", {"excerpt": _excerpt(body)})
+        await self._record(
+            task_id,
+            "comment_deleted",
+            {"excerpt": _excerpt(body), **({"replies": replies} if replies else {})},
+        )
+
+    async def reply_count(self, task_id: uuid.UUID, comment_id: uuid.UUID) -> int:
+        """How many answers a thread opener carries — what a delete would take with it (#312)."""
+        return int(
+            (
+                await self.ctx.session.execute(
+                    select(func.count())
+                    .select_from(TaskComment)
+                    .where(
+                        TaskComment.org_id == self.ctx.org.id,
+                        TaskComment.task_id == task_id,
+                        TaskComment.parent_id == comment_id,
+                    )
+                )
+            ).scalar_one()
+        )

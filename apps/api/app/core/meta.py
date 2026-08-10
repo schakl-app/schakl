@@ -22,6 +22,7 @@ from app.core.auth.models import User
 from app.core.currency import DEFAULT_CURRENCY, is_valid_currency
 from app.core.customfields import customizable_entity_types
 from app.core.entitlements.service import (
+    MCP_SKU,
     ensure_modules_enableable,
     license_state,
     licensed_skus,
@@ -135,6 +136,23 @@ async def _module_entitlements() -> dict[str, list[str]]:
     }
 
 
+async def _mcp_availability() -> tuple[bool, bool]:
+    """``(mcp_enabled, mcp_entitled)`` — whether ``/mcp`` exists, and whether it answers.
+
+    Deliberately *not* folded into ``licensed_modules``: that list is filtered to registry
+    modules and MCP is core code with its own sku (``entitlements.service.MCP_SKU``), so the
+    web had no way at all to ask this question. It needs one, because Instellingen → API en
+    MCP hands out a ``claude mcp add`` line: on an instance where ``SCHAKL_MCP_ENABLED`` is
+    false the endpoint is not mounted, and without the sku ``LicenseGateASGI`` refuses the
+    whole surface — either way the command we printed would fail in the user's terminal with
+    no screen having said so first (#253, "a link that always refuses is a broken control").
+    """
+    if not settings.mcp_enabled:
+        return False, False
+    state = await license_state()
+    return True, state.writable(MCP_SKU)
+
+
 _HEX_COLOR = r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
 
 
@@ -188,6 +206,11 @@ class ModulesMeta(BaseModel):
     # Instance posture (epic #199): "self_hosted" or "cloud". The web routes the apex host
     # to the instance console (instead of a tenant) only on cloud.
     deployment: str = "self_hosted"
+    # The MCP surface (CLAUDE.md §12, docs/MCP.md): mounted at all, and covered by a license.
+    # Instellingen → API en MCP renders its connection guide from these — see
+    # ``_mcp_availability``. Instance capability, no tenant data, like every field here.
+    mcp_enabled: bool = False
+    mcp_entitled: bool = False
     # The instance-level e-mail transport is configured (config.py) **and the resolved org is
     # entitled to it** (``orgs.email_included``): Instellingen → E-mail offers "included
     # e-mail" and an org without its own transport falls back to it. Instance-wide on a host
@@ -543,6 +566,7 @@ async def modules(request: Request) -> ModulesMeta:
             oidc_name = row.oidc_name if row is not None and oidc_enabled else None
             local_login_enabled = sso.local_login_enabled_for(row)
             instance_email_available = instance_email_available and org.email_included
+    mcp_enabled, mcp_entitled = await _mcp_availability()
     return ModulesMeta(
         enabled_modules=[m.name for m in registry.enabled(settings.enabled_modules)],
         customizable_entity_types=customizable_entity_types(),
@@ -555,6 +579,8 @@ async def modules(request: Request) -> ModulesMeta:
         **(await _module_entitlements()),
         deployment=settings.deployment,
         instance_email_available=instance_email_available,
+        mcp_enabled=mcp_enabled,
+        mcp_entitled=mcp_entitled,
     )
 
 

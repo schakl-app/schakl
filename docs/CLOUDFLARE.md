@@ -78,6 +78,46 @@ synced none (`client.ZONE_CAPABILITIES`, rendered as *niet gecontroleerd*). "We 
 "not granted" send an admin to different places, which is §6's rule about Pages links stated
 about a token instead of a hostname.
 
+### Failing softly is not the same as forgetting
+
+Every probe fails softly, and until `capability_errors` each one also **discarded what Cloudflare
+said**. A refused capability was recorded as a bare `False`: no status, no code, no text, nowhere —
+not on the row, not in a log. On the screen that is *"DNS van een zone lezen: niet toegekend"*, one
+sentence that reads as *add this permission* whatever actually happened, printed beside a Cloudflare
+token screen that grants DNS Read. Nothing about it can be checked, so the only move left is
+re-minting a credential that was never the problem — the same dead end as 9109, arrived at from the
+other direction.
+
+`probe_capabilities` now returns a third value, capability → `describe_failure(exc)`: **status,
+numeric code and Cloudflare's own words**. All three matter and none of them is in `str(exc)` —
+*"Actor is not authorized"* is a scope to add, a `400` naming a query parameter is our bug, `9109`
+is neither. It is stored on the account beside `capabilities`, keyed identically, replaced whole by
+each verify (a stale explanation beside a fixed permission is worse than none) and rendered under
+the ✗ list. Cloudflare's text is untranslatable and never enters an error envelope (§9); it is
+evidence, and it goes where the ✗ is — the rule `last_error` already follows on the redirect panel.
+
+Same reasoning one layer out, for `sync`: a Pages or Registrar read that fails is collected into
+`warnings`, and the settings screen worded only two known keys and dropped the rest. So an
+unreadable Pages list and an empty one both printed *"0 Pages-projecten"* — §17's "a silent zero
+reads exactly like nothing found", against the one number an agency uses to decide whether the
+integration works. Whatever the screen cannot word itself is now printed in Cloudflare's words.
+
+**Two things the zone probes still cannot settle**, and both need a live credential rather than a
+guess (the `docs/OXXA.md` §1 pattern):
+
+- **`per_page` is gone from them.** A probe should differ from the call it stands in for as little
+  as possible, and `per_page=1` was the only thing here that no real call does — `paginate` sends
+  50. Cloudflare's current OpenAPI schema declares `minimum: 1` for `dns-records_per_page`, so it
+  *should* be accepted; the retired `api.cloudflare.com` reference documented a minimum of **5** for
+  that same endpoint. "Should" is not evidence, and the parameter bought nothing.
+- **`GET /zones/{id}/dns_records` answers auth failures with `400`, not `401`/`403`** — observed
+  directly: a bogus token gets `400` with code `9106`, *"Authentication failed"*. `_unwrap` classes
+  only 401/403 as `CloudflareAuthError`, so a genuine *scope* problem on this endpoint would surface
+  as `errors.cloudflare_request_failed` (and a `502`, which blames Cloudflare) rather than as the
+  scope message. Not mapped yet on purpose: whether `9106` also means "this token may not do this
+  here", or only "this is not a token", is exactly the kind of thing this module has twice guessed
+  wrong. The probe now records the code, so the next real occurrence answers it.
+
 ### No probe is the gate
 
 Cloudflare has **two kinds of API token and they do not verify at the same URL**. A *user* token
@@ -260,6 +300,41 @@ client. A domain marked `redirect` here with nothing behind it at Cloudflare is 
 webhook-era state this whole module exists to replace, and it was the one state with no way to
 discover it. The not-connected branch now renders the same list minus `not_connected`, which the
 paragraph above it already says.
+
+### Reporting a rule you cannot claim is half an answer
+
+`redirect_conflict` named the rule an agency inherits and offered nothing to do about it, and the
+one button on the screen made things *worse*: saving appends a second rule to the same phase, where
+Cloudflare takes the first match top-down — so the obvious press left a client's zone with two
+redirects and, quite possibly, no change in behaviour at all. Meanwhile `domain_says_redirect` sat
+underneath saying the domain redirects and schakl owns nothing, which was true and unfixable.
+
+`POST /domains/{id}/redirect/adopt` closes it: schakl takes ownership of the rule that is already
+there. Each half is a refusal, and each one is why this is safe to put on a client's live zone.
+
+- **It writes nothing at Cloudflare.** Adoption is a claim about a rule, not a change to it —
+  nothing created, updated, re-ordered or deleted. The worst case of a wrong adoption is a wrong
+  row here, which one delete undoes; the test asserts the whole call makes no non-`GET` request.
+- **Only a rule identical to what we would have written** (`rules.compare` against
+  `rules.build_rule` — the *same* builder the save uses, via `_desired_rule`, or the comparison
+  would be against a rule schakl does not actually write). "Adopt whatever is there" would import
+  somebody's 302-with-query-dropped as this domain's redirect, and the next ordinary save would
+  then "fix" a live client's redirect to something nobody asked for. A difference comes back as
+  `errors.cloudflare_redirect_differs` **with the field names**, so the admin either matches the
+  intent to the rule or saves and overwrites it deliberately.
+- **Never over a rule we already own.** If our stored rule is still live, adopting another would
+  orphan ours — a rule on a client's zone that nothing here knows about, which is the state §3
+  exists to prevent.
+- **By id, never by description** (`find_our_rule`), so a rule that vanished between the report and
+  the press is a 404 rather than a stored redirect pointing at nothing.
+
+The panel offers it on the conflict row itself, and only where it can succeed: not for a Page Rule
+(a different product this module cannot write) and not while we own a live rule — #253's rule that
+a control which always refuses is a broken control. The intent it submits is the redirect form's
+own fields, which now seed from `domain_redirect_url` when no rule of ours exists: that is exactly
+the inherited state, and an empty box there meant retyping a URL both sides already know.
+`last_pushed_at` stays `NULL` on an adopted row — we did not push it, and that distinction is the
+feature.
 
 ### The delegation verdict is tri-state, and half of it is not Cloudflare's to give
 

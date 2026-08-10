@@ -45,9 +45,36 @@
   const canWrite = $derived(can(page.data.user, "projects.project.write"));
   const canDelete = $derived(can(page.data.user, "projects.project.delete"));
 
-  const companyName = $derived((id: string | null | undefined) =>
-    id ? (data.companies.find((c) => c.id === id)?.name ?? "") : "",
-  );
+  // --- grouped by client -----------------------------------------------------
+  // The same shape as the contacts list: the sections are the clients *on this page*,
+  // alphabetically, with the clientless rows last. Built from the rows and never from the client
+  // picker — that list is capped at 200 and sorted by name, so on a larger tenant it would both
+  // invent empty sections and drop real projects into "Overig".
+  //
+  // A project has exactly one client, so `groupBy` returns one key (contacts return several,
+  // because a person may sit under two clients). The Klant column stays: the heading names the
+  // client, the cell is what links to it. It already carries no `sortKey` (see `columns.ts`) —
+  // a sort orders rows *within* a section and never reorders the sections (docs/UX.md).
+  const NO_COMPANY = "__no_company";
+  const groups = $derived.by(() => {
+    // A plain record, not a Map: `svelte/prefer-svelte-reactivity` rejects a mutated Map even in
+    // a derived, and this one is a throwaway index rather than state.
+    const named: Record<string, string> = {};
+    let unattached = false;
+    for (const project of data.projects) {
+      // `company_name` comes from the API beside `company_id` — one batched lookup for the page.
+      if (project.company_id) named[project.company_id] = project.company_name ?? "";
+      else unattached = true;
+    }
+    const sections = Object.entries(named)
+      .map(([key, label]) => ({ key, label, collapsible: true }))
+      .sort((a, b) => a.label.localeCompare(b.label, data.locale));
+    if (unattached)
+      sections.push({ key: NO_COMPANY, label: t("projects.group.no_company"), collapsible: true });
+    return sections;
+  });
+
+  const groupOf = (project: Project): string => project.company_id ?? NO_COMPANY;
 
   // Create-then-edit still (docs/UX.md Principle 3) — the one thing asked up front is the
   // client, because a project without one no longer exists: the API refuses it, and the
@@ -161,10 +188,10 @@
 {/snippet}
 
 {#snippet companyCell(project: Project)}
-  {#if companyName(project.company_id)}
+  {#if project.company_id}
     <a
       href="/companies/{project.company_id}"
-      class="block truncate text-text-muted hover:text-brand">{companyName(project.company_id)}</a
+      class="block truncate text-text-muted hover:text-brand">{project.company_name}</a
     >
   {:else}<span class="text-text-muted">—</span>{/if}
 {/snippet}
@@ -229,12 +256,9 @@
   <!-- A phone gets the concept's row, not a sideways-scrolling grid (docs/UX.md). -->
   <div class="flex items-center gap-3">
     <a href="/projects/{project.id}" class="min-w-0 flex-1">
-      <span class="block truncate">
-        <span class="font-medium text-text">{project.name}</span>
-        {#if companyName(project.company_id)}
-          <span class="ml-2 text-sm text-text-muted">· {companyName(project.company_id)}</span>
-        {/if}
-      </span>
+      <!-- No client suffix here: the phone list keeps the sections, so the row already sits
+           under its client's heading and repeating it costs the name its width. -->
+      <span class="block truncate font-medium text-text">{project.name}</span>
       {#if table.visibleKeys.includes("hours") && project.hours}
         <span class="mt-0.5 block text-xs"><HoursCell hours={project.hours} /></span>
       {/if}
@@ -344,6 +368,13 @@
 
 <BulkResult result={form?.bulkResult} />
 
+{#if data.total > data.paging.limit}
+  <!-- Sectioned by client, "Acme (2)" above a client that has seven projects reads as the whole
+       answer. The pager below says which slice this is, but the *group counts* still need saying
+       out loud — a cap is reported, never silent (docs/PERFORMANCE.md). -->
+  <p class="mb-3 text-sm text-text-muted">{t("projects.groups_page_only")}</p>
+{/if}
+
 <DataTable
   rows={data.projects}
   columns={table.columns}
@@ -351,6 +382,10 @@
   widths={table.widths}
   definitions={data.definitions}
   locale={data.locale}
+  {groups}
+  groupBy={groupOf}
+  collapsed={table.collapsed}
+  oncollapse={table.onCollapse}
   rowHref={(project) => `/projects/${project.id}`}
   actions={canWrite || canDelete ? rowActions : undefined}
   {mobileRow}

@@ -102,6 +102,18 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     group: "personal",
   },
   {
+    // Personal API keys + the MCP connection guide. Its own screen rather than the card it was
+    // on Mijn account: a staged flow with a one-shot secret reveal in the middle is not a field
+    // you fill in and save, and the MCP surface had no home in the product at all.
+    key: "api",
+    href: "/settings/api",
+    titleKey: "settings.api.title",
+    subtitleKey: "settings.api.subtitle",
+    keywordsKey: "settings.search.api",
+    group: "personal",
+    permissions: ["apikeys.personal.manage"],
+  },
+  {
     key: "notifications",
     href: "/settings/notifications",
     titleKey: "settings.notifications.title",

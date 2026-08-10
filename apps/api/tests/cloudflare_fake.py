@@ -63,6 +63,12 @@ class FakeCloudflare:
         self.registrar: dict[str, list[dict]] = {}
         #: Path fragments this token is not allowed to touch → 403.
         self.deny: set[str] = set()
+        #: Path fragment → ``(status, message, code)``, for a refusal that is **not** about the
+        #: token: a query parameter Cloudflare will not take, a product not enabled on the
+        #: account, a 5xx. ``deny``'s 403 is the easy case and the one every test reached for;
+        #: this is the case that produced a bare ✗ with nothing to diagnose it by, because a
+        #: non-auth failure is exactly what the capability probe used to swallow whole.
+        self.fail: dict[str, tuple[int, str, int | None]] = {}
         #: Model an **account-owned** API token: ``GET /user/tokens/verify`` refuses it with the
         #: same 401/1000 it gives a dead token, while every other call it is scoped for works.
         #: It verifies at ``GET /accounts/{id}/tokens/verify`` instead. Cloudflare's real
@@ -84,6 +90,9 @@ class FakeCloudflare:
         self.ip_blocked: str | None = None
         #: Every (method, path) that arrived, for asserting what was *not* called.
         self.calls: list[tuple[str, str]] = []
+        #: The same calls with their query string, for asserting *how* something was asked. Kept
+        #: apart from ``calls`` so the many tests that match a bare path keep reading plainly.
+        self.queries: list[tuple[str, str]] = []
 
     # --- fixtures ---------------------------------------------------------------------- #
     def add_zone(
@@ -190,6 +199,7 @@ class FakeCloudflare:
         path = request.url.path[len(PREFIX):]
         method = request.method
         self.calls.append((method, path))
+        self.queries.append((path, request.url.query.decode()))
         token = request.headers.get("Authorization", "").removeprefix("Bearer ")
         if self.malformed_token:
             return _err(400, "Invalid format for Authorization header", 6003)
@@ -208,6 +218,9 @@ class FakeCloudflare:
         for fragment in self.deny:
             if fragment in path:
                 return _err(403, "Actor is not authorized to perform this action", 10000)
+        for fragment, (status, message, code) in self.fail.items():
+            if fragment in path:
+                return _err(status, message, code)
         body = json.loads(request.content) if request.content else {}
         parts = [p for p in path.split("/") if p]
 

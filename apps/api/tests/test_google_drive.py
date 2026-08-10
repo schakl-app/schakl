@@ -84,6 +84,7 @@ async def _seed(
     automation: bool = False,
     parent_folder: str | None = "parent-1",
     shared_drive: str | None = "sd-1",
+    drive_scope: bool = True,
 ):
     async with async_session_maker() as session:
         await set_current_org(session, tenant.org.id)
@@ -103,7 +104,7 @@ async def _seed(
                 user_id=tenant.user.id,
                 google_sub="sub",
                 email="me@agency.nl",
-                scopes=["openid", "email", SCOPE_DRIVE],
+                scopes=["openid", "email", *([SCOPE_DRIVE] if drive_scope else [])],
                 refresh_token_encrypted=encrypt("rt"),
             )
         )
@@ -240,6 +241,69 @@ async def test_browse_caches_and_refresh_busts(client_for, monkeypatch) -> None:
             "/api/v1/google/drive/browse", params={"refresh": True}, headers=headers
         )
         assert refreshed.status_code == 200 and stub2.script == []
+
+
+def _google_error(status_code: int, reason: str | None, message: str) -> _StubResponse:
+    """A Drive refusal shaped like Google's, so the reason survives to the response body."""
+    body: dict = {"error": {"code": status_code, "message": message, "status": "PERMISSION_DENIED"}}
+    if reason:
+        body["error"]["details"] = [{"reason": reason}]
+    response = _StubResponse(status_code, body)
+    real = httpx.Response(
+        status_code,
+        json=body,
+        request=httpx.Request("GET", "https://www.googleapis.com/drive/v3/files"),
+    )
+
+    def _raise() -> None:
+        raise httpx.HTTPStatusError("boom", request=real.request, response=real)
+
+    response.raise_for_status = _raise  # type: ignore[method-assign]
+    return response
+
+
+async def test_browse_reports_googles_own_reason_not_a_500(client_for, monkeypatch) -> None:
+    """A Drive 403 is three different problems; the picker must say which (#21 follow-up)."""
+    t = await make_tenant("gdrive-403")
+    await _seed(t)
+    headers = await auth_cookie(t.user)
+    monkeypatch.setattr("app.modules.google.drive.service.get_redis", lambda: _FakeRedis())
+
+    cases = [
+        (
+            "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
+            "Request had insufficient authentication scopes.",
+            "errors.google_drive_scope_missing",
+        ),
+        (
+            "SERVICE_DISABLED",
+            "Google Drive API has not been used in project 123 before or it is disabled.",
+            "errors.google_drive_api_disabled",
+        ),
+        (None, "The user does not have sufficient permissions for this file.",
+         "errors.google_drive_forbidden"),
+    ]
+    async with client_for(t.host) as c:
+        for reason, message, expected in cases:
+            stub = _StubClient([("GET", _google_error(403, reason, message))])
+            monkeypatch.setattr(
+                "app.modules.google.drive.service.acting_as", _stub_acting_as(stub)
+            )
+            response = await c.get("/api/v1/google/drive/browse", headers=headers)
+            # 409, never 500: every one of these is a state someone can fix.
+            assert response.status_code == 409, response.text
+            assert response.json()["error"]["message"] == expected
+
+
+async def test_browse_refuses_a_connection_without_the_drive_scope(client_for) -> None:
+    """No round-trip needed: the connection row already proves Drive was never consented to."""
+    t = await make_tenant("gdrive-noscope")
+    await _seed(t, drive_scope=False)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        response = await c.get("/api/v1/google/drive/browse", headers=headers)
+        assert response.status_code == 409, response.text
+        assert response.json()["error"]["message"] == "errors.google_drive_scope_missing"
 
 
 async def test_company_created_queues_folder_and_worker_provisions(monkeypatch) -> None:

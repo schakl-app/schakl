@@ -171,12 +171,41 @@
   concept appears.
 - **Drag-and-drop with graceful fallback**: reorder tasks and dashboard tiles by dragging
   (fractional `position` midpoints — never renumber); keep an arrow/menu alternative where
-  dragging is impractical.
+  dragging is impractical. The arrows are not a fallback nobody uses — they are the only reorder a
+  keyboard or a screen reader can reach, so both gestures ship together and both produce the same
+  thing.
+  **A short, bounded list states the whole order instead** (a task's checklists and the items
+  inside one, `POST …/checklists/order`): midpoints exist to avoid a large write, and there is no
+  large write here — a handful of rows renumber in one statement, which is also the only shape that
+  cannot half-apply or drift between two clients trading midpoints. The payload is a statement
+  about *order*, never about membership: a row it omits keeps its relative place after the named
+  ones, so a list a colleague added mid-drag is appended rather than dropped or 409'd.
+  Two traps in the Svelte half, each of which shipped a bug once (`tasks/[id]/+page.svelte`):
+  **`$state([])` filled by an `$effect` server-renders nothing** — an effect does not run on the
+  server, so the whole section appeared a frame after hydration — while **a writable `$derived`
+  renders but hands `svelte-dnd-action` an array it does not own, and the drag never starts.**
+  Initialise the state inline *and* re-arm it from the record with an effect. And a zone whose rows
+  hold checkboxes, menus or inputs stays `dragDisabled` until a grip takes the pointer down, with
+  its **own** flag per nesting level — one shared flag lets an item's grip arm the list around it.
 - **Every dashboard widget is a bordered card, via `core/ui/DashboardWidgetCard`** (#166). The
   dashboard grid wraps each tile in a bare `<div>` — the card chrome (border, `bg-surface-raised`,
   padding, title row with an optional "show all" link) is the widget's own responsibility, and the
   shared wrapper is how it stops being re-typed per widget. Both the empty and the populated state
   render inside the card; a bare `<p>` sitting naked in the grid is the bug this rule exists for.
+- **Nothing on a dashboard tile is a dead end** (#15, extended). A tile exists to be left: a
+  *record* it names opens that record, and an *aggregate* opens the list it is a total of — with
+  the filter that makes the two numbers agree, not the module's front door. So a per-client count
+  carries `company_id`, an overdue badge adds `due=overdue`, "team deze maand" splits into the
+  time report and the omzet page, and a client's next invoice opens the subscriptions list
+  filtered to them. Two rules keep it honest. **A bucket with no record behind it still needs a
+  destination**: the open-tasks tile's "everything hanging off no client and no project" row had
+  none, so the API grew `?unlinked=1` — inventing the filter is the fix, dumping the reader on an
+  unfiltered list is not. And **a fallback label may never be a word a tenant could have used**:
+  that same row borrowed `time.general` ("Algemeen"), which read as a real project, sat beside
+  real projects, and on an instance that *had* one appeared twice. It says
+  `tasks.filter.unlinked` now — the same words as the chip on the list it opens, so the
+  destination confirms where you landed. The only text left unlinked is empty-state copy and a
+  restatement of a figure already linked beside it.
 - **Record actions live behind the ⋯ menu, never as bare buttons.** Every record-level
   **Edit** and **Delete** (on a list row, a card, or a detail header) is reached through the
   shared overflow menu (`core/ui/ActionsMenu`, the ⋯ / three-dots kebab) — never a standalone
@@ -194,6 +223,19 @@
   routine thing that happens on a task, was invisible (#61). And a row says *what* happened:
   a comment entry carries an excerpt and links to the comment, rather than reading "commented"
   and sending the reader hunting.
+- **A comment thread is one level deep, and answering is not "editing"** (#312). Replies hang off
+  their opener under a single left rule at one indent — a second level indents itself off a phone
+  and gives two readers two different reading orders, so the API *re-roots* a reply-to-a-reply
+  onto the same thread rather than refusing it. **Reply** is therefore an ordinary inline control
+  under the message (use mode), not an ⋯ item; the ⋯ menu stays for Edit/Delete. Opener and answer
+  render through **one snippet** — they differ in where they sit and how loud they are, never in
+  what they can do — and the reply composer seeds an `@mention` of whoever is being answered, so a
+  thread with three people in it still says who a given answer is for. Two consequences to keep:
+  deleting an opener **takes its answers with it** (`ON DELETE CASCADE`), so the confirm counts
+  them out loud and the activity row says how many — an undo-less delete may never describe one
+  comment while five disappear; and the composer keeps its draft on failure and closes only on
+  success (`update({ reset: result.type === "success" })`), because the words are not the server's
+  to throw away.
 - **Edit on a list row opens the record in edit mode** (#78). A list has no edit surface of its
   own — the form lives on the detail page, and duplicating it onto the overview would be a second
   copy to keep in sync. So the row ⋯ → Bewerken is a *link* to the detail page carrying `?edit=1`
@@ -881,6 +923,34 @@
   declared permission, base key only (a scoped `:own` holder must still see their button). The
   ⋯ menu hides entirely when no item survives; `DataTable` gets `actions={... ? rowActions :
   undefined}` so the empty column disappears too.
+- **The base key on a control that belongs to a *row*.** "Base key only" is right for the list's
+  own controls — Nieuw, the bulk ✎, the section's tabs — and wrong for every control attached to
+  one record, because that is the layer where the API refines the scope. `tasks.task.write:own`
+  means **assignee** (#12), and it is what the seeded `member` role holds: so
+  `can(user, "tasks.task.write")` answered `true` on every row, and the tasks list drew a live
+  complete-toggle on all forty of a member's colleagues' tasks, the card offered them ⋯ →
+  Bewerken, and every checklist tick posted a 403. So a control the service refines per row asks
+  per row — `canWriteTask(page.data.user, task)`
+  (`$lib/modules/tasks/permissions.ts`, the browser's mirror of
+  `TaskService._ensure_task_writable`), the same shape the calendar's task feed already used for
+  `draggable` (`mine ? writeOwn : writeAny`). Two corollaries. A **shared row component**
+  self-gates on the row it was handed, so no caller can reintroduce it. And a control over a
+  *set* of rows — the project to-do's drag-reorder — needs the write on **every** row in it: a
+  list you can reorder halfway is worse than a plain one, because the handles claim the order is
+  yours to set. The API is still the boundary; what this fixes is a screen that lied about it.
+- **Panels composed for everyone, whatever the viewer may read.** Nav items and dashboard widgets
+  have always declared `requiresPermission`; contributed detail-page panels did not, so a contact,
+  project or task page rendered every enabled module's panel for every viewer — a member without
+  `interactions.interaction.read` got an empty *Contactmomenten* block, with its create control
+  beside the heading and a wasted 403 behind it. `EntityPanelSpec.requiresPermission` closes it,
+  and `entityPanelsFor(enabled, entityType, user)` takes the viewer as a **required** argument
+  rather than an optional one, because an optional one is exactly how the next detail page ships
+  the ungated version. The browser-side "which component draws this key" lookup is a separate
+  function (`entityPanelComponent`) that needs no viewer — the load already decided. Skipping the
+  panel skips its `load`, so this is a round-trip saved as well as a lie removed. Omit the
+  declaration only where the endpoint needs no permission, or where the panel deliberately draws
+  its own refusal state because that state is worth telling apart from an empty one (`oxxa`
+  distinguishes "you may not look" from "there is no register account yet").
 - **A write control that leaks to the client portal because it's a *shared* component or a
   "use-mode" affordance.** The portal (a `client`-role login, #193) is not a separate UI: it
   renders the **same** components as staff, and detail pages compose them without a portal filter —

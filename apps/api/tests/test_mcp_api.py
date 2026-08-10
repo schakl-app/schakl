@@ -134,3 +134,28 @@ async def test_mcp_rejects_anonymous_tool_calls(client_for) -> None:
             c, "tools/call", {"name": "list_companies", "arguments": {}}, auth={}
         )
         assert result["result"].get("isError") is True
+
+
+async def test_meta_modules_advertises_the_mcp_surface(client_for, monkeypatch) -> None:
+    """``/meta/modules`` says whether ``/mcp`` is mounted, and whether it is licensed.
+
+    Instellingen → API en MCP prints a ``claude mcp add`` line from these two flags. They
+    cannot come from ``licensed_modules``, which is filtered to registry modules — MCP is
+    core code with its own sku — so without them the screen would hand out a command that
+    fails in the user's terminal on an instance where the surface is switched off.
+    """
+    from app.config import settings
+
+    t = await make_tenant("mcp-meta")
+    async with client_for(t.host) as c:
+        body = (await c.get("/api/v1/meta/modules")).json()
+        assert body["mcp_enabled"] is True
+        # No license installed in tests: the bootstrap window still covers the surface, so
+        # "enabled" and "entitled" agree here. What matters is that they are asked separately.
+        assert body["mcp_entitled"] is True
+
+        monkeypatch.setattr(settings, "mcp_enabled", False)
+        off = (await c.get("/api/v1/meta/modules")).json()
+        assert off["mcp_enabled"] is False
+        # Never "unmounted but licensed": the screen must not offer a command either way.
+        assert off["mcp_entitled"] is False

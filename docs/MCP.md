@@ -62,8 +62,17 @@ for clients that require the full OAuth flow, without touching the tool surface.
 
 ## Connecting a client
 
-Mint a key under **Instellingen → Account → API-sleutels** (personal) or **Instellingen →
-Service-accounts** (headless), selecting the permissions the AI may exercise.
+**Instellingen → API en MCP** (`settings/api`) is the screen: pick what you are connecting, pick
+what the key may do, and it prints the connection for that client with the freshly minted secret
+already in it. Headless keys that belong to no person stay under **Instellingen →
+Service-accounts**.
+
+It is a screen rather than the card it used to be at the bottom of Mijn account, and the reason
+generalises: **a credential shown once has to arrive with its instructions**. The old card handed
+back a secret and stopped — and the word "MCP" appeared nowhere in the web app at all, so the
+surface documented here was, in the product, undiscoverable. The flow now ends where it used to
+begin, and the read-first rule below is a *default on a radio button* instead of a paragraph
+someone had to find.
 
 Claude Code:
 
@@ -74,6 +83,16 @@ claude mcp add --transport http schakl https://<your-domain>/mcp \
 
 Any other Streamable-HTTP client: endpoint `https://<your-domain>/mcp`, header
 `Authorization: Bearer schakl_…` (or `X-API-Key: schakl_…`).
+
+**The screen asks whether the surface is there before it offers the command.** `/meta/modules`
+carries `mcp_enabled` (is `/mcp` mounted at all — `SCHAKL_MCP_ENABLED`) and `mcp_entitled` (does
+the license cover the `mcp` sku, which `LicenseGateASGI` enforces on the whole mount). Neither
+could come from `licensed_modules`: that list is filtered to registry modules and MCP is core
+code with its own sku, so nothing in the payload could answer the question. Without them the
+guide would print a `claude mcp add` line that fails in the user's terminal on an installation
+that never had the surface — #253's "a link that always refuses is a broken control", except the
+refusal happens somewhere the app cannot see it. When either flag is false the AI-assistant
+option is still *shown*, and says which of the two is missing; it just is not a button.
 
 ## Design notes
 

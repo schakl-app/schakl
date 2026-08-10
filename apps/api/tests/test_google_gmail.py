@@ -41,6 +41,9 @@ def test_participants_direction_and_relevance() -> None:
 
     assert matching.direction_of(["SENT"]) == "outbound"
     assert matching.direction_of(["INBOX", "UNREAD"]) == "inbound"
+    # A colleague Bcc'd on our own outgoing mail holds an INBOX copy with no SENT label.
+    # Reading the label alone files it as though the client had written to us.
+    assert matching.direction_of(["INBOX"], sender_internal=True) == "outbound"
 
     assert not matching.is_relevant(["DRAFT"], None)
     assert not matching.is_relevant(["INBOX", "Label_7"], "Label_7")  # the opt-out label
@@ -51,6 +54,37 @@ def test_participants_direction_and_relevance() -> None:
     internal = [{"email": "me@agency.nl"}, {"email": "collega@agency.nl"}]
     assert matching.internal_only(internal, members)
     assert not matching.internal_only(participants, members)
+
+
+def test_intended_owner_reads_the_headers_not_the_mailbox() -> None:
+    """Whose email is this? Never "whoever's poll ran first"."""
+    ours = {"luka@agency.nl", "info@agency.nl", "jan@agency.nl"}
+
+    # Outgoing: the sender owns it, however many colleagues were copied in.
+    sent = matching.parse_participants(
+        {"From": "Luka <luka@agency.nl>", "To": "klant@client.nl", "Cc": "info@agency.nl"}
+    )
+    assert matching.intended_owner(sent, ours) == "luka@agency.nl"
+
+    # Incoming: the first colleague in To, in header order — not the Cc'd shared mailbox,
+    # and not whichever of them happens to be listed first in `ours`.
+    received = matching.parse_participants(
+        {"From": "klant@client.nl", "To": "jan@agency.nl, info@agency.nl"}
+    )
+    assert matching.intended_owner(received, ours) == "jan@agency.nl"
+
+    cc_only = matching.parse_participants(
+        {"From": "klant@client.nl", "To": "ander@client.nl", "Cc": "info@agency.nl"}
+    )
+    assert matching.intended_owner(cc_only, ours) == "info@agency.nl"
+
+    # A Bcc'd copy names no colleague at all — Bcc is on nobody else's headers, which is
+    # exactly why such a copy must not claim the email.
+    bcc_only = matching.parse_participants(
+        {"From": "Luka <luka@agency.nl>", "To": "klant@client.nl"}
+    )
+    assert matching.intended_owner(bcc_only, {"info@agency.nl"}) is None
+    assert matching.intended_owner([], ours) is None
 
 
 def test_mapping_resolution_and_status_decision() -> None:
@@ -609,6 +643,188 @@ async def test_internal_mail_logs_pending_when_opted_in(client_for, monkeypatch)
         assert row.gmail_message_id == "msg-int"
         assert row.status == "pending"  # forced despite auto_approve — unmapped internal
         assert row.company_id is None and row.contact_id is None
+
+
+async def _colleague_mailbox(t, email: str, *, syncing: bool) -> uuid.UUID:
+    """A second member with their own Google grant, syncing or not."""
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        connection = GoogleConnection(
+            org_id=t.org.id,
+            user_id=(await _user_id_for(session, email)),
+            google_sub=f"sub-{email}",
+            email=email,
+            scopes=["openid", "email", SCOPE_GMAIL] if syncing else ["openid", "email"],
+            refresh_token_encrypted=encrypt("rt"),
+            gmail_sync_enabled=syncing,
+            gmail_history_id="5",
+        )
+        session.add(connection)
+        await session.commit()
+        return connection.id
+
+
+async def _user_id_for(session, email: str) -> uuid.UUID:
+    from sqlalchemy import text
+
+    return (
+        await session.execute(
+            text("SELECT id FROM users WHERE lower(email) = :e"), {"e": email.lower()}
+        )
+    ).scalar_one()
+
+
+async def _client_contact(c, headers, host_suffix: str) -> dict:
+    company = (
+        await c.post("/api/v1/companies", json={"name": "Client NL"}, headers=headers)
+    ).json()
+    await c.post(
+        "/api/v1/contacts",
+        json={
+            "first_name": "Klant",
+            "last_name": "Persoon",
+            "email": f"klant@{host_suffix}",
+            "company_ids": [company["id"]],
+        },
+        headers=headers,
+    )
+    return company
+
+
+async def test_a_bcc_copy_defers_to_the_senders_own_mailbox(client_for, monkeypatch) -> None:
+    """The bug this fixes: a shared mailbox Bcc'd on everything claimed every email.
+
+    One email, one row (the RFC-822 dedup), so the owner used to be whichever mailbox polled
+    first. ``info@`` won, the row read *inbound*, and — a pending row being private to its
+    owner with no admin escape — the colleague who actually wrote the mail could not see it
+    anywhere. The Bcc'd copy now stands aside so the sender's own copy logs it.
+    """
+    from tests.test_notification_channels import _member
+
+    t = await make_tenant("gmail-bcc-defer")  # the owner's mailbox is the shared info@ one
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await _member(c, headers, "luka@gmail-bcc-defer-example.nl")
+        await _client_contact(c, headers, "client.nl")
+    await _colleague_mailbox(t, "luka@gmail-bcc-defer-example.nl", syncing=True)
+
+    # info@'s copy of Luka's outgoing mail: an ordinary INBOX message naming only Luka and
+    # the client, because Bcc is on nobody's headers but the sender's own.
+    stub = _StubGmail(
+        history=["msg-bcc"],
+        messages={
+            "msg-bcc": _message(
+                "msg-bcc",
+                sender="Luka <luka@gmail-bcc-defer-example.nl>",
+                to="klant@client.nl",
+            )
+        },
+        history_id="9500",
+    )
+    assert await _poll(t, connection_id, stub, monkeypatch) == 0
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        assert (await session.execute(select(Interaction))).all() == []
+
+
+async def test_the_senders_own_copy_is_never_deferred(client_for, monkeypatch) -> None:
+    """A SENT copy is the sender's by definition — the deferral must never give it away,
+    or the one mailbox that should log an email would be the one that refuses to."""
+    t = await make_tenant("gmail-sent-keeps")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await _client_contact(c, headers, "client.nl")
+
+    stub = _StubGmail(
+        history=["msg-sent"],
+        messages={
+            "msg-sent": _message(
+                "msg-sent", sender=t.user.email, to="klant@client.nl", labels=["SENT"]
+            )
+        },
+        history_id="9600",
+    )
+    assert await _poll(t, connection_id, stub, monkeypatch) == 1
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        row = (await session.execute(select(Interaction))).scalar_one()
+        assert row.owner_user_id == t.user.id
+        assert row.direction == "outbound"
+
+
+async def test_a_copy_is_kept_when_the_owners_mailbox_will_never_poll(
+    client_for, monkeypatch
+) -> None:
+    """Standing aside is only safe for a mailbox that actually polls.
+
+    Luka holds a grant without the Gmail scope, so nothing of theirs is ever fetched. This
+    copy is the only one there will ever be: it logs here rather than being deferred into
+    oblivion — and it is *outbound*, read from the sender rather than from the SENT label
+    that a colleague's copy does not carry.
+    """
+    from tests.test_notification_channels import _member
+
+    t = await make_tenant("gmail-bcc-keep")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await _member(c, headers, "luka@gmail-bcc-keep-example.nl")
+        company = await _client_contact(c, headers, "client.nl")
+    await _colleague_mailbox(t, "luka@gmail-bcc-keep-example.nl", syncing=False)
+
+    stub = _StubGmail(
+        history=["msg-bcc"],
+        messages={
+            "msg-bcc": _message(
+                "msg-bcc",
+                sender="Luka <luka@gmail-bcc-keep-example.nl>",
+                to="klant@client.nl",
+            )
+        },
+        history_id="9700",
+    )
+    assert await _poll(t, connection_id, stub, monkeypatch) == 1
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        row = (await session.execute(select(Interaction))).scalar_one()
+        assert row.owner_user_id == t.user.id  # the only mailbox that has it
+        assert row.direction == "outbound"
+        assert row.company_id == uuid.UUID(company["id"])
+
+
+async def test_an_incoming_mail_defers_to_its_first_named_recipient(
+    client_for, monkeypatch
+) -> None:
+    """Incoming follows the same rule from the other end: To order is addressing order, so a
+    mail *to* Luka with the shared mailbox in Cc is Luka's, not whoever's poll ran first."""
+    from tests.test_notification_channels import _member
+
+    t = await make_tenant("gmail-to-defer")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await _member(c, headers, "luka@gmail-to-defer-example.nl")
+        await _client_contact(c, headers, "client.nl")
+    await _colleague_mailbox(t, "luka@gmail-to-defer-example.nl", syncing=True)
+
+    stub = _StubGmail(
+        history=["msg-in"],
+        messages={
+            "msg-in": _message(
+                "msg-in",
+                sender="klant@client.nl",
+                to="luka@gmail-to-defer-example.nl",
+                cc=t.user.email,
+            )
+        },
+        history_id="9800",
+    )
+    assert await _poll(t, connection_id, stub, monkeypatch) == 0
 
 
 async def test_poison_message_does_not_wedge_the_poll(client_for, monkeypatch) -> None:

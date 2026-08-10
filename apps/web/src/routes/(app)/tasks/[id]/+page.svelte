@@ -1,7 +1,17 @@
 <script lang="ts">
-  import { Link as LinkIcon, Pencil, Trash2 } from "@lucide/svelte";
+  import {
+    ArrowDown,
+    ArrowUp,
+    Copy,
+    GripVertical,
+    Link as LinkIcon,
+    Pencil,
+    Reply,
+    Trash2,
+  } from "@lucide/svelte";
+  import { dndzone } from "svelte-dnd-action";
 
-  import { enhance } from "$app/forms";
+  import { applyAction, enhance } from "$app/forms";
   import { page } from "$app/state";
   import { editIntent } from "$lib/core/edit-intent";
   import { fmtDateTime, fmtDayMonth } from "$lib/core/format";
@@ -22,11 +32,12 @@
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
   import { LABEL_COLORS, labelChipClass, labelDotClass } from "$lib/modules/tasks/labels";
+  import { canWriteTask } from "$lib/modules/tasks/permissions";
   import TaskAssigneePicker from "$lib/modules/tasks/TaskAssigneePicker.svelte";
   import TaskSchedulePanel from "$lib/modules/tasks/TaskSchedulePanel.svelte";
   import { formatMinutes } from "$lib/modules/time/format";
 
-  import { entityPanelsFor } from "$lib/core/registry";
+  import { entityPanelComponent } from "$lib/core/registry";
 
   let { data, form } = $props();
 
@@ -35,8 +46,7 @@
   // Panels contributed by enabled modules (CLAUDE.md §6) — contactmomenten, Drive, and
   // whatever ships later, composed exactly like the project page does.
   const enabledModules = $derived(page.data.theme?.enabledModules ?? []);
-  const panelSpecs = $derived(entityPanelsFor(enabledModules, "task"));
-  const panelComponent = (key: string) => panelSpecs.find((spec) => spec.key === key)?.component;
+  const panelComponent = (key: string) => entityPanelComponent(enabledModules, "task", key);
   const panelLookups = $derived({
     members: data.members,
     companies: data.companies,
@@ -77,11 +87,28 @@
   // mode (docs/UX.md), but they are still task writes (the API gates the item PATCH/POST on
   // `tasks.task.write`). A read-only portal client (#244) reaches this page for a client-visible
   // task, so the controls mirror the API: shown to a writer, read-only for everyone else.
-  const canWriteTask = $derived(can(page.data.user, "tasks.task.write"));
+  //
+  // `canWriteTask` refines by row (`:own` means assignee), which is the whole answer on a detail
+  // page: this screen is *about* one record, so every write control on it — the ⋯ → Bewerken
+  // included — asks about that record rather than about the module.
+  const canEditTask = $derived(canWriteTask(page.data.user, task));
+  // Deleting is its own, genuinely unscoped permission (admin by default): a `:own` assignee
+  // may finish their task, never destroy it. It was ungated here — the ⋯ menu offered Bewerken
+  // and Verwijderen to any staff viewer and let the API say no.
+  const canDeleteTask = $derived(can(page.data.user, "tasks.task.delete"));
+  // Commenting is a third key again, and the one thing a portal client *may* write (#193). It
+  // gates answering a comment too (#312) — a reply is a comment, posted by the same route.
+  const canComment = $derived(can(page.data.user, "tasks.comment.write"));
+  // Attaching a document is the storage core's permission, not the task's — the same split the
+  // project page already makes. Being allowed to edit the task is not being allowed to upload.
+  const canWriteFile = $derived(can(page.data.user, "files.file.write"));
   // Saving a checklist into the org-wide repository is a *different* capability from editing this
   // task — its own permission, held by nobody by default but admin. Without this gate a member in
   // edit mode was offered "Als sjabloon opslaan" and got a 403 for their trouble.
   const canSaveChecklistTemplate = $derived(can(page.data.user, "tasks.checklist_template.write"));
+  // Same story for the org's label vocabulary: applying labels to this task is a task write,
+  // minting a new one is `tasks.label.write`.
+  const canWriteLabels = $derived(can(page.data.user, "tasks.label.write"));
 
   // The org's configured status vocabulary (issue #62), from the /tasks layout load.
   const statuses = $derived(data.statuses);
@@ -93,12 +120,9 @@
   // task's own flag, or the terminal status's), the prompt says so instead of offering a move
   // that the API would refuse.
   let showFinishPrompt = $state(false);
-  const openItemCount = $derived(
-    (task.checklists ?? []).reduce(
-      (n, checklist) => n + (checklist.items ?? []).filter((item) => !item.done).length,
-      0,
-    ),
-  );
+  // `openItemCount` counts the rows the *screen* holds (`dndItems`, declared below) rather than
+  // the ones the load returned: a tick is optimistic now, so the record is a round trip behind
+  // the checkbox and counting it would arm the finish prompt one tick late.
   const finishStatus = $derived(statuses.find((s) => s.is_terminal) ?? null);
   const finishNeedsMoment = $derived(
     (task.requires_interaction || (finishStatus?.requires_interaction ?? false)) &&
@@ -206,8 +230,11 @@
   // recurrence, checklist structure, links and file attachments. Empty structural sections
   // don't render in use mode at all — their create forms live behind the pencil.
   // Arriving with the `?edit=1` marker (#78; a fresh create lands here with it, #230) opens
-  // edit mode once — never for a portal login, whose surface is use-only.
-  let editMode = $state(editIntent() && !(page.data.user?.isPortal ?? false));
+  // edit mode once — and only for someone who may actually edit *this* task. A URL is not a
+  // grant: the ⋯ that sets the marker is gated, but a pasted link would otherwise open a form
+  // whose every save 403s, for a portal login and for a `:own` holder on a colleague's task alike.
+  // svelte-ignore state_referenced_locally
+  let editMode = $state(editIntent() && canWriteTask(page.data.user, data.task));
   const busy = new InFlight();
   let confirmDelete = $state(false);
   // Inline create from the relation pickers (#115, docs/UX.md — per-picker definition of
@@ -226,8 +253,175 @@
   // Inline description editing for a checklist / a checklist item (issue #66), one at a time.
   let editingChecklistId = $state<string | null>(null);
   let editingItemId = $state<string | null>(null);
+
+  // ---------------------------------------------------------------------------------------- //
+  // Reordering checklists, and items inside one (edit mode)
+  //
+  // Order is structure, so it lives behind the pencil beside rename and delete — a to-do you
+  // dragged by accident while ticking it off is a change you did not ask for.
+  //
+  // Both gestures produce the same thing — the whole new order — and post it as one call, so a
+  // drag can never half-apply. Drag *and* arrows, because a drag is the only reorder a mouse
+  // wants and the arrows are the only one a keyboard or a screen reader has (docs/UX.md, the same
+  // pairing `ColumnPicker` and Instellingen → Dashboard already ship).
+  // ---------------------------------------------------------------------------------------- //
+  type ChecklistRow = NonNullable<typeof task.checklists>[number];
+  type ItemRow = NonNullable<ChecklistRow["items"]>[number];
+
+  // The arrays the drag zones own and mutate mid-gesture, **initialised inline and re-armed by an
+  // effect** — both halves are load-bearing, and each one alone ships a bug:
+  //   · a `$state([])` filled only by an `$effect` server-renders an empty section, because an
+  //     effect does not run on the server: every checklist appeared a frame after hydration;
+  //   · a writable `$derived` (`ColumnPicker`'s recipe) renders on the server but hands
+  //     `svelte-dnd-action` an array it does not own, and the drag never starts at all.
+  // The effect re-arms from the record on every load, so a saved order — or a colleague's edit —
+  // wins over the dragged-in-flight one.
+  // svelte-ignore state_referenced_locally
+  let dndChecklists = $state<ChecklistRow[]>([...(task.checklists ?? [])]);
+  // svelte-ignore state_referenced_locally
+  let dndItems = $state<Record<string, ItemRow[]>>(
+    Object.fromEntries((task.checklists ?? []).map((cl) => [cl.id, [...(cl.items ?? [])]])),
+  );
+  $effect(() => {
+    const lists = task.checklists ?? [];
+    dndChecklists = [...lists];
+    dndItems = Object.fromEntries(lists.map((cl) => [cl.id, [...(cl.items ?? [])]]));
+  });
+
+  /** Open to-dos across every list, counted off the rows on screen (see `showFinishPrompt`). */
+  const openItemCount = $derived(
+    Object.values(dndItems).reduce((n, items) => n + items.filter((i) => !i.done).length, 0),
+  );
+
+  // The zones stay disabled until a grip takes the pointer down — the rows hold checkboxes,
+  // menus and (while editing) text inputs, and a drag that starts anywhere would eat all three.
+  // Two flags, not one: pressing an item's grip must not also arm the checklist zone around it.
+  let dragChecklists = $state(false);
+  let dragItemsIn = $state<string | null>(null);
+
+  let checklistOrderForm: HTMLFormElement | undefined = $state();
+  let itemOrderForm: HTMLFormElement | undefined = $state();
+  let orderIds = $state("");
+  let orderChecklistId = $state("");
+
+  // Only ids the *record* still has: mid-drag the dnd zone inserts a shadow placeholder whose id
+  // is not a row's, and a list deleted in another tab is gone. Either would 404 the whole call.
+  function realIds(ids: string[], known: { id: string }[]): string[] {
+    return ids.filter((id) => known.some((row) => row.id === id));
+  }
+  function submitChecklistOrder(ids: string[]) {
+    const clean = realIds(ids, task.checklists ?? []);
+    if (clean.length === 0) return;
+    orderIds = clean.join(",");
+    // Next tick, so the hidden input carries the fresh value (the projects board's recipe).
+    setTimeout(() => checklistOrderForm?.requestSubmit(), 0);
+  }
+  function submitItemOrder(checklistId: string, ids: string[]) {
+    const stored = (task.checklists ?? []).find((cl) => cl.id === checklistId);
+    const clean = realIds(ids, stored?.items ?? []);
+    if (clean.length === 0) return;
+    orderChecklistId = checklistId;
+    orderIds = clean.join(",");
+    setTimeout(() => itemOrderForm?.requestSubmit(), 0);
+  }
+
+  /** Swap `id` with its neighbour `delta` away, or do nothing at the ends. */
+  function swapped(ids: string[], id: string, delta: number): string[] | null {
+    const index = ids.indexOf(id);
+    const target = index + delta;
+    if (index < 0 || target < 0 || target >= ids.length) return null;
+    const next = [...ids];
+    [next[index], next[target]] = [next[target], next[index]];
+    return next;
+  }
+  function moveChecklist(id: string, delta: number) {
+    const next = swapped(
+      dndChecklists.map((cl) => cl.id),
+      id,
+      delta,
+    );
+    if (next) submitChecklistOrder(next);
+  }
+  function moveItem(checklistId: string, id: string, delta: number) {
+    const next = swapped(
+      (dndItems[checklistId] ?? []).map((i) => i.id),
+      id,
+      delta,
+    );
+    if (next) submitItemOrder(checklistId, next);
+  }
+
+  function considerChecklists(e: CustomEvent<{ items: ChecklistRow[] }>) {
+    dndChecklists = e.detail.items;
+  }
+  function finalizeChecklists(e: CustomEvent<{ items: ChecklistRow[] }>) {
+    dndChecklists = e.detail.items;
+    dragChecklists = false;
+    submitChecklistOrder(dndChecklists.map((cl) => cl.id));
+  }
+  function considerItems(checklistId: string, e: CustomEvent<{ items: ItemRow[] }>) {
+    dndItems = { ...dndItems, [checklistId]: e.detail.items };
+  }
+  function finalizeItems(checklistId: string, e: CustomEvent<{ items: ItemRow[] }>) {
+    dndItems = { ...dndItems, [checklistId]: e.detail.items };
+    dragItemsIn = null;
+    submitItemOrder(
+      checklistId,
+      e.detail.items.map((i) => i.id),
+    );
+  }
   // Bumped after a comment is posted to remount (and so clear) the markdown editor.
   let newCommentKey = $state(0);
+
+  // --- comment threads (#312) ------------------------------------------------------------- //
+  // The API hands back one flat, chronological list carrying `parent_id`; the nesting is a
+  // display concern, so it is built here. Threads are one level deep by construction (the
+  // service re-roots a reply-to-a-reply), which is what lets this be a group-by rather than a
+  // recursive component — and what keeps a conversation readable at one indent on a phone.
+  type TaskComment = NonNullable<(typeof task)["comments"]>[number];
+  const threads = $derived.by(() => {
+    const list = task.comments ?? [];
+    const out: { root: TaskComment; replies: TaskComment[] }[] = [];
+    // uuid keys, so a plain record indexes them safely — and stays outside Svelte's reactivity
+    // rules, which a Map/Set built inside a $derived would trip for no benefit.
+    const at: Record<string, number> = Object.create(null);
+    const present: Record<string, true> = Object.create(null);
+    for (const c of list) present[c.id] = true;
+    for (const c of list) {
+      // A reply whose parent fell outside the response cap opens its own thread rather than
+      // vanishing: the read orders by thread so this is rare, but "nothing is shown" is never
+      // the better answer to "the conversation is longer than 200 messages".
+      const parent = c.parent_id && present[c.parent_id] ? c.parent_id : null;
+      const idx = parent === null ? undefined : at[parent];
+      if (idx === undefined) {
+        at[c.id] = out.length;
+        out.push({ root: c, replies: [] });
+      } else {
+        out[idx].replies.push(c);
+      }
+    }
+    return out;
+  });
+
+  /** Which thread's reply composer is open, by root id — one at a time, like the edit form. */
+  let replyingTo = $state<string | null>(null);
+  /** Seeded body for that composer: answering a *reply* addresses its author by name, so the
+   *  thread still says who is being answered once several people are in it. */
+  let replySeed = $state("");
+  /** Remounts the composer, so opening it on another thread never inherits a stale draft. */
+  let replyKey = $state(0);
+
+  function openReply(rootId: string, answering: TaskComment) {
+    // The mention marker is the editor's own syntax (`core/richtext/editor.ts`), so the seed
+    // round-trips into a real mention chip rather than literal text. Only for someone with a
+    // live account — a departed author has no id to mention.
+    replySeed =
+      answering.id === rootId || !answering.author_user_id || !answering.author_name
+        ? ""
+        : `@[${answering.author_name}](mention:${answering.author_user_id}) `;
+    replyingTo = rootId;
+    replyKey += 1;
+  }
 
   // One shared confirm for every inline sub-item delete (comment, checklist, item, link):
   // the ⋯ Delete sets the action/fields/message, then opens the dialog which owns the form.
@@ -241,6 +435,17 @@
     subConfirm = { action, fields, message };
     subConfirmOpen = true;
   }
+  // Duplicating a checklist asks for the copy's name up front, the way duplicating a role does:
+  // two lists called "Website check" side by side is exactly what the user is trying to avoid.
+  let duplicateOpen = $state(false);
+  let duplicateChecklistId = $state("");
+  let duplicateTitle = $state("");
+  function askDuplicate(id: string, title: string) {
+    duplicateChecklistId = id;
+    duplicateTitle = title;
+    duplicateOpen = true;
+  }
+
   let showLabelPicker = $state(false);
   let newLabelColor = $state("blue");
 
@@ -344,7 +549,11 @@
       const fields = changed.map((f) => t(`tasks.field.${names[f] ?? f}`)).join(", ");
       return t("tasks.activity.updated", { fields });
     }
-    if (a.action === "checklist_renamed" || a.action === "checklist_item_renamed") {
+    if (
+      a.action === "checklist_renamed" ||
+      a.action === "checklist_item_renamed" ||
+      a.action === "checklist_duplicated"
+    ) {
       return t(`tasks.activity.${a.action}`, {
         from: String(a.payload.from ?? ""),
         to: String(a.payload.to ?? ""),
@@ -371,6 +580,15 @@
       a.action === "checklist_item_deleted"
     ) {
       return t(`tasks.activity.${a.action}`, { title: String(a.payload.title ?? "") });
+    }
+    // Deleting a thread opener took its answers with it (#312) — the trail says how many, or a
+    // five-message conversation disappears behind a line describing one comment.
+    if (a.action === "comment_deleted" && Number(a.payload.replies ?? 0) > 0) {
+      const count = Number(a.payload.replies);
+      const excerpt = String(a.payload.excerpt ?? "");
+      return count === 1
+        ? t("tasks.activity.comment_deleted_thread_one", { excerpt })
+        : t("tasks.activity.comment_deleted_thread_other", { count, excerpt });
     }
     // Comment rows carry an excerpt of what was said; rows written before they did fall back
     // to the bare verb rather than quoting an empty string (#61).
@@ -427,27 +645,39 @@
           />
         {/if}
 
-        {#if !isPortal}
-          <!-- A portal contact works the task (read, comment) — never its definition. -->
+        <!-- Each item asks the key its own call declares, and the menu disappears when nothing
+             survives (#253). It used to hang off `!isPortal` alone — which is right about a
+             portal contact (they work the task, never its definition) and wrong about everyone
+             else: a member holding `tasks.task.write:own` was offered Bewerken on a colleague's
+             task, and *every* staff viewer was offered Verwijderen, an admin-only permission. -->
+        {#if canEditTask || canDeleteTask}
           <ActionsMenu
             items={[
-              {
-                label: editMode ? t("tasks.detail.done_editing") : t("common.edit"),
-                icon: Pencil,
-                onclick: () => {
-                  // Re-arm the relation picks so a stale pick never overrides the stored
-                  // relation on a later edit session.
-                  fCompany = task.company_id ?? "";
-                  fProject = task.project_id ?? "";
-                  editMode = !editMode;
-                },
-              },
-              {
-                label: t("tasks.detail.delete"),
-                icon: Trash2,
-                danger: true,
-                onclick: () => (confirmDelete = true),
-              },
+              ...(canEditTask
+                ? [
+                    {
+                      label: editMode ? t("tasks.detail.done_editing") : t("common.edit"),
+                      icon: Pencil,
+                      onclick: () => {
+                        // Re-arm the relation picks so a stale pick never overrides the stored
+                        // relation on a later edit session.
+                        fCompany = task.company_id ?? "";
+                        fProject = task.project_id ?? "";
+                        editMode = !editMode;
+                      },
+                    },
+                  ]
+                : []),
+              ...(canDeleteTask
+                ? [
+                    {
+                      label: t("tasks.detail.delete"),
+                      icon: Trash2,
+                      danger: true,
+                      onclick: () => (confirmDelete = true),
+                    },
+                  ]
+                : []),
             ]}
           />
         {/if}
@@ -531,234 +761,361 @@
           {t("tasks.checklist.title")}
         </h3>
 
-        {#each task.checklists ?? [] as checklist (checklist.id)}
-          {@const items = checklist.items ?? []}
-          {@const total = items.length}
-          {@const doneCount = items.filter((i) => i.done).length}
-          <div class="mb-4">
-            <div class="mb-1 flex items-center justify-between gap-2">
-              <h4 class="text-sm font-semibold text-text">{checklist.title}</h4>
-              <div class="flex items-center gap-2">
-                <span class="text-xs tabular-nums text-text-muted"
-                  >{t("tasks.checklist.progress", { done: doneCount, total })}</span
-                >
-                {#if editMode && items.length > 0 && canSaveChecklistTemplate}
-                  <form method="POST" action="?/saveChecklistTemplate" use:enhance>
-                    <input type="hidden" name="title" value={checklist.title} />
-                    <!-- Item titles *and* descriptions, so the saved template carries both (issue #66). -->
-                    <input
-                      type="hidden"
-                      name="items"
-                      value={JSON.stringify(
-                        items.map((i) => ({ title: i.title, description: i.description ?? null })),
-                      )}
-                    />
+        <!-- Two hidden forms carry a whole order to the API — one for the checklists, one for the
+             items of whichever list was dragged. Filled by `submit*Order`, submitted next tick. -->
+        {#if editMode}
+          <form
+            method="POST"
+            action="?/reorderChecklists"
+            use:enhance
+            bind:this={checklistOrderForm}
+            class="hidden"
+          >
+            <input type="hidden" name="ids" value={orderIds} />
+          </form>
+          <form
+            method="POST"
+            action="?/reorderItems"
+            use:enhance
+            bind:this={itemOrderForm}
+            class="hidden"
+          >
+            <input type="hidden" name="checklist_id" value={orderChecklistId} />
+            <input type="hidden" name="ids" value={orderIds} />
+          </form>
+        {/if}
+
+        <div
+          use:dndzone={{
+            items: dndChecklists,
+            flipDurationMs: 150,
+            dropTargetStyle: {},
+            type: "task-checklists",
+            dragDisabled: !editMode || !dragChecklists,
+          }}
+          onconsider={considerChecklists}
+          onfinalize={finalizeChecklists}
+        >
+          {#each dndChecklists as checklist, checklistIndex (checklist.id)}
+            {@const items = dndItems[checklist.id] ?? []}
+            {@const total = items.length}
+            {@const doneCount = items.filter((i) => i.done).length}
+            <div class="mb-4 bg-surface-raised">
+              <div class="mb-1 flex items-center justify-between gap-2">
+                <div class="flex min-w-0 items-center gap-1">
+                  {#if editMode}
                     <button
-                      class="text-xs text-text-muted hover:text-brand"
-                      title={t("tasks.checklist.save_template_hint")}
+                      type="button"
+                      class="-ml-1 shrink-0 cursor-grab touch-none text-text-muted active:cursor-grabbing"
+                      aria-label={t("tasks.checklist.drag", { title: checklist.title })}
+                      onpointerdown={() => (dragChecklists = true)}
                     >
-                      {t("tasks.checklist.save_template")}
+                      <GripVertical size={14} />
                     </button>
-                  </form>
-                {/if}
-                {#if editMode}
-                  <ActionsMenu
-                    compact
-                    items={[
-                      {
-                        label: t("common.edit"),
-                        icon: Pencil,
-                        onclick: () =>
-                          (editingChecklistId =
-                            editingChecklistId === checklist.id ? null : checklist.id),
-                      },
-                      {
-                        label: t("common.delete"),
-                        icon: Trash2,
-                        danger: true,
-                        onclick: () =>
-                          askDelete(
-                            "?/deleteChecklist",
-                            { checklist_id: checklist.id },
-                            t("tasks.checklist.delete_confirm"),
-                          ),
-                      },
-                    ]}
-                  />
-                {/if}
-              </div>
-            </div>
-            {#if editingChecklistId === checklist.id}
-              <form
-                method="POST"
-                action="?/editChecklist"
-                use:enhance={busy.wrap("editChecklist", () => ({ update }) => {
-                  editingChecklistId = null;
-                  void update({ reset: false });
-                })}
-                class="mb-2 space-y-2"
-              >
-                <input type="hidden" name="checklist_id" value={checklist.id} />
-                <input name="title" value={checklist.title} required class={inputClass} />
-                <RichTextEditor
-                  name="description"
-                  rows={2}
-                  value={checklist.description ?? ""}
-                  placeholder={t("tasks.checklist.description_placeholder")}
-                  scope={candidateScope}
-                />
-                <div class="flex gap-2">
-                  <Button size="xs" loading={busy.is("editChecklist")}>{t("common.save")}</Button>
-                  <button
-                    type="button"
-                    class="rounded-lg border border-border px-2 py-1 text-xs"
-                    onclick={() => (editingChecklistId = null)}>{t("common.cancel")}</button
-                  >
+                  {/if}
+                  <h4 class="truncate text-sm font-semibold text-text">{checklist.title}</h4>
                 </div>
-              </form>
-            {:else if checklist.description}
-              <div class="mb-2"><Markdown value={checklist.description} /></div>
-            {/if}
-            {#if total > 0}
-              <div class="mb-2 h-1.5 overflow-hidden rounded-full bg-surface">
-                <div
-                  class="h-full rounded-full {doneCount === total ? 'bg-green-500' : 'bg-brand'}"
-                  style="width: {total ? Math.round((doneCount / total) * 100) : 0}%"
-                ></div>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs tabular-nums text-text-muted"
+                    >{t("tasks.checklist.progress", { done: doneCount, total })}</span
+                  >
+                  {#if editMode && items.length > 0 && canSaveChecklistTemplate}
+                    <form method="POST" action="?/saveChecklistTemplate" use:enhance>
+                      <input type="hidden" name="title" value={checklist.title} />
+                      <!-- Item titles *and* descriptions, so the saved template carries both (issue #66). -->
+                      <input
+                        type="hidden"
+                        name="items"
+                        value={JSON.stringify(
+                          items.map((i) => ({
+                            title: i.title,
+                            description: i.description ?? null,
+                          })),
+                        )}
+                      />
+                      <button
+                        class="text-xs text-text-muted hover:text-brand"
+                        title={t("tasks.checklist.save_template_hint")}
+                      >
+                        {t("tasks.checklist.save_template")}
+                      </button>
+                    </form>
+                  {/if}
+                  {#if editMode}
+                    <ActionsMenu
+                      compact
+                      items={[
+                        {
+                          label: t("tasks.checklist.move_up"),
+                          icon: ArrowUp,
+                          disabled: checklistIndex === 0,
+                          onclick: () => moveChecklist(checklist.id, -1),
+                        },
+                        {
+                          label: t("tasks.checklist.move_down"),
+                          icon: ArrowDown,
+                          disabled: checklistIndex === dndChecklists.length - 1,
+                          onclick: () => moveChecklist(checklist.id, 1),
+                        },
+                        {
+                          label: t("common.edit"),
+                          icon: Pencil,
+                          onclick: () =>
+                            (editingChecklistId =
+                              editingChecklistId === checklist.id ? null : checklist.id),
+                        },
+                        {
+                          label: t("tasks.checklist.duplicate"),
+                          icon: Copy,
+                          onclick: () => askDuplicate(checklist.id, checklist.title),
+                        },
+                        {
+                          label: t("common.delete"),
+                          icon: Trash2,
+                          danger: true,
+                          onclick: () =>
+                            askDelete(
+                              "?/deleteChecklist",
+                              { checklist_id: checklist.id },
+                              t("tasks.checklist.delete_confirm"),
+                            ),
+                        },
+                      ]}
+                    />
+                  {/if}
+                </div>
               </div>
-            {/if}
-            <ul class="space-y-1">
-              {#each items as item (item.id)}
-                <li class="group">
-                  <div class="flex items-center gap-2">
-                    {#if canWriteTask}
+              {#if editingChecklistId === checklist.id}
+                <form
+                  method="POST"
+                  action="?/editChecklist"
+                  use:enhance={busy.wrap("editChecklist", () => ({ update }) => {
+                    editingChecklistId = null;
+                    void update({ reset: false });
+                  })}
+                  class="mb-2 space-y-2"
+                >
+                  <input type="hidden" name="checklist_id" value={checklist.id} />
+                  <input name="title" value={checklist.title} required class={inputClass} />
+                  <RichTextEditor
+                    name="description"
+                    rows={2}
+                    value={checklist.description ?? ""}
+                    placeholder={t("tasks.checklist.description_placeholder")}
+                    scope={candidateScope}
+                  />
+                  <div class="flex gap-2">
+                    <Button size="xs" loading={busy.is("editChecklist")}>{t("common.save")}</Button>
+                    <button
+                      type="button"
+                      class="rounded-lg border border-border px-2 py-1 text-xs"
+                      onclick={() => (editingChecklistId = null)}>{t("common.cancel")}</button
+                    >
+                  </div>
+                </form>
+              {:else if checklist.description}
+                <div class="mb-2"><Markdown value={checklist.description} /></div>
+              {/if}
+              {#if total > 0}
+                <div class="mb-2 h-1.5 overflow-hidden rounded-full bg-surface">
+                  <div
+                    class="h-full rounded-full {doneCount === total ? 'bg-green-500' : 'bg-brand'}"
+                    style="width: {total ? Math.round((doneCount / total) * 100) : 0}%"
+                  ></div>
+                </div>
+              {/if}
+              <!-- Items reorder within their own list: a distinct `type` per checklist, so a drag
+                 cannot drop a to-do into the list next door (that is a move, not a reorder, and
+                 no endpoint here promises it). -->
+              <ul
+                class="space-y-1"
+                use:dndzone={{
+                  items,
+                  flipDurationMs: 150,
+                  dropTargetStyle: {},
+                  type: `checklist-items-${checklist.id}`,
+                  dragDisabled: !editMode || dragItemsIn !== checklist.id,
+                }}
+                onconsider={(e) => considerItems(checklist.id, e)}
+                onfinalize={(e) => finalizeItems(checklist.id, e)}
+              >
+                {#each items as item, itemIndex (item.id)}
+                  <li class="group bg-surface-raised">
+                    <div class="flex items-center gap-2">
+                      {#if editMode}
+                        <button
+                          type="button"
+                          class="-mr-1 shrink-0 cursor-grab touch-none text-text-muted active:cursor-grabbing"
+                          aria-label={t("tasks.checklist.drag_item", { title: item.title })}
+                          onpointerdown={() => (dragItemsIn = checklist.id)}
+                        >
+                          <GripVertical size={13} />
+                        </button>
+                      {/if}
+                      {#if canEditTask}
+                        <form
+                          method="POST"
+                          action="?/toggleItem"
+                          use:enhance={({ formData }) => {
+                            // Ticking is the most-repeated gesture on this page, and it used to
+                            // cost a whole page reload: `update()` invalidates every load above
+                            // it, so one checkbox re-ran the two layouts and this page —
+                            // sixteen API calls, one of them the eight-round-trip task detail —
+                            // and the box did not change colour until all of it came back.
+                            //
+                            // So flip it here and let the PATCH catch up. `item` is the object
+                            // the drag arrays hold, so the checkbox, the progress bar, the
+                            // "3/7" and `openItemCount` all move with this one write. Nothing
+                            // is invalidated: the only thing the server changed that this page
+                            // also draws is the activity line, which the next load picks up
+                            // (the NotificationBell's fire-and-forget precedent).
+                            //
+                            // `next` comes from the serialised body, not from `item.done`, so
+                            // what we show can never disagree with what we sent.
+                            const next = formData.get("done") === "true";
+                            item.done = next;
+                            // Read *after* the flip — this is the tick that emptied the list.
+                            const completesLast =
+                              next &&
+                              openItemCount === 0 &&
+                              !isDone &&
+                              !isPortal &&
+                              finishStatus !== null;
+                            return async ({ result }) => {
+                              // Refused (a lost race, a permission withdrawn mid-session): put
+                              // the box back rather than leave the screen claiming a change the
+                              // server never made. `applyAction` surfaces the message and — the
+                              // reason it is used instead of `update()` — invalidates nothing.
+                              if (result.type !== "success") item.done = !next;
+                              await applyAction(result);
+                              if (result.type === "success" && completesLast) {
+                                showFinishPrompt = true;
+                              }
+                            };
+                          }}
+                        >
+                          <input type="hidden" name="checklist_id" value={checklist.id} />
+                          <input type="hidden" name="item_id" value={item.id} />
+                          <input type="hidden" name="done" value={String(!item.done)} />
+                          <button
+                            class="flex h-4 w-4 items-center justify-center rounded border text-[10px]
+                          {item.done
+                              ? 'border-brand bg-brand text-white'
+                              : 'border-border text-transparent hover:border-brand'}"
+                            aria-label={t("tasks.toggle_done")}>✓</button
+                          >
+                        </form>
+                      {:else}
+                        <!-- Read-only viewer (portal client, #244): item state shows, ticking does not. -->
+                        <span
+                          class="flex h-4 w-4 items-center justify-center rounded border text-[10px]
+                        {item.done
+                            ? 'border-brand bg-brand text-white'
+                            : 'border-border text-transparent'}"
+                          aria-label={t("tasks.toggle_done")}>✓</span
+                        >
+                      {/if}
+                      <span
+                        class="flex-1 text-sm {item.done
+                          ? 'text-text-muted line-through'
+                          : 'text-text'}">{item.title}</span
+                      >
+                      {#if editMode}
+                        <ActionsMenu
+                          compact
+                          items={[
+                            {
+                              label: t("tasks.checklist.move_up"),
+                              icon: ArrowUp,
+                              disabled: itemIndex === 0,
+                              onclick: () => moveItem(checklist.id, item.id, -1),
+                            },
+                            {
+                              label: t("tasks.checklist.move_down"),
+                              icon: ArrowDown,
+                              disabled: itemIndex === items.length - 1,
+                              onclick: () => moveItem(checklist.id, item.id, 1),
+                            },
+                            {
+                              label: t("common.edit"),
+                              icon: Pencil,
+                              onclick: () =>
+                                (editingItemId = editingItemId === item.id ? null : item.id),
+                            },
+                            {
+                              label: t("common.delete"),
+                              icon: Trash2,
+                              danger: true,
+                              onclick: () =>
+                                askDelete(
+                                  "?/deleteItem",
+                                  { checklist_id: checklist.id, item_id: item.id },
+                                  t("tasks.checklist.item_delete_confirm"),
+                                ),
+                            },
+                          ]}
+                        />
+                      {/if}
+                    </div>
+                    {#if editingItemId === item.id}
                       <form
                         method="POST"
-                        action="?/toggleItem"
-                        use:enhance={() => {
-                          // Snapshot before the server flips it: checking the last open to-do on an
-                          // unfinished task opens the finish prompt after the reload.
-                          const completesLast =
-                            !item.done &&
-                            openItemCount === 1 &&
-                            !isDone &&
-                            !isPortal &&
-                            finishStatus !== null;
-                          return ({ update }) => {
-                            void update().then(() => {
-                              if (completesLast) showFinishPrompt = true;
-                            });
-                          };
-                        }}
+                        action="?/editItem"
+                        use:enhance={busy.wrap("editItem", () => ({ update }) => {
+                          editingItemId = null;
+                          void update({ reset: false });
+                        })}
+                        class="mt-1 space-y-2 pl-6"
                       >
                         <input type="hidden" name="checklist_id" value={checklist.id} />
                         <input type="hidden" name="item_id" value={item.id} />
-                        <input type="hidden" name="done" value={String(!item.done)} />
-                        <button
-                          class="flex h-4 w-4 items-center justify-center rounded border text-[10px]
-                          {item.done
-                            ? 'border-brand bg-brand text-white'
-                            : 'border-border text-transparent hover:border-brand'}"
-                          aria-label={t("tasks.toggle_done")}>✓</button
-                        >
+                        <input name="title" value={item.title} required class={inputClass} />
+                        <RichTextEditor
+                          name="description"
+                          rows={2}
+                          value={item.description ?? ""}
+                          placeholder={t("tasks.checklist.description_placeholder")}
+                          scope={candidateScope}
+                        />
+                        <div class="flex gap-2">
+                          <Button size="xs" loading={busy.is("editItem")}>{t("common.save")}</Button
+                          >
+                          <button
+                            type="button"
+                            class="rounded-lg border border-border px-2 py-1 text-xs"
+                            onclick={() => (editingItemId = null)}>{t("common.cancel")}</button
+                          >
+                        </div>
                       </form>
-                    {:else}
-                      <!-- Read-only viewer (portal client, #244): item state shows, ticking does not. -->
-                      <span
-                        class="flex h-4 w-4 items-center justify-center rounded border text-[10px]
-                        {item.done
-                          ? 'border-brand bg-brand text-white'
-                          : 'border-border text-transparent'}"
-                        aria-label={t("tasks.toggle_done")}>✓</span
-                      >
+                    {:else if item.description}
+                      <div class="mt-0.5 pl-6"><Markdown value={item.description} /></div>
                     {/if}
-                    <span
-                      class="flex-1 text-sm {item.done
-                        ? 'text-text-muted line-through'
-                        : 'text-text'}">{item.title}</span
-                    >
-                    {#if editMode}
-                      <ActionsMenu
-                        compact
-                        items={[
-                          {
-                            label: t("common.edit"),
-                            icon: Pencil,
-                            onclick: () =>
-                              (editingItemId = editingItemId === item.id ? null : item.id),
-                          },
-                          {
-                            label: t("common.delete"),
-                            icon: Trash2,
-                            danger: true,
-                            onclick: () =>
-                              askDelete(
-                                "?/deleteItem",
-                                { checklist_id: checklist.id, item_id: item.id },
-                                t("tasks.checklist.item_delete_confirm"),
-                              ),
-                          },
-                        ]}
-                      />
-                    {/if}
-                  </div>
-                  {#if editingItemId === item.id}
-                    <form
-                      method="POST"
-                      action="?/editItem"
-                      use:enhance={busy.wrap("editItem", () => ({ update }) => {
-                        editingItemId = null;
-                        void update({ reset: false });
-                      })}
-                      class="mt-1 space-y-2 pl-6"
-                    >
-                      <input type="hidden" name="checklist_id" value={checklist.id} />
-                      <input type="hidden" name="item_id" value={item.id} />
-                      <input name="title" value={item.title} required class={inputClass} />
-                      <RichTextEditor
-                        name="description"
-                        rows={2}
-                        value={item.description ?? ""}
-                        placeholder={t("tasks.checklist.description_placeholder")}
-                        scope={candidateScope}
-                      />
-                      <div class="flex gap-2">
-                        <Button size="xs" loading={busy.is("editItem")}>{t("common.save")}</Button>
-                        <button
-                          type="button"
-                          class="rounded-lg border border-border px-2 py-1 text-xs"
-                          onclick={() => (editingItemId = null)}>{t("common.cancel")}</button
-                        >
-                      </div>
-                    </form>
-                  {:else if item.description}
-                    <div class="mt-0.5 pl-6"><Markdown value={item.description} /></div>
-                  {/if}
-                </li>
-              {/each}
-            </ul>
-            {#if canWriteTask}
-              <!-- Quick-add is a task write (POST item); hidden from a read-only portal client (#244). -->
-              <form
-                method="POST"
-                action="?/addItem"
-                use:enhance={busy.wrap(`addItem:${checklist.id}`)}
-                class="mt-2 flex gap-2"
-              >
-                <input type="hidden" name="checklist_id" value={checklist.id} />
-                <input
-                  name="title"
-                  placeholder={t("tasks.checklist.item_placeholder")}
-                  required
-                  class="min-w-0 flex-1 rounded-lg border border-border px-2 py-1 text-sm outline-none focus:border-brand"
-                />
-                <Button variant="secondary" size="xs" loading={busy.is(`addItem:${checklist.id}`)}
-                  >＋</Button
+                  </li>
+                {/each}
+              </ul>
+              {#if canEditTask}
+                <!-- Quick-add is a task write (POST item); hidden from a read-only portal client (#244). -->
+                <form
+                  method="POST"
+                  action="?/addItem"
+                  use:enhance={busy.wrap(`addItem:${checklist.id}`)}
+                  class="mt-2 flex gap-2"
                 >
-              </form>
-            {/if}
-          </div>
-        {/each}
+                  <input type="hidden" name="checklist_id" value={checklist.id} />
+                  <input
+                    name="title"
+                    placeholder={t("tasks.checklist.item_placeholder")}
+                    required
+                    class="min-w-0 flex-1 rounded-lg border border-border px-2 py-1 text-sm outline-none focus:border-brand"
+                  />
+                  <Button variant="secondary" size="xs" loading={busy.is(`addItem:${checklist.id}`)}
+                    >＋</Button
+                  >
+                </form>
+              {/if}
+            </div>
+          {/each}
+        </div>
 
         {#if editMode}
           <form
@@ -889,7 +1246,7 @@
               uploadAction="?/uploadFile"
               deleteAction="?/deleteFile"
               error={form?.fileError ?? null}
-              readonly={!editMode}
+              readonly={!editMode || !canWriteFile}
             />
           </div>
           {#if editMode}
@@ -905,116 +1262,215 @@
         {t("tasks.comments.title")}
       </h3>
 
-      <form
-        method="POST"
-        action="?/addComment"
-        use:enhance={busy.wrap("addComment", () => ({ update, result }) => {
-          // Reset the editor by remounting it; its internal state survives a plain form reset.
-          if (result.type === "success") newCommentKey += 1;
-          void update({ reset: true });
-        })}
-        class="mb-4"
-      >
-        {#key newCommentKey}
-          <RichTextEditor
-            name="body"
-            rows={2}
-            required
-            placeholder={t("tasks.comments.placeholder")}
-            scope={candidateScope}
-          />
-        {/key}
-        <div class="mt-2 flex justify-end">
-          <Button size="sm" loading={busy.is("addComment")}>{t("tasks.comments.send")}</Button>
-        </div>
-      </form>
+      <!-- POST /tasks/{id}/comments declares `tasks.comment.write`, and the editor was drawn for
+           everyone who could read the task: a role without it typed a comment and lost it to a
+           403 on send. The scope is not consulted — a comment you post is your own, so the API
+           refines nothing here (`TaskService.add_comment`). -->
+      {#if canComment}
+        <form
+          method="POST"
+          action="?/addComment"
+          use:enhance={busy.wrap("addComment", () => ({ update, result }) => {
+            // Reset the editor by remounting it; its internal state survives a plain form reset.
+            if (result.type === "success") newCommentKey += 1;
+            void update({ reset: true });
+          })}
+          class="mb-4"
+        >
+          {#key newCommentKey}
+            <RichTextEditor
+              name="body"
+              rows={2}
+              required
+              placeholder={t("tasks.comments.placeholder")}
+              scope={candidateScope}
+            />
+          {/key}
+          <div class="mt-2 flex justify-end">
+            <Button size="sm" loading={busy.is("addComment")}>{t("tasks.comments.send")}</Button>
+          </div>
+        </form>
+      {/if}
 
-      {#if (task.comments ?? []).length === 0}
+      <!-- One bubble, rendered for a thread opener and for an answer alike (#312): the two differ
+           in where they sit and how loud they are, never in what they can do. Duplicating the
+           markup would have been two places to keep the ⋯ menu, the edit form and the
+           impersonation badge in step. -->
+      {#snippet commentBubble(
+        comment: TaskComment,
+        rootId: string,
+        replyCount: number,
+        isReply: boolean,
+      )}
+        <!-- Being the author is half of it: `update_comment` refuses a non-author outright
+             and still requires the key from the author. Deleting your own needs the same
+             key; deleting someone else's needs it at `:any`. -->
+        {@const canEditComment = comment.author_user_id === userId && canComment}
+        {@const canDeleteComment = canEditComment || canDeleteAnyComment}
+        <div
+          id="comment-{comment.id}"
+          class="rounded-lg border border-border p-3 {isReply ? 'bg-surface/30' : 'bg-surface/50'}"
+        >
+          <div class="mb-1 flex items-center justify-between gap-2">
+            <span class="flex items-center gap-1.5 text-xs font-semibold text-text">
+              {authorLabel(comment)}
+              <!-- Written through this account by someone else (#296): the agency's own words
+                   would otherwise sit under the client's name with nothing to say so. -->
+              {#if comment.impersonator_name}
+                <span
+                  class="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-300"
+                  title={t("activity.impersonated_title", {
+                    actor: comment.impersonator_name,
+                  })}
+                >
+                  {t("activity.via_impersonator", { actor: comment.impersonator_name })}
+                </span>
+              {/if}
+            </span>
+            <div class="flex items-center gap-1 text-[11px] text-text-muted">
+              <span>{when(comment.created_at)}</span>
+              {#if comment.edited_at}<span>({t("tasks.comments.edited")})</span>{/if}
+              {#if canDeleteComment}
+                <ActionsMenu
+                  compact
+                  items={[
+                    ...(canEditComment
+                      ? [
+                          {
+                            label: t("common.edit"),
+                            icon: Pencil,
+                            onclick: () =>
+                              (editingCommentId =
+                                editingCommentId === comment.id ? null : comment.id),
+                          },
+                        ]
+                      : []),
+                    {
+                      label: t("common.delete"),
+                      icon: Trash2,
+                      danger: true,
+                      // Deleting a thread opener takes its answers with it (ON DELETE CASCADE),
+                      // so the confirm counts them: a dialog that says "this comment" while five
+                      // messages disappear is the one thing an undo-less delete may not do.
+                      onclick: () =>
+                        askDelete(
+                          "?/deleteComment",
+                          { comment_id: comment.id },
+                          replyCount === 0
+                            ? t("tasks.comments.delete_confirm")
+                            : replyCount === 1
+                              ? t("tasks.comments.delete_thread_confirm_one")
+                              : t("tasks.comments.delete_thread_confirm_other", {
+                                  count: replyCount,
+                                }),
+                        ),
+                    },
+                  ]}
+                />
+              {/if}
+            </div>
+          </div>
+          {#if editingCommentId === comment.id}
+            <form
+              method="POST"
+              action="?/editComment"
+              use:enhance={busy.wrap("editComment", () => ({ update }) => {
+                editingCommentId = null;
+                void update({ reset: false });
+              })}
+            >
+              <input type="hidden" name="comment_id" value={comment.id} />
+              <RichTextEditor
+                name="body"
+                rows={2}
+                required
+                value={comment.body}
+                scope={candidateScope}
+              />
+              <div class="mt-1 flex gap-2">
+                <Button size="xs" loading={busy.is("editComment")}>{t("common.save")}</Button>
+                <button
+                  type="button"
+                  class="rounded-lg border border-border px-2 py-1 text-xs"
+                  onclick={() => (editingCommentId = null)}>{t("common.cancel")}</button
+                >
+              </div>
+            </form>
+          {:else}
+            <Markdown value={comment.body} />
+            <!-- Answering is not "editing the definition", so it stays inline rather than hiding
+                 in the ⋯ menu (docs/UX.md). It gates on the same permission the POST declares —
+                 a client portal login holds it, and its own task comments are its whole write
+                 surface. -->
+            {#if canComment}
+              <button
+                type="button"
+                class="mt-1.5 inline-flex items-center gap-1 rounded text-[11px] font-medium text-text-muted hover:text-text"
+                onclick={() => openReply(rootId, comment)}
+              >
+                <Reply class="size-3" aria-hidden="true" />
+                {t("tasks.comments.reply")}
+              </button>
+            {/if}
+          {/if}
+        </div>
+      {/snippet}
+
+      {#if threads.length === 0}
         <p class="text-sm text-text-muted">{t("tasks.comments.empty")}</p>
       {:else}
         <ul class="space-y-3">
-          {#each task.comments ?? [] as comment (comment.id)}
-            {@const canEditComment = comment.author_user_id === userId}
-            {@const canDeleteComment = canEditComment || canDeleteAnyComment}
-            <li id="comment-{comment.id}" class="rounded-lg border border-border bg-surface/50 p-3">
-              <div class="mb-1 flex items-center justify-between gap-2">
-                <span class="flex items-center gap-1.5 text-xs font-semibold text-text">
-                  {authorLabel(comment)}
-                  <!-- Written through this account by someone else (#296): the agency's own words
-                       would otherwise sit under the client's name with nothing to say so. -->
-                  {#if comment.impersonator_name}
-                    <span
-                      class="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-300"
-                      title={t("activity.impersonated_title", {
-                        actor: comment.impersonator_name,
-                      })}
-                    >
-                      {t("activity.via_impersonator", { actor: comment.impersonator_name })}
-                    </span>
-                  {/if}
-                </span>
-                <div class="flex items-center gap-1 text-[11px] text-text-muted">
-                  <span>{when(comment.created_at)}</span>
-                  {#if comment.edited_at}<span>({t("tasks.comments.edited")})</span>{/if}
-                  {#if canDeleteComment}
-                    <ActionsMenu
-                      compact
-                      items={[
-                        ...(canEditComment
-                          ? [
-                              {
-                                label: t("common.edit"),
-                                icon: Pencil,
-                                onclick: () =>
-                                  (editingCommentId =
-                                    editingCommentId === comment.id ? null : comment.id),
-                              },
-                            ]
-                          : []),
-                        {
-                          label: t("common.delete"),
-                          icon: Trash2,
-                          danger: true,
-                          onclick: () =>
-                            askDelete(
-                              "?/deleteComment",
-                              { comment_id: comment.id },
-                              t("tasks.comments.delete_confirm"),
-                            ),
-                        },
-                      ]}
-                    />
-                  {/if}
-                </div>
-              </div>
-              {#if editingCommentId === comment.id}
+          {#each threads as thread (thread.root.id)}
+            <li>
+              {@render commentBubble(thread.root, thread.root.id, thread.replies.length, false)}
+
+              <!-- Answers hang off their opener under one rule, at one indent. A second level
+                   would indent itself off a phone; the API re-roots instead of nesting deeper. -->
+              {#if thread.replies.length > 0}
+                <ul class="mt-2 space-y-2 border-l-2 border-border pl-3 sm:pl-4">
+                  {#each thread.replies as reply (reply.id)}
+                    <li>{@render commentBubble(reply, thread.root.id, 0, true)}</li>
+                  {/each}
+                </ul>
+              {/if}
+
+              {#if replyingTo === thread.root.id}
                 <form
                   method="POST"
-                  action="?/editComment"
-                  use:enhance={busy.wrap("editComment", () => ({ update }) => {
-                    editingCommentId = null;
-                    void update({ reset: false });
+                  action="?/addComment"
+                  use:enhance={busy.wrap("addComment", () => ({ update, result }) => {
+                    // Close on success, keep the draft on failure — the words are not the
+                    // server's to throw away (docs/UX.md, the reset rule).
+                    if (result.type === "success") replyingTo = null;
+                    void update({ reset: result.type === "success" });
                   })}
+                  class="mt-2 border-l-2 border-brand/40 pl-3 sm:pl-4"
                 >
-                  <input type="hidden" name="comment_id" value={comment.id} />
-                  <RichTextEditor
-                    name="body"
-                    rows={2}
-                    required
-                    value={comment.body}
-                    scope={candidateScope}
-                  />
-                  <div class="mt-1 flex gap-2">
-                    <Button size="xs" loading={busy.is("editComment")}>{t("common.save")}</Button>
+                  <input type="hidden" name="parent_id" value={thread.root.id} />
+                  <p class="mb-1 text-[11px] text-text-muted">
+                    {t("tasks.comments.reply_to", { name: authorLabel(thread.root) })}
+                  </p>
+                  {#key replyKey}
+                    <RichTextEditor
+                      name="body"
+                      rows={2}
+                      required
+                      value={replySeed}
+                      placeholder={t("tasks.comments.reply_placeholder")}
+                      scope={candidateScope}
+                    />
+                  {/key}
+                  <div class="mt-2 flex gap-2">
+                    <Button size="xs" loading={busy.is("addComment")}
+                      >{t("tasks.comments.send")}</Button
+                    >
                     <button
                       type="button"
                       class="rounded-lg border border-border px-2 py-1 text-xs"
-                      onclick={() => (editingCommentId = null)}>{t("common.cancel")}</button
+                      onclick={() => (replyingTo = null)}>{t("common.cancel")}</button
                     >
                   </div>
                 </form>
-              {:else}
-                <Markdown value={comment.body} />
               {/if}
             </li>
           {/each}
@@ -1096,12 +1552,15 @@
   >
     <section class="rounded-xl border border-border bg-surface-raised p-4">
       <div class="space-y-3">
-        <!-- Status is core workflow → always editable for staff; a portal contact reads it. -->
+        <!-- Status is core workflow → editable outside edit mode, but it is still a task write
+             (PATCH /tasks/{id}), so it asks the same per-row question every other write control
+             on this page does. `!isPortal` gave a `:own` member a live status dropdown on a
+             colleague's task; everyone else reads the value. -->
         <div>
           <label for="status" class="mb-1 block text-xs font-medium text-text-muted"
             >{t("tasks.field.status")}</label
           >
-          {#if isPortal}
+          {#if !canEditTask}
             <p id="status" class="text-sm text-text">
               {statuses.find((s) => s.key === task.status)?.name ?? task.status}
             </p>
@@ -1419,46 +1878,51 @@
             >
           </form>
 
-          <form
-            method="POST"
-            action="?/createLabel"
-            use:enhance={busy.wrap("createLabel", () => ({ update }) => {
-              showLabelPicker = false;
-              void update();
-            })}
-            class="mt-3 border-t border-border pt-3"
-          >
-            {#each currentLabelIds as id (id)}
-              <input type="hidden" name="current_label_ids" value={id} />
-            {/each}
-            <input
-              name="name"
-              placeholder={t("tasks.labels.new_placeholder")}
-              required
-              class="w-full rounded-lg border border-border px-2 py-1 text-sm"
-            />
-            <input type="hidden" name="color" value={newLabelColor} />
-            <div class="mt-2 flex flex-wrap gap-1">
-              {#each LABEL_COLORS as color (color)}
-                <button
-                  type="button"
-                  aria-label={color}
-                  class="h-5 w-5 rounded-full {labelDotClass(color)} {newLabelColor === color
-                    ? 'ring-2 ring-text ring-offset-1'
-                    : ''}"
-                  onclick={() => (newLabelColor = color)}
-                ></button>
-              {/each}
-            </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={busy.is("createLabel")}
-              class="mt-2 w-full"
+          <!-- Ticking labels onto this task is `tasks.task.write` (above); *minting* one adds a
+               row to the org's vocabulary and is `tasks.label.write`, which nobody but an admin
+               holds by default. Same split as "Als sjabloon opslaan" further up the page. -->
+          {#if canWriteLabels}
+            <form
+              method="POST"
+              action="?/createLabel"
+              use:enhance={busy.wrap("createLabel", () => ({ update }) => {
+                showLabelPicker = false;
+                void update();
+              })}
+              class="mt-3 border-t border-border pt-3"
             >
-              {t("tasks.labels.create")}
-            </Button>
-          </form>
+              {#each currentLabelIds as id (id)}
+                <input type="hidden" name="current_label_ids" value={id} />
+              {/each}
+              <input
+                name="name"
+                placeholder={t("tasks.labels.new_placeholder")}
+                required
+                class="w-full rounded-lg border border-border px-2 py-1 text-sm"
+              />
+              <input type="hidden" name="color" value={newLabelColor} />
+              <div class="mt-2 flex flex-wrap gap-1">
+                {#each LABEL_COLORS as color (color)}
+                  <button
+                    type="button"
+                    aria-label={color}
+                    class="h-5 w-5 rounded-full {labelDotClass(color)} {newLabelColor === color
+                      ? 'ring-2 ring-text ring-offset-1'
+                      : ''}"
+                    onclick={() => (newLabelColor = color)}
+                  ></button>
+                {/each}
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={busy.is("createLabel")}
+                class="mt-2 w-full"
+              >
+                {t("tasks.labels.create")}
+              </Button>
+            </form>
+          {/if}
         {:else if (task.labels ?? []).length === 0}
           <p class="text-sm text-text-muted">{t("tasks.labels.empty")}</p>
         {:else}
@@ -1592,6 +2056,46 @@
   action={subConfirm.action}
   fields={subConfirm.fields}
 />
+
+<!-- Duplicate a checklist: one field, because the only thing the copy needs from the user is its
+     name. What travels (items and their descriptions) and what does not (the ticks) is stated,
+     not left to be discovered after the fact. -->
+<Modal bind:open={duplicateOpen} title={t("tasks.checklist.duplicate")}>
+  <form
+    method="POST"
+    action="?/duplicateChecklist"
+    use:enhance={busy.wrap("duplicateChecklist", () => async ({ result, update }) => {
+      if (result.type === "success") duplicateOpen = false;
+      // The copy is a new record, not this form's subject, so the field may empty — and
+      // reopening the dialog fills it from the checklist that was picked anyway.
+      await update({ reset: true });
+    })}
+    class="space-y-3"
+  >
+    <input type="hidden" name="checklist_id" value={duplicateChecklistId} />
+    <div>
+      <label for="checklist-duplicate-title" class="mb-1 block text-sm font-medium text-text"
+        >{t("tasks.checklist.duplicate_title")}</label
+      >
+      <input
+        id="checklist-duplicate-title"
+        name="title"
+        bind:value={duplicateTitle}
+        required
+        class={inputClass}
+      />
+    </div>
+    <p class="text-xs text-text-muted">{t("tasks.checklist.duplicate_hint")}</p>
+    <div class="flex justify-end gap-2">
+      <button
+        type="button"
+        class="rounded-lg border border-border px-4 py-2 text-sm"
+        onclick={() => (duplicateOpen = false)}>{t("common.cancel")}</button
+      >
+      <Button loading={busy.is("duplicateChecklist")}>{t("tasks.checklist.duplicate")}</Button>
+    </div>
+  </form>
+</Modal>
 
 <!-- The last to-do was just ticked: offer to move the task along — or, when finishing is gated
      on a closing contact moment (#157), say exactly that instead of offering a doomed move. -->

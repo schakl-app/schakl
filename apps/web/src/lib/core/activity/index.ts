@@ -35,6 +35,10 @@ for (const entityType of ["project", "contact", "invoice", "quote", "domain"] as
     entityType,
     titleKey: "activity.title",
     position: POSITION,
+    // `GET /api/v1/activity` declares `activity.read`. Without this the trail rendered as an
+    // empty "Geschiedenis" block for every viewer who does not hold it — and cost a 403 per
+    // detail page to say so.
+    requiresPermission: "activity.read",
     load: async (api, { entityId }) => {
       const { data } = await api.GET("/api/v1/activity", {
         params: { query: { entity_type: entityType, entity_id: entityId, limit: PANEL_LIMIT } },

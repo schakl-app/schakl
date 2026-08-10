@@ -439,6 +439,11 @@ export const interactionActions = {
         name: data.title,
         project_id: data.project_id ?? null,
         company_id: data.company_id ?? null,
+        // The picker's option carries the assignee for the same reason a loaded one does:
+        // "sluit deze taak" is a task write, and `tasks.task.write:own` means assignee. The
+        // API resolves it (the dialog may leave it blank), so read it off the created row
+        // rather than off the form.
+        assignee_user_id: data.assignee_user_id ?? null,
       },
     };
   },

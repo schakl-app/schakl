@@ -8,6 +8,7 @@ the org runs ``auto_approve``).
 
 Skips, in order: already imported (this mailbox), already logged by a colleague's mailbox
 (the RFC-822 ``Message-ID`` dedup), suppressed (rejected earlier), the owner's excluded label,
+a copy of somebody else's mail whose own mailbox will log it (``_defer_to_owner_mailbox``),
 colleague-only mail, and no contact match. First poll stores the current ``historyId`` and
 imports nothing — connecting a mailbox is opt-in *going forward*, never a retroactive import.
 """
@@ -17,7 +18,7 @@ from __future__ import annotations
 import base64
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from sqlalchemy import select, text
@@ -30,8 +31,8 @@ from app.core.portal import portal_user_ids
 from app.modules.google.client import acting_as, mark_connection_error
 from app.modules.google.gmail import matching
 from app.modules.google.gmail.models import GmailSuppression
-from app.modules.google.models import GoogleConnection, GoogleSettings
-from app.modules.google.oauth import google_settings_row
+from app.modules.google.models import ConnectionStatus, GoogleConnection, GoogleSettings
+from app.modules.google.oauth import SCOPE_GMAIL, google_settings_row
 from app.modules.interactions import system as interactions_system
 
 logger = logging.getLogger("schakl.google.gmail")
@@ -210,6 +211,17 @@ async def _ingest_message(
     participants = matching.parse_participants(headers)
     if not participants:
         return 0
+    if _defer_to_owner_mailbox(connection, label_ids, participants, internals):
+        # Every other skip here is silent, which is why "why did this email never appear?"
+        # costs an afternoon and a database. This one is new, so it says so: a deferral that
+        # never gets picked up by the other mailbox is the one failure mode worth naming.
+        logger.debug(
+            "Gmail deferred message %s on %s (org %s): the owner's own mailbox logs it",
+            message_id,
+            connection.email,
+            org.id,
+        )
+        return 0
     internal = matching.internal_only(participants, internals.member_emails)
     if internal and not settings_row.gmail_log_internal:
         return 0
@@ -254,7 +266,10 @@ async def _ingest_message(
         occurred_at=occurred_at,
         subject=subject,
         snippet=matching.clean_snippet(message.get("snippet")),
-        direction=matching.direction_of(label_ids),
+        direction=matching.direction_of(
+            label_ids,
+            sender_internal=matching.sender_of(participants) in internals.owner_by_email,
+        ),
         participants=participants,
         gmail_message_id=message_id,
         gmail_thread_id=thread_id,
@@ -326,14 +341,26 @@ async def _owner_name(session: AsyncSession, user_id: uuid.UUID) -> str | None:
 class Internals:
     """Who counts as *us*, resolved once per poll rather than once per message.
 
-    Both halves answer the same question — "is this person the agency, or the client?" —
-    which the feed asks twice: to skip colleague-only chatter, and to rank the mapping (#305).
+    The first two halves answer the same question — "is this person the agency, or the
+    client?" — which the feed asks twice: to skip colleague-only chatter, and to rank the
+    mapping (#305). The last two answer a different one: *which colleague*, and does their own
+    mailbox poll.
     """
 
     #: Staff addresses.
     member_emails: frozenset[str]
     #: Companies that are the agency itself rather than one of its clients.
     company_ids: frozenset[uuid.UUID]
+    #: Every address that reaches a colleague → their user id. Wider than ``member_emails`` on
+    #: purpose: it also carries the address each Google grant was made with, because what has
+    #: to be found here is a *mailbox*, and someone whose ``users.email`` differs from their
+    #: Workspace address would otherwise resolve to nobody. Only ``intended_owner`` reads it —
+    #: ``internal_only`` and ``is_staff`` keep the narrower set, so what counts as
+    #: colleague-to-colleague chatter is exactly what it was.
+    owner_by_email: dict[str, uuid.UUID] = field(default_factory=dict)
+    #: Users whose own mailbox is genuinely being polled: active, opted in, holding the Gmail
+    #: scope. Deferring to a mailbox that will never poll would lose the email outright.
+    syncing_user_ids: frozenset[uuid.UUID] = frozenset()
 
 
 async def _internals(session: AsyncSession, org_id: uuid.UUID) -> Internals:
@@ -364,8 +391,36 @@ async def _internals(session: AsyncSession, org_id: uuid.UUID) -> Internals:
     pairs = [(row[0], row[1]) for row in rows]
     portal = await portal_user_ids(session, org_id, {uid for uid, _ in pairs})
     member_emails = frozenset(email for uid, email in pairs if uid not in portal)
+    # The mailboxes that actually poll, and the addresses that reach them. Same predicate the
+    # cron offers on (``jobs.google_gmail_poll``) — stated once there and once here is already
+    # one copy too many, but the alternative is the cron importing this module to ask.
+    connection_rows = await session.execute(
+        text(
+            "SELECT user_id, lower(email), status, gmail_sync_enabled, scopes "
+            "FROM google_connections WHERE org_id = :oid ORDER BY created_at"
+        ),
+        {"oid": org_id},
+    )
+    owner_by_email = {email: uid for uid, email in pairs if uid not in portal}
+    syncing: set[uuid.UUID] = set()
+    for user_id, email, status, sync_enabled, scopes in connection_rows:
+        if user_id in portal:
+            continue
+        owner_by_email.setdefault(email, user_id)
+        if (
+            status == ConnectionStatus.ACTIVE.value
+            and sync_enabled
+            and SCOPE_GMAIL in (scopes or [])
+        ):
+            syncing.add(user_id)
+    syncing_user_ids = frozenset(syncing)
     if not member_emails:
-        return Internals(member_emails=member_emails, company_ids=frozenset())
+        return Internals(
+            member_emails=member_emails,
+            company_ids=frozenset(),
+            owner_by_email=owner_by_email,
+            syncing_user_ids=syncing_user_ids,
+        )
     company_rows = await session.execute(
         text(
             "SELECT DISTINCT cc.company_id FROM company_contacts cc "
@@ -377,7 +432,47 @@ async def _internals(session: AsyncSession, org_id: uuid.UUID) -> Internals:
     return Internals(
         member_emails=member_emails,
         company_ids=frozenset(row[0] for row in company_rows),
+        owner_by_email=owner_by_email,
+        syncing_user_ids=syncing_user_ids,
     )
+
+
+def _defer_to_owner_mailbox(
+    connection: GoogleConnection,
+    label_ids: list[str],
+    participants: list[dict[str, str]],
+    internals: Internals,
+) -> bool:
+    """Is this copy somebody else's, and will their own mailbox log it?
+
+    One email, several colleagues, one row (the RFC-822 dedup): whoever polled first won, so
+    an ``info@`` address Bcc'd on the agency's outgoing mail claimed every one of them. The
+    row then named the wrong person as owner *and* read as inbound, and — because a pending
+    row is private to its owner with no admin escape (``interactions`` §15) — the person who
+    wrote the mail could not see it at all. That is what "the email never arrived" was.
+
+    So a mailbox holding a copy it is not the subject of stands aside and lets the intended
+    owner's mailbox log its own copy. Deferring rather than re-stamping the owner is what
+    keeps the row coherent: ``gmail_message_id`` is only meaningful inside the mailbox it came
+    from, so the owner's copy is the only one whose deep link opens in *their* Gmail and whose
+    body fetch uses their own grant.
+
+    Never deferred: a copy carrying ``SENT`` (a mailbox does not give away its own outgoing
+    mail, whatever the headers say), a message naming no colleague at all, and — the load-
+    bearing one — anything whose intended owner is not in ``syncing_user_ids``. Standing
+    aside for a mailbox that is disconnected, opted out or missing the Gmail scope would drop
+    the email entirely, so in that case this copy is the only one there will ever be and it
+    logs here, with its direction read from the headers rather than from the missing label.
+    """
+    if "SENT" in label_ids:
+        return False
+    owner_address = matching.intended_owner(participants, internals.owner_by_email.keys())
+    if owner_address is None:
+        return False
+    owner_user_id = internals.owner_by_email[owner_address]
+    if owner_user_id == connection.user_id:
+        return False
+    return owner_user_id in internals.syncing_user_ids
 
 
 async def _match_contacts(

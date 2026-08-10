@@ -19,6 +19,14 @@ import {
 
 import type { Actions, PageServerLoad } from "./$types";
 
+/** A hidden field's comma-joined ids, cleaned — the reorder forms' one input shape. */
+function idList(raw: FormDataEntryValue | null): string[] {
+  return String(raw ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
 export const load: PageServerLoad = async (event) => {
   const api = apiFor(event);
   const task_id = event.params.id;
@@ -27,7 +35,7 @@ export const load: PageServerLoad = async (event) => {
   // contacts compose; a task has no aggregate period, so `periodStart` is null.
   const context = { entityId: task_id, periodStart: null };
   const enabled = event.locals.theme?.enabledModules ?? [];
-  const panels = entityPanelsFor(enabled, "task");
+  const panels = entityPanelsFor(enabled, "task", event.locals.user);
 
   // Lookups come from the /tasks layout load (data.labels doubles as allLabels).
   // The task keeps its own legacy TaskActivity trail, but contact-moment milestones (#152) are
@@ -203,13 +211,17 @@ export const actions: Actions = {
     return { updated: true };
   },
 
+  // One action for both, because posting a reply *is* posting a comment (#312): a second action
+  // would be a second place to keep the sanitising, the error key and the busy contract in step.
+  // An empty `parent_id` is a thread opener — the reply form simply carries the field.
   addComment: async (event) => {
     const form = await event.request.formData();
     const body = String(form.get("body") ?? "").trim();
+    const parent_id = String(form.get("parent_id") ?? "") || null;
     if (!body) return fail(400, { error: "errors.required" });
     const { error: apiError } = await apiFor(event).POST("/api/v1/tasks/{task_id}/comments", {
       params: { path: { task_id: event.params.id } },
-      body: { body },
+      body: { body, parent_id },
     });
     if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
     return { commented: true };
@@ -268,6 +280,24 @@ export const actions: Actions = {
       {
         params: { path: { task_id: event.params.id, checklist_id } },
         body: { title, description: description || null },
+      },
+    );
+    if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
+    return { checklist: true };
+  },
+
+  /** Copy a checklist beside its source (title, description, items — never the ticks). The
+   *  title is the user's: the API deliberately invents no "(kopie)" suffix. */
+  duplicateChecklist: async (event) => {
+    const form = await event.request.formData();
+    const checklist_id = String(form.get("checklist_id") ?? "");
+    const title = String(form.get("title") ?? "").trim();
+    if (!checklist_id || !title) return fail(400, { error: "errors.required" });
+    const { error: apiError } = await apiFor(event).POST(
+      "/api/v1/tasks/{task_id}/checklists/{checklist_id}/duplicate",
+      {
+        params: { path: { task_id: event.params.id, checklist_id } },
+        body: { title },
       },
     );
     if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
@@ -410,19 +440,23 @@ export const actions: Actions = {
     return { checklist: true };
   },
 
+  // The one write on this page that happens over and over, so it is the one that may not cost a
+  // reload: the checkbox flips optimistically in the browser and nothing is invalidated
+  // (docs/PERFORMANCE.md). That makes reporting the refusal this action's job — a swallowed
+  // error used to be survivable because the reload put the box back, and now nothing would.
   toggleItem: async (event) => {
     const form = await event.request.formData();
     const checklist_id = String(form.get("checklist_id") ?? "");
     const item_id = String(form.get("item_id") ?? "");
-    if (checklist_id && item_id) {
-      await apiFor(event).PATCH(
-        "/api/v1/tasks/{task_id}/checklists/{checklist_id}/items/{item_id}",
-        {
-          params: { path: { task_id: event.params.id, checklist_id, item_id } },
-          body: { done: form.get("done") === "true" },
-        },
-      );
-    }
+    if (!checklist_id || !item_id) return fail(400, { error: "errors.required" });
+    const { error: apiError } = await apiFor(event).PATCH(
+      "/api/v1/tasks/{task_id}/checklists/{checklist_id}/items/{item_id}",
+      {
+        params: { path: { task_id: event.params.id, checklist_id, item_id } },
+        body: { done: form.get("done") === "true" },
+      },
+    );
+    if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
     return { checklist: true };
   },
 
@@ -436,6 +470,34 @@ export const actions: Actions = {
         { params: { path: { task_id: event.params.id, checklist_id, item_id } } },
       );
     }
+    return { checklist: true };
+  },
+
+  // Both reorders post the *whole* new order as one comma-joined id list — the shape the API
+  // takes (`ChecklistOrder`), and the shape a drag and an arrow press produce alike, so neither
+  // gesture can leave half an order behind.
+  reorderChecklists: async (event) => {
+    const form = await event.request.formData();
+    const checklist_ids = idList(form.get("ids"));
+    if (checklist_ids.length === 0) return fail(400, { error: "errors.required" });
+    const { error: apiError } = await apiFor(event).POST(
+      "/api/v1/tasks/{task_id}/checklists/order",
+      { params: { path: { task_id: event.params.id } }, body: { checklist_ids } },
+    );
+    if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
+    return { checklist: true };
+  },
+
+  reorderItems: async (event) => {
+    const form = await event.request.formData();
+    const checklist_id = String(form.get("checklist_id") ?? "");
+    const item_ids = idList(form.get("ids"));
+    if (!checklist_id || item_ids.length === 0) return fail(400, { error: "errors.required" });
+    const { error: apiError } = await apiFor(event).POST(
+      "/api/v1/tasks/{task_id}/checklists/{checklist_id}/items/order",
+      { params: { path: { task_id: event.params.id, checklist_id } }, body: { item_ids } },
+    );
+    if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
     return { checklist: true };
   },
 

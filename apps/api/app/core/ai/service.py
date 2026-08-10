@@ -248,11 +248,25 @@ class AIService:
         tokens_out: int,
         audio_seconds: int = 0,
     ) -> None:
-        """Counts and labels only — never content (#126)."""
+        """Counts and labels only — never content (#126).
+
+        The meter is org-scoped; the person on it is a label. A model call made by the *system*
+        — the scheduled report run (#300), driven by an ``events.SystemContext`` whose ``user``
+        is ``None`` — therefore books its tokens against nobody, exactly as the activity trail
+        records a NULL actor (§16, ``ActivityService.record``). Two shapes of "no person" and
+        both must land on ``NULL``: a ``SystemContext`` has no user at all, and
+        ``jobs.system_context`` carries a placeholder ``User`` that exists in no ``users`` row —
+        safe to resolve against, never safe to store, because ``ai_usage.user_id`` has a FK.
+
+        Reading ``ctx.user.id`` unconditionally is why no scheduled report could ever finish:
+        the run gathered, snapshotted and wrote its prose, then died in the ``finally`` that
+        meters it — losing a completed document to the bookkeeping about it.
+        """
+        actor = None if getattr(self.ctx, "is_system", False) else self.ctx.user
         self.ctx.session.add(
             AIUsage(
                 org_id=self.ctx.org.id,
-                user_id=self.ctx.user.id,
+                user_id=actor.id if actor else None,
                 feature=feature,
                 model=model,
                 tokens_in=tokens_in,

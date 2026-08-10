@@ -26,6 +26,7 @@
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import ProjectQuickCreate from "$lib/modules/projects/ProjectQuickCreate.svelte";
+  import { canWriteTask } from "$lib/modules/tasks/permissions";
   import TaskQuickCreate from "$lib/modules/tasks/TaskQuickCreate.svelte";
 
   import ContactChips from "./ContactChips.svelte";
@@ -56,6 +57,8 @@
   interface TaskOption extends Option {
     project_id: string | null;
     company_id: string | null;
+    /** Whose task it is — "sluit deze taak" is a task write, and `:own` means assignee. */
+    assignee_user_id: string | null;
   }
   interface ProjectOption extends Option {
     company_id: string | null;
@@ -122,8 +125,12 @@
   let terminalLoaded = $state(false);
   let closeStatus = $state("");
   // Offered whenever a task is picked — whether or not that task *requires* a closing moment;
-  // the guard mirrors the API (a close is a task write), which stays the boundary.
-  const canCloseTask = $derived(canApprove && can(page.data.user, "tasks.task.write"));
+  // the guard mirrors the API (a close is a task write), which stays the boundary. Per picked
+  // task, because `tasks.task.write:own` means assignee: the base key put the box on every
+  // colleague's task and the close was refused.
+  const canCloseTask = $derived(
+    canApprove && canWriteTask(page.data.user, tasks.find((task) => task.value === taskId) ?? null),
+  );
   // Terminal statuses load when the box is first ticked — never on page load (PERFORMANCE.md).
   $effect(() => {
     if (closeTask && !terminalLoaded) {
@@ -199,6 +206,7 @@
           name?: string;
           project_id?: string | null;
           company_id?: string | null;
+          assignee_user_id?: string | null;
         }
       | undefined;
     if (!created || created.id === handledCreate) return;
@@ -212,6 +220,7 @@
             label: created.name ?? (taskDraft || "—"),
             project_id: created.project_id ?? null,
             company_id: created.company_id ?? null,
+            assignee_user_id: created.assignee_user_id ?? null,
           },
         ];
       }
@@ -309,11 +318,13 @@
           title: string;
           project_id?: string | null;
           company_id?: string | null;
+          assignee_user_id?: string | null;
         }) => ({
           value: task.id,
           label: task.title,
           project_id: task.project_id ?? null,
           company_id: task.company_id ?? null,
+          assignee_user_id: task.assignee_user_id ?? null,
         }),
       );
     } catch {

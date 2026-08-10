@@ -176,6 +176,12 @@ class DashboardTaskGroup(BaseModel):
     entity_type: str
     entity_id: uuid.UUID | None
     label: str | None
+    # The client a *project* row belongs to. A project name alone is not a name: two clients each
+    # having an "Algemeen" or a "Website" project drew two identical rows on the tile, and the
+    # only way to tell them apart was to open one. Null on a company row (its own label is the
+    # client) and on the unlinked bucket.
+    company_id: uuid.UUID | None = None
+    company_name: str | None = None
     count: int
     overdue: int
 
@@ -232,6 +238,18 @@ class ChecklistUpdate(BaseModel):
     position: int | None = None
 
 
+class ChecklistDuplicate(BaseModel):
+    """Copy an existing checklist into the same task.
+
+    The caller names the copy — the roles precedent (§15): a "(kopie)" suffix invented in the
+    API would be user-facing text written in one language, in a column no catalog reaches.
+    Omitted means the source's title verbatim, which is what an unattended caller (MCP, a
+    script) gets and can rename afterwards.
+    """
+
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+
+
 class ChecklistRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -240,6 +258,38 @@ class ChecklistRead(BaseModel):
     description: str | None = None
     position: int
     items: list[ChecklistItemRead] = Field(default_factory=list)
+
+
+class ChecklistOrder(BaseModel):
+    """The task's checklists in their new order — the whole order, not one moved row.
+
+    A board of tasks reorders by fractional ``position`` midpoints (docs/UX.md) because it is
+    long and renumbering it is a large write. A checklist is neither: a handful of rows, so one
+    renumbering statement is cheaper than the float column it would take to avoid it, and an id
+    list cannot drift the way two clients trading midpoints can.
+
+    Ids this task does not own are a 404. Ids it *does* own that the payload omits keep their
+    relative order **after** the named ones, so a checklist added in another tab mid-drag is
+    appended rather than 409-ing a save the user cannot repair.
+    """
+
+    checklist_ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
+
+
+class ChecklistItemOrder(BaseModel):
+    """One checklist's items in their new order — same contract as ``ChecklistOrder``."""
+
+    item_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+
+
+class ChecklistOrderRead(BaseModel):
+    """The resulting order, including rows the payload did not name (see ``ChecklistOrder``).
+
+    Ids rather than whole records: a reorder changes exactly one field, and the caller that
+    needs the rest already has them.
+    """
+
+    ids: list[uuid.UUID]
 
 
 class TemplateChecklistItem(BaseModel):
@@ -276,9 +326,15 @@ class ChecklistTemplateRead(ChecklistTemplateBase):
 # --------------------------------------------------------------------------- #
 class CommentCreate(BaseModel):
     body: str = Field(min_length=1)
+    #: The comment this one answers (#312); ``None`` opens a new thread. A reply *to a reply* is
+    #: re-rooted onto its parent's thread rather than refused — threads are one level deep.
+    parent_id: uuid.UUID | None = None
 
 
 class CommentUpdate(BaseModel):
+    """An edit changes the words, never the conversation they were said in — so no ``parent_id``
+    (#312). Moving a message between threads rewrites what both threads said."""
+
     body: str = Field(min_length=1)
 
 
@@ -286,6 +342,10 @@ class CommentRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    #: The comment this answers (#312), or ``None`` for a thread opener. The list stays flat and
+    #: the client nests on this: every existing consumer (the excerpt, the ``#comment-<id>``
+    #: deep link, the count aggregate) keeps working, and the response cap stays one number.
+    parent_id: uuid.UUID | None = None
     author_user_id: uuid.UUID | None
     # The live account's name while it exists, else the snapshot taken when the comment was
     # written (issue #64). ``author_deleted`` says which — the UI marks a departed author

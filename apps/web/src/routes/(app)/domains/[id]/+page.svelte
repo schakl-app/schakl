@@ -6,7 +6,7 @@
   import { fmtDateTime, fmtMoney, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
-  import { entityPanelsFor } from "$lib/core/registry";
+  import { entityPanelComponent } from "$lib/core/registry";
   import { InFlight } from "$lib/core/submit.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
@@ -97,9 +97,8 @@
 
   // The activity trail rides the core entity-panel seam (§16), like project/contact.
   const enabled = $derived(page.data.theme?.enabledModules ?? []);
-  const panelSpecs = $derived(entityPanelsFor(enabled, "domain"));
   function panelComponent(key: string) {
-    return panelSpecs.find((spec) => spec.key === key)?.component;
+    return entityPanelComponent(enabled, "domain", key);
   }
   const emptyLookups = { members: [], companies: [], projects: [], tasks: [] };
 </script>

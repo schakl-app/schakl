@@ -17,9 +17,13 @@ from app.core.tenancy import RequestContext, require_context
 from app.modules.tasks.scheduling import scheduling_router
 from app.modules.tasks.schemas import (
     ChecklistCreate,
+    ChecklistDuplicate,
     ChecklistItemCreate,
+    ChecklistItemOrder,
     ChecklistItemRead,
     ChecklistItemUpdate,
+    ChecklistOrder,
+    ChecklistOrderRead,
     ChecklistRead,
     ChecklistTemplateCreate,
     ChecklistTemplateRead,
@@ -70,6 +74,7 @@ async def list_tasks(
     offset: int = Query(0, ge=0),
     company_id: uuid.UUID | None = Query(None),
     project_id: uuid.UUID | None = Query(None),
+    unlinked: bool = Query(False, description="Only tasks with no client and no project"),
     assignee_user_id: uuid.UUID | None = Query(None),
     assignee_contact_id: uuid.UUID | None = Query(None),
     status: str | None = Query(None, max_length=50, description="A configured status key"),
@@ -90,6 +95,7 @@ async def list_tasks(
         offset=offset,
         company_id=company_id,
         project_id=project_id,
+        unlinked=unlinked,
         assignee_user_id=assignee_user_id,
         assignee_contact_id=assignee_contact_id,
         status=status,
@@ -537,6 +543,25 @@ async def add_checklist(
     return ChecklistRead.model_validate(await TaskService(ctx).add_checklist(task_id, payload))
 
 
+@router.post(
+    "/{task_id}/checklists/order",
+    response_model=ChecklistOrderRead,
+    dependencies=[require_permission("tasks.task.write")],
+)
+async def reorder_checklists(
+    task_id: uuid.UUID,
+    payload: ChecklistOrder,
+    ctx: RequestContext = Depends(require_context),
+) -> ChecklistOrderRead:
+    """Set the order of a task's checklists in one call (``ChecklistOrder`` for the contract).
+
+    ``/order`` rather than a ``PATCH`` per row: the two sibling paths that carry a
+    ``{checklist_id}`` segment are ``PATCH`` and ``DELETE``, so no ``POST`` can be ambiguous
+    with it, and a whole order is what both the drag and the arrow buttons produce.
+    """
+    return await TaskService(ctx).reorder_checklists(task_id, payload)
+
+
 @router.patch(
     "/{task_id}/checklists/{checklist_id}",
     response_model=ChecklistRead,
@@ -551,6 +576,22 @@ async def update_checklist(
     return ChecklistRead.model_validate(
         await TaskService(ctx).update_checklist(task_id, checklist_id, payload)
     )
+
+
+@router.post(
+    "/{task_id}/checklists/{checklist_id}/duplicate",
+    response_model=ChecklistRead,
+    status_code=201,
+    dependencies=[require_permission("tasks.task.write")],
+)
+async def duplicate_checklist(
+    task_id: uuid.UUID,
+    checklist_id: uuid.UUID,
+    payload: ChecklistDuplicate,
+    ctx: RequestContext = Depends(require_context),
+) -> ChecklistRead:
+    """Copy a checklist beside its source, items and all — a second run of the same steps."""
+    return await TaskService(ctx).duplicate_checklist(task_id, checklist_id, payload)
 
 
 @router.delete(
@@ -581,6 +622,21 @@ async def add_checklist_item(
     return ChecklistItemRead.model_validate(
         await TaskService(ctx).add_checklist_item(task_id, checklist_id, payload)
     )
+
+
+@router.post(
+    "/{task_id}/checklists/{checklist_id}/items/order",
+    response_model=ChecklistOrderRead,
+    dependencies=[require_permission("tasks.task.write")],
+)
+async def reorder_checklist_items(
+    task_id: uuid.UUID,
+    checklist_id: uuid.UUID,
+    payload: ChecklistItemOrder,
+    ctx: RequestContext = Depends(require_context),
+) -> ChecklistOrderRead:
+    """Set the order of one checklist's items in one call."""
+    return await TaskService(ctx).reorder_checklist_items(task_id, checklist_id, payload)
 
 
 @router.patch(
