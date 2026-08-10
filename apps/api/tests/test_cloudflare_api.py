@@ -675,6 +675,143 @@ async def test_setting_a_redirect_appends_and_never_wipes_the_tenants_rules(
         assert [c_["description"] for c_ in checked["conflicts"]] == ["eigen regel van de klant"]
 
 
+async def _hand_made_rule(cloudflare, zone_id: str, *, apex: str, target: str) -> dict:
+    """The redirect an agency inherits: made in Cloudflare's dashboard, described by a human.
+
+    Built through ``rules.build_rule`` so it is byte-for-byte what schakl would have written —
+    except the description, which is what a person typed. That difference is deliberate: it is
+    the reason ``find_our_rule`` matches on id and never on description.
+    """
+    body = rules.build_rule(
+        apex=apex,
+        target_url=target,
+        status_code=301,
+        preserve_path=True,
+        preserve_query=True,
+        include_subdomains=True,
+    )
+    return cloudflare.add_redirect_rule(zone_id, {**body, "description": f"Redirect {apex}"})
+
+
+async def test_adopting_an_existing_rule_writes_nothing_at_cloudflare(
+    client_for, cloudflare
+) -> None:
+    """The redirect an agency takes over is usually already right.
+
+    Until adoption the only button appended a *second* rule to the same phase — where Cloudflare
+    takes the first match, so the obvious press could leave the zone with two redirects and no
+    change in behaviour. Adopting claims the rule by id and touches Cloudflare not at all.
+    """
+    t = await make_tenant("cf-adopt")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, domain, _ = await _connected(c, headers, cloudflare)
+        zone_id = next(iter(cloudflare.zones))
+        theirs = await _hand_made_rule(cloudflare, zone_id, apex="klant.nl", target="https://nieuw.nl")
+
+        # The status report offers the id, which is the only safe way to name a rule.
+        checked = (
+            await c.post(f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers)
+        ).json()
+        assert "redirect_conflict" in checked["issues"]
+        assert checked["conflicts"][0]["rule_id"] == theirs["id"]
+
+        cloudflare.calls.clear()
+        adopted = await c.post(
+            f"/api/v1/cloudflare/domains/{domain['id']}/redirect/adopt",
+            json={"rule_id": theirs["id"], "target_url": "https://nieuw.nl", "status_code": 301},
+            headers=headers,
+        )
+        assert adopted.status_code == 200, adopted.text
+        assert adopted.json()["last_status"] == "active"
+        assert adopted.json()["target_url"] == "https://nieuw.nl"
+
+        # Nothing was created, updated, re-ordered or deleted: one read, no writes.
+        assert [m for m, _ in cloudflare.calls if m != "GET"] == []
+        assert len(cloudflare.rulesets[zone_id]["rules"]) == 1
+
+        # It is ours now, so it stops reading as somebody else's rule.
+        after = (
+            await c.post(f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers)
+        ).json()
+        assert after["conflicts"] == []
+        assert "redirect_conflict" not in after["issues"]
+        assert "domain_says_redirect" not in after["issues"]
+        assert after["redirect_live"]["present"] is True
+        assert after["redirect_live"]["differences"] == []
+        # And the domain agrees, exactly as it does after a save.
+        assert after["domain_status"] == "redirect"
+
+
+async def test_adoption_refuses_a_rule_that_is_not_what_we_would_have_written(
+    client_for, cloudflare
+) -> None:
+    """"Adopt whatever is there" would import somebody's 302 as this domain's redirect, and the
+    next save would then "fix" a live client's redirect to something nobody asked for. The
+    difference is reported by field so the admin can match it or overwrite it deliberately."""
+    t = await make_tenant("cf-adopt-diff")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, domain, _ = await _connected(c, headers, cloudflare)
+        zone_id = next(iter(cloudflare.zones))
+        theirs = await _hand_made_rule(cloudflare, zone_id, apex="klant.nl", target="https://nieuw.nl")
+
+        refused = await c.post(
+            f"/api/v1/cloudflare/domains/{domain['id']}/redirect/adopt",
+            # Same rule, different intent: a 302 where Cloudflare holds a 301.
+            json={"rule_id": theirs["id"], "target_url": "https://nieuw.nl", "status_code": 302},
+            headers=headers,
+        )
+        assert refused.status_code == 409, refused.text
+        body = refused.json()["error"]
+        assert body["code"] == "cloudflare_redirect_differs"
+        assert "status_code" in body["fields"]
+        # Refused means refused: no row, and their rule untouched.
+        status = (
+            await c.get(f"/api/v1/cloudflare/domains/{domain['id']}/status", headers=headers)
+        ).json()
+        assert status["redirect"] is None
+        assert len(cloudflare.rulesets[zone_id]["rules"]) == 1
+
+        # A rule that vanished between reading the report and pressing the button is a 404, not
+        # a stored redirect pointing at nothing.
+        cloudflare.rulesets[zone_id]["rules"] = []
+        gone = await c.post(
+            f"/api/v1/cloudflare/domains/{domain['id']}/redirect/adopt",
+            json={"rule_id": theirs["id"], "target_url": "https://nieuw.nl", "status_code": 301},
+            headers=headers,
+        )
+        assert gone.status_code == 404
+
+
+async def test_adoption_never_orphans_a_rule_we_already_own(client_for, cloudflare) -> None:
+    """Adopting over our own live rule would leave a rule at Cloudflare that nothing here knows
+    about, on a client's zone — the exact state this module exists to prevent."""
+    t = await make_tenant("cf-adopt-own")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, domain, _ = await _connected(c, headers, cloudflare)
+        zone_id = next(iter(cloudflare.zones))
+        assert (
+            await c.put(
+                f"/api/v1/cloudflare/domains/{domain['id']}/redirect",
+                json={"target_url": "https://nieuw.nl", "status_code": 301},
+                headers=headers,
+            )
+        ).status_code == 200
+        theirs = await _hand_made_rule(
+            cloudflare, zone_id, apex="klant.nl", target="https://anders.nl"
+        )
+
+        refused = await c.post(
+            f"/api/v1/cloudflare/domains/{domain['id']}/redirect/adopt",
+            json={"rule_id": theirs["id"], "target_url": "https://anders.nl", "status_code": 301},
+            headers=headers,
+        )
+        assert refused.status_code == 409
+        assert refused.json()["error"]["code"] == "cloudflare_redirect_owned"
+
+
 async def test_a_redirect_sets_the_domains_own_status(client_for, cloudflare) -> None:
     """Setting a domain-wide redirect *is* the domain redirecting. Leaving ``Domain.status``
     on "active" would put two screens in disagreement about the same fact."""

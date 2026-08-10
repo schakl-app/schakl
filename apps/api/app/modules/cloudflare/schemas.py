@@ -193,19 +193,20 @@ class DnsRecordWrite(BaseModel):
 # --- redirects ---------------------------------------------------------------------------- #
 
 
-class RedirectWrite(BaseModel):
-    """The tenant's intent for a domain-wide redirect."""
+class RedirectIntent(BaseModel):
+    """What the tenant wants the redirect to *be* — the fields a rule is built from.
+
+    Shared by :class:`RedirectWrite` and :class:`RedirectAdopt` rather than inherited from one
+    by the other, because the difference between them is not a field: one writes the rule and
+    the other only claims one. ``ensure_origin`` belongs to the first and would be a lie on the
+    second, which touches Cloudflare not at all.
+    """
 
     target_url: str = Field(min_length=1, max_length=2048)
     status_code: int = 301
     preserve_path: bool = True
     preserve_query: bool = True
     include_subdomains: bool = True
-    #: Create the proxied placeholder records a redirect needs when the zone has none. A
-    #: Redirect Rule only fires for traffic that *reaches* Cloudflare's edge, and a zone whose
-    #: apex has no proxied record never sends any — the rule saves fine and does nothing, which
-    #: is the single most confusing failure this feature has.
-    ensure_origin: bool = True
 
     @field_validator("status_code")
     @classmethod
@@ -213,6 +214,28 @@ class RedirectWrite(BaseModel):
         if value not in REDIRECT_STATUS_CODES:
             raise ValueError("unsupported redirect status code")
         return value
+
+
+class RedirectWrite(RedirectIntent):
+    """The tenant's intent for a domain-wide redirect, plus how to push it."""
+
+    #: Create the proxied placeholder records a redirect needs when the zone has none. A
+    #: Redirect Rule only fires for traffic that *reaches* Cloudflare's edge, and a zone whose
+    #: apex has no proxied record never sends any — the rule saves fine and does nothing, which
+    #: is the single most confusing failure this feature has.
+    ensure_origin: bool = True
+
+
+class RedirectAdopt(RedirectIntent):
+    """Take ownership of a Redirect Rule that already exists on the zone.
+
+    The rule is named by **id**, never by description (``redirects.find_our_rule``), and it is
+    adopted **only when it is exactly the rule schakl would have written** for this intent — so
+    an agency inheriting a client's Cloudflare stops re-creating a redirect that is already
+    live, and adoption can never quietly change what a visitor's browser does.
+    """
+
+    rule_id: str = Field(min_length=1, max_length=64)
 
 
 class RedirectRead(BaseModel):
@@ -325,6 +348,11 @@ class RedirectConflict(BaseModel):
     kind: Literal["redirect_rule", "page_rule"]
     description: str = ""
     detail: str = ""
+    #: Cloudflare's id for a Redirect Rule, which is the only safe way to name one — and the only
+    #: thing that makes "adopt this one" expressible at all. Absent for a Page Rule: a legacy
+    #: forwarding rule is a different product and adopting it would mean claiming to manage
+    #: something this module cannot write.
+    rule_id: str | None = None
 
 
 class OriginState(BaseModel):

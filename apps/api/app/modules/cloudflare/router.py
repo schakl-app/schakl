@@ -31,6 +31,7 @@ from app.modules.cloudflare.schemas import (
     PagesLinkCreate,
     PagesLinkRead,
     PagesProjectRead,
+    RedirectAdopt,
     RedirectRead,
     RedirectWrite,
     ZoneLink,
@@ -340,6 +341,21 @@ async def set_redirect(
 ) -> RedirectRead:
     """Set the domain-wide redirect and push it to Cloudflare as a Redirect Rule."""
     redirect = await CloudflareService(ctx).set_redirect(domain_id, payload)
+    return RedirectRead.model_validate(redirect)
+
+
+@router.post(
+    "/domains/{domain_id}/redirect/adopt",
+    response_model=RedirectRead,
+    dependencies=[require_permission("cloudflare.zone.manage")],
+)
+async def adopt_redirect(
+    domain_id: uuid.UUID,
+    payload: RedirectAdopt,
+    ctx: RequestContext = Depends(require_context),
+) -> RedirectRead:
+    """Take ownership of a Redirect Rule the zone already has. Writes nothing at Cloudflare."""
+    redirect = await CloudflareService(ctx).adopt_redirect(domain_id, payload)
     return RedirectRead.model_validate(redirect)
 
 

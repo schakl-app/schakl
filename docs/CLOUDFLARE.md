@@ -301,6 +301,41 @@ webhook-era state this whole module exists to replace, and it was the one state 
 discover it. The not-connected branch now renders the same list minus `not_connected`, which the
 paragraph above it already says.
 
+### Reporting a rule you cannot claim is half an answer
+
+`redirect_conflict` named the rule an agency inherits and offered nothing to do about it, and the
+one button on the screen made things *worse*: saving appends a second rule to the same phase, where
+Cloudflare takes the first match top-down — so the obvious press left a client's zone with two
+redirects and, quite possibly, no change in behaviour at all. Meanwhile `domain_says_redirect` sat
+underneath saying the domain redirects and schakl owns nothing, which was true and unfixable.
+
+`POST /domains/{id}/redirect/adopt` closes it: schakl takes ownership of the rule that is already
+there. Each half is a refusal, and each one is why this is safe to put on a client's live zone.
+
+- **It writes nothing at Cloudflare.** Adoption is a claim about a rule, not a change to it —
+  nothing created, updated, re-ordered or deleted. The worst case of a wrong adoption is a wrong
+  row here, which one delete undoes; the test asserts the whole call makes no non-`GET` request.
+- **Only a rule identical to what we would have written** (`rules.compare` against
+  `rules.build_rule` — the *same* builder the save uses, via `_desired_rule`, or the comparison
+  would be against a rule schakl does not actually write). "Adopt whatever is there" would import
+  somebody's 302-with-query-dropped as this domain's redirect, and the next ordinary save would
+  then "fix" a live client's redirect to something nobody asked for. A difference comes back as
+  `errors.cloudflare_redirect_differs` **with the field names**, so the admin either matches the
+  intent to the rule or saves and overwrites it deliberately.
+- **Never over a rule we already own.** If our stored rule is still live, adopting another would
+  orphan ours — a rule on a client's zone that nothing here knows about, which is the state §3
+  exists to prevent.
+- **By id, never by description** (`find_our_rule`), so a rule that vanished between the report and
+  the press is a 404 rather than a stored redirect pointing at nothing.
+
+The panel offers it on the conflict row itself, and only where it can succeed: not for a Page Rule
+(a different product this module cannot write) and not while we own a live rule — #253's rule that
+a control which always refuses is a broken control. The intent it submits is the redirect form's
+own fields, which now seed from `domain_redirect_url` when no rule of ours exists: that is exactly
+the inherited state, and an empty box there meant retyping a URL both sides already know.
+`last_pushed_at` stays `NULL` on an adopted row — we did not push it, and that distinction is the
+feature.
+
 ### The delegation verdict is tri-state, and half of it is not Cloudflare's to give
 
 "Do the nameservers point here yet?" is answered by two lists, and only one of them comes from

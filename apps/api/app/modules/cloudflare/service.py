@@ -69,7 +69,9 @@ from app.modules.cloudflare.schemas import (
     DnsRecordWrite,
     OriginState,
     PagesLinkCreate,
+    RedirectAdopt,
     RedirectConflict,
+    RedirectIntent,
     RedirectObservation,
     RedirectWrite,
     ZoneCandidate,
@@ -1570,6 +1572,140 @@ class CloudflareService:
     # ------------------------------------------------------------------ #
     # Redirects
     # ------------------------------------------------------------------ #
+    def _desired_rule(
+        self, zone: CloudflareZone, payload: RedirectIntent
+    ) -> tuple[str, dict[str, Any]]:
+        """The tenant's intent, validated, as ``(target, rule body)``.
+
+        Shared by writing a redirect and adopting one, because **the two must agree on what "the
+        rule schakl would write" is** — an adopt that compared against a differently-built rule
+        would refuse a rule identical to ours, or worse, accept one that is not.
+        """
+        target = payload.target_url.strip()
+        reject_dangerous_url(target, field="target_url")
+        if not target.lower().startswith(("http://", "https://")):
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"target_url": "errors.cloudflare_target_absolute"},
+            )
+        if rules.redirect_loop_target(
+            apex=zone.name, target_url=target, include_subdomains=payload.include_subdomains
+        ):
+            # Cloudflare saves this happily; the browser reports ERR_TOO_MANY_REDIRECTS and the
+            # client's site is down until someone notices.
+            raise AppError(
+                "cloudflare_redirect_loop",
+                "errors.cloudflare_redirect_loop",
+                status_code=422,
+                fields={"target_url": "errors.cloudflare_redirect_loop"},
+            )
+        return target, rules.build_rule(
+            apex=zone.name,
+            target_url=target,
+            status_code=payload.status_code,
+            preserve_path=payload.preserve_path,
+            preserve_query=payload.preserve_query,
+            include_subdomains=payload.include_subdomains,
+        )
+
+    async def adopt_redirect(
+        self, domain_id: uuid.UUID, payload: RedirectAdopt
+    ) -> CloudflareRedirect:
+        """Claim a Redirect Rule the zone already has, without writing anything at Cloudflare.
+
+        An agency taking over a client's Cloudflare finds the redirect already made — by hand, in
+        the dashboard, months ago. Until now schakl could only report it as somebody else's
+        (``redirect_conflict``) and offer to append a *second* rule to the same phase, where
+        Cloudflare evaluates top-down and the older one may win. Pressing the obvious button
+        therefore left the zone with two redirects and no change in behaviour.
+
+        Three properties make this safe, and each one is a refusal:
+
+        * **It writes nothing at Cloudflare.** Adoption is a claim about a rule, not a change to
+          it. Nothing is created, updated, re-ordered or deleted — so the worst case of a wrong
+          adoption is a wrong row here, which one delete undoes.
+        * **Only a rule identical to what we would have written** (``rules.compare``). "Adopt
+          whatever is there" would silently import somebody's 302-with-query-dropped as this
+          domain's redirect, and the next save would then "fix" a live client's redirect to
+          something nobody asked for. A difference is reported with its field names so the admin
+          can decide: change the intent to match, or save and overwrite deliberately.
+        * **Never over a rule we already own.** If our stored rule is still live at Cloudflare,
+          adopting another would orphan ours — a rule nothing here knows about, on a client's
+          zone, which is the state this whole module exists to prevent.
+        """
+        domain = await self._domain_or_404(domain_id)
+        zone = await self._zone_or_409(domain)
+        target, desired = self._desired_rule(zone, payload)
+
+        row = (
+            await self.ctx.session.execute(
+                self.redirects.scoped_select()
+                .where(CloudflareRedirect.zone_id == zone.id)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
+        account = await self._account_for_zone(zone)
+        client = self._client(account)
+        try:
+            ruleset = await client.get_redirect_ruleset(zone.cf_zone_id)
+        except CloudflareError as exc:
+            await self._record_failure(account, exc)
+            raise self._translate(exc) from exc
+
+        if row is not None and rules.find_our_rule(ruleset, row.cf_rule_id) is not None:
+            raise AppError(
+                "cloudflare_redirect_owned", "errors.cloudflare_redirect_owned", status_code=409
+            )
+
+        live = rules.find_our_rule(ruleset, payload.rule_id)
+        if live is None:
+            # The rule the admin was looking at is gone — deleted at Cloudflare between the
+            # status read and the press. Adopting an id that no longer resolves would store a
+            # redirect that does not exist.
+            raise AppError("not_found", "errors.not_found", status_code=404)
+
+        differences = rules.compare(desired, live)
+        if differences:
+            raise AppError(
+                "cloudflare_redirect_differs",
+                "errors.cloudflare_redirect_differs",
+                status_code=409,
+                fields={field: "errors.cloudflare_redirect_differs" for field in differences},
+            )
+
+        now = datetime.now(UTC)
+        values = {
+            "target_url": target,
+            "status_code": payload.status_code,
+            "preserve_path": payload.preserve_path,
+            "preserve_query": payload.preserve_query,
+            "include_subdomains": payload.include_subdomains,
+            "cf_ruleset_id": str((ruleset or {}).get("id") or "") or None,
+            "cf_rule_id": str(live.get("id") or "") or None,
+            "last_status": RedirectStatus.ACTIVE.value,
+            "last_error": None,
+            "last_checked_at": now,
+            # **Not** ``last_pushed_at``: we did not push it. The distinction is the whole point
+            # of the feature and it is worth keeping in the row.
+            "last_pushed_at": None,
+        }
+        row = (
+            await self.redirects.create(zone_id=zone.id, domain_id=domain.id, **values)
+            if row is None
+            else await self.redirects.update(row, **values)
+        )
+        await self.activity.record(
+            DOMAIN_ENTITY,
+            domain.id,
+            "cloudflare.redirect_adopted",
+            {"target": target, "status_code": payload.status_code, "zone": zone.name},
+        )
+        await self._set_domain_redirect_state(domain, status="redirect", redirect_url=target)
+        return row
+
     async def set_redirect(
         self, domain_id: uuid.UUID, payload: RedirectWrite
     ) -> CloudflareRedirect:
@@ -1606,37 +1742,10 @@ class CloudflareService:
         """
         domain = await self._domain_or_404(domain_id)
         zone = await self._zone_or_409(domain)
-        target = payload.target_url.strip()
-        reject_dangerous_url(target, field="target_url")
-        if not target.lower().startswith(("http://", "https://")):
-            raise AppError(
-                "validation",
-                "errors.validation",
-                status_code=422,
-                fields={"target_url": "errors.cloudflare_target_absolute"},
-            )
-        if rules.redirect_loop_target(
-            apex=zone.name, target_url=target, include_subdomains=payload.include_subdomains
-        ):
-            # Cloudflare saves this happily; the browser reports ERR_TOO_MANY_REDIRECTS and the
-            # client's site is down until someone notices.
-            raise AppError(
-                "cloudflare_redirect_loop",
-                "errors.cloudflare_redirect_loop",
-                status_code=422,
-                fields={"target_url": "errors.cloudflare_redirect_loop"},
-            )
+        target, rule = self._desired_rule(zone, payload)
 
         account = await self._account_for_zone(zone)
         client = self._client(account)
-        rule = rules.build_rule(
-            apex=zone.name,
-            target_url=target,
-            status_code=payload.status_code,
-            preserve_path=payload.preserve_path,
-            preserve_query=payload.preserve_query,
-            include_subdomains=payload.include_subdomains,
-        )
 
         row = (
             await self.ctx.session.execute(
@@ -2015,6 +2124,10 @@ class CloudflareService:
                     kind="redirect_rule",
                     description=str(rule.get("description") or ""),
                     detail=str(rule.get("expression") or ""),
+                    # Carried so the screen can offer to adopt *this* rule. The id is the only
+                    # safe way to name one (``find_our_rule``), so a conflict that omitted it
+                    # could report the problem and never the fix.
+                    rule_id=str(rule.get("id") or "") or None,
                 )
             )
         if redirect is None:

@@ -115,7 +115,11 @@
     const key = redirect?.id ?? "none";
     if (seeded === key) return;
     seeded = key;
-    target = redirect?.target_url ?? "";
+    // Falls back to what the *domain record* says it redirects to. That is the state an agency
+    // inherits — the domain is marked "omleiding" here and the rule was made in Cloudflare's
+    // dashboard — and an empty box there means retyping a URL both sides already know, or, now,
+    // an adopt button that cannot be pressed because there is no intent to compare against.
+    target = redirect?.target_url ?? status?.domain_redirect_url ?? "";
     statusCode = redirect?.status_code ?? 301;
     preservePath = redirect?.preserve_path ?? true;
     preserveQuery = redirect?.preserve_query ?? true;
@@ -252,6 +256,44 @@
           <li class="min-w-0 break-words">
             <span class="text-text-muted">{t(`cloudflare.conflicts.${conflict.kind}`)}:</span>
             {conflict.description || conflict.detail || "—"}
+            <!-- The redirect an agency inherits is usually already right, and until now the only
+                 button on this screen appended a *second* rule beside it — which Cloudflare
+                 evaluates top-down, so pressing it could change nothing at all. Adopting takes
+                 the rule by id and writes nothing at Cloudflare; the API refuses unless it is
+                 exactly the rule these fields would have produced, so what a visitor's browser
+                 does cannot change as a side effect of schakl taking ownership.
+                 Offered only where it can succeed: a rule we already own is not adoptable, and a
+                 Page Rule is a different product this module cannot write (#253 — a control that
+                 always refuses is a broken control). -->
+            {#if canManage && conflict.kind === "redirect_rule" && conflict.rule_id && (!redirect || status?.redirect_live?.present === false)}
+              <form
+                method="POST"
+                action="?/cfAdoptRedirect"
+                use:enhance={busy.keep(`adopt-${conflict.rule_id}`)}
+                class="mt-1"
+              >
+                <input type="hidden" name="rule_id" value={conflict.rule_id} />
+                <input type="hidden" name="target_url" value={target} />
+                <input type="hidden" name="status_code" value={statusCode} />
+                {#if preservePath}<input type="hidden" name="preserve_path" value="on" />{/if}
+                {#if preserveQuery}<input type="hidden" name="preserve_query" value="on" />{/if}
+                {#if includeSubdomains}
+                  <input type="hidden" name="include_subdomains" value="on" />
+                {/if}
+                <Button
+                  type="submit"
+                  variant="secondary"
+                  size="sm"
+                  loading={busy.is(`adopt-${conflict.rule_id}`)}
+                  disabled={busy.active || !target}
+                >
+                  {t("cloudflare.conflicts.adopt")}
+                </Button>
+                <span class="block text-xs text-text-muted">
+                  {t("cloudflare.conflicts.adopt_help")}
+                </span>
+              </form>
+            {/if}
           </li>
         {/each}
       </ul>

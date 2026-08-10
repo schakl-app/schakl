@@ -1282,6 +1282,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cloudflare/domains/{domain_id}/redirect/adopt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Adopt Redirect
+         * @description Take ownership of a Redirect Rule the zone already has. Writes nothing at Cloudflare.
+         */
+        post: operations["adopt_redirect_api_v1_cloudflare_domains__domain_id__redirect_adopt_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cloudflare/domains/{domain_id}/status": {
         parameters: {
             query?: never;
@@ -18793,6 +18813,41 @@ export interface components {
             truncated: boolean;
         };
         /**
+         * RedirectAdopt
+         * @description Take ownership of a Redirect Rule that already exists on the zone.
+         *
+         *     The rule is named by **id**, never by description (``redirects.find_our_rule``), and it is
+         *     adopted **only when it is exactly the rule schakl would have written** for this intent — so
+         *     an agency inheriting a client's Cloudflare stops re-creating a redirect that is already
+         *     live, and adoption can never quietly change what a visitor's browser does.
+         */
+        RedirectAdopt: {
+            /**
+             * Include Subdomains
+             * @default true
+             */
+            include_subdomains: boolean;
+            /**
+             * Preserve Path
+             * @default true
+             */
+            preserve_path: boolean;
+            /**
+             * Preserve Query
+             * @default true
+             */
+            preserve_query: boolean;
+            /** Rule Id */
+            rule_id: string;
+            /**
+             * Status Code
+             * @default 301
+             */
+            status_code: number;
+            /** Target Url */
+            target_url: string;
+        };
+        /**
          * RedirectConflict
          * @description Something *else* on this zone that already redirects, or could.
          *
@@ -18816,6 +18871,8 @@ export interface components {
              * @enum {string}
              */
             kind: "redirect_rule" | "page_rule";
+            /** Rule Id */
+            rule_id?: string | null;
         };
         /**
          * RedirectObservation
@@ -18872,7 +18929,7 @@ export interface components {
         };
         /**
          * RedirectWrite
-         * @description The tenant's intent for a domain-wide redirect.
+         * @description The tenant's intent for a domain-wide redirect, plus how to push it.
          */
         RedirectWrite: {
             /**
@@ -25855,6 +25912,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    adopt_redirect_api_v1_cloudflare_domains__domain_id__redirect_adopt_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RedirectAdopt"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RedirectRead"];
+                };
             };
             /** @description Validation Error */
             422: {
