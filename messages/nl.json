@@ -1067,6 +1067,7 @@
   "settings.push.last_seen": "Laatst gezien",
   "settings.push.revoke": "Verwijderen",
   "settings.push.unsupported": "Deze browser ondersteunt geen meldingen.",
+  "settings.push.no_worker": "Deze browser kan nu geen meldingen ontvangen: de achtergrondservice die de app installeert, draait niet. Herlaad de pagina om het opnieuw te proberen.",
   "settings.push.needs_install": "Voeg schakl op iPhone en iPad eerst toe aan je beginscherm; meldingen werken alleen in de geïnstalleerde app.",
   "settings.push.denied": "Meldingen zijn voor deze site geblokkeerd in je browserinstellingen. Sta ze daar toe en kom dan terug.",
   "settings.notifications.channels_hint_user": "Koppel je eigen Slack, Telegram, e-mailadres of webhook. Een nieuw kanaal blijft stil totdat je er iets naartoe stuurt in de tabel hierboven; daar krijgt het een eigen kolom.",

@@ -220,6 +220,19 @@ The handlers:
 production build — `vite build && vite preview`, or the real image. A `pnpm dev` session will
 never show you a push, and that is not a bug to chase.
 
+It did, however, hide one. `navigator.serviceWorker.ready` resolves once a worker is active and
+has **no other outcome**: with nothing registered for the scope it stays pending for the life of
+the page, never rejecting, so the `try`/`catch` around it caught nothing and `status()` never
+returned. The settings section sat on `common.loading` forever — in every dev session, and in any
+real tab whose registration had failed or been unregistered by hand. `ready` is therefore **raced
+against `REGISTRATION_TIMEOUT_MS`, never awaited bare**, and running out is an answer rather than
+an error: `no-worker` is its own state with its own sentence, because `off` would draw an Enable
+button that asks for permission and then fails on the missing worker (#253), and `unsupported`
+would blame a browser that supports this perfectly well. The generalisation is worth keeping: **a
+promise that only ever settles on success needs a floor, not a `catch`** — and a bug whose only
+symptom is a spinner is invisible to every functional test, which is why
+`apps/web/tests/unit/push-status.test.ts` pins it with a `ready` that never settles.
+
 ## 8. Quiet hours become real — and that is the point
 
 `quiet_hours_start` / `quiet_hours_end` were collected in the settings UI, resolved into

@@ -1067,6 +1067,7 @@
   "settings.push.last_seen": "Last seen",
   "settings.push.revoke": "Remove",
   "settings.push.unsupported": "This browser does not support notifications.",
+  "settings.push.no_worker": "This browser cannot receive notifications right now: the background service the app installs is not running. Reload the page to try again.",
   "settings.push.needs_install": "On iPhone and iPad, add schakl to your home screen first; notifications only work in the installed app.",
   "settings.push.denied": "Notifications are blocked for this site in your browser settings. Allow them there, then come back.",
   "settings.notifications.channels_hint_user": "Connect your own Slack, Telegram, e-mail address or webhook. A new channel is silent until you route something to it in the table above, where it gets a column of its own.",
