@@ -497,6 +497,25 @@
   red; only the drawn bar's width clamps, because a bar cannot be 130 % long. A record with no
   budget shows an em-dash and still reports what it spent — never a fabricated total, and never a
   reassuring zero.
+- **And exactly one block that draws it**: `core/ui/BudgetBar.svelte` (#313), `variant="block"` for
+  a card, `variant="inline"` for a table cell. It exists because the scale being documented in one
+  module did not stop a fourth surface from hand-rolling it: the task card had its own
+  `bg-green-500`/amber/red ladder at 75/100 and its own `Math.min(100, pct)`, written before
+  `burn.ts` and never reconciled with it. The component is **unit-agnostic on purpose** — the
+  caller passes the two raw numbers (which decide the colour) and the formatted strings (which say
+  it in that module's unit and words), because a task budgets minutes and a project budgets hours.
+  Reach for it before writing a bar.
+- **A task's hour budget belongs where the hours are spent, not only on the task** (#313). The
+  allocation existed for a year and was drawn on exactly one screen — the task's own card, the one
+  place you are *not* when you are logging against it or deciding what to pick up. It is now on
+  the entry form under the task picker (beside the project's, because a task's budget is the
+  tighter constraint and neither answers the other's question), in the task list's budget column,
+  and on the compact row's ⏱ pill, which reads `1u 30m / 3u` instead of the allocation alone.
+  Every one of them **degrades to the plain allocation** rather than to a zero when the API
+  withholds the burn: `logged_minutes` is absent, not `0`, for a caller without `time.entry.read`
+  — which is how a client-portal login (it holds `tasks.task.read`) never sees what the agency
+  burned. Mirroring the *key* the API checks, not `!isPortal`, is what makes that one rule instead
+  of four (§15).
 - **Hours reach an agreement through its project, never through a second picker.** Logged time
   attaches to a **project**, and a project covered by an active subscription burns against that
   agreement's included hours (#225) — so the timesheet's entry form no longer offers a subscription

@@ -21335,11 +21335,8 @@ export interface components {
             labels?: components["schemas"]["LabelRead"][];
             /** Links */
             links?: components["schemas"]["app__modules__tasks__schemas__LinkRead"][];
-            /**
-             * Logged Minutes
-             * @default 0
-             */
-            logged_minutes: number;
+            /** Logged Minutes */
+            logged_minutes?: number | null;
             /**
              * Org Id
              * Format: uuid
@@ -21352,6 +21349,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence: components["schemas"]["Recurrence"] | null;
+            /** Remaining Minutes */
+            remaining_minutes?: number | null;
             /**
              * Requires Interaction
              * @default false
@@ -21428,6 +21427,8 @@ export interface components {
             id: string;
             /** Labels */
             labels?: components["schemas"]["LabelRead"][];
+            /** Logged Minutes */
+            logged_minutes?: number | null;
             /**
              * Org Id
              * Format: uuid
@@ -21440,6 +21441,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence: components["schemas"]["Recurrence"] | null;
+            /** Remaining Minutes */
+            remaining_minutes?: number | null;
             /**
              * Requires Interaction
              * @default false
@@ -21527,6 +21530,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Logged Minutes */
+            logged_minutes?: number | null;
             /**
              * Org Id
              * Format: uuid
@@ -21539,6 +21544,8 @@ export interface components {
             /** Project Id */
             project_id?: string | null;
             recurrence: components["schemas"]["Recurrence"] | null;
+            /** Remaining Minutes */
+            remaining_minutes?: number | null;
             /**
              * Requires Interaction
              * @default false
@@ -40656,6 +40663,8 @@ export interface operations {
                 sort?: string | null;
                 /** @description Include label/checklist/comment aggregates */
                 meta?: boolean;
+                /** @description Include the hour budget's burn (logged/remaining minutes); costs one grouped query. Omitted for a caller without time.entry.read rather than refused. */
+                hours?: boolean;
                 /** @description Compute total; set false for name-only lookups */
                 count?: boolean;
             };

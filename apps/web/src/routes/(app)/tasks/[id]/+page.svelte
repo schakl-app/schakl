@@ -20,6 +20,7 @@
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
+  import BudgetBar from "$lib/core/ui/BudgetBar.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
@@ -31,6 +32,7 @@
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
+  import { taskBurn } from "$lib/modules/tasks/budget";
   import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
   import { LABEL_COLORS, labelChipClass, labelDotClass } from "$lib/modules/tasks/labels";
   import { canWriteTask } from "$lib/modules/tasks/permissions";
@@ -156,6 +158,13 @@
   //
   // The offer is skipped entirely where it could not lead anywhere. A dialog that appears on
   // every single tick and can only be dismissed is how this feature would die.
+  // Time budget. This used to hand-roll the 75/100 ladder in its own `bg-green-500`/amber/red
+  // and clamp its own bar — a fourth copy of a scale that has lived in `core/burn.ts` for
+  // months, and the one copy that had already drifted (#313). Both the numbers and the block
+  // are shared now; `null` means the API withheld the burn (a client-portal login holds
+  // `tasks.task.read` and never `time.entry.read`), so nothing is drawn at all.
+  const burn = $derived(taskBurn(task));
+
   const entitledModules = $derived(page.data.theme?.entitledModules ?? []);
   const canLogHours = $derived(
     !isPortal &&
@@ -168,8 +177,10 @@
   const offerLogTime = $derived(
     canLogHours &&
       // Already at or over budget: the hours are evidently being kept somewhere, and a prompt
-      // that argues with a full bar is worse than no prompt.
-      !(task.allocated_minutes != null && task.logged_minutes >= task.allocated_minutes),
+      // that argues with a full bar is worse than no prompt. A burn we were not *told* (the API
+      // withholds it without `time.entry.read`, #313) is not a full one — offer, or the hours
+      // this prompt exists to capture are lost to a field nobody could read.
+      !(burn != null && burn.remaining != null && burn.remaining <= 0),
   );
 
   let logTime = $state(false);
@@ -241,12 +252,14 @@
       logEnd = to.time;
       logScheduleId = block.id;
       logTime = true;
-    } else if (task.allocated_minutes != null && task.allocated_minutes > task.logged_minutes) {
+    } else if (burn != null && burn.remaining != null && burn.remaining > 0) {
       const nowMinutes = clockMinutes(today.time) ?? 0;
       const end = Math.floor(nowMinutes / 15) * 15;
       // Clamped at midnight rather than wrapped: an overnight span is a real thing the API
-      // supports and never what "the rest of the budget" means.
-      const start = Math.max(0, end - (task.allocated_minutes - task.logged_minutes));
+      // supports and never what "the rest of the budget" means. `burn.remaining` is the API's
+      // own remainder (#313) — without it there is no "rest of the budget" to prefill, so the
+      // span stays empty rather than guessing the whole allocation.
+      const start = Math.max(0, end - burn.remaining);
       if (end - start >= 1) {
         logStart = clock(start);
         logEnd = clock(end);
@@ -615,20 +628,6 @@
   const today = new Date().toISOString().slice(0, 10);
   const overdue = $derived(!isDone && !!task.due_date && task.due_date < today);
   const currentLabelIds = $derived((task.labels ?? []).map((l) => l.id));
-
-  // Time budget: logged vs allocated drives the colour (green → amber → red).
-  const budgetPct = $derived(
-    task.allocated_minutes ? (task.logged_minutes / task.allocated_minutes) * 100 : null,
-  );
-  const budgetColor = $derived(
-    budgetPct == null
-      ? ""
-      : budgetPct >= 100
-        ? "bg-red-500"
-        : budgetPct >= 75
-          ? "bg-amber-500"
-          : "bg-green-500",
-  );
 
   const when = (iso: string) => fmtDateTime(iso);
 
@@ -1731,39 +1730,20 @@
         </div>
 
         <!-- Time budget -->
-        {#if task.allocated_minutes || task.logged_minutes}
-          <div>
-            <div class="mb-1 flex items-center justify-between text-xs">
-              <span class="font-medium text-text-muted">{t("tasks.field.allocated")}</span>
-              <span class="tabular-nums text-text">
-                {formatMinutes(task.logged_minutes)}{#if task.allocated_minutes}&nbsp;/ {formatMinutes(
-                    task.allocated_minutes,
-                  )}{/if}
-              </span>
-            </div>
-            {#if budgetPct != null}
-              <div class="h-2 overflow-hidden rounded-full bg-surface">
-                <div
-                  class="h-full rounded-full {budgetColor}"
-                  style="width: {Math.min(100, budgetPct)}%"
-                ></div>
-              </div>
-              {#if task.allocated_minutes}
-                <p
-                  class="mt-1 text-[11px] {budgetPct >= 100
-                    ? 'text-red-600 dark:text-red-400'
-                    : 'text-text-muted'}"
-                >
-                  {budgetPct >= 100
-                    ? t("tasks.budget.over", {
-                        amount: formatMinutes(task.logged_minutes - task.allocated_minutes),
-                      })
-                    : t("tasks.budget.left", {
-                        amount: formatMinutes(task.allocated_minutes - task.logged_minutes),
-                      })}
-                </p>
-              {/if}
-            {/if}
+        {#if burn}
+          <BudgetBar
+            spent={burn.spent}
+            budget={burn.budget}
+            label={t("tasks.field.allocated")}
+            remainingText={burn.remainingText}
+            spentText={burn.spentText}
+          />
+        {:else if task.allocated_minutes}
+          <div class="flex items-baseline justify-between gap-2">
+            <span class="text-xs font-medium text-text-muted">{t("tasks.field.allocated")}</span>
+            <span class="text-sm tabular-nums text-text"
+              >{formatMinutes(task.allocated_minutes)}</span
+            >
           </div>
         {/if}
 

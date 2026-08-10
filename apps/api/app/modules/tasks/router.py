@@ -87,6 +87,13 @@ async def list_tasks(
         None, description="title | due_date | priority | status | assignee | …, '-' desc"
     ),
     meta: bool = Query(True, description="Include label/checklist/comment aggregates"),
+    hours: bool = Query(
+        False,
+        description=(
+            "Include the hour budget's burn (logged/remaining minutes); costs one grouped "
+            "query. Omitted for a caller without time.entry.read rather than refused."
+        ),
+    ),
     count: bool = Query(True, description="Compute total; set false for name-only lookups"),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[TaskListItem]:
@@ -106,6 +113,7 @@ async def list_tasks(
         q=q,
         sort=sort,
         with_meta=meta,
+        hours=hours,
         count=count,
     )
     return Page(items=items, total=total, limit=limit, offset=offset)

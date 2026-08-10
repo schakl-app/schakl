@@ -81,6 +81,7 @@ from app.modules.tasks.schemas import (
     TaskDetail,
     TaskListItem,
     TaskLogTime,
+    TaskRead,
     TaskUpdate,
     TemplateChecklistItem,
 )
@@ -406,6 +407,35 @@ class TaskService:
             item.comment_count = comments_by_task.get(item.id, 0)
         return items
 
+    async def _attach_hours(self, items: Sequence[TaskRead]) -> None:
+        """The hour budget's burn for a page of tasks, in one grouped query (#313).
+
+        Opt-in (``?hours=true``) because a row carries only what its screen draws, and gated on
+        ``time.entry.read`` — **absent rather than refused** for a caller without it. This is an
+        enrichment flag on a route they may otherwise call, so a 403 would break the ordinary
+        task list for someone who simply may not read hours. The seeded ``client`` role holds
+        ``tasks.task.read`` (the portal reads tasks) and never holds this, which is what keeps
+        team-wide burned hours off a client's screen.
+
+        Reused for the detail card, which asks for exactly one id. The time module is reached
+        through its published service, imported here rather than at module scope: nothing
+        outside this branch should drag `time` in, and a module never imports another's
+        internals (CLAUDE.md §6).
+        """
+        if not items or not self.ctx.can("time.entry.read"):
+            return
+        from app.modules.time.service import TimeService
+
+        logged = await TimeService(self.ctx).minutes_by_task([item.id for item in items])
+        for item in items:
+            minutes = logged.get(item.id)
+            item.logged_minutes = minutes.total if minutes is not None else 0
+            item.remaining_minutes = (
+                None
+                if item.allocated_minutes is None
+                else item.allocated_minutes - item.logged_minutes
+            )
+
     async def list(
         self,
         *,
@@ -424,6 +454,7 @@ class TaskService:
         q: str | None = None,
         sort: str | None = None,
         with_meta: bool = True,
+        hours: bool = False,
         count: bool = True,
     ) -> tuple[list[TaskListItem], int]:
         stmt = self.repo.scoped_select()
@@ -492,10 +523,16 @@ class TaskService:
         tasks = (await self.ctx.session.execute(stmt)).scalars().all()
         if not count:
             total = len(tasks)
-        if not with_meta:
-            # Lookup lists (pickers) don't need the aggregate chips — skip three queries.
-            return [TaskListItem.model_validate(t) for t in tasks], total
-        return await self._list_items(tasks), total
+        # Lookup lists (pickers) don't need the aggregate chips — skip three queries. They may
+        # still want the burn: the time module's task combobox is exactly that lookup (#313).
+        items = (
+            await self._list_items(tasks)
+            if with_meta
+            else [TaskListItem.model_validate(t) for t in tasks]
+        )
+        if hours:
+            await self._attach_hours(items)
+        return items, total
 
     async def _my_open_rows(self, limit: int) -> list[Task]:
         statuses = await load_statuses(self.ctx.session, self.ctx.org.id)
@@ -726,15 +763,11 @@ class TaskService:
         ).scalars().all()
         detail.links = [LinkRead.model_validate(link) for link in links]
 
-        # Minutes booked on this task — cross-module read by table name only (FK convention).
-        logged = await self.ctx.session.scalar(
-            sql_text(
-                "SELECT COALESCE(SUM(minutes), 0) FROM time_entries "
-                "WHERE org_id = :org_id AND task_id = :task_id AND ended_at IS NOT NULL"
-            ),
-            {"org_id": str(self.ctx.org.id), "task_id": str(task_id)},
-        )
-        detail.logged_minutes = int(logged or 0)
+        # Minutes booked on this task. Through the time module's published aggregate (#313)
+        # rather than the raw table read this used to be: that one named `time_entries` by
+        # hand (§6) and carried no company horizon, so a group-scoped member read a total over
+        # entries they cannot open (§15, failure mode 3).
+        await self._attach_hours([detail])
 
         detail.checklists = checklist_reads
         return detail

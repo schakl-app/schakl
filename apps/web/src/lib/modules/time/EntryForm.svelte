@@ -7,15 +7,17 @@
   import { enhance } from "$app/forms";
   import { beforeNavigate } from "$app/navigation";
   import { page } from "$app/state";
-  import { burnBarClass, burnBarWidth, burnPct, burnTextClass } from "$lib/core/burn";
+  import { burnPct } from "$lib/core/burn";
   import { fmtDateTime, fmtNumber } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
+  import BudgetBar from "$lib/core/ui/BudgetBar.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
+  import { taskBurn } from "$lib/modules/tasks/budget";
   import {
     endFromDuration,
     formatDurationInput,
@@ -36,6 +38,10 @@
     company_id?: string | null;
     project_id?: string | null;
     allocated_minutes?: number | null;
+    // A task's own burn (#313): present when the lookup asked for `hours=true` *and* the caller
+    // holds `time.entry.read`. Absent, never zero — see `modules/tasks/budget.ts`.
+    logged_minutes?: number | null;
+    remaining_minutes?: number | null;
     // What a new entry on this project bills by default (#284): false on a project a
     // subscription covers, so retainer work is never charged twice.
     billable_default?: boolean;
@@ -238,6 +244,15 @@
       sources: pickedProject?.budget_sources ?? [],
     };
   });
+
+  // The same question about the *task* (#313). Both bars are drawn when both exist: a task's
+  // allocation is the tighter constraint and neither replaces the other — "there are 30 hours
+  // left on the project" is no answer to "this task was budgeted at three and you are logging
+  // two". The picker keeps its plain allocation hint, which now reads as the budget beside the
+  // burn. Nothing is drawn at all when the API left the fields out, which is how the client
+  // portal's gate reaches this screen (`modules/tasks/budget.ts`).
+  const pickedTask = $derived(fTask ? tasks.find((task) => task.id === fTask) : undefined);
+  const pickedTaskBurn = $derived(pickedTask ? taskBurn(pickedTask) : null);
 
   // --- draft autosave (#44) ---------------------------------------------------
   // Never silently lose typed input: the create form autosaves ~1s after the last change,
@@ -558,42 +573,26 @@
     />
     {#if pickedBurn}
       <div class="mt-2 rounded-lg border border-border bg-surface p-2.5">
-        <div class="flex items-baseline justify-between gap-2">
-          <span class="text-xs text-text-muted">{t("time.budget.remaining_label")}</span>
-          <!-- Loud when it's gone (UX Principle 4): the same green/amber/red scale as every
-               other burn surface, on the figure the person logging actually needs. -->
-          <span class="text-sm font-semibold tabular-nums {burnTextClass(pickedBurn.pct)}">
-            {pickedBurn.remaining < 0
-              ? t("time.budget.over", { hours: fmtNumber(-pickedBurn.remaining, 1) })
-              : t("time.budget.remaining", { hours: fmtNumber(pickedBurn.remaining, 1) })}
-          </span>
-        </div>
-        {#if pickedBurn.pct != null}
-          <div class="mt-1.5 h-2 overflow-hidden rounded-full bg-surface-raised">
-            <!-- The one burn scale (core/burn.ts): the number may exceed 100 %, the bar can't. -->
-            <div
-              class="h-full rounded-full {burnBarClass(pickedBurn.pct)}"
-              style="width: {burnBarWidth(pickedBurn.pct)}%"
-            ></div>
-          </div>
-        {/if}
-        <div class="mt-1.5 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
-          <span class="text-xs tabular-nums text-text-muted">
-            {t("time.budget.spent", {
-              spent: fmtNumber(pickedBurn.spent, 1),
-              budget: fmtNumber(pickedBurn.budget, 1),
-            })}
-          </span>
-          {#if pickedBurn.sources.length > 0}
-            <!-- Where the budget comes from: these hours are a retainer's included hours (#225),
-                 which is what the entry form used to ask for with a subscription picker. -->
-            <span class="min-w-0 truncate text-xs text-text-muted">
-              {t("time.budget.from_subscription", {
+        <!-- The one burn block (core/ui/BudgetBar.svelte): thresholds, the unclamped remainder
+             and the clamped width are decided there, and the words stay here because they are
+             this module's — a project budgets *hours*. -->
+        <BudgetBar
+          spent={pickedBurn.spent}
+          budget={pickedBurn.budget}
+          label={t("time.budget.remaining_label")}
+          remainingText={pickedBurn.remaining < 0
+            ? t("time.budget.over", { hours: fmtNumber(-pickedBurn.remaining, 1) })
+            : t("time.budget.remaining", { hours: fmtNumber(pickedBurn.remaining, 1) })}
+          spentText={t("time.budget.spent", {
+            spent: fmtNumber(pickedBurn.spent, 1),
+            budget: fmtNumber(pickedBurn.budget, 1),
+          })}
+          noteText={pickedBurn.sources.length > 0
+            ? t("time.budget.from_subscription", {
                 name: pickedBurn.sources.map((s) => s.name).join(", "),
-              })}
-            </span>
-          {/if}
-        </div>
+              })
+            : undefined}
+        />
       </div>
     {:else if pickedProject?.hours}
       <!-- Only when the caller asked for the burn and the answer was "no budget". A lookup
@@ -612,6 +611,19 @@
       id="task-{action}"
       placeholder={t("time.field.task")}
     />
+    {#if pickedTaskBurn}
+      <!-- What is left of *this task* before saving (#313). The project's bar above answers a
+           different question and cannot stand in for this one. -->
+      <div class="mt-2 rounded-lg border border-border bg-surface p-2.5">
+        <BudgetBar
+          spent={pickedTaskBurn.spent}
+          budget={pickedTaskBurn.budget}
+          label={t("tasks.field.allocated")}
+          remainingText={pickedTaskBurn.remainingText}
+          spentText={pickedTaskBurn.spentText}
+        />
+      </div>
+    {/if}
   </div>
   <div>
     <label for="description-{action}" class="mb-1 block text-xs font-medium text-text-muted"

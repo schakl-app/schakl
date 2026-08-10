@@ -853,6 +853,70 @@ async def test_horizon_reaches_totals_and_summary_tiles(client_for) -> None:
         assert owner_tiles["draft_count"] == 2
 
 
+async def test_horizon_reaches_a_tasks_hour_budget(client_for) -> None:
+    """The task burn (#313) is the same failure shape as ``/time/logged``, one module out.
+
+    It used to be a raw ``SELECT SUM(minutes) FROM time_entries WHERE org_id = …`` on the task
+    card: tenant-correct and horizon-blind. A task attached to **no** client stays visible to a
+    restricted membership (no company linkage is not company data) while the hours booked
+    against it are attributed per client — so the bar was filled by work the caller cannot open,
+    and losing the predicate again would be silent in exactly the same way.
+    """
+    t, member, membership, owner_h, member_h, a, b, group = await _setup(
+        client_for, "horiz-task-burn"
+    )
+
+    async with client_for(t.host) as c:
+        task = await c.post(
+            "/api/v1/tasks",
+            json={"title": "Klantwerk", "allocated_minutes": 300},
+            headers=owner_h,
+        )
+        assert task.status_code == 201, task.text
+        task_id = task.json()["id"]
+        for company, minutes in ((a, 60), (b, 120)):
+            entry = await c.post(
+                "/api/v1/time/entries",
+                json={
+                    "task_id": task_id,
+                    "company_id": company["id"],
+                    "started_at": "2026-07-10T09:00:00+00:00",
+                    "minutes": minutes,
+                },
+                headers=owner_h,
+            )
+            assert entry.status_code == 201, entry.text
+        assert (
+            await c.put(
+                f"/api/v1/companies/groups/{group['id']}/memberships",
+                json={"membership_ids": [str(membership.id)]},
+                headers=owner_h,
+            )
+        ).status_code == 204
+
+        def _row(payload: dict) -> dict:
+            return next(r for r in payload["items"] if r["id"] == task_id)
+
+        scoped = _row(
+            (await c.get("/api/v1/tasks?hours=true&limit=50", headers=member_h)).json()
+        )
+        assert scoped["logged_minutes"] == 60
+        assert scoped["remaining_minutes"] == 240
+        assert (
+            _row((await c.get("/api/v1/tasks?hours=true&limit=50", headers=owner_h)).json())[
+                "logged_minutes"
+            ]
+            == 180
+        )
+
+        # The card takes the same predicate — that is what it was changed to do.
+        card = (await c.get(f"/api/v1/tasks/{task_id}", headers=member_h)).json()
+        assert card["logged_minutes"] == 60
+        assert (await c.get(f"/api/v1/tasks/{task_id}", headers=owner_h)).json()[
+            "logged_minutes"
+        ] == 180
+
+
 async def test_horizon_reaches_the_drive_links_of_a_client(client_for) -> None:
     """The Drive surfaces are entity-addressed too (#285's failure mode (4)): the pair comes
     from the caller, so holding ``google.drive.read`` is not the same as being allowed to see

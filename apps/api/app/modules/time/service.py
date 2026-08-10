@@ -467,6 +467,49 @@ class TimeService:
             r[0]: LoggedMinutes(int(r[1]), int(r[2]), int(r[3]), int(r[4])) for r in rows
         }
 
+    async def minutes_by_task(
+        self, task_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, LoggedMinutes]:
+        """All-time logged minutes per task — the burn behind a task's hour budget (#313).
+
+        Simpler than :meth:`minutes_by_project` by one whole join: a task's allocation has no
+        period, so there are no per-row bounds to carry and one grouped scan answers the page.
+        ``total`` and ``all_time`` are therefore the same number, which is what "no period"
+        means here.
+
+        Two things it carries deliberately. **The horizon**, for the reason :meth:`logged`
+        spells out: an aggregate replaces a ``scoped_select()``, so it has to ask for
+        ``horizon_condition()`` by name or a company-scoped login reads a total over rows it
+        cannot see (§15, failure mode 3). And **``ended_at IS NOT NULL``**, like every other sum
+        here — a running timer has not spent the budget yet.
+        """
+        if not task_ids:
+            return {}
+        total = self._sum()
+        stmt = (
+            select(
+                TimeEntry.task_id,
+                total,
+                self._sum(TimeEntry.billable.is_(True)),
+                self._sum(TimeEntry.approved_at.is_(None)),
+                total,
+            )
+            .select_from(TimeEntry)
+            .where(
+                TimeEntry.org_id == self.ctx.org.id,
+                TimeEntry.ended_at.is_not(None),
+                TimeEntry.task_id.in_(list(task_ids)),
+            )
+            .group_by(TimeEntry.task_id)
+        )
+        horizon = self.repo.horizon_condition()
+        if horizon is not None:
+            stmt = stmt.where(horizon)
+        rows = (await self.ctx.session.execute(stmt)).all()
+        return {
+            r[0]: LoggedMinutes(int(r[1]), int(r[2]), int(r[3]), int(r[4])) for r in rows
+        }
+
     async def minutes_by_company(
         self, company_ids: Sequence[uuid.UUID]
     ) -> dict[uuid.UUID, LoggedMinutes]:

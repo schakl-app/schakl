@@ -116,6 +116,14 @@ class TaskRead(TaskBase):
     recurrence: Recurrence | None
     created_at: datetime
     updated_at: datetime
+    # The hour budget's burn (#313). On a list row only when asked for (``?hours=true``) — a row
+    # carries only what its screen draws (§9) — and on any surface only for a caller holding
+    # ``time.entry.read``. **Absent, never zero**: "nobody may tell you" and "nothing logged yet"
+    # are different answers, and a client-portal login (which holds ``tasks.task.read``) gets the
+    # first one. ``remaining_minutes`` is unclamped, like ``remaining_hours``: over budget reads
+    # negative, and is ``None`` when there is no allocation to remain of.
+    logged_minutes: int | None = None
+    remaining_minutes: int | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -431,8 +439,9 @@ class TaskDetail(TaskRead):
     comments: list[CommentRead] = Field(default_factory=list)
     activities: list[ActivityRead] = Field(default_factory=list)
     links: list[LinkRead] = Field(default_factory=list)
-    # Minutes booked on this task (from time tracking) — drives the budget colour.
-    logged_minutes: int = 0
+    # ``logged_minutes``/``remaining_minutes`` are inherited from ``TaskRead``. The card always
+    # asks for them — one row, one grouped query — but they stay gated on ``time.entry.read``,
+    # so the same burn a client cannot see on the list is not handed to them on the card.
 
 
 # --------------------------------------------------------------------------- #

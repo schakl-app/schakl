@@ -148,6 +148,17 @@ discarded**, and **add one** when you find a list shipping something its screen 
   so the default applies" is a coincidence a later `model_config` change would turn into a
   validation error — and because domains' billing pair has no empty value, so it takes the
   *local* answer (what the row says about itself, no register consulted).
+- **`hours=true`** (projects, tasks, companies — default **off**, the mirror image of the above):
+  an *opt-in* aggregate rather than an opt-out. One grouped query per page
+  (`TimeService.minutes_by_project` / `minutes_by_task` / `minutes_by_company`), never one per
+  row, so the cost is the same at three rows and three hundred. Projects gate it on their budget
+  column being visible; **tasks deliberately do not**, for the reason `meta=false` gives — the
+  ⏱ pill on `TaskRow` is the mobile list, and a column-driven gate would hide the burn from the
+  screen with no column picker on it. Both gate it on `time.entry.read`, on both ends: the load
+  does not ask when the caller cannot read hours, and the API **omits the fields rather than
+  refusing the request** if it is asked anyway. That asymmetry is the rule — an enrichment flag
+  rides a route the caller may otherwise call, so a 403 would break the ordinary list for
+  someone whose only sin is not being allowed to see hours.
 - **`with_body`** (interactions, default **off**) — a list row's `body_text` is a full e-mail
   body. The key stays in the payload as `null`; the detail view fetches the row it opens.
 - **`lines=false`** (invoices, quotes) — the index draws number, client, date, status and total,

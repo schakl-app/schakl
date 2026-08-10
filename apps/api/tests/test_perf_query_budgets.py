@@ -29,12 +29,15 @@ async def _company(client, headers, name: str = "Acme") -> str:
     return res.json()["id"]
 
 
-async def _entry(client, headers, *, company_id: str, minutes: int, day: int) -> str:
+async def _entry(
+    client, headers, *, company_id: str, minutes: int, day: int, task_id: str | None = None
+) -> str:
     started = datetime(2026, 3, 2, 9, 0, tzinfo=UTC) + timedelta(days=day)
     res = await client.post(
         "/api/v1/time/entries",
         json={
             "company_id": company_id,
+            "task_id": task_id,
             "started_at": _iso(started),
             "ended_at": _iso(started + timedelta(minutes=minutes)),
             "billable": True,
@@ -45,9 +48,17 @@ async def _entry(client, headers, *, company_id: str, minutes: int, day: int) ->
     return res.json()["id"]
 
 
-async def _task(client, headers, *, company_id: str, title: str) -> str:
+async def _task(
+    client, headers, *, company_id: str, title: str, allocated_minutes: int | None = None
+) -> str:
     res = await client.post(
-        "/api/v1/tasks", json={"title": title, "company_id": company_id}, headers=headers
+        "/api/v1/tasks",
+        json={
+            "title": title,
+            "company_id": company_id,
+            "allocated_minutes": allocated_minutes,
+        },
+        headers=headers,
     )
     assert res.status_code == 201, res.text
     return res.json()["id"]
@@ -118,6 +129,54 @@ async def test_task_status_vocabulary_costs_one_statement_once_seeded(
             assert (await c.get("/api/v1/tasks", headers=headers)).status_code == 200
         reads = counter.matching("from task_statuses")
         assert len(reads) == 1, reads
+
+
+async def test_task_hour_budget_is_one_grouped_query_however_many_tasks(
+    client_for, count_queries
+) -> None:
+    """``?hours=true`` costs exactly one statement more than ``?hours=false``, at any page size.
+
+    The burn is opt-in (#313), so the ordinary list must pay nothing at all for it, and the
+    aggregate must be one ``GROUP BY task_id`` rather than the per-task ``GET /time/logged``
+    the card uses. Both halves are invisible in the JSON — three tasks and thirty return
+    identical rows either way, which is the whole reason this file exists.
+    """
+    t = await make_tenant("perf-task-hours")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers)
+        # Seed the status vocabulary, or the first read below pays for it (see above).
+        assert (await c.get("/api/v1/tasks", headers=headers)).status_code == 200
+
+        async def seed(count: int, offset: int) -> None:
+            for i in range(offset, offset + count):
+                task = await _task(
+                    c, headers, company_id=company, title=f"T{i}", allocated_minutes=120
+                )
+                await _entry(
+                    c, headers, company_id=company, task_id=task, minutes=30, day=i % 20
+                )
+
+        async def statements(query: str) -> tuple[int, list[str]]:
+            with count_queries() as counter:
+                res = await c.get(f"/api/v1/tasks?{query}", headers=headers)
+            assert res.status_code == 200, res.text
+            assert all(r["allocated_minutes"] == 120 for r in res.json()["items"])
+            return len(counter), counter.matching("group by time_entries.task_id")
+
+        await seed(3, 0)
+        plain_at_3, plain_burns = await statements("hours=false")
+        enriched_at_3, burns_at_3 = await statements("hours=true")
+        assert plain_burns == [], "hours=false paid for an aggregate nobody asked for"
+        assert len(burns_at_3) == 1, burns_at_3
+        assert enriched_at_3 == plain_at_3 + 1
+
+        # Ten times the rows, the same statement count. A per-row read would be +30 here.
+        await seed(27, 3)
+        plain_at_30, _ = await statements("hours=false")
+        enriched_at_30, burns_at_30 = await statements("hours=true")
+        assert len(burns_at_30) == 1, burns_at_30
+        assert (plain_at_30, enriched_at_30) == (plain_at_3, enriched_at_3)
 
 
 async def test_task_statuses_still_seed_for_a_fresh_org(client_for) -> None:
