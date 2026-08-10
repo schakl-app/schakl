@@ -11,7 +11,7 @@
   } from "@lucide/svelte";
   import { dndzone } from "svelte-dnd-action";
 
-  import { enhance } from "$app/forms";
+  import { applyAction, enhance } from "$app/forms";
   import { page } from "$app/state";
   import { editIntent } from "$lib/core/edit-intent";
   import { fmtDateTime, fmtDayMonth } from "$lib/core/format";
@@ -120,12 +120,9 @@
   // task's own flag, or the terminal status's), the prompt says so instead of offering a move
   // that the API would refuse.
   let showFinishPrompt = $state(false);
-  const openItemCount = $derived(
-    (task.checklists ?? []).reduce(
-      (n, checklist) => n + (checklist.items ?? []).filter((item) => !item.done).length,
-      0,
-    ),
-  );
+  // `openItemCount` counts the rows the *screen* holds (`dndItems`, declared below) rather than
+  // the ones the load returned: a tick is optimistic now, so the record is a round trip behind
+  // the checkbox and counting it would arm the finish prompt one tick late.
   const finishStatus = $derived(statuses.find((s) => s.is_terminal) ?? null);
   const finishNeedsMoment = $derived(
     (task.requires_interaction || (finishStatus?.requires_interaction ?? false)) &&
@@ -290,6 +287,11 @@
     dndChecklists = [...lists];
     dndItems = Object.fromEntries(lists.map((cl) => [cl.id, [...(cl.items ?? [])]]));
   });
+
+  /** Open to-dos across every list, counted off the rows on screen (see `showFinishPrompt`). */
+  const openItemCount = $derived(
+    Object.values(dndItems).reduce((n, items) => n + items.filter((i) => !i.done).length, 0),
+  );
 
   // The zones stay disabled until a grip takes the pointer down — the rows hold checkboxes,
   // menus and (while editing) text inputs, and a drag that starts anywhere would eat all three.
@@ -954,19 +956,41 @@
                         <form
                           method="POST"
                           action="?/toggleItem"
-                          use:enhance={() => {
-                            // Snapshot before the server flips it: checking the last open to-do on an
-                            // unfinished task opens the finish prompt after the reload.
+                          use:enhance={({ formData }) => {
+                            // Ticking is the most-repeated gesture on this page, and it used to
+                            // cost a whole page reload: `update()` invalidates every load above
+                            // it, so one checkbox re-ran the two layouts and this page —
+                            // sixteen API calls, one of them the eight-round-trip task detail —
+                            // and the box did not change colour until all of it came back.
+                            //
+                            // So flip it here and let the PATCH catch up. `item` is the object
+                            // the drag arrays hold, so the checkbox, the progress bar, the
+                            // "3/7" and `openItemCount` all move with this one write. Nothing
+                            // is invalidated: the only thing the server changed that this page
+                            // also draws is the activity line, which the next load picks up
+                            // (the NotificationBell's fire-and-forget precedent).
+                            //
+                            // `next` comes from the serialised body, not from `item.done`, so
+                            // what we show can never disagree with what we sent.
+                            const next = formData.get("done") === "true";
+                            item.done = next;
+                            // Read *after* the flip — this is the tick that emptied the list.
                             const completesLast =
-                              !item.done &&
-                              openItemCount === 1 &&
+                              next &&
+                              openItemCount === 0 &&
                               !isDone &&
                               !isPortal &&
                               finishStatus !== null;
-                            return ({ update }) => {
-                              void update().then(() => {
-                                if (completesLast) showFinishPrompt = true;
-                              });
+                            return async ({ result }) => {
+                              // Refused (a lost race, a permission withdrawn mid-session): put
+                              // the box back rather than leave the screen claiming a change the
+                              // server never made. `applyAction` surfaces the message and — the
+                              // reason it is used instead of `update()` — invalidates nothing.
+                              if (result.type !== "success") item.done = !next;
+                              await applyAction(result);
+                              if (result.type === "success" && completesLast) {
+                                showFinishPrompt = true;
+                              }
                             };
                           }}
                         >

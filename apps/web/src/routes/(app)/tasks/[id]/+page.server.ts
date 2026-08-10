@@ -440,19 +440,23 @@ export const actions: Actions = {
     return { checklist: true };
   },
 
+  // The one write on this page that happens over and over, so it is the one that may not cost a
+  // reload: the checkbox flips optimistically in the browser and nothing is invalidated
+  // (docs/PERFORMANCE.md). That makes reporting the refusal this action's job — a swallowed
+  // error used to be survivable because the reload put the box back, and now nothing would.
   toggleItem: async (event) => {
     const form = await event.request.formData();
     const checklist_id = String(form.get("checklist_id") ?? "");
     const item_id = String(form.get("item_id") ?? "");
-    if (checklist_id && item_id) {
-      await apiFor(event).PATCH(
-        "/api/v1/tasks/{task_id}/checklists/{checklist_id}/items/{item_id}",
-        {
-          params: { path: { task_id: event.params.id, checklist_id, item_id } },
-          body: { done: form.get("done") === "true" },
-        },
-      );
-    }
+    if (!checklist_id || !item_id) return fail(400, { error: "errors.required" });
+    const { error: apiError } = await apiFor(event).PATCH(
+      "/api/v1/tasks/{task_id}/checklists/{checklist_id}/items/{item_id}",
+      {
+        params: { path: { task_id: event.params.id, checklist_id, item_id } },
+        body: { done: form.get("done") === "true" },
+      },
+    );
+    if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
     return { checklist: true };
   },
 

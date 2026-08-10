@@ -69,6 +69,34 @@ collect `data.<key>` and confirm each is produced by its own load or a layout ab
   side lookup, cache the *promise* at module scope so they share one flight (safe in the browser,
   in one user's tab — the same cache on the server would be a tenant-isolation bug).
 
+## A gesture repeated all day does not reload the page
+
+`invalidateAll` is the right default for a write, and it is the wrong one for a *tick*. SvelteKit's
+`update()` reruns every load above the form, so ticking one to-do on a task re-ran the two layouts
+and the page — sixteen API calls, one of them the eight-round-trip `GET /tasks/{id}` — and the
+checkbox did not change colour until all of it came back. The page was correct and the gesture felt
+broken, which is the same bug.
+
+Where a control is used dozens of times on one screen (a checklist tick, a complete-toggle, a
+reorder), write it optimistically instead:
+
+- **Flip the row the screen is drawing from, not the load's copy.** The task page's checkboxes,
+  the "3/7" and the finish prompt all read the drag arrays, so one assignment moves all of them.
+  If a derived count feeds a *decision*, derive it from the same array — counting the load's rows
+  leaves the decision a round trip behind the click.
+- **Take the new value from the serialised body** (`formData.get(...)` in the `use:enhance`
+  callback), never from the state you are about to mutate: what the screen shows can then never
+  disagree with what was sent.
+- **`applyAction(result)`, never `update()`** — it surfaces the action's message and invalidates
+  nothing. On anything but a success, put the row back: with no reload to correct it, an
+  unreported refusal leaves the screen claiming a change the server never made, so the action
+  must `fail()` with an error key rather than swallow the API error.
+- **Say what the next load picks up.** Optimism is only safe because the *rest* of what the write
+  touched (here, the activity line) is not on screen or is allowed to lag.
+
+The endpoint behind such a control is a budget: a tick must cost the same on a checklist of eleven
+as on a checklist of one (`test_perf_query_budgets.py`).
+
 ## A list row carries only what the list draws
 
 Opt-outs exist on the list endpoints for exactly this — **use them wherever the extra work is
