@@ -1154,3 +1154,77 @@ async def test_the_reaper_fails_runs_nobody_is_running_and_leaves_the_rest_alone
         # Still generating, and genuinely so: a reaper that races a healthy run is worse than
         # no reaper, because it fails a report that was about to succeed.
         assert (await session.get(Report, running)).status == ReportStatus.GENERATING.value
+
+
+async def test_a_run_nobody_started_meters_its_tokens_against_nobody(monkeypatch) -> None:
+    """The whole point of a *scheduled* report: it has no user, and the meter must accept that.
+
+    A run drives its services through an ``events.SystemContext`` — a bound org and session,
+    ``user=None``, because a cron is not a person (CLAUDE.md §6). ``AIService.record_usage``
+    read ``ctx.user.id`` unconditionally, so a scheduled run gathered its data, froze its
+    snapshot, spent its tokens writing the prose, and then died in the ``finally`` that meters
+    it: ``AttributeError: 'NoneType' object has no attribute 'id'``, the report marked
+    ``failed``, a finished document lost to the bookkeeping about it.
+
+    ``ai_usage.user_id`` is already nullable, and a NULL actor already means "the system"
+    everywhere else that records one (§16). This asserts the two halves that matter: the
+    narrative survives, and the tokens are still counted against the org.
+    """
+    from app.core.ai.models import AISettings, AIUsage
+    from app.core.ai.providers import AIEvent
+    from app.core.ai.service import AIService
+    from app.core.crypto import encrypt
+    from app.core.events import SystemContext
+
+    tenant = await make_tenant("repmeter")
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        session.add(
+            AISettings(
+                org_id=tenant.org.id,
+                provider="anthropic",
+                api_key_enc=encrypt("sk-test-reporting"),
+                default_model="claude-sonnet-5",
+                features={},
+            )
+        )
+        await session.commit()
+
+    async def fake_stream(config, **kwargs):  # noqa: ANN001, ANN003, ARG001
+        yield AIEvent(kind="text", text='{"intro": "Het verkeer groeide."}')
+        yield AIEvent(kind="done", stop_reason="end_turn", tokens_in=120, tokens_out=45)
+
+    monkeypatch.setattr("app.core.ai.providers.stream_chat", fake_stream)
+
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        org = await session.get(type(tenant.org), tenant.org.id)
+        written, warnings = await narrative.write_narrative(
+            AIService(SystemContext(org=org, session=session)),
+            snapshot={"period": {"label": "juli 2026"}, "sections": {}},
+            profile=None,
+            tone=None,
+            sections=[("intro", "Schrijf een inleiding.")],
+            locale="nl",
+            brand="Bureau",
+            period_label="juli 2026",
+            compare_label=None,
+            internal=False,
+        )
+        await session.commit()
+
+    assert written == {"intro": "Het verkeer groeide."}
+    assert warnings == []
+
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        rows = (
+            (await session.execute(select(AIUsage).where(AIUsage.org_id == tenant.org.id)))
+            .scalars()
+            .all()
+        )
+    assert len(rows) == 1
+    # Nobody's name on it — and still the org's tokens, so the budget a scheduled run spends is
+    # a budget somebody can see being spent.
+    assert rows[0].user_id is None
+    assert (rows[0].feature, rows[0].tokens_in, rows[0].tokens_out) == ("reporting", 120, 45)

@@ -586,6 +586,46 @@ async def test_transcribe_roundtrip_and_meters_seconds(client_for, monkeypatch) 
         assert audio_rows[0].tokens_in == 0 and audio_rows[0].tokens_out == 0
 
 
+async def test_a_job_meters_against_the_system_never_against_a_placeholder() -> None:
+    """The meter's actor is a label, and background work has none to write.
+
+    Two context shapes carry "no person" and both must land on ``NULL``. An
+    ``events.SystemContext`` (a scheduled report run) has ``user=None`` outright — reading
+    ``ctx.user.id`` there is an ``AttributeError`` that kills the work the tokens were already
+    spent on. ``jobs.system_context`` is the subtler one: it carries a placeholder ``User``
+    with a real-looking id that exists in **no** ``users`` row, so storing it raises a
+    foreign-key violation inside the very transaction the job is doing its work in — the same
+    trap ``ActivityService.record`` already sidesteps with ``is_system`` (§16).
+    """
+    from app.core.ai.service import AIService
+    from app.core.events import SystemContext
+    from app.core.jobs import system_context
+
+    t = await make_tenant("ai-system-meter")
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        org = await session.get(type(t.org), t.org.id)
+        await AIService(SystemContext(org=org, session=session)).record_usage(
+            "reporting", "m", 10, 5
+        )
+        await AIService(system_context(org, session)).record_usage("assistant", "m", 3, 2)
+        await session.commit()
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        rows = (
+            (await session.execute(select(AIUsage).where(AIUsage.org_id == t.org.id)))
+            .scalars()
+            .all()
+        )
+    assert {(r.feature, r.tokens_in, r.tokens_out) for r in rows} == {
+        ("reporting", 10, 5),
+        ("assistant", 3, 2),
+    }
+    assert [r.user_id for r in rows] == [None, None]
+
+
 async def test_transcribe_requires_writing_time_entries(client_for, monkeypatch) -> None:
     """A transcript exists to become a time entry, so holding `ai.use` alone is not enough.
 
