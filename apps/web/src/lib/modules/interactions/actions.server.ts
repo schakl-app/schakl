@@ -433,6 +433,10 @@ export const interactionActions = {
       inlineCreated: {
         slot: String(form.get("slot") ?? "") || "move_task",
         id: data.id,
+        // The picker labels the new option from this, not from what was typed into it: the
+        // persistent ＋ opens the dialog with no draft at all, and the title is filled in
+        // there — so a label taken from the picker's query read "—" on the row just created.
+        name: data.title,
         project_id: data.project_id ?? null,
         company_id: data.company_id ?? null,
       },
