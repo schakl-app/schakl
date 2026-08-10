@@ -21,6 +21,7 @@
 
   import { t } from "$lib/core/i18n";
   import DocumentFrame from "$lib/core/ui/DocumentFrame.svelte";
+  import { filedrop } from "$lib/core/ui/filedrop";
 
   import type { ReportTemplate, SectionCatalogEntry } from "./types";
 
@@ -243,7 +244,10 @@
           {t("settings.reporting.cover_image")}
         </legend>
         <p class="text-xs text-text-muted">{t("settings.reporting.cover_image_hint")}</p>
-        <div class="flex flex-wrap items-center gap-2">
+        <div
+          class="flex flex-wrap items-center gap-2"
+          use:filedrop={{ disabled: uploading, onerror: (key) => (uploadError = t(key)) }}
+        >
           <input
             type="file"
             accept="image/*"
@@ -252,6 +256,7 @@
             class="text-xs text-text-muted"
             aria-label={t("settings.reporting.cover_image")}
           />
+          <span class="text-xs text-text-muted">{t("common.drop_hint")}</span>
           {#if coverFileId}
             <span class="text-xs text-text-muted"
               >{coverName || t("settings.reporting.cover_set")}</span

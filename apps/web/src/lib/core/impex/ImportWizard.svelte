@@ -22,6 +22,7 @@
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
+  import { filedrop } from "$lib/core/ui/filedrop";
   import Modal from "$lib/core/ui/Modal.svelte";
 
   import MappingTable from "./MappingTable.svelte";
@@ -60,6 +61,7 @@
   let hasHeader = $state(true);
   let pasted = $state("");
   let fileName = $state("");
+  let dropError = $state<string | null>(null);
   /**
    * The inspect result has to outlive the submit that produced it: `preview` and `commit`
    * return an import report and nothing else, so the incoming prop goes `null` and the
@@ -83,6 +85,7 @@
     hasHeader = true;
     pasted = "";
     fileName = "";
+    dropError = null;
     held = null;
     heldColumns = [];
   }
@@ -153,19 +156,26 @@
       <label for="impex-file" class="mb-1 block text-sm font-medium text-text">
         {t("impex.file")}
       </label>
-      <input
-        id="impex-file"
-        name="file"
-        type="file"
-        accept=".csv,.tsv,.txt,.xlsx,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        onchange={(event) => {
-          fileName = event.currentTarget.files?.[0]?.name ?? "";
-          if (fileName) pasted = "";
-          invalidate();
-        }}
-        class="w-full min-w-0 rounded-lg border border-border px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-surface file:px-3 file:py-1 file:text-sm file:text-text"
-      />
+      <div use:filedrop={{ onerror: (key) => (dropError = key) }}>
+        <input
+          id="impex-file"
+          name="file"
+          type="file"
+          accept=".csv,.tsv,.txt,.xlsx,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          onchange={(event) => {
+            dropError = null;
+            fileName = event.currentTarget.files?.[0]?.name ?? "";
+            if (fileName) pasted = "";
+            invalidate();
+          }}
+          class="w-full min-w-0 rounded-lg border border-border px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-surface file:px-3 file:py-1 file:text-sm file:text-text"
+        />
+      </div>
+      <p class="mt-1 text-xs text-text-muted">{t("common.drop_hint")}</p>
       <p class="mt-2 text-xs text-text-muted">{t("impex.file_hint")}</p>
+      {#if dropError}
+        <p class="mt-1 text-xs text-red-600 dark:text-red-400">{t(dropError)}</p>
+      {/if}
 
       <div class="mt-4">
         <label for="impex-paste" class="mb-1 block text-sm font-medium text-text">

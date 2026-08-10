@@ -8,6 +8,7 @@
   import Avatar from "$lib/core/ui/Avatar.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import { filedrop } from "$lib/core/ui/filedrop";
   import GoogleAccountCard from "$lib/modules/google/GoogleAccountCard.svelte";
   import NavPrefEditor from "$lib/core/ui/NavPrefEditor.svelte";
   import PasswordInput from "$lib/core/ui/PasswordInput.svelte";
@@ -17,6 +18,7 @@
 
   // "Copied" feedback for the one-time backup-codes reveal (the house clipboard pattern).
   let backupCopied = $state(false);
+  let avatarInput = $state<HTMLInputElement | null>(null);
   const busy = new InFlight();
 
   const account = $derived(data.account);
@@ -166,8 +168,9 @@
   <section class="rounded-xl border border-border bg-surface-raised p-5">
     <h2 class="text-sm font-semibold text-text">{t("settings.account.profile")}</h2>
 
-    <!-- Profile picture (#122): OIDC by default, personally overridable, initials fallback. -->
-    <div class="mt-4 flex items-center gap-4">
+    <!-- Profile picture (#122): OIDC by default, personally overridable, initials fallback.
+         The picture itself is inside the drop target — that is what you aim a dragged photo at. -->
+    <div class="mt-4 flex items-center gap-4" use:filedrop={{ input: () => avatarInput }}>
       <Avatar
         name={account?.full_name}
         email={account?.email}
@@ -177,18 +180,20 @@
       <div class="flex flex-wrap items-center gap-2">
         <form method="POST" action="?/saveAvatar" enctype="multipart/form-data" use:enhance>
           <label
-            class="inline-flex cursor-pointer items-center rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:border-brand"
+            class="inline-flex cursor-pointer items-center rounded-lg border border-border px-3 py-1.5 text-sm text-text hover:border-brand focus-within:border-brand"
           >
             {t("settings.account.avatar_upload")}
             <input
+              bind:this={avatarInput}
               type="file"
               name="file"
               accept="image/png,image/jpeg,image/webp,image/gif"
-              class="hidden"
+              class="sr-only"
               onchange={(e) => e.currentTarget.form?.requestSubmit()}
             />
           </label>
         </form>
+        <span class="text-xs text-text-muted">{t("common.drop_hint")}</span>
         {#if account?.customAvatarUrl}
           <form method="POST" action="?/saveAvatar" use:enhance={busy.wrap("avatarClear")}>
             <input type="hidden" name="clear" value="1" />

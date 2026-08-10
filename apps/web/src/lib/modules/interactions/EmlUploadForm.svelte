@@ -24,6 +24,7 @@
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
+  import { filedrop } from "$lib/core/ui/filedrop";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import ProjectQuickCreate from "$lib/modules/projects/ProjectQuickCreate.svelte";
@@ -273,10 +274,12 @@
   <!-- Set only after the duplicate warning: the second press is the deliberate one. -->
   <input type="hidden" name="allow_duplicate" value={duplicate ? "1" : "0"} />
 
-  <div>
+  <!-- A .eml gets here by being dragged out of a mail client, which is the one gesture this
+       screen exists for, so the whole block is the drop target. -->
+  <div use:filedrop={{ onerror: (key) => (error = key) }}>
     <span class="mb-1 block text-sm font-medium text-text">{t("interactions.eml.file")}</span>
     <label
-      class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-text-muted hover:border-brand hover:text-brand"
+      class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-text-muted hover:border-brand focus-within:border-brand hover:text-brand"
     >
       <Paperclip size={15} aria-hidden="true" />
       {filename || t("interactions.eml.choose")}
@@ -285,7 +288,7 @@
         name="file"
         accept=".eml,message/rfc822"
         required
-        class="hidden"
+        class="sr-only"
         onchange={(e) => {
           filename = e.currentTarget.files?.[0]?.name ?? "";
           duplicate = false;
@@ -294,6 +297,7 @@
         }}
       />
     </label>
+    <span class="ml-2 text-xs text-text-muted">{t("common.drop_hint")}</span>
     <p class="mt-1 text-xs text-text-muted">{t("interactions.eml.hint")}</p>
   </div>
 

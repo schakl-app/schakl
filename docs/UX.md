@@ -550,6 +550,22 @@
   placeholder rather than leaving a browser's broken-image glyph in the card, and the file input is
   `sr-only`, never `hidden`, because a `display:none` control is not focusable and the upload would
   be unreachable by keyboard.
+- **Every upload takes a dropped file** (`core/ui/filedrop`, house convention). Eleven upload
+  controls shipped as click-to-browse and nothing else, which is the one gesture people no longer
+  reach for first: an attachment, a client logo, a spreadsheet and a `.eml` all arrive by being
+  dragged out of a mail client or a folder. `use:filedrop` on whatever the user is plausibly aiming
+  at — the thumbnail, the file listing, the field — is the whole change. It lands the files on the
+  **input** (`input.files` + a bubbling `change`), never past it, so whatever the control already
+  did on change happens unchanged: a multipart form really carries the bytes, a `requestSubmit()`
+  still fires, a `FormData` POST still runs. Nothing about how a control uploads has to be known by
+  the action, and nothing about it changes when the drop is added. Three rules hold: it is an
+  **accelerator, never the only path** (the button underneath keeps working, which is the same
+  fallback rule the reorder drags follow), `accept` is honoured *the way the native picker honours
+  it* — a clearly wrong type is refused with `errors.upload_type`, a file the browser could not
+  type at all goes through for the server to judge, exactly as the dialog's "All files" escape
+  hatch does — and a control **says it takes a drop** (`common.drop_hint` beside the button),
+  because an affordance nobody can see is one nobody uses. The highlight is one rule in `app.css`
+  keyed on `data-filedrop`, not a hover class re-typed per site.
 - **A password reveal (eye) toggle sits on user-password fields only** (#235, owner call): login,
   setup, reset-password and the account page's password fields use the shared
   `core/ui/PasswordInput` — the places where a mistyped password locks someone out. Write-only

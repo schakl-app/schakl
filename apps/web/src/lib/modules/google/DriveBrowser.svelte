@@ -15,19 +15,13 @@
    *
    * **Host contract:** the page exposes `?/linkDriveFile` (spread `driveActions`).
    */
-  import {
-    ChevronLeft,
-    ExternalLink,
-    FolderPlus,
-    Link2,
-    RefreshCw,
-    Upload,
-  } from "@lucide/svelte";
+  import { ChevronLeft, ExternalLink, FolderPlus, Link2, RefreshCw, Upload } from "@lucide/svelte";
   import { onMount } from "svelte";
 
   import { enhance } from "$app/forms";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { filedrop } from "$lib/core/ui/filedrop";
 
   import { driveKind } from "./mime";
 
@@ -198,7 +192,15 @@
   });
 </script>
 
-<div class="rounded-lg border border-border">
+<!-- The whole browser is the drop target: what a dragged file is aimed at is the folder you
+     are looking at, not the toolbar button that would have opened a dialog for it. -->
+<div
+  class="rounded-lg border border-border"
+  use:filedrop={{
+    input: () => fileInput,
+    disabled: !canWrite || uploading || !listing?.folder?.id,
+  }}
+>
   <div class="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
     <button
       type="button"
@@ -248,6 +250,7 @@
         <Upload size={13} aria-hidden="true" />
         {uploading ? t("google.drive.uploading") : t("google.drive.upload")}
       </button>
+      <span class="hidden text-xs text-text-muted sm:inline">{t("common.drop_hint")}</span>
     {/if}
     <button
       type="button"

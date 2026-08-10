@@ -83,6 +83,25 @@ body {
 }
 
 /*
+ * Drag-and-drop onto an upload control (docs/UX.md). `use:filedrop` stamps `data-filedrop` on
+ * the drop target and flips it to "over" while a file hovers it. One rule here rather than a
+ * hover class repeated at every upload in the app — and a transparent outline in the resting
+ * state, so nothing shifts by a pixel when the highlight appears.
+ */
+[data-filedrop] {
+  outline: 2px dashed transparent;
+  outline-offset: 3px;
+  border-radius: 0.5rem;
+  transition:
+    outline-color 120ms ease,
+    background-color 120ms ease;
+}
+[data-filedrop="over"] {
+  outline-color: var(--brand-primary);
+  background-color: color-mix(in srgb, var(--brand-primary) 8%, transparent);
+}
+
+/*
  * iOS Safari zooms the page *in* whenever a focused <input>/<select>/<textarea> renders
  * below 16px (issue #85). Our controls use `text-sm` (14px), so on phones bump every form
  * control to 16px — the accessible fix. The alternative, locking the viewport with

@@ -19,6 +19,7 @@
   import { ImageOff, Trash2, Upload } from "@lucide/svelte";
 
   import { t } from "$lib/core/i18n";
+  import { filedrop } from "$lib/core/ui/filedrop";
 
   let {
     id,
@@ -58,8 +59,10 @@
   // back to the placeholder says "nothing to show" instead of leaving a browser's broken-image
   // glyph sitting in the card, which reads as our bug rather than the picture's.
   let broken = $state(false);
+  let dropError = $state<string | null>(null);
 
   function onPick(event: Event) {
+    dropError = null;
     const input = event.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
     if (picked) URL.revokeObjectURL(picked.preview);
@@ -78,7 +81,12 @@
 
 <div>
   <span class="mb-1 block text-sm font-medium text-text">{label}</span>
-  <div class="flex items-start gap-3">
+  <!-- The whole field is the drop target, thumbnail included: that picture is what the admin is
+       aiming at when they drag a new logo out of a folder. -->
+  <div
+    class="flex items-start gap-3"
+    use:filedrop={{ input: () => fileInput, onerror: (key) => (dropError = key) }}
+  >
     <div
       class="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-surface"
     >
@@ -122,9 +130,13 @@
             {t("common.remove")}
           </button>
         {/if}
+        <span class="text-xs text-text-muted">{t("common.drop_hint")}</span>
       </div>
       {#if picked}
         <p class="mt-1 truncate text-xs text-text-muted" title={picked.name}>{picked.name}</p>
+      {/if}
+      {#if dropError}
+        <p class="mt-1 text-xs text-red-600 dark:text-red-400">{t(dropError)}</p>
       {/if}
     </div>
   </div>

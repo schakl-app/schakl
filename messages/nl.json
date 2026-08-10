@@ -2949,6 +2949,7 @@
   "common.remove": "Verwijderen",
   "common.choose_file": "Bestand kiezen",
   "common.replace_file": "Vervangen",
+  "common.drop_hint": "of sleep een bestand hierheen",
   "common.image_url": "Afbeeldings-URL",
   "common.use_image_url": "Een gehoste URL gebruiken",
   "marketing.loading": "Laden…",

@@ -2949,6 +2949,7 @@
   "common.remove": "Remove",
   "common.choose_file": "Choose file",
   "common.replace_file": "Replace",
+  "common.drop_hint": "or drag a file here",
   "common.image_url": "Image URL",
   "common.use_image_url": "Point at a hosted URL instead",
   "marketing.loading": "Loading…",
