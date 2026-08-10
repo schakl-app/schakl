@@ -1,5 +1,185 @@
 # Changelog
 
+## v0.24.0 — 2026-08-10
+
+Notifications that reach a phone with the laptop shut, quiet hours that are finally applied,
+tasks a client could be shown and could not read, and screens that stopped using the whole
+monitor.
+
+### Browser notifications (#309)
+
+- **A notification can reach you with the tab closed.** Web Push joins the bell, e-mail, Slack
+  and the other webhook channels as a fifth way of being told something happened, and it is the
+  only one that works when the browser is not open — a task you are mentioned in reaches your
+  phone. Instellingen → Meldingen carries a block for the device you are on: allow it once per
+  browser, and the per-event matrix that already routes the other channels routes this one.
+- Registering takes nothing typed and nothing configured on the server. Each browser is its own
+  device in the list, with the moment it was last reached, and can be switched off from any of
+  them.
+- **One message per person, never per device.** A daily digest of ten events is one notification
+  wherever you registered, not thirty, and it counts as delivered the moment a single device
+  takes it: a phone that is off and a laptop that is open means you were reached. A browser that
+  was cleared or thrown away is removed the first time it is written to, and costs the message
+  none of its retries.
+- **Quiet hours are applied at last.** The window has been stored since notification settings
+  shipped and read by nothing — the hint under the field said so out loud. A notification whose
+  moment falls inside it now waits until the window ends, on your organisation's clock, correct
+  across a daylight-saving boundary and across a window that runs over midnight. It holds back
+  the channels that interrupt you (e-mail, chat and webhooks, browser push) and never the in-app
+  bell, which interrupts nobody and would make the app look broken if it were held. **This
+  changes when e-mail and chat messages arrive for anyone who had filled the field in** — see the
+  upgrade notes.
+- "Direct" now means within fifteen seconds rather than within a minute, which is the difference
+  between a notification and a reminder.
+- Nothing to install: the keys each organisation identifies itself with are generated on first
+  use, so the feature is never silently off after an unattended upgrade.
+
+### A task marked visible for the client was invisible to the client
+
+- **The client's task list asked the wrong question and always got nothing back.** It filtered on
+  "assigned to me", and an unanswered assignee filter resolves to the signed-in user — which
+  means an *employee*, since a client is assigned as a contact person. So a portal login asked
+  for tasks assigned to an employee who is not one, and read an empty list however many tasks
+  staff had ticked as visible. The assignee filter is staff-only now.
+- **Every count a client read was the whole organisation's.** The visibility rule sat on the read
+  path and not on the counting path, so the client panel said "Taken (12)" above a list of one.
+  Stated once on the model now, so the list, the total, the detail page, the panel and the
+  comment target agree by construction.
+- **And an internal to-do ticked visible reached every client.** A task attached to no client was
+  read as "not client data" and let through to all of them. A task's client is now the one it
+  names, or its project's when it names none — which is the ordinary case, since a task on a
+  project never fills the field in.
+- **The employee lookup handed a client the address book.** It is open to every signed-in member
+  and a portal contact is one, so every colleague's e-mail address travelled to the browser the
+  moment a client-reachable screen drew a picker. Names stay, because a client is meant to see
+  who is on their task; the address does not.
+
+### Tasks
+
+- **Every list says whether the client can read the task.** `Zichtbaar voor klant` was a checkbox
+  on the card and nowhere else, so the one thing worth knowing before writing in a task was a
+  click away from every list it appears in. One marker — an eye, or a struck-through eye — on the
+  board, its mobile row, the project to-do list, the client panel and the card.
+- "Hidden" is drawn only where there is somebody to be hidden from, and a visible task that
+  reaches nobody is drawn in amber, because that is the tick that is failing to do what its owner
+  meant. A client never sees the marker: every task they can reach is visible to them.
+
+### Client reporting
+
+- **A report that stopped generating said "bezig met genereren" for ever**, and there were six
+  separate ways to get there. The screen never asked again after the first load, so a run that
+  finished forty seconds later still read as busy; a healthy run was being killed at five minutes
+  by a background-worker default, through a path that skipped the module's own failure handling;
+  a second attempt within the hour queued nothing at all and left the row claiming a worker had
+  it; the job was queued before its own record was saved, so the worker could find nothing; and
+  the code that records a failure was itself broken, so ordinary failures never wrote a status
+  either.
+- All six are fixed, and there is now a sweep that clears runs nobody is working on any more —
+  because a worker that is killed outright runs no error handler, so the only possible answer
+  lives outside the process. **Reports stuck on "generating" today are cleared by the first tick
+  after the upgrade**, without a hand-written correction.
+- A narrative that times out now yields a report with all of its numbers and a warning, rather
+  than nothing.
+
+### Cloudflare (#278)
+
+- **A token refused for being used from the wrong place read as an invalid token.** Cloudflare
+  lets you restrict a token to a list of IP addresses; asked from anywhere else it refuses every
+  endpoint with a numbered code that says exactly that. The message shown was the one sentence
+  that cannot lead to the fix — check that the token is valid and has the required permissions —
+  while the token was valid and the permissions were right. Cloudflare's own code is now read
+  before the status that carried it, so a refusal it named is reported by name.
+- **Instellingen → Cloudflare lists your Pages projects**, with the sites matched to each. They
+  had only ever appeared as a number on a banner the next click throws away, so "did the sync
+  find my projects, and are my sites attached to them?" — two different questions — was
+  answerable on no screen.
+- **The two findings that matter before a zone exists were computed and then dropped.** A domain
+  marked as a redirect here with nothing behind it at Cloudflare, and the same name in two
+  accounts, were both worked out by the server and discarded by the panel, which only drew its
+  findings box for an already-connected zone.
+- **A refused permission stopped costing a redirect that had already been made.** Saving a
+  domain-wide redirect writes a rule and a DNS record, and those are two different token
+  permissions. A token allowed the first and not the second failed the whole request *after* the
+  rule existed at Cloudflare, and the rollback erased the only record of it — so the panel showed
+  no redirect, the next press added a second rule to a live client's zone, and the one after that
+  a third. The DNS placeholder is its own step now, its refusal is a note on the row in
+  Cloudflare's own words, and a retry updates the rule it already knows about.
+- **A missing permission is no longer reported as a rejected credential.** They had been
+  collapsed into one message, which told an administrator the one thing that had not happened.
+  "Wat dit token mag" also checks the two permissions the redirect button actually uses, which
+  were the two it never mentioned.
+- **"Nameservers wijzen nog niet naar Cloudflare" is only said when it is known.** A lookup that
+  timed out and a domain that genuinely delegates nowhere were indistinguishable, so every way of
+  not knowing rendered as an instruction to go and change something that was very possibly
+  already correct.
+
+### Contacts (#310)
+
+- **An employee can add and edit contact persons again.** Managing the people at a client is
+  ordinary day-to-day work, and the `Medewerker` role held neither permission for it, so adding a
+  new marketing contact at a client was refused.
+- **And granting the permission that says so now actually works.** Creating a contact *at a
+  client* attaches it in the same breath, and attaching is a second permission that no label on
+  any of those screens named — so the picker, the contactpersonen panel and the link, unlink and
+  primary-contact controls were all drawn behind the first key while calling the second. Both are
+  a `Medewerker` default now, deleting a contact stays with administrators, and every attaching
+  control mirrors the permission it really calls: a tenant who takes the default away gets a
+  read-only panel instead of a refusal.
+
+### Screens, charts and uploads
+
+- **Every screen has a measure now.** `<main>` was told to fill whatever it was given, so on a
+  3178px display a settings card was 1430px of box around one sentence, a client list put a row's
+  name and its status a metre apart while truncating both, and a dashboard tile stranded a name
+  and its number at opposite ends of the screen. Past a point, wider is not more readable, it is
+  further to look. A laptop is untouched, a 1920px desktop loses 16px a side, and only genuinely
+  wide monitors gain margin.
+- **A chart on a wide screen was a chart with the zoom stuck on.** The trend chart and the
+  revenue comparison were drawn at a fixed size and scaled to the container, which magnifies
+  everything inside — on a 3178px screen that meant one chart taller than the fold with 59px axis
+  labels, and on a phone the same labels at 6px. Both now measure the space they are given and
+  draw into it, so 10px type is 10px type at every width and a bar stays a proportion of its slot.
+  Verified at 390, 1280, 1920 and 3178px.
+- **Every upload takes a dropped file.** Eleven controls were click-to-browse and nothing else,
+  which is not the gesture people reach for first: an attachment, a client logo, a spreadsheet and
+  a saved e-mail all arrive by being dragged out of a mail client or a folder. Dropping is an
+  accelerator and never the only way — the button underneath still works, a clearly wrong file
+  type is refused the way the file dialog refuses it, and each control says that it takes a drop.
+  Four of them were also unreachable by keyboard on the way past, and are not any more.
+- **Two forms asked for the narrowing field after the fields it narrows.** The task form put the
+  project picker above the client and the client below the assignee, so both fields the client
+  filters were answered first and then visibly shrank. The employment wizard drew the week grid
+  above the checkbox deciding whether the grid may be filled in at all.
+- **A task created from a contact-moment picker showed as "—".** The inline create answered with
+  the task's identity and its links but never its title, so the one option the user had just made
+  was the one they could not identify.
+
+### Housekeeping
+
+- **The API test suite runs as four parallel shards**, thirty-two minutes down to under ten. It
+  had grown long enough that back-to-back pushes cancelled it before it finished, so it reported
+  on almost nothing: a test had been failing for three days without a word, and that test is the
+  first thing the split found. Every commit still runs every test. Linting moved out in front, on
+  its own runner and with no database, because a red build here is nearly always lint drift and
+  that answer used to arrive last.
+
+### Upgrade notes
+
+- **Two migrations, both additive.** One column on reports, and two new tables for push devices.
+  Nothing is dropped, renamed or retyped, both tables come up empty, and rolling the image back
+  is safe.
+- **Quiet hours now do something.** If your organisation had filled in a quiet window, e-mail and
+  chat notifications that previously went out inside it will now be held until it ends. The in-app
+  bell is unaffected. The window is in Instellingen → Meldingen.
+- **Browser notifications are off until somebody allows them**, per person and per browser. An
+  instance that upgrades and never opens the setting behaves exactly as it did.
+- **`Medewerker` gains two contact permissions on startup** — creating and editing contact
+  persons, and attaching them to clients. Deleting a contact is unchanged and stays with
+  administrators. If you deliberately want an employee not to touch contacts, untick them again
+  after the upgrade.
+- **Reports stuck on "bezig met genereren" clear themselves** within fifteen minutes of the
+  upgrade.
+
 ## v0.23.0 — 2026-08-07
 
 A link on the invoice that a client without an account can actually open, invoices by the
