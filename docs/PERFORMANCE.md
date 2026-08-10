@@ -63,6 +63,18 @@ collect `data.<key>` and confirm each is produced by its own load or a layout ab
 - **Report bodies stream behind the shell.** The filters, range picker and column menu do not need
   500 rows to render. Say "loading", not "no results", while it is in flight — the second is a
   wrong answer, not a slow one.
+- **A dashboard is a shell plus a payload, and only one of them is slow.** The marketing dashboard
+  (#316) streams its metrics: the period tabs, the month/quarter picker, the website filter and
+  the heading render at once, and the fold of daily rows across every linked source arrives
+  behind them. Three details make it hold. **The controls may not depend on the payload** — the
+  picker's month list is anchored on the tenant's own calendar (`anchorMonth()`, the org zone off
+  the same plumbing `format.ts` uses), because a control that appears a second after the page did
+  reads as a glitch, and anchoring it on `compare.current_end` would have put it behind the very
+  thing being streamed. **A stale resolution loses**: the period tabs are links, so two quick
+  clicks leave two loads in flight, and the `.then` compares `data.metrics` against the promise it
+  captured before writing anything. And **the pending state is a state, not an absence** — the
+  shell says "laden", never the empty "nothing linked yet" screen, which is a different answer to
+  a different question.
 - **Nothing fetches on mount for a dropdown nobody opened.** `RichTextEditor` fetches its `@`/`#`
   candidates on first focus from a TTL cache (`lib/core/richtext/candidates.ts`); pass it a
   `scope`, never a pre-fetched list. Where several components on one page want the same browser-
@@ -151,6 +163,15 @@ what the screen draws.
 Its test asserts the **statement**, not the numbers: two lower bounds means two windows, one
 means the hull, and the KPIs are identical in both cases. The same shape as every other rule
 here — the regression is invisible in the JSON.
+
+Naming the period (#316) made the rule matter more, not less: "juli 2025" against last year is
+two windows twelve months apart, and it is now reachable from a picker rather than only from the
+12-month tab. Two things follow. The cap belongs on the **trailing** window only — a named month
+or quarter is bounded by the calendar, so `max_days` guards `<n>d` and nothing else — and any
+cache in front of a period must be keyed on the resolved **dates**. The drill-down cache keyed
+on `range_days`, which was fine while a day count identified a span; once "2026-07" and "2026-06"
+are both thirty-ish days, that key serves June's table for July: one number different, every row
+wrong, and no error anywhere.
 
 Its sibling: resolving a setting that has an org-level default and a per-row override is **one**
 statement, not two. Both are single-row unique-index lookups, so they ride as scalar subqueries

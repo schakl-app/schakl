@@ -35798,6 +35798,8 @@ export interface operations {
                 link_id: string;
                 kind: string;
                 range_days?: number;
+                /** @description The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). Wins over range_days; an unknown value falls back to 30d. */
+                period?: string | null;
             };
             header?: never;
             path: {
@@ -35831,6 +35833,8 @@ export interface operations {
         parameters: {
             query?: {
                 range_days?: number;
+                /** @description The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). Wins over range_days; an unknown value falls back to 30d. */
+                period?: string | null;
             };
             header?: never;
             path: {
@@ -35994,6 +35998,8 @@ export interface operations {
                 range_days?: number;
                 /** @description company_name | sessions | clicks | position | cost | conversions (- = desc) */
                 sort?: string | null;
+                /** @description The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). Wins over range_days; an unknown value falls back to 30d. */
+                period?: string | null;
             };
             header?: never;
             path?: never;
@@ -36079,6 +36085,8 @@ export interface operations {
             query?: {
                 range_days?: number;
                 limit?: number;
+                /** @description The span to report on: a trailing window (30d, 90d, 365d), a preset (month, last_month, quarter, last_quarter) or a named calendar period (2026-07, 2026-Q3). Wins over range_days; an unknown value falls back to 30d. */
+                period?: string | null;
             };
             header?: never;
             path?: never;

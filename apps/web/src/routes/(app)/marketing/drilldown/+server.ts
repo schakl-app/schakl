@@ -16,13 +16,20 @@ export const GET: RequestHandler = async (event) => {
   const company_id = q.get("company_id") ?? "";
   const link_id = q.get("link_id") ?? "";
   const kind = q.get("kind") ?? "";
-  const range_days = Number(q.get("range_days") ?? "30") || 30;
+  // The period token travels verbatim; the API resolves it against the tenant's own calendar
+  // (#316), so a drill-down covers exactly the span the tiles above it were computed from.
+  const period = q.get("period") || "30d";
   const { data, error } = await apiFor(event).GET(
     "/api/v1/marketing/companies/{company_id}/drilldown",
-    { params: { path: { company_id }, query: { link_id, kind, range_days } } },
+    { params: { path: { company_id }, query: { link_id, kind, period } } },
   );
   if (error || !data) {
-    return json({ kind, rows: [], available: false, unavailable_reason: "marketing.accounts_error" });
+    return json({
+      kind,
+      rows: [],
+      available: false,
+      unavailable_reason: "marketing.accounts_error",
+    });
   }
   return json(data);
 };

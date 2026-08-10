@@ -14,11 +14,14 @@
   import { MARKETING_OVERVIEW_COLUMNS } from "$lib/modules/marketing/columns";
   import {
     comparePeriodLabel,
+    currentPeriodLabel,
     deltaClass,
     deltaView,
     fmtMetric,
     sourceLabel,
   } from "$lib/modules/marketing/format";
+  import MarketingPeriodPicker from "$lib/modules/marketing/MarketingPeriodPicker.svelte";
+  import { anchorMonth, PERIOD_PRESETS } from "$lib/modules/marketing/periods";
   import type { CompareWindow, KpiValue, OverviewRow } from "$lib/modules/marketing/types";
 
   let { data } = $props();
@@ -54,8 +57,11 @@
   // which is exactly why the note below says a client's own dashboard may differ.
   const compare = $derived((data.overview as { compare?: CompareWindow | null }).compare ?? null);
   const comparedPeriod = $derived(compare ? comparePeriodLabel(compare) : "");
+  // The grid names its own span too (#316): a board sorted on percentages is unreadable if the
+  // reader cannot see which months the percentages are about.
+  const currentPeriod = $derived(compare ? currentPeriodLabel(compare) : "");
+  const periodAnchor = anchorMonth();
 
-  const RANGES = ["30d", "month", "quarter", "90d", "yoy"] as const;
   const rangeClass = (active: boolean) =>
     `rounded-lg px-3 py-1.5 text-sm font-medium ${
       active ? "bg-brand text-white" : "text-text-muted hover:bg-surface"
@@ -178,11 +184,17 @@
 
 <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
   <div class="flex flex-wrap items-center gap-1" data-sveltekit-preload-data="hover">
-    {#each RANGES as r (r)}
+    {#each PERIOD_PRESETS as r (r)}
       <a href={`?range=${r}`} class={rangeClass(data.range === r)} data-sveltekit-noscroll>
         {t(`marketing.range.${r}`)}
       </a>
     {/each}
+    <MarketingPeriodPicker
+      anchor={periodAnchor}
+      active={data.range}
+      label={currentPeriod}
+      urlFor={(period) => `?range=${period}`}
+    />
   </div>
   <ColumnPicker
     all={table.pickerColumns}

@@ -15,7 +15,21 @@
 
   const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
   const selectedName = $derived(data.companies.find((c) => c.id === data.companyId)?.name ?? "");
-  const marketing = $derived(data.metrics as CompanyMarketing | null);
+  // Resolved into `$state`, never awaited in the markup: a raw `{#await}` re-enters its pending
+  // branch on every invalidation, and edit mode holds unsaved tile names its own save would then
+  // discard (docs/PERFORMANCE.md).
+  let marketing = $state<CompanyMarketing | null>(null);
+  let pending = $state(true);
+  $effect(() => {
+    const promise = data.metrics;
+    pending = true;
+    void promise.then((value) => {
+      // A stale resolution loses: picking two clients quickly leaves two loads in flight.
+      if (data.metrics !== promise) return;
+      marketing = value as CompanyMarketing | null;
+      pending = false;
+    });
+  });
 
   function urlFor(companyId: string, range: string, website: string): string {
     const params = new URLSearchParams();
@@ -69,8 +83,8 @@
   <MarketingDashboard
     companyId={data.companyId}
     metrics={marketing}
+    {pending}
     range={data.range}
-    rangeDays={data.rangeDays}
     website={data.website}
     urlFor={(range, website) => urlFor(data.companyId, range, website)}
     manageHref={`/companies/${data.companyId}`}

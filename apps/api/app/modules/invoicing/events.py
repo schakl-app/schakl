@@ -77,7 +77,7 @@ def _parse_period(payload: dict[str, Any]) -> tuple[date | None, date] | None:
 
 def _period_label(period_start: date | None, period_end: date) -> str:
     if period_start:
-        return f"{period_start.strftime('%d-%m-%Y')}–{period_end.strftime('%d-%m-%Y')}"
+        return f"{period_start.strftime('%d-%m-%Y')}-{period_end.strftime('%d-%m-%Y')}"
     return period_end.strftime("%d-%m-%Y")
 
 

@@ -1,6 +1,6 @@
 <script lang="ts">
   /** My Day widget: who is off today (approved leave), so nobody plans a meeting blind. */
-  import { fmtClockTime } from "$lib/core/format";
+  import { fmtClockTime, RANGE_DASH } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import DashboardWidgetCard from "$lib/core/ui/DashboardWidgetCard.svelte";
 
@@ -40,7 +40,9 @@
                personal clock preference (#13). -->
           {#if absence.start_date === absence.end_date && absence.resolved_start_time && absence.resolved_end_time}
             <span class="shrink-0 tabular-nums text-xs text-text-muted">
-              {fmtClockTime(absence.resolved_start_time)}–{fmtClockTime(absence.resolved_end_time)}
+              {fmtClockTime(absence.resolved_start_time)}{RANGE_DASH}{fmtClockTime(
+                absence.resolved_end_time,
+              )}
             </span>
           {/if}
         </li>

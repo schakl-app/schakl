@@ -48,20 +48,31 @@ export function fmtDayMonthYear(isoDate: string): string {
 }
 
 /**
- * A date-only period (#119): "3 dec" / "3 dec – 7 dec" while it lies in the current org-local
- * calendar year; the year appears when it doesn't ("3 dec 2027", "3 dec – 7 dec 2027") and on
- * both ends when the span crosses a year boundary ("28 dec 2026 – 3 jan 2027"). Omitting `end`
+ * The character between the two ends of a range — a plain hyphen, everywhere, on purpose.
+ *
+ * Typography says an en dash; the owner's instruction says a hyphen, and a date range is read
+ * far more often than it is admired. It lives here as one constant so the answer is the same on
+ * every screen: a range assembled by hand in some component is how "1 jul - 31 jul" and
+ * "1 jul – 31 jul" ended up on the same page.
+ */
+export const RANGE_DASH = "-";
+
+/**
+ * A date-only period (#119): "3 dec" / "3 dec - 7 dec" while it lies in the current org-local
+ * calendar year; the year appears when it doesn't ("3 dec 2027", "3 dec - 7 dec 2027") and on
+ * both ends when the span crosses a year boundary ("28 dec 2026 - 3 jan 2027"). Omitting `end`
  * formats a single date year-aware.
  */
 export function fmtPeriod(startIso: string, endIso: string = startIso): string {
   const startYear = startIso.slice(0, 4);
   const endYear = endIso.slice(0, 4);
   const currentYear = fmt({ year: "numeric", timeZone: getTimeZone() }).format(new Date());
-  if (startYear !== endYear) return `${fmtDayMonthYear(startIso)} – ${fmtDayMonthYear(endIso)}`;
+  if (startYear !== endYear)
+    return `${fmtDayMonthYear(startIso)} ${RANGE_DASH} ${fmtDayMonthYear(endIso)}`;
   if (startIso === endIso)
     return startYear === currentYear ? fmtDayMonth(startIso) : fmtDayMonthYear(startIso);
   const end = startYear === currentYear ? fmtDayMonth(endIso) : fmtDayMonthYear(endIso);
-  return `${fmtDayMonth(startIso)} – ${end}`;
+  return `${fmtDayMonth(startIso)} ${RANGE_DASH} ${end}`;
 }
 
 /** "ma 7" — weekday + day, for grid column headers. Date-only ISO string. */

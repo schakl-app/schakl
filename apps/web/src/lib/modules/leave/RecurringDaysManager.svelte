@@ -18,7 +18,7 @@
   import { Clock, Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
-  import { fmtClockTime, fmtNumericDate, fmtWeekdayShort } from "$lib/core/format";
+  import { fmtClockTime, fmtNumericDate, fmtWeekdayShort, RANGE_DASH } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import { getLocale } from "$lib/paraglide/runtime";
@@ -102,7 +102,7 @@
 
   function windowText(pattern: RecurringPattern): string | null {
     if (pattern.start_time && pattern.end_time) {
-      return `${fmtClockTime(pattern.start_time)} – ${fmtClockTime(pattern.end_time)}`;
+      return `${fmtClockTime(pattern.start_time)} ${RANGE_DASH} ${fmtClockTime(pattern.end_time)}`;
     }
     if (pattern.start_time)
       return t("leave.recurring.from_time", { time: fmtClockTime(pattern.start_time) });

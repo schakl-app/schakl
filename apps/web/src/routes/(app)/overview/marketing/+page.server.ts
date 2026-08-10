@@ -12,19 +12,11 @@ import {
 
 import type { Actions, PageServerLoad } from "./$types";
 
-const PRESET_DAYS: Record<string, number> = { "30d": 30, "90d": 90, quarter: 90, yoy: 365 };
-
-function rangeToDays(range: string): number {
-  if (range === "month") return Math.max(1, new Date().getDate() - 1);
-  return PRESET_DAYS[range] ?? 30;
-}
-
 export const load: PageServerLoad = async (event) => {
   if (!can(event.locals.user, "marketing.overview.read")) throw redirect(303, "/");
   const api = apiFor(event);
   const q = event.url.searchParams;
   const range = q.get("range") ?? "30d";
-  const range_days = rangeToDays(range);
 
   // Manager gate is in the /overview layout; prefs come from the app layout (both via parent()).
   const { prefs } = await event.parent();
@@ -34,11 +26,11 @@ export const load: PageServerLoad = async (event) => {
   const sort = q.get("sort") ?? resolved.sort ?? undefined;
 
   const { data } = await api.GET("/api/v1/marketing/overview", {
-    params: { query: { range_days, sort } },
+    params: { query: { period: range, sort } },
   });
 
   return {
-    overview: data ?? { range_days, rows: [], total: 0 },
+    overview: data ?? { range_days: 30, rows: [], total: 0 },
     range,
     // Managing links (and thus the key-events toggle) is admin config; the grid renders the
     // switch only for those who hold it, and the API re-checks regardless.
@@ -57,15 +49,16 @@ export const actions: Actions = {
 
   /** Show/hide GA4 key events / conversions for one client, straight from the grid (#134). */
   toggleKeyEvents: async (event) => {
-    if (!can(event.locals.user, "marketing.link.manage")) return fail(403, { error: "errors.forbidden" });
+    if (!can(event.locals.user, "marketing.link.manage"))
+      return fail(403, { error: "errors.forbidden" });
     const form = await event.request.formData();
     const company_id = String(form.get("company_id") ?? "").trim();
     if (!company_id) return fail(400, { error: "errors.required" });
     const show_key_events = String(form.get("show_key_events") ?? "") === "true";
-    const { error } = await apiFor(event).PUT(
-      "/api/v1/marketing/companies/{company_id}/settings",
-      { params: { path: { company_id } }, body: { show_key_events } },
-    );
+    const { error } = await apiFor(event).PUT("/api/v1/marketing/companies/{company_id}/settings", {
+      params: { path: { company_id } },
+      body: { show_key_events },
+    });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { keyEventsToggled: true };
   },

@@ -25,7 +25,7 @@
     linkId,
     source,
     kind,
-    rangeDays,
+    period,
     currency,
     edit = null,
     onchange,
@@ -34,7 +34,8 @@
     linkId: string;
     source: MarketingSource;
     kind: string;
-    rangeDays: number;
+    /** The period token the dashboard is on (#316) — the API resolves it, not us. */
+    period: string;
     currency: string | null;
     /** The source's edit state while edit mode is on — enables the key-event label fields. */
     edit?: SourceEditState | null;
@@ -55,20 +56,28 @@
         company_id: companyId,
         link_id: linkId,
         kind,
-        range_days: String(rangeDays),
+        period,
       });
       const res = await fetch(`/marketing/drilldown?${params}`);
       data = (await res.json()) as DrilldownResponse;
     } catch {
-      data = { source, kind, columns: [], rows: [], available: false, unavailable_reason: "marketing.accounts_error", deep_link: "" };
+      data = {
+        source,
+        kind,
+        columns: [],
+        rows: [],
+        available: false,
+        unavailable_reason: "marketing.accounts_error",
+        deep_link: "",
+      };
     } finally {
       loading = false;
     }
   }
 
-  // Re-fetch when the range changes (rangeDays is reactive via the key on the parent).
+  // Re-fetch when the period changes (reactive via the key on the parent).
   $effect(() => {
-    void rangeDays;
+    void period;
     void load();
   });
 
@@ -98,9 +107,7 @@
   // label to a quiet month), plus the adder for a not-yet-fetched event name.
   const fetchedKeys = $derived(new Set((data?.rows ?? []).map((r) => r.key).filter(Boolean)));
   const storedOnlyKeys = $derived(
-    editsLabels && edit
-      ? Object.keys(edit.event_labels).filter((k) => !fetchedKeys.has(k))
-      : [],
+    editsLabels && edit ? Object.keys(edit.event_labels).filter((k) => !fetchedKeys.has(k)) : [],
   );
   let newEventName = $state("");
   function addEvent() {
@@ -139,7 +146,9 @@
     <p class="text-sm text-text-muted">{t("marketing.loading")}</p>
   {:else if data && !data.available && !editsLabels}
     <p class="text-sm text-text-muted">
-      {t("marketing.drilldown_unavailable", { reason: t(data.unavailable_reason ?? "marketing.no_data") })}
+      {t("marketing.drilldown_unavailable", {
+        reason: t(data.unavailable_reason ?? "marketing.no_data"),
+      })}
     </p>
   {:else if (!data || data.rows.length === 0) && !editsLabels}
     <p class="text-sm text-text-muted">{t("marketing.no_data")}</p>
@@ -175,7 +184,12 @@
                       />
                     </div>
                   {:else if row.href}
-                    <a href={row.href} target="_blank" rel="noopener noreferrer" class="block truncate hover:text-brand">
+                    <a
+                      href={row.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="block truncate hover:text-brand"
+                    >
                       {row.label}
                     </a>
                   {:else}
@@ -200,7 +214,9 @@
       {#if storedOnlyKeys.length > 0}
         <ul class="mt-2 space-y-1.5">
           {#each storedOnlyKeys as key (key)}
-            <li class="flex flex-wrap items-center gap-1.5 rounded-lg border border-dashed border-border px-2 py-1.5">
+            <li
+              class="flex flex-wrap items-center gap-1.5 rounded-lg border border-dashed border-border px-2 py-1.5"
+            >
               <code class="min-w-24 break-all text-xs text-text-muted">{key}</code>
               <span class="ml-auto flex min-w-0 flex-wrap items-center gap-1">
                 <input

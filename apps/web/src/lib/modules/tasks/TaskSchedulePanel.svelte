@@ -7,7 +7,7 @@
   import { CalendarClock, Pencil, Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
-  import { fmtDayMonth } from "$lib/core/format";
+  import { fmtDayMonth, RANGE_DASH } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
@@ -75,7 +75,7 @@
   const busy = new InFlight();
 
   function timeRange(block: Block): string {
-    return `${localDayTime(block.starts_at).time}–${localDayTime(block.ends_at).time}`;
+    return `${localDayTime(block.starts_at).time}${RANGE_DASH}${localDayTime(block.ends_at).time}`;
   }
   function canEditBlock(block: Block): boolean {
     return block.user_id === currentUserId ? canWrite : canScheduleAny;

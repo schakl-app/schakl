@@ -40,14 +40,14 @@
   let {
     companyId,
     src,
-    rangeDays,
+    period,
     compare,
     edit = null,
     onchange,
   }: {
     companyId: string;
     src: SourceMetrics;
-    rangeDays: number;
+    period: string;
     /** The spans behind every delta on this section (#312) — the tiles name the one they used.
      *  Nullable only for the payload-less edit-before-first-sync case; a tile then shows its
      *  delta unlabelled rather than inventing a period. */
@@ -309,13 +309,13 @@
             >
               <X size={13} />
             </button>
-            {#key rangeDays}
+            {#key period}
               <MarketingDrilldown
                 {companyId}
                 linkId={src.link_id}
                 source={src.source}
                 {kind}
-                {rangeDays}
+                {period}
                 currency={src.currency}
                 {edit}
                 {onchange}
@@ -413,13 +413,13 @@
     <!-- Live drill-downs (only these touch Google), keyed so a range change re-fetches. -->
     <div class="grid gap-5 md:grid-cols-2">
       {#each drilldowns as kind (kind)}
-        {#key rangeDays}
+        {#key period}
           <MarketingDrilldown
             {companyId}
             linkId={src.link_id}
             source={src.source}
             {kind}
-            {rangeDays}
+            {period}
             currency={src.currency}
           />
         {/key}

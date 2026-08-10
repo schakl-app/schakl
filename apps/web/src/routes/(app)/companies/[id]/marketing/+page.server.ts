@@ -6,14 +6,6 @@ import { apiFor } from "$lib/core/session";
 
 import type { Actions, PageServerLoad } from "./$types";
 
-/** Preset → trailing-day count. "month" is days-so-far this month; the API clamps to ≥ 1. */
-const PRESET_DAYS: Record<string, number> = { "30d": 30, "90d": 90, quarter: 90, yoy: 365 };
-
-function rangeToDays(range: string): number {
-  if (range === "month") return Math.max(1, new Date().getDate() - 1);
-  return PRESET_DAYS[range] ?? 30;
-}
-
 export const load: PageServerLoad = async (event) => {
   // The API enforces the permission; redirect a member who lacks it back to the client page
   // rather than showing an empty tab.
@@ -25,22 +17,24 @@ export const load: PageServerLoad = async (event) => {
   const range = event.url.searchParams.get("range") ?? "30d";
   // Website filter: "" = everything, "client" = client-level links only, else a website id.
   const website = event.url.searchParams.get("website") || "";
-  const range_days = rangeToDays(range);
 
-  // Both read our database (zero Google); the drill-downs load lazily client-side afterwards.
-  const [company, metrics] = await Promise.all([
-    api.GET("/api/v1/companies/{company_id}", { params: { path: { company_id } } }),
-    api.GET("/api/v1/marketing/companies/{company_id}/metrics", {
-      params: { path: { company_id }, query: { range_days } },
-    }),
-  ]);
+  // Both fire before either is awaited (docs/PERFORMANCE.md): the metrics call is keyed by the
+  // id in the URL, not by anything the company row says, so awaiting the entity in front of it
+  // would buy a round-trip and nothing else.
+  const companyP = api.GET("/api/v1/companies/{company_id}", { params: { path: { company_id } } });
+  const metricsP = api.GET("/api/v1/marketing/companies/{company_id}/metrics", {
+    params: { path: { company_id }, query: { period: range } },
+  });
+  const company = await companyP;
   if (!company.data) throw error(404, { code: "not_found", message: "errors.not_found" });
 
   return {
     company: company.data,
-    metrics: metrics.data ?? null,
+    // Streamed, not awaited: the period tabs, the picker and the page heading are the shell the
+    // user came to interact with, and they need none of this. The metrics read folds two bounded
+    // windows of daily rows across every linked source (#312) — the one slow thing on the page.
+    metrics: metricsP.then((r) => r.data ?? null),
     range,
-    rangeDays: range_days,
     website,
   };
 };

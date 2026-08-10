@@ -5,7 +5,7 @@
   import { goto } from "$app/navigation";
   import { aiEnabled } from "$lib/core/ai";
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
-  import { fmtDayMonth, fmtLongDay, fmtWeekdayShort } from "$lib/core/format";
+  import { fmtDayMonth, fmtLongDay, fmtWeekdayShort, RANGE_DASH } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import ImpexBar from "$lib/core/impex/ImpexBar.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
@@ -300,7 +300,7 @@
       }
       const pieces: string[] = [];
       if (parsed.date) pieces.push(fmtDayMonth(parsed.date));
-      if (start && end) pieces.push(`${start}–${end}`);
+      if (start && end) pieces.push(`${start}${RANGE_DASH}${end}`);
       else if (parsed.duration_minutes) pieces.push(formatMinutes(parsed.duration_minutes));
       for (const name of [
         companyName(parsed.company_id),
@@ -487,7 +487,7 @@
       aria-label="←">←</a
     >
     <span class="font-medium text-text">
-      {week ? `${fmtDayMonth(week.days[0])} – ${fmtDayMonth(lastVisibleDay)}` : ""}
+      {week ? `${fmtDayMonth(week.days[0])} ${RANGE_DASH} ${fmtDayMonth(lastVisibleDay)}` : ""}
     </span>
     <a
       href={`?week=${shiftWeek(data.week_start, 7)}&date=${shiftWeek(data.selectedDate, 7)}`}

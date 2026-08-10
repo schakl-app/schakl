@@ -409,6 +409,29 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   not a screen anyone can summarise — and the *cross-client* grid deliberately ignores the
   per-client half, since a column sorted on percentages whose denominators differ per row ranks
   nothing. The read follows (`docs/PERFORMANCE.md`): two bounded windows, never their hull.
+- **A period is a name, not a number of days** (#316, `app/core/periods.resolve_period`). #312
+  made the *comparison* nameable and left the period itself a trailing day count, so the one
+  question an agency is actually asked — "how did July go?" — had no answer on the screen: thirty
+  days back from 9 August is 11 July to 9 August, which is not a month anybody reports on, and
+  "deze maand" was days-so-far computed from `new Date().getDate()` **in the Node server's
+  timezone** (§8, in the one module that had already moved its clock to the org). One token now
+  names the span — a trailing window (`30d`), a rolling preset (`month`, `last_month`, `quarter`,
+  `last_quarter`) or a frozen calendar period (`2026-07`, `2026-Q3`) — and everything downstream
+  takes the two dates it resolves to. Four rules. **Rolling and frozen are different products and
+  both are wanted**: a tab must keep meaning "last month" next month, and a link you paste into a
+  chat must keep showing the month you were looking at, so presets live in the tab row and named
+  periods in the picker. **The label is decided by the dates, never by the token** — a whole month
+  prints "juli 2025", a whole quarter "Q3 2025", anything else its two dates — which is what makes
+  a month reached through the picker and the same month reached through the tab row impossible to
+  tell apart, and is the same rule #312 already applied to the compared span. **A period-to-date
+  with no complete day resolves to the previous whole one** (1 August has no August to show), but
+  a period the user *named* is never substituted: showing July to someone who asked for August is
+  worse than an empty chart, because the label is the only thing that could have told them. And
+  **an unparseable token falls back rather than raising** — a period arrives from a query string
+  anyone can edit and an old bookmark can carry, so a stale link shows the default instead of 422ing
+  a dashboard. The payload's `range_days` is now derived from the resolved span rather than echoed
+  from the request, `range_days` itself stays on every endpoint (shared URLs, the generated MCP
+  surface) with `period` winning when both arrive, and the dashboard **streams** behind its shell.
 - **Collecting money is three rules that outlive the provider** (epic #269, `docs/PAYMENTS.md` +
   `docs/MOLLIE.md`). #267 asked for Mollie and argued *against* an abstraction, since no second
   provider was on the roadmap; the owner reversed that, because the issue was right about
