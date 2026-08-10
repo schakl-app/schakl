@@ -385,8 +385,21 @@
     </ol>
 
     <!-- Rendered outside the form on purpose (WorkScheduleEditor's TimeInputs post hidden fields
-         of their own) and posted into it with `form="…"`. -->
-    <div class:hidden={step !== 2}>
+         of their own) and posted into it with `form="…"`. The inherit checkbox travels with the
+         grid rather than with the rest of step 2: it decides whether the grid may be filled in at
+         all, so it has to be read before it, not found underneath the thing it disables. It posts
+         no value of its own — the hidden `inherit` field in the form below does that — so living
+         outside the form costs nothing. -->
+    <div class:hidden={step !== 2} class="space-y-3">
+      <label class="flex items-center gap-2 text-sm text-text">
+        <input type="checkbox" bind:checked={inherit} class="h-4 w-4 rounded border-border" />
+        {t("settings.users.schedule_inherit")}
+      </label>
+      {#if inherit}
+        <p class="rounded-lg bg-surface px-3 py-2 text-xs text-text-muted">
+          {t("settings.users.schedule_inherited_hint", { hours: fmtHours(norm) })}
+        </p>
+      {/if}
       <div class:opacity-50={inherit} class:pointer-events-none={inherit}>
         <WorkScheduleEditor bind:schedule={draft} formId="employment-form" disabled={inherit} />
       </div>
@@ -594,15 +607,7 @@
 
       <!-- ─── Step 2: the week, and what it earns ──────────────────────────────── -->
       <div class:hidden={step !== 2} class="space-y-4">
-        <label class="flex items-center gap-2 text-sm text-text">
-          <input type="checkbox" bind:checked={inherit} class="h-4 w-4 rounded border-border" />
-          {t("settings.users.schedule_inherit")}
-        </label>
-        {#if inherit}
-          <p class="rounded-lg bg-surface px-3 py-2 text-xs text-text-muted">
-            {t("settings.users.schedule_inherited_hint", { hours: fmtHours(norm) })}
-          </p>
-        {/if}
+        <!-- The inherit checkbox and the week grid render above, outside this form. -->
 
         <!-- The one choice the system cannot infer, asked outright. Guessing it from the schedule
              is exactly how a four-day part-timer ended up with a second pot of free days. -->

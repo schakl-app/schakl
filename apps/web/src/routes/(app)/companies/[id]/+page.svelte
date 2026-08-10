@@ -7,6 +7,7 @@
   import CompanyAIActions from "$lib/core/ai/CompanyAIActions.svelte";
   import { editIntent } from "$lib/core/edit-intent";
   import { t } from "$lib/core/i18n";
+  import { memberLabel } from "$lib/core/members";
   import { pageTitle } from "$lib/core/title";
   import { can } from "$lib/core/permissions";
   import { companyPanelComponent } from "$lib/core/registry";
@@ -15,6 +16,7 @@
   import Assignees from "$lib/core/ui/Assignees.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import { filedrop } from "$lib/core/ui/filedrop";
   import Modal from "$lib/core/ui/Modal.svelte";
   import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
   import { statusPillClass } from "$lib/modules/companies/status";
@@ -63,7 +65,7 @@
     enabled.includes("interactions") && can(page.data.user, "interactions.interaction.write"),
   );
   const mentionCandidates = $derived(
-    data.members.map((m) => ({ id: m.user_id, name: m.full_name || m.email })),
+    data.members.map((m) => ({ id: m.user_id, name: memberLabel(m) })),
   );
 
   // AI digest + report drafts (#130): rendered only when the reporting feature is on.
@@ -265,7 +267,7 @@
           <p class="text-sm text-text-muted">{t("common.loading")}</p>
         {/if}
       </CompanyForm>
-      <div>
+      <div use:filedrop>
         <!-- Per-client logo (#196): shown on this page's header and on the client's portal
            dashboard. Not the agency's branding — that lives under Instellingen. -->
         <label for="edit-company-logo" class="mb-1 block text-sm font-medium text-text"
@@ -278,6 +280,7 @@
           accept="image/png,image/jpeg,image/webp,image/gif"
           class="block w-full text-sm text-text-muted file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-solid file:border-border file:bg-transparent file:px-3 file:py-1.5 file:text-sm file:text-text hover:file:border-brand"
         />
+        <p class="mt-1 text-xs text-text-muted">{t("common.drop_hint")}</p>
         {#if company.logo_file_id}
           <label class="mt-2 flex items-center gap-2 text-sm text-text">
             <input type="checkbox" name="logo_remove" value="1" />

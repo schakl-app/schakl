@@ -45,6 +45,7 @@ from app.db import async_session_maker, set_current_org
 from app.errors import AppError
 from app.modules.cloudflare import redirects as rules
 from app.modules.cloudflare.client import (
+    IP_RESTRICTED_CODE,
     CloudflareAuthError,
     CloudflareClient,
     CloudflareError,
@@ -91,6 +92,10 @@ _domains = table(
     column("status"),
     column("redirect_url"),
     column("nameservers"),
+    #: When that list was last *looked up*. Read for the same reason ``checked_at`` exists: the
+    #: delegation verdict is half stored observation, and an observation with no age cannot be
+    #: told apart from one taken a minute ago.
+    column("dns_checked_at"),
 )
 
 #: Cloudflare's documented placeholder for a redirect-only hostname: a **proxied** AAAA at the
@@ -116,6 +121,15 @@ _ERROR_CODES: dict[int, tuple[str, str, int]] = {
     # it ever looks the token up. Left on the generic key it read as "Cloudflare refused this
     # request", which points at Cloudflare; the thing to fix is the token the admin just pasted.
     6003: ("cloudflare_token_rejected", "errors.cloudflare_token_rejected", 409),
+    # **A token can be perfectly valid and refused from here.** Cloudflare tokens carry an
+    # optional Client IP Address Filter, and a call from an address outside it answers 403/9109,
+    # *"Cannot use the access token from location: <ip>"* — at every endpoint, so every probe
+    # fails, `capabilities` comes back empty and the row reads exactly like a dead credential.
+    # It is neither: nothing about the token needs re-minting, and no permission is missing. The
+    # fix is one line in Cloudflare's own token screen, and it is unreachable from any sentence
+    # about scopes or validity — which is why this code gets its own key rather than the
+    # blanket auth one it used to collapse into.
+    IP_RESTRICTED_CODE: ("cloudflare_token_ip_blocked", "errors.cloudflare_token_ip_blocked", 409),
     1061: ("cloudflare_zone_exists", "errors.cloudflare_zone_exists", 409),
     1049: ("cloudflare_zone_not_found", "errors.cloudflare_zone_not_found", 409),
     81053: ("cloudflare_record_exists", "errors.cloudflare_record_exists", 409),
@@ -159,10 +173,32 @@ class DomainRow:
     status: str
     redirect_url: str | None
     nameservers: list[str]
+    dns_checked_at: datetime | None = None
 
 
 def _norm_host(value: str | None) -> str:
     return (value or "").strip().lower().rstrip(".")
+
+
+def _delegation(expected: list[str], observed: list[str]) -> bool | None:
+    """Do public DNS and Cloudflare agree about who answers for this domain? ``None`` = unknown.
+
+    **The third state is the fix, not a nicety.** This was a plain boolean, so every way of not
+    knowing came out as a confident *"Nameservers wijzen nog niet naar Cloudflare. Wijzig ze bij
+    de registrar."* — an instruction to go and change something that may well already be right.
+    There are two ways to not know and the panel could express neither: Cloudflare has not told
+    us what it expects (a zone it has not assigned nameservers for, or one never synced), and the
+    public-DNS side is empty — which ``dns.fetch_dns`` returns for a timeout or a SERVFAIL just
+    as it does for a domain that truly delegates nowhere. That module made ``dnssec`` tri-state
+    for exactly this reason and left the nameserver list flat; here is where the difference bit.
+
+    The comparison itself is an intersection, deliberately: a registrar mid-propagation answers
+    one of Cloudflare's pair beside one of the old host's, and that is delegation happening, not
+    delegation absent.
+    """
+    if not expected or not observed:
+        return None
+    return bool(set(observed) & set(expected))
 
 
 def _host_candidates(hostname: str) -> list[str]:
@@ -182,6 +218,21 @@ def _unavailable(report: dict[str, Any], probe: str) -> None:
     projects behind one unreadable token is still one thing the admin has to fix."""
     if probe not in report["unavailable"]:
         report["unavailable"].append(probe)
+
+
+def _token_is_broken(exc: CloudflareError) -> bool:
+    """Is this refusal about the **credential** rather than about one call's scope?
+
+    The rule was "only a 401", and that is right for the reason ``_flag_account`` gives: a 403
+    normally means *this token is not scoped for this endpoint*, which is degraded, not broken,
+    and is already reported per capability. **9109 is the exception, and it is a 403.** A token
+    outside its own IP filter is refused everywhere, so treating it as a scope answer left the
+    row green, the capability list empty, and the admin reading "not granted" against five
+    permissions the token actually holds.
+    """
+    if not isinstance(exc, CloudflareAuthError):
+        return False
+    return exc.status == 401 or exc.code == IP_RESTRICTED_CODE
 
 
 def _pages_error(row: dict[str, Any]) -> str | None:
@@ -309,6 +360,7 @@ class CloudflareService:
                     _domains.c.status,
                     _domains.c.redirect_url,
                     _domains.c.nameservers,
+                    _domains.c.dns_checked_at,
                 ).where(*conditions)
             )
         ).first()
@@ -321,6 +373,7 @@ class CloudflareService:
             status=row.status,
             redirect_url=row.redirect_url,
             nameservers=[_norm_host(ns) for ns in (row.nameservers or []) if ns],
+            dns_checked_at=row.dns_checked_at,
         )
 
     async def _domain_names(self, domain_ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
@@ -544,16 +597,46 @@ class CloudflareService:
 
         Cloudflare's own text is never put in the envelope — it is not translatable and §9 does
         not allow it there. It is persisted on the row's ``last_error`` wherever the operation
-        still commits (verify, sync, check), which is where a user can read it.
+        commits *or* records (verify, sync, check, and the redirect push), which is where a user
+        can read it.
+
+        **The numeric code is consulted first, and the auth class second.** It used to be the
+        other way round, which made :data:`_ERROR_CODES` unreachable for every 401 and 403 —
+        so 9109, "this token may not be used from this IP", came out as "Cloudflare rejected
+        the token" and pointed a working credential at the one fix that could not help. The
+        class is a *fallback* for a refusal Cloudflare did not give a code to: a specific code
+        is strictly better evidence than the status that carried it.
+
+        **And within that fallback, 401 and 403 are different sentences with different keys.**
+        ``_flag_account`` has drawn that line since the module shipped — 401 is "I do not accept
+        this token at all", 403 is "not scoped for *this call*" — and this collapsed both into
+        "Cloudflare rejected the token", so a token missing one zone scope told an admin their
+        credential had been refused. That is the one thing that had not happened: every other
+        call it makes works, which is exactly why the token "looks right".
+
+        The two rules compose rather than compete, and the order is what makes them: **9109 is
+        named by its code and never reaches here**, so "the 403 that really is broken" and "the
+        403s that are merely degraded" can both be true without either having to qualify the
+        other.
         """
-        if isinstance(exc, CloudflareAuthError):
-            return AppError(
-                "cloudflare_token_rejected", "errors.cloudflare_token_rejected", status_code=409
-            )
         mapped = _ERROR_CODES.get(exc.code or -1)
         if mapped:
             code, key, status = mapped
             return AppError(code, key, status_code=status)
+        if isinstance(exc, CloudflareAuthError):
+            if exc.status == 403:
+                # Not "your token is wrong" — "this token may not do *this*". The fix is one
+                # permission in Cloudflare's token editor, and it is unreachable from a sentence
+                # about the credential's validity. 9109 is the exception and it never gets here:
+                # it exits at the code lookup above, where it belongs.
+                return AppError(
+                    "cloudflare_scope_missing",
+                    "errors.cloudflare_scope_missing",
+                    status_code=409,
+                )
+            return AppError(
+                "cloudflare_token_rejected", "errors.cloudflare_token_rejected", status_code=409
+            )
         if exc.status is None:
             return AppError(
                 "cloudflare_unreachable", "errors.cloudflare_unreachable", status_code=502
@@ -568,13 +651,22 @@ class CloudflareService:
         Never raises on a *scoped* token — "cannot list accounts" is a fact to report, not a
         failure. Only an invalid or unreachable token comes back with ``ok=False``, and the row
         records why so the settings screen can say it without a second call.
+
+        A **zone** is handed in wherever this account has one, because ``dns_read`` and
+        ``redirect_read`` cannot be asked without addressing one — and those two are the scopes
+        the domain page's buttons actually use. Before the first sync there is no zone to name,
+        so both simply stay unprobed rather than being reported as refused: "we did not look" and
+        "not granted" are different answers, and this module says so everywhere else.
         """
         account = await self.accounts.get_or_404(account_id)
         client = self._client(account)
+        probe_zone = await self._any_zone_id(account)
         try:
             # The pinned id is handed in because an account-owned token verifies at its own
             # account's endpoint and nowhere else (``client.verify_token``).
-            capabilities, discovered = await client.probe_capabilities(account.cf_account_id)
+            capabilities, discovered = await client.probe_capabilities(
+                account.cf_account_id, zone_id=probe_zone
+            )
         except CloudflareError as exc:
             await self.accounts.update(
                 account,
@@ -739,6 +831,22 @@ class CloudflareService:
             registrar_domains_at_cloudflare=registrar.at_cloudflare,
             registrar_domains_matched=registrar.matched,
             warnings=warnings,
+        )
+
+    async def _any_zone_id(self, account: CloudflareAccount) -> str | None:
+        """Some zone of this account, to address the zone-scoped capability probes at.
+
+        Any one will do: a token's zone permissions are granted over a *set* of zones, so what is
+        being asked is "does this token carry the DNS/redirect scope at all", not "…for this
+        client". ``None`` before the first sync, which leaves those two capabilities unprobed
+        rather than reported as refused (:data:`client.ZONE_CAPABILITIES`).
+        """
+        return await self.ctx.session.scalar(
+            self.zones.scoped_select()
+            .with_only_columns(CloudflareZone.cf_zone_id)
+            .where(CloudflareZone.account_id == account.id)
+            .order_by(CloudflareZone.name)
+            .limit(1)
         )
 
     async def _resolve_account_id(
@@ -1462,6 +1570,32 @@ class CloudflareService:
 
         Everything that can be refused is refused *before* the first Cloudflare call, so a
         rejected request leaves no half-built rule behind.
+
+        **The placeholder is a second step, not part of the first.** ``ensure_origin`` writes
+        DNS, which is a *different token scope* from the one that writes the rule — and it used
+        to run inside the same ``try``, so a token scoped for redirects and not for DNS failed
+        the whole call **after the rule had already been created at Cloudflare**. The raise
+        rolled the request back, so schakl kept no record of the rule it had just made; the next
+        press appended a second one, and the next a third, on a live client's zone, while the
+        screen said the token was rejected. Two rules come out of that, and neither is about
+        Cloudflare. **A failure after the durable half is done is a note, never a rollback** —
+        the rule is what the user asked for and it exists, so the row is written and the
+        placeholder's refusal is recorded on it. And **the step that can fail on its own scope
+        must be able to fail on its own**: `_ensure_origin` is an optimisation of the redirect,
+        not a precondition of it, and the status check already names a missing origin
+        (``origin_missing``) as a finding of its own.
+
+        **The two failures write to different rows, and the split holds on the path that
+        happens rather than on a path that cannot.** A rule push that fails calls
+        ``_record_failure`` and writes the *account*'s ``last_error``; a placeholder that fails
+        writes the *redirect*'s. They are gated on opposite outcomes of the same call, so they
+        can never both fire and never overwrite each other — and the case that exercises that is
+        the ordinary one this whole method exists for: Single Redirect granted, DNS not. There
+        the push succeeds, the account row correctly stays green (a missing DNS scope is
+        degraded, not a broken credential), and the note lands on the redirect. It would be easy
+        to "verify" this against a credential Cloudflare refuses outright, where the push fails
+        and nothing downstream runs at all — but an invariant that only holds on the path where
+        nothing happens is not an invariant.
         """
         domain = await self._domain_or_404(domain_id)
         zone = await self._zone_or_409(domain)
@@ -1526,10 +1660,30 @@ class CloudflareService:
                 ruleset_id = str(ruleset.get("id") or "")
                 result = await client.add_redirect_rule(zone.cf_zone_id, ruleset_id, rule)
                 pushed = (result.get("rules") or [{}])[-1]
-            if payload.ensure_origin:
-                await self._ensure_origin(client, zone, payload.include_subdomains)
         except CloudflareError as exc:
+            # Written outside this transaction, for ``_record_failure``'s reason: the raise below
+            # rolls back everything else, so a note taken here would be undone by the very error
+            # it describes — and the settings screen, whose whole job is to say what is wrong
+            # with a credential, would be the one place that never found out. A 403 records the
+            # text without reddening the row (``_record_failure`` follows ``_flag_account``'s
+            # rule): "not scoped for this call" is degraded, not broken.
+            await self._record_failure(account, exc)
             raise self._translate(exc) from exc
+
+        # Past this point the rule exists at Cloudflare, so nothing below may raise: a rollback
+        # would lose the only record that it does. The placeholder's own scope is DNS, and its
+        # refusal is a sentence on the row rather than a failed request (see the docstring).
+        origin_error: str | None = None
+        if payload.ensure_origin:
+            try:
+                await self._ensure_origin(client, zone, payload.include_subdomains)
+            except CloudflareError as exc:
+                origin_error = str(exc)[:500]
+                logger.info(
+                    "cloudflare: redirect for zone %s pushed, placeholder refused: %s",
+                    zone.name,
+                    exc,
+                )
 
         now = datetime.now(UTC)
         values = {
@@ -1540,8 +1694,11 @@ class CloudflareService:
             "include_subdomains": payload.include_subdomains,
             "cf_ruleset_id": ruleset_id or None,
             "cf_rule_id": str(pushed.get("id") or "") or None,
+            # The rule is live either way — that is what ``ACTIVE`` claims, and it is true. What
+            # the placeholder could not do is a separate fact, and it goes where the panel can
+            # read it rather than into a status that would misdescribe the redirect itself.
             "last_status": RedirectStatus.ACTIVE.value,
-            "last_error": None,
+            "last_error": origin_error,
             "last_checked_at": now,
             "last_pushed_at": now,
         }
@@ -1682,7 +1839,12 @@ class CloudflareService:
             "candidates": await self._candidate_refs(candidates),
             "expected_nameservers": (zone.name_servers or []) if zone else [],
             "observed_nameservers": domain.nameservers,
-            "nameservers_delegated": False,
+            "nameservers_delegated": None,
+            # The observed half's own age. ``checked_at`` above is the Cloudflare side and says
+            # nothing about this one, which is how "Gecontroleerd zojuist" came to sit directly
+            # above a nameserver reading that a daily cron had last touched — the one line on the
+            # panel the check does not refresh.
+            "nameservers_checked_at": domain.dns_checked_at,
             "redirect": redirect,
             "redirect_live": None,
             "conflicts": [],
@@ -1693,9 +1855,9 @@ class CloudflareService:
             "issues": [],
             "unavailable": [],
         }
-        expected = set(report["expected_nameservers"])
-        observed = set(domain.nameservers)
-        report["nameservers_delegated"] = bool(expected) and bool(observed & expected)
+        report["nameservers_delegated"] = _delegation(
+            report["expected_nameservers"], report["observed_nameservers"]
+        )
 
         if live:
             if zone is not None:
@@ -1786,9 +1948,8 @@ class CloudflareService:
             )
             report["zone"] = (await self._decorate_zones([zone]))[0]
             report["expected_nameservers"] = zone.name_servers or []
-            expected = set(report["expected_nameservers"])
-            report["nameservers_delegated"] = bool(expected) and bool(
-                set(report["observed_nameservers"]) & expected
+            report["nameservers_delegated"] = _delegation(
+                report["expected_nameservers"], report["observed_nameservers"]
             )
 
         try:
@@ -1903,8 +2064,10 @@ class CloudflareService:
         left an agency's DNS-only token reading "Token problem" for ever over an optional Pages
         probe it was never meant to pass. The text is still recorded either way, because a
         missing scope is worth reading; it is the red status it does not earn.
+
+        The one 403 that *does* earn it is ``9109`` — see :func:`_token_is_broken`.
         """
-        rejected = isinstance(exc, CloudflareAuthError) and exc.status == 401
+        rejected = _token_is_broken(exc)
         await self.accounts.update(
             account,
             status=CloudflareAccountStatus.ERROR.value if rejected else account.status,
@@ -1931,7 +2094,7 @@ class CloudflareService:
         It must never replace the error it is recording, so a failure to write it is logged and
         swallowed. Losing the note is bad; losing the exception is worse.
         """
-        rejected = isinstance(exc, CloudflareAuthError) and exc.status == 401
+        rejected = _token_is_broken(exc)
         try:
             async with async_session_maker() as session:
                 await set_current_org(session, self.ctx.org.id)
@@ -1984,7 +2147,10 @@ class CloudflareService:
                 issues.append(ISSUE_ZONE_PENDING)
             if zone.paused:
                 issues.append(ISSUE_ZONE_PAUSED)
-            if report["expected_nameservers"] and not report["nameservers_delegated"]:
+            # Only a **definite** no. ``None`` is "one of the two sides did not answer"
+            # (:func:`_delegation`), and raising a finding on it told an agency to go and change
+            # nameservers at a registrar on the strength of a DNS lookup that had timed out.
+            if report["nameservers_delegated"] is False:
                 issues.append(ISSUE_NAMESERVERS)
 
         live_redirect = report.get("redirect_live")
@@ -2067,6 +2233,24 @@ class CloudflareService:
                 )
             ).all()
         )
+        # One query for every project's hostnames, never one per project (docs/PERFORMANCE.md):
+        # the shape this replaces is invisible in the JSON and only shows up on an account with
+        # thirty projects. Through the links' own scoped repository, so the company horizon
+        # applies here exactly as it does on a domain page — a member restricted to one client
+        # sees the project and only that client's hostnames on it.
+        hostnames: dict[uuid.UUID, list[str]] = {}
+        for link in (
+            (
+                await self.ctx.session.execute(
+                    self.pages_links.scoped_select()
+                    .where(CloudflarePagesLink.project_id.in_({p.id for p in projects}))
+                    .order_by(CloudflarePagesLink.hostname)
+                )
+            )
+            .scalars()
+            .all()
+        ):
+            hostnames.setdefault(link.project_id, []).append(link.hostname)
         return [
             {
                 "id": p.id,
@@ -2075,6 +2259,7 @@ class CloudflareService:
                 "name": p.name,
                 "subdomain": p.subdomain,
                 "production_branch": p.production_branch,
+                "hostnames": hostnames.get(p.id, []),
             }
             for p in projects
         ]

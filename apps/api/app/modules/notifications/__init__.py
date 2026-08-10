@@ -21,12 +21,16 @@ from app.modules.notifications.jobs import dispatch_notification_deliveries
 from app.modules.notifications.permissions import NOTIFICATION_PERMISSIONS
 from app.modules.notifications.router import router
 from app.modules.notifications.service import RESOLVING_EVENTS, make_handler, make_resolver
+from app.modules.notifications.webpush import WebPushChannel
 from app.registry import ModuleDescriptor, registry
 
 # External transports (SMTP, Slack, Teams, Google Chat via Apprise — #17) register here, behind
 # the same channel seam as the in-app bell. The push happens in a worker cron, not the request.
 register_channel(ExternalChannel())
 register_channel(EmailChannel())
+# The browser's own notifications (#309) — implicit like e-mail, but reaching devices rather
+# than an address, so its subscriptions live in their own table rather than in a channel row.
+register_channel(WebPushChannel())
 
 # The record's activity panel is core now (issue #67) — a real audit trail, not the notifiable
 # subset this module logs. Notifications keeps the inbox, the bell and the event log; it no
@@ -36,8 +40,11 @@ module = ModuleDescriptor(
     router=router,
     i18n_namespace="notifications",
     permissions=NOTIFICATION_PERMISSIONS,
-    # Drain pending external deliveries every minute, per org, with backoff (#17).
-    cron_jobs=[cron(dispatch_notification_deliveries, second=30)],
+    # Drain pending pushed deliveries four times a minute, per org, with backoff (#17, #309).
+    # It was once a minute until browser push arrived, and a minute is the difference between a
+    # notification and a reminder: an "immediate" mention that lands 55 seconds late is a
+    # different product. The sweep is two indexed queries per org when there is nothing to do.
+    cron_jobs=[cron(dispatch_notification_deliveries, second={0, 15, 30, 45})],
 )
 
 registry.register(module)

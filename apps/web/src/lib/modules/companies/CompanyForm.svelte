@@ -22,7 +22,7 @@
   interface Member {
     user_id: string;
     full_name?: string | null;
-    email: string;
+    email: string | null;
   }
   interface CompanyValues {
     /** Present when editing an existing client; scopes the notes editor's #task candidates. */

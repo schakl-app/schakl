@@ -21,6 +21,7 @@
   import I18nLocaleSwitcher from "$lib/core/ui/I18nLocaleSwitcher.svelte";
 
   import DocumentFrame from "$lib/core/ui/DocumentFrame.svelte";
+  import { filedrop } from "$lib/core/ui/filedrop";
   import type { BlockSpec, TemplateConfig, TemplateLayoutBlock } from "./templateConfig";
   import { DEFAULT_CONFIG, layoutForApi, mergeLayout, moveItem } from "./templateConfig";
 
@@ -545,7 +546,10 @@
             </div>
             <p class="mt-1 text-xs text-text-muted">{t("settings.invoicing.qr_logo_help")}</p>
             {#if config.qr_logo === "custom"}
-              <div class="mt-2 flex items-center gap-2">
+              <div
+                class="mt-2 flex flex-wrap items-center gap-2"
+                use:filedrop={{ disabled: uploading, onerror: (key) => (uploadError = t(key)) }}
+              >
                 <input
                   type="file"
                   accept="image/*"
@@ -553,6 +557,7 @@
                   disabled={uploading}
                   class="text-xs text-text-muted file:mr-2 file:rounded file:border-0 file:bg-surface file:px-2 file:py-1 file:text-xs file:text-text"
                 />
+                <span class="text-xs text-text-muted">{t("common.drop_hint")}</span>
                 {#if config.qr_logo_file_id}
                   <button
                     type="button"
@@ -617,7 +622,10 @@
             {t("settings.invoicing.background_use_logo")}
           </label>
           {#if !background.use_logo || background.file_id}
-            <div class="flex items-center gap-2">
+            <div
+              class="flex flex-wrap items-center gap-2"
+              use:filedrop={{ disabled: uploading, onerror: (key) => (uploadError = t(key)) }}
+            >
               <input
                 type="file"
                 accept="image/*"
@@ -626,6 +634,7 @@
                 class="text-xs text-text-muted"
                 aria-label={t("settings.invoicing.background_image")}
               />
+              <span class="text-xs text-text-muted">{t("common.drop_hint")}</span>
               {#if background.file_id}
                 <button
                   type="button"

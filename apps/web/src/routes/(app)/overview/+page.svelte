@@ -6,6 +6,7 @@
   import { page } from "$app/state";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { memberLabel } from "$lib/core/members";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import { createTableLayout } from "$lib/core/table/layout.svelte";
@@ -51,7 +52,7 @@
 
   const memberName = (id?: string | null) => {
     const m = data.members.find((mm) => mm.user_id === id);
-    return m ? m.full_name || m.email : "";
+    return m ? memberLabel(m) : "";
   };
   const companyName = (id?: string | null) => data.companies.find((c) => c.id === id)?.name ?? "";
   const projectName = (id?: string | null) => data.projects.find((p) => p.id === id)?.name ?? "";
@@ -156,7 +157,7 @@
 <div class="mb-4 flex flex-wrap items-center gap-2">
   <div class="w-44">
     <Combobox
-      items={data.members.map((m) => ({ value: m.user_id, label: m.full_name || m.email }))}
+      items={data.members.map((m) => ({ value: m.user_id, label: memberLabel(m) }))}
       name="_f_user"
       id="f-user"
       value={data.filters.user_id}

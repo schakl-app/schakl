@@ -14,12 +14,13 @@
   import { X } from "@lucide/svelte";
 
   import { t } from "$lib/core/i18n";
+  import { memberLabel } from "$lib/core/members";
   import Combobox from "$lib/core/ui/Combobox.svelte";
 
   interface Member {
     user_id: string;
     full_name?: string | null;
-    email: string;
+    email: string | null;
   }
   interface Assignee {
     user_id: string;
@@ -53,12 +54,12 @@
 
   const label = (userId: string) => {
     const member = members.find((m) => m.user_id === userId);
-    return member ? member.full_name || member.email : userId;
+    return member ? memberLabel(member) : userId;
   };
   const candidates = $derived(
     members
       .filter((m) => !picked.includes(m.user_id))
-      .map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
+      .map((m) => ({ value: m.user_id, label: memberLabel(m) })),
   );
 
   const payload = $derived(

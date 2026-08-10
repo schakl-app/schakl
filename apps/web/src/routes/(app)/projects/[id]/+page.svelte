@@ -10,6 +10,7 @@
   import { editIntent } from "$lib/core/edit-intent";
   import { fmtNumber, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { memberLabel } from "$lib/core/members";
   import { pageTitle } from "$lib/core/title";
   import { can } from "$lib/core/permissions";
   import { entityPanelsFor } from "$lib/core/registry";
@@ -66,7 +67,7 @@
     enabled.includes("interactions") && can(page.data.user, "interactions.interaction.write"),
   );
   const mentionCandidates = $derived(
-    data.members.map((m) => ({ id: m.user_id, name: m.full_name || m.email })),
+    data.members.map((m) => ({ id: m.user_id, name: memberLabel(m) })),
   );
 
   const inputClass =

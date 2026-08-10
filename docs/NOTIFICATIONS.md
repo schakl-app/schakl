@@ -2,8 +2,9 @@
 
 > How an event becomes a message, on which channel, and *when*. Issues #16 (in-app + prefs),
 > #17 (external transports), #245 (per-event e-mail), #283 (cadence everywhere), #295 (one
-> routing table for every channel).
+> routing table for every channel), #309 (browser push + quiet hours).
 > Read this before touching `apps/api/app/modules/notifications/`.
+> Browser push has its own file for the RFCs and the service worker: `docs/WEBPUSH.md`.
 
 ## The two halves
 
@@ -16,16 +17,26 @@ never a provider call. The worker cron drains those rows off the hot path.
 No channel does network I/O inside a request. That rule is why a Slack outage cannot slow down
 saving a task.
 
-## The four channels
+## The five channels
 
 | Channel | Row it writes | Who it reaches | Where its routing + cadence live |
 |---|---|---|---|
 | `in_app` | `notifications` (`visible_at`) | one recipient | that user's matrix, per event |
 | `email` | `notification_deliveries` | one recipient | that user's matrix, per event (#245) |
+| `web_push` | `notification_deliveries` | one recipient, on **every device they registered** | that user's matrix, per event (#309) |
 | `external`, org channel | `notification_deliveries` | a shared room | the **org** matrix, per event *per channel* (#295) |
 | `external`, personal channel | `notification_deliveries` | the channel's owner | that **user's** matrix, per event *per channel* (#283) |
 
-`in_app` and `email` are **implicit**: every member has them, and there is no row to create.
+`in_app`, `email` and `web_push` are **implicit**: every member has them, and there is no row to
+create. `web_push` has *devices* rather than an address — `push_subscriptions`, deliberately not
+`notification_channels`, because a browser mints a subscription, it rotates, and it dies with a
+`410`; as a channel row an ordinary auto-prune would delete a user's channel and its routing.
+Its delivery row is written **per recipient, never per device**: the cadence belongs to the
+person, and the fan-out to their browsers happens in the sweep, against whatever devices exist
+then. Its default is the one that is not a single constant: **on for the events that are already
+immediate, silent for the ones that land in a digest** (`prefs.web_push_default`) — the browser's
+own permission dialog is the opt-in, and a phone woken to deliver tomorrow's news is how a channel
+gets switched off for good. `docs/WEBPUSH.md` has the rest.
 An `external` channel is an explicit `notification_channels` row holding an Apprise URL,
 encrypted at rest. `user_id NULL` makes it an org/shared channel; `user_id` set makes it personal.
 
@@ -71,6 +82,7 @@ Grouping is what makes a digest a digest, and the group key differs per sweep:
 
 ```
 dispatch_email_deliveries    → group by notifications.user_id      (a person has one inbox)
+dispatch_webpush_deliveries  → group by notifications.user_id      (…spread over their devices)
 dispatch_external_deliveries → group by delivery.channel_config_id (a room has no single recipient)
 ```
 
@@ -92,6 +104,38 @@ A send failure keeps the whole bundle `pending`, records the provider's own erro
 it, and rides the shared exponential backoff (`_backoff_ready`: 1, 2, 4, 8 … minutes off
 `updated_at`) until `MAX_ATTEMPTS`. The rows settle together because they left together — half a
 digest sent is not a state worth modelling.
+
+Web push settles on one extra rule, because it is the one channel with several destinations per
+bundle: **it is sent if any one device accepted it** (a dead phone and a live laptop is a person
+who was reached), and a `404`/`410` **deletes the subscription without counting as a failure**.
+A device somebody threw away is not a delivery error, and spending attempts on it would
+eventually fail the bundle for the devices that are alive.
+
+## Quiet hours
+
+`quiet_hours_start` / `quiet_hours_end` on the scope's general row were collected from #16 and
+read by **nothing** until #309 — the settings hint said so out loud. A bell that interrupts
+nobody could afford that; a phone that buzzes at 03:00 cannot.
+
+`compute_visible_at(..., quiet_hours=True)` now moves a slot landing inside the window to the
+moment it ends, on the org's own clock, wall-clock (so 07:00 is still 07:00 on the two days a
+year the clocks move) and handling the window that wraps midnight as well as the one that does
+not. It is opt-in **per channel** and the asymmetry is the point: every *pushed* channel passes
+it (`email`, `external`, `web_push`); the **bell does not**, because holding an in-app row back
+interrupts nobody and makes the app look broken — you would open it, see nothing, and be told
+about it in the morning.
+
+The window is one answer per person, so it lives on the in-app general row wherever the channel
+is, and `_load` fetches it in the same query as the implicit channel's own rows: honouring it
+costs no extra round trip.
+
+**Whose window an external channel obeys follows the channel's ownership**, and it has to be
+resolved rather than assumed: a *personal* transport (my Slack DM) obeys its owner's window, a
+*shared room* obeys the org's — a room has no single person whose night it is. `_merge_channel`
+folds it in from one batched lookup. Getting this wrong is invisible: passing `quiet_hours=True`
+with a window that always resolves to `None` changes nothing, and "nothing was held back" looks
+exactly like the behaviour before quiet hours existed. `tests/test_notification_web_push.py`
+asserts the resolved pref carries the window on the e-mail *and* the channel path for that reason.
 
 ## Routing
 

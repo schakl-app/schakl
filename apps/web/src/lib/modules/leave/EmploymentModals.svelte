@@ -5,7 +5,11 @@
   import { t } from "$lib/core/i18n";
 
   /** The minimal member shape both `/members` and `/members/lookup` satisfy — a name and an id. */
-  export type EmploymentMember = { user_id: string; full_name: string | null; email: string };
+  export type EmploymentMember = {
+    user_id: string;
+    full_name: string | null;
+    email: string | null;
+  };
   export type EmploymentKind = "employment" | "rate";
   /** Handed to a host via `register`; a ⋯ item calls it to open the right modal for a member. */
   export type OpenEmployment = (member: EmploymentMember, kind: EmploymentKind) => void;
@@ -62,6 +66,7 @@
   import { enhance } from "$app/forms";
   import { fmtNumericDate } from "$lib/core/format";
   // `t` is imported in the module script above and is in scope here and in the markup.
+  import { memberLabel } from "$lib/core/members";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
@@ -168,7 +173,7 @@
          wizard to step 1 for the next person, and what clears a finished run's receipt. -->
     {#key `${member.user_id}:${liveForm?.employmentSaved ? "done" : "open"}`}
       <EmploymentWizard
-        memberName={member.full_name || member.email}
+        memberName={memberLabel(member)}
         userId={member.user_id}
         contracts={contractsByUser[member.user_id] ?? []}
         patterns={recurringByUser[member.user_id] ?? []}
@@ -239,7 +244,7 @@
         })}
       >
         <input type="hidden" name="user_id" value={member.user_id} />
-        <p class="text-sm text-text-muted">{member.full_name || member.email}</p>
+        <p class="text-sm text-text-muted">{memberLabel(member)}</p>
         <div>
           <label for="hourly_rate" class="mb-1 block text-sm font-medium text-text">
             {t("settings.users.rate_label")}

@@ -58,6 +58,10 @@
     email_delay_minutes: number;
     email_digest: string;
     email_source: string;
+    push_enabled: boolean;
+    push_delay_minutes: number;
+    push_digest: string;
+    push_source: string;
   }
   interface General {
     due_soon_days: number;
@@ -93,7 +97,13 @@
     error = null,
     saved = false,
   }: {
-    matrix: { events: Row[]; general: General; email: EmailSchedule; channels?: Channel[] };
+    matrix: {
+      events: Row[];
+      general: General;
+      email: EmailSchedule;
+      push: EmailSchedule;
+      channels?: Channel[];
+    };
     scope: "user" | "org";
     error?: string | null;
     saved?: boolean;
@@ -115,6 +125,7 @@
   let edits = $state<Record<string, Partial<Row>>>({});
   let generalEdit = $state<Partial<General>>({});
   let emailEdit = $state<Partial<EmailSchedule>>({});
+  let pushEdit = $state<Partial<EmailSchedule>>({});
   /** `{[channel id]: {[event type]: "off" | cadence}}` — sparse, layered over the loaded matrix. */
   let channelEdits = $state<Record<string, Record<string, string>>>({});
 
@@ -133,6 +144,7 @@
           edits = {}; // the reloaded matrix is now the truth; stale edits must not re-apply
           generalEdit = {};
           emailEdit = {};
+          pushEdit = {};
           channelEdits = {};
         },
     )(input);
@@ -154,6 +166,7 @@
   });
   const general = $derived({ ...matrix.general, ...generalEdit });
   const emailSchedule = $derived({ ...matrix.email, ...emailEdit });
+  const pushSchedule = $derived({ ...matrix.push, ...pushEdit });
 
   function baseline(eventType: string): Row | undefined {
     return matrix.events.find((row) => row.event_type === eventType);
@@ -177,6 +190,27 @@
     const next = { ...edits };
     for (const row of rows) {
       if (!row.enabled) continue; // e-mail can't fire without an in-app row
+      next[row.event_type] = { ...next[row.event_type], ...patch };
+    }
+    edits = next;
+  }
+
+  // --- browser push (#309): the e-mail column's twin ------------------------------------- #
+  // A third implicit column, resolved and written exactly like e-mail's. Whether this browser
+  // is *registered* is the section below the matrix; this is only which events push, and the
+  // two are deliberately separate decisions.
+  const pushValue = (row: Row) => (row.push_enabled ? row.push_digest : "off");
+  function editPush(eventType: string, value: string): void {
+    if (value === "off") edit(eventType, { push_enabled: false });
+    else edit(eventType, { push_enabled: true, push_digest: value });
+  }
+
+  function applyAllPush(value: string): void {
+    const patch =
+      value === "off" ? { push_enabled: false } : { push_enabled: true, push_digest: value };
+    const next = { ...edits };
+    for (const row of rows) {
+      if (!row.enabled) continue; // push can't fire without an in-app row
       next[row.event_type] = { ...next[row.event_type], ...patch };
     }
     edits = next;
@@ -232,9 +266,20 @@
     );
   }
 
+  function pushChanged(row: Row): boolean {
+    const before = baseline(row.event_type);
+    if (!before) return true;
+    return (
+      before.push_enabled !== row.push_enabled ||
+      before.push_digest !== row.push_digest ||
+      Number(before.push_delay_minutes) !== Number(row.push_delay_minutes)
+    );
+  }
+
   /** A channel's row is written when it already overrides at this scope, or was just changed. */
   const inAppOverride = (row: Row) => row.source === scope || inAppChanged(row);
   const emailOverride = (row: Row) => row.email_source === scope || emailChanged(row);
+  const pushOverride = (row: Row) => row.push_source === scope || pushChanged(row);
 
   /** The API returns "HH:MM:SS"; `TimeInput` speaks "HH:MM". */
   const hhmm = (value: string | null | undefined) => (value ? value.slice(0, 5) : "");
@@ -251,6 +296,12 @@
       (emailSchedule.digest_weekday ?? null) !== (matrix.email.digest_weekday ?? null),
   );
   const emailScheduleIsOverride = $derived(matrix.email.source === scope || emailScheduleChanged);
+
+  const pushScheduleChanged = $derived(
+    hhmm(pushSchedule.digest_time) !== hhmm(matrix.push.digest_time) ||
+      (pushSchedule.digest_weekday ?? null) !== (matrix.push.digest_weekday ?? null),
+  );
+  const pushScheduleIsOverride = $derived(matrix.push.source === scope || pushScheduleChanged);
 
   /** The body the action forwards on. Only the browser knows what "changed" means here. */
   const payload = $derived(
@@ -276,10 +327,22 @@
             quiet_hours_end: hhmm(general.quiet_hours_end) || null,
           }
         : null,
+      push_events: rows.filter(pushOverride).map((row) => ({
+        event_type: row.event_type,
+        enabled: row.push_enabled,
+        delay_minutes: Number(row.push_delay_minutes) || 0,
+        digest: row.push_digest,
+      })),
       email: emailScheduleIsOverride
         ? {
             digest_time: hhmm(emailSchedule.digest_time) || null,
             digest_weekday: emailSchedule.digest_weekday ?? null,
+          }
+        : null,
+      push: pushScheduleIsOverride
+        ? {
+            digest_time: hhmm(pushSchedule.digest_time) || null,
+            digest_weekday: pushSchedule.digest_weekday ?? null,
           }
         : null,
       // Wholesale per channel, and only the events actually routed there: on a channel an
@@ -302,7 +365,9 @@
   );
 
   const overrideCount = $derived(
-    rows.filter(inAppOverride).length + rows.filter(emailOverride).length,
+    rows.filter(inAppOverride).length +
+      rows.filter(emailOverride).length +
+      rows.filter(pushOverride).length,
   );
 
   const controlClass =
@@ -417,6 +482,53 @@
     </div>
   </section>
 
+  <!-- Browser-push digest schedule: its own, not e-mail's. Someone who wants their mail at 08:00
+       and their phone at 09:30 is asking for two ordinary things (#309). -->
+  <section class="rounded-xl border border-border bg-surface-raised p-5">
+    <h2 class="text-sm font-semibold text-text">{t("notifications.settings.push_schedule")}</h2>
+    <p class="mt-1 text-xs text-text-muted">{t("notifications.settings.push_schedule_hint")}</p>
+    <div class="mt-4 flex flex-wrap items-end gap-4">
+      <div>
+        <span class="mb-1 block text-xs font-medium text-text-muted">
+          {t("notifications.settings.digest_time")}
+        </span>
+        <TimeInput
+          name="push_digest_time"
+          value={hhmm(pushSchedule.digest_time)}
+          onchange={(value) => (pushEdit = { ...pushEdit, digest_time: value || null })}
+        />
+      </div>
+      <label class="block">
+        <span class="mb-1 block text-xs font-medium text-text-muted">
+          {t("notifications.settings.digest_weekday")}
+        </span>
+        <select
+          class={controlClass}
+          value={pushSchedule.digest_weekday ?? 0}
+          onchange={(e) => (pushEdit = { ...pushEdit, digest_weekday: +e.currentTarget.value })}
+        >
+          {#each WEEKDAYS as day, i (day)}
+            <option value={i}>{day}</option>
+          {/each}
+        </select>
+      </label>
+    </div>
+    <div class="mt-4">
+      <span class="mb-1 block text-xs font-medium text-text-muted">
+        {t("notifications.settings.apply_all_push")}
+      </span>
+      <div class="flex flex-wrap gap-2">
+        {#each EMAIL_OPTIONS as option (option)}
+          <Button type="button" variant="secondary" size="xs" onclick={() => applyAllPush(option)}>
+            {option === "off"
+              ? t("notifications.settings.off")
+              : t(`notifications.digest.${option}`)}
+          </Button>
+        {/each}
+      </div>
+    </div>
+  </section>
+
   <!-- Per-event delivery: the bell, e-mail, and one column per channel this scope owns. -->
   <section class="overflow-hidden rounded-xl border border-border bg-surface-raised">
     <div class="border-b border-border bg-surface px-4 py-2">
@@ -441,6 +553,12 @@
             >
               {t("notifications.settings.channel_email")}
             </th>
+            <th
+              class="border-l border-border px-2 py-1 text-center font-semibold uppercase tracking-wide"
+              colspan="2"
+            >
+              {t("notifications.settings.channel_push")}
+            </th>
             {#each channels as channel (channel.id)}
               <th class="border-l border-border px-2 py-1 text-center font-semibold">
                 <span class="block truncate uppercase tracking-wide">{channel.name}</span>
@@ -458,6 +576,10 @@
               {t("notifications.settings.enabled")}
             </th>
             <th class="px-2 py-1 font-medium">{t("notifications.settings.delivery")}</th>
+            <th class="px-2 py-1 font-medium">{t("notifications.settings.delay")}</th>
+            <th class="border-l border-border px-2 py-1 font-medium">
+              {t("notifications.settings.delivery")}
+            </th>
             <th class="px-2 py-1 font-medium">{t("notifications.settings.delay")}</th>
             <th class="border-l border-border px-2 py-1 font-medium">
               {t("notifications.settings.delivery")}
@@ -495,7 +617,7 @@
           {#each groups as group (group.key)}
             <tr class="bg-surface">
               <th
-                colspan={7 + channels.length}
+                colspan={9 + channels.length}
                 scope="colgroup"
                 class="px-4 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-text-muted"
               >
@@ -574,6 +696,37 @@
                       edit(row.event_type, { email_delay_minutes: +e.currentTarget.value })}
                   />
                 </td>
+                <!-- Browser push (#309): the e-mail column's twin, and a subset of in-app too. -->
+                <td class="border-l border-border px-2 py-2">
+                  <select
+                    value={pushValue(row)}
+                    class={controlClass}
+                    disabled={!row.enabled}
+                    aria-label={t("notifications.settings.channel_push")}
+                    onchange={(e) => editPush(row.event_type, e.currentTarget.value)}
+                  >
+                    {#each EMAIL_OPTIONS as option (option)}
+                      <option value={option}>
+                        {option === "off"
+                          ? t("notifications.settings.off")
+                          : t(`notifications.digest.${option}`)}
+                      </option>
+                    {/each}
+                  </select>
+                </td>
+                <td class="px-2 py-2">
+                  <input
+                    type="number"
+                    min="0"
+                    max="1440"
+                    value={row.push_delay_minutes}
+                    class={numberClass}
+                    disabled={!row.enabled || !row.push_enabled || row.push_digest !== "immediate"}
+                    aria-label={t("notifications.settings.delay")}
+                    oninput={(e) =>
+                      edit(row.event_type, { push_delay_minutes: +e.currentTarget.value })}
+                  />
+                </td>
                 <!-- One column per external channel: same control, no inheritance. -->
                 {#each channels as channel (channel.id)}
                   <td class="border-l border-border px-2 py-2">
@@ -619,6 +772,18 @@
                         </span>
                       {:else}
                         <span class="text-text-muted">{statusText(row.email_source, false)}</span>
+                      {/if}
+                    </div>
+                    <div>
+                      <span class="text-text-muted"
+                        >{t("notifications.settings.channel_push")}:</span
+                      >
+                      {#if pushOverride(row)}
+                        <span class="rounded-full bg-brand/10 px-2 py-0.5 font-medium text-brand">
+                          {t("notifications.settings.overridden")}
+                        </span>
+                      {:else}
+                        <span class="text-text-muted">{statusText(row.push_source, false)}</span>
                       {/if}
                     </div>
                   </div>

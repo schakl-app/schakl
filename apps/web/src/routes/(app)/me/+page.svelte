@@ -11,12 +11,14 @@
   import { page } from "$app/state";
   import { fmtDayMonthYear, fmtNumber } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { memberLabel } from "$lib/core/members";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import { filedrop } from "$lib/core/ui/filedrop";
   import { GROUP_LABEL_KEYS } from "$lib/modules/leave/format";
 
   let { data, form } = $props();
@@ -31,7 +33,7 @@
           ""),
   );
   const memberItems = $derived(
-    data.members.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
+    data.members.map((m) => ({ value: m.user_id, label: memberLabel(m) })),
   );
   // The combined balance's label (#265): the message-catalog copy for a known group, else the
   // API/representative label the server resolved for a tenant's own group.
@@ -230,13 +232,14 @@
             class={inputClass}
           />
         </div>
-        <div class="sm:col-span-2">
+        <div class="sm:col-span-2" use:filedrop>
           <input
             name="file"
             type="file"
             required
             class="block w-full text-sm text-text-muted file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-solid file:border-border file:bg-transparent file:px-3 file:py-1.5 file:text-sm file:text-text hover:file:border-brand"
           />
+          <p class="mt-1 text-xs text-text-muted">{t("common.drop_hint")}</p>
         </div>
         <div class="sm:col-span-2">
           <Button size="sm" loading={busy.active}>

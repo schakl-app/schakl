@@ -550,6 +550,22 @@
   placeholder rather than leaving a browser's broken-image glyph in the card, and the file input is
   `sr-only`, never `hidden`, because a `display:none` control is not focusable and the upload would
   be unreachable by keyboard.
+- **Every upload takes a dropped file** (`core/ui/filedrop`, house convention). Eleven upload
+  controls shipped as click-to-browse and nothing else, which is the one gesture people no longer
+  reach for first: an attachment, a client logo, a spreadsheet and a `.eml` all arrive by being
+  dragged out of a mail client or a folder. `use:filedrop` on whatever the user is plausibly aiming
+  at — the thumbnail, the file listing, the field — is the whole change. It lands the files on the
+  **input** (`input.files` + a bubbling `change`), never past it, so whatever the control already
+  did on change happens unchanged: a multipart form really carries the bytes, a `requestSubmit()`
+  still fires, a `FormData` POST still runs. Nothing about how a control uploads has to be known by
+  the action, and nothing about it changes when the drop is added. Three rules hold: it is an
+  **accelerator, never the only path** (the button underneath keeps working, which is the same
+  fallback rule the reorder drags follow), `accept` is honoured *the way the native picker honours
+  it* — a clearly wrong type is refused with `errors.upload_type`, a file the browser could not
+  type at all goes through for the server to judge, exactly as the dialog's "All files" escape
+  hatch does — and a control **says it takes a drop** (`common.drop_hint` beside the button),
+  because an affordance nobody can see is one nobody uses. The highlight is one rule in `app.css`
+  keyed on `data-filedrop`, not a hover class re-typed per site.
 - **A password reveal (eye) toggle sits on user-password fields only** (#235, owner call): login,
   setup, reset-password and the account page's password fields use the shared
   `core/ui/PasswordInput` — the places where a mistyped password locks someone out. Write-only
@@ -975,6 +991,33 @@
 - **A toolbar that cannot wrap.** Title + a fixed-width `SearchInput` + the Kolommen picker + the
   primary button on one flex line has a min-content width around 490 px, which no phone has. Give
   the toolbar its own `flex-wrap` row, the way the clients list does.
+- **A shell with no content measure.** `<main>` was `flex-1 p-6` and nothing else, so every screen
+  was as wide as the monitor. On a 3178 px display a Instellingen card became 1430 px of box around
+  one sentence, the clients list put a row's name and its status a metre apart *while truncating
+  both*, and a dashboard tile stranded "Bakkerij Jansen" and its number at opposite ends of the
+  screen. Past a point wider is not more readable, it is further to look. One `max-w-content`
+  (`--container-content`, app.css) now wraps the page and, separately, the header's controls — the
+  bar keeps its full-bleed background and rule, but what sits *in* it lines up with the page below,
+  or the avatar drifts away from the content's right edge. The number is chosen against the densest
+  screen (a client list with every optional column on), not against prose, and it binds only above a
+  1888 px window, so laptops are untouched. A screen that genuinely needs the whole width opts out
+  by not using the class — never by raising the number for everyone.
+- **An inline-SVG chart with a constant `viewBox` and `class="w-full"`.** That pair does not size a
+  chart, it fixes its *aspect ratio*, and the browser then scales every user unit inside it —
+  gridlines, strokes and, fatally, type. The marketing trend chart was drawn 720×200; on a 3178 px
+  screen it rendered 3130×869 with 59 px axis labels, a single chart taller than the fold, and on a
+  390 px phone the same labels came out at 6 px. One bug at both ends, invisible on the laptop it
+  was built on and invisible to every test, because the SVG was valid and only its size was absurd.
+  Measure the container (`bind:clientWidth`) and draw at **1 user unit = 1 CSS px**, so 10 px type
+  is 10 px everywhere (`$lib/core/ui/charts/geometry.ts`, pinned by
+  `tests/unit/chart-geometry.test.ts`). Two corollaries. **A height must not be derived from the
+  width**: growing one with the container reads as the obvious fix and is a scrollbar oscillation
+  waiting to happen — taller chart, taller page, scrollbar appears, container narrows, chart
+  shortens, scrollbar goes, forever, on whichever screen sits at the knife-edge. Give a chart a
+  taller *design* height instead. And **type has an absolute legible size; a bar does not** —
+  freezing bar widths too would leave twelve 14 px threads spaced 250 px apart, so a mark read
+  against its neighbours stays a proportion of its slot. A chart with a fixed pixel box
+  (`Sparkline`, `DonutChart`) never had any of this and needs no measuring.
 - **A flex `<input>` without `min-w-0`.** `flex-1` alone cannot shrink it: a form control keeps its
   browser-default width (~228 px) as its min-content floor, so the row it sits in never fits a
   phone. This is not the same thing as an explicit `min-w-[12rem]`, and it is easy to clear the

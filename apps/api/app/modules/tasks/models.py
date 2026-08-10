@@ -27,6 +27,9 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    column,
+    select,
+    table,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -35,6 +38,13 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.mixins import OrgScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
 from app.db import Base
+
+#: The projects table as three columns, for the correlated EXISTS in
+#: ``Task.__portal_horizon_clause__``. A name, not an import: this module already carries the FK
+#: to ``projects.id`` the same way, and importing the projects module's model to build one
+#: predicate is precisely the coupling CLAUDE.md §6 forbids. Nothing here reads a project's
+#: *contents* — only which client it belongs to, which is the FK this table already declares.
+_projects = table("projects", column("id"), column("org_id"), column("company_id"))
 
 
 class TaskStatus(StrEnum):
@@ -169,6 +179,54 @@ class Task(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     )
     recurrence: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     recurrence_next_run: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    @classmethod
+    def __portal_horizon_clause__(cls, scope: frozenset[uuid.UUID] | None):  # noqa: ANN206
+        """The stricter rule an **external (client) login** reads tasks by (#266, §15).
+
+        Two narrowings, and the visibility tick is only the second one. The first is the
+        horizon, and it is *not* the one the repository would build itself: ``company_id`` is
+        nullable, so the column-matched rule exempts a NULL — rows attached to no client are
+        not company data (§15). That exemption is right for staff and exactly wrong here. An
+        agency's own to-do list carries no ``company_id``, so a task ticked visible while
+        unattached was visible to **every** client of the tenant rather than to none of them.
+
+        But "has no ``company_id``" is not the same as "belongs to no client" — §285's failure
+        mode (1), the missing anchor. A task on a project inherits its client from the
+        *project*, and nothing fills the column in when one is created that way (a template, an
+        import, the project page with its company field left empty). Dropping every NULL would
+        therefore have swapped one bug for its mirror image: the client who could see somebody
+        else's task would stop seeing their own. So the anchor is the column **when it has
+        one** and the project's client only when it does not — the direct link stays
+        authoritative, and a task explicitly filed under client A is never revealed by a
+        project belonging to client B.
+
+        ``projects`` is named as a table and never imported (§6) — the shape
+        ``app/core/parent.py`` already uses for the reverse direction of this same FK.
+
+        The second narrowing is what the checkbox is for: ``visible_to_client`` is the staff
+        decision that this task is part of the conversation, and an unticked one is absent
+        rather than forbidden.
+
+        It lives on the model, like ``Invoice.__portal_horizon_clause__``, so every path gives
+        the client the same answer *by construction*: the list and its **total**, the detail,
+        the company panel and its open count, the comment target, and the two reference seams
+        (``entity_visible`` — which is the only gate on ``GET /files`` — and
+        ``app/core/directory.py``). Stating it once is what stops the #285 shape where one
+        caller remembers the rule and the next one does not.
+        """
+        companies = scope or frozenset()
+        via_project = (
+            select(_projects.c.id)
+            .where(
+                _projects.c.id == cls.project_id,
+                _projects.c.org_id == cls.org_id,
+                _projects.c.company_id.in_(companies),
+            )
+            .exists()
+        )
+        anchored = cls.company_id.in_(companies) | (cls.company_id.is_(None) & via_project)
+        return anchored & cls.visible_to_client.is_(True)
 
 
 class TaskSchedule(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):

@@ -53,15 +53,39 @@ MAX_PAGES = 20
 PER_PAGE = 50
 
 #: The capabilities :func:`probe_capabilities` can actually observe with a handful of cheap
-#: calls. Deliberately short: everything else (can this token edit *this* zone's DNS?) cannot be
-#: known without a zone in hand, and guessing would be worse than the real error at the call.
+#: calls. Deliberately short: an *edit* scope cannot be observed at all without writing
+#: something, and this module will not create a record on a client's zone to find out.
+#:
+#: The last two need a zone in hand, which is why they are probed only when the caller has one
+#: (``verify_account`` picks a synced zone of this account). They were the conspicuous hole:
+#: **the two scopes the redirect button actually uses were the two the screen never mentioned**,
+#: so an admin whose "Wat dit token mag" list read ✓ all the way down still got a token error at
+#: the button — which is exactly what "the token seems to have the right permissions" means.
+#: They are *read* probes, and the module is honest about that in the label: a token that cannot
+#: read a zone's DNS certainly cannot write it, while one that can read it may still not write.
 CAPABILITIES: tuple[str, ...] = (
     "token_valid",
     "accounts_read",
     "zones_read",
     "pages_read",
     "registrar_read",
+    "dns_read",
+    "redirect_read",
 )
+
+#: The subset of :data:`CAPABILITIES` that cannot be asked without a zone to address. They are
+#: **omitted from the answer** rather than reported ``False`` when no zone was available, because
+#: "we did not look" and "not granted" are different answers (docs/CLOUDFLARE.md §6) and a red
+#: "niet toegekend" against a scope nobody asked about is the same lie in the other direction.
+ZONE_CAPABILITIES: frozenset[str] = frozenset({"dns_read", "redirect_read"})
+
+#: Cloudflare's code for "this token carries a **Client IP Address Filter** and the address you
+#: are calling from is not on it" — HTTP 403, *"Cannot use the access token from location: <ip>"*.
+#: It is a 403 and it is the one 403 that says nothing whatsoever about scope: the token is
+#: valid, correctly permissioned, and refused for **every** call from this network. Named here
+#: because that difference is the entire diagnosis, and reading it as either "invalid token" or
+#: "missing permission" sends an admin to re-mint a credential that was never the problem.
+IP_RESTRICTED_CODE = 9109
 
 #: The phase whose entrypoint ruleset holds Redirect Rules ("Single Redirects").
 REDIRECT_PHASE = "http_request_dynamic_redirect"
@@ -241,7 +265,7 @@ class CloudflareClient:
         return await self.paginate("/accounts")
 
     async def probe_capabilities(
-        self, account_id: str | None = None
+        self, account_id: str | None = None, zone_id: str | None = None
     ) -> tuple[dict[str, bool], dict | None]:
         """What this token can be observed to do, plus the account it belongs to (if visible).
 
@@ -257,7 +281,7 @@ class CloudflareClient:
         evidence it is, and only a token that was refused by **every** probe raises: that is
         the one state where "invalid" is the honest word rather than a guess.
         """
-        caps = dict.fromkeys(CAPABILITIES, False)
+        caps = dict.fromkeys((c for c in CAPABILITIES if c not in ZONE_CAPABILITIES), False)
         rejection: CloudflareAuthError | None = None
 
         # Accounts first, because the account-owned verify endpoint needs an id to address.
@@ -317,6 +341,33 @@ class CloudflareClient:
                 pass
             else:
                 caps["registrar_read"] = True
+
+        if zone_id:
+            # The two scopes the domain page's own buttons use, and the two that were invisible
+            # until the button failed. Both are reads, and a read is only half the answer — but
+            # it is the half that catches "this permission was never granted", which is the case
+            # that produced a token error against a token whose every other line said ✓.
+            for capability, path in (
+                ("dns_read", f"/zones/{zone_id}/dns_records"),
+                ("redirect_read", f"/zones/{zone_id}/rulesets/phases/{REDIRECT_PHASE}/entrypoint"),
+            ):
+                # Present from here on, because a zone *was* available: from this point "False"
+                # is an answer. Absent stays reserved for the case above, where nothing was asked.
+                caps[capability] = False
+                try:
+                    await self.request("GET", path, params={"per_page": 1})
+                except CloudflareAuthError as exc:
+                    rejection = rejection or exc
+                except CloudflareError as exc:
+                    # A zone with no redirect rules has no entrypoint ruleset and answers 404
+                    # (:meth:`get_redirect_ruleset`) — a normal state, and the token was plainly
+                    # allowed to ask. Every *other* non-auth failure (Cloudflare unreachable, a
+                    # 5xx) is evidence about Cloudflare and none about the scope, so it leaves
+                    # the answer False rather than inventing a ✓ — and, below, leaves the
+                    # "every probe refused" check able to fire.
+                    caps[capability] = exc.status == 404
+                else:
+                    caps[capability] = True
 
         if not any(caps.values()):
             # Every probe refused. Now — and only now — "the token is invalid" is a statement

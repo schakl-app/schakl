@@ -14,6 +14,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from arq.connections import ArqRedis, RedisSettings, create_pool
+from arq.jobs import Job
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,7 +30,7 @@ logger = logging.getLogger("schakl.jobs")
 _arq_pool: ArqRedis | None = None
 
 
-async def enqueue(function: str, *args: Any, **kwargs: Any) -> None:
+async def enqueue(function: str, *args: Any, **kwargs: Any) -> Job | None:
     """Fire a one-off job at the ARQ worker by function name (#125).
 
     ``function`` must be contributed by a module via ``ModuleDescriptor.worker_functions``
@@ -37,6 +38,14 @@ async def enqueue(function: str, *args: Any, **kwargs: Any) -> None:
     The pool is process-wide and lazy, like ``app.core.cache.get_redis``. This raises on a
     Redis failure; a caller for whom the job is a nicety (a first DNS fetch after create)
     catches and logs rather than failing the request it rides on.
+
+    **``None`` means nothing was queued, and a caller that flipped a row to "in progress" has
+    to care.** ``enqueue_job`` declines silently when ``_job_id`` names a job that is still in
+    the queue *or whose result is still in Redis* — the latter for ``keep_result`` seconds,
+    one hour by default. Discarding that answer is how reporting's "genereer opnieuw" came to
+    set a report to ``generating`` and queue nothing, an hour at a time. Callers that pass a
+    ``_job_id`` for idempotency and callers that pass one per attempt want opposite things from
+    a ``None``, so it is returned rather than interpreted here.
     """
     global _arq_pool
     if _arq_pool is None:
@@ -45,7 +54,7 @@ async def enqueue(function: str, *args: Any, **kwargs: Any) -> None:
         # missing queue (and wants to know *now*) or fails its request — never hangs it.
         redis_settings.conn_retries = 1
         _arq_pool = await create_pool(redis_settings)
-    await _arq_pool.enqueue_job(function, *args, **kwargs)
+    return await _arq_pool.enqueue_job(function, *args, **kwargs)
 
 PerOrgCallback = Callable[[Org, AsyncSession], Awaitable[None]]
 

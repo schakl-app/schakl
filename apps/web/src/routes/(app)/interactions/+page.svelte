@@ -18,6 +18,7 @@
   import { addMonths, isoAddDays, mondayOnOrBefore, monthOf } from "$lib/core/calendar";
   import { fmtDateTime, fmtMonthYear, fmtPeriod } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { memberLabel } from "$lib/core/members";
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
   import { navLabel, pageTitle } from "$lib/core/title";
@@ -58,9 +59,9 @@
   const kinds = $derived(data.kinds as InteractionKindDef[]);
   const kindByKey = $derived(new Map(kinds.map((k) => [k.key, k])));
   const mentionCandidates = $derived(
-    data.members.map((m: { user_id: string; full_name: string | null; email: string }) => ({
+    data.members.map((m: { user_id: string; full_name: string | null; email: string | null }) => ({
       id: m.user_id,
-      name: m.full_name || m.email,
+      name: memberLabel(m),
     })),
   );
 
@@ -429,7 +430,7 @@
     {#if data.canReadAll}
       {#each data.members as member (member.user_id)}
         {#if member.user_id !== me}
-          <option value={member.user_id}>{member.full_name || member.email}</option>
+          <option value={member.user_id}>{memberLabel(member)}</option>
         {/if}
       {/each}
     {/if}

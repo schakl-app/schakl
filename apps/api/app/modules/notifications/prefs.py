@@ -26,11 +26,11 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import delete, or_, select
+from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.notifications.defaults import (
@@ -43,6 +43,7 @@ from app.modules.notifications.events import (
     CHANNEL_EMAIL,
     CHANNEL_EXTERNAL,
     CHANNEL_IN_APP,
+    CHANNEL_WEB_PUSH,
     DIGEST_HOURLY,
     DIGEST_IMMEDIATE,
     DIGEST_WEEKLY,
@@ -54,8 +55,34 @@ from app.modules.notifications.models import NotificationChannelConfig, Notifica
 # --------------------------------------------------------------------------- #
 # Scheduling
 # --------------------------------------------------------------------------- #
-def compute_visible_at(pref: ResolvedPref, now: datetime, *, tz: ZoneInfo) -> datetime:
-    """When this notification should surface in the bell, given the recipient's cadence.
+def _after_quiet_hours(slot: datetime, start: time | None, end: time | None) -> datetime:
+    """Push a **local** slot out of the recipient's quiet window, to the moment it ends.
+
+    A window that wraps midnight (22:00–07:00, the ordinary case) is as valid as one that does
+    not (12:00–13:00), and they are two different comparisons — an implementation that only
+    handles the first silently never fires for the second.
+
+    Wall-clock arithmetic like everything else here: the slot is already in the org's zone, so
+    "07:00" stays 07:00 on the two days a year the clocks move.
+    """
+    if start is None or end is None or start == end:
+        return slot
+    at = slot.timetz().replace(tzinfo=None)
+    wraps = start > end
+    inside = (at >= start or at < end) if wraps else (start <= at < end)
+    if not inside:
+        return slot
+    out = slot.replace(hour=end.hour, minute=end.minute, second=0, microsecond=0)
+    # Only a wrapping window can put the exit on tomorrow, and only for the evening half of it.
+    if wraps and at >= start:
+        out += timedelta(days=1)
+    return out
+
+
+def compute_visible_at(
+    pref: ResolvedPref, now: datetime, *, tz: ZoneInfo, quiet_hours: bool = False
+) -> datetime:
+    """When this notification should surface, given the recipient's cadence.
 
     ``immediate`` honours ``delay_minutes`` (a grace period that also lets a burst of edits
     collapse into one row); the digest cadences ignore it — the cadence *is* the delay.
@@ -64,9 +91,22 @@ def compute_visible_at(pref: ResolvedPref, now: datetime, *, tz: ZoneInfo) -> da
     than defaulted: "daily at 08:00" is a wall-clock promise, and a hardcoded city delivered a
     tenant in Lisbon their morning digest at 07:00 and one in Warsaw theirs at 09:00 (CLAUDE.md
     §8). The instant returned is still UTC; only the wall clock it is computed against is local.
+
+    ``quiet_hours`` is opt-in **per channel**, and the asymmetry is the point (#309). A **pushed**
+    channel passes it: e-mail, a chat room, and above all a browser notification, which is the
+    first channel in this app capable of waking someone at 03:00. The **bell** does not, because
+    holding an in-app row back interrupts nobody and makes the app look broken — you would open
+    it, see nothing, and be told about it in the morning. The window was collected from the very
+    first release (#16) and read by nothing until now; the settings hint said so out loud.
     """
     if pref.digest == DIGEST_IMMEDIATE:
-        return now + timedelta(minutes=pref.delay_minutes) if pref.delay_minutes else now
+        slot = now + timedelta(minutes=pref.delay_minutes) if pref.delay_minutes else now
+        if not quiet_hours:
+            return slot
+        local = _after_quiet_hours(
+            slot.astimezone(tz), pref.quiet_hours_start, pref.quiet_hours_end
+        )
+        return local.astimezone(UTC)
 
     local = now.astimezone(tz)
     if pref.digest == DIGEST_HOURLY:
@@ -83,6 +123,8 @@ def compute_visible_at(pref: ResolvedPref, now: datetime, *, tz: ZoneInfo) -> da
         slot = local.replace(hour=at.hour, minute=at.minute, second=0, microsecond=0)
         if slot <= local:
             slot += timedelta(days=1)
+    if quiet_hours:
+        slot = _after_quiet_hours(slot, pref.quiet_hours_start, pref.quiet_hours_end)
     return slot.astimezone(UTC)
 
 
@@ -95,6 +137,24 @@ class _Buckets:
     org_general: NotificationPreference | None
     user_event: dict[tuple[uuid.UUID, str], NotificationPreference]
     user_general: dict[uuid.UUID, NotificationPreference]
+    #: The **in-app** general rows, borrowed when resolving some other channel. Quiet hours are
+    #: one answer per person, not one per transport, and they are stored on the in-app general
+    #: row because that is where the settings screen's "general" block writes them. Loaded in the
+    #: same query as the channel's own rows so honouring them costs nothing (#309).
+    quiet_org: NotificationPreference | None = None
+    quiet_user: dict[uuid.UUID, NotificationPreference] = field(default_factory=dict)
+
+
+def _quiet_window(
+    user_id: uuid.UUID | None, buckets: _Buckets
+) -> tuple[time | None, time | None]:
+    """This scope's quiet window: the user's own row, else the org's, else none."""
+    row = buckets.quiet_user.get(user_id) if user_id is not None else None
+    if row is None:
+        row = buckets.quiet_org
+    if row is None:
+        return None, None
+    return row.quiet_hours_start, row.quiet_hours_end
 
 
 async def _load(
@@ -108,12 +168,23 @@ async def _load(
     """One query for every row that can influence the asked-for (user, event) pairs.
 
     ``user_ids=[]`` loads only the org-default rows — the "what does a fresh user get" view.
-    ``channel`` picks which delivery channel's rows to resolve (in-app or e-mail); the bucketing
-    is identical, so one loader serves both matrices.
+    ``channel`` picks which delivery channel's rows to resolve; the bucketing is identical, so
+    one loader serves every implicit channel's matrix.
+
+    For a channel other than the bell it also pulls the **in-app general** rows, which is where
+    quiet hours live for every channel (#309). One query rather than two: a pushed channel must
+    not cost an extra round trip per event just to find out when not to interrupt someone.
     """
     stmt = select(NotificationPreference).where(
         NotificationPreference.org_id == org_id,
-        NotificationPreference.channel == channel,
+        or_(
+            NotificationPreference.channel == channel,
+            # The borrowed quiet-hours row; a no-op when `channel` already is the bell.
+            and_(
+                NotificationPreference.channel == CHANNEL_IN_APP,
+                NotificationPreference.event_type.is_(None),
+            ),
+        ),
         or_(
             NotificationPreference.user_id.in_(user_ids),
             NotificationPreference.user_id.is_(None),
@@ -130,6 +201,13 @@ async def _load(
 
     buckets = _Buckets({}, None, {}, {})
     for row in rows:
+        if row.channel != channel:
+            # An in-app general row loaded only for its quiet hours — never this channel's rule.
+            if row.user_id is None:
+                buckets.quiet_org = row
+            else:
+                buckets.quiet_user[row.user_id] = row
+            continue
         if row.user_id is None:
             if row.event_type is None:
                 buckets.org_general = row
@@ -139,6 +217,11 @@ async def _load(
             buckets.user_general[row.user_id] = row
         else:
             buckets.user_event[(row.user_id, row.event_type)] = row
+    if channel == CHANNEL_IN_APP:
+        # The bell's own general row *is* the quiet-hours row; keep both views in step so
+        # `_quiet_window` answers the same for every channel.
+        buckets.quiet_org = buckets.org_general
+        buckets.quiet_user = dict(buckets.user_general)
     return buckets
 
 
@@ -243,8 +326,13 @@ class EmailSchedule:
     source: str
 
 
-def _email_schedule(user_id: uuid.UUID | None, buckets: _Buckets) -> EmailSchedule:
-    """The scope's digest schedule: user general row ← org general row ← 08:00 / Monday."""
+def _scope_schedule(user_id: uuid.UUID | None, buckets: _Buckets) -> EmailSchedule:
+    """The scope's digest schedule: user general row ← org general row ← 08:00 / Monday.
+
+    Channel-agnostic — the buckets were loaded for one channel, so this answers for that one.
+    Every implicit pushed channel keeps its own schedule: someone who wants their mail at 08:00
+    and their phone at 09:30 is asking for two ordinary things, not for a coupling.
+    """
     row = None
     source = "default"
     if user_id is not None:
@@ -262,11 +350,18 @@ def _email_schedule(user_id: uuid.UUID | None, buckets: _Buckets) -> EmailSchedu
     )
 
 
-def _merge_email(event_type: str, user_id: uuid.UUID | None, buckets: _Buckets) -> ResolvedPref:
-    """The effective e-mail rule for one (user, event): user row ← org row ← off.
+def _merge_implicit(
+    event_type: str, user_id: uuid.UUID | None, buckets: _Buckets, *, off: ResolvedPref
+) -> ResolvedPref:
+    """The effective rule for one (user, event) on an implicit pushed channel: user ← org ← off.
 
     The digest schedule (time/weekday) is not per event, so it is folded in from the scope's
-    general e-mail row — ``compute_visible_at`` then places a digest mail without another query.
+    general row for this channel — ``compute_visible_at`` then places a digest without another
+    query. The quiet window is folded in too, from the **in-app** general row the loader
+    borrowed: it is one answer per person and every pushed channel obeys the same one (#309).
+
+    ``off`` is the channel's own "nobody has said anything" state, which differs by channel:
+    e-mail and web push both default to silent, but they say so with their own ``channel`` tag.
     """
     row = None
     source = "default"
@@ -278,8 +373,9 @@ def _merge_email(event_type: str, user_id: uuid.UUID | None, buckets: _Buckets) 
         row = buckets.org_event.get(event_type)
         source = "org" if row is not None else "default"
 
-    schedule = _email_schedule(user_id, buckets)
-    base = EMAIL_PREF_OFF
+    schedule = _scope_schedule(user_id, buckets)
+    quiet_start, quiet_end = _quiet_window(user_id, buckets)
+    base = off
     if row is not None:
         base = replace(
             base, enabled=row.enabled, delay_minutes=row.delay_minutes, digest=row.digest
@@ -289,6 +385,8 @@ def _merge_email(event_type: str, user_id: uuid.UUID | None, buckets: _Buckets) 
         digest_time=schedule.digest_time,
         digest_weekday=schedule.digest_weekday,
         source=source,
+        quiet_hours_start=quiet_start,
+        quiet_hours_end=quiet_end,
     )
 
 
@@ -304,7 +402,7 @@ async def resolve_email_for_recipients(
     buckets = await _load(
         session, org_id, channel=CHANNEL_EMAIL, event_types=[event_type], user_ids=list(user_ids)
     )
-    return {uid: _merge_email(event_type, uid, buckets) for uid in user_ids}
+    return {uid: _merge_implicit(event_type, uid, buckets, off=EMAIL_PREF_OFF) for uid in user_ids}
 
 
 async def effective_email_matrix(
@@ -321,8 +419,86 @@ async def effective_email_matrix(
         event_types=None,
         user_ids=[user_id] if user_id is not None else [],
     )
-    events = {event: _merge_email(event, user_id, buckets) for event in EVENT_TYPES}
-    return events, _email_schedule(user_id, buckets)
+    events = {
+        event: _merge_implicit(event, user_id, buckets, off=EMAIL_PREF_OFF)
+        for event in EVENT_TYPES
+    }
+    return events, _scope_schedule(user_id, buckets)
+
+
+# --------------------------------------------------------------------------- #
+# Web push (#309): per event type, the e-mail matrix's twin
+# --------------------------------------------------------------------------- #
+#: Silent for the events that were never urgent. A browser notification for something whose own
+#: cadence is "tell me tomorrow at 08:00" is a phone lighting up to deliver yesterday's news.
+WEB_PUSH_PREF_OFF = ResolvedPref(
+    enabled=False,
+    delay_minutes=0,
+    digest=DIGEST_IMMEDIATE,
+    digest_time=DEFAULT_DIGEST_TIME,
+    digest_weekday=None,
+    channel=CHANNEL_WEB_PUSH,
+)
+
+#: On for the events that are *already* immediate — a task assigned to you, a mention, an
+#: overdue item, a leave decision. Granting the browser permission is the opt-in (owner call,
+#: #309 follow-up): the alternative shipped a feature whose success state was a permission
+#: dialog followed by silence, and a second screen nobody was sent to.
+WEB_PUSH_PREF_ON = replace(WEB_PUSH_PREF_OFF, enabled=True)
+
+
+def web_push_default(event_type: str) -> ResolvedPref:
+    """The "nobody has said anything" rule for one event on the push channel.
+
+    Derived from the event's **in-app** cadence rather than from a second list, so an event
+    added to ``_IMMEDIATE_EVENTS`` tomorrow is pushed tomorrow and the two definitions of
+    "this is urgent" cannot drift apart.
+
+    This is the layer *under* the org row and the user row, so a tenant or a person who has
+    turned an event off keeps it off: a default is what applies when nothing has been said,
+    and flipping one must never overwrite something somebody said.
+    """
+    if default_event_pref(event_type).digest == DIGEST_IMMEDIATE:
+        return WEB_PUSH_PREF_ON
+    return WEB_PUSH_PREF_OFF
+
+
+async def resolve_web_push_for_recipients(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    event_type: str,
+    user_ids: Sequence[uuid.UUID],
+) -> dict[uuid.UUID, ResolvedPref]:
+    """The web-push rule for one event and many recipients — a single query (no N+1)."""
+    if not user_ids:
+        return {}
+    buckets = await _load(
+        session,
+        org_id,
+        channel=CHANNEL_WEB_PUSH,
+        event_types=[event_type],
+        user_ids=list(user_ids),
+    )
+    off = web_push_default(event_type)
+    return {uid: _merge_implicit(event_type, uid, buckets, off=off) for uid in user_ids}
+
+
+async def effective_web_push_matrix(
+    session: AsyncSession, org_id: uuid.UUID, user_id: uuid.UUID | None
+) -> tuple[dict[str, ResolvedPref], EmailSchedule]:
+    """Every event's web-push rule for one scope, plus that scope's push digest schedule."""
+    buckets = await _load(
+        session,
+        org_id,
+        channel=CHANNEL_WEB_PUSH,
+        event_types=None,
+        user_ids=[user_id] if user_id is not None else [],
+    )
+    events = {
+        event: _merge_implicit(event, user_id, buckets, off=web_push_default(event))
+        for event in EVENT_TYPES
+    }
+    return events, _scope_schedule(user_id, buckets)
 
 
 # --------------------------------------------------------------------------- #
@@ -367,8 +543,33 @@ async def _load_channel_rows(
     return {(row.channel_config_id, row.event_type): row for row in rows}
 
 
+async def _quiet_windows(
+    session: AsyncSession, org_id: uuid.UUID, user_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID | None, NotificationPreference]:
+    """The in-app general rows that carry quiet hours, keyed by owner (``None`` = the org's).
+
+    One query for the whole batch. Its own loader rather than `_load`'s because the external
+    path resolves per *channel*, not per user, and the set of people it needs windows for is
+    "the owners of these channels" — which `_load`'s (user, event) bucketing does not model.
+    """
+    stmt = select(NotificationPreference).where(
+        NotificationPreference.org_id == org_id,
+        NotificationPreference.channel == CHANNEL_IN_APP,
+        NotificationPreference.event_type.is_(None),
+        NotificationPreference.channel_config_id.is_(None),
+        or_(
+            NotificationPreference.user_id.in_(list(user_ids)),
+            NotificationPreference.user_id.is_(None),
+        ),
+    )
+    rows = (await session.execute(stmt)).scalars().all()
+    return {row.user_id: row for row in rows}
+
+
 def _merge_channel(
-    row: NotificationPreference | None, config: NotificationChannelConfig
+    row: NotificationPreference | None,
+    config: NotificationChannelConfig,
+    quiet: dict[uuid.UUID | None, NotificationPreference] | None = None,
 ) -> ResolvedPref:
     """One (channel, event) rule: the row if there is one, else off.
 
@@ -378,6 +579,13 @@ def _merge_channel(
 
     The digest *schedule* (time-of-day, weekday) is not per event, so it is folded in from the
     channel itself, exactly as the e-mail matrix folds in the scope's general row.
+
+    Quiet hours follow the same ownership rule (#309), and it is the reason they are resolved here
+    rather than assumed: a **personal** channel obeys *its owner's* window (their DM, their night),
+    a **shared room** obeys the *org's* — a room has no single person whose night it is, so the
+    org's own answer is the only one that means anything. Without this the external channel would
+    pass `quiet_hours=True` into `compute_visible_at` and silently change nothing, because the
+    window would always be `None`.
     """
     base = CHANNEL_PREF_OFF
     if row is not None:
@@ -388,10 +596,17 @@ def _merge_channel(
             digest=row.digest,
             source="org" if config.user_id is None else "user",
         )
+    window = None
+    if quiet is not None:
+        window = quiet.get(config.user_id) if config.user_id is not None else None
+        if window is None:
+            window = quiet.get(None)
     return replace(
         base,
         digest_time=config.digest_time or DEFAULT_DIGEST_TIME,
         digest_weekday=config.digest_weekday,
+        quiet_hours_start=window.quiet_hours_start if window is not None else None,
+        quiet_hours_end=window.quiet_hours_end if window is not None else None,
     )
 
 
@@ -401,13 +616,16 @@ async def resolve_channel_prefs(
     event_type: str,
     configs: Sequence[NotificationChannelConfig],
 ) -> dict[uuid.UUID, ResolvedPref]:
-    """The rule for one event on each of these channels — a single query (no N+1)."""
+    """The rule for one event on each of these channels — two queries, never one per channel."""
     if not configs:
         return {}
     rows = await _load_channel_rows(
         session, org_id, channel_ids=[c.id for c in configs], event_types=[event_type]
     )
-    return {c.id: _merge_channel(rows.get((c.id, event_type)), c) for c in configs}
+    quiet = await _quiet_windows(
+        session, org_id, [c.user_id for c in configs if c.user_id is not None]
+    )
+    return {c.id: _merge_channel(rows.get((c.id, event_type)), c, quiet) for c in configs}
 
 
 async def effective_channel_matrix(
@@ -415,7 +633,12 @@ async def effective_channel_matrix(
     org_id: uuid.UUID,
     configs: Sequence[NotificationChannelConfig],
 ) -> dict[uuid.UUID, dict[str, ResolvedPref]]:
-    """Every event's rule on every one of a scope's channels — one query for all of it."""
+    """Every event's rule on every one of a scope's channels — one query for all of it.
+
+    No quiet window folded in, deliberately: this feeds the settings *matrix*, which renders what
+    each event is routed at. Quiet hours are one scope-wide control on the same screen, not a
+    per-cell value, and asking for them here would cost a query to display nothing new.
+    """
     if not configs:
         return {}
     rows = await _load_channel_rows(
@@ -527,7 +750,7 @@ class EmailWrite:
 
 @dataclass(frozen=True)
 class EmailScheduleWrite:
-    """The scope's global e-mail digest schedule (time-of-day + weekday)."""
+    """A scope's global digest schedule (time-of-day + weekday) for one implicit channel."""
 
     digest_time: time | None
     digest_weekday: int | None
@@ -557,8 +780,10 @@ async def replace_overrides(
     general: GeneralWrite | None,
     email_schedule: EmailScheduleWrite | None,
     channel_events: Sequence[ChannelWrite] | None = None,
+    web_push_events: Sequence[EmailWrite] = (),
+    web_push_schedule: EmailScheduleWrite | None = None,
 ) -> None:
-    """Set this scope's rows to exactly the given in-app + e-mail + per-channel overrides.
+    """Set this scope's rows to exactly the given in-app + e-mail + push + per-channel overrides.
 
     Delete-then-insert rather than a diff: the partial unique indexes make an interleaved
     update/insert awkward, and a scope holds at most one row per (event, channel). Every channel
@@ -584,7 +809,9 @@ async def replace_overrides(
     await session.execute(
         delete(NotificationPreference).where(
             NotificationPreference.org_id == org_id,
-            NotificationPreference.channel.in_([CHANNEL_IN_APP, CHANNEL_EMAIL]),
+            NotificationPreference.channel.in_(
+                [CHANNEL_IN_APP, CHANNEL_EMAIL, CHANNEL_WEB_PUSH]
+            ),
             NotificationPreference.channel_config_id.is_(None),
             scope,
         )
@@ -649,6 +876,29 @@ async def replace_overrides(
                 channel=CHANNEL_EMAIL,
                 digest_time=email_schedule.digest_time,
                 digest_weekday=email_schedule.digest_weekday,
+            )
+        )
+    for event in web_push_events:
+        session.add(
+            NotificationPreference(
+                org_id=org_id,
+                user_id=user_id,
+                event_type=event.event_type,
+                channel=CHANNEL_WEB_PUSH,
+                enabled=event.enabled,
+                delay_minutes=event.delay_minutes,
+                digest=event.digest,
+            )
+        )
+    if web_push_schedule is not None:
+        session.add(
+            NotificationPreference(
+                org_id=org_id,
+                user_id=user_id,
+                event_type=None,
+                channel=CHANNEL_WEB_PUSH,
+                digest_time=web_push_schedule.digest_time,
+                digest_weekday=web_push_schedule.digest_weekday,
             )
         )
     for row in channel_events or ():

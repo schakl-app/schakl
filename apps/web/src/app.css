@@ -46,6 +46,16 @@
   --color-text: var(--text);
   --color-text-muted: var(--text-muted);
   --color-border: var(--border);
+
+  /* The measure every screen reads inside — `max-w-content`, applied once by the (app) shell
+   * around the header's controls and the page below them, so the two always line up. Chosen
+   * against the densest screen this app has (a client list with every optional column shown),
+   * not against prose: 1600px still gives ten columns room, while wider only spreads a row's
+   * first and last cell further apart. Past the 240px sidebar and the shell's 24px padding it
+   * binds above a 1888px window — so a 1366 or 1512 laptop is untouched, a 1920 desktop loses
+   * 16px a side, and only genuinely wide monitors gain real margin. A screen that needs the
+   * whole width (none today) opts out by not using it, never by raising this for everyone. */
+  --container-content: 1600px;
 }
 
 /* Native form controls (date/time picker popups, checkboxes, radios, range) follow the
@@ -80,6 +90,25 @@ body {
 }
 .cal-dot-custom {
   background-color: var(--evc);
+}
+
+/*
+ * Drag-and-drop onto an upload control (docs/UX.md). `use:filedrop` stamps `data-filedrop` on
+ * the drop target and flips it to "over" while a file hovers it. One rule here rather than a
+ * hover class repeated at every upload in the app — and a transparent outline in the resting
+ * state, so nothing shifts by a pixel when the highlight appears.
+ */
+[data-filedrop] {
+  outline: 2px dashed transparent;
+  outline-offset: 3px;
+  border-radius: 0.5rem;
+  transition:
+    outline-color 120ms ease,
+    background-color 120ms ease;
+}
+[data-filedrop="over"] {
+  outline-color: var(--brand-primary);
+  background-color: color-mix(in srgb, var(--brand-primary) 8%, transparent);
 }
 
 /*

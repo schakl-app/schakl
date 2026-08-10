@@ -32,8 +32,18 @@ export const load: PageServerLoad = async (event) => {
   // set); this resolved value is what's sent to the API. Explicitly picking "Geen" writes the
   // `ALL_ASSIGNEES` sentinel rather than deleting the param, which is what lets the user actually
   // reach an unfiltered, every-assignee view instead of snapping back to themselves.
+  //
+  // That default is a *staff* convenience and it has to say so. `assignee_user_id` means an
+  // employee — a client is assigned through `assignee_contact_id`, and `/members/lookup` leaves
+  // client memberships out of every assignee picker on purpose — so a portal login is never the
+  // assignee of anything. Defaulting to "mine" therefore sent `visible_to_client = true AND
+  // assignee_user_id = <the client's own id>` and answered *nothing*, on every load: the client
+  // portal's task list was permanently empty however many tasks staff had ticked visible, and the
+  // API guarantee it was hiding is tested (`test_portal_sees_only_client_visible_tasks`) by a
+  // call that passes no assignee — the one path the browser never takes.
+  const isPortal = event.locals.user?.isPortal ?? false;
   const assigneeQuery =
-    filters.assignee_user_id === ALL_ASSIGNEES
+    filters.assignee_user_id === ALL_ASSIGNEES || (isPortal && !filters.assignee_user_id)
       ? undefined
       : (filters.assignee_user_id ?? event.locals.user?.id);
 

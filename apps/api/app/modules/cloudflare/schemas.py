@@ -238,6 +238,13 @@ class PagesProjectRead(BaseModel):
     name: str
     subdomain: str | None = None
     production_branch: str | None = None
+    #: The hostnames this project serves that schakl has filed under a domain. The picker
+    #: ignores it; the settings screen is what needs it, because *"your projects were synced"*
+    #: and *"your sites are attached to them"* are different claims, and only the second is
+    #: what an agency opened the screen to check. Horizon-filtered by the links' own scoped
+    #: repository (§15/#285), so a restricted member sees the project and only the hostnames
+    #: belonging to clients they may see.
+    hostnames: list[str] = Field(default_factory=list)
 
 
 class PagesLinkRead(BaseModel):
@@ -360,7 +367,16 @@ class DomainStatusRead(BaseModel):
     #: latter from the domains module's own periodic lookup, never a second resolver here.
     expected_nameservers: list[str] = Field(default_factory=list)
     observed_nameservers: list[str] = Field(default_factory=list)
-    nameservers_delegated: bool = False
+    #: **Tri-state.** ``True``/``False`` are answers; ``None`` means one of the two sides did not
+    #: answer at all — Cloudflare has assigned no nameservers yet, or the public-DNS lookup came
+    #: back empty, which ``dns.fetch_dns`` returns for a timeout exactly as it does for a domain
+    #: that really delegates nowhere. As a plain boolean every one of those read as a confident
+    #: "your nameservers are wrong, change them at the registrar".
+    nameservers_delegated: bool | None = None
+    #: When the *observed* side was last looked up (the domains module's ``dns_checked_at``).
+    #: ``checked_at`` covers the Cloudflare half and never this one, so without it the panel
+    #: printed "checked just now" over a reading a daily cron owns.
+    nameservers_checked_at: datetime | None = None
 
     redirect: RedirectRead | None = None
     redirect_live: RedirectObservation | None = None

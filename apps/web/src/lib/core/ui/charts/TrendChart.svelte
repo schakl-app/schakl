@@ -6,9 +6,14 @@
    * dataviz-validated hex (never the tenant brand, docs/UX.md), re-validated for dark; gridlines,
    * axis text and the tooltip chrome use semantic tokens so they follow the theme. The caller
    * passes a `format` fn so the y-axis and tooltip label the metric correctly (money/percent/count).
+   *
+   * The viewBox is measured rather than fixed — see `geometry.ts` for why a constant one made
+   * this chart 3130×869 with 59px axis labels on a wide screen and 6px labels on a phone.
    */
   import { fmtDayMonth } from "$lib/core/format";
   import { resolvedTheme } from "$lib/core/theme-mode.svelte";
+
+  import { chartWidth } from "./geometry";
 
   let {
     dates,
@@ -24,10 +29,12 @@
 
   const color = $derived(resolvedTheme.current === "dark" ? "#3b82f6" : "#2563eb");
 
-  const W = 720;
+  /** Container width in CSS px; 0 until measured (SSR + first paint), hence the fallback. */
+  let box = $state(0);
+  const W = $derived(chartWidth(box, 720, 280));
   const H = 200;
   const PAD = { top: 12, right: 12, bottom: 22, left: 52 };
-  const plotW = W - PAD.left - PAD.right;
+  const plotW = $derived(W - PAD.left - PAD.right);
   const plotH = H - PAD.top - PAD.bottom;
 
   const max = $derived(Math.max(...values, 1));
@@ -38,9 +45,7 @@
   const x = (i: number) => PAD.left + (values.length <= 1 ? 0 : (i / (values.length - 1)) * plotW);
   const y = $derived((v: number) => PAD.top + plotH - (v / top) * plotH);
 
-  const line = $derived(
-    values.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" "),
-  );
+  const line = $derived(values.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" "));
   const area = $derived(
     values.length
       ? `M ${x(0).toFixed(1)},${(PAD.top + plotH).toFixed(1)} ` +
@@ -63,10 +68,11 @@
   }
 </script>
 
-<figure class="relative">
+<figure class="relative" bind:clientWidth={box}>
   <svg
     viewBox="0 0 {W} {H}"
     class="w-full"
+    height={H}
     role="img"
     aria-label={label}
     onmousemove={onmove}
@@ -81,7 +87,12 @@
         class="stroke-border"
         stroke-width="1"
       />
-      <text x={PAD.left - 8} y={y(tick) + 3} text-anchor="end" class="fill-text-muted text-[10px] tabular-nums">
+      <text
+        x={PAD.left - 8}
+        y={y(tick) + 3}
+        text-anchor="end"
+        class="fill-text-muted text-[10px] tabular-nums"
+      >
         {format(tick)}
       </text>
     {/each}
@@ -98,7 +109,14 @@
         </text>
       {/if}
       {#if hover}
-        <line x1={hover.x} x2={hover.x} y1={PAD.top} y2={PAD.top + plotH} class="stroke-border" stroke-width="1" />
+        <line
+          x1={hover.x}
+          x2={hover.x}
+          y1={PAD.top}
+          y2={PAD.top + plotH}
+          class="stroke-border"
+          stroke-width="1"
+        />
         <circle cx={hover.x} cy={hover.y} r="3" fill={color} />
       {/if}
     {/if}

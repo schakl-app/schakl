@@ -7,6 +7,14 @@ Two rules from docs/GOOGLE.md §5 and issue #21 govern everything here:
   agency. A viewer who cannot see a file in Drive does not see it here.
 - **Unlink never deletes.** Deleting a ``drive_link`` removes the reference; no code path in
   this module issues a Drive delete.
+
+A third rule arrived with the folder picker: **a record's folder is a stored decision**
+(``DriveLink.is_root``), not whichever folder link a query returned first. Giving a record its
+first folder is ordinary ``google.drive.write`` work — provisioning one, or pointing a project
+at its client's. **Re-pointing or detaching one is ``google.drive.manage``**, because it
+silently moves where every colleague's uploads land while the history stays behind in a folder
+nobody is looking at any more. The route declares the base key and the service refines on the
+row, the two layers of CLAUDE.md §15.
 """
 
 from __future__ import annotations
@@ -19,8 +27,10 @@ from typing import Any
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.activity import ActivityService
 from app.core.cache import get_redis
 from app.core.models import Org
+from app.core.scope import entity_visible
 from app.core.tenancy import RequestContext
 from app.errors import AppError
 from app.modules.google.client import (
@@ -145,12 +155,17 @@ class DriveService:
     async def links_for(
         self, entity_type: str, entity_id: uuid.UUID, *, rollup: bool = False
     ) -> list[DriveLink]:
+        await self._require_visible(entity_type, entity_id)
         conditions = [
             DriveLink.org_id == self._org_id,
             DriveLink.entity_type == entity_type,
             DriveLink.entity_id == entity_id,
         ]
-        stmt = select(DriveLink).where(*conditions)
+        # Ordered, not incidental: the record's own folder first, then oldest. Callers read
+        # "the folder" off this list, and an unordered query made that a coin flip.
+        stmt = select(DriveLink).where(*conditions).order_by(
+            DriveLink.is_root.desc(), DriveLink.created_at, DriveLink.id
+        )
         rows = list((await self.ctx.session.execute(stmt)).scalars().all())
         if rollup and entity_type == "project":
             # Issue #21: a file linked to a task surfaces on its project too — query-time
@@ -180,10 +195,12 @@ class DriveService:
         self, entity_type: str, entity_id: uuid.UUID, drive_file_id: str
     ) -> DriveLink:
         self.ctx.require("google.drive.write")
-        await self._settings()
+        # The record comes first: a record this caller cannot see answers 404 whatever the
+        # module's own configuration happens to be.
         if entity_type not in DRIVE_ENTITY_TYPES:
             raise AppError("validation", "errors.validation", status_code=422)
         await self._ensure_entity(entity_type, entity_id)
+        await self._settings()
         connection = await active_connection_or_409(
             self.ctx.session, self._org_id, self.ctx.user.id
         )
@@ -216,6 +233,12 @@ class DriveService:
         )
         if existing is not None:
             return existing
+        is_folder = meta.get("mimeType") == FOLDER_MIME
+        # A folder linked to a record that has none becomes that record's folder — this is the
+        # project panel's "in klantmap werken", and filling an empty slot is ordinary write
+        # work. It can only ever *fill* one: replacing a folder goes through ``set_folder``,
+        # which asks for ``google.drive.manage``.
+        claim_root = is_folder and (await self.root_link(entity_type, entity_id)) is None
         link = DriveLink(
             org_id=self._org_id,
             entity_type=entity_type,
@@ -224,13 +247,16 @@ class DriveService:
             drive_url=(meta.get("webViewLink") or "")[:500],
             name=(meta.get("name") or "")[:500],
             mime_type=(meta.get("mimeType") or "")[:255] or None,
-            is_folder=meta.get("mimeType") == FOLDER_MIME,
+            is_folder=is_folder,
+            is_root=claim_root,
             shared_drive_id=(meta.get("driveId") or "")[:128] or None,
             created_by_user_id=self.ctx.user.id,
             created_by_name=self.ctx.user.full_name or self.ctx.user.email,
         )
         self.ctx.session.add(link)
         await self.ctx.session.flush()
+        if claim_root:
+            await self._record_folder(entity_type, entity_id, "drive.folder_set", link.name)
         return link
 
     async def delete_link(self, link_id: uuid.UUID) -> None:
@@ -243,8 +269,127 @@ class DriveService:
         )
         if link is None:
             raise AppError("not_found", "errors.not_found", status_code=404)
+        await self._require_visible(link.entity_type, link.entity_id)
+        if link.is_root:
+            # Detaching the record's folder is the same act as re-pointing it, reached from
+            # the other side: everyone's browser falls back to the org root tomorrow.
+            self.ctx.require("google.drive.manage")
+            await self._record_folder(
+                link.entity_type, link.entity_id, "drive.folder_cleared", link.name
+            )
         await self.ctx.session.delete(link)
         await self.ctx.session.flush()
+
+    # --- the record's own folder ---------------------------------------------------- #
+    async def root_link(self, entity_type: str, entity_id: uuid.UUID) -> DriveLink | None:
+        """The record's Drive folder, or ``None``. One row by construction (partial index)."""
+        return await self.ctx.session.scalar(
+            select(DriveLink).where(
+                DriveLink.org_id == self._org_id,
+                DriveLink.entity_type == entity_type,
+                DriveLink.entity_id == entity_id,
+                DriveLink.is_root,
+            )
+        )
+
+    async def set_folder(
+        self, entity_type: str, entity_id: uuid.UUID, drive_file_id: str
+    ) -> DriveLink:
+        """Point a record at an **existing** Drive folder — the UI's folder picker (#21).
+
+        Metadata is read as the caller, which is also what proves they can see the folder they
+        are choosing, and refuses a file: a record's folder is a folder. Replacing an existing
+        one additionally requires ``google.drive.manage`` (see the module docstring).
+        """
+        self.ctx.require("google.drive.write")
+        # The record comes first, as in ``create_link``: a record this caller cannot see
+        # answers 404 whatever the module's own configuration happens to be.
+        if entity_type not in DRIVE_ENTITY_TYPES:
+            raise AppError("validation", "errors.validation", status_code=422)
+        await self._ensure_entity(entity_type, entity_id)
+        await self._settings()
+        current = await self.root_link(entity_type, entity_id)
+        if current is not None and current.drive_file_id == drive_file_id:
+            return current
+        if current is not None:
+            self.ctx.require("google.drive.manage")
+
+        connection = await active_connection_or_409(
+            self.ctx.session, self._org_id, self.ctx.user.id
+        )
+        async with (
+            acting_as(self.ctx.session, self.ctx.org, connection) as client,
+            self.ctx.release_db(),
+        ):
+            response = await client.get(
+                f"{DRIVE_API}/files/{drive_file_id}",
+                params={
+                    "fields": "id,name,mimeType,webViewLink,driveId",
+                    "supportsAllDrives": "true",
+                },
+            )
+            if response.status_code == 404:
+                raise AppError("not_found", "errors.not_found", status_code=404)
+            response.raise_for_status()
+            meta = response.json()
+        if meta.get("mimeType") != FOLDER_MIME:
+            raise AppError(
+                "google_drive_not_a_folder",
+                "errors.google_drive_not_a_folder",
+                status_code=422,
+                fields={"drive_file_id": "errors.google_drive_not_a_folder"},
+            )
+
+        previous_name = current.name if current is not None else None
+        if current is not None:
+            # The old folder does not linger as a loose attachment nobody attached: the trail
+            # keeps its name, and the Drive folder itself is untouched as always.
+            await self.ctx.session.delete(current)
+            await self.ctx.session.flush()
+
+        # Already attached as an ordinary link? Promote it rather than duplicate the row.
+        link = await self.ctx.session.scalar(
+            select(DriveLink).where(
+                DriveLink.org_id == self._org_id,
+                DriveLink.entity_type == entity_type,
+                DriveLink.entity_id == entity_id,
+                DriveLink.drive_file_id == meta["id"],
+            )
+        )
+        if link is None:
+            link = DriveLink(
+                org_id=self._org_id,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                drive_file_id=meta["id"],
+                created_by_user_id=self.ctx.user.id,
+                created_by_name=self.ctx.user.full_name or self.ctx.user.email,
+            )
+            self.ctx.session.add(link)
+        link.drive_url = (meta.get("webViewLink") or "")[:500]
+        link.name = (meta.get("name") or "")[:500]
+        link.mime_type = FOLDER_MIME
+        link.is_folder = True
+        link.is_root = True
+        link.shared_drive_id = (meta.get("driveId") or "")[:128] or None
+        await self.ctx.session.flush()
+
+        if previous_name is None:
+            await self._record_folder(entity_type, entity_id, "drive.folder_set", link.name)
+        else:
+            await ActivityService(self.ctx).record(
+                entity_type,
+                entity_id,
+                "drive.folder_changed",
+                {"from": previous_name, "to": link.name},
+            )
+        return link
+
+    async def _record_folder(
+        self, entity_type: str, entity_id: uuid.UUID, action: str, name: str
+    ) -> None:
+        """One trail line, in the writing transaction (CLAUDE.md §16)."""
+        await ActivityService(self.ctx).record(entity_type, entity_id, action, {"name": name})
 
     # --- resumable upload: bytes go browser → Google, never through this API ------ #
     async def upload_session(
@@ -338,6 +483,15 @@ class DriveService:
             raise AppError(
                 "google_drive_no_folder", "errors.google_drive_no_folder", status_code=409
             )
+        await self._require_visible(entity_type, entity_id)
+        if await self.root_link(entity_type, entity_id) is not None:
+            # A record has one folder. Wanting a different one is the picker's job (and its
+            # permission) — not a second provisioning run that would land a phantom folder.
+            raise AppError(
+                "google_drive_folder_exists",
+                "errors.google_drive_folder_exists",
+                status_code=409,
+            )
         name = await self._entity_name(entity_type, entity_id)
         if name is None:
             raise AppError("not_found", "errors.not_found", status_code=404)
@@ -380,7 +534,7 @@ class DriveService:
                   AND NOT EXISTS (
                     SELECT 1 FROM drive_links l
                     WHERE l.org_id = :oid AND l.entity_type = 'company'
-                      AND l.entity_id = c.id AND l.is_folder
+                      AND l.entity_id = c.id AND l.is_root
                   )
                 """
             ),
@@ -393,7 +547,18 @@ class DriveService:
         return queued
 
     # --- helpers -------------------------------------------------------------------- #
+    async def _require_visible(self, entity_type: str, entity_id: uuid.UUID) -> None:
+        """§15's failure mode (4): every surface here is **entity-addressed**, so holding
+        ``google.drive.read``/``.write`` is not the same as being allowed to see *that* record.
+
+        Free for an unrestricted membership (no query); only a company-group-scoped one pays,
+        and the record's own repository answers, so an indirect company link is honoured.
+        """
+        if not await entity_visible(self.ctx, entity_type, entity_id):
+            raise AppError("not_found", "errors.not_found", status_code=404)
+
     async def _ensure_entity(self, entity_type: str, entity_id: uuid.UUID) -> None:
+        await self._require_visible(entity_type, entity_id)
         if await self._entity_name(entity_type, entity_id) is None:
             raise AppError(
                 "validation",
@@ -508,7 +673,7 @@ async def provision_folder(session: AsyncSession, org: Org, job: DriveFolderJob)
                 DriveLink.org_id == org.id,
                 DriveLink.entity_type == "company",
                 DriveLink.entity_id == job.parent_entity_id,
-                DriveLink.is_folder,
+                DriveLink.is_root,
             )
         )
         if company_folder is not None:
@@ -548,7 +713,22 @@ async def provision_folder(session: AsyncSession, org: Org, job: DriveFolderJob)
             DriveLink.drive_file_id == folder["id"],
         )
     )
-    if existing is None:
+    # The provisioned folder becomes the record's folder unless somebody picked one while the
+    # job sat in the outbox — the worker never re-points a decision a human made.
+    has_root = await session.scalar(
+        select(DriveLink.id).where(
+            DriveLink.org_id == org.id,
+            DriveLink.entity_type == job.entity_type,
+            DriveLink.entity_id == job.entity_id,
+            DriveLink.is_root,
+        )
+    )
+    if existing is not None:
+        # Already attached as an ordinary link (someone linked this very folder by hand before
+        # the job ran): promote it, or the record would read as folderless for ever.
+        if has_root is None and existing.is_folder:
+            existing.is_root = True
+    else:
         session.add(
             DriveLink(
                 org_id=org.id,
@@ -559,6 +739,7 @@ async def provision_folder(session: AsyncSession, org: Org, job: DriveFolderJob)
                 name=(folder.get("name") or job.name)[:500],
                 mime_type=FOLDER_MIME,
                 is_folder=True,
+                is_root=has_root is None,
                 shared_drive_id=settings_row.drive_shared_drive_id,
             )
         )

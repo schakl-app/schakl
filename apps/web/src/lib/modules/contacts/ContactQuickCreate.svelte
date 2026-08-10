@@ -8,9 +8,12 @@
    * back via `inlineCreated` / `qcError` so the asking picker auto-selects the new contact.
    */
   import { enhance } from "$app/forms";
+  import { page } from "$app/state";
+
   import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
@@ -105,7 +108,11 @@
           <input id="qc-contact-job" name="job_title" class={inputClass} />
         </div>
       </div>
-      {#if linkCompany}
+      <!-- Ticking this makes the create call a link write too (`company_ids`), which the API
+           demands `contacts.link.write` for *before* it writes the contact — so without that key
+           the offer is a 403 on a dialog whose whole point is not leaving the form you are in
+           (#310). The contact is still created; it just arrives unattached. -->
+      {#if linkCompany && can(page.data.user, "contacts.link.write")}
         <label class="flex items-center gap-2 text-sm text-text">
           <input type="checkbox" name="company_id" value={linkCompany.id} checked />
           {t("contacts.link_to_company", { name: linkCompany.name })}

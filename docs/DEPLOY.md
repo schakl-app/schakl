@@ -61,14 +61,19 @@ is deleted, and `owner`/`admin`/`client` behave exactly as before.
 - create a task, and edit a task **assigned to them**;
 - comment on tasks;
 - log their **own** hours;
-- request their **own** leave.
+- request their **own** leave;
+- **create and edit contact people, and attach them to clients** (#310 — added after this
+  release; deleting one is still admin-only). Keeping a client's people current is the work,
+  not an administrative act, and an address book only admins may type into goes quietly stale.
+  Existing orgs pick this up on the next boot through the permission reconciler, and a tenant
+  who wants the old posture unticks the two boxes in *Instellingen → Rollen*.
 
 So on `alembic upgrade head` — which the API entrypoint runs unattended, before uvicorn binds
 — every `member` at your agency **loses** the ability to:
 
 | | |
 |---|---|
-| create / edit / delete | a company, a contact, a project |
+| create / edit / delete | a company, a project (and **delete** a contact) |
 | edit | a task they are not the assignee of |
 | create / edit | task labels, checklist templates, task templates |
 | apply | a task template to a client |

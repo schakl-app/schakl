@@ -13,7 +13,9 @@
   import { AlertTriangle, ArrowLeft, Download, Eye, RefreshCw, Send, Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import { invalidate } from "$app/navigation";
   import { t } from "$lib/core/i18n";
+  import { pollWhile } from "$lib/core/poll.svelte";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import Button from "$lib/core/ui/Button.svelte";
@@ -37,6 +39,18 @@
 
   const busy = new InFlight();
   let confirmDelete = $state(false);
+
+  /**
+   * Generating happens in a worker, so this screen has to ask. Without it the spinner below is
+   * a still image: a run that finished forty seconds after the redirect kept saying "bezig met
+   * genereren" until somebody thought to reload, which is exactly what a hung job looks like.
+   * The API's own reaper bounds how long this can go on, so the interval always ends.
+   */
+  const generating = $derived(report.status === "generating");
+  pollWhile(
+    () => generating,
+    () => invalidate("reporting:report"),
+  );
 </script>
 
 <svelte:head>
@@ -155,7 +169,7 @@
       {t("reporting.review.warnings")}
     </h2>
     <ul class="space-y-1 text-sm text-amber-800 dark:text-amber-300">
-      {#each warnings as warning (warning.code + (warning.detail ?? ''))}
+      {#each warnings as warning (warning.code + (warning.detail ?? ""))}
         <li>{warningText(warning)}</li>
       {/each}
     </ul>

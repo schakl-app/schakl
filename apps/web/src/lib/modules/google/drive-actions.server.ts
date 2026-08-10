@@ -27,6 +27,29 @@ export const driveActions = {
     return { driveLinked: true };
   },
 
+  /**
+   * Point this record at an existing Drive folder (the picker). A separate action from
+   * `linkDriveFile` because it is a separate act: the API asks for `google.drive.manage`
+   * when the record already has a folder, and never for a plain attachment.
+   */
+  setDriveFolder: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const entity_type = String(form.get("entity_type") ?? "");
+    const entity_id = String(form.get("entity_id") ?? "");
+    const drive_file_id = String(form.get("drive_file_id") ?? "");
+    if (!entity_type || !entity_id || !drive_file_id)
+      return fail(400, { error: "errors.required" });
+    const { error } = await apiFor(event).PUT("/api/v1/google/drive/folder", {
+      body: {
+        entity_type: entity_type as "company",
+        entity_id,
+        drive_file_id,
+      },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { driveFolderSet: true };
+  },
+
   unlinkDriveFile: async (event: RequestEvent) => {
     const form = await event.request.formData();
     const link_id = String(form.get("link_id") ?? "");

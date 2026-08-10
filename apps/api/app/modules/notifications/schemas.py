@@ -84,6 +84,13 @@ class PreferenceRow(BaseModel):
     email_delay_minutes: int = 0
     email_digest: str = "immediate"
     email_source: PrefSource = "default"
+    # Browser push (#309): a third implicit channel, resolved independently of the other two.
+    # Off unless someone opted in — granting a browser permission must not by itself start
+    # pushing every event.
+    push_enabled: bool = False
+    push_delay_minutes: int = 0
+    push_digest: str = "immediate"
+    push_source: PrefSource = "default"
 
 
 class GeneralPreference(BaseModel):
@@ -94,7 +101,12 @@ class GeneralPreference(BaseModel):
 
 
 class EmailSchedule(BaseModel):
-    """The scope's global e-mail digest schedule: when its daily/weekly mails leave (#245)."""
+    """A scope's global digest schedule for one implicit channel: when its bundles leave (#245).
+
+    One of these per pushed implicit channel — e-mail has its own, web push has its own (#309).
+    Someone who wants their mail at 08:00 and their phone at 09:30 is asking for two ordinary
+    things, so the two schedules are not coupled.
+    """
 
     digest_time: time | None = None
     digest_weekday: int | None = None
@@ -129,6 +141,8 @@ class PreferenceMatrix(BaseModel):
     events: list[PreferenceRow]
     general: GeneralPreference
     email: EmailSchedule
+    #: The web-push digest schedule for this scope (#309), the e-mail block's twin.
+    push: EmailSchedule
     #: This scope's external channels, each with its per-event rules (#283, #295): the caller's
     #: own transports on the personal matrix, the org's shared rooms on the default one.
     channels: list[ChannelPreference] = Field(default_factory=list)
@@ -159,6 +173,29 @@ class PreferenceRowWrite(BaseModel):
 
 class EmailPreferenceRowWrite(BaseModel):
     """One event's e-mail override (#245). The digest schedule is global, so no time/weekday."""
+
+    event_type: str
+    enabled: bool = False
+    delay_minutes: Annotated[int, Field(ge=0, le=24 * 60)] = 0
+    digest: str = "immediate"
+
+    @field_validator("event_type")
+    @classmethod
+    def _known_event(cls, value: str) -> str:
+        if value not in EVENT_TYPES:
+            raise ValueError("unknown event_type")
+        return value
+
+    @field_validator("digest")
+    @classmethod
+    def _known_digest(cls, value: str) -> str:
+        if value not in DIGEST_CADENCES:
+            raise ValueError("unknown digest cadence")
+        return value
+
+
+class PushPreferenceRowWrite(BaseModel):
+    """One event's web-push override (#309). The digest schedule is global, so no time/weekday."""
 
     event_type: str
     enabled: bool = False
@@ -245,8 +282,11 @@ class PreferenceUpdate(BaseModel):
 
     events: list[PreferenceRowWrite] = Field(default_factory=list)
     email_events: list[EmailPreferenceRowWrite] = Field(default_factory=list)
+    #: Browser-push overrides (#309), tracked independently like the other two implicit channels.
+    push_events: list[PushPreferenceRowWrite] = Field(default_factory=list)
     general: GeneralPreferenceWrite | None = None
     email: EmailScheduleWrite | None = None
+    push: EmailScheduleWrite | None = None
     #: Per external channel (#283, #295), wholesale like every other block: what this list does
     #: not carry is cleared, so a caller that means to change one channel still sends the others
     #: (the web form always posts every column). Each id must belong to the scope being written —
@@ -266,6 +306,16 @@ class PreferenceUpdate(BaseModel):
     def _no_email_duplicates(
         cls, value: list[EmailPreferenceRowWrite]
     ) -> list[EmailPreferenceRowWrite]:
+        seen = {row.event_type for row in value}
+        if len(seen) != len(value):
+            raise ValueError("duplicate event_type")
+        return value
+
+    @field_validator("push_events")
+    @classmethod
+    def _no_push_duplicates(
+        cls, value: list[PushPreferenceRowWrite]
+    ) -> list[PushPreferenceRowWrite]:
         seen = {row.event_type for row in value}
         if len(seen) != len(value):
             raise ValueError("duplicate event_type")
@@ -291,6 +341,7 @@ __all__ = [
     "PreferenceRow",
     "PreferenceRowWrite",
     "PreferenceUpdate",
+    "PushPreferenceRowWrite",
     "ReadUpdate",
     "UnreadCount",
     "WatchRead",
@@ -347,6 +398,64 @@ class ChannelRead(BaseModel):
     digest_time: time | None = None
     digest_weekday: int | None = None
     created_at: datetime
+
+
+# --- browser push (#309) -------------------------------------------------------- #
+# Named with the ``Push`` prefix rather than ``Subscription*``: a generic component name makes
+# FastAPI qualify *both* modules' schemas when a second one collides, rewriting an unrelated
+# module's OpenAPI (and the generated client) as a side effect of this file.
+class PushConfig(BaseModel):
+    """What a browser needs before it can subscribe.
+
+    ``vapid_public_key`` is public by definition — every subscribing browser receives it as its
+    ``applicationServerKey``. ``supported`` is false when the instance cannot mint a keypair at
+    all, so the settings screen explains rather than offering a button that will fail.
+    """
+
+    vapid_public_key: str
+    supported: bool = True
+
+
+class PushSubscriptionCreate(BaseModel):
+    """One browser registering itself, straight from ``PushSubscription.toJSON()``.
+
+    Every field is attacker-controlled — the request comes from a browser, but nothing about it
+    proves that — so ``endpoint`` is length-capped here and SSRF-guarded in the service. The key
+    material is the *recipient's* public half, so it is bounded but not secret.
+    """
+
+    endpoint: str = Field(min_length=1, max_length=1024)
+    p256dh: str = Field(min_length=1, max_length=160)
+    auth: str = Field(min_length=1, max_length=40)
+    #: How the device names itself in the list. The client sends a short label it derives from
+    #: the user agent; the API never parses one, because that is a losing arms race.
+    user_agent: str | None = Field(default=None, max_length=255)
+
+
+class PushSubscriptionRead(BaseModel):
+    """A registered device. **The endpoint and key material never come back**: the row exists to
+    be revoked and recognised, and returning it would hand any XSS a working push target."""
+
+    id: uuid.UUID
+    user_agent: str | None
+    created_at: datetime
+    last_seen_at: datetime
+    last_success_at: datetime | None
+    #: True for the device that made this request, so the list can say "this browser".
+    current: bool = False
+
+
+class PushUnsubscribe(BaseModel):
+    """A browser dropping itself, identified by the only thing it still knows: its endpoint."""
+
+    endpoint: str = Field(min_length=1, max_length=1024)
+
+
+class PushTestResult(BaseModel):
+    ok: bool
+    #: How many of the caller's devices accepted it, so "it worked, on one of my three" is sayable.
+    delivered: int = 0
+    error: str | None = None
 
 
 class ChannelTestResult(BaseModel):

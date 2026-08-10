@@ -24,6 +24,7 @@ from app.modules.notifications.external import (
     dispatch_email_deliveries,
     dispatch_external_deliveries,
 )
+from app.modules.notifications.webpush import dispatch_webpush_deliveries
 
 logger = logging.getLogger("schakl.notifications")
 
@@ -33,6 +34,9 @@ async def _dispatch_for_org(org: Org, session: AsyncSession) -> None:
     await dispatch_external_deliveries(session, org)
     # Personal e-mail rides its own path: grouped per recipient, one mail per sweep (#17).
     await dispatch_email_deliveries(session, org)
+    # Browser push: grouped per recipient like e-mail, then fanned out to that person's own
+    # devices at send time — the cadence is theirs, the devices are how you reach them (#309).
+    await dispatch_webpush_deliveries(session, org)
 
 
 async def dispatch_notification_deliveries(ctx: dict) -> None:

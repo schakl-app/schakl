@@ -190,8 +190,37 @@ because the hour is a per-org setting and the worker's clock is UTC — a tenant
 in Warsaw asking for 08:00 mean two different instants.
 
 One job per client, never a loop: the old flow ran thirty clients inside one execution, so a
-single SE Ranking timeout took the whole month's reporting with it. Job ids are deterministic, so
-an overlapping tick or a worker restarted mid-hour cannot enqueue a client twice.
+single SE Ranking timeout took the whole month's reporting with it. The scheduling job's id is
+deterministic on `(client, audience, hour)`, so an overlapping tick or a worker restarted
+mid-hour cannot enqueue a client twice.
+
+### `generating` is a claim about a process, and processes disappear
+
+The run job's id is **per attempt** (`runner.run_job_id`, report id + start stamp), not per
+report. arq declines an id whose job is queued *or whose result is still in Redis* — an hour, by
+default — and says so by returning `None`, which `core.jobs.enqueue` used to discard. Under a
+report-only id every retry inside that hour therefore set the row to `generating` and queued
+precisely nothing. What stops two workers taking one report is now the row itself: the scheduler
+locks it (`SELECT … FOR UPDATE`) and refuses to start a second run over one still in flight.
+
+Four things then bound how long that status can be wrong, and each covers a case the one before
+it cannot:
+
+| Guard | Covers |
+|---|---|
+| `asyncio.timeout(AI_TIMEOUT_SECONDS)` around the narrative | a model that streams slowly for ever — httpx's read timeout is per *chunk*, so it never fires. The report keeps its numbers and warns that the prose did not arrive. |
+| `func(reporting_run_report, timeout=RUN_TIMEOUT_SECONDS)` | arq's 300 s default, which was shorter than a real run (several sources + a model + WeasyPrint) and so was killing healthy ones. |
+| `except BaseException` in `run_report` | the kill itself. A job past its timeout is *cancelled*, and `CancelledError` has not been an `Exception` since 3.8 — so the handler written to make sure a run never dies silently was the one thing a timeout skipped. It records the failure and re-raises; a cancellation is never swallowed. |
+| `reporting_reap_stale_runs`, quarter-hourly | everything above running in a process that is no longer there. A worker that is OOM-killed executes no `except` block at all, so the only possible answer is one that does not live in that process. `COALESCE(generation_started_at, updated_at)` so rows from before that column existed — the ones already stuck — are cleaned up by the first tick after the upgrade. |
+
+Both schedulers commit **before** enqueuing (the request path via `ctx.release_db()`, which also
+hands the pooled connection back for the Redis round-trip): the worker opens its own session, and
+a row it cannot see yet is a run it silently declines to do.
+
+The screens poll while they are waiting (`$lib/core/poll.svelte.ts` against a named `depends`).
+An SSR load is a photograph, and for a status a worker owns that means the spinner is a still
+image — a run that finished forty seconds after the redirect said "bezig met genereren" until
+somebody thought to reload, which is exactly what a hung job looks like.
 
 The default day is the **5th**, because a report on the 1st is produced before the previous
 month's data has settled: GA4 attribution keeps moving for days and Search Console finalises two

@@ -76,7 +76,7 @@
 
   const memberName = (id: string) => {
     const member = lookups.members.find((m) => m.user_id === id);
-    return member ? member.full_name || member.email : "";
+    return member ? member.full_name || member.email || "" : "";
   };
   const companyName = (id?: string | null) =>
     lookups.companies.find((c) => c.id === id)?.name ?? "";

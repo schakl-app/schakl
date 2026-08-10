@@ -17,6 +17,9 @@ import type { Actions, PageServerLoad } from "./$types";
  * *same* artefact the PDF prints, so what the reviewer approves is what the client receives.
  */
 export const load: PageServerLoad = async (event) => {
+  // Named so the screen can re-read *this* load while a worker is still generating, without
+  // `invalidateAll()` dragging the layout's API calls along every few seconds.
+  event.depends("reporting:report");
   const { data, error, response } = await apiFor(event).GET(
     "/api/v1/reporting/reports/{report_id}",
     { params: { path: { report_id: event.params.id } } },
@@ -87,7 +90,7 @@ export const actions: Actions = {
 
   regenerate: async (event) => {
     const form = await event.request.formData();
-    const { error } = await apiFor(event).POST("/api/v1/reporting/reports/generate", {
+    const { data, error } = await apiFor(event).POST("/api/v1/reporting/reports/generate", {
       body: {
         company_id: String(form.get("company_id") ?? ""),
         audience: String(form.get("audience") ?? "client") as "client" | "internal",
@@ -95,7 +98,9 @@ export const actions: Actions = {
       },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
-    return { queued: true };
+    // The API's own answer, not an assumption: it declines to start a second run over one that
+    // is already going, and a banner that claims otherwise is the screen telling a small lie.
+    return { queued: data?.queued ?? false };
   },
 
   delete: async (event) => {

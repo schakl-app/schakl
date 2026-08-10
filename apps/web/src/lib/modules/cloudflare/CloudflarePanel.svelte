@@ -61,6 +61,13 @@
   const zone = $derived(status?.zone ?? null);
   const redirect = $derived(status?.redirect ?? null);
   const issues = $derived(status?.issues ?? []);
+  // The API raises findings for an **unconnected** domain too: `domain_says_redirect` (this
+  // record says it redirects and no rule of ours does, which is exactly how a redirect wired
+  // outside schakl looks) and `duplicate_zone`. They were computed and then dropped, because
+  // the issues box lived inside the connected branch — so the one state where a finding cannot
+  // be discovered any other way was the one state that rendered none of them.
+  // `not_connected` is dropped instead: the paragraph above already says it.
+  const openIssues = $derived(issues.filter((issue) => issue !== "not_connected"));
 
   // What the page draws is what schakl stored, so the one thing it cannot leave unsaid is how
   // old that is: "no conflicts" from a check that ran in March is not the same sentence as
@@ -71,6 +78,18 @@
       ? t("cloudflare.panel.checked_at", { when: fmtDateTime(status.checked_at) })
       : t("cloudflare.panel.never_checked"),
   );
+
+  // The delegation verdict is tri-state: `null` means one of the two sides did not answer, which
+  // is neither "delegated" nor an instruction to go and change nameservers at a registrar.
+  const delegation = $derived.by(() => {
+    if (status?.nameservers_delegated === true) {
+      return { text: t("cloudflare.panel.delegated"), tone: "text-text-muted" };
+    }
+    if (status?.nameservers_delegated === false) {
+      return { text: t("cloudflare.panel.not_delegated"), tone: "text-amber-600" };
+    }
+    return { text: t("cloudflare.panel.delegation_unknown"), tone: "text-text-muted" };
+  });
 
   const inputClass =
     "w-full min-w-0 rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand";
@@ -111,6 +130,20 @@
 {#if !zone}
   <!-- Not connected. -->
   <p class="text-sm text-text-muted">{t("cloudflare.panel.not_connected")}</p>
+  <!-- What the API found anyway. A domain marked "redirect" here with nothing behind it at
+       Cloudflare is the #96 webhook-era state this module exists to replace, and it is only
+       visible while the domain is unconnected — which is precisely when this box used not to
+       render at all. -->
+  {#if openIssues.length > 0}
+    <div class="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:bg-amber-950/30">
+      <p class="mb-1 text-xs font-medium text-text">{t("cloudflare.issues.title")}</p>
+      <ul class="list-inside list-disc space-y-1 text-sm text-text">
+        {#each openIssues as issue (issue)}
+          <li>{t(`cloudflare.issue.${issue}`)}</li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
   {#if canManage}
     {#if activeAccounts.length === 0}
       <p class="mt-2 text-sm text-text-muted">{t("cloudflare.issue.no_account")}</p>
@@ -175,11 +208,22 @@
       </dd>
     </div>
   </dl>
-  <p class="mt-1 text-xs {status?.nameservers_delegated ? 'text-text-muted' : 'text-amber-600'}">
-    {status?.nameservers_delegated
-      ? t("cloudflare.panel.delegated")
-      : t("cloudflare.panel.not_delegated")}
-  </p>
+  <!-- Three states, not two. `null` is "one of the two sides did not answer" — Cloudflare has
+       assigned no nameservers yet, or the public-DNS lookup came back empty (which a timeout
+       does, indistinguishably from a domain that really delegates nowhere). Rendered as a
+       definite "not delegated" it told an agency to go and change something at the registrar
+       that was very possibly already right. -->
+  <p class="mt-1 text-xs {delegation.tone}">{delegation.text}</p>
+  {#if status?.nameservers_checked_at}
+    <!-- The observed half's own age. The check button refreshes it where the caller may, so
+         without this line a stale reading and a fresh one look identical — the same argument
+         `checked_at` exists for, applied to the side `checked_at` does not cover. -->
+    <p class="text-xs text-text-muted">
+      {t("cloudflare.panel.nameservers_checked_at", {
+        when: fmtDateTime(status.nameservers_checked_at),
+      })}
+    </p>
+  {/if}
 
   {#if issues.length > 0}
     <div class="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:bg-amber-950/30">
@@ -224,6 +268,18 @@
         </span>
       {/if}
     </div>
+
+    <!-- The rule is live and something *after* it was refused — today only the origin
+         placeholder, whose scope is DNS rather than redirects. Cloudflare's own text, because
+         "which permission is missing" is a sentence only Cloudflare can write and an i18n key
+         cannot (§9: it never goes in the error envelope, it goes on the row). Without it the
+         whole save used to fail, and the rule it had already created was invisible here. -->
+    {#if redirect?.last_error}
+      <p class="mt-2 text-sm text-amber-600">
+        {t("cloudflare.redirect.origin_failed")}
+        <span class="block break-words text-xs text-text-muted">{redirect.last_error}</span>
+      </p>
+    {/if}
 
     {#if redirect && status?.redirect_live?.differences?.length}
       <p class="mt-2 text-sm text-amber-600">

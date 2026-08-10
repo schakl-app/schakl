@@ -453,7 +453,7 @@
           ...linkTasks,
           {
             value: created.id,
-            label: taskDraft || "—",
+            label: created.name ?? (taskDraft || "—"),
             project_id: created.project_id ?? null,
             company_id: created.company_id ?? null,
           },

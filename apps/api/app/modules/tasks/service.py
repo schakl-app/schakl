@@ -198,12 +198,25 @@ def _rich_items(
 
 class TaskService:
     class _PortalTaskRepository(TenantScopedRepository):
-        """The task repo a portal login gets: every read is AND'd with visible_to_client,
-        on the same `_scoped()` seam org/horizon filtering rides — so an unticked task is
-        absent for a client on every path (get-by-id, lists, counts, comment targets)."""
+        """The task repo a portal login gets (#266) — the invoicing/contacts pattern.
 
-        def _scoped(self):  # noqa: ANN202 — mirrors the base signature
-            return super()._scoped().where(Task.visible_to_client.is_(True))
+        It defers to ``Task.__portal_horizon_clause__``: the client's own companies, **and**
+        the ``visible_to_client`` tick.
+
+        It overrides ``horizon_condition``, not ``_scoped``. That distinction is the whole
+        point: ``_scoped()`` feeds the reads (``get_or_404``, ``scoped_select``) but
+        ``scoped_count_select()`` and ``count()`` build their own statement and AND the
+        horizon on directly, so an override one layer too low left every *count* reading the
+        looser staff rule. The company panel counted with it — a client saw "Taken (12)" over
+        a list of three (#285's failure mode (2), reached through a subclass seam rather than
+        a hand-built query).
+        """
+
+        def horizon_condition(self):  # noqa: ANN202 — mirrors the base signature
+            clause = getattr(self.model, "__portal_horizon_clause__", None)
+            if clause is None:  # pragma: no cover — Task declares one; stay strict if it stops
+                return super().horizon_condition()
+            return clause(self.company_scope)
 
     def __init__(self, ctx: RequestContext) -> None:
         self.ctx = ctx

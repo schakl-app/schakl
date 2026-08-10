@@ -123,7 +123,7 @@ registerWebModule({
         // Only a holder of the any-scope read may overlay colleagues; a member gets no roster.
         if (!hasPermission(user?.permissions, "tasks.schedule.read", "any")) return [];
         const { data } = await api.GET("/api/v1/members/lookup");
-        return (data ?? []).map((m) => ({ id: m.user_id, name: m.full_name || m.email }));
+        return (data ?? []).map((m) => ({ id: m.user_id, name: m.full_name || m.email || "" }));
       },
     },
     {

@@ -90,11 +90,17 @@ class MemberRead(BaseModel):
 
 
 class MemberLookup(BaseModel):
-    """Minimal member identity for pickers (assignee, approver) — safe for any staff role."""
+    """Minimal member identity for pickers (assignee, approver) — safe for any staff role.
+
+    ``email`` is nullable because an **external (client) login** is answered without it: a
+    client reads staff *names* off their own screens and has no use for the agency's address
+    book. Optional rather than a second schema, so one shape serves both callers and a
+    consumer that falls back to the address gets ``None`` instead of somebody's mailbox.
+    """
 
     user_id: str
     full_name: str | None
-    email: str
+    email: str | None
     avatar_url: str | None = None
 
 
@@ -323,11 +329,23 @@ async def lookup_members(
         stmt = stmt.where(User.id.in_(permission_holder_ids(ctx.org.id, permission)))
 
     rows = (await ctx.session.execute(stmt)).scalars().all()
+    # An **external (client) login** gets the names and not the addresses (§15). This endpoint
+    # declares no permission — "open to every member" — and a portal contact holds a membership
+    # too, so a client was handed every employee's e-mail address the moment any client-reachable
+    # screen loaded its pickers. The docstring above reasoned carefully about which memberships
+    # come *out* and not at all about who may ask.
+    #
+    # Names stay, because they are drawn on screens a client is meant to read: the assignee of a
+    # task ticked visible, the author of a contact moment, the account manager on their own
+    # company. Withholding those would blank a dozen legitimate labels to fix a leak that is not
+    # in them. The address is the part a client has no use for and an outsider does — so it is
+    # ``None`` here rather than absent, and the schema says so.
+    hide_email = ctx.is_portal
     return [
         MemberLookup(
             user_id=str(u.id),
             full_name=u.full_name,
-            email=u.email,
+            email=None if hide_email else u.email,
             avatar_url=effective_avatar_url(u),
         )
         for u in rows

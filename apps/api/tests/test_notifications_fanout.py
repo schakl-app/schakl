@@ -337,9 +337,12 @@ async def test_fan_out_is_bounded_not_n_plus_one(count_queries) -> None:
             t, t.user, "task.assigned",
             {"task_id": task_id, "_recipients": [p.id for p in people]},
         )
-    # Two constant lookups: the in-app matrix resolve, and the e-mail channel's general
-    # rows (#17) — each is one query for the whole batch, never one per recipient.
-    assert len(counter.matching("notification_preferences")) == 2
+    # Three constant lookups — one per implicit channel: the in-app matrix resolve, the
+    # e-mail channel's rows (#17), and web push's (#309). Each is one query for the whole
+    # batch, never one per recipient, which is the property this test exists to hold.
+    # Web push costs nothing beyond this here: with nobody routing the event to a browser it
+    # returns before looking up any devices.
+    assert len(counter.matching("notification_preferences")) == 3
     assert len(counter.matching("notification_watchers")) == 1
     assert len(counter.matching("FROM memberships")) == 1
     for person in people:

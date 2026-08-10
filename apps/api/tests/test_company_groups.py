@@ -12,6 +12,7 @@ import uuid
 from sqlalchemy import text
 
 from app.db import async_session_maker, set_current_org
+from app.modules.google.drive.models import DriveLink
 from tests.conftest import add_membership, auth_cookie, make_tenant
 
 
@@ -821,6 +822,72 @@ async def test_horizon_reaches_totals_and_summary_tiles(client_for) -> None:
         assert tiles["draft_count"] == 1
         owner_tiles = (await c.get("/api/v1/invoicing/summary", headers=owner_h)).json()
         assert owner_tiles["draft_count"] == 2
+
+
+async def test_horizon_reaches_the_drive_links_of_a_client(client_for) -> None:
+    """The Drive surfaces are entity-addressed too (#285's failure mode (4)): the pair comes
+    from the caller, so holding ``google.drive.read`` is not the same as being allowed to see
+    *that* client's folder — the name of which is often the client's own name."""
+    t, member, membership, owner_h, member_h, a, b, group = await _setup(
+        client_for, "horiz-drive", role="admin"
+    )
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        for company, name in ((a, "Alpha map"), (b, "Beta map")):
+            session.add(
+                DriveLink(
+                    org_id=t.org.id,
+                    entity_type="company",
+                    entity_id=uuid.UUID(company["id"]),
+                    drive_file_id=f"f-{company['id']}",
+                    drive_url="https://drive/x",
+                    name=name,
+                    is_folder=True,
+                    is_root=True,
+                )
+            )
+        await session.commit()
+
+    async with client_for(t.host) as c:
+        assert (
+            await c.put(
+                f"/api/v1/companies/groups/{group['id']}/memberships",
+                json={"membership_ids": [str(membership.id)]},
+                headers=owner_h,
+            )
+        ).status_code == 204
+
+        inside = await c.get(
+            "/api/v1/google/drive/links",
+            params={"entity_type": "company", "entity_id": a["id"]},
+            headers=member_h,
+        )
+        assert inside.status_code == 200 and inside.json()[0]["name"] == "Alpha map"
+
+        outside = await c.get(
+            "/api/v1/google/drive/links",
+            params={"entity_type": "company", "entity_id": b["id"]},
+            headers=member_h,
+        )
+        assert outside.status_code == 404, outside.text
+
+        # And a write onto that record — pointing it at a folder — is refused the same way,
+        # before any Drive call is made.
+        refused = await c.put(
+            "/api/v1/google/drive/folder",
+            json={"entity_type": "company", "entity_id": b["id"], "drive_file_id": "folder-x"},
+            headers=member_h,
+        )
+        assert refused.status_code == 404, refused.text
+
+        # The owner reads both.
+        assert (
+            await c.get(
+                "/api/v1/google/drive/links",
+                params={"entity_type": "company", "entity_id": b["id"]},
+                headers=owner_h,
+            )
+        ).status_code == 200
 
 
 async def test_horizon_reaches_the_trail_and_the_attachments(client_for) -> None:

@@ -16,6 +16,7 @@
    * managed roster (created on the company/contacts screens), not invented from a task.
    */
   import { t } from "$lib/core/i18n";
+  import { memberLabel } from "$lib/core/members";
   import Combobox from "$lib/core/ui/Combobox.svelte";
 
   type Kind = "employee" | "contact";
@@ -23,7 +24,7 @@
   interface Employee {
     user_id: string;
     full_name: string | null;
-    email: string;
+    email: string | null;
   }
   interface Contact {
     id: string;
@@ -69,7 +70,7 @@
   const contactField = $derived(kind === "contact" ? entityId : "");
 
   const employeeItems = $derived(
-    employees.map((e) => ({ value: e.user_id, label: e.full_name || e.email })),
+    employees.map((e) => ({ value: e.user_id, label: memberLabel(e) })),
   );
   const contactItems = $derived(contacts.map((c) => ({ value: c.id, label: c.name })));
   const items = $derived(kind === "employee" ? employeeItems : contactItems);

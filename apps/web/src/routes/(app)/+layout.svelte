@@ -56,6 +56,17 @@
     !isPortal && (theme?.enabledModules?.includes("notifications") ?? false),
   );
 
+  // Re-present an already-granted push subscription, once per session (#309). A push endpoint
+  // rotates without telling anyone, and a rotated endpoint nobody re-registered is a device that
+  // has quietly stopped receiving — the user sees nothing and assumes it still works. Costs one
+  // call for people who turned this on, and **no network call at all** for everyone else: the
+  // module returns before fetching if the permission was never granted. Dynamically imported so
+  // the browser-only module never enters the SSR bundle.
+  $effect(() => {
+    if (!hasNotifications) return;
+    void import("$lib/modules/notifications/push").then((push) => push.refresh());
+  });
+
   // AI affordance gate (epic #131): shared components (RichTextEditor's assist) read this
   // through context so no consumer needs per-module wiring. Off means invisible (#126).
   setContext(AI_CONTEXT_KEY, { enabled: (feature: AIFeature) => aiEnabled(user, feature) });
@@ -400,107 +411,121 @@
         </form>
       </div>
     {/if}
-    <header
-      class="flex h-14 items-center justify-between gap-4 border-b border-border bg-surface-raised px-4 text-sm sm:justify-end sm:px-6"
-    >
-      <button
-        type="button"
-        class="rounded-lg p-2 text-text-muted hover:bg-surface sm:hidden"
-        onclick={() => (mobileNavOpen = true)}
-        aria-label={t("nav.expand")}
+    <!-- The bar spans the column (its background and rule are the shell's edge); its *contents*
+         sit in the same measure as the page below, so the avatar lines up with the page's right
+         edge instead of drifting half a metre away from it on a wide screen. -->
+    <header class="h-14 border-b border-border bg-surface-raised px-4 text-sm sm:px-6">
+      <div
+        class="mx-auto flex h-full w-full max-w-content items-center justify-between gap-4 sm:justify-end"
       >
-        <Menu size={20} />
-      </button>
-      <div class="flex items-center gap-1">
-        {#if hasAssistant}
-          <button
-            type="button"
-            class="rounded-lg p-2 text-text-muted hover:bg-surface hover:text-brand"
-            aria-label={t("ai.assistant.title")}
-            title={t("ai.assistant.title")}
-            onclick={() => (assistantOpen = true)}
-          >
-            <Sparkles size={18} />
-          </button>
-        {/if}
-        {#if hasNotifications}
-          <NotificationBell count={page.data.unreadCount ?? 0} />
-        {/if}
-        <div class="relative" data-profile-menu>
-          <button
-            type="button"
-            class="flex items-center gap-2 rounded-full py-1 pl-1 pr-3 hover:bg-surface"
-            onclick={() => (profileOpen = !profileOpen)}
-            aria-haspopup="menu"
-            aria-expanded={profileOpen}
-          >
-            <Avatar
-              name={user?.full_name}
-              email={user?.email}
-              avatarUrl={user?.avatarUrl ?? null}
-              size="md"
-            />
-            <span class="hidden font-medium text-text md:inline">
-              {user?.full_name || user?.email}
-            </span>
-          </button>
-
-          {#if profileOpen}
-            <div
-              role="menu"
-              class="absolute right-0 z-30 mt-1 w-64 rounded-xl border border-border bg-surface-raised py-1 shadow-lg"
+        <button
+          type="button"
+          class="rounded-lg p-2 text-text-muted hover:bg-surface sm:hidden"
+          onclick={() => (mobileNavOpen = true)}
+          aria-label={t("nav.expand")}
+        >
+          <Menu size={20} />
+        </button>
+        <div class="flex items-center gap-1">
+          {#if hasAssistant}
+            <button
+              type="button"
+              class="rounded-lg p-2 text-text-muted hover:bg-surface hover:text-brand"
+              aria-label={t("ai.assistant.title")}
+              title={t("ai.assistant.title")}
+              onclick={() => (assistantOpen = true)}
             >
-              <div class="border-b border-border px-4 py-3">
-                <p class="truncate text-sm font-semibold text-text">
-                  {user?.full_name || user?.email}
-                </p>
-                {#if user?.full_name}
-                  <p class="truncate text-xs text-text-muted">{user?.email}</p>
+              <Sparkles size={18} />
+            </button>
+          {/if}
+          {#if hasNotifications}
+            <NotificationBell count={page.data.unreadCount ?? 0} />
+          {/if}
+          <div class="relative" data-profile-menu>
+            <button
+              type="button"
+              class="flex items-center gap-2 rounded-full py-1 pl-1 pr-3 hover:bg-surface"
+              onclick={() => (profileOpen = !profileOpen)}
+              aria-haspopup="menu"
+              aria-expanded={profileOpen}
+            >
+              <Avatar
+                name={user?.full_name}
+                email={user?.email}
+                avatarUrl={user?.avatarUrl ?? null}
+                size="md"
+              />
+              <span class="hidden font-medium text-text md:inline">
+                {user?.full_name || user?.email}
+              </span>
+            </button>
+
+            {#if profileOpen}
+              <div
+                role="menu"
+                class="absolute right-0 z-30 mt-1 w-64 rounded-xl border border-border bg-surface-raised py-1 shadow-lg"
+              >
+                <div class="border-b border-border px-4 py-3">
+                  <p class="truncate text-sm font-semibold text-text">
+                    {user?.full_name || user?.email}
+                  </p>
+                  {#if user?.full_name}
+                    <p class="truncate text-xs text-text-muted">{user?.email}</p>
+                  {/if}
+                </div>
+                {#if !isPortal && theme?.enabledModules?.includes("hr") && can(user, "hr.dossier.read")}
+                  <!-- The personal page (hr module): leave, contract, dossier documents. -->
+                  <a
+                    href="/me"
+                    class="flex items-center gap-2 px-4 py-2 text-sm text-text hover:bg-surface"
+                    onclick={() => (profileOpen = false)}
+                  >
+                    <FileText size={16} class="text-text-muted" />
+                    {t("header.my_page")}
+                  </a>
                 {/if}
-              </div>
-              {#if !isPortal && theme?.enabledModules?.includes("hr") && can(user, "hr.dossier.read")}
-                <!-- The personal page (hr module): leave, contract, dossier documents. -->
                 <a
-                  href="/me"
+                  href="/settings/account"
                   class="flex items-center gap-2 px-4 py-2 text-sm text-text hover:bg-surface"
                   onclick={() => (profileOpen = false)}
                 >
-                  <FileText size={16} class="text-text-muted" />
-                  {t("header.my_page")}
+                  <UserRound size={16} class="text-text-muted" />
+                  {t("header.my_settings")}
                 </a>
-              {/if}
-              <a
-                href="/settings/account"
-                class="flex items-center gap-2 px-4 py-2 text-sm text-text hover:bg-surface"
-                onclick={() => (profileOpen = false)}
-              >
-                <UserRound size={16} class="text-text-muted" />
-                {t("header.my_settings")}
-              </a>
-              <!-- Personal notification preferences moved to the bell popover's gear (#163);
+                <!-- Personal notification preferences moved to the bell popover's gear (#163);
                    the redundant profile-menu entry is gone. The bell's gear is ungated the same
                    way this was (tied to hasNotifications, not settings.*). -->
-              <form method="POST" action="/logout" class="border-t border-border">
-                <button
-                  class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-text hover:bg-surface"
-                >
-                  <LogOut size={16} class="text-text-muted" />
-                  {t("auth.sign_out")}
-                </button>
-              </form>
-            </div>
-          {/if}
+                <form method="POST" action="/logout" class="border-t border-border">
+                  <button
+                    class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-text hover:bg-surface"
+                  >
+                    <LogOut size={16} class="text-text-muted" />
+                    {t("auth.sign_out")}
+                  </button>
+                </form>
+              </div>
+            {/if}
+          </div>
         </div>
       </div>
     </header>
 
+    <!-- Every screen reads inside one measure (`max-w-content`, see app.css). The shell was
+         full-bleed, so on a 3178px monitor a settings card was 1430px of box around one
+         sentence, a five-row client list spread its name and its status a metre apart *while
+         truncating both*, and a dashboard tile put "Bakkerij Jansen" and its number at opposite
+         ends of the screen. Wider is not more readable past a point; it is further to look. The
+         cap binds only above a 1888px window (a 1920 desktop loses 16px a side, a laptop
+         nothing), and it centres, so the space beyond it becomes margin rather than stretch. -->
     <main class="flex-1 p-6">
-      {#if !isPortal}
-        <!-- Breadcrumbs on every page (owner request): rendered once here, derived from the
-             path and the page's own loaded data — no screen can ship without them. -->
-        <Breadcrumbs crumbs={breadcrumbsFor(path, page.data)} />
-      {/if}
-      {@render children()}
+      <div class="mx-auto w-full max-w-content">
+        {#if !isPortal}
+          <!-- Breadcrumbs on every page (owner request): rendered once here, derived from the
+               path and the page's own loaded data — no screen can ship without them. -->
+          <Breadcrumbs crumbs={breadcrumbsFor(path, page.data)} />
+        {/if}
+        {@render children()}
+      </div>
     </main>
   </div>
 </div>

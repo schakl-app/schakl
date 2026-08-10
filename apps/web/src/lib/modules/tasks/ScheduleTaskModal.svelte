@@ -18,6 +18,7 @@
 
   import { fmtDayMonth } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { memberLabel } from "$lib/core/members";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
@@ -40,7 +41,7 @@
   interface Member {
     user_id: string;
     full_name: string | null;
-    email: string;
+    email: string | null;
   }
   interface NameRef {
     id: string;
@@ -116,9 +117,9 @@
   const projectName = $derived(
     new Map((pickerProjects.length ? pickerProjects : projects).map((p) => [p.id, p.name])),
   );
-  const memberName = $derived(new Map(allMembers.map((m) => [m.user_id, m.full_name || m.email])));
+  const memberName = $derived(new Map(allMembers.map((m) => [m.user_id, memberLabel(m)])));
   const personOptions = $derived(
-    allMembers.map((m) => ({ value: m.user_id, label: m.full_name || m.email })),
+    allMembers.map((m) => ({ value: m.user_id, label: memberLabel(m) })),
   );
 
   const filteredTasks = $derived(

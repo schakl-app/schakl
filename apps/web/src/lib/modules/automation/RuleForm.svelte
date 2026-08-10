@@ -1,7 +1,7 @@
 <script lang="ts" module>
   /** Shapes shared with the settings routes (derived from the API's generated types there). */
   export type CatalogTrigger = { event: string; entity_type: string };
-  export type Member = { user_id: string; full_name: string | null; email: string };
+  export type Member = { user_id: string; full_name: string | null; email: string | null };
   export type Template = { id: string; name: string };
   export type RuleActionValue = { action_type: string; config: Record<string, unknown> };
   export type RuleValue = {
@@ -24,6 +24,7 @@
   import { enhance } from "$app/forms";
   import type { SubmitFunction } from "@sveltejs/kit";
   import { t } from "$lib/core/i18n";
+  import { memberLabel } from "$lib/core/members";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
 
@@ -166,9 +167,6 @@
   function toggleRecipient(index: number, userId: string, checked: boolean) {
     const others = recipientIds(actions[index].config).filter((id) => id !== userId);
     setConfig(index, "user_ids", checked ? [...others, userId] : others);
-  }
-  function memberLabel(member: Member): string {
-    return member.full_name || member.email;
   }
 
   const inputClass =

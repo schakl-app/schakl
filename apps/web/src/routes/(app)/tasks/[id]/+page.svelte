@@ -20,6 +20,7 @@
   import Modal from "$lib/core/ui/Modal.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
+  import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
   import { LABEL_COLORS, labelChipClass, labelDotClass } from "$lib/modules/tasks/labels";
   import TaskAssigneePicker from "$lib/modules/tasks/TaskAssigneePicker.svelte";
   import TaskSchedulePanel from "$lib/modules/tasks/TaskSchedulePanel.svelte";
@@ -416,6 +417,14 @@
           >
             {task.title}
           </h1>
+          <!-- Use mode only: while editing, the checkbox below is the live answer and a header
+               marker still showing the *stored* one would contradict it mid-edit. -->
+          <ClientVisibilityIcon
+            visible={task.visible_to_client}
+            companyId={task.company_id}
+            projectId={task.project_id}
+            size={16}
+          />
         {/if}
 
         {#if !isPortal}
@@ -1175,6 +1184,26 @@
               {/each}
             </select>
           </div>
+          <!-- The client comes first because it narrows both fields under it: the contact half of
+               the assignee picker, and the project list. Picking it last meant choosing from an
+               unnarrowed set and then watching it shrink. -->
+          <div>
+            <label for="company" class="mb-1 block text-xs font-medium text-text-muted"
+              >{t("tasks.field.company")}</label
+            >
+            <Combobox
+              items={companyItems}
+              name="company_id"
+              value={fCompany}
+              id="company"
+              formId="task-edit"
+              onselect={onCompanyPicked}
+              oncreate={(name) => {
+                qcCompanyName = name;
+                qcCompanyOpen = true;
+              }}
+            />
+          </div>
           <div>
             <label for="assignee-entity" class="mb-1 block text-xs font-medium text-text-muted"
               >{t("tasks.field.assignee")}</label
@@ -1204,23 +1233,6 @@
               oncreate={(name) => {
                 qcProjectName = name;
                 qcProjectOpen = true;
-              }}
-            />
-          </div>
-          <div>
-            <label for="company" class="mb-1 block text-xs font-medium text-text-muted"
-              >{t("tasks.field.company")}</label
-            >
-            <Combobox
-              items={companyItems}
-              name="company_id"
-              value={fCompany}
-              id="company"
-              formId="task-edit"
-              onselect={onCompanyPicked}
-              oncreate={(name) => {
-                qcCompanyName = name;
-                qcCompanyOpen = true;
               }}
             />
           </div>
@@ -1279,6 +1291,17 @@
         {:else}
           <!-- Use mode: compact read-only summary -->
           <dl class="space-y-2 text-sm">
+            <!-- Same order as the edit form above: client, assignee, project. -->
+            <div class="flex items-center justify-between gap-2">
+              <dt class="text-xs font-medium text-text-muted">{t("tasks.field.company")}</dt>
+              <dd class="truncate text-text">
+                {#if task.company_id}
+                  <a href={`/companies/${task.company_id}`} class="hover:text-brand"
+                    >{companyName(task.company_id) ?? "—"}</a
+                  >
+                {:else}—{/if}
+              </dd>
+            </div>
             <div class="flex items-center justify-between gap-2">
               <dt class="text-xs font-medium text-text-muted">{t("tasks.field.assignee")}</dt>
               <dd class="text-text">
@@ -1303,16 +1326,6 @@
               </dd>
             </div>
             <div class="flex items-center justify-between gap-2">
-              <dt class="text-xs font-medium text-text-muted">{t("tasks.field.company")}</dt>
-              <dd class="truncate text-text">
-                {#if task.company_id}
-                  <a href={`/companies/${task.company_id}`} class="hover:text-brand"
-                    >{companyName(task.company_id) ?? "—"}</a
-                  >
-                {:else}—{/if}
-              </dd>
-            </div>
-            <div class="flex items-center justify-between gap-2">
               <dt class="text-xs font-medium text-text-muted">{t("tasks.field.due_date")}</dt>
               <dd
                 class="tabular-nums {overdue
@@ -1326,6 +1339,25 @@
               <dt class="text-xs font-medium text-text-muted">{t("tasks.field.priority")}</dt>
               <dd class="text-text">{t(`tasks.priority.${task.priority}`)}</dd>
             </div>
+            {#if !isPortal}
+              <!-- The card's own statement of what the header marker draws: an icon carries its
+                   meaning in a `title=`, which a phone has no way to show. Staff-only — a client
+                   reading their own task learns nothing from "yes, you can see this". -->
+              <div class="flex items-center justify-between gap-2">
+                <dt class="text-xs font-medium text-text-muted">
+                  {t("tasks.field.visible_to_client")}
+                </dt>
+                <dd class="flex items-center gap-1.5 text-text">
+                  <ClientVisibilityIcon
+                    visible={task.visible_to_client}
+                    companyId={task.company_id}
+                    projectId={task.project_id}
+                    size={13}
+                  />
+                  {task.visible_to_client ? t("common.yes") : t("common.no")}
+                </dd>
+              </div>
+            {/if}
             {#if task.requires_interaction}
               <div class="flex items-center justify-between gap-2">
                 <dt class="text-xs font-medium text-text-muted">

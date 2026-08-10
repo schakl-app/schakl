@@ -12,6 +12,7 @@
   import { t } from "$lib/core/i18n";
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import { filedrop } from "$lib/core/ui/filedrop";
 
   interface StoredFile {
     id: string;
@@ -83,19 +84,31 @@
 {/if}
 
 {#if !readonly}
-  <form method="POST" action={uploadAction} enctype="multipart/form-data" use:enhance>
+  <!-- A document dragged straight out of a mail client is how most of these arrive; the drop
+       lands on the input, so it submits through the same form the button does. The input stays
+       `sr-only` rather than `hidden` — a display:none control cannot be focused, and the drop
+       is only ever an accelerator for the click (docs/UX.md). -->
+  <form
+    method="POST"
+    action={uploadAction}
+    enctype="multipart/form-data"
+    use:enhance
+    use:filedrop
+    class="flex flex-wrap items-center gap-2"
+  >
     <label
-      class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand"
+      class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:border-brand hover:text-brand focus-within:border-brand"
     >
       <Paperclip size={14} />
       {t("files.upload")}
       <input
         type="file"
         name="file"
-        class="hidden"
+        class="sr-only"
         onchange={(e) => e.currentTarget.form?.requestSubmit()}
       />
     </label>
+    <span class="text-xs text-text-muted">{t("common.drop_hint")}</span>
   </form>
 {/if}
 {#if error}

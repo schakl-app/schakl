@@ -11,9 +11,10 @@
   import { FileText, Play, RefreshCw } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
-  import { goto } from "$app/navigation";
+  import { goto, invalidate } from "$app/navigation";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { pollWhile } from "$lib/core/poll.svelte";
   import { InFlight } from "$lib/core/submit.svelte";
   import { resetPage } from "$lib/core/table/paging";
   import { pageTitle } from "$lib/core/title";
@@ -33,6 +34,17 @@
   const busy = new InFlight();
   const reports = $derived(data.reports);
   const locale = $derived(data.locale ?? "nl");
+
+  /**
+   * "Genereer alles" queues a job per client and returns immediately, so the whole point of
+   * this list right afterwards is watching the batch land. Only while something on the page is
+   * actually running — the interval stops on its own when the last row leaves `generating`.
+   */
+  const anyGenerating = $derived(reports.some((r) => r.status === "generating"));
+  pollWhile(
+    () => anyGenerating,
+    () => invalidate("reporting:reports"),
+  );
 
   /** Every filter drops the page — page 7 of the old filter is not page 7 of the new one. */
   function setFilter(key: string, value: string) {

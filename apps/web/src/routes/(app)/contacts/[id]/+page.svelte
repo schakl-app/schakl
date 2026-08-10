@@ -32,6 +32,12 @@
   // Header actions render only for holders of the matching permission (#253).
   const canWrite = $derived(can(page.data.user, "contacts.contact.write"));
   const canDelete = $derived(can(page.data.user, "contacts.contact.delete"));
+  // Attaching a client is its own permission at the API (`contacts.link.write`), so it is its
+  // own gate here: the linked-clients block was drawn behind `contacts.contact.write`, which is
+  // the permission it does *not* call, and every link/unlink/promote answered 403 for anyone
+  // holding only the write (#310). Creating a client from the picker is a third key again.
+  const canLink = $derived(can(page.data.user, "contacts.link.write"));
+  const canWriteCompany = $derived(can(page.data.user, "companies.company.write"));
   let confirmDelete = $state(false);
   const contact = $derived(data.contact);
   const custom = $derived((contact.custom ?? {}) as Record<string, unknown>);
@@ -120,12 +126,14 @@
      under the header's ⋯ → Bewerken, like every other definition change (docs/UX.md §3). -->
 <section class="mb-4 rounded-xl border border-border bg-surface-raised p-5">
   <h2 class="mb-4 text-sm font-semibold text-text">{t("contacts.companies")}</h2>
-  <!-- `editing && canWrite`: read-mode chips stay navigable (a portal client may follow them to
-       /companies/{id}), but link/unlink/make-primary and the inline create-company modal — all
-       contacts.contact.write acts — never render for a read-only portal client (#244). -->
+  <!-- `editing && canLink`: read-mode chips stay navigable (a portal client may follow them to
+       /companies/{id}), but link/unlink/make-primary never render for a read-only portal client
+       (#244) — nor for anyone without `contacts.link.write`, which is the key they call (#310).
+       The inline "＋ … toevoegen" creates a *client*, so it appears only with that key as well;
+       without it the picker still attaches existing ones. -->
   <LinkField
     {links}
-    editing={editing && canWrite}
+    editing={editing && canLink}
     candidates={candidateCompanies}
     idField="company_id"
     linkAction="?/linkCompany"
@@ -139,7 +147,7 @@
       makePrimary: t("contacts.make_primary"),
       remove: t("contacts.unlink"),
     }}
-    oncreate={openCreateCompany}
+    oncreate={canWriteCompany ? openCreateCompany : undefined}
   />
 </section>
 

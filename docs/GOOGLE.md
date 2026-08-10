@@ -96,7 +96,38 @@ don't add one for this.
 
 Instead:
 - `drive_links(org_id, entity_type, entity_id, drive_file_id, drive_url, name, mime, is_folder,
-  shared_drive_id)`.
+  is_root, shared_drive_id)`.
+
+**A record's folder is a decision, and it is stored** (`is_root`, one row per record by partial
+unique index). It used to be "the first folder link the query returned", which was fine while
+provisioning was the only way one appeared and became a coin flip the moment somebody linked a
+subfolder as an attachment — and, worse, meant there was nothing for a permission to guard. Three
+consequences follow, and they are the point of the picker (Klant → Drive → **Map kiezen**, the
+same browser in pick mode, which also offers the folder you are *standing in*: the folder you
+want is usually the one you just navigated into, not one visible in the listing):
+
+- **An agency's client folders already exist.** Provisioning creates one *named after the client*
+  under the configured parent, which is the wrong answer for every agency whose Drive predates
+  schakl — and re-typing the name to make the name-match fire is a guess, not a choice. Pointing
+  at the real folder is the ordinary case, not the exception.
+- **Giving a record its first folder is `google.drive.write`; re-pointing or detaching one is
+  `google.drive.manage`** (admin by default). The two are different acts: the first is additive,
+  the second silently moves where every colleague's uploads land and where project folders nest,
+  while the history stays behind in a folder nobody is looking at any more. The route declares
+  the base key so deny-by-default stays enumerable and the service refines on the row (CLAUDE.md
+  §15's two layers) — which is also why `DELETE /links/{id}` asks for `manage` when the link it
+  names is the record's folder: that is the same act reached from the other side. Adding the
+  permission without closing that door would have been theatre.
+- **Provisioning never overwrites a choice.** `POST /provision` 409s on a record that already has
+  a folder, and the worker flags `is_root` only when nothing else claimed it while the job sat in
+  the outbox. Each change is recorded on the *record's* activity trail (`drive.folder_set` /
+  `folder_changed` / `folder_cleared`), because "whose documents now live where" is exactly the
+  kind of fact §16 exists for.
+
+Every Drive surface is **entity-addressed** — `(entity_type, entity_id)` comes from the caller —
+so each goes through `entity_visible` (CLAUDE.md §15's failure mode (4)). Holding
+`google.drive.read` is not the same as being allowed to see *that* client's folder, whose name is
+usually the client's own name.
 - Render an embedded file browser at view time via the Drive API scoped to the folder / shared
   drive. Cache listings briefly in Redis for snappiness, but **Drive stays authoritative**.
 - **Automation via the event bus (§6):** subscribe to `company.created` → create the client's

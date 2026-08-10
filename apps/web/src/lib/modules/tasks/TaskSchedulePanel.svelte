@@ -41,7 +41,7 @@
   interface Member {
     user_id: string;
     full_name: string | null;
-    email: string;
+    email: string | null;
   }
 
   let {

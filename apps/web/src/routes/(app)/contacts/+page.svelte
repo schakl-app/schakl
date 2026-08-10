@@ -54,6 +54,13 @@
   // Row actions render only for holders of the matching permission (#253).
   const canWrite = $derived(can(page.data.user, "contacts.contact.write"));
   const canDelete = $derived(can(page.data.user, "contacts.contact.delete"));
+  // `company_ids` on the create call is a `contacts.link.write` act — the API demands it up front
+  // rather than rolling the contact back — so the "Verbonden klanten" picker carries that key and
+  // not the one the rest of this form carries (#310). Without it the contact is created unlinked,
+  // which is a real thing to do; with the picker drawn it was a 403 on submit and a lost form.
+  const canLink = $derived(can(page.data.user, "contacts.link.write"));
+  // Third key again: "＋ … toevoegen" in that picker creates a *client*.
+  const canWriteCompany = $derived(can(page.data.user, "companies.company.write"));
 
   // Client filter (#154) — the tasks page's URL-param shape; the API applies it.
   const companyFilterItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
@@ -447,44 +454,48 @@
 
       <!-- #80: link one or more clients at creation instead of a second step afterwards. The
            first company linked becomes its primary contact (API behaviour). -->
-      <div class="sm:col-span-2">
-        <span class="mb-1 block text-sm font-medium text-text"
-          >{t("contacts.connected_companies")}</span
-        >
-        <input type="hidden" name="company_ids" value={JSON.stringify(linkedCompanyIds)} />
-        {#if linkedCompanyIds.length > 0}
-          <ul class="mb-2 flex flex-wrap gap-2">
-            {#each linkedCompanyIds as id (id)}
-              <li
-                class="inline-flex items-center gap-1.5 rounded-full bg-surface py-1 pl-2.5 pr-1.5 text-sm text-text"
-              >
-                <span class="font-medium">{companyLabel(id)}</span>
-                <button
-                  type="button"
-                  class="rounded-full p-0.5 opacity-60 hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
-                  title={t("contacts.unlink")}
-                  aria-label={t("contacts.unlink")}
-                  onclick={() => removeCompany(id)}><X size={14} /></button
+      {#if canLink}
+        <div class="sm:col-span-2">
+          <span class="mb-1 block text-sm font-medium text-text"
+            >{t("contacts.connected_companies")}</span
+          >
+          <input type="hidden" name="company_ids" value={JSON.stringify(linkedCompanyIds)} />
+          {#if linkedCompanyIds.length > 0}
+            <ul class="mb-2 flex flex-wrap gap-2">
+              {#each linkedCompanyIds as id (id)}
+                <li
+                  class="inline-flex items-center gap-1.5 rounded-full bg-surface py-1 pl-2.5 pr-1.5 text-sm text-text"
                 >
-              </li>
-            {/each}
-          </ul>
-        {/if}
-        <Combobox
-          items={companyCandidates}
-          name="_company_pick"
-          bind:value={companyPick}
-          id="contact-companies"
-          placeholder={t("contacts.add_client")}
-          allowEmpty={false}
-          onselect={addCompany}
-          keepOpenOnSelect
-          oncreate={(name) => {
-            qcCompanyName = name;
-            qcCompanyOpen = true;
-          }}
-        />
-      </div>
+                  <span class="font-medium">{companyLabel(id)}</span>
+                  <button
+                    type="button"
+                    class="rounded-full p-0.5 opacity-60 hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
+                    title={t("contacts.unlink")}
+                    aria-label={t("contacts.unlink")}
+                    onclick={() => removeCompany(id)}><X size={14} /></button
+                  >
+                </li>
+              {/each}
+            </ul>
+          {/if}
+          <Combobox
+            items={companyCandidates}
+            name="_company_pick"
+            bind:value={companyPick}
+            id="contact-companies"
+            placeholder={t("contacts.add_client")}
+            allowEmpty={false}
+            onselect={addCompany}
+            keepOpenOnSelect
+            oncreate={canWriteCompany
+              ? (name) => {
+                  qcCompanyName = name;
+                  qcCompanyOpen = true;
+                }
+              : undefined}
+          />
+        </div>
+      {/if}
     </div>
 
     {#if data.definitions.length > 0}

@@ -810,6 +810,18 @@ It is a **core, cross-cutting capability**, like custom fields (§13) — not pe
   repositories sat behind `tasks.task.read`, which a client holds, so the portal reached the
   agency's internal process library and its create form. They now read on `tasks.template.apply`
   and `tasks.task.write`.
+- **Mirror the key the call actually makes, not the one the screen is about** (#310). Every
+  attaching control on the contacts screens — the client picker in the new-contact form, the
+  contactpersonen panel, the link/unlink/promote row on a contact — was gated on
+  `contacts.contact.write` while the API demanded `contacts.link.write`, which no label on any of
+  those screens names. So an admin granted the permission whose text says *Contactpersonen
+  aanmaken en bewerken* and every one of those flows still answered a bare "Geen toegang": the
+  gate and the call disagreed, and the 403 could not say so. Two rules come out of it. A control
+  whose action is a *second* module-level capability (create-and-attach, create-and-assign) states
+  **both** keys, and a **default posture is part of the fix, not separate from it** — a capability
+  every employee needs, that only admins hold, does not read as a policy, it reads as a broken
+  screen. Contact writes now default to `member` (deleting one does not), widened into existing
+  orgs by a `DefaultsRevision`.
 - **"External login" is one fact, and it is the `client` role** (#274). `ctx.is_portal` is true for
   a contact-linked portal membership (#193) *and* for any membership holding the seeded `client`
   role — the definition #252 already adopted when it floored that role's company horizon to the
