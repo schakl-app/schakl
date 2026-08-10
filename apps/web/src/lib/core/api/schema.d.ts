@@ -16404,6 +16404,16 @@ export interface components {
             licensed_modules?: string[];
             /** Local Login Enabled */
             local_login_enabled: boolean;
+            /**
+             * Mcp Enabled
+             * @default false
+             */
+            mcp_enabled: boolean;
+            /**
+             * Mcp Entitled
+             * @default false
+             */
+            mcp_entitled: boolean;
             /** Oidc Enabled */
             oidc_enabled: boolean;
             /** Oidc Name */
