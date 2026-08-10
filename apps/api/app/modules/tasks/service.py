@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, case, column, func, select, table
+from sqlalchemy import and_, case, column, func, or_, select, table
 from sqlalchemy import text as sql_text
 from sqlalchemy.orm import aliased
 
@@ -634,7 +634,15 @@ class TaskService:
         # *first* 200 would have shown the oldest and hidden the conversation people came for.
         # A second alias for whoever was signed in as the author (#296) — one statement, not a
         # lookup per comment.
+        #
+        # The cap is taken **by thread, not by row** (#312). Sorting on the *root's* timestamp
+        # keeps a reply adjacent to the comment it answers, so the 200th row falls between two
+        # conversations instead of inside one — a plain ``created_at`` cut would strand a January
+        # reply above a parent that had dropped off the end, and the client would draw it as a new
+        # thread. Reversed, this reads exactly as the card renders: threads oldest-first, each
+        # opener followed by its answers in the order they were written.
         comment_impersonator = aliased(User)
+        comment_root = aliased(TaskComment)
         comment_rows = list(
             reversed(
                 (
@@ -645,11 +653,15 @@ class TaskService:
                             comment_impersonator,
                             comment_impersonator.id == TaskComment.impersonator_user_id,
                         )
+                        .outerjoin(comment_root, comment_root.id == TaskComment.parent_id)
                         .where(
                             TaskComment.org_id == self.ctx.org.id,
                             TaskComment.task_id == task_id,
                         )
-                        .order_by(TaskComment.created_at.desc())
+                        .order_by(
+                            func.coalesce(comment_root.created_at, TaskComment.created_at).desc(),
+                            TaskComment.created_at.desc(),
+                        )
                         .limit(_COMMENT_CAP)
                     )
                 ).all()
@@ -1555,9 +1567,28 @@ class TaskService:
         )
         return [tid for tid in ids if tid in found]
 
+    async def _resolve_parent(
+        self, task_id: uuid.UUID, parent_id: uuid.UUID | None
+    ) -> uuid.UUID | None:
+        """Which comment a new one answers, as the thread's *root* (#312).
+
+        Threads are one level deep, so replying to a reply attaches to the same root rather than
+        raising: the person clicked "reply" under words that are on their screen, and refusing
+        that is a rule the UI would have to explain to be usable. Re-rooting keeps every thread
+        readable in one indent and costs the writer nothing.
+
+        A parent on another task — or in another tenant, which the repository already refuses — is
+        a 404, not a re-root: it is not a reading order problem, it is a wrong id.
+        """
+        if parent_id is None:
+            return None
+        parent = await self._comment_or_404(task_id, parent_id)
+        return parent.parent_id or parent.id
+
     async def add_comment(self, task_id: uuid.UUID, data: CommentCreate) -> CommentRead:
         self.ctx.require("tasks.comment.write")
         task = await self.repo.get_or_404(task_id)
+        parent_id = await self._resolve_parent(task_id, data.parent_id)
         body = sanitize_markdown(data.body) or ""
         excerpt = _excerpt(body)
         # Mentions are captured structurally from the `@[Name](mention:<uuid>)` markers, validated
@@ -1568,6 +1599,7 @@ class TaskService:
         impersonator = self.ctx.impersonated_by
         comment = await self.ctx.repo(TaskComment).create(
             task_id=task_id,
+            parent_id=parent_id,
             author_user_id=self.ctx.user.id,
             author_name=_display_name(self.ctx.user),
             # Words written through this account by someone else keep both names (#296).
@@ -1580,18 +1612,55 @@ class TaskService:
         )
         # The excerpt the notification has always carried belongs in the trail too, with the id
         # to reach the comment by — "commented", on its own, sends you hunting for what (#61).
+        # A reply says so, and carries the thread it landed in, so the row reads "replied" and
+        # deep-links to the answer rather than to the top of a conversation (#312).
         await self._record(
-            task_id, "commented", {"comment_id": str(comment.id), "excerpt": excerpt}
+            task_id,
+            "replied" if parent_id else "commented",
+            {
+                "comment_id": str(comment.id),
+                "excerpt": excerpt,
+                **({"parent_id": str(parent_id)} if parent_id else {}),
+            },
         )
-        # A mention reads as its own sentence ("X mentioned you"), so a mentioned person gets
-        # `task.mentioned` even when they are neither the assignee nor a prior commenter — and is
-        # dropped from the generic `task.commented` fan-out so they aren't told twice (issue #63).
+        # Three sentences, and nobody hears two of them (issue #63, #312). A mention reads as its
+        # own ("X mentioned you"), so it wins outright. A reply is the next most specific: the
+        # people already in *that thread* are being answered, not merely told the task was
+        # commented on, so they get `task.replied` and drop out of the generic fan-out. Everyone
+        # else in the task's audience gets `task.commented`, exactly as before.
         mentioned_set = set(mentioned)
-        commented = [
-            uid for uid in await self._comment_audience(task) if uid not in mentioned_set
-        ]
+        replied = (
+            [
+                uid
+                for uid in await self._thread_audience(task, parent_id)
+                if uid not in mentioned_set
+            ]
+            if parent_id
+            else []
+        )
+        heard = mentioned_set | set(replied)
+        commented = [uid for uid in await self._comment_audience(task) if uid not in heard]
         if commented:
-            await self._emit_task("task.commented", task, commented, {"excerpt": excerpt})
+            # Leaving someone out of the recipient list is not enough to stop the general
+            # sentence reaching them: the fan-out unions in the task's *watchers*, and commenting
+            # auto-watches, so everyone in `heard` is very likely watching. `_exclude` is what
+            # actually says "these people already heard it, in better words" (#312) — which also
+            # closes the same hole for a mentioned watcher, who used to get both.
+            await self._emit_task(
+                "task.commented",
+                task,
+                commented,
+                {"excerpt": excerpt, "_exclude": list(heard)},
+            )
+        if replied:
+            # Same rule one rung up: a mentioned person in this thread is watching it, so the
+            # reply would reach them as a watcher despite being left out of the list.
+            await self._emit_task(
+                "task.replied",
+                task,
+                replied,
+                {"excerpt": excerpt, "_exclude": list(mentioned_set)},
+            )
         if mentioned:
             await self._emit_task("task.mentioned", task, mentioned, {"excerpt": excerpt})
         return CommentRead.model_validate(comment).model_copy(
@@ -1616,6 +1685,29 @@ class TaskService:
         if task.assignee_user_id is not None:
             authors.add(task.assignee_user_id)
         return list(authors)
+
+    async def _thread_audience(self, task: Task, root_id: uuid.UUID) -> list[uuid.UUID]:
+        """Who is in *this thread*: whoever opened it and everyone who has answered in it (#312).
+
+        Deliberately **not** the assignee. A reply answers the people holding the conversation;
+        an assignee who has never written in it is being told the task was commented on, which is
+        the sentence `task.commented` already says. Folding them in here would turn the whole
+        distinction back into one event with two names.
+        """
+        return list(
+            (
+                await self.ctx.session.execute(
+                    select(TaskComment.author_user_id)
+                    .where(
+                        TaskComment.org_id == self.ctx.org.id,
+                        TaskComment.task_id == task.id,
+                        or_(TaskComment.id == root_id, TaskComment.parent_id == root_id),
+                        TaskComment.author_user_id.is_not(None),
+                    )
+                    .distinct()
+                )
+            ).scalars()
+        )
 
     async def _comment_or_404(self, task_id: uuid.UUID, comment_id: uuid.UUID) -> TaskComment:
         comment = await self.ctx.repo(TaskComment).get_or_404(comment_id)
@@ -1659,6 +1751,30 @@ class TaskService:
         scope = None if comment.author_user_id == self.ctx.user.id else "any"
         self.ctx.require("tasks.comment.write", scope=scope)
         body = comment.body
+        # Deleting a thread opener takes its answers with it (``ON DELETE CASCADE``, #312), so the
+        # trail records how many words went with it — otherwise a five-message conversation
+        # vanishes behind a line describing one of them. Counted *before* the delete, obviously.
+        replies = await self.reply_count(task_id, comment_id) if comment.parent_id is None else 0
         await self.ctx.repo(TaskComment).delete(comment)
         # No id to link to — the row is gone. The excerpt is the only record of what was said.
-        await self._record(task_id, "comment_deleted", {"excerpt": _excerpt(body)})
+        await self._record(
+            task_id,
+            "comment_deleted",
+            {"excerpt": _excerpt(body), **({"replies": replies} if replies else {})},
+        )
+
+    async def reply_count(self, task_id: uuid.UUID, comment_id: uuid.UUID) -> int:
+        """How many answers a thread opener carries — what a delete would take with it (#312)."""
+        return int(
+            (
+                await self.ctx.session.execute(
+                    select(func.count())
+                    .select_from(TaskComment)
+                    .where(
+                        TaskComment.org_id == self.ctx.org.id,
+                        TaskComment.task_id == task_id,
+                        TaskComment.parent_id == comment_id,
+                    )
+                )
+            ).scalar_one()
+        )

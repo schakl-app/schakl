@@ -326,9 +326,15 @@ class ChecklistTemplateRead(ChecklistTemplateBase):
 # --------------------------------------------------------------------------- #
 class CommentCreate(BaseModel):
     body: str = Field(min_length=1)
+    #: The comment this one answers (#312); ``None`` opens a new thread. A reply *to a reply* is
+    #: re-rooted onto its parent's thread rather than refused — threads are one level deep.
+    parent_id: uuid.UUID | None = None
 
 
 class CommentUpdate(BaseModel):
+    """An edit changes the words, never the conversation they were said in — so no ``parent_id``
+    (#312). Moving a message between threads rewrites what both threads said."""
+
     body: str = Field(min_length=1)
 
 
@@ -336,6 +342,10 @@ class CommentRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    #: The comment this answers (#312), or ``None`` for a thread opener. The list stays flat and
+    #: the client nests on this: every existing consumer (the excerpt, the ``#comment-<id>``
+    #: deep link, the count aggregate) keeps working, and the response cap stays one number.
+    parent_id: uuid.UUID | None = None
     author_user_id: uuid.UUID | None
     # The live account's name while it exists, else the snapshot taken when the comment was
     # written (issue #64). ``author_deleted`` says which — the UI marks a departed author

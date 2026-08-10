@@ -211,13 +211,17 @@ export const actions: Actions = {
     return { updated: true };
   },
 
+  // One action for both, because posting a reply *is* posting a comment (#312): a second action
+  // would be a second place to keep the sanitising, the error key and the busy contract in step.
+  // An empty `parent_id` is a thread opener — the reply form simply carries the field.
   addComment: async (event) => {
     const form = await event.request.formData();
     const body = String(form.get("body") ?? "").trim();
+    const parent_id = String(form.get("parent_id") ?? "") || null;
     if (!body) return fail(400, { error: "errors.required" });
     const { error: apiError } = await apiFor(event).POST("/api/v1/tasks/{task_id}/comments", {
       params: { path: { task_id: event.params.id } },
-      body: { body },
+      body: { body, parent_id },
     });
     if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
     return { commented: true };

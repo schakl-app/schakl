@@ -6,6 +6,7 @@
     GripVertical,
     Link as LinkIcon,
     Pencil,
+    Reply,
     Trash2,
   } from "@lucide/svelte";
   import { dndzone } from "svelte-dnd-action";
@@ -95,7 +96,8 @@
   // may finish their task, never destroy it. It was ungated here — the ⋯ menu offered Bewerken
   // and Verwijderen to any staff viewer and let the API say no.
   const canDeleteTask = $derived(can(page.data.user, "tasks.task.delete"));
-  // Commenting is a third key again, and the one thing a portal client *may* write (#193).
+  // Commenting is a third key again, and the one thing a portal client *may* write (#193). It
+  // gates answering a comment too (#312) — a reply is a comment, posted by the same route.
   const canComment = $derived(can(page.data.user, "tasks.comment.write"));
   // Attaching a document is the storage core's permission, not the task's — the same split the
   // project page already makes. Being allowed to edit the task is not being allowed to upload.
@@ -369,6 +371,56 @@
   // Bumped after a comment is posted to remount (and so clear) the markdown editor.
   let newCommentKey = $state(0);
 
+  // --- comment threads (#312) ------------------------------------------------------------- //
+  // The API hands back one flat, chronological list carrying `parent_id`; the nesting is a
+  // display concern, so it is built here. Threads are one level deep by construction (the
+  // service re-roots a reply-to-a-reply), which is what lets this be a group-by rather than a
+  // recursive component — and what keeps a conversation readable at one indent on a phone.
+  type TaskComment = NonNullable<(typeof task)["comments"]>[number];
+  const threads = $derived.by(() => {
+    const list = task.comments ?? [];
+    const out: { root: TaskComment; replies: TaskComment[] }[] = [];
+    // uuid keys, so a plain record indexes them safely — and stays outside Svelte's reactivity
+    // rules, which a Map/Set built inside a $derived would trip for no benefit.
+    const at: Record<string, number> = Object.create(null);
+    const present: Record<string, true> = Object.create(null);
+    for (const c of list) present[c.id] = true;
+    for (const c of list) {
+      // A reply whose parent fell outside the response cap opens its own thread rather than
+      // vanishing: the read orders by thread so this is rare, but "nothing is shown" is never
+      // the better answer to "the conversation is longer than 200 messages".
+      const parent = c.parent_id && present[c.parent_id] ? c.parent_id : null;
+      const idx = parent === null ? undefined : at[parent];
+      if (idx === undefined) {
+        at[c.id] = out.length;
+        out.push({ root: c, replies: [] });
+      } else {
+        out[idx].replies.push(c);
+      }
+    }
+    return out;
+  });
+
+  /** Which thread's reply composer is open, by root id — one at a time, like the edit form. */
+  let replyingTo = $state<string | null>(null);
+  /** Seeded body for that composer: answering a *reply* addresses its author by name, so the
+   *  thread still says who is being answered once several people are in it. */
+  let replySeed = $state("");
+  /** Remounts the composer, so opening it on another thread never inherits a stale draft. */
+  let replyKey = $state(0);
+
+  function openReply(rootId: string, answering: TaskComment) {
+    // The mention marker is the editor's own syntax (`core/richtext/editor.ts`), so the seed
+    // round-trips into a real mention chip rather than literal text. Only for someone with a
+    // live account — a departed author has no id to mention.
+    replySeed =
+      answering.id === rootId || !answering.author_user_id || !answering.author_name
+        ? ""
+        : `@[${answering.author_name}](mention:${answering.author_user_id}) `;
+    replyingTo = rootId;
+    replyKey += 1;
+  }
+
   // One shared confirm for every inline sub-item delete (comment, checklist, item, link):
   // the ⋯ Delete sets the action/fields/message, then opens the dialog which owns the form.
   let subConfirmOpen = $state(false);
@@ -526,6 +578,15 @@
       a.action === "checklist_item_deleted"
     ) {
       return t(`tasks.activity.${a.action}`, { title: String(a.payload.title ?? "") });
+    }
+    // Deleting a thread opener took its answers with it (#312) — the trail says how many, or a
+    // five-message conversation disappears behind a line describing one comment.
+    if (a.action === "comment_deleted" && Number(a.payload.replies ?? 0) > 0) {
+      const count = Number(a.payload.replies);
+      const excerpt = String(a.payload.excerpt ?? "");
+      return count === 1
+        ? t("tasks.activity.comment_deleted_thread_one", { excerpt })
+        : t("tasks.activity.comment_deleted_thread_other", { count, excerpt });
     }
     // Comment rows carry an excerpt of what was said; rows written before they did fall back
     // to the bare verb rather than quoting an empty string (#61).
@@ -1207,95 +1268,185 @@
         </form>
       {/if}
 
-      {#if (task.comments ?? []).length === 0}
+      <!-- One bubble, rendered for a thread opener and for an answer alike (#312): the two differ
+           in where they sit and how loud they are, never in what they can do. Duplicating the
+           markup would have been two places to keep the ⋯ menu, the edit form and the
+           impersonation badge in step. -->
+      {#snippet commentBubble(
+        comment: TaskComment,
+        rootId: string,
+        replyCount: number,
+        isReply: boolean,
+      )}
+        <!-- Being the author is half of it: `update_comment` refuses a non-author outright
+             and still requires the key from the author. Deleting your own needs the same
+             key; deleting someone else's needs it at `:any`. -->
+        {@const canEditComment = comment.author_user_id === userId && canComment}
+        {@const canDeleteComment = canEditComment || canDeleteAnyComment}
+        <div
+          id="comment-{comment.id}"
+          class="rounded-lg border border-border p-3 {isReply ? 'bg-surface/30' : 'bg-surface/50'}"
+        >
+          <div class="mb-1 flex items-center justify-between gap-2">
+            <span class="flex items-center gap-1.5 text-xs font-semibold text-text">
+              {authorLabel(comment)}
+              <!-- Written through this account by someone else (#296): the agency's own words
+                   would otherwise sit under the client's name with nothing to say so. -->
+              {#if comment.impersonator_name}
+                <span
+                  class="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-300"
+                  title={t("activity.impersonated_title", {
+                    actor: comment.impersonator_name,
+                  })}
+                >
+                  {t("activity.via_impersonator", { actor: comment.impersonator_name })}
+                </span>
+              {/if}
+            </span>
+            <div class="flex items-center gap-1 text-[11px] text-text-muted">
+              <span>{when(comment.created_at)}</span>
+              {#if comment.edited_at}<span>({t("tasks.comments.edited")})</span>{/if}
+              {#if canDeleteComment}
+                <ActionsMenu
+                  compact
+                  items={[
+                    ...(canEditComment
+                      ? [
+                          {
+                            label: t("common.edit"),
+                            icon: Pencil,
+                            onclick: () =>
+                              (editingCommentId =
+                                editingCommentId === comment.id ? null : comment.id),
+                          },
+                        ]
+                      : []),
+                    {
+                      label: t("common.delete"),
+                      icon: Trash2,
+                      danger: true,
+                      // Deleting a thread opener takes its answers with it (ON DELETE CASCADE),
+                      // so the confirm counts them: a dialog that says "this comment" while five
+                      // messages disappear is the one thing an undo-less delete may not do.
+                      onclick: () =>
+                        askDelete(
+                          "?/deleteComment",
+                          { comment_id: comment.id },
+                          replyCount === 0
+                            ? t("tasks.comments.delete_confirm")
+                            : replyCount === 1
+                              ? t("tasks.comments.delete_thread_confirm_one")
+                              : t("tasks.comments.delete_thread_confirm_other", {
+                                  count: replyCount,
+                                }),
+                        ),
+                    },
+                  ]}
+                />
+              {/if}
+            </div>
+          </div>
+          {#if editingCommentId === comment.id}
+            <form
+              method="POST"
+              action="?/editComment"
+              use:enhance={busy.wrap("editComment", () => ({ update }) => {
+                editingCommentId = null;
+                void update({ reset: false });
+              })}
+            >
+              <input type="hidden" name="comment_id" value={comment.id} />
+              <RichTextEditor
+                name="body"
+                rows={2}
+                required
+                value={comment.body}
+                scope={candidateScope}
+              />
+              <div class="mt-1 flex gap-2">
+                <Button size="xs" loading={busy.is("editComment")}>{t("common.save")}</Button>
+                <button
+                  type="button"
+                  class="rounded-lg border border-border px-2 py-1 text-xs"
+                  onclick={() => (editingCommentId = null)}>{t("common.cancel")}</button
+                >
+              </div>
+            </form>
+          {:else}
+            <Markdown value={comment.body} />
+            <!-- Answering is not "editing the definition", so it stays inline rather than hiding
+                 in the ⋯ menu (docs/UX.md). It gates on the same permission the POST declares —
+                 a client portal login holds it, and its own task comments are its whole write
+                 surface. -->
+            {#if canComment}
+              <button
+                type="button"
+                class="mt-1.5 inline-flex items-center gap-1 rounded text-[11px] font-medium text-text-muted hover:text-text"
+                onclick={() => openReply(rootId, comment)}
+              >
+                <Reply class="size-3" aria-hidden="true" />
+                {t("tasks.comments.reply")}
+              </button>
+            {/if}
+          {/if}
+        </div>
+      {/snippet}
+
+      {#if threads.length === 0}
         <p class="text-sm text-text-muted">{t("tasks.comments.empty")}</p>
       {:else}
         <ul class="space-y-3">
-          {#each task.comments ?? [] as comment (comment.id)}
-            <!-- Being the author is half of it: `update_comment` refuses a non-author outright
-                 and still requires the key from the author. Deleting your own needs the same
-                 key; deleting someone else's needs it at `:any`. -->
-            {@const canEditComment = comment.author_user_id === userId && canComment}
-            {@const canDeleteComment = canEditComment || canDeleteAnyComment}
-            <li id="comment-{comment.id}" class="rounded-lg border border-border bg-surface/50 p-3">
-              <div class="mb-1 flex items-center justify-between gap-2">
-                <span class="flex items-center gap-1.5 text-xs font-semibold text-text">
-                  {authorLabel(comment)}
-                  <!-- Written through this account by someone else (#296): the agency's own words
-                       would otherwise sit under the client's name with nothing to say so. -->
-                  {#if comment.impersonator_name}
-                    <span
-                      class="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-300"
-                      title={t("activity.impersonated_title", {
-                        actor: comment.impersonator_name,
-                      })}
-                    >
-                      {t("activity.via_impersonator", { actor: comment.impersonator_name })}
-                    </span>
-                  {/if}
-                </span>
-                <div class="flex items-center gap-1 text-[11px] text-text-muted">
-                  <span>{when(comment.created_at)}</span>
-                  {#if comment.edited_at}<span>({t("tasks.comments.edited")})</span>{/if}
-                  {#if canDeleteComment}
-                    <ActionsMenu
-                      compact
-                      items={[
-                        ...(canEditComment
-                          ? [
-                              {
-                                label: t("common.edit"),
-                                icon: Pencil,
-                                onclick: () =>
-                                  (editingCommentId =
-                                    editingCommentId === comment.id ? null : comment.id),
-                              },
-                            ]
-                          : []),
-                        {
-                          label: t("common.delete"),
-                          icon: Trash2,
-                          danger: true,
-                          onclick: () =>
-                            askDelete(
-                              "?/deleteComment",
-                              { comment_id: comment.id },
-                              t("tasks.comments.delete_confirm"),
-                            ),
-                        },
-                      ]}
-                    />
-                  {/if}
-                </div>
-              </div>
-              {#if editingCommentId === comment.id}
+          {#each threads as thread (thread.root.id)}
+            <li>
+              {@render commentBubble(thread.root, thread.root.id, thread.replies.length, false)}
+
+              <!-- Answers hang off their opener under one rule, at one indent. A second level
+                   would indent itself off a phone; the API re-roots instead of nesting deeper. -->
+              {#if thread.replies.length > 0}
+                <ul class="mt-2 space-y-2 border-l-2 border-border pl-3 sm:pl-4">
+                  {#each thread.replies as reply (reply.id)}
+                    <li>{@render commentBubble(reply, thread.root.id, 0, true)}</li>
+                  {/each}
+                </ul>
+              {/if}
+
+              {#if replyingTo === thread.root.id}
                 <form
                   method="POST"
-                  action="?/editComment"
-                  use:enhance={busy.wrap("editComment", () => ({ update }) => {
-                    editingCommentId = null;
-                    void update({ reset: false });
+                  action="?/addComment"
+                  use:enhance={busy.wrap("addComment", () => ({ update, result }) => {
+                    // Close on success, keep the draft on failure — the words are not the
+                    // server's to throw away (docs/UX.md, the reset rule).
+                    if (result.type === "success") replyingTo = null;
+                    void update({ reset: result.type === "success" });
                   })}
+                  class="mt-2 border-l-2 border-brand/40 pl-3 sm:pl-4"
                 >
-                  <input type="hidden" name="comment_id" value={comment.id} />
-                  <RichTextEditor
-                    name="body"
-                    rows={2}
-                    required
-                    value={comment.body}
-                    scope={candidateScope}
-                  />
-                  <div class="mt-1 flex gap-2">
-                    <Button size="xs" loading={busy.is("editComment")}>{t("common.save")}</Button>
+                  <input type="hidden" name="parent_id" value={thread.root.id} />
+                  <p class="mb-1 text-[11px] text-text-muted">
+                    {t("tasks.comments.reply_to", { name: authorLabel(thread.root) })}
+                  </p>
+                  {#key replyKey}
+                    <RichTextEditor
+                      name="body"
+                      rows={2}
+                      required
+                      value={replySeed}
+                      placeholder={t("tasks.comments.reply_placeholder")}
+                      scope={candidateScope}
+                    />
+                  {/key}
+                  <div class="mt-2 flex gap-2">
+                    <Button size="xs" loading={busy.is("addComment")}
+                      >{t("tasks.comments.send")}</Button
+                    >
                     <button
                       type="button"
                       class="rounded-lg border border-border px-2 py-1 text-xs"
-                      onclick={() => (editingCommentId = null)}>{t("common.cancel")}</button
+                      onclick={() => (replyingTo = null)}>{t("common.cancel")}</button
                     >
                   </div>
                 </form>
-              {:else}
-                <Markdown value={comment.body} />
               {/if}
             </li>
           {/each}

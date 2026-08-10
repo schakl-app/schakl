@@ -150,6 +150,15 @@ asserts the resolved pref carries the window on the e-mail *and* the channel pat
 - **Which notification a delivery hangs off** is the one thing still not a preference. A personal
   channel takes its owner's row; a shared room takes the first of the batch, because the room's
   one message stands in for the whole audience rather than for a recipient.
+- **One write, one sentence per person.** When the same act produces several events of differing
+  specificity — a task comment is `task.mentioned` for whoever it names, `task.replied` for the
+  thread it lands in, and `task.commented` for everyone else — the emitter must *say* who has
+  already been told, not merely leave them out of `_recipients`. The dispatcher unions in the
+  record's **watchers** after the hint, and the people a narrower event is aimed at are precisely
+  the ones watching (commenting on a record auto-watches it), so an omission is silently undone.
+  `_exclude` (`EXCLUDE_KEY`) is the reserved key that states it: a list of user ids subtracted
+  after the watcher union and before the actor is dropped. An emitter that says nothing behaves
+  exactly as before.
 
 One nuance worth knowing before you go looking for it: a channel splits its cadence from its
 *schedule*. The cadence (off / immediate / hourly / daily / weekly) is per event, in the matrix;

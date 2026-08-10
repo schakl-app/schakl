@@ -223,6 +223,19 @@
   routine thing that happens on a task, was invisible (#61). And a row says *what* happened:
   a comment entry carries an excerpt and links to the comment, rather than reading "commented"
   and sending the reader hunting.
+- **A comment thread is one level deep, and answering is not "editing"** (#312). Replies hang off
+  their opener under a single left rule at one indent — a second level indents itself off a phone
+  and gives two readers two different reading orders, so the API *re-roots* a reply-to-a-reply
+  onto the same thread rather than refusing it. **Reply** is therefore an ordinary inline control
+  under the message (use mode), not an ⋯ item; the ⋯ menu stays for Edit/Delete. Opener and answer
+  render through **one snippet** — they differ in where they sit and how loud they are, never in
+  what they can do — and the reply composer seeds an `@mention` of whoever is being answered, so a
+  thread with three people in it still says who a given answer is for. Two consequences to keep:
+  deleting an opener **takes its answers with it** (`ON DELETE CASCADE`), so the confirm counts
+  them out loud and the activity row says how many — an undo-less delete may never describe one
+  comment while five disappear; and the composer keeps its draft on failure and closes only on
+  success (`update({ reset: result.type === "success" })`), because the words are not the server's
+  to throw away.
 - **Edit on a list row opens the record in edit mode** (#78). A list has no edit surface of its
   own — the form lives on the detail page, and duplicating it onto the overview would be a second
   copy to keep in sync. So the row ⋯ → Bewerken is a *link* to the detail page carrying `?edit=1`

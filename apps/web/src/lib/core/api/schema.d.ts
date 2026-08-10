@@ -11462,6 +11462,8 @@ export interface components {
         CommentCreate: {
             /** Body */
             body: string;
+            /** Parent Id */
+            parent_id?: string | null;
         };
         /** CommentRead */
         CommentRead: {
@@ -11496,8 +11498,14 @@ export interface components {
             mentioned_task_ids?: string[];
             /** Mentioned User Ids */
             mentioned_user_ids?: string[];
+            /** Parent Id */
+            parent_id?: string | null;
         };
-        /** CommentUpdate */
+        /**
+         * CommentUpdate
+         * @description An edit changes the words, never the conversation they were said in — so no ``parent_id``
+         *     (#312). Moving a message between threads rewrites what both threads said.
+         */
         CommentUpdate: {
             /** Body */
             body: string;

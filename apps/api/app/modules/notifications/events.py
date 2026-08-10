@@ -32,6 +32,11 @@ TASK_ASSIGNED = "task.assigned"
 TASK_UNASSIGNED = "task.unassigned"
 TASK_STATUS_CHANGED = "task.status_changed"
 TASK_COMMENTED = "task.commented"
+# Someone answered a comment in a thread you are in (#312) — the root's author and everyone who
+# has replied in it. Deliberately narrower than TASK_COMMENTED, which the same write still sends
+# to the rest of the task's audience: being answered and being told a task was commented on are
+# different sentences, and a recipient hears exactly one of them.
+TASK_REPLIED = "task.replied"
 TASK_MENTIONED = "task.mentioned"
 TASK_DUE_SOON = "task.due_soon"
 TASK_OVERDUE = "task.overdue"
@@ -73,6 +78,7 @@ EVENT_TYPES: tuple[str, ...] = (
     TASK_UNASSIGNED,
     TASK_STATUS_CHANGED,
     TASK_COMMENTED,
+    TASK_REPLIED,
     TASK_MENTIONED,
     TASK_DUE_SOON,
     TASK_OVERDUE,
@@ -98,6 +104,7 @@ ENTITY_FOR_EVENT: dict[str, str] = {
     TASK_UNASSIGNED: ENTITY_TASK,
     TASK_STATUS_CHANGED: ENTITY_TASK,
     TASK_COMMENTED: ENTITY_TASK,
+    TASK_REPLIED: ENTITY_TASK,
     TASK_MENTIONED: ENTITY_TASK,
     TASK_DUE_SOON: ENTITY_TASK,
     TASK_OVERDUE: ENTITY_TASK,
@@ -136,6 +143,13 @@ CHANNEL_WEB_PUSH = "web_push"
 #: are stripped before the event row is persisted (they are routing, not content).
 RECIPIENTS_KEY = "_recipients"
 DEDUP_KEY = "_dedup_key"
+#: People who are hearing a *more specific* sentence about this same write, and must therefore
+#: not hear the general one (#312). Leaving them out of ``_recipients`` is not enough: the
+#: dispatcher unions in the record's **watchers**, and the people a narrower event is aimed at
+#: are exactly the ones most likely to be watching — someone who has commented on a task is
+#: auto-watching it. So "you said it another way" has to be stated to the dispatcher, not merely
+#: implied by an omission. Subtracted after the watcher union, before the actor is dropped.
+EXCLUDE_KEY = "_exclude"
 
 # --- digest cadences --------------------------------------------------------------------- #
 DIGEST_IMMEDIATE = "immediate"
