@@ -45,6 +45,7 @@ from app.db import async_session_maker, set_current_org
 from app.errors import AppError
 from app.modules.cloudflare import redirects as rules
 from app.modules.cloudflare.client import (
+    IP_RESTRICTED_CODE,
     CloudflareAuthError,
     CloudflareClient,
     CloudflareError,
@@ -116,6 +117,15 @@ _ERROR_CODES: dict[int, tuple[str, str, int]] = {
     # it ever looks the token up. Left on the generic key it read as "Cloudflare refused this
     # request", which points at Cloudflare; the thing to fix is the token the admin just pasted.
     6003: ("cloudflare_token_rejected", "errors.cloudflare_token_rejected", 409),
+    # **A token can be perfectly valid and refused from here.** Cloudflare tokens carry an
+    # optional Client IP Address Filter, and a call from an address outside it answers 403/9109,
+    # *"Cannot use the access token from location: <ip>"* — at every endpoint, so every probe
+    # fails, `capabilities` comes back empty and the row reads exactly like a dead credential.
+    # It is neither: nothing about the token needs re-minting, and no permission is missing. The
+    # fix is one line in Cloudflare's own token screen, and it is unreachable from any sentence
+    # about scopes or validity — which is why this code gets its own key rather than the
+    # blanket auth one it used to collapse into.
+    IP_RESTRICTED_CODE: ("cloudflare_token_ip_blocked", "errors.cloudflare_token_ip_blocked", 409),
     1061: ("cloudflare_zone_exists", "errors.cloudflare_zone_exists", 409),
     1049: ("cloudflare_zone_not_found", "errors.cloudflare_zone_not_found", 409),
     81053: ("cloudflare_record_exists", "errors.cloudflare_record_exists", 409),
@@ -182,6 +192,21 @@ def _unavailable(report: dict[str, Any], probe: str) -> None:
     projects behind one unreadable token is still one thing the admin has to fix."""
     if probe not in report["unavailable"]:
         report["unavailable"].append(probe)
+
+
+def _token_is_broken(exc: CloudflareError) -> bool:
+    """Is this refusal about the **credential** rather than about one call's scope?
+
+    The rule was "only a 401", and that is right for the reason ``_flag_account`` gives: a 403
+    normally means *this token is not scoped for this endpoint*, which is degraded, not broken,
+    and is already reported per capability. **9109 is the exception, and it is a 403.** A token
+    outside its own IP filter is refused everywhere, so treating it as a scope answer left the
+    row green, the capability list empty, and the admin reading "not granted" against five
+    permissions the token actually holds.
+    """
+    if not isinstance(exc, CloudflareAuthError):
+        return False
+    return exc.status == 401 or exc.code == IP_RESTRICTED_CODE
 
 
 def _pages_error(row: dict[str, Any]) -> str | None:
@@ -545,15 +570,22 @@ class CloudflareService:
         Cloudflare's own text is never put in the envelope — it is not translatable and §9 does
         not allow it there. It is persisted on the row's ``last_error`` wherever the operation
         still commits (verify, sync, check), which is where a user can read it.
+
+        **The numeric code is consulted first, and the auth class second.** It used to be the
+        other way round, which made :data:`_ERROR_CODES` unreachable for every 401 and 403 —
+        so 9109, "this token may not be used from this IP", came out as "Cloudflare rejected
+        the token" and pointed a working credential at the one fix that could not help. The
+        class is a *fallback* for a refusal Cloudflare did not give a code to: a specific code
+        is strictly better evidence than the status that carried it.
         """
-        if isinstance(exc, CloudflareAuthError):
-            return AppError(
-                "cloudflare_token_rejected", "errors.cloudflare_token_rejected", status_code=409
-            )
         mapped = _ERROR_CODES.get(exc.code or -1)
         if mapped:
             code, key, status = mapped
             return AppError(code, key, status_code=status)
+        if isinstance(exc, CloudflareAuthError):
+            return AppError(
+                "cloudflare_token_rejected", "errors.cloudflare_token_rejected", status_code=409
+            )
         if exc.status is None:
             return AppError(
                 "cloudflare_unreachable", "errors.cloudflare_unreachable", status_code=502
@@ -1903,8 +1935,10 @@ class CloudflareService:
         left an agency's DNS-only token reading "Token problem" for ever over an optional Pages
         probe it was never meant to pass. The text is still recorded either way, because a
         missing scope is worth reading; it is the red status it does not earn.
+
+        The one 403 that *does* earn it is ``9109`` — see :func:`_token_is_broken`.
         """
-        rejected = isinstance(exc, CloudflareAuthError) and exc.status == 401
+        rejected = _token_is_broken(exc)
         await self.accounts.update(
             account,
             status=CloudflareAccountStatus.ERROR.value if rejected else account.status,
@@ -1931,7 +1965,7 @@ class CloudflareService:
         It must never replace the error it is recording, so a failure to write it is logged and
         swallowed. Losing the note is bad; losing the exception is worse.
         """
-        rejected = isinstance(exc, CloudflareAuthError) and exc.status == 401
+        rejected = _token_is_broken(exc)
         try:
             async with async_session_maker() as session:
                 await set_current_org(session, self.ctx.org.id)
@@ -2067,6 +2101,24 @@ class CloudflareService:
                 )
             ).all()
         )
+        # One query for every project's hostnames, never one per project (docs/PERFORMANCE.md):
+        # the shape this replaces is invisible in the JSON and only shows up on an account with
+        # thirty projects. Through the links' own scoped repository, so the company horizon
+        # applies here exactly as it does on a domain page — a member restricted to one client
+        # sees the project and only that client's hostnames on it.
+        hostnames: dict[uuid.UUID, list[str]] = {}
+        for link in (
+            (
+                await self.ctx.session.execute(
+                    self.pages_links.scoped_select()
+                    .where(CloudflarePagesLink.project_id.in_({p.id for p in projects}))
+                    .order_by(CloudflarePagesLink.hostname)
+                )
+            )
+            .scalars()
+            .all()
+        ):
+            hostnames.setdefault(link.project_id, []).append(link.hostname)
         return [
             {
                 "id": p.id,
@@ -2075,6 +2127,7 @@ class CloudflareService:
                 "name": p.name,
                 "subdomain": p.subdomain,
                 "production_branch": p.production_branch,
+                "hostnames": hostnames.get(p.id, []),
             }
             for p in projects
         ]

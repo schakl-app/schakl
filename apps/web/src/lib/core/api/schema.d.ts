@@ -17043,6 +17043,8 @@ export interface components {
             account_id: string;
             /** Account Name */
             account_name?: string | null;
+            /** Hostnames */
+            hostnames?: string[];
             /**
              * Id
              * Format: uuid

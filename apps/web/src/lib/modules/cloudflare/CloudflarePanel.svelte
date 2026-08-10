@@ -61,6 +61,13 @@
   const zone = $derived(status?.zone ?? null);
   const redirect = $derived(status?.redirect ?? null);
   const issues = $derived(status?.issues ?? []);
+  // The API raises findings for an **unconnected** domain too: `domain_says_redirect` (this
+  // record says it redirects and no rule of ours does, which is exactly how a redirect wired
+  // outside schakl looks) and `duplicate_zone`. They were computed and then dropped, because
+  // the issues box lived inside the connected branch — so the one state where a finding cannot
+  // be discovered any other way was the one state that rendered none of them.
+  // `not_connected` is dropped instead: the paragraph above already says it.
+  const openIssues = $derived(issues.filter((issue) => issue !== "not_connected"));
 
   // What the page draws is what schakl stored, so the one thing it cannot leave unsaid is how
   // old that is: "no conflicts" from a check that ran in March is not the same sentence as
@@ -111,6 +118,20 @@
 {#if !zone}
   <!-- Not connected. -->
   <p class="text-sm text-text-muted">{t("cloudflare.panel.not_connected")}</p>
+  <!-- What the API found anyway. A domain marked "redirect" here with nothing behind it at
+       Cloudflare is the #96 webhook-era state this module exists to replace, and it is only
+       visible while the domain is unconnected — which is precisely when this box used not to
+       render at all. -->
+  {#if openIssues.length > 0}
+    <div class="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:bg-amber-950/30">
+      <p class="mb-1 text-xs font-medium text-text">{t("cloudflare.issues.title")}</p>
+      <ul class="list-inside list-disc space-y-1 text-sm text-text">
+        {#each openIssues as issue (issue)}
+          <li>{t(`cloudflare.issue.${issue}`)}</li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
   {#if canManage}
     {#if activeAccounts.length === 0}
       <p class="mt-2 text-sm text-text-muted">{t("cloudflare.issue.no_account")}</p>

@@ -21,13 +21,19 @@
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
-  import { CAPABILITIES, type AccountRead, type ZoneRead } from "$lib/modules/cloudflare/types";
+  import {
+    CAPABILITIES,
+    type AccountRead,
+    type PagesProject,
+    type ZoneRead,
+  } from "$lib/modules/cloudflare/types";
 
   let { data, form } = $props();
 
   const accounts = $derived((data.accounts ?? []) as AccountRead[]);
   const zones = $derived((data.zones ?? []) as ZoneRead[]);
   const providers = $derived(data.providers ?? []);
+  const projects = $derived((data.projects ?? []) as PagesProject[]);
 
   const busy = new InFlight();
   let adding = $state(false);
@@ -41,6 +47,10 @@
 
   function zonesOf(accountId: string): ZoneRead[] {
     return zones.filter((zone) => zone.account_id === accountId);
+  }
+
+  function projectsOf(accountId: string): PagesProject[] {
+    return projects.filter((project) => project.account_id === accountId);
   }
 
   function zoneStatus(value: string): string {
@@ -373,7 +383,7 @@
               <thead class="text-left text-xs text-text-muted">
                 <tr>
                   <th class="py-1 pr-3 font-medium">{t("cloudflare.dns.name")}</th>
-                  <th class="py-1 pr-3 font-medium">{t("cloudflare.pages.status")}</th>
+                  <th class="py-1 pr-3 font-medium">{t("cloudflare.zones.status")}</th>
                   <th class="py-1 pr-3 font-medium">{t("cloudflare.zones.domain")}</th>
                   <th class="py-1"><span class="sr-only">…</span></th>
                 </tr>
@@ -410,6 +420,57 @@
                           </Button>
                         </form>
                       {/if}
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {/if}
+      </div>
+
+      <!-- The account's Pages projects. The other half of what a sync pulls in, and until now
+           the half with nowhere to be read: the sync banner counted them and then the next
+           navigation threw the count away, so an admin asking "did it find my projects?" had
+           to open a domain and look in a dropdown. Read-only here on purpose — a hostname is
+           linked on the domain it belongs to, which is what gives the link its client. -->
+      <div class="mt-4 border-t border-border pt-3">
+        <p class="mb-2 text-xs font-medium text-text">
+          {t("cloudflare.pages.title")}
+          <span class="font-normal text-text-muted">({projectsOf(account.id).length})</span>
+        </p>
+        {#if projectsOf(account.id).length === 0}
+          <p class="text-sm text-text-muted">{t("cloudflare.pages.projects_empty")}</p>
+        {:else}
+          <p class="mb-2 text-xs text-text-muted">{t("cloudflare.pages.projects_intro")}</p>
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[28rem] text-sm">
+              <thead class="text-left text-xs text-text-muted">
+                <tr>
+                  <th class="py-1 pr-3 font-medium">{t("cloudflare.dns.name")}</th>
+                  <th class="py-1 pr-3 font-medium">{t("cloudflare.pages.subdomain")}</th>
+                  <th class="py-1 pr-3 font-medium">{t("cloudflare.pages.branch")}</th>
+                  <th class="py-1 font-medium">{t("cloudflare.pages.hostnames")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each projectsOf(account.id) as project (project.id)}
+                  <tr class="border-t border-border">
+                    <td class="min-w-0 break-all py-1.5 pr-3 text-text">{project.name}</td>
+                    <td class="min-w-0 break-all py-1.5 pr-3 text-text-muted">
+                      {project.subdomain ?? "—"}
+                    </td>
+                    <td class="py-1.5 pr-3 text-text-muted">
+                      {project.production_branch ?? "—"}
+                    </td>
+                    <!-- The answer to "is this project actually attached to one of our sites?".
+                         A project serving nothing schakl knows about is the normal state right
+                         after a first sync, and it is a different sentence from an empty list
+                         of projects — which is what this screen used to show for both. -->
+                    <td class="min-w-0 break-all py-1.5 text-text-muted">
+                      {project.hostnames?.length
+                        ? project.hostnames.join(", ")
+                        : t("cloudflare.pages.hostnames_none")}
                     </td>
                   </tr>
                 {/each}

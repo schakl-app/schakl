@@ -4634,5 +4634,13 @@
   "settings.invoicing.public_links_heading": "Public invoice link",
   "settings.invoicing.public_links_hint": "Every invoice you issue gets its own web address. The QR code and the link in the email lead to it, so a client can view and pay the invoice without an account.",
   "settings.invoicing.public_links_enabled": "Give issued invoices a public link",
-  "settings.invoicing.public_links_off_hint": "Turning this off also stops links that have already been printed or emailed from working."
+  "settings.invoicing.public_links_off_hint": "Turning this off also stops links that have already been printed or emailed from working.",
+  "errors.cloudflare_token_ip_blocked": "Cloudflare will not accept this token from this server's IP address. The token itself is fine: add the address to its Client IP Address Filter at Cloudflare, or remove the filter. The address Cloudflare named is in the last message below.",
+  "cloudflare.zones.status": "Status",
+  "cloudflare.pages.projects_empty": "No Pages projects fetched yet.",
+  "cloudflare.pages.subdomain": "pages.dev address",
+  "cloudflare.pages.branch": "Production branch",
+  "cloudflare.pages.hostnames": "Linked hostnames",
+  "cloudflare.pages.hostnames_none": "None",
+  "cloudflare.pages.projects_intro": "What the sync found in this account. A hostname a project already serves is matched to its domain automatically; linking a new one happens on the domain itself."
 }

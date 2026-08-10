@@ -20,7 +20,11 @@ import type { Actions, PageServerLoad } from "./$types";
 export const load: PageServerLoad = async (event) => {
   if (!can(event.locals.user, "cloudflare.settings.manage")) throw redirect(303, "/settings");
   const api = apiFor(event);
-  const [accounts, zones, providers] = await Promise.all([
+  // The Pages list is inventory, not credential state, so it carries `cloudflare.dns.read` —
+  // a different key from this screen's own gate. They are separable, so a role holding only
+  // `settings.manage` must not fire a call that can do nothing but 403.
+  const mayRead = can(event.locals.user, "cloudflare.dns.read");
+  const [accounts, zones, providers, projects] = await Promise.all([
     api.GET("/api/v1/cloudflare/accounts"),
     // The zone list is the inventory, not a paged screen of its own: an agency's Cloudflare
     // accounts hold tens of zones, and the page shows them grouped by account.
@@ -28,11 +32,19 @@ export const load: PageServerLoad = async (event) => {
     // For the "which provider is this" label (#89). `dns` is the kind a Cloudflare account is;
     // the catalog endpoint filters server-side, so nothing unrelated crosses the wire.
     api.GET("/api/v1/providers", { params: { query: { kind: "dns" } } }),
+    // The other half of what a sync pulls in. Without it, Pages appeared on this screen only as
+    // three numbers on a banner that the next navigation throws away — so "did the sync find my
+    // projects?" was answerable nowhere. The rows existed, and the one screen named after the
+    // account they came from never showed them.
+    mayRead
+      ? api.GET("/api/v1/cloudflare/pages/projects")
+      : Promise.resolve({ data: [] as never[] }),
   ]);
   return {
     accounts: accounts.data ?? [],
     zones: zones.data?.items ?? [],
     providers: (providers.data ?? []).map((p) => ({ id: p.id, name: p.name })),
+    projects: projects.data ?? [],
   };
 };
 

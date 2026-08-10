@@ -238,6 +238,13 @@ class PagesProjectRead(BaseModel):
     name: str
     subdomain: str | None = None
     production_branch: str | None = None
+    #: The hostnames this project serves that schakl has filed under a domain. The picker
+    #: ignores it; the settings screen is what needs it, because *"your projects were synced"*
+    #: and *"your sites are attached to them"* are different claims, and only the second is
+    #: what an agency opened the screen to check. Horizon-filtered by the links' own scoped
+    #: repository (§15/#285), so a restricted member sees the project and only the hostnames
+    #: belonging to clients they may see.
+    hostnames: list[str] = Field(default_factory=list)
 
 
 class PagesLinkRead(BaseModel):

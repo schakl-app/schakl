@@ -63,6 +63,14 @@ CAPABILITIES: tuple[str, ...] = (
     "registrar_read",
 )
 
+#: Cloudflare's code for "this token carries a **Client IP Address Filter** and the address you
+#: are calling from is not on it" — HTTP 403, *"Cannot use the access token from location: <ip>"*.
+#: It is a 403 and it is the one 403 that says nothing whatsoever about scope: the token is
+#: valid, correctly permissioned, and refused for **every** call from this network. Named here
+#: because that difference is the entire diagnosis, and reading it as either "invalid token" or
+#: "missing permission" sends an admin to re-mint a credential that was never the problem.
+IP_RESTRICTED_CODE = 9109
+
 #: The phase whose entrypoint ruleset holds Redirect Rules ("Single Redirects").
 REDIRECT_PHASE = "http_request_dynamic_redirect"
 

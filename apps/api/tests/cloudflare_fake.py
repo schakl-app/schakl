@@ -75,6 +75,13 @@ class FakeCloudflare:
         #: Answer every call the way Cloudflare answers a malformed credential: 400/6003, before
         #: it ever looks the token up — deliberately *not* a 401 (observed against the live API).
         self.malformed_token = False
+        #: The caller's IP, when the token carries a **Client IP Address Filter** that does not
+        #: include it: 403/9109 at *every* endpoint (observed against the live API). Modelled as
+        #: its own state rather than as an entry in ``deny`` because the two are opposites — a
+        #: denied fragment is one endpoint this token is not scoped for, while this is a token
+        #: that is scoped for everything and refused for all of it. A fake that could only
+        #: express the first is a fake in which this failure does not exist.
+        self.ip_blocked: str | None = None
         #: Every (method, path) that arrived, for asserting what was *not* called.
         self.calls: list[tuple[str, str]] = []
 
@@ -186,6 +193,11 @@ class FakeCloudflare:
         token = request.headers.get("Authorization", "").removeprefix("Bearer ")
         if self.malformed_token:
             return _err(400, "Invalid format for Authorization header", 6003)
+        # The IP filter is part of authenticating the token, so it refuses everything — including
+        # both verify endpoints. A valid, fully scoped credential looks identical to a dead one
+        # from the outside; only the code tells them apart.
+        if self.ip_blocked:
+            return _err(403, f"Cannot use the access token from location: {self.ip_blocked}", 9109)
         # A token Cloudflare does not accept is refused at **every** endpoint, not just at the
         # verify one. Modelling it as "verify says no, everything else works" is precisely the
         # fiction that let a valid account-owned token read as a dead one for a release: the

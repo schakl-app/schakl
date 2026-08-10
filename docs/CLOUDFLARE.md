@@ -76,6 +76,40 @@ The same shape is why the fake had to change: it modelled a dead token as "verif
 everything else works", which is not a Cloudflare that exists. The only test that could have caught
 this was passing against a fiction. A token the fake rejects is now rejected at every path.
 
+### A valid token, refused from here (403 / 9109)
+
+The third way a perfectly good credential reads as a dead one, and the most expensive so far.
+Cloudflare tokens carry an optional **Client IP Address Filter**, and a call from an address
+outside it answers `403` with code `9109`, *"Cannot use the access token from location: <ip>"* —
+at **every** endpoint, both verify URLs included. Every probe fails, `capabilities` comes back
+empty, and the row is indistinguishable from a revoked token unless somebody reads the code.
+
+It was worse than indistinguishable, because `_translate` matched `CloudflareAuthError` **before**
+consulting `_ERROR_CODES`. That ordering made the whole code table unreachable for every 401 and
+403, so 9109 came out as `errors.cloudflare_token_rejected` — *"check that it is valid and has the
+required permissions"*, the one sentence that cannot lead to the fix. The token is valid, the
+permissions are right, and the repair is one line in Cloudflare's own token screen. The code is now
+read first and the auth class is the fallback: **a refusal Cloudflare gave a number to is better
+evidence than the status that carried it.**
+
+Two smaller rules fall out, and neither is about Cloudflare.
+
+- **"Only a 401 marks the row broken" needed exactly one exception, and it is a 403.** That rule
+  (below) is right because a 403 normally means *not scoped for this call* — degraded, and already
+  reported per capability. 9109 is a 403 that means *nothing works at all*, so `_token_is_broken`
+  names the two cases together and `_flag_account` / `_record_failure` both take it from there.
+  Under the old rule the screen stayed green over a credential that could not read one zone.
+- **The failure is invisible to the half of the module that would have caught it.** The zone sync
+  raises and stops, so nothing downstream runs and Pages and Registrar report zero — which reads
+  exactly like *"this account has no Pages projects"*. §6's blank-panel trap, arrived at from a
+  different direction: the counts were honest and the conclusion a reader drew from them was not.
+
+`tests/cloudflare_fake.py` models it as its own state (`ip_blocked`) rather than as a `deny`
+fragment, because the two are opposites: a denied fragment is one endpoint this token may not
+touch, and this is a token scoped for everything and refused for all of it. A fake that can only
+express the first is a fake in which this failure does not exist — the lesson the account-owned
+token taught one section up, in a second costume.
+
 ### The flag is two-way
 
 `_flag_account` marks a row `error` on a path that still commits, and **only a 401 does it**.
@@ -178,6 +212,14 @@ The report's `issues` are stable keys the client resolves to `cloudflare.issue.*
 | `domain_says_redirect` / `cloudflare_says_redirect` | the domain record and Cloudflare disagree — how a redirect wired outside schakl (#96) shows up, and how a hand-deleted rule does |
 | `token_error` | part of the check could not run; `unavailable` names which parts |
 
+**A finding raised for an unconnected domain has to render there.** The panel drew its issues box
+inside the connected branch only, so `domain_says_redirect` and `duplicate_zone` — the two keys
+that are *most* meaningful before a zone exists — were computed by the API and dropped by the
+client. A domain marked `redirect` here with nothing behind it at Cloudflare is the #96
+webhook-era state this whole module exists to replace, and it was the one state with no way to
+discover it. The not-connected branch now renders the same list minus `not_connected`, which the
+paragraph above it already says.
+
 Conflicts are **reported, never resolved**. Cloudflare evaluates redirect rules top-down and we
 cannot evaluate a tenant's filter expression to know whether it catches this hostname. Naming it
 lets the admin decide; silently appending our rule below it would look like it worked.
@@ -270,6 +312,17 @@ zone half working the whole time and nothing on any screen connecting the two fa
 `_refresh_pages_links` cannot rescue it either: it refreshes links that already exist and returns
 early when there are none, because **adoption is the sync's job**. A domain page alone can never
 discover a project.
+
+**And the projects had nowhere to be read even once they arrived.** Instellingen → Cloudflare
+listed accounts and zones; Pages appeared only as three numbers on the sync banner, which the next
+navigation throws away. So "did the sync find my projects?" was answerable on no screen — the rows
+existed, and the only surface that showed them was a dropdown on a domain page, which is empty
+for precisely the tenant asking the question. The account block now carries its own Pages table,
+read-only (a hostname is linked on the domain it belongs to, which is what gives the link its
+client), and it names each project's **matched hostnames**: *"we synced your projects"* and
+*"your sites are attached to them"* are different claims, and only the second is what an agency
+opened the screen to check. `PagesProjectRead.hostnames` is one batched query, never one per
+project, and rides the links' own scoped repository so the company horizon still applies.
 
 Two changes, and the second matters as much as the first. `sync_account` resolves a missing id
 itself (`_resolve_account_id`) — it holds a client and the answer is one call, so it asks rather

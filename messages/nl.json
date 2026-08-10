@@ -4634,5 +4634,13 @@
   "settings.invoicing.public_links_heading": "Openbare factuurlink",
   "settings.invoicing.public_links_hint": "Elke factuur die je verstuurt krijgt een eigen webadres. De QR-code en de link in de e-mail wijzen daarheen, zodat een klant de factuur kan bekijken en betalen zonder account.",
   "settings.invoicing.public_links_enabled": "Verstuurde facturen een openbare link geven",
-  "settings.invoicing.public_links_off_hint": "Zet je dit uit, dan werken ook links die al gedrukt of gemaild zijn niet meer."
+  "settings.invoicing.public_links_off_hint": "Zet je dit uit, dan werken ook links die al gedrukt of gemaild zijn niet meer.",
+  "errors.cloudflare_token_ip_blocked": "Cloudflare accepteert dit token niet vanaf het IP-adres van deze server. Aan het token zelf mankeert niets: voeg het adres toe aan het IP-filter van het token bij Cloudflare, of haal het filter weg. Het adres dat Cloudflare noemt staat in de laatste melding hieronder.",
+  "cloudflare.zones.status": "Status",
+  "cloudflare.pages.projects_empty": "Nog geen Pages-projecten opgehaald.",
+  "cloudflare.pages.subdomain": "pages.dev-adres",
+  "cloudflare.pages.branch": "Productiebranch",
+  "cloudflare.pages.hostnames": "Gekoppelde hostnamen",
+  "cloudflare.pages.hostnames_none": "Geen",
+  "cloudflare.pages.projects_intro": "Wat de synchronisatie in dit account heeft gevonden. Een hostnaam die een project al serveert wordt automatisch aan het bijbehorende domein gekoppeld; een nieuwe koppeling maak je op het domein zelf."
 }

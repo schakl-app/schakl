@@ -353,6 +353,57 @@ async def test_a_malformed_token_names_the_token_not_cloudflare(client_for, clou
         assert refused.json()["error"]["code"] == "cloudflare_token_rejected"
 
 
+async def test_an_ip_filtered_token_is_not_reported_as_an_invalid_one(
+    client_for, cloudflare
+) -> None:
+    """403/9109 is a **valid** token refused from this address, and it must say so.
+
+    Observed live: a Cloudflare token carrying a Client IP Address Filter answers
+    ``Cannot use the access token from location: <ip>`` at every endpoint. Every probe fails,
+    so the row is indistinguishable from a dead credential unless the code is read — and it
+    used to be, because ``_translate`` matched ``CloudflareAuthError`` *before* the code map
+    and returned "the token was rejected". That sends an admin to re-mint a working token; the
+    fix is one line in Cloudflare's token screen, and no sentence about scopes or validity
+    reaches it.
+    """
+    t = await make_tenant("cf-ipfilter")
+    headers = await auth_cookie(t.user)
+    cloudflare.ip_blocked = "77.60.220.1"
+    async with client_for(t.host) as c:
+        company = await _company(c, headers)
+        account = await _account(c, headers)
+        domain = await _domain(c, headers, "klant.nl", company)
+
+        # The write path: a named error, not the blanket "token rejected".
+        refused = await c.post(
+            f"/api/v1/cloudflare/domains/{domain['id']}/connect", json={}, headers=headers
+        )
+        assert refused.status_code == 409
+        assert refused.json()["error"]["code"] == "cloudflare_token_ip_blocked"
+
+        # The sync path: same conclusion, and it commits the note before it raises.
+        assert (
+            await c.post(
+                f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers
+            )
+        ).json()["error"]["code"] == "cloudflare_token_ip_blocked"
+
+        # And the row goes red, carrying the address the admin has to allow. A 403 is normally
+        # "not scoped for this call" — degraded, not broken — so this one has to be excepted
+        # explicitly, or the screen stays green over a credential that can do nothing at all.
+        row = (await c.get("/api/v1/cloudflare/accounts", headers=headers)).json()[0]
+        assert row["status"] == "error"
+        assert "77.60.220.1" in row["last_error"]
+
+        # Recovery: the admin allows the address, and nothing else has to be re-entered.
+        cloudflare.ip_blocked = None
+        assert (
+            await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/verify", headers=headers)
+        ).json()["ok"] is True
+        healed = (await c.get("/api/v1/cloudflare/accounts", headers=headers)).json()[0]
+        assert healed["status"] == "active" and healed["capabilities"]["zones_read"] is True
+
+
 async def test_accounts_are_tenant_isolated(client_for, cloudflare) -> None:
     """Golden Rule 1: another tenant's credential is not readable, not even by id."""
     a = await make_tenant("cf-iso-a")
