@@ -2141,6 +2141,41 @@ async def test_a_single_page_endpoint_is_read_whole(client_for, cloudflare) -> N
         assert "" in asked, asked
 
 
+async def test_an_endpoint_that_pages_at_its_own_size_is_read_to_the_end(
+    client_for, cloudflare
+) -> None:
+    """A refused ``per_page`` does not mean there are no pages — Pages' projects prove it.
+
+    That list declines the size it is asked for and then serves *its own* page of ten,
+    ``result_info`` and all. Reading the refusal as "this endpoint has no pages" and the short
+    answer as a truncation reported an account of thirteen Pages projects as unreadable, over an
+    endpoint that had just told us, in numbers, exactly how to finish reading it.
+    """
+    t = await make_tenant("cf-capped-page")
+    headers = await auth_cookie(t.user)
+    cloudflare.capped_page["pages/projects"] = 10
+    cloudflare.pages["acct-1"] = [
+        {"name": f"site-{n:02d}", "subdomain": f"site-{n:02d}.pages.dev"} for n in range(13)
+    ]
+    async with client_for(t.host) as c:
+        account = await _account(c, headers)
+        cloudflare.queries.clear()
+
+        body = (
+            await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers)
+        ).json()
+
+        assert body["warnings"] == []
+        assert body["pages_projects_synced"] == 13
+        listed = await c.get("/api/v1/cloudflare/pages/projects", headers=headers)
+        names = {p["name"] for p in listed.json()}
+        assert names == {f"site-{n:02d}" for n in range(13)}
+        # The size was asked for once, refused, and never asked for again: page two carries the
+        # page number and nothing else, because the size was Cloudflare's to pick and it did.
+        asked = [q for p, q in cloudflare.queries if "pages/projects" in p]
+        assert asked == ["page=1&per_page=50", "", "page=2"], asked
+
+
 async def test_a_refused_page_never_becomes_a_silent_prefix(client_for, cloudflare) -> None:
     """The fallback is a whole read or an error, never the first slice of one.
 

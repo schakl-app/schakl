@@ -81,6 +81,12 @@ class FakeCloudflare:
         #: endpoint hands back *less* than it says it holds. The fallback read must call that an
         #: error rather than a complete list (CLAUDE.md §17: never a silent truncation).
         self.single_page_total: dict[str, int] = {}
+        #: Path fragment → the page size an endpoint serves **of its own accord**: it refuses the
+        #: ``per_page`` it is asked for and then hands back its own page, describing it in
+        #: ``result_info``. Cloudflare's Pages projects list behaves this way, and it is the
+        #: middle case between the two the fake could express — neither properly paged nor
+        #: single-page — which is exactly why ten of thirteen projects read as a whole account.
+        self.capped_page: dict[str, int] = {}
         #: Path fragment → ``(status, message, code)``, for a refusal that is **not** about the
         #: token: a query parameter Cloudflare will not take, a product not enabled on the
         #: account, a 5xx. ``deny``'s 403 is the easy case and the one every test reached for;
@@ -217,7 +223,8 @@ class FakeCloudflare:
         path = request.url.path[len(PREFIX):]
         self.calls.append((request.method, path))
         self.queries.append((path, request.url.query.decode()))
-        return self._with_result_info(path, self._route(request, path))
+        response = self._with_result_info(path, self._route(request, path))
+        return self._one_page_of(path, request.url.params, response)
 
     def _with_result_info(self, path: str, response: httpx.Response) -> httpx.Response:
         """Attach the ``result_info`` a test asked this path to report."""
@@ -229,6 +236,38 @@ class FakeCloudflare:
             body = json.loads(response.content)
             if isinstance(body, dict) and body.get("success"):
                 return httpx.Response(200, json={**body, "result_info": {"total_count": total}})
+        return response
+
+    def _one_page_of(
+        self, path: str, params: httpx.QueryParams, response: httpx.Response
+    ) -> httpx.Response:
+        """Serve a :attr:`capped_page` endpoint's own page, described the way Cloudflare does.
+
+        The refusal of ``per_page`` happens in :meth:`_route`, before this: what is left is an
+        endpoint that answers a *plain* request with page one of its own and a ``result_info``
+        saying so. Asking for a later ``page`` is honoured — that is the whole difference from
+        a single-page endpoint, and the reason a client can finish the read at all.
+        """
+        for fragment, size in self.capped_page.items():
+            if fragment not in path or response.status_code != 200:
+                continue
+            if not response.headers.get("content-type", "").startswith("application/json"):
+                continue
+            body = json.loads(response.content)
+            rows = body.get("result") if isinstance(body, dict) else None
+            if not isinstance(rows, list):
+                continue
+            page = int(params.get("page") or 1)
+            info = {
+                "page": page,
+                "per_page": size,
+                "total_count": len(rows),
+                "total_pages": max(1, -(-len(rows) // size)),
+            }
+            window = rows[(page - 1) * size : page * size]
+            return httpx.Response(
+                200, json={**body, "result": window, "result_info": {**info, "count": len(window)}}
+            )
         return response
 
     def _route(self, request: httpx.Request, path: str) -> httpx.Response:  # noqa: PLR0911, PLR0912
@@ -260,6 +299,10 @@ class FakeCloudflare:
         if ("page" in params or "per_page" in params) and any(
             fragment in path for fragment in self.single_page
         ):
+            return _err(400, LIST_OPTIONS_ERROR)
+        # A capped-page endpoint refuses the *size* and nothing else: ``page`` is fine, and that
+        # is exactly what makes the read finishable where a single-page one's is not.
+        if "per_page" in params and any(fragment in path for fragment in self.capped_page):
             return _err(400, LIST_OPTIONS_ERROR)
         body = json.loads(request.content) if request.content else {}
         parts = [p for p in path.split("/") if p]

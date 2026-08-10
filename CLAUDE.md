@@ -314,7 +314,16 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   turns **on** is a bug with a long tail — `_flag_account` had no mirror, so a row nothing was
   wrong with kept its red line through every sync that worked. Whatever sets a health flag must
   say what clears it, and the fake must reject a bad credential *everywhere* or the only test
-  that could catch this passes against a provider that does not exist. The
+  that could catch this passes against a provider that does not exist. Its third sibling: **a
+  refusal names a parameter, it does not pass a verdict on the endpoint.** `paginate` read
+  *"Invalid list options provided"* as "this list has no pages", which is true of Registrar and
+  false of Pages' projects — that one declines the `per_page` it is handed and then serves its own
+  page of ten, `result_info` and all, so thirteen projects reported as *"Niet alles kon gelezen
+  worden … answered 10 of 13 rows"*. Refusing to return a prefix (§17) was right; concluding there
+  was nothing left to ask was not. A short answer that *describes the page it served* is an
+  instruction for finishing the read, so the resume asks for `page` and nothing else — the size is
+  the provider's to choose and it has already chosen — and the old error survives only for the
+  endpoint that really has no page two. The
   registrar half is now **`oxxa`** (#296, `docs/OXXA.md`): the register sync, the nameserver
   write-back that finishes "Connect to Cloudflare", and the `app/core/registrar/` seam a second
   registrar plugs into. Written from OXXA's official API documentation — §11 bans writing an

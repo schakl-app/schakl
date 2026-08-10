@@ -189,19 +189,22 @@ def _rejects_list_options(exc: CloudflareError) -> bool:
     return "list options" in text or "per_page" in text
 
 
-def _is_last_page(result: list[Any], info: dict) -> bool:
+def _is_last_page(result: list[Any], info: dict, size: int = PER_PAGE) -> bool:
     """Whether Cloudflare has anything after the page just read.
 
     ``result_info`` answers it outright where Cloudflare sends one, and that is worth preferring:
     an endpoint that *accepts* ``per_page`` and then ignores it answers every page identically,
     so a row count alone would ask twenty times for the same rows and end in the cap's error.
-    The count stays as the fallback for the endpoints that report nothing.
+    The count stays as the fallback for the endpoints that report nothing — measured against
+    ``size``, which is *ours* on the ordinary path and **Cloudflare's own** when the endpoint
+    picked the size itself (:meth:`CloudflareClient._read_rest`). A short page is only evidence
+    of the end against the size that page was actually served at.
     """
     page = info.get("page")
     total_pages = info.get("total_pages")
     if isinstance(page, int) and isinstance(total_pages, int) and total_pages >= 1:
         return page >= total_pages
-    return len(result) < PER_PAGE
+    return len(result) < size
 
 
 class CloudflareClient:
@@ -309,10 +312,10 @@ class CloudflareClient:
         that was scoped for it and an account Cloudflare was perfectly willing to describe.
 
         So a refusal that names the list options is not fatal: the same path is asked **plainly**,
-        once, and what comes back is the answer. That is a fallback and not a truncation — if
-        Cloudflare's ``result_info`` says it is holding more rows than it handed over, this raises
-        rather than returning a prefix, because a slice presented as the whole list is the one
-        outcome worse than an error (§17).
+        once, and what comes back is read for what it is — the whole collection where the endpoint
+        has no pages, or Cloudflare's *own* page where it merely declined the size asked for
+        (:meth:`_read_whole`). Either way this never returns a prefix as a whole list, which is
+        the one outcome worse than an error (§17).
         """
         rows: list[dict] = []
         async with self._http() as http:
@@ -326,7 +329,7 @@ class CloudflareClient:
                     return await self._read_whole(http, path, params)
                 result = result or []
                 rows.extend(r for r in result if isinstance(r, dict))
-                if _is_last_page(result, info):
+                if _is_last_page(result, info, PER_PAGE):
                     return rows
         raise CloudflareError(
             f"Cloudflare returned more than {MAX_PAGES * PER_PAGE} rows for {path}"
@@ -335,16 +338,68 @@ class CloudflareClient:
     async def _read_whole(
         self, http: httpx.AsyncClient, path: str, params: dict[str, Any] | None
     ) -> list[dict]:
-        """One unpaged read of a list endpoint that refuses paging, checked for completeness."""
+        """The plain read of a list endpoint that refused our page parameters — and, where that
+        answer turns out to be a page of Cloudflare's own choosing, the rest of it.
+
+        A refusal reads like *"this endpoint has no pages"*, and for Registrar's domains that is
+        exactly what it is. For Pages' projects it is not: that list pages perfectly well and
+        merely declines the **size** it was asked for, so the plain read came back holding ten of
+        thirteen projects and said so in ``result_info`` — and calling that a failed read turned a
+        quarrel about ``per_page`` into *"Niet alles kon gelezen worden"* over three Pages
+        projects nobody could see. Refusing a prefix (§17) was right; stopping at one was not.
+
+        So the plain answer is taken at its word. When Cloudflare says it is holding more than it
+        handed over it has just *described the page it served* — its own size, its own numbering —
+        and the read continues from page two. Completeness is then the ordinary loop's business,
+        exactly as on the paged path: ``result_info`` says which page is the last one.
+
+        Only when there is no next page to ask for — no page one to build on, or the resume
+        refused too — is this the failure it always was, and it still names the prefix it declined
+        to return.
+        """
         result, info = await self._send_envelope(http, "GET", path, params=params)
         rows = [r for r in (result or []) if isinstance(r, dict)]
         total = info.get("total_count")
-        if isinstance(total, int) and total > len(rows):
-            raise CloudflareError(
-                f"Cloudflare refused page parameters for {path} and then answered "
-                f"{len(rows)} of {total} rows"
+        if not isinstance(total, int) or total <= len(rows):
+            return rows
+        if rows:
+            try:
+                return await self._read_rest(http, path, params, rows, info)
+            except CloudflareError as exc:
+                if not _rejects_list_options(exc):
+                    raise
+        raise CloudflareError(
+            f"Cloudflare refused page parameters for {path} and then answered "
+            f"{len(rows)} of {total} rows"
+        )
+
+    async def _read_rest(
+        self,
+        http: httpx.AsyncClient,
+        path: str,
+        params: dict[str, Any] | None,
+        first: list[dict],
+        info: dict,
+    ) -> list[dict]:
+        """Page two onwards of an endpoint that served page one without being asked.
+
+        It is handed ``page`` and **nothing else**. The size is Cloudflare's to choose and it has
+        already chosen — ``result_info`` names it, and what it actually handed over is the
+        fallback — so re-sending a ``per_page`` would only re-open the argument that got us here.
+        """
+        size = info.get("per_page")
+        if not isinstance(size, int) or size <= 0:
+            size = len(first)
+        rows = list(first)
+        for page in range(2, MAX_PAGES + 1):
+            result, info = await self._send_envelope(
+                http, "GET", path, params={**(params or {}), "page": page}
             )
-        return rows
+            result = result or []
+            rows.extend(r for r in result if isinstance(r, dict))
+            if _is_last_page(result, info, size):
+                return rows
+        raise CloudflareError(f"Cloudflare returned more than {MAX_PAGES * size} rows for {path}")
 
     # --- identity & capabilities ---------------------------------------------------------- #
     async def verify_token(self, account_id: str | None = None) -> dict:

@@ -220,18 +220,47 @@ or `per_page` parameter."* The read then failed completely, which reached the se
 willing to answer and a token that was scoped for it.
 
 The fix is one retry, and the shape of it is the point. **A refusal that names the list options is
-about the question, not the answer**, so the same path is asked once more *plainly* and what comes
-back is the whole collection. It is matched on Cloudflare's sentence rather than on a numeric code,
-because the code differs per product while the sentence does not — and it is deliberately narrow:
-a `400` naming neither `page` nor `per_page` is an honest error, and retrying it would only buy a
-second one. **A fallback is not a truncation**: if `result_info.total_count` says Cloudflare is
-holding more rows than it handed over, this raises, because an endpoint that refuses paging offers
-no next page to ask for and a slice returned as a whole list is §17's worst outcome.
+about the question, not the answer**, so the same path is asked once more *plainly*. It is matched
+on Cloudflare's sentence rather than on a numeric code, because the code differs per product while
+the sentence does not — and it is deliberately narrow: a `400` naming neither `page` nor `per_page`
+is an honest error, and retrying it would only buy a second one.
 
 `result_info` now decides the last page in the ordinary paged case too. The row count was a
 guess that happens to be right most of the time: an endpoint that *accepts* `per_page` and then
 ignores it answers every page identically, and counting rows would have asked twenty times for the
 same fifty before failing on the cap.
+
+### A refused page size does not mean there are no pages
+
+The plain retry above then treated *its* answer as the whole collection, and raised where
+`result_info.total_count` said otherwise — right that a prefix must never pass for a list (§17),
+wrong that there was nothing left to ask. Cloudflare's **Pages projects** list is the case in
+between the two this code could express: it pages perfectly well, declines the `per_page` it is
+handed, and serves its own page of ten. So an account with thirteen Pages projects read as
+
+> Niet alles kon gelezen worden. Cloudflare antwoordde: Cloudflare refused page parameters for
+> /accounts/…/pages/projects and then answered 10 of 13 rows
+
+— a quarrel about a query parameter, reported as an account nobody could read, with three projects
+missing from the picker.
+
+The plain answer is now taken at its word. When Cloudflare says it holds more than it handed over,
+it has just **described the page it served** — its own size, its own numbering, its own total — so
+the read continues from page two and completeness goes back to being the ordinary loop's business:
+`result_info` says which page is the last one. Two details are load-bearing:
+
+- **The resume sends `page` and nothing else.** The size is Cloudflare's to choose and it has
+  already chosen; re-sending a `per_page` would re-open the argument that produced the refusal.
+  It also covers the neighbouring shape reported against Pages *deployments*, where `per_page` is
+  not supported at all rather than merely capped.
+- **The old error survives as the last word**, naming the prefix it declined to return, for the
+  endpoint that really has no page two — the resume is attempted, and a second refusal of the list
+  options lands right back on it.
+
+`tests/cloudflare_fake.py` grew `capped_page` to model this, beside `single_page`. That is the
+same rule as the account-owned token's: a fake that can only express "pages" and "does not page"
+is a fake in which this failure cannot happen, and the only test that could have caught it would
+have passed against a Cloudflare that does not exist.
 
 ## 3. Two rules the module never bends
 
@@ -560,7 +589,10 @@ Run these the day a real Registrar account exists (`docs/OXXA.md` §1's discipli
    single-page and refuses `page`/`per_page` outright, so `paginate` asks it plainly after the
    first refusal (§2, *Not every list takes a page*). What is left to confirm against a real
    account is that the plain answer is the **whole** register — if Cloudflare caps it, its
-   `result_info.total_count` is what says so, and the read raises rather than reporting a prefix.
+   `result_info.total_count` is what says so, and the read then asks for page two before deciding
+   anything (§2, *A refused page size does not mean there are no pages*): a register that turns
+   out to page like Pages' projects is read to the end, and only one that offers no page two at
+   all raises rather than reporting a prefix.
 4. **The status and lock fields.** `registry_statuses` is stored as Cloudflare sends it, truncated
    at 255 characters; confirm it is a string and not a list. `locked` / `auto_renew` are
    three-state on purpose — an absent value must not render as "transferable".
