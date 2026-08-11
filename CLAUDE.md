@@ -577,6 +577,34 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   overnight and never touch a budget. The query passthrough is gated but *exists*: cross-account
   access is structurally impossible (the customer id is in the path, from our own row) and GAQL has
   no write syntax, so what is left to bound is a resource allow-list and what one question may cost.
+- **Two integrations turned out to be one credential** (`wordpress`, `docs/WORDPRESS.md`). The ask
+  was Rank Math **AI Visibility** in the marketing module *and* a WordPress credential per website
+  for MCP later. Rank Math registers its AI Visibility features as WordPress **Abilities** with
+  `show_in_rest => true` and `mcp => ['public' => true]`, so one Application Password reaches four
+  surfaces on one host — `wp/v2`, `wp-abilities/v1`, the MCP Adapter's `/wp-json/mcp/<server>`, and
+  Rank Math's own `rankmath/v1/ai-visibility` proxy. Reading the *plugin source* rather than
+  reasoning about the feature is what found that, and it is the same rule §11 already states.
+  Four things generalise. **The credential is a row keyed to a website** — `cloudflare`'s rule one
+  level down the tree: Cloudflare is something a domain has, WordPress is something a website has,
+  so the working surface is an `EntityPanelSpec` the website page needed no edit to receive, and
+  `marketing` reaches the credential through `app/core/wordpress.py` (§6) — which carries the
+  **client factory** as well as the resolver, because the transport is the owning module's decision
+  too. **A newer surface is not automatically the right one**: the AI Visibility *ability* reads a
+  12-hour `wp_options` cache and cannot force an upstream fetch (its own `refresh` input is
+  telemetry), so a sync built on it charts when a human last opened the WordPress dashboard; only
+  `GET /rankmath/v1/ai-visibility/overview?refresh=1` measures anything, and a test pins it.
+  **What a provider reports as a level must never be stored as a total** — `mentions` and
+  `citations` look like counts and are running totals as of the last analysis, so every Rank Math
+  metric joins `AVERAGED_METRICS`; and since no upstream path has history at all, `fetch_daily`
+  writes *one* row for `end` rather than filling a range with a flat line that looks like
+  measurement. And **the third auth kind is where branching stops paying**: #300 predicted a new
+  source is one line in `SOURCES` and missed authentication; the fifth source missed it the same
+  way, for a credential that is per *website*, so `AUTH_SITE_KEY` arrived with `keyed_client` and
+  the per-kind `if`s at the picker, the drill-down and the nightly sync collapsed into one
+  dispatch. The cost worth stating out loud: every AI Visibility route is `manage_options`, so this
+  table holds **WordPress administrator credentials** — hence admin-only `manage`, never `client`,
+  never folded into `websites.website.write`, and a disconnect that forgets the credential without
+  revoking it at the far end.
 
 ## 11. Working agreement (for Claude Code)
 
