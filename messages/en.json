@@ -5070,7 +5070,7 @@
   "uptime.settings.password_hint": "The password is used once to sign in and is never stored. What we keep is the session token Uptime Kuma hands back, which you can revoke there by changing the password.",
   "uptime.settings.delete_title": "Remove instance",
   "uptime.settings.delete_confirm": "Remove “{name}”? This only removes the connection here. Nothing changes in Uptime Kuma.",
-  "uptime.sync.done": "Read {seen} monitors: {created} new, {missing} no longer present.",
+  "uptime.sync.done": "Read {seen} monitors in {groups} groups: {created} new, {missing} no longer present.",
   "uptime.mode.managed": "Managed",
   "uptime.mode.linked": "Linked",
   "uptime.status.pending": "Not connected yet",
@@ -5271,5 +5271,8 @@
   "settings.google_ads.policy.subtitle": "Rules that apply to every Ads account, unless a client sets its own.",
   "settings.google_ads.policy.exclude_hint": "Terms you exclude for every client. One per line.",
   "settings.google_ads.policy.protected_hint": "Terms that must never be excluded anywhere. One per line.",
-  "settings.google_ads.policy.steering_hint": "How this agency works, in your own words. A client's own notes are kept separate."
+  "settings.google_ads.policy.steering_hint": "How this agency works, in your own words. A client's own notes are kept separate.",
+  "uptime.settings.monitor_count_one": "1 monitor",
+  "uptime.settings.group_count_one": "1 group",
+  "uptime.settings.group_count": "{count} groups"
 }

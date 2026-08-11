@@ -224,6 +224,85 @@ def test_list_pause_resume_delete(kuma: FakeKuma) -> None:
         assert sorted(c.list_monitors()) == [1]
 
 
+def test_the_monitor_list_arrives_as_a_push_and_never_in_the_ack(kuma: FakeKuma) -> None:
+    """The bug this module shipped with, named so it cannot come back.
+
+    ``getMonitorList`` answers a bare ``{"ok": True}`` and delivers the monitors as a separate
+    pushed ``monitorList``. Reading the answer out of the ack returned ``{}`` against a live
+    instance holding 34 monitors — with no error anywhere: the sync reported success, created
+    nothing, and the screen said "connected" above an empty list.
+
+    Both halves are asserted, because only together do they mean anything: the ack really is
+    empty (so the fake is not being kind), and the client finds the monitors anyway.
+    """
+    kuma.add(name="one")
+    kuma.add(name="two")
+    with UptimeKumaClient("https://kuma.example.nl") as c:
+        c.authenticate(kuma.token)
+        socket = kuma.connections[-1]
+        assert socket.call("getMonitorList") == {"ok": True}, "the ack carries no list"
+        assert sorted(c.list_monitors()) == [1, 2]
+
+
+def test_a_second_read_is_not_satisfied_by_the_first_ones_push(kuma: FakeKuma) -> None:
+    """A read waits for the push *its own call* provoked, not for any copy lying around.
+
+    Both lists are pushed unprompted at login, so a read that accepted whatever had arrived
+    would hand back a snapshot its request never answered — stale the moment anything changed,
+    and stale in the direction that hides a monitor rather than inventing one.
+    """
+    kuma.add(name="one")
+    with UptimeKumaClient("https://kuma.example.nl") as c:
+        c.authenticate(kuma.token)
+        assert sorted(c.list_monitors()) == [1]
+        kuma.add(name="two")
+        assert sorted(c.list_monitors()) == [1, 2], "a repeat read returned the login snapshot"
+
+
+def test_a_group_and_its_children_survive_the_read(kuma: FakeKuma) -> None:
+    """A group **is** a monitor (``type: "group"``), and a child names it by integer ``parent``.
+
+    The mirror rebuilds its whole hierarchy from those two fields, so a read that dropped either
+    would leave every monitor looking top-level — which is indistinguishable, on the screen,
+    from an agency that never grouped anything.
+    """
+    group_id = kuma.add_group("breik. hosting klanten")
+    child_id = kuma.add(name="kuzee", parent=group_id, url="https://kuzee.com")
+    with UptimeKumaClient("https://kuma.example.nl") as c:
+        c.authenticate(kuma.token)
+        monitors = c.list_monitors()
+    assert monitors[group_id]["type"] == "group"
+    assert monitors[child_id]["parent"] == group_id
+
+
+def test_notification_channels_come_from_the_login_push_not_from_getsettings(
+    kuma: FakeKuma,
+) -> None:
+    """``getSettings`` acks the instance's own settings under ``data`` and never the channels.
+
+    They arrive once, unprompted, at login, and no event re-requests them — so reading them from
+    the ack answered ``[]`` on every instance that actually had any configured.
+    """
+    kuma.notifications = [{"id": 1, "name": "Slack", "active": True}]
+    with UptimeKumaClient("https://kuma.example.nl") as c:
+        c.authenticate(kuma.token)
+        assert [n["name"] for n in c.list_notifications()] == ["Slack"]
+
+
+def test_a_1x_create_omits_the_2x_only_conditions_key(monkeypatch) -> None:
+    """``conditions`` is forced on 2.x and must never be sent to a 1.x.
+
+    1.x has no such column and ``add`` imports the payload onto the row wholesale, so the key a
+    2.x demands is, one major version down, an unknown column against the tenant's own database.
+    """
+    fake = FakeKuma(version="1.23.17")
+    monkeypatch.setattr(kuma_client, "_connector", fake.connector)
+    with UptimeKumaClient("https://kuma.example.nl") as c:
+        c.authenticate(fake.token)
+        monitor_id = c.add_monitor({"type": "http", "name": "site", "url": "https://a.nl"})
+    assert "conditions" not in fake.monitors[monitor_id]
+
+
 def test_the_context_manager_always_closes(kuma: FakeKuma) -> None:
     with pytest.raises(errors.ReauthRequired):
         with UptimeKumaClient("https://kuma.example.nl") as c:

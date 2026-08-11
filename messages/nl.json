@@ -5070,7 +5070,7 @@
   "uptime.settings.password_hint": "Het wachtwoord wordt één keer gebruikt om aan te melden en wordt niet opgeslagen. Wat we bewaren is het sessietoken van Uptime Kuma; dat trek je daar in door het wachtwoord te wijzigen.",
   "uptime.settings.delete_title": "Instantie verwijderen",
   "uptime.settings.delete_confirm": "“{name}” verwijderen? Alleen de koppeling hier verdwijnt; in Uptime Kuma verandert niets.",
-  "uptime.sync.done": "{seen} monitors gelezen: {created} nieuw, {missing} niet meer aanwezig.",
+  "uptime.sync.done": "{seen} monitors gelezen in {groups} groepen: {created} nieuw, {missing} niet meer aanwezig.",
   "uptime.mode.managed": "Beheerd",
   "uptime.mode.linked": "Gekoppeld",
   "uptime.status.pending": "Nog niet verbonden",
@@ -5271,5 +5271,8 @@
   "settings.google_ads.policy.subtitle": "Regels die voor elk Ads-account gelden, tenzij een klant eigen regels heeft.",
   "settings.google_ads.policy.exclude_hint": "Termen die je voor elke klant uitsluit. Eén per regel.",
   "settings.google_ads.policy.protected_hint": "Termen die nergens uitgesloten mogen worden. Eén per regel.",
-  "settings.google_ads.policy.steering_hint": "Hoe dit bureau werkt, in je eigen woorden. Notities van een klant blijven hier los van staan."
+  "settings.google_ads.policy.steering_hint": "Hoe dit bureau werkt, in je eigen woorden. Notities van een klant blijven hier los van staan.",
+  "uptime.settings.monitor_count_one": "1 monitor",
+  "uptime.settings.group_count_one": "1 groep",
+  "uptime.settings.group_count": "{count} groepen"
 }

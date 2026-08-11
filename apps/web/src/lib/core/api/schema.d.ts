@@ -25628,6 +25628,11 @@ export interface components {
              */
             created_at: string;
             /**
+             * Group Count
+             * @default 0
+             */
+            group_count: number;
+            /**
              * Id
              * Format: uuid
              */
@@ -25790,6 +25795,8 @@ export interface components {
             name: string;
             /** Parent Id */
             parent_id: string | null;
+            /** Parent Name */
+            parent_name?: string | null;
             /** Port */
             port: number | null;
             /** Profile Id */
@@ -25999,6 +26006,11 @@ export interface components {
             drifted: number;
             /** Error */
             error?: string | null;
+            /**
+             * Groups
+             * @default 0
+             */
+            groups: number;
             /**
              * Instance Id
              * Format: uuid
@@ -48364,6 +48376,8 @@ export interface operations {
                 sync_status?: string | null;
                 /** @description Compute total; set false for pickers */
                 count?: boolean;
+                /** @description Resolve display names; skip it for pickers */
+                meta?: boolean;
             };
             header?: never;
             path?: never;

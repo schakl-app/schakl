@@ -12,11 +12,16 @@ under ``monitorID``, not the documented ``monitorId``. Both were observed, not i
 
 Two deliberate departures from that wrapper's design, both earned by measurement:
 
-* **Every read is an acknowledged call, never a settled event.** The wrapper reads pushed lists
-  and then sleeps a fixed ``wait_events`` (0.2 s) "because there is no way to determine when the
-  last message of a certain type has arrived" — a guess that silently truncates a large list.
-  2.x answers ``getMonitorList``/``getTags``/``getSettings`` with an ack, so there is nothing to
-  guess. Only ``info`` is push-only, and it is bounded by an explicit wait.
+* **A read is fenced by an ack, and the ack is not always where the answer is.** The wrapper
+  reads pushed lists and then sleeps a fixed ``wait_events`` (0.2 s) "because there is no way to
+  determine when the last message of a certain type has arrived" — a guess that silently
+  truncates a large list. Refusing to guess was right; assuming the ack *carries* the list was
+  not, and it cost this module every monitor it was supposed to mirror. Measured against a live
+  server: ``getMonitorList`` answers a bare ``{"ok": true}`` and **pushes** ``monitorList``
+  separately, ``getSettings`` answers ``{"ok": true, "data": …}`` while the channels arrive as a
+  pushed ``notificationList``, and only ``getTags`` really does answer in its ack. So a list read
+  waits for *its own named event* — never a sleep, never a fixed delay — with the ack as the
+  fence that says it was sent and surfaces a refusal as a typed error. See :meth:`_await_push`.
 * **Nothing connects in a constructor.** Connecting is what can fail, block, and need a
   ``finally``; a constructor that dials is a constructor that raises.
 
@@ -56,6 +61,17 @@ DEFAULT_TIMEOUT = 10.0
 #: (§5, gate 3). Measured at well under 100 ms; a target that has not said it in two seconds is
 #: not going to.
 IDENTITY_TIMEOUT = 2.0
+
+#: How long a list read waits for the event that carries its answer, once the ack has confirmed
+#: the server accepted the request. This is a wait on a *named event*, not the fixed sleep the
+#: published wrapper uses: it ends the moment the list arrives, and only the ceiling is a guess.
+#: Generous because the far end serialises every monitor it has into one frame.
+PUSH_TIMEOUT = 10.0
+
+#: The lists Uptime Kuma delivers by pushing rather than by answering. Registered as handlers at
+#: connect time because ``monitorList`` and ``notificationList`` are both sent *unprompted* right
+#: after authentication — a handler installed later would miss the copy already delivered.
+_PUSH_EVENTS = ("monitorList", "notificationList")
 
 #: The oldest instance this module will speak to. 1.21.3 is where the published wrapper's own
 #: support began and where the socket vocabulary used here settled.
@@ -182,6 +198,11 @@ class UptimeKumaClient:
         self._sio: Any | None = None
         self._info: list[dict[str, Any]] = []
         self._authenticated = False
+        #: The last payload seen for each pushed list, tagged with an arrival number. The tag is
+        #: what lets a read tell *this call's* answer from the copy login already delivered —
+        #: without it, a stale list would satisfy a wait that its own request never answered.
+        self._pushes: dict[str, tuple[int, Any]] = {}
+        self._push_count = 0
 
     # ---------------------------------------------------------------- connection
 
@@ -204,6 +225,8 @@ class UptimeKumaClient:
         factory = _connector or socketio.Client
         sio = factory(ssl_verify=self._ssl_verify)
         sio.on("info", self._on_info)
+        for event in _PUSH_EVENTS:
+            sio.on(event, self._push_handler(event))
         try:
             # The origin and the socket.io path are passed separately on purpose — the path of
             # the URL is discarded by python-socketio, so a subpath instance is only reachable
@@ -253,6 +276,63 @@ class UptimeKumaClient:
         after with it. Keep both; the version is read from the newest that carries one."""
         if isinstance(data, dict):
             self._info.append(data)
+
+    def _push_handler(self, event: str) -> Callable[[Any], None]:
+        """Record a pushed list under its event name, newest wins."""
+
+        def handle(data: Any) -> None:
+            self._push_count += 1
+            self._pushes[event] = (self._push_count, data)
+
+        return handle
+
+    def _await_push(self, event: str, *, after: int, timeout: float) -> Any | None:
+        """Wait for a ``event`` push newer than arrival number ``after``. ``None`` on timeout.
+
+        Polls rather than blocking on a condition variable because the transport delivers on its
+        own thread and this client is otherwise synchronous; the loop is bounded and exits the
+        instant the list lands, so the cost is one comparison per 10 ms of a wait that normally
+        ends in single-digit milliseconds.
+        """
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            entry = self._pushes.get(event)
+            if entry is not None and entry[0] > after:
+                return entry[1]
+            time.sleep(0.01)
+        return None
+
+    def _seen(self, event: str) -> int:
+        """The arrival number of the newest ``event`` push, or ``-1`` if none has come."""
+        entry = self._pushes.get(event)
+        return entry[0] if entry is not None else -1
+
+    def _call_for_list(self, event: str, push_event: str, ack_key: str, *args: Any) -> Any:
+        """Ask for a list, and take the answer from wherever this server puts it.
+
+        Three outcomes in a deliberate order. The **ack carries it** — the shape 1.x uses for
+        some reads and the shape this module wrongly assumed for all of them; taking it here
+        keeps a version that answers directly working with no branch elsewhere. Otherwise the
+        **push that this call provoked**, which is the live behaviour of both 1.23 and 2.5.
+        Otherwise a **copy delivered earlier** (login pushes both lists unprompted), which is a
+        fallback and not the happy path — a server that acks without pushing would otherwise
+        strand a read that had a perfectly good answer already in hand.
+
+        Never an empty list on a timeout. Returning ``[]`` for "nobody answered" is the exact
+        bug this method exists to have fixed: it is indistinguishable from a real empty list, so
+        a broken read reads as an empty instance and no error is ever raised.
+        """
+        before = self._seen(push_event)
+        result = self._call(event, *args)
+        if isinstance(result, dict) and ack_key in result:
+            return result[ack_key]
+        pushed = self._await_push(push_event, after=before, timeout=PUSH_TIMEOUT)
+        if pushed is not None:
+            return pushed
+        entry = self._pushes.get(push_event)
+        if entry is not None:
+            return entry[1]
+        raise errors.Unreachable(f"{event} produced no {push_event}")
 
     @property
     def server_version(self) -> str | None:
@@ -328,15 +408,19 @@ class UptimeKumaClient:
         long-lived, revoked by a password change or a deactivated user, and holds neither the
         password nor a second factor. Caller stores the return value and discards its inputs.
         """
-        result = self._call("login", {"username": username, "password": password,
-                                      "token": totp or ""})
+        result = self._call(
+            "login", {"username": username, "password": password, "token": totp or ""}
+        )
         if isinstance(result, dict) and result.get("tokenRequired"):
             raise errors.TotpRequired("two-factor code required")
         token = (result or {}).get("token")
         if not token:
             # 2FA on with a *wrong* code answers neither a token nor `tokenRequired`.
-            raise (errors.TotpRejected("two-factor code rejected") if totp
-                   else errors.CredentialsRejected("login did not return a token"))
+            raise (
+                errors.TotpRejected("two-factor code rejected")
+                if totp
+                else errors.CredentialsRejected("login did not return a token")
+            )
         self._authenticated = True
         self._settle_info()
         return str(token)
@@ -361,10 +445,17 @@ class UptimeKumaClient:
     # ------------------------------------------------------------------ monitors
 
     def list_monitors(self) -> dict[int, dict[str, Any]]:
-        """Every monitor, by id. An acknowledged call, so nothing is guessed about completeness."""
-        result = self._call("getMonitorList")
-        raw = result.get("monitorList", result) if isinstance(result, dict) else result
-        return {int(k): v for k, v in (raw or {}).items()}
+        """Every monitor, by id — **groups included**, since a group is a monitor here.
+
+        The ack for ``getMonitorList`` is a bare ``{"ok": true}``; the monitors arrive as a
+        pushed ``monitorList`` keyed by id-as-string. Reading the ack instead returned ``{}``
+        against a live instance holding 34 monitors, with no error anywhere: the sync reported
+        success, created nothing, and the module looked connected and empty.
+        """
+        raw = self._call_for_list("getMonitorList", "monitorList", "monitorList")
+        if not isinstance(raw, dict):
+            raise errors.UptimeKumaError("uptime kuma sent a monitor list of the wrong shape")
+        return {int(k): v for k, v in raw.items()}
 
     def get_monitor(self, monitor_id: int) -> dict[str, Any]:
         """One monitor, unredacted — the payload a later edit must round-trip."""
@@ -373,12 +464,18 @@ class UptimeKumaClient:
     def add_monitor(self, payload: dict[str, Any]) -> int:
         """Create a monitor and return Kuma's id for it.
 
-        ``conditions`` is forced because 2.x declares it ``NOT NULL`` with no default and answers
-        a raw constraint violation without it. The id comes back as ``monitorID`` on 2.x and
-        ``monitorId`` on 1.x, and both are read — a rename in a return key is exactly the kind of
-        difference a version shim exists to absorb.
+        ``conditions`` is forced **only on 2.x**, which declares it ``NOT NULL`` with no default
+        and answers a raw constraint violation without it. On 1.x there is no such column, and
+        the create payload is imported onto the row wholesale — so sending it there is not a
+        harmless extra key, it is an unknown column against the tenant's own database.
+
+        Unknown version omits it, and that asymmetry is deliberate: omitting on 2.x fails
+        cleanly, loudly and reversibly, naming the column in the error. The opposite mistake
+        writes to a schema. The id comes back as ``monitorID`` on 2.x and ``monitorId`` on 1.x,
+        and both are read — a rename in a return key is what a version shim exists to absorb.
         """
-        result = self._call("add", {**REQUIRED_ON_CREATE, **payload})
+        extra = REQUIRED_ON_CREATE if _version_tuple(self.server_version)[:1] >= (2,) else {}
+        result = self._call("add", {**extra, **payload})
         monitor_id = result.get("monitorID", result.get("monitorId"))
         if monitor_id is None:
             raise errors.UptimeKumaError("uptime kuma did not return a monitor id")
@@ -411,8 +508,17 @@ class UptimeKumaClient:
 
         This module does not manage them: an agency configuring Slack in Kuma is doing the right
         thing, and Kuma is better at delivery than we would be.
+
+        Push-only, and unlike the monitor list **nothing re-requests it**: ``notificationList``
+        is sent once, unprompted, after authentication, and no event asks for it again. So this
+        reads what login delivered rather than calling ``getSettings`` — whose ack carries
+        ``data`` (the instance's own settings) and never the channels, which is what made this
+        return ``[]`` on every instance that had them.
         """
-        result = self._call("getSettings")
-        if isinstance(result, dict) and "notificationList" in result:
-            return list(result["notificationList"] or [])
-        return []
+        pushed = self._await_push("notificationList", after=-1, timeout=PUSH_TIMEOUT)
+        if pushed is None:
+            # Not an error: a caller wanting channels can act on "none", and refusing the whole
+            # operation over a nicety would be worse. Logged so it is not silent.
+            logger.debug("uptime: no notificationList push arrived")
+            return []
+        return list(pushed or [])

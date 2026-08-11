@@ -22,6 +22,8 @@
     remote_active: boolean | null;
     last_observed_at: string | null;
     last_error: string | null;
+    /** The Uptime Kuma group this monitor sits in. `null` is top-level, a real answer. */
+    parent_name: string | null;
   };
 
   // `data: unknown` and narrow here, matching every other entity panel: the registry types the
@@ -60,6 +62,15 @@
               {m.monitor_type}
             </span>
           </div>
+          {#if m.parent_name}
+            <!-- The group is context, not a link: it is Uptime Kuma's folder, and this panel
+                 mirrors it rather than owning it. The glyph carries the meaning so the line
+                 does not read as a second address. -->
+            <p class="truncate text-xs text-muted">
+              <span aria-hidden="true">🗀</span>
+              {m.parent_name}
+            </p>
+          {/if}
           {#if m.target}
             <p class="truncate text-xs text-muted">{m.target}</p>
           {/if}

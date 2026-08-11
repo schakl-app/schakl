@@ -34,6 +34,7 @@ from app.modules.uptime import errors as kuma_errors
 from app.modules.uptime import profiles as prof
 from app.modules.uptime.client import UptimeKumaClient, merge_monitor
 from app.modules.uptime.models import (
+    GROUP_TYPE,
     InstanceMode,
     InstanceStatus,
     SyncStatus,
@@ -109,21 +110,32 @@ class UptimeService:
     async def get_instance(self, instance_id: uuid.UUID) -> UptimeInstance:
         return await self.instances.get_or_404(instance_id)
 
-    async def monitor_counts(self, instance_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
-        """Monitors per instance in **one** grouped query, never one per row.
+    async def monitor_counts(
+        self, instance_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, tuple[int, int]]:
+        """``(monitors, groups)`` per instance in **one** grouped query, never one per row.
 
         The shape `docs/PERFORMANCE.md` exists to prevent: correct and cheap at three instances,
-        correct and linear at three hundred, and identical in the JSON either way.
+        correct and linear at three hundred, and identical in the JSON either way. The group
+        count rides the same statement as a filtered aggregate rather than arriving as a second
+        query — it is the same rows, asked a narrower question.
+
+        Groups are counted **and** included in the total, because a group is a monitor here and
+        subtracting it would make the number disagree with the list the same screen links to.
         """
         if not instance_ids:
             return {}
+        groups = func.count(UptimeMonitor.id).filter(UptimeMonitor.monitor_type == GROUP_TYPE)
         stmt = (
             self.monitors.scoped_select()
-            .with_only_columns(UptimeMonitor.instance_id, func.count(UptimeMonitor.id))
+            .with_only_columns(UptimeMonitor.instance_id, func.count(UptimeMonitor.id), groups)
             .where(UptimeMonitor.instance_id.in_(instance_ids))
             .group_by(UptimeMonitor.instance_id)
         )
-        return {row[0]: row[1] for row in (await self.ctx.session.execute(stmt)).all()}
+        return {
+            row[0]: (int(row[1]), int(row[2] or 0))
+            for row in (await self.ctx.session.execute(stmt)).all()
+        }
 
     async def create_instance(self, payload: UptimeInstanceCreate) -> UptimeInstance:
         if payload.mode == InstanceMode.MANAGED and not payload.base_url:
@@ -296,9 +308,7 @@ class UptimeService:
         instance = await self.instances.get_or_404(instance_id)
         if payload.connect_headers is not None:
             instance.connect_headers_encrypted = (
-                encrypt(_dump_headers(payload.connect_headers))
-                if payload.connect_headers
-                else None
+                encrypt(_dump_headers(payload.connect_headers)) if payload.connect_headers else None
             )
 
         def _work(client: UptimeKumaClient) -> tuple[str, str]:
@@ -409,7 +419,14 @@ class UptimeService:
             for row in (await self.ctx.session.execute(stmt)).scalars().all()
             if row.kuma_monitor_id is not None
         }
-        report = UptimeSyncReport(instance_id=instance.id, ok=True, seen=len(remote))
+        report = UptimeSyncReport(
+            instance_id=instance.id,
+            ok=True,
+            seen=len(remote),
+            # Counted from Kuma's answer rather than from our rows, so the number describes what
+            # was *read* even on a sync that then failed to write something.
+            groups=sum(1 for m in remote.values() if m.get("type") == GROUP_TYPE),
+        )
         now = datetime.now(UTC)
 
         for kuma_id, payload in remote.items():
@@ -453,9 +470,7 @@ class UptimeService:
                 row.remote_snapshot = snapshot
                 row.last_observed_at = now
                 row.drift_fields = list(drifted)
-                row.sync_status = (
-                    SyncStatus.DRIFT.value if drifted else SyncStatus.ACTIVE.value
-                )
+                row.sync_status = SyncStatus.DRIFT.value if drifted else SyncStatus.ACTIVE.value
                 row.last_error = "uptime.drift.credential" if credential_moved else None
                 if drifted:
                     report.drifted += 1
@@ -500,7 +515,7 @@ class UptimeService:
         website_id: uuid.UUID | None = None,
         sync_status: str | None = None,
         count: bool = True,
-    ) -> tuple[list[UptimeMonitor], int | None]:
+    ) -> tuple[list[UptimeMonitor], int]:
         stmt = self.monitors.scoped_select()
         if instance_id is not None:
             stmt = stmt.where(UptimeMonitor.instance_id == instance_id)
@@ -527,7 +542,31 @@ class UptimeService:
             total = int((await self.ctx.session.execute(csel)).scalar() or 0)
 
         stmt = stmt.order_by(UptimeMonitor.name).limit(limit).offset(offset)
-        return list((await self.ctx.session.execute(stmt)).scalars().all()), total
+        items = list((await self.ctx.session.execute(stmt)).scalars().all())
+        # `count=false` reports the page length, the shape every other index uses — never
+        # `None`. `Page.total` is a plain `int`, so handing it one 500s the request, and the
+        # only caller that passes `count=false` is the website panel: the panel this module
+        # exists to draw answered 500 on every website page that had monitoring.
+        return items, total if total is not None else len(items)
+
+    async def group_names(self, monitors: list[UptimeMonitor]) -> dict[uuid.UUID, str]:
+        """``parent_id -> group name`` for one page of monitors, in **one** query or none.
+
+        A group is a monitor in the same table, so this is a second read of it rather than a
+        join: the page has already been fetched and its parents are almost always a handful of
+        rows shared by every monitor on it. Resolved here rather than denormalised onto the
+        child, because the group's name is Kuma's to change and a copy would go stale silently.
+
+        Goes through the repository, so the company horizon applies to the parent exactly as it
+        does to the child (#285): a group is org-wide furniture, but asking for it by id through
+        a raw select is how failure mode (4) gets built by accident.
+        """
+        parent_ids = {m.parent_id for m in monitors if m.parent_id is not None}
+        if not parent_ids:
+            return {}
+        stmt = self.monitors.scoped_select().where(UptimeMonitor.id.in_(parent_ids))
+        stmt = stmt.with_only_columns(UptimeMonitor.id, UptimeMonitor.name)
+        return {row[0]: row[1] for row in (await self.ctx.session.execute(stmt)).all()}
 
     async def get_monitor(self, monitor_id: uuid.UUID) -> UptimeMonitor:
         return await self.monitors.get_or_404(monitor_id)
@@ -550,7 +589,15 @@ class UptimeService:
 
 
 def _target_of(payload: dict[str, Any]) -> str | None:
-    """The one field a reader means by "what is this watching", per monitor type."""
+    """The one field a reader means by "what is this watching", per monitor type.
+
+    A **group watches nothing**, and Uptime Kuma still stores it a ``url`` of ``"https://"`` —
+    its form's placeholder, saved. Copying that through would put a bare scheme in the target
+    column of every group, which reads on screen as a monitor pointed at a broken address rather
+    than as the folder it is.
+    """
+    if payload.get("type") == GROUP_TYPE:
+        return None
     for key in ("url", "hostname", "docker_container", "databaseConnectionString"):
         value = payload.get(key)
         if value:

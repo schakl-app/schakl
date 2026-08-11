@@ -967,3 +967,65 @@ async def test_meta_false_skips_the_display_attach_a_picker_discards(
         assert all(d["company_name"] == "" for d in body["items"]), body
         assert len(slim) < len(full), (len(slim), len(full))
         assert slim.matching("from domain_tld_prices") == [], slim.statements
+
+
+async def test_the_monitor_list_costs_the_same_however_many_groups_there_are(
+    client_for, count_queries, monkeypatch
+) -> None:
+    """``meta=true`` resolves every group name in **one** query, not one per monitor.
+
+    The shape this file exists to catch: a group is a monitor in the same table, so the obvious
+    implementation resolves ``parent_id`` per row and is indistinguishable in the JSON from the
+    grouped one. It is also the shape most likely to be written here, because the lookup is a
+    self-reference and looks free.
+
+    Two groups and four children rather than one and one, because a per-row read and a grouped
+    read agree at a single row and only diverge once the same parent is asked for twice.
+    """
+    from app.modules.uptime import client as kuma_client
+    from tests.uptime_fake import FakeKuma
+
+    fake = FakeKuma()
+    monkeypatch.setattr(kuma_client, "_connector", fake.connector)
+    first = fake.add_group("hosting klanten")
+    second = fake.add_group("intern")
+    for i in range(4):
+        fake.add(name=f"site-{i}", parent=first if i % 2 else second, url=f"https://s{i}.nl")
+
+    t = await make_tenant("perf-uptime-groups")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        res = await c.post(
+            "/api/v1/uptime/instances",
+            json={"name": "Kuma", "mode": "managed", "base_url": "https://kuma.example.nl"},
+            headers=headers,
+        )
+        assert res.status_code == 201, res.text
+        instance = res.json()["id"]
+        res = await c.post(
+            f"/api/v1/uptime/instances/{instance}/enrol",
+            json={"username": "admin", "password": "secret"},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        res = await c.post(f"/api/v1/uptime/instances/{instance}/sync", headers=headers)
+        assert res.status_code == 200, res.text
+        assert res.json()["groups"] == 2, res.text
+
+        with count_queries() as counter:
+            res = await c.get("/api/v1/uptime/monitors?meta=true&count=false", headers=headers)
+        assert res.status_code == 200, res.text
+        items = res.json()["items"]
+        assert len(items) == 6, items
+        named = [m for m in items if m["parent_name"]]
+        assert len(named) == 4, named
+        # One statement for the page, one for every group name on it. Not one per child.
+        reads = counter.matching("from uptime_monitors")
+        assert len(reads) == 2, counter.statements
+
+        # And a caller that did not ask pays for neither.
+        with count_queries() as slim:
+            res = await c.get("/api/v1/uptime/monitors?count=false", headers=headers)
+        assert res.status_code == 200, res.text
+        assert all(m["parent_name"] is None for m in res.json()["items"])
+        assert len(slim.matching("from uptime_monitors")) == 1, slim.statements

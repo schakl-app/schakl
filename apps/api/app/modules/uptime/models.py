@@ -46,6 +46,11 @@ from app.core.activity import AuditableMixin
 from app.core.mixins import OrgScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
 from app.db import Base
 
+#: Uptime Kuma's own word for a group, and therefore ours. A group is not a second entity here:
+#: it is a monitor whose ``monitor_type`` is this and whose children carry its ``parent_id``, so
+#: this constant is the whole schema difference between a folder and the things in it.
+GROUP_TYPE = "group"
+
 
 class InstanceMode(StrEnum):
     """Whether we reach into this instance, or only hear from it.
@@ -92,9 +97,7 @@ class SyncStatus(StrEnum):
     ERROR = "error"
 
 
-class UptimeInstance(
-    UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, AuditableMixin, Base
-):
+class UptimeInstance(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, AuditableMixin, Base):
     """One Uptime Kuma server this tenant works with.
 
     A row, not a per-org setting: the agency runs one for itself and clients bring theirs, the
@@ -196,9 +199,7 @@ class UptimeMonitorProfile(
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     monitor_type: Mapped[str] = mapped_column(String(40), nullable=False, default="http")
-    defaults: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, default=dict, server_default="{}"
-    )
+    defaults: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
     #: Uptime Kuma's own notification channel ids. Assigned, never managed: an agency
     #: configuring Slack in Kuma is doing the right thing and Kuma delivers better than we would.
     notification_ids: Mapped[list] = mapped_column(
@@ -209,10 +210,7 @@ class UptimeMonitorProfile(
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
-class UptimeMonitor(
-
-    UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, AuditableMixin, Base
-):
+class UptimeMonitor(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, AuditableMixin, Base):
     """One monitor, as we decided it and as Kuma last reported it.
 
     A **group is a monitor** (``monitor_type == "group"``) with children pointing at it through
@@ -304,7 +302,6 @@ class UptimeMonitor(
     #: is not an overwrite. One schakl created does have intent, so a difference is drift and
     #: must be reported rather than quietly absorbed.
     adopted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-
 
     @classmethod
     def __portal_horizon_clause__(cls, scope: frozenset[uuid.UUID] | None):  # noqa: ANN206
