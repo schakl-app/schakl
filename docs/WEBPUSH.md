@@ -220,7 +220,41 @@ The handlers:
 production build — `vite build && vite preview`, or the real image. A `pnpm dev` session will
 never show you a push, and that is not a bug to chase.
 
-It did, however, hide one. `navigator.serviceWorker.ready` resolves once a worker is active and
+### Nothing installed the worker, in any environment
+
+The section above describes a worker that gets *generated*. It never described one that gets
+*installed*, and for the whole first life of this feature nothing did: `injectRegister: "auto"`
+places its `<script src="/registerSW.js">` through Vite's `transformIndexHtml` hook, and
+SvelteKit bakes `app.html` itself without ever calling that hook. The build emitted `sw.js`,
+`push-sw.js` and `registerSW.js`; the server served all three; no page referenced the third; no
+browser was ever asked for a worker. Not in dev — where it is expected — but also not in preview
+and not in the production image. `curl`ing the deployed login page found zero occurrences of
+`registerSW` or `sw.js` in the HTML, while `/sw.js` answered `200`.
+
+Every symptom pointed somewhere else. Push was the only feature that *asks* whether a worker
+exists, so the entire fault surfaced as one sentence on one settings screen —
+`settings.push.no_worker`, *"de achtergrondservice die de app installeert, draait niet"* — which
+reads like a browser problem and was a build-wiring problem. Meanwhile the PWA half of it (the
+precache, `autoUpdate`, offline assets) had simply never worked and nothing was watching.
+
+The fix is `apps/web/src/lib/core/pwa.ts`, called from the **root** `+layout.svelte`; the
+reasoning, including why the path must be absolute and why `skipWaiting`/`clientsClaim` and
+`navigateFallback` are now stated explicitly, is in `docs/WEB.md`. Two rules are worth carrying:
+
+- **When a surface only exists because something else wires it up, assert the wiring.** This is
+  `docs/MCP.md`'s `/api/docs` lesson in a second costume: there, every test called
+  `app.openapi()` in-process, which is exactly the path the bug was not on. Here, every test
+  stubbed `navigator.serviceWorker`, which is exactly the object that did not exist.
+  `pnpm pwa:check` reads the build output and fails when no bundle registers a worker.
+- **A plugin option that silently does nothing is worse than a missing one.** `injectRegister`
+  was set, was correct for the plugin it belongs to, and had no effect in this framework. It is
+  `false` now, with the reason written at the call site.
+
+The `ready` timeout below is a different bug, found earlier and fixed on its own. It is what
+turned this one from an eternal spinner into a sentence — and, having a plausible sentence for
+it, is also part of why it went unexamined for so long.
+
+`navigator.serviceWorker.ready` resolves once a worker is active and
 has **no other outcome**: with nothing registered for the scope it stays pending for the life of
 the page, never rejecting, so the `try`/`catch` around it caught nothing and `status()` never
 returned. The settings section sat on `common.loading` forever — in every dev session, and in any
@@ -336,7 +370,10 @@ and remember Paraglide here does not parse ICU plurals — use `_one` key pairs.
 | `modules/notifications/jobs.py` | call the third sweep |
 | `alembic/versions/a9d3f4b81c62_notifications_create_web_push.py` | the two tables + RLS |
 | `apps/web/static/push-sw.js` | **new** — `push` + `notificationclick` |
-| `apps/web/vite.config.ts` | `workbox.importScripts` |
+| `apps/web/vite.config.ts` | `workbox.importScripts`; later: `injectRegister: false`, explicit `skipWaiting`/`clientsClaim`, `navigateFallback: null` (§7) |
+| `apps/web/src/lib/core/pwa.ts` | **new** (follow-up) — registers the generated worker, which nothing did |
+| `apps/web/src/routes/+layout.svelte` | calls it once, at the root, for the whole origin |
+| `scripts/pwa-check.mjs` | **new** (follow-up) — the build-output guard; `pnpm pwa:check`, CI after the web build |
 | `apps/web/src/lib/modules/notifications/PushSection.svelte` | **new** — enrol / list / revoke / test |
 | `apps/web/src/lib/modules/notifications/push.ts` | **new** — subscribe/unsubscribe/refresh |
 | `PreferenceMatrixForm.svelte`, `prefs.server.ts`, `(app)/+layout.svelte` (the session refresh), `messages/*.json`, `docs/NOTIFICATIONS.md` | extend |
@@ -370,6 +407,10 @@ sweeps:
   settings screen in Chrome and in Firefox, enable, press **Test versturen**, and confirm the
   notification appears and clicking it focuses the tab. A `401`/`403` from the push service on
   that first attempt would point at `vapid_headers`; anything else at the payload.
+  **That checklist has still not been run**: the §7 fix means the screen now offers an Enable
+  button where it used to refuse — verified in Chromium against the real adapter-node build, where
+  the worker installs, imports `push-sw.js` and `status()` answers `off` — but no notification has
+  yet made the round trip through Google or Mozilla.
 
 ## 15. Decisions taken, and why
 

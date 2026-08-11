@@ -253,6 +253,12 @@ jobs:
         run: pnpm --filter @schakl/web test:unit
       - name: Build
         run: pnpm --filter @schakl/web build
+      # After the build, because it reads the build output: whether the generated service
+      # worker is actually installed by anything, and whether it evaluates to its last line.
+      # Neither is visible in the source, and the unit tests stub the very API that was
+      # missing — the app shipped an `sw.js` no browser was ever asked for.
+      - name: PWA service worker
+        run: node scripts/pwa-check.mjs
 
   site:
     name: Site (content + docs + links)

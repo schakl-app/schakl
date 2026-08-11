@@ -1,10 +1,24 @@
 <script lang="ts">
   import "../app.css";
+  import { dev } from "$app/environment";
+  import { onMount } from "svelte";
+  import { registerServiceWorker } from "$lib/core/pwa";
   import { themeStyle } from "$lib/core/theme";
   import { parseThemeCookie } from "$lib/core/theme-mode";
   import { syncResolvedTheme } from "$lib/core/theme-mode.svelte";
 
   let { data, children } = $props();
+
+  // The one place the PWA's service worker is installed. It belongs in the *root* layout rather
+  // than in `(app)`: a worker is registered for the whole origin, and the login screen and the
+  // client portal are as much part of the installed app as the dashboard is. See
+  // `$lib/core/pwa.ts` for what shipped while nothing did this at all.
+  //
+  // Skipped in dev because the plugin generates no worker there (`devOptions` is off,
+  // `docs/WEBPUSH.md` §7), so asking for one would be a guaranteed 404 in every console.
+  onMount(() => {
+    if (!dev) void registerServiceWorker();
+  });
 
   function applyBrand() {
     const scheme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
