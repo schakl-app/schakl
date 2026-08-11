@@ -7,6 +7,7 @@ caller's credential on every in-process call, so the key's scopes govern each to
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from contextlib import asynccontextmanager
@@ -64,9 +65,11 @@ _MCP_HEADERS = {
 }
 
 
-async def _rpc(client, method: str, params: dict | None = None, *, auth: dict) -> dict:
+async def _rpc(
+    client, method: str, params: dict | None = None, *, auth: dict, url: str = "/mcp/"
+) -> dict:
     response = await client.post(
-        "/mcp/",
+        url,
         json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}},
         headers={**_MCP_HEADERS, **auth},
     )
@@ -158,6 +161,98 @@ async def test_mcp_rejects_anonymous_tool_calls(client_for) -> None:
             c, "tools/call", {"name": "list_companies", "arguments": {}}, auth={}
         )
         assert result["result"].get("isError") is True
+
+
+async def test_mcp_refuses_the_standalone_stream_instead_of_holding_it_open(client_for) -> None:
+    """``GET /mcp`` answers 405 rather than opening a stream that can never carry a message.
+
+    The transport is stateless, so nothing is ever routed to the standalone SSE stream the
+    spec lets a client open — the SDK opens it anyway and holds the connection, the task group
+    and its memory streams until somebody times out. Clients probe with ``GET``; one that hangs
+    reports "the server timed out", which is the wrong sentence about the right fact.
+
+    Asserted with a deadline, because the bug's signature is *no response at all*: without the
+    guard this call never returns and the test would hang instead of failing.
+    """
+    t = await make_tenant("mcp-get")
+    async with mcp_running(), client_for(t.host) as c:
+        response = await asyncio.wait_for(
+            c.get("/mcp/", headers={"Accept": "application/json, text/event-stream"}),
+            timeout=10,
+        )
+        assert response.status_code == 405, response.text
+        assert response.headers["allow"] == "POST"
+        # POST is unaffected: the guard is about the verb, not about the connection.
+        assert (await _rpc(c, "tools/list", auth={}))["result"]["tools"]
+
+
+#: Bytes of ``tools/list`` the compact profile may spend (CLAUDE.md §12).
+#:
+#: ChatGPT's ceiling is stated in *tokens* — 5,000 for every tool's name, description and
+#: input schema together — and a tokenizer is a network download and a dependency this suite
+#: is not going to grow for one assertion. So the budget is expressed in the bytes the server
+#: actually sends, converted at a deliberately pessimistic **3.0 chars/token**: the measured
+#: ratio for this payload is 3.89 (o200k_base), so 14,000 bytes is at most ~4,670 tokens on
+#: the pessimistic reading and ~3,600 on the real one. Either way it is under the cap, and the
+#: conversion only ever errs towards failing this test early.
+_COMPACT_BUDGET_BYTES = 14_000
+
+
+async def test_mcp_compact_profile_fits_a_chat_client(client_for) -> None:
+    """``/mcp/compact`` is the curated read-only set, small enough for ChatGPT to accept.
+
+    This is the specification for :data:`app.core.mcp.server._COMPACT_TOOLS`, not a smoke
+    test. The full surface is ~527,000 tokens — a hundred times ChatGPT's allowance — and the
+    profile exists solely to be under it, so the number below is the feature. A name added to
+    the curated set without watching this assertion is how the profile silently stops being
+    addable, and the failure would otherwise appear in somebody else's settings screen weeks
+    later as an error message we never see.
+    """
+    from app.core.mcp.server import _COMPACT_TOOLS
+
+    t = await make_tenant("mcp-compact")
+    headers = await auth_cookie(t.user)
+    async with mcp_running(), client_for(t.host) as c:
+        await c.post("/api/v1/companies", json={"name": "Compact BV"}, headers=headers)
+        minted = await c.post(
+            "/api/v1/api-keys",
+            json={"name": "compact", "scopes": ["companies.company.read"]},
+            headers=headers,
+        )
+        auth = {"Authorization": f"Bearer {minted.json()['secret']}"}
+
+        listed = await _rpc(c, "tools/list", auth=auth, url="/mcp/compact")
+        tools = listed["result"]["tools"]
+
+        # Exactly the curated set — no name in it that resolves to nothing, which is the way
+        # this list rots: a route is renamed and its entry here quietly stops matching.
+        assert {tool["name"] for tool in tools} == set(_COMPACT_TOOLS)
+
+        # Response schemas are 79% of the full surface's bytes and buy a caller nothing at
+        # decision time. Their absence is most of why the profile fits.
+        assert not [tool for tool in tools if tool.get("outputSchema")]
+
+        spent = len(json.dumps(tools, separators=(",", ":")))
+        assert spent <= _COMPACT_BUDGET_BYTES, (
+            f"the compact profile spends {spent:,} bytes of its {_COMPACT_BUDGET_BYTES:,} "
+            f"budget across {len(tools)} tools — drop one, or narrow a schema"
+        )
+
+        # Same server, same credential path: the profile narrows a listing, it is not a
+        # second data path and it is not a second answer about authorization.
+        called = await _rpc(
+            c,
+            "tools/call",
+            {"name": "list_companies", "arguments": {}},
+            auth=auth,
+            url="/mcp/compact",
+        )
+        assert called["result"].get("isError") is not True, called
+        assert "Compact BV" in json.dumps(called["result"])
+
+        # …and the full surface is untouched, so the profile can never become the default.
+        full = await _rpc(c, "tools/list", auth=auth)
+        assert len(full["result"]["tools"]) > 100
 
 
 async def test_meta_modules_advertises_the_mcp_surface(client_for, monkeypatch) -> None:

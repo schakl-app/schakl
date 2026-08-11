@@ -705,6 +705,36 @@ Desktop/Code, agents) can work with the instance's data. Design rules:
   routes exist, so the generated surface already tracks per-tenant modules.
 - **Read-first is a key-minting decision:** a cautious instance mints read-only-scoped keys;
   the deny-by-default route permissions answer every call either way.
+- **A tool surface is a context budget, and "every route" spends it all** (`docs/MCP.md`).
+  Generating a tool per operation is the right default for a coding agent, which reads the list
+  once; it is the wrong one for a chat client, which puts every tool in the model's context on
+  every turn and therefore budgets. ChatGPT's ceiling is **5,000 tokens for all tools together**
+  — name, description and input schema — and `/mcp` is ~620 tools and ~527,000 tokens, so it has
+  never been addable there and no amount of schema trimming would have made it so: at that count
+  you are ~85 tokens per tool, which does not buy a name. Only *fewer tools* works, so `/mcp`
+  keeps the whole surface and **`/mcp/compact`** is the same server, same session manager, same
+  lifespan, answering `tools/list` with a curated read-only fourteen (`_COMPACT_TOOLS`). Three
+  things generalise. **The reduction that pays is the one nobody looks at**: `outputSchema` is
+  **79% of the bytes** and buys a caller nothing at decision time — it validates a result you
+  already have — and six single tools each exceed ChatGPT's whole allowance on their own, every
+  one of them a response schema wearing a tool's name. **A curated list is a specification, so
+  it is pinned by a number**: `test_mcp_compact_profile_fits_a_chat_client` asserts the byte
+  budget, because a name added without watching it fails in somebody else's settings screen,
+  weeks later, with an error nobody here ever sees. And **narrowing a listing is not an
+  authorization boundary** — a tool outside the profile still answers, still through
+  `require_context`; pretending otherwise would put a second, weaker answer beside the real one.
+  The selector is a **path segment, not a query parameter**: this URL is pasted into someone
+  else's settings screen, and the query string is the part of a URL that tools normalise, strip
+  and re-encode.
+- **A stream nothing can write to is not a stream, it is a held connection.** Streamable HTTP
+  lets a client open a standalone `GET` stream for server-initiated messages; ours is stateless
+  by choice, so nothing is ever routed to it and it never ends. The SDK refuses `DELETE` with
+  405 the moment it sees no session id and then opens the `GET` stream anyway — one connection,
+  one task group and two memory streams per probe, until the caller or the edge gives up.
+  Clients probe with `GET`, and one that hangs reports *"the server timed out"* instead of
+  *"that verb is not offered here"*: the wrong sentence about the right fact, and one that reads
+  as an outage. `RefuseStandaloneStream` answers 405 with `Allow: POST`, written against the
+  transport rather than against any one client.
 - **A route the edge does not forward is a route nobody has.** Swagger UI, ReDoc and the
   OpenAPI document live at `/api/docs`, `/api/redoc` and `/api/openapi.json`, not at FastAPI's
   root-level defaults, because the edge routes exactly `/api/` and `/mcp` here and everything
