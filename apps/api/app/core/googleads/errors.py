@@ -35,6 +35,7 @@ Two rules do not bend:
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from app.errors import AppError
@@ -258,6 +259,115 @@ def _retry_delay(item: dict[str, Any]) -> float | None:
         return None
 
 
+def _typed(
+    item: dict[str, Any],
+    *,
+    status: int | None,
+    fallback: str,
+    secret: str | None,
+    request_id: str | None,
+) -> AdsError:
+    """One ``GoogleAdsError`` → the class it means, scrubbed.
+
+    Factored out of :func:`classify` because a partial-failure batch needs the same mapping
+    applied to *every* error rather than the first — and the second copy of a 167-way oneof
+    reader is the one that would drift.
+    """
+    codes = item.get("errorCode")
+    group, value = "", ""
+    if isinstance(codes, dict):
+        for key, raw in codes.items():
+            if raw:
+                group, value = str(key), str(raw)
+                break
+    message = str(item.get("message") or fallback or value or "Google Ads error")
+    cls = _BY_GROUP.get(group, AdsError)
+    if value in _DEVELOPER_TOKEN_VALUES:
+        cls = AdsDeveloperTokenError
+    kwargs: dict[str, Any] = {}
+    if cls is AdsQuotaError:
+        kwargs["retry_after"] = _retry_delay(item)
+    return cls(
+        scrub(message, secret),
+        status=status,
+        error_code=f"{group}.{value}" if group else value or None,
+        request_id=request_id,
+        **kwargs,
+    )
+
+
+def _operation_index(item: dict[str, Any]) -> int | None:
+    """Which operation in the request this error is about.
+
+    Google documents it as *"typically ``location.field_path_elements[0].index``"* — typically,
+    because the path walks into whatever field failed and the operations list is only usually
+    first. So the element **named** ``operations`` is preferred and position is the fallback:
+    reading index 0 blindly attributes a nested failure to the wrong row, and a wrong row in a
+    write report is worse than no row at all.
+    """
+    location = item.get("location")
+    if not isinstance(location, dict):
+        return None
+    elements = [e for e in location.get("fieldPathElements") or () if isinstance(e, dict)]
+    for element in elements:
+        if str(element.get("fieldName") or "") == "operations" and element.get("index") is not None:
+            return int(element["index"])
+    for element in elements:
+        if element.get("index") is not None:
+            return int(element["index"])
+    return None
+
+
+@dataclass(frozen=True)
+class OperationFailure:
+    """One refused operation out of a ``partialFailure`` batch."""
+
+    #: ``None`` when Google's error carried no path back to an operation. Reported as an
+    #: unattributed failure rather than pinned on operation 0.
+    index: int | None
+    error: AdsError
+
+
+def partial_failures(
+    payload: dict[str, Any] | None, *, secret: str | None = None
+) -> list[OperationFailure]:
+    """The per-operation refusals inside a **successful** ``:mutate`` response.
+
+    This is the shape :func:`classify` cannot see, and the reason it needs its own function.
+    With ``partialFailure: true`` Google answers **HTTP 200** — the valid operations were applied
+    — and puts the refusals in a top-level ``partialFailureError``, which is a bare
+    ``google.rpc.Status`` rather than the ``{"error": …}`` envelope every failure path here walks.
+    A caller that only classifies non-2xx responses therefore reads "eleven of twelve exclusions
+    were written" as "twelve were written", which is a report that is wrong in the direction
+    nobody checks.
+
+    ``results`` still carries one entry per operation and the refused ones are **empty objects**,
+    so the index is the only link between a result slot and its reason.
+    """
+    status = (payload or {}).get("partialFailureError")
+    if not isinstance(status, dict):
+        return []
+    failure = _failure({"error": status})
+    if failure is None:
+        # A Status carrying no GoogleAdsFailure is still a refusal — surfaced unattributed
+        # rather than dropped, because "something in this batch failed and we do not know what"
+        # is a true sentence and silence is not.
+        message = scrub(str(status.get("message") or ""), secret)
+        return [OperationFailure(None, AdsError(message or "partial failure", status=200))]
+    request_id = str(failure.get("requestId") or "") or None
+    out: list[OperationFailure] = []
+    for item in failure.get("errors") or ():
+        if not isinstance(item, dict):
+            continue
+        out.append(
+            OperationFailure(
+                _operation_index(item),
+                _typed(item, status=200, fallback="", secret=secret, request_id=request_id),
+            )
+        )
+    return out
+
+
 def classify(
     payload: dict[str, Any] | None,
     *,
@@ -279,26 +389,8 @@ def classify(
     request_id = str(failure.get("requestId") or "") or None if failure else None
 
     if item is not None:
-        codes = item.get("errorCode")
-        group, value = "", ""
-        if isinstance(codes, dict):
-            for key, raw in codes.items():
-                if raw:
-                    group, value = str(key), str(raw)
-                    break
-        message = str(item.get("message") or fallback or value or "Google Ads error")
-        cls = _BY_GROUP.get(group, AdsError)
-        if value in _DEVELOPER_TOKEN_VALUES:
-            cls = AdsDeveloperTokenError
-        kwargs: dict[str, Any] = {}
-        if cls is AdsQuotaError:
-            kwargs["retry_after"] = _retry_delay(item)
-        return cls(
-            scrub(message, secret),
-            status=status,
-            error_code=f"{group}.{value}" if group else value or None,
-            request_id=request_id,
-            **kwargs,
+        return _typed(
+            item, status=status, fallback=fallback, secret=secret, request_id=request_id
         )
 
     # No parseable failure. The status is all we have — and one of them is load-bearing.

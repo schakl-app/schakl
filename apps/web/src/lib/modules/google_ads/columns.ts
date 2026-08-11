@@ -10,6 +10,11 @@ import { t } from "$lib/core/i18n";
 
 export type ReportView = "campaigns" | "keywords" | "search-terms" | "negatives" | "changes";
 
+/** The decisions log's saved column/page-size preference key. Lives here rather than beside the
+ * route: a `+page.server.ts` may only export SvelteKit's own names, and exporting anything else
+ * builds fine under `svelte-check` and fails the production build. */
+export const GOOGLE_ADS_DECISIONS_TABLE_ID = "google-ads-decisions";
+
 export type ColumnKind =
   | "text"
   /** Money in the account's own currency — never assumed to be EUR. */

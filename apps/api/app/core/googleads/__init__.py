@@ -50,8 +50,10 @@ from app.core.googleads.errors import (
     AdsQuotaError,
     AdsUnavailable,
     AdsVersionError,
+    OperationFailure,
     classify,
     describe_failure,
+    partial_failures,
     scrub,
 )
 
@@ -73,6 +75,7 @@ __all__ = [
     "AdsQuotaError",
     "AdsUnavailable",
     "AdsVersionError",
+    "OperationFailure",
     "QueryStats",
     "ads_accounts_for_company",
     "ads_accounts_registered",
@@ -85,6 +88,7 @@ __all__ = [
     "describe_failure",
     "format_customer_id",
     "normalise_customer_id",
+    "partial_failures",
     "register_ads_accounts",
     "scrub",
     "set_transport",

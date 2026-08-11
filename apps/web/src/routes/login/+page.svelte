@@ -33,6 +33,20 @@
   const challenge = $derived(form?.twoFactor ? form : null);
   const canSms = $derived(challenge?.methods?.includes("sms") ?? false);
 
+  /**
+   * Where they were headed before a guard sent them here — on every form and on the SSO link.
+   *
+   * The action's echo wins over the load's: without JS a failed submit re-renders at
+   * `/login?/login`, where the page URL no longer holds the `next` the visitor arrived with, so
+   * `data.next` is null and only the value that came back on the form still knows.
+   */
+  const next = $derived(form?.next ?? data.next ?? "");
+  // An SSO round-trip leaves this app entirely, so the target rides the API's own `?next=` and
+  // comes back on the callback's redirect (`app/core/auth/oidc.py`).
+  const ssoHref = $derived(
+    next ? `/api/v1/auth/oidc/login?next=${encodeURIComponent(next)}` : "/api/v1/auth/oidc/login",
+  );
+
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
 </script>
@@ -65,7 +79,7 @@
       <form method="POST" action="?/verify" use:enhance={busy.wrap("verify")} class="space-y-4">
         <input type="hidden" name="challenge_token" value={challenge.challengeToken} />
         <input type="hidden" name="methods" value={challenge.methods.join(",")} />
-        <input type="hidden" name="next" value={data.next ?? ""} />
+        <input type="hidden" name="next" value={next} />
         <input type="hidden" name="method" value={challenge.smsSentTo ? "sms" : method} />
 
         <p class="text-sm text-text-muted">
@@ -118,6 +132,7 @@
         <form method="POST" action="?/sms" use:enhance class="mt-2 text-center">
           <input type="hidden" name="challenge_token" value={challenge.challengeToken} />
           <input type="hidden" name="methods" value={challenge.methods.join(",")} />
+          <input type="hidden" name="next" value={next} />
           <button type="submit" class="text-sm text-text-muted hover:text-brand">
             {t("auth.two_factor_send_sms")}
           </button>
@@ -127,7 +142,7 @@
       <form method="POST" action="?/login" use:enhance={busy.clear("login")} class="space-y-4">
         <!-- Where they were headed before the guard sent them here. On the form, not read back
              off the page URL: a form action posts to `?/login`, which carries no other query. -->
-        <input type="hidden" name="next" value={data.next ?? ""} />
+        <input type="hidden" name="next" value={next} />
         <div>
           <label for="email" class="mb-1 block text-sm font-medium text-text">
             {t("auth.email")}
@@ -176,7 +191,7 @@
 
     {#if data.oidcEnabled && !challenge}
       <a
-        href="/api/v1/auth/oidc/login"
+        href={ssoHref}
         class="mt-4 block w-full rounded-lg border border-border px-4 py-2 text-center text-sm font-medium text-text hover:bg-surface"
       >
         {t("auth.sign_in_with_sso", { name: data.oidcName || "SSO" })}

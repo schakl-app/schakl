@@ -23,7 +23,9 @@ from typing import Any
 
 from app.core.googleads import AdsClient, format_customer_id, gaql
 from app.core.periods import resolve_compare
+from app.modules.google_ads import policy as policy_rules
 from app.modules.google_ads import reporting
+from app.modules.google_ads.decisions import GoogleAdsDecisionService
 from app.modules.google_ads.models import GoogleAdsAccount
 from app.modules.google_ads.reporting import ReadResult, Window
 from app.modules.google_ads.schemas import (
@@ -287,7 +289,47 @@ class GoogleAdsReadService:
                 min_cost=min_cost,
                 min_clicks=min_clicks,
             )
+        # After the client block, never inside it: the pooled connection is released for the
+        # duration and a query there would re-check one out with no RLS GUC bound, which fails
+        # closed rather than erroring. One batched read, not one per row.
+        await self._annotate_decisions(account, result.rows)
         return self._envelope(account, result, window, warnings)
+
+    async def _annotate_decisions(self, account: GoogleAdsAccount, rows: list[dict]) -> None:
+        """Stamp each search-term row with the decision that already stands about it.
+
+        `match_status` is Google's answer to "is this already a keyword or a negative?" and it is
+        silent about the far more common case: somebody looked at this term, decided to keep it,
+        and wrote down why. Without that, the same shortlist is produced every month and an
+        account manager stops reading it (#300's rule that a report is a record, applied to a
+        recommendation).
+
+        Scope-blind on purpose. A term kept in one campaign and excluded in another has two
+        standing decisions, and the honest thing to show beside a row that spans campaigns is
+        "there is a decision about this term", not one of the two picked arbitrarily.
+        """
+        if not rows:
+            return
+        standing = await GoogleAdsDecisionService(self.ctx).standing(
+            account.id, subject_type="search_term"
+        )
+        if not standing:
+            return
+        by_subject: dict[str, Any] = {}
+        for decision in standing.values():
+            by_subject.setdefault(decision.subject_key, decision)
+        for row in rows:
+            found = by_subject.get(policy_rules.normalise(row.get("search_term")))
+            row["decided"] = (
+                None
+                if found is None
+                else {
+                    "decision": found.decision,
+                    "reason": found.reason,
+                    "scope": found.scope,
+                    "by": found.decided_by,
+                }
+            )
 
     async def ads(
         self,

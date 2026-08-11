@@ -216,3 +216,98 @@
     <Button type="submit" disabled={busy.active}>{t("settings.google_ads.link")}</Button>
   </form>
 </section>
+
+{#if data.mayPolicy}
+  <!--
+    The agency's own standing rules. Every account inherits these: the term lists are **added to**
+    each account's rather than replaced by them, and the ceilings apply wherever an account sets
+    none of its own. Per-client rules live on that client's own account screen, because that is
+    where somebody looking at a client's search terms already is.
+  -->
+  <section class="mt-6 max-w-2xl rounded-xl border border-border bg-surface-raised p-5">
+    <h2 class="mb-1 text-base font-semibold text-text">{t("settings.google_ads.policy.title")}</h2>
+    <p class="mb-4 text-sm text-text-muted">{t("settings.google_ads.policy.subtitle")}</p>
+    {#if form?.policySaved}
+      <p class="mb-3 text-sm text-text">{t("common.saved")}</p>
+    {/if}
+    <!-- keep(): an edit of rules that already exist, so a reset would blank every box. -->
+    <form method="POST" action="?/policy" use:enhance={busy.keep("policy")} class="space-y-5">
+      <div>
+        <label for="gads-house-exclude" class="mb-1 block text-sm font-medium text-text">
+          {t("google_ads.policy.exclude.title")}
+        </label>
+        <p class="mb-1 text-xs text-text-muted">{t("settings.google_ads.policy.exclude_hint")}</p>
+        <textarea
+          id="gads-house-exclude"
+          name="always_exclude"
+          rows="5"
+          value={(data.policy?.always_exclude ?? []).join("\n")}
+          class="{inputClass} font-mono"></textarea>
+      </div>
+      <div>
+        <label for="gads-house-protected" class="mb-1 block text-sm font-medium text-text">
+          {t("google_ads.policy.protected.title")}
+        </label>
+        <p class="mb-1 text-xs text-text-muted">{t("settings.google_ads.policy.protected_hint")}</p>
+        <textarea
+          id="gads-house-protected"
+          name="protected_terms"
+          rows="3"
+          value={(data.policy?.protected_terms ?? []).join("\n")}
+          class="{inputClass} font-mono"></textarea>
+      </div>
+      <div>
+        <label for="gads-house-banned" class="mb-1 block text-sm font-medium text-text">
+          {t("google_ads.policy.field.banned_phrases")}
+        </label>
+        <textarea
+          id="gads-house-banned"
+          name="banned_phrases"
+          rows="3"
+          value={(data.policy?.banned_phrases ?? []).join("\n")}
+          class="{inputClass} font-mono"></textarea>
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2">
+        {#each [["max_daily_budget", data.policy?.max_daily_budget], ["max_budget_increase_pct", data.policy?.max_budget_increase_pct], ["max_cpc", data.policy?.max_cpc], ["waste_min_cost", data.policy?.waste_min_cost], ["waste_min_clicks", data.policy?.waste_min_clicks]] as [name, value] (name)}
+          <div>
+            <label for="gads-house-{name}" class="mb-1 block text-sm font-medium text-text">
+              {t(`google_ads.policy.field.${name}`)}
+            </label>
+            <input
+              id="gads-house-{name}"
+              name={String(name)}
+              inputmode="decimal"
+              value={value ?? ""}
+              placeholder={t("google_ads.policy.no_limit")}
+              class={inputClass}
+            />
+          </div>
+        {/each}
+      </div>
+      <div>
+        <label for="gads-house-steering" class="mb-1 block text-sm font-medium text-text">
+          {t("google_ads.policy.steering.title")}
+        </label>
+        <p class="mb-1 text-xs text-text-muted">{t("settings.google_ads.policy.steering_hint")}</p>
+        <textarea
+          id="gads-house-steering"
+          name="steering"
+          rows="3"
+          value={data.policy?.steering ?? ""}
+          class={inputClass}></textarea>
+      </div>
+      <div>
+        <label for="gads-house-copy" class="mb-1 block text-sm font-medium text-text">
+          {t("google_ads.policy.copy.title")}
+        </label>
+        <textarea
+          id="gads-house-copy"
+          name="ad_copy_rules"
+          rows="3"
+          value={data.policy?.ad_copy_rules ?? ""}
+          class={inputClass}></textarea>
+      </div>
+      <Button type="submit" disabled={busy.active}>{t("common.save")}</Button>
+    </form>
+  </section>
+{/if}

@@ -80,6 +80,11 @@ export function fmtMetric(key: string, value: number, currency?: string | null):
   if (MONEY_METRICS.has(key)) return fmtCurrency(value, currency);
   if (PERCENT_METRICS.has(key)) return fmtPercent(value);
   if (key === "position" || key === "position_change") return fmtNumber(value, 1);
+  // Sentiment is a ratio in −1…1, not a count. At zero decimals every value Rank Math reports
+  // prints as "0" or "1" — not a rounding of the number, a different number. (`ai_visibility_score`
+  // is left whole: it reads as a 0-100 score. That range is one of the things docs/WORDPRESS.md §1
+  // asks the first live credential to confirm, so check it there before trusting this line.)
+  if (key === "avg_sentiment") return fmtNumber(value, 2);
   return fmtNumber(value, 0);
 }
 

@@ -29,8 +29,12 @@ registerWebModule({
       load: async (api, { entityId }) => {
         const monitors = await api.GET("/api/v1/uptime/monitors", {
           // `count=false`: the panel draws rows, not a total, and a count it never renders is
-          // a second query per page load (docs/PERFORMANCE.md).
-          params: { query: { website_id: entityId, limit: 50, offset: 0, count: false } },
+          // a second query per page load (docs/PERFORMANCE.md). `meta=true` is the opposite
+          // trade and worth it here: this panel *does* draw the group name, and it costs one
+          // query for the whole page rather than one per row.
+          params: {
+            query: { website_id: entityId, limit: 50, offset: 0, count: false, meta: true },
+          },
         });
         return { monitors: monitors.data?.items ?? [] };
       },

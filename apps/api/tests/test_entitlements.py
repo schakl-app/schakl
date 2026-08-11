@@ -141,6 +141,10 @@ def test_paid_module_set_is_pinned() -> None:
         # exists to catch — recorded rather than quietly widened.
         "uptime": "uptime",
         "websites": "websites",
+        # WordPress is what a *website* has, the way `cloudflare` is what a domain has: its
+        # table holds administrator Application Passwords, so it is admin-only and licensed
+        # rather than folded into `websites`.
+        "wordpress": "wordpress",
     }
     free = {m.name for m in registry.all() if m.sku is None}
     assert free == {"companies", "contacts", "tasks", "notifications"}

@@ -274,6 +274,283 @@ class GoogleAdsTrendRead(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class GoogleAdsPolicyRead(BaseModel):
+    """One policy row, plus what it actually resolves to.
+
+    Both, because a form full of blanks meaning "something else decides" is unreadable: the
+    editor binds to ``stored`` and the screen shows ``resolved``, so an inherit option can be
+    labelled with the value it inherits rather than with the word "inherit" (#312's rule about a
+    comparison that names its own span, applied to a setting).
+    """
+
+    account_id: uuid.UUID | None = None
+    #: ``true`` when no row exists yet — every value shown is inherited and nothing was saved.
+    stored: bool = False
+    protected_terms: list[str] = Field(default_factory=list)
+    banned_phrases: list[str] = Field(default_factory=list)
+    always_exclude: list[str] = Field(default_factory=list)
+    max_daily_budget: float | None = None
+    max_budget_increase_pct: float | None = None
+    max_cpc: float | None = None
+    waste_min_cost: float | None = None
+    waste_min_clicks: int | None = None
+    steering: str = ""
+    ad_copy_rules: str = ""
+    #: The three layers already folded — lists unioned with the house policy's, scalars filled in
+    #: from it or from the built-in. Never written back; it is what the rules currently *are*.
+    resolved: dict[str, Any] = Field(default_factory=dict)
+
+
+class GoogleAdsPolicyWrite(BaseModel):
+    """Absent means leave alone; explicit ``null`` on a scalar means inherit again.
+
+    Both are real states and the value alone cannot tell them apart, so the router reads
+    ``model_fields_set`` (CLAUDE.md §18). Without it a ceiling set once could never be taken off,
+    and an account would stay pinned to a number somebody typed in a hurry.
+    """
+
+    protected_terms: list[str] | None = None
+    banned_phrases: list[str] | None = None
+    always_exclude: list[str] | None = None
+    max_daily_budget: float | None = Field(default=None, ge=0)
+    max_budget_increase_pct: float | None = Field(default=None, ge=0)
+    max_cpc: float | None = Field(default=None, ge=0)
+    waste_min_cost: float | None = Field(default=None, ge=0)
+    waste_min_clicks: int | None = Field(default=None, ge=0)
+    steering: str | None = Field(default=None, max_length=8_000)
+    ad_copy_rules: str | None = Field(default=None, max_length=8_000)
+
+
+class GoogleAdsDecisionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    account_id: uuid.UUID
+    subject_type: str
+    subject: str
+    scope: str
+    decision: str
+    reason: str = ""
+    applied: bool = False
+    source: str = "manual"
+    payload: dict[str, Any] = Field(default_factory=dict)
+    #: Snapshotted at record time (§16) — an audit trail whose actor evaporates is not one.
+    decided_by_name: str = ""
+    #: Set when the decision was taken through an impersonated session (#296).
+    impersonator_name: str | None = None
+    expires_on: date | None = None
+    withdrawn_at: datetime | None = None
+    withdrawn_by_name: str | None = None
+    created_at: datetime
+
+
+class GoogleAdsDecisionPage(BaseModel):
+    """A page of the log. ``total`` is ``null`` when the caller asked not to count."""
+
+    items: list[GoogleAdsDecisionRead] = Field(default_factory=list)
+    total: int | None = None
+
+
+class GoogleAdsDecisionCreate(BaseModel):
+    subject_type: str = Field(default="search_term", max_length=24)
+    subject: str = Field(min_length=1, max_length=255)
+    decision: str = Field(min_length=1, max_length=24)
+    scope: str = Field(default="account", max_length=64)
+    reason: str = Field(default="", max_length=4_000)
+    #: A decision with no end date is silent forever, which is the wrong default for a judgement
+    #: about a market: "not worth excluding at today's CPC" stops being true.
+    expires_on: date | None = None
+
+
+# --- the write surface -------------------------------------------------------------------------- #
+
+
+class GoogleAdsMutationResult(BaseModel):
+    """One operation's outcome. ``resource_name`` is what Google named the thing it created."""
+
+    index: int
+    ok: bool
+    resource_name: str | None = None
+    #: Google's own error enum (``criterionError.INVALID_KEYWORD_TEXT``), which is the only
+    #: reliable way to tell two refusals sharing a status code apart.
+    error_code: str | None = None
+    #: Google's own sentence, scrubbed of credentials. Provider text, so never an i18n key (§9).
+    message: str | None = None
+
+
+class GoogleAdsSkipped(BaseModel):
+    """One operation the **policy** refused before Google saw it.
+
+    Kept apart from :class:`GoogleAdsMutationResult` on purpose: "we did not ask" and "Google said
+    no" are different sentences, and only one of them is fixable in Google's interface.
+    """
+
+    subject: str
+    #: An i18n key — this refusal is ours, so unlike a Google message it is translated.
+    reason: str
+    #: The protected term this exclusion would have blocked, when that is why it was skipped.
+    #: Named rather than implied: "refused" invites an argument, "would also block *beugel*"
+    #: invites a fix.
+    blocks: str | None = None
+    limit: float | None = None
+
+
+class GoogleAdsMutationRead(BaseModel):
+    """What a write did, per operation.
+
+    ``requested`` and ``applied`` differ whenever the policy skipped a row, Google refused one
+    inside a partial-failure batch, or ``validate_only`` was set — where ``applied`` is zero
+    because nothing was.
+    """
+
+    account: GoogleAdsAccountBrief
+    resource: str
+    validate_only: bool
+    requested: int = 0
+    applied: int = 0
+    results: list[GoogleAdsMutationResult] = Field(default_factory=list)
+    skipped: list[GoogleAdsSkipped] = Field(default_factory=list)
+    #: Read before drawing conclusions: a validate-only run, a shared budget that moved several
+    #: campaigns, a list that could not be attached to every campaign, and a refusal Google gave
+    #: no operation index for are all reported here and nowhere else.
+    warnings: list[str] = Field(default_factory=list)
+    fetched_at: datetime
+
+
+class _Validatable(BaseModel):
+    """Every write carries it, and it is the real dry run.
+
+    Google validates the operation against the *actual* account structure and applies nothing —
+    better than a test account, which serves no ads and therefore cannot answer any question about
+    real campaigns.
+    """
+
+    validate_only: bool = Field(
+        default=False,
+        description="Validate against the live account and change nothing. Use this first.",
+    )
+
+
+class GoogleAdsBudgetCreate(_Validatable):
+    name: str = Field(min_length=1, max_length=255)
+    #: In the **account's** currency, which is on every read's envelope. Never assumed to be EUR.
+    amount: float = Field(ge=0)
+    #: A shared budget's next edit moves every campaign attached to it, so this defaults off.
+    shared: bool = False
+
+
+class GoogleAdsBudgetUpdate(_Validatable):
+    amount: float | None = Field(default=None, ge=0)
+    name: str | None = Field(default=None, max_length=255)
+
+
+class GoogleAdsCampaignCreate(_Validatable):
+    name: str = Field(min_length=1, max_length=255)
+    #: An existing budget. This route cannot create one: that is a ``budget.write`` decision, and
+    #: a campaign route that could conjure a budget would make ``campaign.write`` a budget key.
+    budget_id: str = Field(min_length=1, max_length=32)
+    channel: str = Field(default="SEARCH", max_length=32)
+    #: Off by default: a Search campaign quietly opted into Display spends its budget where
+    #: nobody is looking.
+    target_content_network: bool = False
+
+
+class GoogleAdsCampaignUpdate(_Validatable):
+    status: str | None = Field(default=None, max_length=16)
+    name: str | None = Field(default=None, max_length=255)
+
+
+class GoogleAdsAdGroupCreate(_Validatable):
+    name: str = Field(min_length=1, max_length=255)
+    campaign_id: str = Field(min_length=1, max_length=32)
+    cpc_bid: float | None = Field(default=None, ge=0)
+
+
+class GoogleAdsAdGroupUpdate(_Validatable):
+    status: str | None = Field(default=None, max_length=16)
+    name: str | None = Field(default=None, max_length=255)
+    cpc_bid: float | None = Field(default=None, ge=0)
+
+
+class GoogleAdsKeywordInput(BaseModel):
+    text: str = Field(min_length=1, max_length=80)
+    match_type: str = Field(default="PHRASE", max_length=16)
+    cpc_bid: float | None = Field(default=None, ge=0)
+
+
+class GoogleAdsKeywordsAdd(_Validatable):
+    ad_group_id: str = Field(min_length=1, max_length=32)
+    keywords: list[GoogleAdsKeywordInput] = Field(min_length=1, max_length=200)
+
+
+class GoogleAdsKeywordUpdate(_Validatable):
+    ad_group_id: str = Field(min_length=1, max_length=32)
+    criterion_id: str = Field(min_length=1, max_length=32)
+    status: str | None = Field(default=None, max_length=16)
+    cpc_bid: float | None = Field(default=None, ge=0)
+
+
+class GoogleAdsKeywordsRemove(_Validatable):
+    ad_group_id: str = Field(min_length=1, max_length=32)
+    criterion_ids: list[str] = Field(min_length=1, max_length=200)
+
+
+class GoogleAdsNegativeInput(BaseModel):
+    text: str = Field(min_length=1, max_length=80)
+    match_type: str = Field(default="PHRASE", max_length=16)
+    #: Why. It reaches the decisions log, which is the whole reason this list stops growing back.
+    reason: str = Field(default="", max_length=1_000)
+
+
+class GoogleAdsKeepInput(BaseModel):
+    text: str = Field(min_length=1, max_length=255)
+    reason: str = Field(default="", max_length=1_000)
+    expires_on: date | None = None
+
+
+class GoogleAdsNegativesAdd(_Validatable):
+    #: ``ad_group``, ``campaign`` or ``shared_set`` — Google models an exclusion as three
+    #: different resources and a write has to pick one.
+    level: str = Field(default="campaign", max_length=16)
+    parent_id: str = Field(min_length=1, max_length=32)
+    terms: list[GoogleAdsNegativeInput] = Field(default_factory=list, max_length=200)
+    #: Terms deliberately **not** excluded. Nothing is written to Google; the decision is
+    #: recorded, so the same terms are not proposed again next month.
+    keep: list[GoogleAdsKeepInput] = Field(default_factory=list, max_length=200)
+
+
+class GoogleAdsNegativesRemove(_Validatable):
+    level: str = Field(default="campaign", max_length=16)
+    parent_id: str = Field(min_length=1, max_length=32)
+    criterion_ids: list[str] = Field(min_length=1, max_length=200)
+
+
+class GoogleAdsNegativeListCreate(_Validatable):
+    name: str = Field(min_length=1, max_length=255)
+    #: Campaigns to attach it to. Empty is legal: a list that blocks nothing yet is a normal
+    #: intermediate state, and attaching is a second, re-runnable act.
+    campaign_ids: list[str] = Field(default_factory=list, max_length=100)
+
+
+class GoogleAdsAdCreate(_Validatable):
+    ad_group_id: str = Field(min_length=1, max_length=32)
+    #: 3–15 headlines of at most 30 characters; 2–4 descriptions of at most 90. Google's limits,
+    #: checked here so a refusal names the field rather than an operation index.
+    headlines: list[str] = Field(min_length=1, max_length=15)
+    descriptions: list[str] = Field(min_length=1, max_length=4)
+    final_urls: list[str] = Field(min_length=1, max_length=10)
+    path1: str | None = Field(default=None, max_length=15)
+    path2: str | None = Field(default=None, max_length=15)
+
+
+class GoogleAdsAdUpdate(_Validatable):
+    ad_group_id: str = Field(min_length=1, max_length=32)
+    ad_id: str = Field(min_length=1, max_length=32)
+    #: Status only: an ad's creative is immutable at Google, because its performance history
+    #: belongs to its text. Changing a headline is a new ad plus a removal.
+    status: str = Field(min_length=1, max_length=16)
+
+
 class GoogleAdsKeywordIdeaRequest(BaseModel):
     """Seeds for keyword research. At least one of ``keywords`` or ``url`` is required."""
 

@@ -85,6 +85,7 @@
       {form.report.ok
         ? t("uptime.sync.done", {
             seen: form.report.seen,
+            groups: form.report.groups,
             created: form.report.created,
             missing: form.report.missing,
           })
@@ -123,7 +124,18 @@
                   when: fmtDateTime(instance.last_synced_at),
                 })}
               {/if}
-              · {t("uptime.settings.monitor_count", { count: instance.monitor_count })}
+              ·
+              {instance.monitor_count === 1
+                ? t("uptime.settings.monitor_count_one")
+                : t("uptime.settings.monitor_count", { count: instance.monitor_count })}
+              {#if instance.group_count}
+                <!-- Only when there are any: "0 groepen" beside every ungrouped instance is
+                     noise, and the absence of the phrase already says it. -->
+                ·
+                {instance.group_count === 1
+                  ? t("uptime.settings.group_count_one")
+                  : t("uptime.settings.group_count", { count: instance.group_count })}
+              {/if}
             </p>
             {#if instance.last_error}
               <p class="mt-1 text-xs text-red-700">{instance.last_error}</p>

@@ -13,19 +13,34 @@
   import { t } from "$lib/core/i18n";
   import Combobox from "$lib/core/ui/Combobox.svelte";
 
-  import { connectHref, type AccountsResponse, type MarketingSource } from "./types";
+  import {
+    connectHref,
+    SITE_KEY_SOURCES,
+    type AccountsResponse,
+    type MarketingSource,
+  } from "./types";
 
   let {
     source,
     linkedIds,
     websiteId = "",
+    hasWebsites = true,
   }: {
     source: MarketingSource;
     /** external_ids already linked to this company for this source — filtered out of options. */
     linkedIds: string[];
     /** The client website the new link attaches to ("" = client-level). */
     websiteId?: string;
+    /** Whether this client has any website at all — the two "no site" states differ (see below). */
+    hasWebsites?: boolean;
   } = $props();
+
+  // A site-key source (Rank Math) reads one client website's WordPress, so the site is not a
+  // filter on the answer — it is what makes the question askable. Asking without one would spend
+  // a round trip to be told `configured=false`, which the picker would then draw as "not set up
+  // yet": a wrong diagnosis of a state the browser could already see.
+  const needsWebsite = $derived(SITE_KEY_SOURCES.includes(source));
+  const missingWebsite = $derived(needsWebsite && !websiteId);
 
   // One consent covers all three sources, and it comes back *here* — this picker is where the
   // gap was noticed, so it is where the user expects to land with it closed.
@@ -40,7 +55,12 @@
   async function load() {
     loading = true;
     try {
-      const res = await fetch(`/marketing/accounts?source=${source}`);
+      const query = new URLSearchParams({ source });
+      // Read only for the sources that need it, so switching the website select above does not
+      // refetch the four pickers whose answer it cannot change: an unread prop is an untracked
+      // one, which makes this branch the dependency list as well as the query string.
+      if (needsWebsite) query.set("website_id", websiteId);
+      const res = await fetch(`/marketing/accounts?${query.toString()}`);
       response = (await res.json()) as AccountsResponse;
     } catch {
       response = {
@@ -59,6 +79,13 @@
   }
 
   $effect(() => {
+    // Nothing to ask yet. `loading` is cleared rather than left true, or the branch below would
+    // render "loading available accounts…" forever over a request that was never made.
+    if (missingWebsite) {
+      response = null;
+      loading = false;
+      return;
+    }
     void load();
   });
 
@@ -91,7 +118,14 @@
 
 <div class="space-y-1.5">
   <span class="text-xs font-medium text-text-muted">{t(`marketing.picker.${source}`)}</span>
-  {#if loading}
+  {#if missingWebsite}
+    <!-- Two different sentences, because they have two different cures: pick the site from the
+         select above, or give this client a website first. One message covering both would be
+         wrong for whichever half the reader is in. -->
+    <p class="text-sm text-text-muted">
+      {t(hasWebsites ? "marketing.rankmath_pick_website" : "marketing.rankmath_needs_website")}
+    </p>
+  {:else if loading}
     <p class="text-sm text-text-muted">{t("marketing.picker.loading")}</p>
   {:else if response && !response.connected}
     <p class="text-sm text-text-muted">
@@ -132,12 +166,26 @@
          needs a developer token; SE Ranking needs the agency's API key. Neither is fixed by
          reconnecting Google, so neither offers that — and the message carries the link to
          where it *is* fixed, rather than naming a screen and leaving you to find it. -->
-    <p class="text-sm text-text-muted">
-      {t(source === "gads" ? "marketing.ads_not_configured" : `marketing.${source}_not_configured`)}
-    </p>
-    <a href="/settings/marketing" class="text-sm font-medium text-brand hover:underline">
-      {t("marketing.picker.configure")}
-    </a>
+    {#if needsWebsite}
+      <!-- A site-key credential is not agency configuration, so Instellingen cures nothing here:
+           the WordPress connection lives on this one website's page. The API collapses "no
+           credential" and "credential refused" into the same `configured=false`, and with a site
+           named the first is overwhelmingly the case — so name it, and link to the panel that
+           fixes it. -->
+      <p class="text-sm text-text-muted">{t("marketing.rankmath_not_connected")}</p>
+      <a href="/websites/{websiteId}" class="text-sm font-medium text-brand hover:underline">
+        {t("marketing.picker.connect_wordpress")}
+      </a>
+    {:else}
+      <p class="text-sm text-text-muted">
+        {t(
+          source === "gads" ? "marketing.ads_not_configured" : `marketing.${source}_not_configured`,
+        )}
+      </p>
+      <a href="/settings/marketing" class="text-sm font-medium text-brand hover:underline">
+        {t("marketing.picker.configure")}
+      </a>
+    {/if}
   {:else if response?.error}
     <p class="text-sm text-red-600 dark:text-red-400">{t(response.error)}</p>
     <!-- A disabled Cloud API is not a token problem: a reconnect mints the same token against

@@ -9,14 +9,18 @@
 import { json } from "@sveltejs/kit";
 
 import { apiFor } from "$lib/core/session";
+import type { MarketingSource } from "$lib/modules/marketing/types";
 
 import type { RequestHandler } from "./$types";
 
 export const GET: RequestHandler = async (event) => {
-  const source = (event.url.searchParams.get("source") ?? "") as
-    "ga4" | "gsc" | "gads" | "seranking";
+  const source = (event.url.searchParams.get("source") ?? "") as MarketingSource;
+  // Forwarded only when the caller sent one: `website_id` is what a site-key source (Rank Math)
+  // names its credential by, and every other source ignores it. Empty is not `null` at the API
+  // boundary — an empty string would 422 as a malformed UUID rather than reading as "no site".
+  const websiteId = event.url.searchParams.get("website_id") || null;
   const { data, error } = await apiFor(event).GET("/api/v1/marketing/accounts", {
-    params: { query: { source } },
+    params: { query: { source, website_id: websiteId } },
   });
   if (error || !data) {
     return json({ source, connected: false, accounts: [], error: "marketing.accounts_error" });

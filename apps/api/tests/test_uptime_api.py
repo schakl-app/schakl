@@ -44,9 +44,7 @@ async def test_instance_crud_and_the_credential_is_never_returned(client_for, ku
             json={"username": "admin", "password": "secret"},
             headers=headers,
         )
-        got = (
-            await c.get(f"/api/v1/uptime/instances/{created['id']}", headers=headers)
-        ).json()
+        got = (await c.get(f"/api/v1/uptime/instances/{created['id']}", headers=headers)).json()
         assert got["token_configured"] is True, "an enrolled instance must read as configured"
         assert "secret" not in str(got) and "fake-jwt-token" not in str(got)
 
@@ -68,9 +66,7 @@ async def test_a_managed_instance_needs_an_address(client_for, kuma) -> None:
         assert r.json()["error"]["message"] == "errors.uptime_base_url_required"
 
 
-async def test_a_linked_instance_needs_no_credential_and_is_never_dialled(
-    client_for, kuma
-) -> None:
+async def test_a_linked_instance_needs_no_credential_and_is_never_dialled(client_for, kuma) -> None:
     """`linked` is the mode for a client-hosted Kuma nobody will hand over. It must be creatable
     with nothing, and must refuse to connect rather than half-trying."""
     t = await make_tenant("uptime-linked")
@@ -78,9 +74,7 @@ async def test_a_linked_instance_needs_no_credential_and_is_never_dialled(
     async with client_for(t.host) as c:
         created = await _instance(c, headers, mode="linked", base_url=None, name="Client Kuma")
         assert created["mode"] == "linked"
-        r = await c.post(
-            f"/api/v1/uptime/instances/{created['id']}/sync", headers=headers
-        )
+        r = await c.post(f"/api/v1/uptime/instances/{created['id']}/sync", headers=headers)
         assert r.status_code == 200
         assert r.json()["error"] == "errors.uptime_not_enrolled"
         assert kuma.connections == [], "a linked instance was dialled"
@@ -279,6 +273,48 @@ async def test_group_parenthood_survives_a_child_arriving_first(client_for, kuma
         assert by_name["group"]["parent_id"] is None
 
 
+async def test_a_group_is_nameable_counted_and_watches_nothing(client_for, kuma) -> None:
+    """What "groups synced into the CRM" has to mean on a screen, in three parts.
+
+    ``parent_id`` alone cannot be rendered — it is a uuid — so the group's *name* rides the read
+    under ``meta=true`` and is skipped without it, because a picker throws it away. The instance
+    says how many of its monitors are folders, which is how an admin confirms the hierarchy came
+    across at all. And a group carries **no target**: Kuma stores it a ``url`` of ``"https://"``,
+    its own form's placeholder, which would otherwise render as a monitor pointed at a broken
+    address rather than as the folder it is.
+    """
+    group = kuma.add_group("breik. hosting klanten")
+    kuma.add(name="kuzee", parent=group, url="https://kuzee.com")
+
+    t = await make_tenant("uptime-group-meta")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        inst = await _instance(c, headers)
+        await c.post(
+            f"/api/v1/uptime/instances/{inst['id']}/enrol",
+            json={"username": "admin", "password": "secret"},
+            headers=headers,
+        )
+        report = (
+            await c.post(f"/api/v1/uptime/instances/{inst['id']}/sync", headers=headers)
+        ).json()
+        assert report["seen"] == 2
+        assert report["groups"] == 1, "the report cannot say the hierarchy arrived"
+
+        items = (await c.get("/api/v1/uptime/monitors?meta=true", headers=headers)).json()["items"]
+        by_name = {m["name"]: m for m in items}
+        assert by_name["kuzee"]["parent_name"] == "breik. hosting klanten"
+        assert by_name["breik. hosting klanten"]["target"] is None, "a group watches nothing"
+        assert by_name["breik. hosting klanten"]["parent_name"] is None
+
+        plain = (await c.get("/api/v1/uptime/monitors", headers=headers)).json()["items"]
+        assert all(m["parent_name"] is None for m in plain), "meta was resolved unasked"
+
+        listed = (await c.get("/api/v1/uptime/instances", headers=headers)).json()
+        assert listed[0]["monitor_count"] == 2
+        assert listed[0]["group_count"] == 1
+
+
 async def test_a_failed_sync_leaves_the_mirror_readable(client_for, kuma) -> None:
     """A probe is evidence, never the gate: an agency staring at an outage needs yesterday's
     mirror far more than it needs an empty screen."""
@@ -323,9 +359,9 @@ async def test_monitors_never_cross_tenants(client_for, kuma) -> None:
             headers=a_headers,
         )
         await c.post(f"/api/v1/uptime/instances/{inst['id']}/sync", headers=a_headers)
-        monitor_id = (await c.get("/api/v1/uptime/monitors", headers=a_headers)).json()["items"][
-            0
-        ]["id"]
+        monitor_id = (await c.get("/api/v1/uptime/monitors", headers=a_headers)).json()["items"][0][
+            "id"
+        ]
 
     async with client_for(b.host) as c:
         assert (await c.get("/api/v1/uptime/instances", headers=b_headers)).json() == []

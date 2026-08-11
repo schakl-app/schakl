@@ -9,21 +9,30 @@ login button's invariant (shown iff the flow works) survives the move to per-org
 
 Enabling, disabling or enforcing SSO is a settings write; nothing here is decided at boot.
 
-Two rules the flow itself carries:
+Three rules the flow itself carries:
 
 * **PKCE on every authorization request** (``sso.oauth_client``, ``code_challenge_method``).
 * **JIT provisioning is first contact, per org** — never "no membership, so make one", which
   handed removed users their access back on their next sign-in (``sso.OrgSsoProvision``). A
   caller the IdP authenticates but this org has no membership for gets **no session at all**:
   a cookie nobody may use is a credential, not a courtesy.
+* **The deep link survives the round-trip.** An org that *enforces* SSO renders no password form,
+  so this is the only door it has — and a callback hardcoded to ``/`` meant every guarded link
+  such an org's people followed landed them on the dashboard. ``?next=`` is validated on the way
+  in, parked in the server-side session beside Authlib's own state, and read back once on the way
+  out. It rides the session rather than the ``state`` parameter or the ``redirect_uri`` because
+  the IdP echoes both back to us: a value that leaves the building is a value an attacker can
+  rewrite, and this one is about to be handed to a ``Location`` header.
 """
 
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
@@ -38,6 +47,44 @@ from app.errors import AppError
 logger = logging.getLogger("schakl.auth.oidc")
 
 router = APIRouter()
+
+#: Where the pending ``?next=`` waits out the IdP round-trip. Starlette's ``SessionMiddleware``
+#: is already installed for Authlib's state (``app/main.py``), so this costs no new machinery.
+_NEXT_SESSION_KEY = "oidc_next"
+
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def _safe_internal_path(raw: object) -> str | None:
+    """A ``?next=`` narrowed to what is safe to put in a ``Location`` header.
+
+    The Python twin of ``apps/web/src/lib/core/redirect.ts`` — deliberately the same whitelist of
+    *shape* rather than a blacklist of hosts, because the two ends hand the same value to each
+    other. A leading ``//`` or ``/\\`` is a protocol-relative URL that a browser reads as another
+    origin; a bare host fails the leading-slash test; a control character can split the header.
+
+    Anything else returns ``None`` and the caller falls back to ``/``: a stale link is not the
+    visitor's fault, and refusing to sign them in over one helps nobody.
+    """
+    if not isinstance(raw, str):
+        return None
+    value = raw.strip()
+    if not value.startswith("/"):
+        return None
+    if value.startswith("//") or value.startswith("/\\"):
+        return None
+    if _CONTROL_CHARS.search(value):
+        return None
+    return value
+
+
+def _to_login(error: str, next_path: str | None) -> RedirectResponse:
+    """Back to the login screen with the reason — keeping the target, so a refused attempt that
+    the visitor then retries locally still finishes where they were going."""
+    params = {"error": error}
+    if next_path:
+        params["next"] = next_path
+    return RedirectResponse(url=f"/login?{urlencode(params)}")
 
 
 @dataclass
@@ -80,6 +127,14 @@ async def _resolve_sso(request: Request) -> _ResolvedSso:
 @router.get("/login")
 async def oidc_login(request: Request):
     resolved = await _resolve_sso(request)
+    # Park where they were headed for the duration of the round-trip. The `else` branch matters:
+    # a plain sign-in must *clear* whatever an abandoned attempt left behind, or the next login
+    # from this browser silently inherits a target nobody asked for.
+    next_path = _safe_internal_path(request.query_params.get("next"))
+    if next_path:
+        request.session[_NEXT_SESSION_KEY] = next_path
+    else:
+        request.session.pop(_NEXT_SESSION_KEY, None)
     redirect_uri = str(request.url_for("oidc_callback"))
     return await resolved.client.authorize_redirect(request, redirect_uri)
 
@@ -123,12 +178,16 @@ def _email_verified(claims: dict[str, Any]) -> bool:
 
 @router.get("/callback", name="oidc_callback")
 async def oidc_callback(request: Request):
+    # Popped first and exactly once, whatever this request goes on to answer: a target that
+    # outlives the attempt it belongs to is a redirect waiting to fire on some later, unrelated
+    # sign-in. Re-validated on the way out as well as in, because the read is the dangerous half.
+    next_path = _safe_internal_path(request.session.pop(_NEXT_SESSION_KEY, None))
     resolved = await _resolve_sso(request)
     token = await resolved.client.authorize_access_token(request)
     userinfo = await _claims(resolved.client, token)
     email = userinfo.get("email")
     if not email:
-        return RedirectResponse(url="/login?error=oidc")
+        return _to_login("oidc", next_path)
 
     async with async_session_maker() as session:
         from sqlalchemy import select
@@ -146,7 +205,7 @@ async def oidc_callback(request: Request):
             logger.warning(
                 "OIDC login refused: unverified email claim for existing account %s", email
             )
-            return RedirectResponse(url="/login?error=oidc")
+            return _to_login("oidc", next_path)
         if user is None:
             user = User(
                 id=uuid.uuid4(),
@@ -211,13 +270,13 @@ async def oidc_callback(request: Request):
             # on this hostname that every endpoint then has to refuse, and the honest answer is
             # that this org has no account for them.
             await session.commit()
-            return RedirectResponse(url="/login?error=oidc_no_access")
+            return _to_login("oidc_no_access", next_path)
 
         await session.commit()
 
     # The session belongs to the org whose hostname this callback arrived on (``backend.py``).
     jwt = await write_session_token(user, resolved.org_id)
-    response = RedirectResponse(url="/")
+    response = RedirectResponse(url=next_path or "/")
     response.set_cookie(
         key=cookie_transport.cookie_name,
         value=jwt,

@@ -196,6 +196,37 @@ possible server-side opt-out.)
 reference client's 0.2 s `wait_events` settle is ~8× the observed arrival on a small instance;
 *still unrun* at ~200 monitors, which is where a fixed settle silently truncates.
 
+   **This finding was written down correctly and then contradicted by the code it was written
+   for**, which is the most useful thing in this document. `list_monitors` called
+   `getMonitorList` and read the list out of the **ack** — and the ack is a bare `{"ok": true}`.
+   Measured against a live 1.23.17 holding 34 monitors: the sync reported success, created
+   nothing, cleared the instance's error and set it `active`. Every screen said "connected" over
+   an empty list, and no log line disagreed.
+
+   Three things made it survive review. The docstring's rule — *every read is an acknowledged
+   call, never a settled event* — was the right correction to the wrapper's fixed sleep and was
+   over-applied to a read whose answer is not in the ack at all. `getTags` **does** answer in its
+   ack, so the assumption was true often enough to look general. And `uptime_fake` returned the
+   list in the ack too, so the only test that could have caught it agreed with the bug — the
+   failure its own docstring claimed to prevent. The fake is now faithful, and
+   `test_the_monitor_list_arrives_as_a_push_and_never_in_the_ack` asserts **both** halves: that
+   the ack is empty, and that the client finds the monitors anyway.
+
+**11. The same shape hides the notification channels, and `getSettings` is a decoy.**
+`getSettings` acks `{"ok": true, "data": {…}}` — the instance's own settings, never the
+channels. `notificationList` is pushed once, unprompted, at login, and **no event re-requests
+it**: `getNotificationList` does not exist and times out. So `list_notifications`, which read
+`notificationList` out of `getSettings`' ack, answered `[]` on every instance that had any
+configured (two, on the instance measured). It now reads the login push, which is why it is the
+one list read that issues no call.
+
+**12. `conditions` is a 2.x column, and sending it to a 1.x is not a spare key.** 1.x `add`
+imports the create payload onto the row wholesale, so the key 2.x *demands* is, one major
+version down, an unknown column against the tenant's own database. The gate is therefore
+version-aware and **omits it when the version is unknown**: omitting on 2.x fails cleanly,
+loudly and reversibly, naming the column in the error, while the opposite mistake writes to a
+schema. The fake refuses both ways round, which is what makes the gate testable.
+
 Still unrun, and each needs an instance we do not have yet: **2FA** (`{tokenRequired: true}` and
 what a wrong TOTP looks like), **a subpath reverse proxy**, **Cloudflare Access end to end**,
 **`/metrics` with an API key** for the `linked` path, **`jwtSecret` rotation without a database
@@ -518,8 +549,28 @@ Two siblings, both already paid for once in `docs/CLOUDFLARE.md`:
 ## 7. Groups are monitors
 
 `MonitorType.GROUP` is a monitor type and `parent` is a monitor id. There is no group entity. So a
-group is a row in `uptime_monitors` with `type = "group"` and `parent_group_id` a self-FK, resolved
-from `parent` at import and back to it on write.
+group is a row in `uptime_monitors` with `monitor_type = "group"` and `parent_id` a self-FK,
+resolved from `parent` at import (`_link_parents`, a second pass because a child can arrive before
+its group) and back to it on write. `GROUP_TYPE` in `models.py` is the one place that word is
+spelled.
+
+### What a group has to do on a screen
+
+The mirror holding the tree is not the same as the CRM showing it, and the first without the
+second is indistinguishable from an agency that never grouped anything. Three parts, all cheap:
+
+- **`parent_name` on the monitor read**, resolved under `meta=true` in **one** query for the whole
+  page (`group_names`). Not denormalised onto the child: the group's name is Kuma's to change, and
+  a copy would go stale silently. Not resolved per row either — a self-referential lookup looks
+  free and is the per-row read `docs/PERFORMANCE.md` bans, so
+  `test_the_monitor_list_costs_the_same_however_many_groups_there_are` pins it at two statements
+  against two groups and four children.
+- **`group_count` on the instance**, riding the existing count as a filtered aggregate rather than
+  a second query. Groups are counted *inside* `monitor_count`, because a group is a monitor here
+  and a total that quietly excluded them would disagree with the list the same screen links to.
+- **A group has no `target`.** Kuma stores it a `url` of `"https://"` — its own form's
+  placeholder, saved — and copying that through renders every group as a monitor pointed at a
+  broken address instead of as the folder it is.
 
 The obvious agency shape — **one group per company**, every one of that client's monitors beneath it
 — is a convention this module *offers* at import and on create. It is not a schema fact. A tenant who

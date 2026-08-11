@@ -292,6 +292,157 @@ Beside the permissions there is one instance-wide kill switch,
 `google_ads_settings.writes_enabled`. The permission decides *who*; this decides *whether*, in one
 place an owner can reach in a hurry without editing eight role grants.
 
+## 10a. The policy, and the decisions log
+
+`google_ads_policies` and `google_ads_decisions` are what turn the tool surface from a data pipe
+into something an agent can reason with. Neither reaches Google.
+
+**One table, and `account_id IS NULL` is the agency's house policy.** The alternative — a
+per-account table beside a block of columns on `google_ads_settings` — is the same vocabulary
+written twice, with two validators and two schemas that drift the first time a field is added to
+one. One record type makes `policy.resolve()` one function, and the house row is editable through
+the same endpoint as an account's.
+
+That needs a **partial unique index**: `account_id` is nullable, and Postgres treats NULLs as
+distinct inside a unique constraint, so `UNIQUE (org_id, account_id)` alone permits any number of
+house rows and "the house policy" quietly becomes "whichever one came back first". The same lesson
+`dim_key` learned by being `NOT NULL DEFAULT ''`, in the one place that shape is not available.
+
+**It hangs off the account, not off the client**, though the issue that asked for it said
+"per-client". Three reasons, and they are the reasons `google_ads_accounts` is itself a row: a
+write always names an *account*, so the policy guarding it must be findable from one without
+guessing; `company_id` is nullable, so a company-anchored policy could never cover the agency's own
+account; and one client legitimately runs two accounts — a brand and a shop — whose protected terms
+and budget ceilings are not the same rules.
+
+### Three layers, and they must not fuse
+
+#300's rule, applied to advertising instead of prose: **product invariants are code, the agency's
+standing rules are a row, and what is true about one advertiser is a row.**
+
+Lists **union**, scalars **inherit**, prose **stays separate**. A house exclusion list an account
+could silently replace is a list nobody can rely on; a house steering paragraph concatenated onto a
+client's is how *"we never bid on competitor names"* and *"this client sells competitor parts"*
+become one contradictory instruction. So the resolved policy hands a model two labelled strings
+(`agency_steering`, `account_steering`) and lets it hold both.
+
+Exactly one value is built in: `max_budget_increase = 1.0`. The choice of *which* guard is built in
+is the whole argument — a **relative** ceiling needs no knowledge of an account, so it can be
+defaulted honestly, and it catches the extra zero (10× is not 2×) while permitting an ordinary
+seasonal change. An absolute one cannot be defaulted at all: any figure invented here would refuse
+a legitimate budget on one account and wave through a mistake on another. The consequence is worth
+stating plainly, because it is the gap somebody will otherwise find the hard way: **a budget
+*create* has no previous amount, so nothing relative can bound it** — an account with no
+`max_daily_budget` bounds a new budget by the permission alone.
+
+### What is enforced, and the check worth reading
+
+`protected_terms`, `banned_phrases`, `max_daily_budget`, `max_budget_increase` and `max_cpc` are
+checked before a mutation leaves the process. The rest shapes what an agent *proposes*.
+
+**A proposed negative is refused only when it would actually block a protected term.** A naive
+version refuses any exclusion *containing* a protected word, and it is wrong in the direction that
+matters: an EXACT negative on `beugel kosten` cannot stop `beugel` from serving, so refusing it
+teaches an agency that the guard cries wolf — and the next thing they do is switch it off. So
+`policy.blocks()` models Google's own matching: EXACT blocks only the identical term, PHRASE a term
+containing the words in order and adjacent, BROAD a term containing all the words in any order. An
+unknown match type is treated as BROAD, because the failure direction here must be "refused
+something harmless" rather than "let a client's brand go dark".
+
+### A call-level refusal raises; a row-level one is reported
+
+CLAUDE.md §18, landing exactly. A budget over the ceiling **is** the call — one budget, one answer
+— so it is a 422 naming the field and the limit (#305: show the constraint working). A protected
+term inside a batch of twelve exclusions is one row: refusing all twelve because the guard did its
+job on one of them punishes the caller for something that worked. So it is skipped, reported in
+`skipped`, and the protected term it *would* have blocked is named — "refused" invites an argument
+with the software, "would also block *beugel*" invites a fix.
+
+### The decisions log, and the one entry that exists nowhere else
+
+Append-only, newest-wins per `(subject, scope)`. Everything in it except one kind is observable
+from the account afterwards; **`kept` is not.** "We looked at this search term and chose not to
+exclude it" leaves no trace in Google at all, which is exactly why the same term is proposed again
+next month, and the month after, until the account manager stops reading the list.
+
+Which is why `POST /negatives` takes a `keep` array beside `terms`: a review pass decides both
+halves at once, and a log holding only the exclusions re-proposes everything that was kept. It
+rides `negative.write` rather than `policy.manage` because a key that may exclude a term may
+certainly record that it chose not to — strictly the weaker act under the stronger key.
+
+**There is deliberately no unique index on the log, and that inverts the payments rule.** CLAUDE.md
+§10 says an idempotency guarantee belongs in the database, and it says so because a duplicate
+`InvoicePayment` is money counted twice. A duplicate history row is a duplicate history row. The
+service refuses to append a decision identical to the standing one; a race that slips two through
+costs one redundant line, where a constraint would 500 an agent's ordinary second call and would
+make "excluded in March, kept in June, excluded again in September" unrecordable.
+
+`expires_on` is nullable and usually NULL, but a permanent silence is the wrong default for a
+judgement about a market: "not worth excluding at today's CPC" stops being true, and without a date
+nobody revisits it.
+
+Reading the log is `account.read` — it is context every proposal needs, and `wasted_spend`
+subtracts it. *Recording* a standing decision is `policy.manage`. The write routes record their own
+decisions under their own keys, because recording is a side effect of a write the caller was
+already allowed to make and never its own grant (§16).
+
+## 10b. The write surface
+
+Fourteen routes across the six mutate resources, each declaring one of the four write keys.
+
+| Route | Key | Notes |
+|---|---|---|
+| `POST` / `PATCH /budgets` | `budget.write` | the money |
+| `POST` / `PATCH /campaigns` | `campaign.write` | created **PAUSED** |
+| `POST` / `PATCH /ad-groups` | `campaign.write` | created **PAUSED** |
+| `POST /keywords`, `PATCH /keywords`, `POST /keywords/remove` | `keyword.write` | batched |
+| `POST /negatives`, `POST /negatives/remove`, `POST /negative-lists` | `negative.write` | batched |
+| `POST` / `PATCH /ads` | `campaign.write` | created **PAUSED** |
+
+Six things are worth knowing before touching it.
+
+**Creating a campaign takes an existing `budget_id`, and cannot make one.** That is the four-way
+split holding: creating a budget is somebody's decision made with `budget.write`, and a campaign
+route that could conjure one would make `campaign.write` a budget key with extra steps. It is also
+what keeps the act atomic — two mutates cannot be one transaction, so a campaign create that failed
+after its budget succeeded would leave an orphan nobody goes looking for. `PATCH /campaigns` will
+not move a campaign onto a different budget either, for the same reason: the field lives on the
+campaign but its effect is "this campaign now spends up to a different number".
+
+**`validateOnly` is on every one**, and it is the real dry run: Google validates against the
+*actual* account structure and applies nothing. Better than a test account, which serves no ads and
+therefore holds nothing worth validating against.
+
+**Partial failure is a property of the route, not of the batch size.** The batch routes always send
+`partialFailure: true`; the single-resource ones never do. Deciding it from the runtime operation
+count would mean an agent excluding one term gets a raised error and one excluding two gets a
+per-row report — the same tool answering in two shapes depending on how much work it was given.
+
+**A partial failure arrives on an HTTP 200** and `classify()` cannot see it: `partialFailureError`
+is a bare `google.rpc.Status` rather than the `{"error": …}` envelope every other failure path
+walks. `errors.partial_failures()` is the reader, and it keeps
+`location.fieldPathElements[].index` — the only link from a refusal back to the operation that
+caused it. `results` still carries one slot per operation and the refused ones are **empty
+objects**, so a client that reads "a result means it worked" reports eleven successes as twelve.
+
+**`updateMask` is derived from the body it is sending**, never taken as an argument. A hand-written
+mask and a hand-written body are two spellings of one list, and the day they disagree Google
+applies the intersection and reports success. It is lowerCamelCase in REST (`amountMicros`),
+matching the JSON body rather than the proto.
+
+**Nothing raises after Google has been changed.** `ctx.release_db()` commits on entry, so anything
+written after the client block is rolled back by `require_context` if an exception escapes it — a
+mutation Google applied whose decision row was rolled back is the worst state available here. Once
+the mutate returns, every remaining problem becomes a warning on the outcome.
+
+### What the browser can do, and what it deliberately cannot
+
+The screens carry the two acts a person performs on them: **reviewing a search-terms list**
+(exclude some, keep the rest, one request) and **pausing or resuming a campaign**. Creating a
+campaign, an ad group, a keyword set and an ad is the MCP surface's job — it is four dependent
+calls with a budget decision in the middle, and a browser wizard for it is not what this module is
+for.
+
 ## 11. Traps
 
 1. **The MCC is the normal agency shape, not an edge case.** `listAccessibleCustomers` answers

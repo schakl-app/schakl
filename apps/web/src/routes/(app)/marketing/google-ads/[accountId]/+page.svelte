@@ -6,27 +6,30 @@
    * a column list per view rather than five near-identical tables. `warnings` is drawn above
    * the rows and never swallowed: truncation, a shortened change window and provisional recent
    * figures are reported there and nowhere else.
+   *
+   * The search-terms view is the one that also *writes*. Reviewing a search-terms list is the
+   * job this module exists for, and it is two decisions per row rather than one: exclude, or
+   * deliberately keep — the second of which leaves no trace in Google and is therefore the half
+   * that gets re-proposed forever if it is not written down.
    */
-  import { AlertTriangle } from "@lucide/svelte";
+  import { AlertTriangle, Check, Pause, Play } from "@lucide/svelte";
 
+  import { enhance } from "$app/forms";
   import { page } from "$app/state";
+  import { InFlight } from "$lib/core/submit.svelte";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
   import { pageTitle } from "$lib/core/title";
+  import GoogleAdsMutationOutcome from "$lib/modules/google_ads/GoogleAdsMutationOutcome.svelte";
   import GoogleAdsReportTable from "$lib/modules/google_ads/GoogleAdsReportTable.svelte";
   import GoogleAdsTrend from "$lib/modules/google_ads/GoogleAdsTrend.svelte";
   import { COLUMNS, type ReportView } from "$lib/modules/google_ads/columns";
   import type { GoogleAdsReport, GoogleAdsTrendReport } from "$lib/modules/google_ads/types";
 
-  let { data } = $props();
+  let { data, form } = $props();
 
-  const VIEWS = [
-    "trend",
-    "campaigns",
-    "keywords",
-    "search-terms",
-    "negatives",
-    "changes",
-  ] as const;
+  const busy = new InFlight();
+
   const PERIODS = ["30d", "90d", "month", "last_month", "quarter"];
 
   // Resolved into `$state` rather than awaited in the markup: a raw `{#await}` re-enters its
@@ -55,6 +58,38 @@
   const trend = $derived(data.view === "trend" ? (report as GoogleAdsTrendReport | null) : null);
   const table = $derived(data.view === "trend" ? null : (report as GoogleAdsReport | null));
 
+  const mayReview = $derived(can(page.data.user, "google_ads.negative.write"));
+  const mayPause = $derived(can(page.data.user, "google_ads.campaign.write"));
+  const reviewing = $derived(data.view === "search-terms" && mayReview);
+
+  /** `{term: "exclude" | "keep"}` — the two decisions, one row at a time. */
+  let marks = $state<Record<string, "exclude" | "keep">>({});
+  let reason = $state("");
+  const marked = $derived(Object.entries(marks));
+
+  // Every selected term must be excluded on one campaign, because that is the level the write
+  // happens at. Terms spanning campaigns are refused here rather than silently applied to the
+  // first one — a negative on the wrong campaign blocks traffic nobody meant to block.
+  const campaigns = $derived(
+    new Set(
+      marked
+        .filter(([, mark]) => mark === "exclude")
+        .map(([term]) => String(rowFor(term)?.campaign_id ?? "")),
+    ),
+  );
+  const oneCampaign = $derived(campaigns.size <= 1 ? [...campaigns][0] : null);
+
+  function rowFor(term: string): Record<string, unknown> | undefined {
+    return table?.rows.find((row) => String(row.search_term) === term);
+  }
+
+  function mark(term: string, value: "exclude" | "keep"): void {
+    marks =
+      marks[term] === value
+        ? Object.fromEntries(Object.entries(marks).filter(([key]) => key !== term))
+        : { ...marks, [term]: value };
+  }
+
   function href(view: string, period: string): string {
     const params = new URLSearchParams();
     if (view !== "campaigns") params.set("view", view);
@@ -63,33 +98,15 @@
     return `/marketing/google-ads/${page.params.accountId}${qs ? `?${qs}` : ""}`;
   }
 
-  const tabClass = (active: boolean) =>
-    `rounded-lg px-3 py-1.5 text-sm font-medium ${
-      active ? "bg-brand text-white" : "text-text-muted hover:bg-surface"
-    }`;
+  /** What has already been decided about this term, from the API's own annotation. */
+  function decided(row: Record<string, unknown>): { decision: string; reason: string } | null {
+    return (row.decided ?? null) as { decision: string; reason: string } | null;
+  }
 </script>
 
 <svelte:head>
   <title>{pageTitle(data.account.descriptive_name)}</title>
 </svelte:head>
-
-<!-- Sub-route tabs at the very top of the section, above the heading (docs/UX.md, Navigation). -->
-<nav class="mb-4 flex flex-wrap gap-1" aria-label={t("google_ads.nav.reports")}>
-  {#each VIEWS as view (view)}
-    <a href={href(view, data.period)} class={tabClass(data.view === view)}>
-      {t(`google_ads.view.${view.replace("-", "_")}`)}
-    </a>
-  {/each}
-</nav>
-
-<div class="mb-4">
-  <h1 class="text-xl font-semibold text-text">{data.account.descriptive_name}</h1>
-  <p class="mt-1 text-sm text-text-muted">
-    {data.account.customer_id_formatted}
-    {#if data.account.currency_code}· {data.account.currency_code}{/if}
-    {#if data.account.time_zone}· {data.account.time_zone}{/if}
-  </p>
-</div>
 
 {#if data.view !== "negatives"}
   <nav class="mb-4 flex flex-wrap gap-1" aria-label={t("google_ads.nav.period")}>
@@ -104,6 +121,14 @@
       </a>
     {/each}
   </nav>
+{/if}
+
+{#if form?.outcome}
+  <GoogleAdsMutationOutcome outcome={form.outcome} />
+{:else if form?.key}
+  <p class="mb-3 rounded-xl border border-border bg-surface-raised p-3 text-sm text-text">
+    {t(form.key)}
+  </p>
 {/if}
 
 {#if pending}
@@ -154,6 +179,159 @@
       breakdown={trend.breakdown ?? []}
       currency={trend.currency}
     />
+  {:else if reviewing && table}
+    <!--
+      The review pass. A term is marked exclude or keep — and neither is the default, because a
+      blank third state is the honest one: most terms on a list are simply not worth a decision
+      yet, and forcing one would fill the log with judgements nobody made.
+    -->
+    <form
+      method="POST"
+      action="?/review"
+      use:enhance={busy.clear("review")}
+      class="mb-3 flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface-raised p-3"
+    >
+      <input type="hidden" name="campaign_id" value={oneCampaign ?? ""} />
+      {#each marked as [term, value] (term)}
+        <input type="hidden" name={value} value={term} />
+      {/each}
+      <label class="flex-1 text-sm">
+        <span class="mb-1 block text-xs font-medium text-text-muted"
+          >{t("google_ads.review.reason")}</span
+        >
+        <input
+          name="reason"
+          bind:value={reason}
+          placeholder={t("google_ads.review.reason_hint")}
+          class="w-full rounded-lg border border-border bg-surface px-3 py-1.5 text-sm"
+        />
+      </label>
+      <button
+        type="submit"
+        disabled={marked.length === 0 || campaigns.size > 1}
+        class="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+      >
+        {t("google_ads.review.submit", {
+          exclude: marked.filter(([, m]) => m === "exclude").length,
+          keep: marked.filter(([, m]) => m === "keep").length,
+        })}
+      </button>
+      {#if campaigns.size > 1}
+        <!-- A negative is written on one campaign. Refusing here beats picking one silently:
+             an exclusion on the wrong campaign blocks traffic nobody meant to block. -->
+        <p class="w-full text-xs text-text-muted">{t("google_ads.review.one_campaign_only")}</p>
+      {/if}
+    </form>
+
+    <div class="overflow-x-auto rounded-xl border border-border bg-surface-raised">
+      <table class="w-full min-w-max text-sm">
+        <thead>
+          <tr class="border-b border-border text-left">
+            <th class="px-3 py-2 text-xs font-medium text-text-muted"
+              >{t("google_ads.column.search_term")}</th
+            >
+            <th class="px-3 py-2 text-xs font-medium text-text-muted"
+              >{t("google_ads.column.decided")}</th
+            >
+            <th class="px-3 py-2 text-right text-xs font-medium text-text-muted"
+              >{t("google_ads.metric.cost")}</th
+            >
+            <th class="px-3 py-2 text-right text-xs font-medium text-text-muted"
+              >{t("google_ads.metric.clicks")}</th
+            >
+            <th class="px-3 py-2 text-right text-xs font-medium text-text-muted"
+              >{t("google_ads.metric.conversions")}</th
+            >
+            <th class="px-3 py-2 text-xs font-medium text-text-muted"
+              >{t("google_ads.review.decide")}</th
+            >
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-border">
+          {#each table.rows as row (String(row.search_term))}
+            {@const term = String(row.search_term)}
+            {@const already = decided(row)}
+            <tr>
+              <td class="px-3 py-2">{term}</td>
+              <td class="px-3 py-2 text-xs text-text-muted">
+                {#if already}
+                  <!-- State carried by a word, never by a colour: `text-brand` is gold on some
+                       tenants and reads identically to an amber warning. -->
+                  {t(`google_ads.decision.${already.decision}`)}{#if already.reason}
+                    · {already.reason}{/if}
+                {:else}
+                  –
+                {/if}
+              </td>
+              <td class="px-3 py-2 text-right tabular-nums">{row.cost}</td>
+              <td class="px-3 py-2 text-right tabular-nums">{row.clicks}</td>
+              <td class="px-3 py-2 text-right tabular-nums">{row.conversions}</td>
+              <td class="px-3 py-2">
+                <div class="flex gap-1">
+                  <button
+                    type="button"
+                    onclick={() => mark(term, "exclude")}
+                    aria-pressed={marks[term] === "exclude"}
+                    class="rounded-lg px-2 py-1 text-xs font-medium {marks[term] === 'exclude'
+                      ? 'bg-text text-surface'
+                      : 'text-text-muted hover:bg-surface'}"
+                  >
+                    {t("google_ads.review.exclude")}
+                  </button>
+                  <button
+                    type="button"
+                    onclick={() => mark(term, "keep")}
+                    aria-pressed={marks[term] === "keep"}
+                    class="rounded-lg px-2 py-1 text-xs font-medium {marks[term] === 'keep'
+                      ? 'bg-text text-surface'
+                      : 'text-text-muted hover:bg-surface'}"
+                  >
+                    <Check size={12} class="mr-1 inline" aria-hidden="true" />{t(
+                      "google_ads.review.keep",
+                    )}
+                  </button>
+                </div>
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+  {:else if table && data.view === "campaigns" && mayPause}
+    <GoogleAdsReportTable
+      columns={COLUMNS[data.view as ReportView]}
+      rows={table.rows}
+      totals={table.totals}
+      currency={table.currency}
+    />
+    <!--
+      Pause and resume, one campaign at a time. Deliberately the only campaign write on this
+      screen: creating a campaign needs a budget, an ad group, keywords and an ad before it does
+      anything, and a browser wizard for that is not what this module is for — the MCP surface is.
+    -->
+    <div class="mt-3 flex flex-wrap gap-2">
+      {#each table.rows.filter((row) => row.status === "ENABLED" || row.status === "PAUSED") as row (String(row.campaign_id))}
+        <form method="POST" action="?/campaign_status" use:enhance={busy.clear("campaign")}>
+          <input type="hidden" name="campaign_id" value={String(row.campaign_id)} />
+          <input
+            type="hidden"
+            name="status"
+            value={row.status === "ENABLED" ? "PAUSED" : "ENABLED"}
+          />
+          <button
+            type="submit"
+            class="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-text hover:bg-surface"
+          >
+            {#if row.status === "ENABLED"}
+              <Pause size={12} aria-hidden="true" />
+            {:else}
+              <Play size={12} aria-hidden="true" />
+            {/if}
+            {row.campaign_name}
+          </button>
+        </form>
+      {/each}
+    </div>
   {:else if table}
     <GoogleAdsReportTable
       columns={COLUMNS[data.view as ReportView]}

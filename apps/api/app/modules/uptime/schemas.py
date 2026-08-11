@@ -111,6 +111,10 @@ class UptimeInstanceRead(BaseModel):
     #: True when TLS verification is off — surfaced so the list can badge it (§5).
     insecure: bool = False
     monitor_count: int = 0
+    #: How many of ``monitor_count`` are groups — the folders, counted inside the total because
+    #: a group is a monitor here and a number that quietly excluded them would disagree with the
+    #: list this screen links to.
+    group_count: int = 0
 
 
 class UptimeMonitorRead(BaseModel):
@@ -148,6 +152,10 @@ class UptimeMonitorRead(BaseModel):
     #: these away and paying for them on every list is the shape `docs/PERFORMANCE.md` bans.
     company_name: str | None = None
     instance_name: str | None = None
+    #: The name of the group this monitor sits in, resolved under the same `meta=true`. `None`
+    #: means top-level, which is a real answer and not a missing one: an agency that groups
+    #: nothing is ordinary, and Kuma's own list is flat until somebody makes a folder.
+    parent_name: str | None = None
     #: Kuma's last reported up/down for this monitor, read from the redacted snapshot. `None`
     #: means we have never observed it, which is not the same as "down".
     remote_active: bool | None = None
@@ -166,6 +174,10 @@ class UptimeSyncReport(BaseModel):
     ok: bool
     server_version: str | None = None
     seen: int = 0
+    #: How many of ``seen`` were groups. Reported because "34 monitors" and "30 monitors in 4
+    #: groups" are different answers to "did my structure come across", and only the second one
+    #: tells an admin the hierarchy survived the read.
+    groups: int = 0
     created: int = 0
     updated: int = 0
     missing: int = 0

@@ -1,6 +1,7 @@
 import { redirect } from "@sveltejs/kit";
 
 import { asLocale, LOCALE_COOKIE, LOCALE_COOKIE_OPTIONS } from "$lib/core/i18n";
+import { safeInternalPath } from "$lib/core/redirect";
 import { apiFor } from "$lib/core/session";
 
 import type { RequestHandler } from "./$types";
@@ -9,7 +10,7 @@ export const POST: RequestHandler = async (event) => {
   const { request, cookies } = event;
   const form = await request.formData();
   const locale = asLocale(String(form.get("locale") ?? ""));
-  const back = String(form.get("redirect") ?? "/");
+  const back = safeInternalPath(form.get("redirect"));
 
   if (locale) {
     // Persist as the user's own preference — that is the source of truth, and it follows them
@@ -20,5 +21,7 @@ export const POST: RequestHandler = async (event) => {
     cookies.set(LOCALE_COOKIE, locale, LOCALE_COOKIE_OPTIONS);
   }
   // Only a same-origin relative path — never an absolute or protocol-relative URL (audit F26).
-  throw redirect(303, back.startsWith("/") && !back.startsWith("//") ? back : "/");
+  // Through the shared check, not an inline one: the inline version read `/\evil.example` as
+  // internal, and a browser reads it as another origin.
+  throw redirect(303, back ?? "/");
 };

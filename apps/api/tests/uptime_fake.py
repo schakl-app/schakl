@@ -5,12 +5,20 @@ almost entirely *what happens when the far end disagrees with us* — a revoked 
 somebody edited in Kuma's own UI, a version too old, a target that answers but is not Kuma. That
 needs a Kuma that holds state and can be told to misbehave, not a pile of one-off stubs.
 
-It is modelled on what a **live 2.5.0 actually did**, because a fake that is kinder than the real
+It is modelled on what a **live server actually did**, because a fake that is kinder than the real
 server is a fake in which the bug does not exist — the lesson `cloudflare_fake` already learned
-once with pagination. So, faithfully and on purpose:
+once with pagination, and which this file then proceeded to repeat. So, faithfully and on purpose:
 
-* ``add`` **refuses a payload without ``conditions``** (a 2.x ``NOT NULL`` column with no
-  default) and returns the new id under ``monitorID``, not 1.x's ``monitorId``.
+* **A list read is answered where the real server answers it, which is usually not the ack.**
+  ``getMonitorList`` acks a bare ``{"ok": True}`` and **pushes** ``monitorList``; ``getSettings``
+  acks ``{"ok": True, "data": …}`` and never carries the channels, which arrive as a
+  ``notificationList`` push at login; only ``getTags`` answers in its own ack. This fake used to
+  return both lists in the ack, so the module's central read was broken against every real
+  instance while every test passed — the exact failure this docstring already claimed to
+  prevent. Measured against 1.23.17 and consistent with 2.x.
+* ``add`` **refuses a payload without ``conditions``** at 2.x (a ``NOT NULL`` column with no
+  default) and returns the new id under ``monitorID``, not 1.x's ``monitorId``. At 1.x there is
+  no such column, so a payload carrying one is refused as the unknown column it is.
 * Refusals come back as ``{"ok": False, "msg": <i18n key>, "msgi18n": True}``, except the rate
   limiter, which still sends bare English prose with no flag.
 * ``info`` is emitted **twice** — once before authentication *without* ``version``, once after
@@ -51,6 +59,8 @@ class FakeKuma:
 
         self.monitors: dict[int, dict[str, Any]] = {}
         self.tags: list[dict[str, Any]] = []
+        #: Channels the agency configured in Kuma. Pushed at login, never in an ack.
+        self.notifications: list[dict[str, Any]] = []
         self._next_id = 1
 
         # --- knobs a test turns to make the far end misbehave -----------------
@@ -100,6 +110,23 @@ class FakeKuma:
     def add(self, **fields: Any) -> int:
         """Seed a monitor directly — how a test says "this already exists at Kuma"."""
         return self._store({**self.SEED_DEFAULTS, **fields})
+
+    def add_group(self, name: str, **fields: Any) -> int:
+        """Seed a group.
+
+        A group **is** a monitor with ``type: "group"`` — Kuma has no group entity, only
+        ``MonitorType.GROUP`` and an integer ``parent`` on the children. Its ``url`` is the bare
+        ``"https://"`` a live instance really stores, because a group watches nothing and a fake
+        that leaves it blank hides the mirror having to know that.
+        """
+        return self._store(
+            {**self.SEED_DEFAULTS, "type": "group", "url": "https://", "name": name, **fields}
+        )
+
+    def is_v2(self) -> bool:
+        """Whether this fake is a 2.x. Decides the ``conditions`` column's existence."""
+        head = self.version.split("-", 1)[0].split(".")[0]
+        return head.isdigit() and int(head) >= 2
 
     def _store(self, fields: dict[str, Any]) -> int:
         """Store exactly what was given, plus an id.
@@ -154,6 +181,26 @@ class FakeSocket:
 
     # -- events ----------------------------------------------------------------
 
+    def _push(self, event: str, payload: Any) -> None:
+        """Deliver a pushed event to whatever handler the client registered for it."""
+        handler = self._handlers.get(event)
+        if handler is not None:
+            handler(payload)
+
+    def _monitor_list(self) -> dict[str, Any]:
+        """Keyed by id **as a string**, exactly as the wire delivers it."""
+        return {str(k): dict(v) for k, v in self.kuma.monitors.items()}
+
+    def _push_lists(self) -> None:
+        """What a real server sends unprompted the moment a socket authenticates.
+
+        Both lists arrive here and `notificationList` arrives *only* here — no event re-requests
+        it. A client that waits for a push it never provoked has to tolerate that, so the fake
+        has to reproduce it.
+        """
+        self._push("monitorList", self._monitor_list())
+        self._push("notificationList", list(self.kuma.notifications))
+
     def _emit_info(self, *, authenticated: bool) -> None:
         handler = self._handlers.get("info")
         if handler is None:
@@ -179,6 +226,7 @@ class FakeSocket:
             return {"ok": True}  # 2.x answers neither a token nor `tokenRequired`
         self.authenticated = True
         self._emit_info(authenticated=True)
+        self._push_lists()
         return {"ok": True, "token": self.kuma.token}
 
     def _on_loginByToken(self, token: Any) -> dict[str, Any]:
@@ -186,16 +234,22 @@ class FakeSocket:
             return {"ok": False, "msg": REAUTH_MSG, "msgi18n": True}
         self.authenticated = True
         self._emit_info(authenticated=True)
+        self._push_lists()
         return {"ok": True}
 
     def _require_auth(self) -> dict[str, Any] | None:
         return None if self.authenticated else {"ok": False, "msg": REAUTH_MSG, "msgi18n": True}
 
     def _on_getMonitorList(self, _data: Any) -> Any:
-        return self._require_auth() or {
-            "ok": True,
-            "monitorList": {str(k): v for k, v in self.kuma.monitors.items()},
-        }
+        """Ack that the request was accepted; **push** the answer.
+
+        This is the whole shape of the bug that made the module report a live instance holding
+        34 monitors as empty. The ack really is a bare ``{"ok": True}``.
+        """
+        if (refusal := self._require_auth()) is not None:
+            return refusal
+        self._push("monitorList", self._monitor_list())
+        return {"ok": True}
 
     def _on_getMonitor(self, monitor_id: Any) -> Any:
         if (refusal := self._require_auth()) is not None:
@@ -208,12 +262,20 @@ class FakeSocket:
     def _on_add(self, payload: Any) -> Any:
         if (refusal := self._require_auth()) is not None:
             return refusal
-        if payload.get("conditions") is None:
+        if self.kuma.is_v2() and payload.get("conditions") is None:
             # Faithful to 2.x: a NOT NULL column with no default, answered as a raw constraint
             # violation rather than a friendly message.
             return {
                 "ok": False,
                 "msg": "SQLITE_CONSTRAINT: NOT NULL constraint failed: monitor.conditions",
+            }
+        if not self.kuma.is_v2() and "conditions" in payload:
+            # 1.x has no such column, and `add` imports the payload onto the row wholesale — so
+            # the key a 2.x demands is, one major version down, an unknown column against the
+            # tenant's own database. The two refusals are what make the version gate testable.
+            return {
+                "ok": False,
+                "msg": "SQLITE_ERROR: table monitor has no column named conditions",
             }
         monitor_id = self.kuma._store(dict(payload))
         # `monitorID`, not 1.x's `monitorId`.
@@ -255,4 +317,9 @@ class FakeSocket:
         return self._require_auth() or {"ok": True, "tags": list(self.kuma.tags)}
 
     def _on_getSettings(self, _data: Any) -> Any:
-        return self._require_auth() or {"ok": True, "notificationList": []}
+        """The instance's own settings under ``data`` — and **never** the notification channels.
+
+        Reading them from here is what made `list_notifications` answer `[]` on an instance with
+        Slack and e-mail configured. They only ever arrive as the login-time push.
+        """
+        return self._require_auth() or {"ok": True, "data": {"checkUpdate": False}}

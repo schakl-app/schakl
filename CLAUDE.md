@@ -605,6 +605,38 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   table holds **WordPress administrator credentials** — hence admin-only `manage`, never `client`,
   never folded into `websites.website.write`, and a disconnect that forgets the credential without
   revoking it at the far end.
+- **A guardrail nobody can see working gets switched off, and a decision nobody wrote down gets
+  re-proposed forever** (#318 phases 4–5, `docs/GOOGLE_ADS.md` §10a/§10b). The write surface is
+  bounded by a per-account policy, and four rules came out of building it. **A refusal has to model
+  what the provider actually does**: refusing every exclusion that *contains* a protected term is
+  the obvious guard and it cries wolf — an EXACT negative on "beugel kosten" cannot stop "beugel"
+  from serving — so `policy.blocks()` reproduces Google's own EXACT/PHRASE/BROAD matching, and an
+  unknown match type is read as the widest, so the failure direction is "refused something harmless"
+  rather than "let a client's brand go dark". **A default may only live in the layer that needs no
+  local knowledge**: the one built-in ceiling is *relative* (a budget may at most double), because
+  that catches the extra zero on any account, while any absolute figure invented in code would
+  refuse a legitimate budget on one account and wave a mistake through on another — and the
+  consequence, that a budget *create* has no previous amount and is therefore bounded by the
+  permission alone, is written down rather than left to be discovered. **§18's split is the shape of
+  a guarded batch**: a budget over the ceiling *is* the call and raises a 422 naming the field and
+  the limit (#305), while one protected term inside twelve exclusions is one row and is skipped,
+  reported, and **named** — refusing all twelve punishes the caller for the guard doing its job, and
+  "would also block *beugel*" invites a fix where "refused" invites an argument. And **the decision
+  worth storing is the one the provider does not store**: `kept` — "we looked at this and chose not
+  to act" — leaves no trace in Google, which is exactly why the same shortlist comes back every
+  month until nobody reads it; so `POST /negatives` takes `keep` beside `terms` and one review pass
+  records both halves, riding `negative.write` because a key that may exclude a term may certainly
+  record that it chose not to. That log **inverts the payments idempotency rule on purpose**: a
+  duplicate `InvoicePayment` is money counted twice, a duplicate history row is a duplicate history
+  row, so the guard is a service-level pre-check and *not* a unique index — which would 500 an
+  agent's ordinary second call and make "excluded in March, kept in June, excluded again in
+  September" unrecordable. Two smaller ones worth carrying: the policy is **one table whose
+  `account_id IS NULL` row is the agency's own**, which needs a *partial* unique index beside the
+  ordinary one (NULLs are distinct inside a unique constraint, so `UNIQUE (org, account)` alone
+  permits two house policies — `dim_key`'s lesson where `NOT NULL DEFAULT ''` is unavailable); and
+  an `updateMask` is **derived from the body being sent**, never accepted as an argument, because a
+  hand-written mask and a hand-written body are two spellings of one list and the day they disagree
+  Google applies the intersection and reports success.
 
 ## 11. Working agreement (for Claude Code)
 
@@ -673,6 +705,36 @@ Desktop/Code, agents) can work with the instance's data. Design rules:
   routes exist, so the generated surface already tracks per-tenant modules.
 - **Read-first is a key-minting decision:** a cautious instance mints read-only-scoped keys;
   the deny-by-default route permissions answer every call either way.
+- **A tool surface is a context budget, and "every route" spends it all** (`docs/MCP.md`).
+  Generating a tool per operation is the right default for a coding agent, which reads the list
+  once; it is the wrong one for a chat client, which puts every tool in the model's context on
+  every turn and therefore budgets. ChatGPT's ceiling is **5,000 tokens for all tools together**
+  — name, description and input schema — and `/mcp` is ~620 tools and ~527,000 tokens, so it has
+  never been addable there and no amount of schema trimming would have made it so: at that count
+  you are ~85 tokens per tool, which does not buy a name. Only *fewer tools* works, so `/mcp`
+  keeps the whole surface and **`/mcp/compact`** is the same server, same session manager, same
+  lifespan, answering `tools/list` with a curated read-only fourteen (`_COMPACT_TOOLS`). Three
+  things generalise. **The reduction that pays is the one nobody looks at**: `outputSchema` is
+  **79% of the bytes** and buys a caller nothing at decision time — it validates a result you
+  already have — and six single tools each exceed ChatGPT's whole allowance on their own, every
+  one of them a response schema wearing a tool's name. **A curated list is a specification, so
+  it is pinned by a number**: `test_mcp_compact_profile_fits_a_chat_client` asserts the byte
+  budget, because a name added without watching it fails in somebody else's settings screen,
+  weeks later, with an error nobody here ever sees. And **narrowing a listing is not an
+  authorization boundary** — a tool outside the profile still answers, still through
+  `require_context`; pretending otherwise would put a second, weaker answer beside the real one.
+  The selector is a **path segment, not a query parameter**: this URL is pasted into someone
+  else's settings screen, and the query string is the part of a URL that tools normalise, strip
+  and re-encode.
+- **A stream nothing can write to is not a stream, it is a held connection.** Streamable HTTP
+  lets a client open a standalone `GET` stream for server-initiated messages; ours is stateless
+  by choice, so nothing is ever routed to it and it never ends. The SDK refuses `DELETE` with
+  405 the moment it sees no session id and then opens the `GET` stream anyway — one connection,
+  one task group and two memory streams per probe, until the caller or the edge gives up.
+  Clients probe with `GET`, and one that hangs reports *"the server timed out"* instead of
+  *"that verb is not offered here"*: the wrong sentence about the right fact, and one that reads
+  as an outage. `RefuseStandaloneStream` answers 405 with `Allow: POST`, written against the
+  transport rather than against any one client.
 - **A route the edge does not forward is a route nobody has.** Swagger UI, ReDoc and the
   OpenAPI document live at `/api/docs`, `/api/redoc` and `/api/openapi.json`, not at FastAPI's
   root-level defaults, because the edge routes exactly `/api/` and `/mcp` here and everything

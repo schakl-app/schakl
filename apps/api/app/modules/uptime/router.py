@@ -42,22 +42,34 @@ router = APIRouter(prefix="/uptime", tags=["uptime"])
 
 
 async def _read_instance(
-    service: UptimeService, instance, *, monitor_count: int = 0
+    service: UptimeService, instance, *, counts: tuple[int, int] = (0, 0)
 ) -> UptimeInstanceRead:
     """Shape one instance for the wire — credentials become *facts about* credentials."""
     return UptimeInstanceRead(
         **{
             field: getattr(instance, field)
             for field in (
-                "id", "name", "mode", "base_url", "username", "ssl_verify", "active",
-                "status", "server_version", "last_error", "last_checked_at",
-                "last_synced_at", "created_at", "updated_at",
+                "id",
+                "name",
+                "mode",
+                "base_url",
+                "username",
+                "ssl_verify",
+                "active",
+                "status",
+                "server_version",
+                "last_error",
+                "last_checked_at",
+                "last_synced_at",
+                "created_at",
+                "updated_at",
             )
         },
         token_configured=bool(instance.token_encrypted),
         connect_header_names=await visible_header_names(instance),
         insecure=not instance.ssl_verify,
-        monitor_count=monitor_count,
+        monitor_count=counts[0],
+        group_count=counts[1],
     )
 
 
@@ -73,9 +85,7 @@ async def list_instances(
     instances = await service.list_instances()
     # One grouped query for every count, never one per instance (docs/PERFORMANCE.md).
     counts = await service.monitor_counts([i.id for i in instances])
-    return [
-        await _read_instance(service, i, monitor_count=counts.get(i.id, 0)) for i in instances
-    ]
+    return [await _read_instance(service, i, counts=counts.get(i.id, (0, 0))) for i in instances]
 
 
 @router.post(
@@ -102,7 +112,7 @@ async def get_instance(
     service = UptimeService(ctx)
     instance = await service.get_instance(instance_id)
     counts = await service.monitor_counts([instance.id])
-    return await _read_instance(service, instance, monitor_count=counts.get(instance.id, 0))
+    return await _read_instance(service, instance, counts=counts.get(instance.id, (0, 0)))
 
 
 @router.patch(
@@ -185,9 +195,11 @@ async def list_monitors(
     website_id: uuid.UUID | None = Query(None),
     sync_status: str | None = Query(None),
     count: bool = Query(True, description="Compute total; set false for pickers"),
+    meta: bool = Query(False, description="Resolve display names; skip it for pickers"),
     ctx: RequestContext = Depends(require_context),
 ) -> Page[UptimeMonitorRead]:
-    items, total = await UptimeService(ctx).list_monitors(
+    service = UptimeService(ctx)
+    items, total = await service.list_monitors(
         limit=limit,
         offset=offset,
         instance_id=instance_id,
@@ -196,8 +208,14 @@ async def list_monitors(
         sync_status=sync_status,
         count=count,
     )
+    # One extra query for the whole page, and only when asked. A picker renders names it never
+    # reads, so paying for them unconditionally is the shape `docs/PERFORMANCE.md` bans.
+    groups = await service.group_names(items) if meta else {}
     return Page[UptimeMonitorRead](
-        items=[_monitor_read(m) for m in items], total=total, limit=limit, offset=offset
+        items=[_monitor_read(m, groups) for m in items],
+        total=total,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -209,20 +227,27 @@ async def list_monitors(
 async def get_monitor(
     monitor_id: uuid.UUID, ctx: RequestContext = Depends(require_context)
 ) -> UptimeMonitorRead:
-    return _monitor_read(await UptimeService(ctx).get_monitor(monitor_id))
+    service = UptimeService(ctx)
+    monitor = await service.get_monitor(monitor_id)
+    return _monitor_read(monitor, await service.group_names([monitor]))
 
 
-def _monitor_read(monitor) -> UptimeMonitorRead:
+def _monitor_read(monitor, groups: dict[uuid.UUID, str] | None = None) -> UptimeMonitorRead:
     """One monitor for the wire.
 
     ``remote_active`` is read from the redacted snapshot rather than exposing the snapshot
     itself: it holds a hundred keys of Kuma's internals plus our secret fingerprints, and a
     fingerprint handed to a caller is an oracle.
+
+    ``groups`` is the page's already-resolved ``parent_id -> name`` lookup, passed in rather
+    than fetched here: a name resolved per row is the per-row read a list endpoint must not do.
     """
     read = UptimeMonitorRead.model_validate(monitor)
     snapshot = monitor.remote_snapshot or {}
     value = snapshot.get("active")
     read.remote_active = bool(value) if isinstance(value, bool) else None
+    if groups and monitor.parent_id is not None:
+        read.parent_name = groups.get(monitor.parent_id)
     return read
 
 
