@@ -59,9 +59,9 @@
       : "",
   );
 
-  // Google's three, then the one that is not (#300). Order is display order; a fourth
-  // picker wraps onto its own row rather than squeezing the others.
-  const SOURCE_ORDER: MarketingSource[] = ["ga4", "gsc", "gads", "seranking"];
+  // Google's three, then the two that are not (#300, docs/WORDPRESS.md). Order is display
+  // order; the later pickers wrap onto their own row rather than squeezing the others.
+  const SOURCE_ORDER: MarketingSource[] = ["ga4", "gsc", "gads", "seranking", "rankmath"];
   const linkedIdsBySource = $derived(
     Object.fromEntries(
       SOURCE_ORDER.map((s) => [s, sources.filter((x) => x.source === s).map((x) => x.external_id)]),
@@ -104,23 +104,7 @@
     {/if}
   </div>
 
-  {#if m.needs_connection}
-    <!-- No Google account connected anywhere in the org — teach how to connect. -->
-    <div class="rounded-lg border border-dashed border-border p-4 text-sm text-text-muted">
-      {#if canManage}
-        <p>{t("marketing.empty.needs_connection")}</p>
-        <a
-          href={connect}
-          data-sveltekit-preload-data="off"
-          class="mt-2 inline-block font-medium text-brand hover:underline"
-        >
-          {t("marketing.connect_cta")}
-        </a>
-      {:else}
-        <p>{t("marketing.empty.ask_admin")}</p>
-      {/if}
-    </div>
-  {:else if editing}
+  {#if editing}
     <!-- Edit mode: current links as removable chips + the account pickers. -->
     <div class="space-y-4">
       {#if sources.length > 0}
@@ -178,6 +162,7 @@
             source={s}
             linkedIds={linkedIdsBySource[s]}
             websiteId={linkWebsiteId}
+            hasWebsites={websites.length > 0}
           />
         {/each}
       </div>
@@ -208,6 +193,35 @@
             </button>
           </form>
         </div>
+      {/if}
+    </div>
+  {:else if m.needs_connection}
+    <!-- No Google account connected anywhere in the org — teach how to connect.
+         Checked *after* `editing` on purpose: `needs_connection` is a question about Google
+         alone, and two of the five sources are not Google (an agency SE Ranking key, a per-website
+         WordPress password). Gating the whole panel on it made those two unlinkable on an install
+         that had connected no Google account at all — a Google state deciding whether a Rank Math
+         brand can be attached. Each picker already teaches its *own* missing credential, so edit
+         mode is safe to open here; this box stays for the read view, which is genuinely empty. -->
+    <div class="rounded-lg border border-dashed border-border p-4 text-sm text-text-muted">
+      {#if canManage}
+        <p>{t("marketing.empty.needs_connection")}</p>
+        <a
+          href={connect}
+          data-sveltekit-preload-data="off"
+          class="mt-2 inline-block font-medium text-brand hover:underline"
+        >
+          {t("marketing.connect_cta")}
+        </a>
+        <button
+          type="button"
+          class="mt-2 block font-medium text-brand hover:underline"
+          onclick={() => (editing = true)}
+        >
+          {t("marketing.empty.link_cta")}
+        </button>
+      {:else}
+        <p>{t("marketing.empty.ask_admin")}</p>
       {/if}
     </div>
   {:else if sources.length === 0}

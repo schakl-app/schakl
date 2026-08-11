@@ -4,11 +4,26 @@
  * A linkable data source. `seranking` is the one that is not Google (#300) — it rides one
  * agency API key rather than a per-user OAuth grant, which is why the picker below teaches
  * "not configured" for it instead of offering a Connect link that would lead nowhere.
+ *
+ * `rankmath` is the third credential kind again (docs/WORDPRESS.md): one WordPress application
+ * password per **website**, so its picker cannot be answered at all until a site is named. The
+ * API mirrors these three in `sources/base.py`'s `AUTH_*`; this file is the only place the web
+ * knows them, so a fourth kind belongs here and in the two constants below, nowhere else.
  */
-export type MarketingSource = "ga4" | "gsc" | "gads" | "seranking";
+export type MarketingSource = "ga4" | "gsc" | "gads" | "seranking" | "rankmath";
 
 /** Sources whose credential is an org-level API key, not the shared Google consent. */
 export const ORG_KEY_SOURCES: readonly MarketingSource[] = ["seranking"];
+
+/**
+ * Sources whose credential belongs to one client **website**, not to the agency.
+ *
+ * The picker consults this before it fetches: a brand list is a question about one site, so
+ * asking it with no site named is not an empty result, it is a question nobody asked. Linking
+ * without one is refused by the API too (`errors.marketing_rankmath_website_required`) — this
+ * is the half that stops the user reaching that refusal.
+ */
+export const SITE_KEY_SOURCES: readonly MarketingSource[] = ["rankmath"];
 
 export interface KpiValue {
   current: number;
@@ -198,6 +213,10 @@ export const HEADLINE_METRICS: Record<MarketingSource, string[]> = {
   gsc: ["clicks", "impressions", "position", "ctr"],
   gads: ["cost", "clicks", "conversions", "conversionsValue"],
   seranking: ["avg_position", "top10", "top3", "keywords_ranking"],
+  // `avg_sentiment` is the one of the five that stays out of the panel: it is a −1…1 quality
+  // signal, not a size, and a client glancing at four tiles reads "0,46" as a bad score rather
+  // than as a mildly positive tone. It keeps its place in the tab's full list below.
+  rankmath: ["ai_visibility_score", "mentions", "citations", "brand_rank"],
 };
 
 /** Every metric a source carries, in display order (mirrors the API's METRICS_BY_SOURCE). */
@@ -214,6 +233,7 @@ export const ALL_METRICS: Record<MarketingSource, string[]> = {
   gsc: ["clicks", "impressions", "ctr", "position"],
   gads: ["cost", "clicks", "impressions", "conversions", "conversionsValue"],
   seranking: ["avg_position", "top3", "top10", "top30", "keywords_ranking", "keywords_tracked"],
+  rankmath: ["ai_visibility_score", "mentions", "citations", "avg_sentiment", "brand_rank"],
 };
 
 /** The tier-2 drill-downs each source offers (mirrors the adapter's `drilldowns`). */
@@ -230,6 +250,7 @@ export const DRILLDOWNS: Record<MarketingSource, string[]> = {
   gsc: ["top_queries", "top_pages", "movers"],
   gads: ["campaigns"],
   seranking: ["keywords", "keyword_groups", "audit", "ai_search"],
+  rankmath: ["competitors", "queries"],
 };
 
 /**

@@ -10,8 +10,12 @@ import type { RequestEvent } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
+import type { MarketingSource } from "$lib/modules/marketing/types";
 
-type MarketingSource = "ga4" | "gsc" | "gads" | "seranking";
+// The union used to be redeclared here and drifted the moment a fifth source landed (#300's
+// prediction, missed again by `rankmath`): a local copy of a vocabulary the API owns is a
+// second place to remember, and this one was never remembered. Imported instead, so a new
+// source is one edit in `types.ts`.
 
 function parseConfig(raw: FormDataEntryValue | null): Record<string, unknown> {
   try {
