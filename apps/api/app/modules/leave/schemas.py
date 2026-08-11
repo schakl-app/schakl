@@ -11,6 +11,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.modules.leave.models import (
+    AvailabilityChange,
     AvailabilityKind,
     EmploymentKind,
     LeaveCalendarDisplay,
@@ -423,12 +424,36 @@ class AvailabilityDay(BaseModel):
     """
 
     user_id: uuid.UUID
+    #: Snapshot-free: the live account, for a calendar chip that has to name somebody. The same
+    #: shape the absence feed carries (``TeamLeaveItem.user_name``).
+    user_name: str = ""
     date: date
     #: The stretches worked, breaks already removed. Empty = not available that day at all.
     windows: list[AvailabilityWindow]
     hours: Decimal
-    #: Whether any exception touched this day — what makes a moved or added day render as a
-    #: deviation rather than as an ordinary week the reader has to spot the difference in.
+    #: What the untouched week would have given — the other half of every "this day changed"
+    #: claim. Without it a reader cannot tell an added Saturday from a shortened Monday.
+    base_hours: Decimal = Decimal(0)
+    #: Which way the day moved: ``added`` (the week worked none of it), ``removed`` (all of it is
+    #: gone), ``changed`` (both non-zero and different), or ``None`` for a day that resolves to
+    #: exactly what the week already said.
+    #:
+    #: Decided here rather than by each client, for #312's reason: two surfaces re-deriving the
+    #: same comparison are two surfaces that can disagree about it. It is also **not** the same
+    #: question as ``deviates`` — an exception that changes nothing (a whole-day ``extra`` on a
+    #: day already worked) deviates and yet changed no hours, and a calendar drawing that would
+    #: be announcing a difference nobody made.
+    change: AvailabilityChange | None = None
+    #: The resolved day as an **instant pair** — the first window's start to the last window's
+    #: end, in the org zone — for a grid that positions blocks by hour (#270). ``None`` when the
+    #: day resolves to nothing. The hull, not each window: an ordinary day is two stretches
+    #: either side of lunch, and "available 08:30–17:00" is what a working day means.
+    #:
+    #: Resolved server-side, like every other wall-clock → instant in this module (§8): the org
+    #: zone lives here, so a block still starts at 08:30 on the two days a year the clocks move.
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    #: Whether any exception touched this day — a superset of ``change`` (see above).
     deviates: bool = False
     #: The exception rows behind ``deviates``, so a client can offer to undo the right one.
     entry_ids: list[uuid.UUID] = Field(default_factory=list)

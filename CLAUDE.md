@@ -773,6 +773,23 @@ apply as everywhere.
   `any` for an admin), not `leave.profile.manage` — **the contract is the agency's and the
   exceptions are the freelancer's**, so "I'm also free on Wednesdays" is a weekly `extra` rather
   than a rewrite of the period somebody was engaged under.
+- **On the agenda it is its own feed, and only the deviations are drawn** (`leave.availability`,
+  the §6 calendar-source pattern). Separate from `leave.team` because it answers the opposite
+  question — that feed says who is away, this one says who can be booked — and a viewer planning
+  work switches one off without losing the other. Drawing *every* available day would be the
+  roster redrawn as noise, so the feed reads `change`, not `deviates`: an exception that moves no
+  hours is a real row and not a difference. Two rendering rules came out of looking at it rather
+  than reasoning about it. **A month cell truncates at about twenty characters**, so the chip
+  leads with the state and not the name — `Lotte de Vries · Bes…` is as ambiguous as no chip at
+  all on the one bit that matters, while `Beschikbaar 09:00…` beside `Niet beschikbaar…` is not;
+  the name survives in the `title` attribute and in every wider view. And **a colour token that is
+  not in the palette renders as no chip at all** (`core/ui/colors`): `slate` looked available
+  because the holidays feed names it, but that feed draws a dashed band via `kind: "holiday"` and
+  never reads the token — so the loudest thing on the feed came out as the faintest thing on the
+  screen. The state rides in *both* the words and the colour, so a viewer who recolours the feed
+  (#281) keeps the distinction in the text. Deliberately **not draggable**: a chip is an
+  occurrence and the row behind it is a rule, so dragging one Friday of "every other Friday" would
+  move the whole rhythm, and dragging half a swap would strand the other half.
 - **A free-time pattern says how many days, or how often** (#107, extended). `days_per_year` on
   `leave_recurring_days` spreads that many days evenly across the year on the anchor's weekday and
   **slides past** a holiday or a non-working day to the next candidate week, so the count the pot

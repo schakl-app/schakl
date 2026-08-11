@@ -65,6 +65,18 @@ class EmploymentKind(StrEnum):
     FREELANCE = "freelance"
 
 
+class AvailabilityChange(StrEnum):
+    """Which way a resolved day moved against the week it sits on.
+
+    Not stored anywhere — the computed answer a day view hands its callers, so a calendar and a
+    capacity read cannot form two opinions about the same Thursday (#312's rule for comparisons).
+    """
+
+    ADDED = "added"
+    REMOVED = "removed"
+    CHANGED = "changed"
+
+
 class AvailabilityKind(StrEnum):
     """Which way an :class:`EmploymentAvailability` row bends the week it sits on.
 

@@ -32,6 +32,7 @@ from app.modules.leave import availability as avail
 from app.modules.leave import holidays
 from app.modules.leave import schedule as sched
 from app.modules.leave.models import (
+    AvailabilityChange,
     AvailabilityKind,
     EmploymentAvailability,
     EmploymentContract,
@@ -1071,6 +1072,20 @@ class LeaveService:
             (await self.ctx.session.execute(self.contracts.scoped_select())).scalars().all()
         ):
             contracts_by_user.setdefault(contract.user_id, []).append(contract)
+        # Names for the people actually answered for, and the zone every instant below is
+        # anchored in — one query each for the whole window, never one per day (PERFORMANCE.md).
+        names: dict[uuid.UUID, str] = {}
+        if by_user:
+            names = dict(
+                (
+                    await self.ctx.session.execute(
+                        select(User.id, func.coalesce(User.full_name, User.email)).where(
+                            User.id.in_(list(by_user))
+                        )
+                    )
+                ).all()
+            )
+        zone = await org_zoneinfo(self.ctx.session, self.ctx.org.id)
 
         days: list[AvailabilityDay] = []
         for uid, entries in by_user.items():
@@ -1085,12 +1100,26 @@ class LeaveService:
             while day <= date_to:
                 applicable = [e for e in entries if avail.occurs_on(e, day)]
                 week = resolver(day)
+                base = week.day(day.weekday())
                 intervals = avail.resolve_day(
-                    week.day(day.weekday()), avail.typical_day(week, default), applicable
+                    base, avail.typical_day(week, default), applicable
                 )
+                base_hours = avail.hours(avail.base_intervals(base))
+                hours = avail.hours(intervals)
+                # The hull, not each stretch: an ordinary day is two windows either side of
+                # lunch, and a grid block from 08:30 to 17:00 is what that day means (#270).
+                starts_at = ends_at = None
+                if intervals:
+                    starts_at = datetime.combine(
+                        day, avail.as_clock(intervals[0][0])
+                    ).replace(tzinfo=zone)
+                    ends_at = datetime.combine(day, avail.as_clock(intervals[-1][1])).replace(
+                        tzinfo=zone
+                    )
                 days.append(
                     AvailabilityDay(
                         user_id=uid,
+                        user_name=names.get(uid, ""),
                         date=day,
                         windows=[
                             AvailabilityWindow(
@@ -1098,7 +1127,11 @@ class LeaveService:
                             )
                             for start, end in intervals
                         ],
-                        hours=avail.hours(intervals),
+                        hours=hours,
+                        base_hours=base_hours,
+                        change=self._availability_change(base_hours, hours),
+                        starts_at=starts_at,
+                        ends_at=ends_at,
                         deviates=bool(applicable),
                         entry_ids=[e.id for e in applicable],
                     )
@@ -1106,6 +1139,17 @@ class LeaveService:
                 day += timedelta(days=1)
         days.sort(key=lambda d: (d.date, str(d.user_id)))
         return days
+
+    @staticmethod
+    def _availability_change(base: Decimal, resolved: Decimal) -> AvailabilityChange | None:
+        """Which way the day moved. ``None`` when it did not — see :class:`AvailabilityChange`."""
+        if resolved == base:
+            return None
+        if base <= 0:
+            return AvailabilityChange.ADDED
+        if resolved <= 0:
+            return AvailabilityChange.REMOVED
+        return AvailabilityChange.CHANGED
 
     async def create_availability(self, data: AvailabilityCreate) -> EmploymentAvailability:
         user_id = self._availability_user(data.user_id, write=True)

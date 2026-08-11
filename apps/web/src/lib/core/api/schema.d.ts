@@ -10234,6 +10234,15 @@ export interface components {
          * @enum {string}
          */
         AutoInvoiceMode: "off" | "draft" | "issue" | "send";
+        /**
+         * AvailabilityChange
+         * @description Which way a resolved day moved against the week it sits on.
+         *
+         *     Not stored anywhere — the computed answer a day view hands its callers, so a calendar and a
+         *     capacity read cannot form two opinions about the same Thursday (#312's rule for comparisons).
+         * @enum {string}
+         */
+        AvailabilityChange: "added" | "removed" | "changed";
         /** AvailabilityCreate */
         AvailabilityCreate: {
             /**
@@ -10264,6 +10273,12 @@ export interface components {
          */
         AvailabilityDay: {
             /**
+             * Base Hours
+             * @default 0
+             */
+            base_hours: string;
+            change?: components["schemas"]["AvailabilityChange"] | null;
+            /**
              * Date
              * Format: date
              */
@@ -10273,15 +10288,24 @@ export interface components {
              * @default false
              */
             deviates: boolean;
+            /** Ends At */
+            ends_at?: string | null;
             /** Entry Ids */
             entry_ids?: string[];
             /** Hours */
             hours: string;
+            /** Starts At */
+            starts_at?: string | null;
             /**
              * User Id
              * Format: uuid
              */
             user_id: string;
+            /**
+             * User Name
+             * @default
+             */
+            user_name: string;
             /** Windows */
             windows: components["schemas"]["AvailabilityWindow"][];
         };

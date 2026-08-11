@@ -272,16 +272,61 @@ async def test_availability_resolves_the_base_week_and_its_exceptions(client_for
         # Monday: the morning only — 08:30–12:30 minus nothing, so four hours.
         assert float(by_date[monday.isoformat()]["hours"]) == 4.0
         assert by_date[monday.isoformat()]["deviates"] is True
+        assert by_date[monday.isoformat()]["change"] == "changed"
+        assert float(by_date[monday.isoformat()]["base_hours"]) == 8.0
         # Tuesday: untouched, a full scheduled day.
         tuesday = (monday + timedelta(days=1)).isoformat()
         assert float(by_date[tuesday]["hours"]) == 8.0
         assert by_date[tuesday]["deviates"] is False
+        assert by_date[tuesday]["change"] is None
         # Saturday: not in the week at all, so the whole-day extra takes the org default day.
         assert float(by_date[saturday.isoformat()]["hours"]) == 8.0
+        assert by_date[saturday.isoformat()]["change"] == "added"
         assert by_date[saturday.isoformat()]["windows"] == [
             {"start": "08:30", "end": "12:30"},
             {"start": "13:00", "end": "17:00"},
         ]
+        # The instant pair is the hull of those two stretches — one block, lunch inside it —
+        # and it is the API that resolved the org zone, never the browser (#270, §8).
+        assert by_date[saturday.isoformat()]["starts_at"] is not None
+        assert by_date[saturday.isoformat()]["starts_at"][11:16] == "08:30"
+        assert by_date[saturday.isoformat()]["ends_at"][11:16] == "17:00"
+        # And every day names the person, so a calendar chip has something to print.
+        assert by_date[tuesday]["user_name"] == "Member"
+
+
+async def test_an_exception_that_changes_nothing_reports_no_change(client_for) -> None:
+    """``deviates`` and ``change`` are different questions, and the calendar wants the second.
+
+    A whole-day ``extra`` on a day the week already works is a real row somebody wrote, and it
+    moves not one hour. Drawing it would be announcing a difference nobody made.
+    """
+    t = await make_tenant("avail-nochange")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _member(c, headers, "noop@example.com")
+        monday = _monday()
+        res = await c.post(
+            "/api/v1/leave/availability",
+            json={"user_id": str(member.id), "kind": "extra", "date": monday.isoformat()},
+            headers=headers,
+        )
+        assert res.status_code == 201, res.text
+
+        day = (
+            await c.get(
+                "/api/v1/leave/availability/days",
+                params={
+                    "date_from": monday.isoformat(),
+                    "date_to": monday.isoformat(),
+                    "user_id": str(member.id),
+                },
+                headers=headers,
+            )
+        ).json()[0]
+        assert day["deviates"] is True
+        assert day["change"] is None
+        assert float(day["hours"]) == float(day["base_hours"]) == 8.0
 
 
 async def test_a_no_outranks_a_yes_on_the_same_day(client_for) -> None:

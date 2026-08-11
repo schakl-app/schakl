@@ -61,6 +61,11 @@ def overlaps_window(row: EmploymentAvailability, date_from: date, date_to: date)
     return first <= date_to and (row.repeat_until is None or first <= row.repeat_until)
 
 
+def base_intervals(day: sched.WorkDay | None) -> list[Interval]:
+    """The untouched week's own stretches for a weekday — the other half of "this day changed"."""
+    return _day_intervals(day)
+
+
 def _day_intervals(day: sched.WorkDay | None) -> list[Interval]:
     """The stretches actually worked on a scheduled day — the block minus its breaks."""
     if day is None:
