@@ -43,6 +43,9 @@
     companies: data.companies,
     projects: data.projects,
     tasks: data.tasks,
+    // The page already loads the vocabulary for its own to-do list; the time panel's entry form
+    // needs the same answer to keep finished tasks out of its picker.
+    taskStatuses: data.statuses,
   });
 
   // Use mode vs edit mode (UX §3): the definition is edited behind the ⋯ → Bewerken toggle, or

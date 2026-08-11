@@ -106,7 +106,16 @@ export interface EntityPanelLookups {
     title: string;
     project_id?: string | null;
     allocated_minutes?: number | null;
+    status?: string | null;
+    due_date?: string | null;
   }[];
+  /**
+   * The tenant's task-status vocabulary (#62) — what a picker needs to tell an open task from a
+   * finished one. Optional: a host page that draws no task picker (an invoice, a domain) has no
+   * reason to load it, and a panel that wants it treats an absent list as "offer everything"
+   * rather than as "everything is open".
+   */
+  taskStatuses?: { key: string; name: string; is_terminal: boolean }[];
 }
 
 /** What a host page tells a panel about the entity it is hanging off. */

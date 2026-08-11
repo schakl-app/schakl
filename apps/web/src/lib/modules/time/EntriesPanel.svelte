@@ -176,6 +176,7 @@
         companies={lookups.companies}
         projects={lookups.projects}
         tasks={lookups.tasks}
+        taskStatuses={lookups.taskStatuses ?? []}
         oncancel={() => (showEdit = false)}
         ondone={() => (showEdit = false)}
       />

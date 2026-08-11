@@ -858,6 +858,8 @@
   "time.draft.saved": "Draft saved {time}",
   "time.draft.discard": "Discard",
   "time.field.task": "Task",
+  "time.field.task_closed": "Finished tasks",
+  "time.field.task_due": "deadline {date}",
   "time.log_for_client": "Log time",
   "time.field.date": "Date",
   "time.billable": "Billable",

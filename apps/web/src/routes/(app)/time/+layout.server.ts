@@ -12,8 +12,8 @@ export const load: LayoutServerLoad = async (event) => {
   // `event.parent()` is awaited *inside* the Promise.all, never before it: awaiting it first
   // would serialise this whole fan behind the app layout instead of running alongside it
   // (docs/PERFORMANCE.md).
-  const [companies, projects, tasks, members, companyDefs, projectDefs, parent] = await Promise.all(
-    [
+  const [companies, projects, tasks, taskStatuses, members, companyDefs, projectDefs, parent] =
+    await Promise.all([
       api.GET("/api/v1/companies", {
         params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
       }),
@@ -35,6 +35,11 @@ export const load: LayoutServerLoad = async (event) => {
           query: { limit: 200, offset: 0, meta: false, count: false, hours: true, sort: "title" },
         },
       }),
+      // The tenant's status vocabulary (#62). The task lookup above stays unfiltered because it
+      // is also what names the task on every logged row — a finished task's entries must keep
+      // their title — so *which of those tasks are still open* is a question only this answers.
+      // One small read, in the same flight, in a layout that does not rerun on a day/week click.
+      api.GET("/api/v1/tasks/statuses"),
       api.GET("/api/v1/members/lookup"),
       // Custom-field definitions drive the quick-create dialogs (incl. required fields).
       api.GET("/api/v1/custom-fields/definitions", {
@@ -47,13 +52,13 @@ export const load: LayoutServerLoad = async (event) => {
       // the app layout already fetched (#290) — reading it from the parent costs nothing, where
       // a second `GET /prefs` cost a whole authenticated round-trip for a string.
       event.parent(),
-    ],
-  );
+    ]);
   const weekView = (parent.prefs as { time?: { week_view?: string } } | undefined)?.time?.week_view;
   return {
     companies: companies.data?.items ?? [],
     projects: projects.data?.items ?? [],
     tasks: tasks.data?.items ?? [],
+    taskStatuses: taskStatuses.data ?? [],
     members: members.data ?? [],
     companyDefinitions: companyDefs.data ?? [],
     projectDefinitions: projectDefs.data ?? [],

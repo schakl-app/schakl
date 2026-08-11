@@ -27,6 +27,8 @@
     oncreate,
     onsearch,
     searching = false,
+    archived = [],
+    archivedLabel,
   }: {
     items: Item[];
     name: string;
@@ -64,6 +66,23 @@
     onsearch?: (query: string) => void;
     /** A search is in flight — shows the dropdown's loading row (server-search pickers only). */
     searching?: boolean;
+    /**
+     * Options that exist but are not on offer: shown **only once the user types**, below the
+     * live ones and under `archivedLabel`.
+     *
+     * The list a picker opens with is a suggestion, and a finished task, a retired hosting plan
+     * or a deactivated type is not one — offering it beside the live rows is how a time entry
+     * lands on a task that was closed three months ago. Hiding it outright is the other mistake:
+     * the record still exists, people still log against it, and a picker that cannot name it
+     * sends them to a different screen. So it is reachable by searching for it and it says what
+     * it is, which is the same rule the app applies to a page it will not draw a control for.
+     *
+     * Still selectable, still keyboard-reachable, and never re-ranked above a live option.
+     * Ignored by server-search pickers (`onsearch`), where the API decides what came back.
+     */
+    archived?: Item[];
+    /** Heading above the archived rows, e.g. "Afgerond". Core holds no module vocabulary. */
+    archivedLabel?: string;
   } = $props();
 
   let query = $state("");
@@ -73,30 +92,46 @@
   let highlighted = $state(-1);
   let inputEl: HTMLInputElement | undefined = $state();
 
-  const selectedLabel = $derived(items.find((i) => i.value === value)?.label ?? "");
+  // An archived option is still *this* picker's option: the field has to be able to say what is
+  // in it, or editing a time entry booked on a finished task shows an empty box.
+  const selectedLabel = $derived(
+    [...items, ...archived].find((i) => i.value === value)?.label ?? "",
+  );
   // The hint is searchable too: a person is found by their email, a country ("NL +31")
   // by its full name in the hint. Create-detection stays label-only below.
   // Prefix matches outrank substring hits — typing "nederland" must offer Nederland before
   // Caribisch Nederland, or Enter picks the wrong one. Stable within each tier.
-  const filtered = $derived.by(() => {
-    // Server-searched pickers show what came back, in the order it came back: re-filtering it
-    // here would hide rows the API matched on a field the label doesn't show.
-    if (onsearch) return items;
-    const q = query.trim().toLowerCase();
-    if (!q) return items;
+  function rank(list: Item[], q: string): Item[] {
     const starts = (s?: string) => s?.toLowerCase().startsWith(q) ?? false;
-    const matches = items.filter(
+    const matches = list.filter(
       (i) => i.label.toLowerCase().includes(q) || (i.hint?.toLowerCase().includes(q) ?? false),
     );
     return [
       ...matches.filter((i) => starts(i.label) || starts(i.hint)),
       ...matches.filter((i) => !starts(i.label) && !starts(i.hint)),
     ];
+  }
+  const filtered = $derived.by(() => {
+    // Server-searched pickers show what came back, in the order it came back: re-filtering it
+    // here would hide rows the API matched on a field the label doesn't show.
+    if (onsearch) return items;
+    const q = query.trim().toLowerCase();
+    if (!q) return items;
+    return rank(items, q);
   });
+  // Ranked separately and appended, never merged: an archived row must not outrank a live one
+  // on a better prefix match. Empty until the user types — that is the whole point of the bucket.
+  const filteredArchived = $derived.by(() => {
+    if (onsearch || archived.length === 0) return [];
+    const q = query.trim().toLowerCase();
+    return q ? rank(archived, q) : [];
+  });
+  /** One flat list, so the keyboard walks live and archived rows as one sequence. */
+  const options = $derived([...filtered, ...filteredArchived]);
   const canCreate = $derived(
     Boolean(oncreate) &&
       query.trim().length > 0 &&
-      !items.some((i) => i.label.toLowerCase() === query.trim().toLowerCase()),
+      ![...items, ...archived].some((i) => i.label.toLowerCase() === query.trim().toLowerCase()),
   );
 
   function startCreate() {
@@ -159,13 +194,13 @@
     }
     if (!open) return;
     if (e.key === "ArrowDown") {
-      highlighted = Math.min(highlighted + 1, filtered.length - 1);
+      highlighted = Math.min(highlighted + 1, options.length - 1);
       e.preventDefault();
     } else if (e.key === "ArrowUp") {
       highlighted = Math.max(highlighted - 1, 0);
       e.preventDefault();
     } else if (e.key === "Enter") {
-      if (filtered[highlighted]) choose(filtered[highlighted]);
+      if (options[highlighted]) choose(options[highlighted]);
       else if (canCreate) startCreate();
       e.preventDefault();
     } else if (e.key === "Escape") {
@@ -173,9 +208,9 @@
       query = selectedLabel;
     } else if (e.key === "Tab") {
       // Commit the highlighted option and let focus move on naturally — never
-      // preventDefault here. `highlighted` only ever indexes `filtered`, so this
+      // preventDefault here. `highlighted` only ever indexes `options`, so this
       // can't accidentally trigger the create-row action.
-      if (filtered[highlighted]) choose(filtered[highlighted]);
+      if (options[highlighted]) choose(options[highlighted]);
     }
   }
 
@@ -286,7 +321,16 @@
           >
         </li>
       {/if}
-      {#each filtered as item, i (item.value)}
+      {#each options as item, i (item.value)}
+        {#if archivedLabel && i === filtered.length}
+          <!-- The archived rows are a different kind of answer, so they are labelled as one
+               rather than blending into the list above them. -->
+          <li
+            class="mt-1 border-t border-border px-3 pb-0.5 pt-1.5 text-xs font-medium text-text-muted"
+          >
+            {archivedLabel}
+          </li>
+        {/if}
         <li>
           <button
             type="button"
@@ -294,7 +338,11 @@
             aria-selected={item.value === value}
             class="w-full px-3 py-1.5 text-left text-sm hover:bg-surface
               {i === highlighted ? 'bg-surface' : ''}
-              {item.value === value ? 'font-medium text-brand' : 'text-text'}"
+              {item.value === value
+              ? 'font-medium text-brand'
+              : i >= filtered.length
+                ? 'text-text-muted'
+                : 'text-text'}"
             onmousedown={(e) => {
               e.preventDefault();
               choose(item);
@@ -312,7 +360,7 @@
         {/if}
       {/each}
       {#if canCreate}
-        <li class={filtered.length > 0 ? "border-t border-border" : ""}>
+        <li class={options.length > 0 ? "border-t border-border" : ""}>
           <button
             type="button"
             class="w-full px-3 py-1.5 text-left text-sm font-medium text-brand hover:bg-surface"

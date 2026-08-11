@@ -858,6 +858,8 @@
   "time.draft.saved": "Concept opgeslagen {time}",
   "time.draft.discard": "Verwerpen",
   "time.field.task": "Taak",
+  "time.field.task_closed": "Afgeronde taken",
+  "time.field.task_due": "deadline {date}",
   "time.log_for_client": "Uren schrijven",
   "time.field.date": "Datum",
   "time.billable": "Facturabel",
