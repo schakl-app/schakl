@@ -1,7 +1,7 @@
 """uptime_create_tables
 
 Revision ID: c4e8b1a92f57
-Revises: f3b6c81a9e27
+Revises: a2e4f6b30d19
 Create Date: 2026-08-11 11:40:00.000000
 
 New module tables (docs/UPTIME.md): Uptime Kuma instances and the monitor mirror.
@@ -34,7 +34,10 @@ from app.core.rls import disable_rls, enable_rls
 
 # revision identifiers, used by Alembic.
 revision: str = "c4e8b1a92f57"
-down_revision: str | None = "f3b6c81a9e27"
+# Re-chained onto the leave freelance revision: both landed on ``f3b6c81a9e27`` from parallel
+# branches, and two heads make ``alembic upgrade head`` refuse outright — the whole suite errors
+# out before it reaches a test. Additive DDL that touches no leave table, so the order is free.
+down_revision: str | None = "a2e4f6b30d19"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
