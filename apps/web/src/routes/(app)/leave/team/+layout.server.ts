@@ -1,4 +1,5 @@
 import { can } from "$lib/core/permissions";
+import { availabilityWindow } from "$lib/modules/leave/availability.server";
 import { defaultSchedule } from "$lib/modules/leave/schedule";
 import { apiFor } from "$lib/core/session";
 
@@ -26,7 +27,11 @@ export const load: LayoutServerLoad = async (event) => {
   // so every consumer stays non-optional rather than guarding a case that cannot render.
   const approver = can(event.locals.user, "leave.request.approve");
   const manage = approver && can(event.locals.user, "leave.profile.manage");
-  const [members, profiles, contracts, recurring, settings] = await Promise.all([
+  // Its own permission, not `leave.profile.manage`: keeping somebody's availability is a
+  // different act from rewriting the period they were engaged under, and a tenant may hand out
+  // one without the other.
+  const keepsAvailability = approver && can(event.locals.user, "leave.availability.write", "any");
+  const [members, profiles, contracts, recurring, settings, availability] = await Promise.all([
     approver ? api.GET("/api/v1/members/lookup") : Promise.resolve({ data: null }),
     manage ? api.GET("/api/v1/leave/profiles") : Promise.resolve({ data: null }),
     manage
@@ -34,13 +39,20 @@ export const load: LayoutServerLoad = async (event) => {
       : Promise.resolve({ data: null }),
     manage ? api.GET("/api/v1/leave/recurring") : Promise.resolve({ data: null }),
     manage ? api.GET("/api/v1/leave/settings") : Promise.resolve({ data: null }),
+    keepsAvailability
+      ? api.GET("/api/v1/leave/availability", {
+          params: { query: { ...availabilityWindow(), all_users: true } },
+        })
+      : Promise.resolve({ data: null }),
   ]);
   return {
     members: members.data ?? [],
     profiles: profiles.data ?? null,
     manageEmployment: manage,
+    keepsAvailability,
     contracts: contracts.data ?? [],
     recurring: recurring.data ?? [],
+    availability: availability.data ?? [],
     defaultSchedule: settings.data?.default_schedule ?? defaultSchedule(),
   };
 };

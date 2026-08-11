@@ -18,6 +18,11 @@ from app.modules.leave.models import LeaveRequestStatus
 from app.modules.leave.schedule import WorkSchedule, average_day_hours
 from app.modules.leave.schedule import parse as parse_schedule
 from app.modules.leave.schemas import (
+    AvailabilityCreate,
+    AvailabilityDay,
+    AvailabilityMove,
+    AvailabilityRead,
+    AvailabilityUpdate,
     EmploymentContractCreate,
     EmploymentContractRead,
     EmploymentContractUpdate,
@@ -305,6 +310,7 @@ def _contract_read(contract, scheduled_week, norm) -> EmploymentContractRead:
         user_id=contract.user_id,
         start_date=contract.start_date,
         end_date=contract.end_date,
+        employment_type=contract.employment_type,
         contract_hours_per_week=contract.contract_hours_per_week,
         scheduled_hours_per_week=scheduled_week,
         schedule=parse_schedule(contract.schedule),
@@ -385,6 +391,106 @@ async def delete_contract(
     ctx: RequestContext = Depends(require_context),
 ) -> None:
     await LeaveService(ctx).delete_contract(contract_id)
+
+
+# --- availability (freelance) ---------------------------------------------------- #
+@router.get(
+    "/availability",
+    response_model=list[AvailabilityRead],
+    dependencies=[require_permission("leave.availability.read")],
+)
+async def list_availability(
+    date_from: date = Query(...),
+    date_to: date = Query(...),
+    user_id: uuid.UUID | None = Query(None),
+    all_users: bool = Query(False),
+    ctx: RequestContext = Depends(require_context),
+) -> list[AvailabilityRead]:
+    """The exception rows with an occurrence in the window — own, or anyone's with ``:any``."""
+    rows = await LeaveService(ctx).list_availability(
+        date_from=date_from, date_to=date_to, user_id=user_id, all_users=all_users
+    )
+    return [AvailabilityRead.model_validate(row) for row in rows]
+
+
+@router.get(
+    "/availability/days",
+    response_model=list[AvailabilityDay],
+    dependencies=[require_permission("leave.availability.read")],
+)
+async def availability_days(
+    date_from: date = Query(...),
+    date_to: date = Query(...),
+    user_id: uuid.UUID | None = Query(None),
+    all_users: bool = Query(False),
+    ctx: RequestContext = Depends(require_context),
+) -> list[AvailabilityDay]:
+    """The resolved week: the base schedule with every exception applied, day by day.
+
+    The one read a roster or a capacity view should make — computing it in the client would mean
+    a second copy of the "a no outranks a yes" rule, in a language that cannot see the contracts.
+    """
+    return await LeaveService(ctx).availability_days(
+        date_from=date_from, date_to=date_to, user_id=user_id, all_users=all_users
+    )
+
+
+@router.post(
+    "/availability",
+    response_model=AvailabilityRead,
+    status_code=201,
+    dependencies=[require_permission("leave.availability.write")],
+)
+async def create_availability(
+    payload: AvailabilityCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> AvailabilityRead:
+    return AvailabilityRead.model_validate(
+        await LeaveService(ctx).create_availability(payload)
+    )
+
+
+@router.post(
+    "/availability/move",
+    response_model=list[AvailabilityRead],
+    status_code=201,
+    dependencies=[require_permission("leave.availability.write")],
+)
+async def move_availability(
+    payload: AvailabilityMove,
+    ctx: RequestContext = Depends(require_context),
+) -> list[AvailabilityRead]:
+    """Swap one day for another — two rows sharing a ``pair_id``, written in one act."""
+    rows = await LeaveService(ctx).move_availability(payload)
+    return [AvailabilityRead.model_validate(row) for row in rows]
+
+
+@router.patch(
+    "/availability/{entry_id}",
+    response_model=AvailabilityRead,
+    dependencies=[require_permission("leave.availability.write")],
+)
+async def update_availability(
+    entry_id: uuid.UUID,
+    payload: AvailabilityUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> AvailabilityRead:
+    return AvailabilityRead.model_validate(
+        await LeaveService(ctx).update_availability(entry_id, payload)
+    )
+
+
+@router.delete(
+    "/availability/{entry_id}",
+    status_code=204,
+    dependencies=[require_permission("leave.availability.write")],
+)
+async def delete_availability(
+    entry_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> None:
+    """Deletes the other half too when the row is a move — see the service."""
+    await LeaveService(ctx).delete_availability(entry_id)
 
 
 # --- recurring rostered free days / ADV (#107) ---------------------------------- #

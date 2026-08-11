@@ -5,6 +5,7 @@ import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 // The employment-data actions (schedule, contracts, recurring, rate) are shared with the team
 // leave roster, so they live in one place and can't drift (employment.server.ts).
+import { availabilityActions, availabilityWindow } from "$lib/modules/leave/availability.server";
 import { employmentActions } from "$lib/modules/leave/employment.server";
 import { defaultSchedule } from "$lib/modules/leave/schedule";
 
@@ -22,30 +23,49 @@ export const load: PageServerLoad = async (event) => {
   // read anyone's rate. One roster call, like schedules (docs/PERFORMANCE.md).
   const rates = leaveEnabled && can(event.locals.user, "leave.rate.read", "any");
   const canEditRates = leaveEnabled && can(event.locals.user, "leave.rate.write");
+  // Availability (freelance) has its own permission, not `leave.profile.manage`: keeping
+  // somebody's calendar is a different act from rewriting the period they were engaged under.
+  const availability = leaveEnabled && can(event.locals.user, "leave.availability.write", "any");
 
   const api = apiFor(event);
   // `/members` carries each membership's `role_ids`, so the effective set is derived here rather
   // than requested per member. The tenant's roles come from `settings/+layout.server.ts` — shared
   // with the Rollen screen and not refetched on tab navigation (docs/PERFORMANCE.md).
-  const [members, profiles, settings, rateRows, contracts, recurring, leaveTypes, groupsRes] =
-    await Promise.all([
-      api.GET("/api/v1/members"),
-      schedules ? api.GET("/api/v1/leave/profiles") : Promise.resolve({ data: null }),
-      schedules ? api.GET("/api/v1/leave/settings") : Promise.resolve({ data: null }),
-      rates ? api.GET("/api/v1/leave/rates") : Promise.resolve({ data: null }),
-      // Employment contracts (#65) — the whole roster in one call, like schedules.
-      schedules
-        ? api.GET("/api/v1/leave/contracts", { params: { query: { all_users: true } } })
-        : Promise.resolve({ data: null }),
-      // Recurring free-day patterns (#107) — employment data, same home.
-      schedules ? api.GET("/api/v1/leave/recurring") : Promise.resolve({ data: null }),
-      schedules ? api.GET("/api/v1/leave/types") : Promise.resolve({ data: null }),
-      // Company groups (#191): which memberships carry a visibility restriction, so the
-      // roster can badge them — visible at a glance, per the issue. Manager-only fetch.
-      can(event.locals.user, "companies.group.manage")
-        ? api.GET("/api/v1/companies/groups")
-        : Promise.resolve({ data: null }),
-    ]);
+  const [
+    members,
+    profiles,
+    settings,
+    rateRows,
+    contracts,
+    recurring,
+    leaveTypes,
+    groupsRes,
+    availabilityRows,
+  ] = await Promise.all([
+    api.GET("/api/v1/members"),
+    schedules ? api.GET("/api/v1/leave/profiles") : Promise.resolve({ data: null }),
+    schedules ? api.GET("/api/v1/leave/settings") : Promise.resolve({ data: null }),
+    rates ? api.GET("/api/v1/leave/rates") : Promise.resolve({ data: null }),
+    // Employment contracts (#65) — the whole roster in one call, like schedules.
+    schedules
+      ? api.GET("/api/v1/leave/contracts", { params: { query: { all_users: true } } })
+      : Promise.resolve({ data: null }),
+    // Recurring free-day patterns (#107) — employment data, same home.
+    schedules ? api.GET("/api/v1/leave/recurring") : Promise.resolve({ data: null }),
+    schedules ? api.GET("/api/v1/leave/types") : Promise.resolve({ data: null }),
+    // Company groups (#191): which memberships carry a visibility restriction, so the
+    // roster can badge them — visible at a glance, per the issue. Manager-only fetch.
+    can(event.locals.user, "companies.group.manage")
+      ? api.GET("/api/v1/companies/groups")
+      : Promise.resolve({ data: null }),
+    // Availability exceptions for the whole roster, in the same read window the freelancer's
+    // own page uses — one call, like every other lookup here (docs/PERFORMANCE.md).
+    availability
+      ? api.GET("/api/v1/leave/availability", {
+          params: { query: { ...availabilityWindow(), all_users: true } },
+        })
+      : Promise.resolve({ data: null }),
+  ]);
   const restrictedMembershipIds = [
     ...new Set((groupsRes.data ?? []).flatMap((g) => g.membership_ids ?? [])),
   ];
@@ -56,10 +76,12 @@ export const load: PageServerLoad = async (event) => {
     schedules,
     rates,
     canEditRates,
+    availability,
     profiles: profiles.data ?? [],
     rateRows: rateRows.data ?? [],
     contracts: contracts.data ?? [],
     recurring: recurring.data ?? [],
+    availabilityRows: availabilityRows.data ?? [],
     leaveTypes: leaveTypes.data ?? [],
     defaultSchedule: settings.data?.default_schedule ?? defaultSchedule(),
   };
@@ -69,6 +91,8 @@ export const actions: Actions = {
   // Work schedule, contracts, recurring free days and hourly rate — shared with the team leave
   // roster so both surfaces behave identically (employment.server.ts).
   ...employmentActions,
+  // And the availability exceptions on top of them, shared with the freelancer's own /leave.
+  ...availabilityActions,
 
   invite: async (event) => {
     const form = await event.request.formData();

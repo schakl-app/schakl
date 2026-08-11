@@ -28,10 +28,14 @@ from app.core.sorting import apply_sort, user_sort_name
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
 from app.errors import AppError
+from app.modules.leave import availability as avail
 from app.modules.leave import holidays
 from app.modules.leave import schedule as sched
 from app.modules.leave.models import (
+    AvailabilityKind,
+    EmploymentAvailability,
     EmploymentContract,
+    EmploymentKind,
     LeaveCalendarDisplay,
     LeaveEntitlement,
     LeaveHoliday,
@@ -43,6 +47,11 @@ from app.modules.leave.models import (
     LeaveType,
 )
 from app.modules.leave.schemas import (
+    AvailabilityCreate,
+    AvailabilityDay,
+    AvailabilityMove,
+    AvailabilityUpdate,
+    AvailabilityWindow,
     EmploymentContractCreate,
     EmploymentContractUpdate,
     FreeTimeDay,
@@ -208,6 +217,7 @@ class LeaveService:
         self.holidays = ctx.repo(LeaveHoliday)
         self.contracts = ctx.repo(EmploymentContract)
         self.recurring = ctx.repo(LeaveRecurringDay)
+        self.availability = ctx.repo(EmploymentAvailability)
         # One settings read per request, not one per profile resolved (docs/PERFORMANCE.md).
         self._settings_row: LeaveSettings | None | object = _UNSET
         # Memoized per request: update() consults it for the bounce *and* the backdate gate.
@@ -788,6 +798,7 @@ class LeaveService:
         self.ctx.require("leave.profile.manage")
         await self._member_or_404(data.user_id)
         self._validate_contract_dates(data.start_date, data.end_date)
+        self._validate_contract_hours(data.employment_type, data.contract_hours_per_week)
         await self._ensure_no_contract_overlap(
             data.user_id, data.start_date, data.end_date, exclude_id=None
         )
@@ -812,6 +823,13 @@ class LeaveService:
         start = values.get("start_date", contract.start_date)
         end = values.get("end_date", contract.end_date)
         self._validate_contract_dates(start, end)
+        # Both fields resolved against the row as it *will* be: switching a period to freelance
+        # and clearing its hours is one edit, and so is the reverse — reading either from the
+        # stored row would refuse the half of it that is being fixed.
+        self._validate_contract_hours(
+            values.get("employment_type", contract.employment_type),
+            values.get("contract_hours_per_week", contract.contract_hours_per_week),
+        )
         await self._ensure_no_contract_overlap(
             contract.user_id, start, end, exclude_id=contract.id
         )
@@ -823,6 +841,7 @@ class LeaveService:
         if data.model_fields_set & {
             "start_date",
             "end_date",
+            "employment_type",
             "contract_hours_per_week",
             "free_time_hours_per_week",
             "schedule",
@@ -837,6 +856,25 @@ class LeaveService:
         await self.contracts.delete(contract)
         # A removed contract's auto pots are now derived from a period that no longer exists (#264).
         await self._recompute_generated_entitlements(user_id)
+
+    def _validate_contract_hours(
+        self, kind: EmploymentKind | str, hours: Decimal | None
+    ) -> None:
+        """Only a freelance period may record no agreed hours.
+
+        That asymmetry is what keeps the accrual paths total: statutory vacation is
+        ``weeks × contract hours``, so an employee period without them would prorate against a
+        number nobody entered. A freelancer engaged per assignment genuinely has none, and an
+        invented 16 there is worse than a blank — every capacity figure would quote it as if
+        somebody had agreed to it.
+        """
+        if hours is None and kind != EmploymentKind.FREELANCE:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"contract_hours_per_week": "errors.leave_contract_hours_required"},
+            )
 
     def _validate_contract_dates(self, start: date, end: date | None) -> None:
         if end is not None and end < start:
@@ -877,6 +915,17 @@ class LeaveService:
         return (end - start).days + 1 if end >= start else 0
 
     @staticmethod
+    def _accruing(contracts: Sequence[EmploymentContract]) -> list[EmploymentContract]:
+        """The periods that earn leave — the payroll ones.
+
+        A freelance engagement accrues no statutory vacation and no free time: there is no
+        entitlement to prorate, and deriving one would hand a ZZP'er a balance that goes negative
+        the first week they take off. Filtered here rather than at each of the two computations,
+        so "which periods earn" has one answer (see :class:`EmploymentKind`).
+        """
+        return [c for c in contracts if c.employment_type != EmploymentKind.FREELANCE]
+
+    @staticmethod
     def _contract_free_time(contract: EmploymentContract, full_time_norm: Decimal) -> Decimal:
         """Free time (vrije tijd) this contract accrues per week.
 
@@ -885,10 +934,16 @@ class LeaveService:
         time is already in this person's roster" is a deliberate answer, and it is the whole
         reason the column exists — deriving it would hand a 32-h part-timer who already has
         Friday off a second pot of ~52 days (see the model docstring).
+
+        A freelance period accrues none of it, and that check comes **first**: it is what the
+        contract list renders, and such a period may carry no agreed hours at all — there would
+        be nothing to subtract from the norm.
         """
+        if contract.employment_type == EmploymentKind.FREELANCE:
+            return Decimal(0)
         if contract.free_time_hours_per_week is not None:
             return max(Decimal(0), contract.free_time_hours_per_week)
-        return max(Decimal(0), full_time_norm - contract.contract_hours_per_week)
+        return max(Decimal(0), full_time_norm - (contract.contract_hours_per_week or Decimal(0)))
 
     @staticmethod
     def _round_half_day(hours: Decimal, avg_day_hours: Decimal) -> Decimal:
@@ -898,6 +953,289 @@ class LeaveService:
             return hours.quantize(Decimal("0.01"))
         steps = (hours / half).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
         return (steps * half).quantize(Decimal("0.01"))
+
+    # --- availability (freelance) --------------------------------------------------- #
+    def _availability_user(self, user_id: uuid.UUID | None, *, write: bool) -> uuid.UUID:
+        """Whose availability to act on. Your own always; anyone else's needs ``:any``.
+
+        A freelancer keeping their own calendar is the ordinary case here, which is why the
+        member default is ``:own`` rather than nothing at all — a screen every freelancer needs
+        and only an admin can open does not read as a policy, it reads as a broken screen (#310).
+        """
+        key = "leave.availability.write" if write else "leave.availability.read"
+        if user_id is None or user_id == self.ctx.user.id:
+            self.ctx.require(key)
+            return self.ctx.user.id
+        self.ctx.require(key, scope="any")
+        return user_id
+
+    async def _availability_or_404(self, entry_id: uuid.UUID) -> EmploymentAvailability:
+        """404, not 403, on someone else's row — the §15 rule: a 403 confirms it exists."""
+        row = await self.availability.get_or_404(entry_id)
+        if row.user_id != self.ctx.user.id and not self.ctx.can(
+            "leave.availability.read", scope="any"
+        ):
+            raise AppError("not_found", "errors.not_found", status_code=404)
+        return row
+
+    async def list_availability(
+        self,
+        *,
+        date_from: date,
+        date_to: date,
+        user_id: uuid.UUID | None = None,
+        all_users: bool = False,
+    ) -> Sequence[EmploymentAvailability]:
+        """The exception rows with an occurrence inside the window.
+
+        Narrowed to the caller's own unless they hold ``:any`` — a row carries a note and is the
+        person's own record of their week, unlike the computed day view below, which is roster
+        information the whole team may read.
+
+        The window filter is applied in Python rather than in SQL: a repeat's occurrences are a
+        cadence, not a column, so "does any land in June" is not a range predicate. The read is
+        bounded by ``user_id`` (or the org's staff) and by the fact that these are exceptions —
+        somebody with hundreds of them has a different problem.
+        """
+        stmt = self.availability.scoped_select().order_by(
+            EmploymentAvailability.date.asc(), EmploymentAvailability.created_at.asc()
+        )
+        if all_users:
+            self.ctx.require("leave.availability.read", scope="any")
+        else:
+            stmt = stmt.where(
+                EmploymentAvailability.user_id
+                == self._availability_user(user_id, write=False)
+            )
+        rows = (await self.ctx.session.execute(stmt)).scalars().all()
+        return [r for r in rows if avail.overlaps_window(r, date_from, date_to)]
+
+    async def availability_days(
+        self,
+        *,
+        date_from: date,
+        date_to: date,
+        user_id: uuid.UUID | None = None,
+        all_users: bool = False,
+    ) -> list[AvailabilityDay]:
+        """The resolved week: each person's each day, base schedule bent by their exceptions.
+
+        Team-visible for staff, like the absence feed (``team``): who is available is ordinary
+        team information in an agency, and a ``client`` role holds none of these permissions at
+        all. Notes stay behind ``list_availability``.
+
+        Four reads for the whole window, never one per day or per person (docs/PERFORMANCE.md):
+        the contracts, the profiles, the org default and the exception rows. Holidays are
+        deliberately *not* applied — a freelancer has no employer's holiday calendar, and one who
+        is not working Koningsdag says so with an ``unavailable`` row like any other day.
+        """
+        if date_to < date_from:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"date_to": "errors.leave_end_before_start"},
+            )
+        self.ctx.require("leave.availability.read")
+        target = None if all_users else self._availability_user(user_id, write=False)
+
+        stmt = self.availability.scoped_select()
+        if target is not None:
+            stmt = stmt.where(EmploymentAvailability.user_id == target)
+        rows = (
+            (
+                await self.ctx.session.execute(
+                    stmt.order_by(
+                        EmploymentAvailability.date.asc(),
+                        EmploymentAvailability.created_at.asc(),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        by_user: dict[uuid.UUID, list[EmploymentAvailability]] = {}
+        for row in rows:
+            if avail.overlaps_window(row, date_from, date_to):
+                by_user.setdefault(row.user_id, []).append(row)
+        # Someone asked about *this* person: answer for them even with no exceptions on file,
+        # because "the base week, unbent" is a real answer and an empty list is not.
+        if target is not None:
+            by_user.setdefault(target, [])
+
+        default = await self.default_schedule()
+        profiles = (await self.ctx.session.execute(self.profiles.scoped_select())).scalars().all()
+        profiles_by_user = {p.user_id: p for p in profiles}
+        contracts_by_user: dict[uuid.UUID, list[EmploymentContract]] = {}
+        for contract in (
+            (await self.ctx.session.execute(self.contracts.scoped_select())).scalars().all()
+        ):
+            contracts_by_user.setdefault(contract.user_id, []).append(contract)
+
+        days: list[AvailabilityDay] = []
+        for uid, entries in by_user.items():
+            resolver = self._resolver_from(
+                [
+                    (c.start_date, c.end_date, sched.parse(c.schedule))
+                    for c in contracts_by_user.get(uid, ())
+                ],
+                self._effective(profiles_by_user.get(uid), default)[0],
+            )
+            day = date_from
+            while day <= date_to:
+                applicable = [e for e in entries if avail.occurs_on(e, day)]
+                week = resolver(day)
+                intervals = avail.resolve_day(
+                    week.day(day.weekday()), avail.typical_day(week, default), applicable
+                )
+                days.append(
+                    AvailabilityDay(
+                        user_id=uid,
+                        date=day,
+                        windows=[
+                            AvailabilityWindow(
+                                start=avail.as_clock(start), end=avail.as_clock(end)
+                            )
+                            for start, end in intervals
+                        ],
+                        hours=avail.hours(intervals),
+                        deviates=bool(applicable),
+                        entry_ids=[e.id for e in applicable],
+                    )
+                )
+                day += timedelta(days=1)
+        days.sort(key=lambda d: (d.date, str(d.user_id)))
+        return days
+
+    async def create_availability(self, data: AvailabilityCreate) -> EmploymentAvailability:
+        user_id = self._availability_user(data.user_id, write=True)
+        await self._member_or_404(user_id)
+        values = data.model_dump(exclude={"user_id"})
+        # ``Clock``'s serializer stringifies in model_dump() too, and asyncpg refuses a string
+        # for a TIME column — the ORM needs the actual time objects (same as create_recurring).
+        values["start_time"] = data.start_time
+        values["end_time"] = data.end_time
+        return await self.availability.create(user_id=user_id, **values)
+
+    async def update_availability(
+        self, entry_id: uuid.UUID, data: AvailabilityUpdate
+    ) -> EmploymentAvailability:
+        row = await self._availability_or_404(entry_id)
+        self._availability_user(row.user_id, write=True)
+        values = data.model_dump(exclude_unset=True)
+        # model_dump() stringifies Clock fields; the TIME columns need the time objects.
+        for field in ("start_time", "end_time"):
+            if field in values:
+                values[field] = getattr(data, field)
+        # Re-run the create-time rules against the row as it *will* be: a PATCH that only moves
+        # ``repeat_until`` must not be able to leave a bound behind on a row whose cadence it
+        # just cleared, and every rule here is one the POST already refuses.
+        self._validate_availability(
+            day=values.get("date", row.date),
+            start_time=values.get("start_time", row.start_time),
+            end_time=values.get("end_time", row.end_time),
+            repeat_weeks=values.get("repeat_weeks", row.repeat_weeks),
+            repeat_until=values.get("repeat_until", row.repeat_until),
+        )
+        return await self.availability.update(row, **values)
+
+    async def delete_availability(self, entry_id: uuid.UUID) -> None:
+        """Delete a row — and the other half, when it is a move.
+
+        Half a move is a statement nobody made: dropping only the ``unavailable`` leaves an extra
+        Thursday whose reason has vanished, and dropping only the ``extra`` leaves someone
+        unavailable on the Tuesday they had already agreed to swap.
+        """
+        row = await self._availability_or_404(entry_id)
+        self._availability_user(row.user_id, write=True)
+        rows = [row]
+        if row.pair_id is not None:
+            rows = list(
+                (
+                    await self.ctx.session.execute(
+                        self.availability.scoped_select().where(
+                            EmploymentAvailability.pair_id == row.pair_id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            ) or [row]
+        for entry in rows:
+            await self.availability.delete(entry)
+
+    async def move_availability(
+        self, data: AvailabilityMove
+    ) -> list[EmploymentAvailability]:
+        """"Not Tuesday, Thursday instead" — written as the two rows it is, sharing a ``pair_id``.
+
+        The pair is what lets the UI render one line and undo one act; the two rows are what
+        lets the day view resolve two different days without knowing anything about moves.
+        """
+        user_id = self._availability_user(data.user_id, write=True)
+        await self._member_or_404(user_id)
+        self._validate_availability(
+            day=data.to_date,
+            start_time=data.start_time,
+            end_time=data.end_time,
+            repeat_weeks=data.repeat_weeks,
+            repeat_until=data.repeat_until,
+        )
+        pair_id = uuid.uuid4()
+        dropped = await self.availability.create(
+            user_id=user_id,
+            kind=AvailabilityKind.UNAVAILABLE.value,
+            date=data.from_date,
+            repeat_weeks=data.repeat_weeks,
+            repeat_until=data.repeat_until,
+            pair_id=pair_id,
+            note=data.note,
+        )
+        added = await self.availability.create(
+            user_id=user_id,
+            kind=AvailabilityKind.EXTRA.value,
+            date=data.to_date,
+            start_time=data.start_time,
+            end_time=data.end_time,
+            repeat_weeks=data.repeat_weeks,
+            repeat_until=data.repeat_until,
+            pair_id=pair_id,
+            note=data.note,
+        )
+        return [dropped, added]
+
+    @staticmethod
+    def _validate_availability(
+        *,
+        day: date,
+        start_time: time | None,
+        end_time: time | None,
+        repeat_weeks: int | None,
+        repeat_until: date | None,
+    ) -> None:
+        """The schema's own rules, re-stated for a PATCH that only sends half of them."""
+        if start_time is not None and end_time is not None and start_time >= end_time:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"end_time": "errors.leave_availability_window_invalid"},
+            )
+        if repeat_until is not None:
+            if repeat_weeks is None:
+                raise AppError(
+                    "validation",
+                    "errors.validation",
+                    status_code=422,
+                    fields={"repeat_until": "errors.leave_availability_repeat_required"},
+                )
+            if repeat_until < day:
+                raise AppError(
+                    "validation",
+                    "errors.validation",
+                    status_code=422,
+                    fields={"repeat_until": "errors.leave_availability_until_invalid"},
+                )
 
     # --- recurring free days / free time (#107) ------------------------------------ #
     async def list_recurring(
@@ -1540,6 +1878,12 @@ class LeaveService:
         N (they left before it, or start after), earns nothing for N — only a genuinely
         contract-less employee takes the scheduled-hours fallback (#264).
 
+        A **freelance** period is a contract for that test and earns nothing for either family: a
+        ZZP'er invoices their hours and holds no entitlement, and their period is exactly what
+        keeps them out of the contract-less fallback they would otherwise fall into on the
+        strength of holding ``time.entry.write``. A negotiated paid-days arrangement is still
+        expressible — as a ``manual`` entitlement, which recompute never touches.
+
         **Deliberately not permission-checked** (#105): besides the guarded bulk endpoint it runs
         as a *side effect of writes the caller was already allowed to make* — adding a contract
         (``leave.profile.manage``), or reading a balance whose pot simply doesn't exist yet — the
@@ -1617,7 +1961,14 @@ class LeaveService:
         created = 0
         for user_id in staff:
             has_any_contract = bool(contracts_by_user.get(user_id))
-            contracts_year = self._contracts_in_year(contracts_by_user.get(user_id, []), year)
+            # Only payroll periods earn. A freelance one still counts as *having* a contract,
+            # which is what keeps the legacy fallback below out of reach for a freelancer who
+            # also holds ``time.entry.write``: the fallback exists for someone who has never had
+            # a contract at all, and handing a ZZP'er a year of statutory hours on the strength
+            # of a permission would be exactly the pot this change exists to not create.
+            contracts_year = self._accruing(
+                self._contracts_in_year(contracts_by_user.get(user_id, []), year)
+            )
             schedule, scheduled_week, _ = self._effective(by_user.get(user_id), default)
             # Half-day rounding needs *a* working day to measure against. The week now lives on
             # the contract, so prefer the one in force at the end of this year's coverage — the
@@ -1638,7 +1989,9 @@ class LeaveService:
                     hours = sum(
                         (
                             weeks
-                            * c.contract_hours_per_week
+                            # Never ``None`` here: only a freelance period may record no agreed
+                            # hours, and ``_accruing`` has already dropped those.
+                            * (c.contract_hours_per_week or Decimal(0))
                             * Decimal(self._year_overlap_days(c, year))
                             / Decimal(year_days)
                             for c in contracts_year

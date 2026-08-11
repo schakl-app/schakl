@@ -5443,6 +5443,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/leave/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Availability
+         * @description The exception rows with an occurrence in the window — own, or anyone's with ``:any``.
+         */
+        get: operations["list_availability_api_v1_leave_availability_get"];
+        put?: never;
+        /** Create Availability */
+        post: operations["create_availability_api_v1_leave_availability_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/availability/days": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Availability Days
+         * @description The resolved week: the base schedule with every exception applied, day by day.
+         *
+         *     The one read a roster or a capacity view should make — computing it in the client would mean
+         *     a second copy of the "a no outranks a yes" rule, in a language that cannot see the contracts.
+         */
+        get: operations["availability_days_api_v1_leave_availability_days_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/availability/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move Availability
+         * @description Swap one day for another — two rows sharing a ``pair_id``, written in one act.
+         */
+        post: operations["move_availability_api_v1_leave_availability_move_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/leave/availability/{entry_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Availability
+         * @description Deletes the other half too when the row is a move — see the service.
+         */
+        delete: operations["delete_availability_api_v1_leave_availability__entry_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Availability */
+        patch: operations["update_availability_api_v1_leave_availability__entry_id__patch"];
+        trace?: never;
+    };
     "/api/v1/leave/balance": {
         parameters: {
             query?: never;
@@ -10017,6 +10102,173 @@ export interface components {
          * @enum {string}
          */
         AutoInvoiceMode: "off" | "draft" | "issue" | "send";
+        /** AvailabilityCreate */
+        AvailabilityCreate: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** End Time */
+            end_time?: string | null;
+            kind: components["schemas"]["AvailabilityKind"];
+            /** Note */
+            note?: string | null;
+            /** Repeat Until */
+            repeat_until?: string | null;
+            /** Repeat Weeks */
+            repeat_weeks?: number | null;
+            /** Start Time */
+            start_time?: string | null;
+            /** User Id */
+            user_id?: string | null;
+        };
+        /**
+         * AvailabilityDay
+         * @description What one person's one day resolves to — the base week with every exception applied.
+         *
+         *     Computed, never stored: the base week is the period in force and the exceptions bend it, so
+         *     there is no generated occurrence to drift from the rule that produced it.
+         */
+        AvailabilityDay: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Deviates
+             * @default false
+             */
+            deviates: boolean;
+            /** Entry Ids */
+            entry_ids?: string[];
+            /** Hours */
+            hours: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Windows */
+            windows: components["schemas"]["AvailabilityWindow"][];
+        };
+        /**
+         * AvailabilityKind
+         * @description Which way an :class:`EmploymentAvailability` row bends the week it sits on.
+         *
+         *     ``UNAVAILABLE`` takes a day (or a window of one) out of the base week; ``EXTRA`` adds one the
+         *     base week does not contain. A *move* is one of each — see the model docstring.
+         * @enum {string}
+         */
+        AvailabilityKind: "extra" | "unavailable";
+        /**
+         * AvailabilityMove
+         * @description "Not Tuesday, Thursday instead" — the two rows a move is, written in one act.
+         *
+         *     The times apply to the day being *added*; the day being dropped goes whole, because that is
+         *     what a move means. A repeat moves both halves together.
+         */
+        AvailabilityMove: {
+            /** End Time */
+            end_time?: string | null;
+            /**
+             * From Date
+             * Format: date
+             */
+            from_date: string;
+            /** Note */
+            note?: string | null;
+            /** Repeat Until */
+            repeat_until?: string | null;
+            /** Repeat Weeks */
+            repeat_weeks?: number | null;
+            /** Start Time */
+            start_time?: string | null;
+            /**
+             * To Date
+             * Format: date
+             */
+            to_date: string;
+            /** User Id */
+            user_id?: string | null;
+        };
+        /** AvailabilityRead */
+        AvailabilityRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** End Time */
+            end_time: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["AvailabilityKind"];
+            /** Note */
+            note: string | null;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Pair Id */
+            pair_id: string | null;
+            /** Repeat Until */
+            repeat_until: string | null;
+            /** Repeat Weeks */
+            repeat_weeks: number | null;
+            /** Start Time */
+            start_time: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /**
+         * AvailabilityUpdate
+         * @description Every field optional; the service reads ``model_fields_set``, so an explicit ``null`` on
+         *     a window or a repeat clears it rather than reading as an omission.
+         */
+        AvailabilityUpdate: {
+            /** Date */
+            date?: string | null;
+            /** End Time */
+            end_time?: string | null;
+            kind?: components["schemas"]["AvailabilityKind"] | null;
+            /** Note */
+            note?: string | null;
+            /** Repeat Until */
+            repeat_until?: string | null;
+            /** Repeat Weeks */
+            repeat_weeks?: number | null;
+            /** Start Time */
+            start_time?: string | null;
+        };
+        /**
+         * AvailabilityWindow
+         * @description A stretch of one day somebody is available for.
+         */
+        AvailabilityWindow: {
+            /** End */
+            end: string;
+            /** Start */
+            start: string;
+        };
         /** AvailableAccount */
         AvailableAccount: {
             /** Account Hint */
@@ -13361,7 +13613,9 @@ export interface components {
         /** EmploymentContractCreate */
         EmploymentContractCreate: {
             /** Contract Hours Per Week */
-            contract_hours_per_week: number | string;
+            contract_hours_per_week?: number | string | null;
+            /** @default employee */
+            employment_type: components["schemas"]["EmploymentKind"];
             /** End Date */
             end_date?: string | null;
             /** Free Time Hours Per Week */
@@ -13383,7 +13637,7 @@ export interface components {
         /** EmploymentContractRead */
         EmploymentContractRead: {
             /** Contract Hours Per Week */
-            contract_hours_per_week: string;
+            contract_hours_per_week: string | null;
             /**
              * Created At
              * Format: date-time
@@ -13391,6 +13645,7 @@ export interface components {
             created_at: string;
             /** Effective Free Time Per Week */
             effective_free_time_per_week: string;
+            employment_type: components["schemas"]["EmploymentKind"];
             /** End Date */
             end_date: string | null;
             /** Free Time Hours Per Week */
@@ -13437,6 +13692,7 @@ export interface components {
         EmploymentContractUpdate: {
             /** Contract Hours Per Week */
             contract_hours_per_week?: number | string | null;
+            employment_type?: components["schemas"]["EmploymentKind"] | null;
             /** End Date */
             end_date?: string | null;
             /** Free Time Hours Per Week */
@@ -13447,6 +13703,27 @@ export interface components {
             /** Start Date */
             start_date?: string | null;
         };
+        /**
+         * EmploymentKind
+         * @description Payroll or a freelance engagement — a property of the **period**, not of the person.
+         *
+         *     A freelancer who later joins the payroll is a new :class:`EmploymentContract` row, exactly as
+         *     a raise is, so last year stays priced under the arrangement it was actually worked. The same
+         *     person may hold both kinds over time, and an agency holds both at once.
+         *
+         *     What the kind decides is **accrual**: a freelance period earns no statutory vacation and no
+         *     free time (§14). A ZZP'er invoices their hours; there is no entitlement to prorate, and
+         *     deriving one would hand them a balance that goes negative the first week they take off. It
+         *     decides nothing else — a freelance period still carries a week, still shows on the team
+         *     roster, and an admin may still hand-grant a pot through the ordinary ``manual`` entitlement
+         *     when a paid-days arrangement was negotiated. That is the escape hatch, deliberately: an
+         *     arrangement nobody can express in a formula is one an admin states outright.
+         *
+         *     ``String``, not a PG enum, like every other small vocabulary here: adding a value is then a
+         *     code change, never a migration on somebody's live database.
+         * @enum {string}
+         */
+        EmploymentKind: "employee" | "freelance";
         /**
          * EntitlementGenerate
          * @description Fill missing entitlements for a year from each type's default_weeks × contract hours.
@@ -34577,6 +34854,204 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UninvoicedReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_availability_api_v1_leave_availability_get: {
+        parameters: {
+            query: {
+                date_from: string;
+                date_to: string;
+                user_id?: string | null;
+                all_users?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailabilityRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_availability_api_v1_leave_availability_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AvailabilityCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailabilityRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    availability_days_api_v1_leave_availability_days_get: {
+        parameters: {
+            query: {
+                date_from: string;
+                date_to: string;
+                user_id?: string | null;
+                all_users?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailabilityDay"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_availability_api_v1_leave_availability_move_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AvailabilityMove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailabilityRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_availability_api_v1_leave_availability__entry_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_availability_api_v1_leave_availability__entry_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AvailabilityUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailabilityRead"];
                 };
             };
             /** @description Validation Error */

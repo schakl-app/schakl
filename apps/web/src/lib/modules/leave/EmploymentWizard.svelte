@@ -37,7 +37,10 @@
   export interface WizardContract {
     id: string;
     user_id: string;
-    contract_hours_per_week: string | number;
+    /** `employee` (payroll) or `freelance` — the accrual rule, per period. */
+    employment_type?: string | null;
+    /** `null` on a freelance period with no fixed weekly commitment. */
+    contract_hours_per_week?: string | number | null;
     scheduled_hours_per_week: string | number;
     free_time_hours_per_week?: string | number | null;
     effective_free_time_per_week?: string | number | null;
@@ -145,7 +148,13 @@
   // Step 1 — the new period's own fields (unused while editing).
   let startDate = $state(todayIso);
   let endDate = $state("");
-  let contractHours = $state(initial ? String(initial.contract_hours_per_week) : "");
+  let contractHours = $state(
+    initial?.contract_hours_per_week != null ? String(initial.contract_hours_per_week) : "",
+  );
+  // Payroll or freelance. A *changed* kind is a new period, exactly as changed hours are, so
+  // this is asked only where a period is created — editing the arrangement in force adjusts the
+  // week and what it earns, and never rewrites what somebody was engaged as.
+  let employmentType = $state(initial?.employment_type === "freelance" ? "freelance" : "employee");
 
   // Step 2 — the week and the free-time rule.
   let inherit = $state(initialWeek === null);
@@ -192,6 +201,7 @@
     startDate = todayIso;
     endDate = "";
     contractHours = "";
+    employmentType = openContract?.employment_type === "freelance" ? "freelance" : "employee";
     applyScheduleFrom(openContract);
     applyFreeTimeFrom(null);
     step = 1;
@@ -199,13 +209,33 @@
 
   function useCurrentContract() {
     mode = "edit";
-    contractHours = openContract ? String(openContract.contract_hours_per_week) : "";
+    contractHours =
+      openContract?.contract_hours_per_week != null
+        ? String(openContract.contract_hours_per_week)
+        : "";
+    employmentType = openContract?.employment_type === "freelance" ? "freelance" : "employee";
     applyScheduleFrom(openContract);
     applyFreeTimeFrom(openContract);
     step = 1;
   }
 
   // --- the numbers, derived in front of the user -----------------------------------
+  /** The kind this run is about: the one being created, or the one in force while editing. */
+  const isFreelance = $derived(
+    mode === "new" ? employmentType === "freelance" : openContract?.employment_type === "freelance",
+  );
+  /** Two steps for a freelancer: there is no free time to place, so there is no third question.
+   *  Dropping the step rather than showing an empty one is the point — a step that always says
+   *  "nothing to plan here" is a step nobody should have to walk through. */
+  const steps = $derived(
+    isFreelance
+      ? [t("settings.employment.step_contract"), t("settings.employment.step_week")]
+      : [
+          t("settings.employment.step_contract"),
+          t("settings.employment.step_week"),
+          t("settings.employment.step_free_time"),
+        ],
+  );
   const norm = $derived(weekHours(orgDefaultSchedule));
   const effectiveWeek = $derived(inherit ? orgDefaultSchedule : draft);
   const rosterHours = $derived(weekHours(effectiveWeek));
@@ -216,6 +246,7 @@
   });
   /** Exactly `LeaveService._contract_free_time`, so the preview cannot disagree with the save. */
   const freeTimePerWeek = $derived.by(() => {
+    if (isFreelance) return 0;
     if (freeTimeMode === "roster") return 0;
     if (freeTimeMode === "custom") {
       const value = Number(String(freeTimeCustom).replace(",", ".").trim());
@@ -232,7 +263,11 @@
   );
 
   const step1Ready = $derived(
-    mode === "edit" ? Boolean(openContract) : Boolean(startDate) && enteredHours > 0,
+    mode === "edit"
+      ? Boolean(openContract)
+      : // A freelance period may record no fixed weekly commitment at all — plenty are engaged
+        // per assignment, and an invented number is one every capacity figure would then quote.
+        Boolean(startDate) && (isFreelance || enteredHours > 0),
   );
   const canPlan = $derived(freeTimeType !== null && freeTimePerWeek > 0);
 
@@ -360,7 +395,7 @@
     <!-- Step rail. Three numbered dots rather than a progress bar: the steps are named, and the
          user can go back to any one they have already answered. -->
     <ol class="flex items-center gap-2 text-xs">
-      {#each [t("settings.employment.step_contract"), t("settings.employment.step_week"), t("settings.employment.step_free_time")] as label, index (label)}
+      {#each steps as label, index (label)}
         {@const number = index + 1}
         <li class="flex items-center gap-2">
           <button
@@ -379,7 +414,7 @@
             >
             {label}
           </button>
-          {#if number < 3}<span class="text-text-muted">›</span>{/if}
+          {#if number < steps.length}<span class="text-text-muted">›</span>{/if}
         </li>
       {/each}
     </ol>
@@ -474,7 +509,10 @@
     >
       <input type="hidden" name="user_id" value={userId} />
       <input type="hidden" name="inherit" value={String(inherit)} />
-      <input type="hidden" name="free_time_mode" value={freeTimeMode} />
+      <input type="hidden" name="employment_type" value={employmentType} />
+      <!-- A freelance period stores `null` (derive), not `0`: the kind already answers "no free
+           time", and a hard 0 would outlive a later correction to payroll. -->
+      <input type="hidden" name="free_time_mode" value={isFreelance ? "derive" : freeTimeMode} />
       {#if mode === "edit" && openContract}
         <input type="hidden" name="contract_id" value={openContract.id} />
       {/if}
@@ -487,10 +525,22 @@
               <li class="flex items-center gap-3 px-3 py-2 text-sm">
                 <div class="min-w-0 flex-1">
                   <span class="font-medium text-text">
-                    {t("settings.users.contract_hours_value", {
-                      hours: fmtHours(contract.contract_hours_per_week),
-                    })}
+                    {contract.contract_hours_per_week == null
+                      ? t("settings.employment.no_fixed_hours")
+                      : t("settings.users.contract_hours_value", {
+                          hours: fmtHours(contract.contract_hours_per_week),
+                        })}
                   </span>
+                  {#if contract.employment_type === "freelance"}
+                    <!-- Named on the row, never inferred from the missing hours: a freelancer
+                         with an agreed 24-hour week looks exactly like a part-timer otherwise,
+                         and the two accrue entirely differently. -->
+                    <span
+                      class="ml-2 rounded-full border border-border px-2 py-0.5 text-[11px] text-text-muted"
+                    >
+                      {t("settings.employment.kind_freelance")}
+                    </span>
+                  {/if}
                   <span class="block text-xs text-text-muted">
                     {fmtNumericDate(contract.start_date)} → {contract.end_date
                       ? fmtNumericDate(contract.end_date)
@@ -559,6 +609,51 @@
                 </button>
               {/if}
             </div>
+            <!-- Payroll or freelance, asked outright rather than inferred from whether the
+                 hours box was filled in. It decides what the period accrues, and nothing else:
+                 a freelancer still has a week, still shows on the roster. -->
+            <fieldset class="space-y-2">
+              <legend class="mb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">
+                {t("settings.employment.kind_question")}
+              </legend>
+              <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <label class={radioRow}>
+                  <input
+                    type="radio"
+                    class="mt-0.5"
+                    value="employee"
+                    bind:group={employmentType}
+                    name="employment_type_choice"
+                  />
+                  <span>
+                    <span class="font-medium text-text"
+                      >{t("settings.employment.kind_employee")}</span
+                    >
+                    <span class="mt-0.5 block text-xs text-text-muted"
+                      >{t("settings.employment.kind_employee_hint")}</span
+                    >
+                  </span>
+                </label>
+                <label class={radioRow}>
+                  <input
+                    type="radio"
+                    class="mt-0.5"
+                    value="freelance"
+                    bind:group={employmentType}
+                    name="employment_type_choice"
+                  />
+                  <span>
+                    <span class="font-medium text-text"
+                      >{t("settings.employment.kind_freelance")}</span
+                    >
+                    <span class="mt-0.5 block text-xs text-text-muted"
+                      >{t("settings.employment.kind_freelance_hint")}</span
+                    >
+                  </span>
+                </label>
+              </div>
+            </fieldset>
+
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div>
                 <label for="e-start" class="mb-1 block text-xs text-text-muted"
@@ -587,20 +682,26 @@
                 />
               </div>
               <div>
-                <label for="e-hours" class="mb-1 block text-xs text-text-muted"
-                  >{t("settings.users.contract_hours")}</label
-                >
+                <label for="e-hours" class="mb-1 block text-xs text-text-muted">
+                  {isFreelance
+                    ? t("settings.employment.agreed_hours")
+                    : t("settings.users.contract_hours")}
+                </label>
                 <input
                   id="e-hours"
                   name="contract_hours_per_week"
                   inputmode="decimal"
-                  placeholder="36"
+                  placeholder={isFreelance ? t("settings.employment.hours_optional") : "36"}
                   bind:value={contractHours}
                   class={inputClass}
                 />
               </div>
             </div>
-            <p class="text-xs text-text-muted">{t("settings.employment.contract_hint")}</p>
+            <p class="text-xs text-text-muted">
+              {isFreelance
+                ? t("settings.employment.freelance_hint")
+                : t("settings.employment.contract_hint")}
+            </p>
           </div>
         {/if}
       </div>
@@ -610,8 +711,11 @@
         <!-- The inherit checkbox and the week grid render above, outside this form. -->
 
         <!-- The one choice the system cannot infer, asked outright. Guessing it from the schedule
-             is exactly how a four-day part-timer ended up with a second pot of free days. -->
-        <fieldset class="space-y-2 border-t border-border pt-4">
+             is exactly how a four-day part-timer ended up with a second pot of free days.
+             A freelance period accrues nothing, so the question does not arise — and the stored
+             value stays `null` (derive) rather than a hard 0, so a period later corrected to
+             payroll picks up the norm shortfall instead of a zero nobody chose. -->
+        <fieldset class="space-y-2 border-t border-border pt-4" class:hidden={isFreelance}>
           <legend class="mb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">
             {t("settings.employment.free_time_question")}
           </legend>
@@ -675,23 +779,40 @@
           </label>
         </fieldset>
 
-        <!-- Three numbers, one line: the relationship that was invisible before. -->
-        <dl class="grid grid-cols-3 gap-3 rounded-lg bg-surface p-3 text-sm">
+        <!-- Three numbers, one line: the relationship that was invisible before. A freelance
+             period has no third number, so it shows two rather than a zero that would read as
+             "no free time accrued this time" instead of "this kind never accrues any". -->
+        <dl
+          class="grid gap-3 rounded-lg bg-surface p-3 text-sm {isFreelance
+            ? 'grid-cols-2'
+            : 'grid-cols-3'}"
+        >
           <div>
-            <dt class="text-xs text-text-muted">{t("settings.employment.sum_contract")}</dt>
-            <dd class="font-medium text-text">{fmtHours(enteredHours)}</dd>
+            <dt class="text-xs text-text-muted">
+              {isFreelance
+                ? t("settings.employment.agreed_hours")
+                : t("settings.employment.sum_contract")}
+            </dt>
+            <dd class="font-medium text-text">
+              {enteredHours > 0 ? fmtHours(enteredHours) : "—"}
+            </dd>
           </div>
           <div>
             <dt class="text-xs text-text-muted">{t("settings.employment.sum_roster")}</dt>
             <dd class="font-medium text-text">{fmtHours(rosterHours)}</dd>
           </div>
-          <div>
-            <dt class="text-xs text-text-muted">{t("settings.employment.sum_free_time")}</dt>
-            <dd class="font-medium {freeTimePerWeek > 0 ? 'text-brand' : 'text-text'}">
-              {fmtHours(freeTimePerWeek)}
-            </dd>
-          </div>
+          {#if !isFreelance}
+            <div>
+              <dt class="text-xs text-text-muted">{t("settings.employment.sum_free_time")}</dt>
+              <dd class="font-medium {freeTimePerWeek > 0 ? 'text-brand' : 'text-text'}">
+                {fmtHours(freeTimePerWeek)}
+              </dd>
+            </div>
+          {/if}
         </dl>
+        {#if isFreelance}
+          <p class="text-xs text-text-muted">{t("settings.employment.freelance_accrues_none")}</p>
+        {/if}
         {#if freeTimePerWeek > 0}
           <p class="text-xs text-text-muted">
             {t("settings.employment.free_days_estimate", {
@@ -858,7 +979,7 @@
           <ArrowLeft size={14} />
           {t("common.back")}
         </button>
-        {#if step < 3}
+        {#if step < steps.length}
           <Button
             type="button"
             disabled={!step1Ready}

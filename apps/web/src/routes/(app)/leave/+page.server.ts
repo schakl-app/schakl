@@ -5,6 +5,7 @@ import { apiFor } from "$lib/core/session";
 import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
+import { availabilityActions } from "$lib/modules/leave/availability.server";
 import { LEAVE_COLUMNS, LEAVE_TABLE_ID } from "$lib/modules/leave/columns";
 import { requestBody } from "$lib/modules/leave/request";
 
@@ -183,4 +184,8 @@ export const actions: Actions = {
       withdrawn: data?.withdrawn ?? 0,
     };
   },
+
+  // Own availability (freelance) — the same three writes the manager's roster declares, so the
+  // self-service surface and the managed one can never drift.
+  ...availabilityActions,
 };

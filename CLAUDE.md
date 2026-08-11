@@ -736,6 +736,43 @@ apply as everywhere.
   employment wizard makes the choice explicitly in its werkweek step, so neither arrangement is
   ever inferred from a schedule the admin happened to enter. Never hardcoded CAO law (§14): a
   tenant who wants none of it still deactivates the type.
+- **Not everyone on the roster is on the payroll, and the difference is a property of the
+  period.** `EmploymentContract.employment_type` is `employee` or `freelance`, chosen when a
+  period is created (a *changed* kind is a new row, exactly as changed hours are, so last year
+  stays priced under the arrangement it was actually worked). It decides exactly one thing —
+  **accrual**: a freelance period earns no statutory vacation and no free time, because a ZZP'er
+  invoices their hours and deriving a pot would hand them a balance that goes negative the first
+  week they take off. It decides nothing else: a freelance period still carries a week, still
+  shows on the team roster, and a negotiated paid-days arrangement is still expressible as a
+  `manual` entitlement, which recompute never touches — an arrangement no formula covers is one
+  an admin states outright. Two rules keep the accrual paths total. `_accruing` filters the kind
+  in **one** place rather than at each of the two computations, so "which periods earn" has one
+  answer; and a freelance period is still a *contract* for the "who is staff for year N" test,
+  which is what keeps a freelancer out of the contract-less scheduled-hours fallback they would
+  otherwise drop into on the strength of holding `time.entry.write` — a full year of statutory
+  hours granted by a permission. `contract_hours_per_week` is nullable **only** there ("no fixed
+  weekly commitment", refused on an employee period with a field error): plenty of freelancers
+  are engaged per assignment, and an invented 16 is a number every capacity figure then quotes as
+  if somebody had agreed to it.
+- **A freelancer's availability is computed, and it is theirs to keep.**
+  `employment_availability` holds dated bends in the base week — a day they *will* work
+  (`extra`), a day they will not (`unavailable`) — and the resolved week is the period's schedule
+  with those applied (`app/modules/leave/availability.py`, `GET /leave/availability/days`).
+  Deliberately **not** leave requests: leave is an entitlement being spent, so it prices in
+  hours, draws on a balance, wants an approver and zeroes on a public holiday, and a freelancer
+  has none of that — while an *extra* day has no leave analogue at all. Three rules. **A repeat
+  is a rule on the row** (`repeat_weeks` + `repeat_until`), never generated occurrences: #107's
+  generator exists because a free day is a balance leaving a pot, and this is not, so "every
+  other Friday" stays one row that is still true next year instead of a monthly cron and a drift
+  risk. **A "no" outranks a "yes"** when both land on one day — booking someone who said they
+  were away is a worse failure than missing a day they could have worked. And **a move is a
+  pair**: "not Tuesday, Thursday instead" is one `unavailable` and one `extra` sharing a
+  `pair_id`, so the UI renders and undoes one act while the day view resolves two days knowing
+  nothing about moves; deleting either half deletes both, because half a move is a statement
+  nobody made. Its own permission (`leave.availability.read`/`.write`, `own` for a member and
+  `any` for an admin), not `leave.profile.manage` — **the contract is the agency's and the
+  exceptions are the freelancer's**, so "I'm also free on Wednesdays" is a weekly `extra` rather
+  than a rewrite of the period somebody was engaged under.
 - **A free-time pattern says how many days, or how often** (#107, extended). `days_per_year` on
   `leave_recurring_days` spreads that many days evenly across the year on the anchor's weekday and
   **slides past** a holiday or a non-working day to the next candidate week, so the count the pot
