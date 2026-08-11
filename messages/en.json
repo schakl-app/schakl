@@ -4344,6 +4344,7 @@
   "cloudflare.pages.status": "Status",
   "module.cloudflare.label": "Cloudflare",
   "module.google_ads.label": "Google Ads",
+  "permissions.group.google_ads": "Google Ads",
   "permissions.google_ads.settings.manage": "Manage Google Ads accounts and the developer token",
   "permissions.google_ads.account.read": "View Google Ads accounts, campaigns and results",
   "permissions.google_ads.policy.manage": "Manage the Google Ads policy per client",

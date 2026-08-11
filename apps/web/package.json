@@ -6,7 +6,7 @@
   "scripts": {
     "machine:messages": "paraglide-js compile --project ../../project.inlang --outdir ./src/lib/paraglide --strategy cookie custom-schaklDefault baseLocale --is-server import.meta.env.SSR",
     "dev": "pnpm run machine:messages && vite dev",
-    "build": "pnpm run machine:messages && NODE_OPTIONS=--max-old-space-size=6144 vite build",
+    "build": "pnpm run machine:messages && NODE_OPTIONS=--max-old-space-size=10240 vite build",
     "preview": "vite preview",
     "check": "pnpm run machine:messages && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "lint": "prettier --check . && eslint .",

@@ -4344,6 +4344,7 @@
   "cloudflare.pages.status": "Status",
   "module.cloudflare.label": "Cloudflare",
   "module.google_ads.label": "Google Ads",
+  "permissions.group.google_ads": "Google Ads",
   "permissions.google_ads.settings.manage": "Google Ads-accounts en het ontwikkelaarstoken beheren",
   "permissions.google_ads.account.read": "Google Ads-accounts, campagnes en resultaten bekijken",
   "permissions.google_ads.policy.manage": "Het Google Ads-beleid per klant beheren",
