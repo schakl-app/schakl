@@ -778,6 +778,34 @@
   conversion, and no other surface may fetch a picture at all. And the marker is a **stored
   marker, not a URL**, like `mention:` and `crm://`: the renderer resolves it, so no API path is
   frozen into a body and a consumer that draws no images ignores it.
+- **A screen that is no longer signed in says so, and offers the way back on the spot**
+  (`core/ui/SessionGuard.svelte`, mounted once on the authenticated shell). Sign out in one tab
+  and the session cookie is gone for the whole browser, but the other tabs go on drawing a
+  working CRM — every control refusing, none of them able to say why — until something makes
+  them ask. The page was not merely stale; it was *claiming* to be signed in. Three signals
+  raise the prompt, and they are different in kind on purpose: a `BroadcastChannel` message
+  (instant, free, same-origin by definition), a `/session` probe when a tab returns to the
+  foreground (throttled to 20s, **not a poll** — a tab left open overnight makes no requests),
+  and any same-origin proxy route that already answers 401 passing that on
+  (`reportUnauthorized`, which the notification bell's existing minute poll now does — it is the
+  only signal that reaches a tab somebody is sitting and reading). Four rules generalise beyond
+  auth. **Announce the state, never the intention**: the first version broadcast from the
+  sign-out button, so the receiving tab's confirming probe raced the very cookie deletion it had
+  been told about, won, and stood the prompt back down half a second after raising it — the
+  announcement moved to `/login`, where arriving *is* the proof, since its own load bounces
+  anyone still holding a session. **A failed probe is not a verdict**: a dropped connection is
+  not a sign-out, and answering one with a sign-in wall over a page that was working a second
+  ago is far worse than answering late, so anything short of a clear "no" reads as "keep going"
+  (the `cloudflare` lesson, CLAUDE.md §10, in another module). **Recover in place rather than
+  redirecting**: a bounce to `/login` throws away the half-written note, the filters, the scroll
+  position — everything that did not need to be lost — so the dialog signs you back in
+  (`/session/signin`, the login screen's own calls, 2FA included) and `invalidateAll()` re-reads
+  the data, which also covers a *different* person having signed in meanwhile. And **a blocking
+  dialog needs an escape hatch that still nags**: refusing to let someone copy unsaved text out
+  of the page behind it is data loss committed to prevent confusion, so "Nu niet" collapses it
+  to a bar that will not go away. Escape and a backdrop click do not dismiss it (hence not
+  `Modal`), the address is prefilled from whoever was using that tab, and the long way round
+  (`/login?next=…`, `core/redirect.ts`) lands them back on the same screen.
 
 ## Navigation
 

@@ -2,6 +2,7 @@
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { announceSignedOut } from "$lib/core/session-watch";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import Button from "$lib/core/ui/Button.svelte";
@@ -10,6 +11,20 @@
   let { data, form } = $props();
 
   const busy = new InFlight();
+
+  /**
+   * Tell the other tabs that this browser has no session (`SessionGuard`).
+   *
+   * Here rather than on the sign-out button, because *arriving on this page* is the proof:
+   * `load` bounces anyone who still has a session, so reaching it means the cookie is already
+   * gone. Announcing from the button instead announced an intention — the receiving tab's
+   * confirming probe then raced the deletion, won, and stood the prompt back down half a
+   * second after raising it. It also widens the signal for free: an expired session redirected
+   * here, or a sign-out from a screen whose JS never ran, says the same thing.
+   */
+  $effect(() => {
+    announceSignedOut();
+  });
 
   const brand = $derived(page.data.theme?.brandName || "");
 
@@ -50,6 +65,7 @@
       <form method="POST" action="?/verify" use:enhance={busy.wrap("verify")} class="space-y-4">
         <input type="hidden" name="challenge_token" value={challenge.challengeToken} />
         <input type="hidden" name="methods" value={challenge.methods.join(",")} />
+        <input type="hidden" name="next" value={data.next ?? ""} />
         <input type="hidden" name="method" value={challenge.smsSentTo ? "sms" : method} />
 
         <p class="text-sm text-text-muted">
@@ -109,6 +125,9 @@
       {/if}
     {:else if data.localLoginEnabled}
       <form method="POST" action="?/login" use:enhance={busy.clear("login")} class="space-y-4">
+        <!-- Where they were headed before the guard sent them here. On the form, not read back
+             off the page URL: a form action posts to `?/login`, which carries no other query. -->
+        <input type="hidden" name="next" value={data.next ?? ""} />
         <div>
           <label for="email" class="mb-1 block text-sm font-medium text-text">
             {t("auth.email")}

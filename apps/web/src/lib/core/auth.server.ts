@@ -9,10 +9,19 @@
  * with a short-lived challenge token instead of a cookie, and `/auth/2fa/verify` is what
  * finally yields the Set-Cookie this bridge extracts.
  */
+import type { Cookies } from "@sveltejs/kit";
+
 import type { ApiEvent } from "./session";
-import { apiBaseUrl } from "./api/client";
+import { apiBaseUrl, createApiClient } from "./api/client";
+import { asLocale, LOCALE_COOKIE, LOCALE_COOKIE_OPTIONS } from "./i18n";
 
 export const AUTH_COOKIE_NAME = "schakl_auth";
+
+/** What {@link establishSession} needs: a `RequestEvent` satisfies it structurally. */
+export interface SessionEvent extends ApiEvent {
+  cookies: Cookies;
+  url: URL;
+}
 
 export type LoginResult =
   | { kind: "session"; token: string }
@@ -89,6 +98,37 @@ export async function apiVerifyTwoFactor(
   if (res.ok && token) return { token };
   const body = await res.json().catch(() => null);
   return { errorKey: body?.error?.message ?? "errors.two_factor_code_invalid" };
+}
+
+/**
+ * Turn a redeemed token into this browser's session: the web-domain auth cookie, plus the
+ * user's saved display language so it follows them to this device.
+ *
+ * It lives here rather than on the login page because it has **two** callers. The second is the
+ * re-login dialog other tabs raise when a session ends underneath them (`/session/signin`), and
+ * a second copy of the cookie flags is exactly how one of them would quietly ship a session
+ * that outlives the other's, or one a `secure` deployment leaks over http. Whoever calls it
+ * decides where to go next; that is the only part the two callers disagree about.
+ */
+export async function establishSession(event: SessionEvent, token: string): Promise<void> {
+  event.cookies.set(AUTH_COOKIE_NAME, token, {
+    path: "/",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: event.url.protocol === "https:",
+    maxAge: 60 * 60 * 24 * 7,
+  });
+
+  // The just-set auth cookie isn't on the incoming request yet, so authenticate the lookup with
+  // the fresh token explicitly.
+  const authed = createApiClient({
+    fetch: event.fetch,
+    cookie: `${AUTH_COOKIE_NAME}=${token}`,
+    host: event.request.headers.get("host"),
+  });
+  const { data: me } = await authed.GET("/api/v1/meta/me");
+  const locale = asLocale(me?.locale);
+  if (locale) event.cookies.set(LOCALE_COOKIE, locale, LOCALE_COOKIE_OPTIONS);
 }
 
 /** Ask the API to text a login code for this challenge → the masked number, or an error key. */

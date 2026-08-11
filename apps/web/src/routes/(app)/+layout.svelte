@@ -32,6 +32,7 @@
   import { can, canAccessSettings } from "$lib/core/permissions";
   import { navItemsFor, type NavItem } from "$lib/core/registry";
   import Breadcrumbs from "$lib/core/ui/Breadcrumbs.svelte";
+  import SessionGuard from "$lib/core/ui/SessionGuard.svelte";
   import SlideOver from "$lib/core/ui/SlideOver.svelte";
   import NotificationBell from "$lib/modules/notifications/NotificationBell.svelte";
 
@@ -495,6 +496,10 @@
                 <!-- Personal notification preferences moved to the bell popover's gear (#163);
                    the redundant profile-menu entry is gone. The bell's gear is ungated the same
                    way this was (tied to hasNotifications, not settings.*). -->
+                <!-- The other tabs are told by /login, not from here: announcing at submit
+                     time announces an *intention*, and the confirming probe on the other side
+                     then races the very cookie deletion it was told about (it won, and the
+                     prompt vanished half a second after appearing). See SessionGuard. -->
                 <form method="POST" action="/logout" class="border-t border-border">
                   <button
                     class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-text hover:bg-surface"
@@ -535,3 +540,8 @@
     <AssistantPanel context={assistantContext} />
   </SlideOver>
 {/if}
+
+<!-- Mounted on the authenticated shell rather than the root layout: this is the surface that
+     claims to be signed in, and the root also wraps /login, /setup and the public invoice page,
+     where "sign back in" would be an answer to a question nobody asked. -->
+<SessionGuard />

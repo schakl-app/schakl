@@ -4,11 +4,10 @@ import {
   apiLogin,
   apiSendTwoFactorSms,
   apiVerifyTwoFactor,
-  AUTH_COOKIE_NAME,
+  establishSession,
 } from "$lib/core/auth.server";
-import { createApiClient } from "$lib/core/api/client";
-import { asLocale, LOCALE_COOKIE, LOCALE_COOKIE_OPTIONS } from "$lib/core/i18n";
 import { apiFor } from "$lib/core/session";
+import { safeInternalPath } from "$lib/core/redirect";
 
 import type { Actions, PageServerLoad, RequestEvent } from "./$types";
 
@@ -22,7 +21,11 @@ const SSO_ERRORS: Record<string, string> = {
 };
 
 export const load: PageServerLoad = async (event) => {
-  if (event.locals.user) throw redirect(303, "/");
+  // `next` is where a *guarded* screen sent them (#, the session-ended dialog's fallback), so
+  // signing in has to land there rather than on the dashboard — arriving somewhere else is how
+  // "log back in" turns into "find your way back again".
+  const next = safeInternalPath(event.url.searchParams.get("next"));
+  if (event.locals.user) throw redirect(303, next ?? "/");
   // Per-org at request time (#76): the API resolves the org from the hostname and answers
   // from its *stored* SSO settings, so the button follows a settings save with no restart.
   const { data } = await apiFor(event).GET("/api/v1/meta/modules");
@@ -31,31 +34,14 @@ export const load: PageServerLoad = async (event) => {
     oidcEnabled: data?.oidc_enabled ?? false,
     oidcName: data?.oidc_name ?? null,
     error: SSO_ERRORS[event.url.searchParams.get("error") ?? ""] ?? null,
+    next,
   };
 };
 
-/** Set the web-domain session cookie, seed the locale preference, land on the dashboard. */
-async function establishSession(event: RequestEvent, token: string): Promise<never> {
-  event.cookies.set(AUTH_COOKIE_NAME, token, {
-    path: "/",
-    httpOnly: true,
-    sameSite: "lax",
-    secure: event.url.protocol === "https:",
-    maxAge: 60 * 60 * 24 * 7,
-  });
-
-  // Seed the display locale from the user's saved preference so their language follows them to
-  // this device. The just-set auth cookie isn't on the incoming request yet, so authenticate
-  // the lookup with the fresh token explicitly.
-  const authed = createApiClient({
-    fetch: event.fetch,
-    cookie: `${AUTH_COOKIE_NAME}=${token}`,
-    host: event.request.headers.get("host"),
-  });
-  const { data: me } = await authed.GET("/api/v1/meta/me");
-  const locale = asLocale(me?.locale);
-  if (locale) event.cookies.set(LOCALE_COOKIE, locale, LOCALE_COOKIE_OPTIONS);
-  throw redirect(303, "/");
+/** Set the session up on this browser, then land where they were headed. */
+async function signIn(event: RequestEvent, token: string, next: string | null): Promise<never> {
+  await establishSession(event, token);
+  throw redirect(303, next ?? "/");
 }
 
 export const actions: Actions = {
@@ -63,6 +49,9 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const email = String(form.get("email") ?? "");
     const password = String(form.get("password") ?? "");
+    // Carried on the form, not read back off `event.url`: a form action posts to `?/login`, so
+    // the page's own query string is not on the request that redeems the credentials.
+    const next = safeInternalPath(form.get("next"));
 
     if (!email || !password) {
       return fail(400, { error: "errors.required", email });
@@ -86,11 +75,12 @@ export const actions: Actions = {
         methods: result.methods,
       };
     }
-    return await establishSession(event, result.token);
+    return await signIn(event, result.token, next);
   },
 
   verify: async (event) => {
     const form = await event.request.formData();
+    const next = safeInternalPath(form.get("next"));
     const challengeToken = String(form.get("challenge_token") ?? "");
     const code = String(form.get("code") ?? "").trim();
     const method = String(form.get("method") ?? "totp");
@@ -106,7 +96,7 @@ export const actions: Actions = {
       }
       return fail(400, { ...step, error: result.errorKey });
     }
-    return await establishSession(event, result.token);
+    return await signIn(event, result.token, next);
   },
 
   sms: async (event) => {
