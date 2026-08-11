@@ -31,20 +31,27 @@ from app.core.crypto import decrypt, encrypt
 from app.core.tenancy import RequestContext, TenantScopedRepository
 from app.errors import AppError
 from app.modules.uptime import errors as kuma_errors
-from app.modules.uptime.client import UptimeKumaClient
+from app.modules.uptime import profiles as prof
+from app.modules.uptime.client import UptimeKumaClient, merge_monitor
 from app.modules.uptime.models import (
     InstanceMode,
     InstanceStatus,
     SyncStatus,
     UptimeInstance,
     UptimeMonitor,
+    UptimeMonitorProfile,
 )
 from app.modules.uptime.redaction import redact_monitor, secret_drift
 from app.modules.uptime.schemas import (
     UptimeEnrol,
     UptimeInstanceCreate,
     UptimeInstanceUpdate,
+    UptimeMonitorCreate,
+    UptimeMonitorUpdate,
     UptimeProbeResult,
+    UptimeProfileCreate,
+    UptimeProfileUpdate,
+    UptimeReconcile,
     UptimeSyncReport,
 )
 
@@ -87,6 +94,9 @@ class UptimeService:
         )
         self.monitors = TenantScopedRepository(
             ctx.session, ctx.org.id, UptimeMonitor, company_scope=ctx.company_scope
+        )
+        self.profiles = TenantScopedRepository(
+            ctx.session, ctx.org.id, UptimeMonitorProfile, company_scope=ctx.company_scope
         )
         self.activity = ActivityService(ctx)
 
@@ -220,6 +230,37 @@ class UptimeService:
 
         async with self.ctx.release_db():
             return await asyncio.to_thread(_run)
+
+    async def _reload(self, *rows: Any) -> None:
+        """Re-read rows that were loaded before an external call.
+
+        ``release_db()`` **commits** on entry, and a commit expires every loaded ORM object. An
+        expired attribute then lazy-loads on first read — synchronously, from inside Pydantic's
+        serialisation — and asyncpg answers ``MissingGreenlet``. Assigning to an attribute hides
+        it (that un-expires without loading), which is why the instance paths appeared to work
+        while anything reading ``updated_at`` did not.
+
+        So: refresh explicitly, in async code, before anything reads a row across that seam.
+        """
+        for row in rows:
+            if row is not None:
+                await self.ctx.session.refresh(row)
+
+    async def _settled(self, row: Any) -> Any:
+        """Flush, then re-read — the last statement of every write path that returns a row.
+
+        ``TimestampMixin.updated_at`` carries ``onupdate=func.now()``, a **SQL** expression, so
+        every flush that updates a row expires that attribute to re-read the server's value.
+        Serialising the row afterwards then lazy-loads from inside Pydantic — synchronously, in
+        a context with no greenlet — and asyncpg answers ``MissingGreenlet``.
+
+        Ordinary write paths never notice, because their flush is the last thing that touches
+        the row before the response. This module's is not: the external call sits in the middle,
+        and ``release_db()`` commits on entry, so the row crosses that seam twice.
+        """
+        await self.ctx.session.flush()
+        await self.ctx.session.refresh(row)
+        return row
 
     def _mark(
         self,
@@ -395,17 +436,28 @@ class UptimeService:
                 # overwrite — and `secret_drift` is already here so that the credential half of
                 # that comparison is testable before the rest of it exists.
                 credential_moved = bool(secret_drift(row.remote_snapshot or {}, snapshot))
-                row.name = str(payload.get("name") or row.name)[:255]
-                row.monitor_type = str(payload.get("type") or row.monitor_type)[:40]
-                row.target = _target_of(payload)
-                row.port = _int_or_none(payload.get("port"))
-                row.interval_seconds = _int_or_none(payload.get("interval"))
-                row.retries = _int_or_none(payload.get("maxretries"))
+                # Gate 2: an observation is only *truth* for a monitor we adopted. One schakl
+                # created has intent of its own, so a difference is drift — reported, never
+                # quietly absorbed, or "somebody changed this in Kuma" becomes unsayable again.
+                drifted = prof.compute_drift(row, payload)
+                if row.adopted:
+                    row.name = str(payload.get("name") or row.name)[:255]
+                    row.monitor_type = str(payload.get("type") or row.monitor_type)[:40]
+                    row.target = _target_of(payload)
+                    row.port = _int_or_none(payload.get("port"))
+                    row.interval_seconds = _int_or_none(payload.get("interval"))
+                    row.retries = _int_or_none(payload.get("maxretries"))
+                # `active` follows Kuma either way: pausing is not a configuration conflict.
                 row.active = bool(payload.get("active", True))
                 row.remote_snapshot = snapshot
                 row.last_observed_at = now
-                row.sync_status = SyncStatus.ACTIVE.value
+                row.drift_fields = list(drifted)
+                row.sync_status = (
+                    SyncStatus.DRIFT.value if drifted else SyncStatus.ACTIVE.value
+                )
                 row.last_error = "uptime.drift.credential" if credential_moved else None
+                if drifted:
+                    report.drifted += 1
                 report.updated += 1
 
         # Anything left in `existing` is a monitor Kuma no longer has. Marked, never deleted:
@@ -535,3 +587,341 @@ async def visible_header_names(instance: UptimeInstance) -> list[str]:
     if not instance.connect_headers_encrypted:
         return []
     return sorted(_load_headers(decrypt(instance.connect_headers_encrypted)))
+
+
+# ---------------------------------------------------------------------- gate 2
+
+
+class UptimeWriteService(UptimeService):
+    """The write half: profiles, monitors pushed to Uptime Kuma, drift and reconcile.
+
+    Split from the read service only for readability — it is the same class hierarchy and the
+    same repositories, so a write path can never reach rows a read path could not.
+    """
+
+    # --------------------------------------------------------------- profiles
+
+    async def list_profiles(self) -> list[UptimeMonitorProfile]:
+        stmt = self.profiles.scoped_select().order_by(
+            UptimeMonitorProfile.position, UptimeMonitorProfile.name
+        )
+        return list((await self.ctx.session.execute(stmt)).scalars().all())
+
+    async def create_profile(self, payload: UptimeProfileCreate) -> UptimeMonitorProfile:
+        profile = await self.profiles.create(
+            name=payload.name,
+            monitor_type=payload.monitor_type,
+            defaults=prof.profile_defaults_input(payload.defaults),
+            notification_ids=list(payload.notification_ids or []),
+            is_default=payload.is_default,
+            active=payload.active,
+            position=payload.position,
+        )
+        if payload.is_default:
+            await self._demote_other_defaults(profile)
+        await self.activity.record("uptime_monitor_profile", profile.id, "created")
+        return profile
+
+    async def update_profile(
+        self, profile_id: uuid.UUID, payload: UptimeProfileUpdate
+    ) -> UptimeMonitorProfile:
+        profile = await self.profiles.get_or_404(profile_id)
+        values = payload.model_dump(exclude_unset=True)
+        if "defaults" in values and values["defaults"] is not None:
+            values["defaults"] = prof.profile_defaults_input(values["defaults"])
+        for field, value in values.items():
+            if value is not None:
+                setattr(profile, field, value)
+        if values.get("is_default"):
+            await self._demote_other_defaults(profile)
+        await self.activity.record("uptime_monitor_profile", profile.id, "updated")
+        await self.ctx.session.flush()
+        return profile
+
+    async def _demote_other_defaults(self, profile: UptimeMonitorProfile) -> None:
+        """Exactly one default per monitor type.
+
+        Enforced here rather than by a partial unique index because "the default" is a product
+        rule with a fallback chain behind it (:func:`profiles.pick_profile`), and a constraint
+        would turn an ordinary "make this one the default" into a 409 the user has to resolve by
+        unticking the other one first.
+        """
+        stmt = self.profiles.scoped_select().where(
+            UptimeMonitorProfile.id != profile.id,
+            UptimeMonitorProfile.monitor_type == profile.monitor_type,
+            UptimeMonitorProfile.is_default.is_(True),
+        )
+        for other in (await self.ctx.session.execute(stmt)).scalars().all():
+            other.is_default = False
+        await self.ctx.session.flush()
+
+    async def delete_profile(self, profile_id: uuid.UUID) -> None:
+        """Delete a profile; monitors that followed it fall back to the tenant's default.
+
+        The FK is ``SET NULL`` on purpose: ``NULL`` already means *inherit*, so a deleted profile
+        degrades to "follow the default" rather than orphaning forty monitors.
+        """
+        profile = await self.profiles.get_or_404(profile_id)
+        await self.activity.record("uptime_monitor_profile", profile.id, "deleted")
+        await self.ctx.session.delete(profile)
+
+    async def effective_settings(self, monitor: UptimeMonitor) -> dict[str, Any]:
+        """The one resolution, used by the create form, the push, the drift check and reconcile."""
+        profile = None
+        if monitor.profile_id is not None:
+            profile = await self.profiles.get_or_404(monitor.profile_id)
+        else:
+            profile = prof.pick_profile(await self.list_profiles(), monitor.monitor_type, None)
+        return prof.resolve(
+            {
+                "interval_seconds": monitor.interval_seconds,
+                "retries": monitor.retries,
+            },
+            profile,
+        )
+
+    # ---------------------------------------------------------------- monitors
+
+    async def create_monitor(self, payload: UptimeMonitorCreate) -> UptimeMonitor:
+        """Create here **and** at Uptime Kuma, in that order, and never half of it.
+
+        The local row is written first and the push follows, so a failed push leaves a
+        ``pending`` monitor an admin can retry — rather than a monitor at Kuma that schakl has no
+        record of, which is the half nobody can clean up from this side.
+        """
+        instance = await self.instances.get_or_404(payload.instance_id)
+        parent = (
+            await self.monitors.get_or_404(payload.parent_id)
+            if payload.parent_id is not None
+            else None
+        )
+        monitor = await self.monitors.create(
+            instance_id=instance.id,
+            name=payload.name,
+            monitor_type=payload.monitor_type,
+            target=payload.target,
+            port=payload.port,
+            interval_seconds=payload.interval_seconds,
+            retries=payload.retries,
+            parent_id=parent.id if parent is not None else None,
+            profile_id=payload.profile_id,
+            website_id=payload.website_id,
+            domain_id=payload.domain_id,
+            hosting_id=payload.hosting_id,
+            company_id=payload.company_id,
+            active=payload.active,
+            # Ours, not found: this is what makes a later difference *drift* rather than truth.
+            adopted=False,
+            sync_status=SyncStatus.PENDING.value,
+        )
+        await self.ctx.session.flush()
+        await self.activity.record(MONITOR_ENTITY_TYPE, monitor.id, "created")
+        await self._push(instance, monitor, parent=parent)
+        return await self._settled(monitor)
+
+    async def update_monitor(
+        self, monitor_id: uuid.UUID, payload: UptimeMonitorUpdate
+    ) -> UptimeMonitor:
+        monitor = await self.monitors.get_or_404(monitor_id)
+        instance = await self.instances.get_or_404(monitor.instance_id)
+        before = {f: getattr(monitor, f) for f in prof.DRIFT_FIELDS}
+
+        values = payload.model_dump(exclude_unset=True)
+        for field, value in values.items():
+            setattr(monitor, field, value)
+        await self.ctx.session.flush()
+
+        changes = {
+            f: {"from": before[f], "to": getattr(monitor, f)}
+            for f in prof.DRIFT_FIELDS
+            if before[f] != getattr(monitor, f)
+        }
+        if changes:
+            await self.activity.record(
+                MONITOR_ENTITY_TYPE, monitor.id, "updated", payload={"changes": changes}
+            )
+        await self._push(instance, monitor)
+        return await self._settled(monitor)
+
+    async def set_paused(self, monitor_id: uuid.UUID, *, paused: bool) -> UptimeMonitor:
+        """Pause or resume. Its own permission, and deliberately not drift.
+
+        Silencing an alert during a planned migration is an ordinary thing to ask of an ordinary
+        employee; repointing a monitor is not. And a monitor paused in Kuma during an incident
+        must not read as a configuration conflict somebody has to resolve.
+        """
+        monitor = await self.monitors.get_or_404(monitor_id)
+        instance = await self.instances.get_or_404(monitor.instance_id)
+        if monitor.kuma_monitor_id is None:
+            raise AppError("validation_error", "errors.uptime_not_pushed", status_code=409)
+
+        kuma_id = monitor.kuma_monitor_id
+
+        def _work(client: UptimeKumaClient) -> None:
+            client.authenticate(_token(instance))
+            if paused:
+                client.pause_monitor(kuma_id)
+            else:
+                client.resume_monitor(kuma_id)
+
+        await self._in_kuma(instance, _work)
+        await self._reload(monitor)
+        monitor.active = not paused
+        await self.activity.record(
+            MONITOR_ENTITY_TYPE, monitor.id, "paused" if paused else "resumed"
+        )
+        return await self._settled(monitor)
+
+    async def delete_monitor(self, monitor_id: uuid.UUID, *, at_kuma: bool) -> None:
+        """Delete the local row, and optionally the monitor at Uptime Kuma.
+
+        ``at_kuma`` is an explicit choice and defaults to *no*, for the reason deleting an
+        instance touches nothing: "stop tracking this here" and "stop watching this client's
+        site" are different decisions, and the destructive one is never the side effect of the
+        other. When it is asked for, it takes the id this module stored — never a name match.
+        """
+        monitor = await self.monitors.get_or_404(monitor_id)
+        if at_kuma and monitor.kuma_monitor_id is not None:
+            instance = await self.instances.get_or_404(monitor.instance_id)
+            kuma_id = monitor.kuma_monitor_id
+
+            def _work(client: UptimeKumaClient) -> None:
+                client.authenticate(_token(instance))
+                client.delete_monitor(kuma_id)
+
+            await self._in_kuma(instance, _work)
+            await self._reload(monitor)
+        await self.activity.record(
+            MONITOR_ENTITY_TYPE, monitor.id, "deleted", payload={"at_kuma": at_kuma}
+        )
+        await self.ctx.session.delete(monitor)
+
+    # ------------------------------------------------------- pushing and drift
+
+    async def _push(
+        self,
+        instance: UptimeInstance,
+        monitor: UptimeMonitor,
+        *,
+        parent: UptimeMonitor | None = None,
+    ) -> None:
+        """Write this monitor's decided state to Uptime Kuma.
+
+        On an existing monitor this is **read-then-write**: the payload starts from a fresh
+        ``getMonitor`` and only the keys we own are written over it. A live 2.5.0 returns 119
+        keys against the 16 a create sends, so a payload rebuilt from the fields this module
+        models would silently reset a hundred of them — including every field belonging to a
+        monitor type we do not know about.
+        """
+        settings = await self.effective_settings(monitor)
+        parent_kuma = parent.kuma_monitor_id if parent is not None else None
+        if parent is None and monitor.parent_id is not None:
+            parent_row = await self.monitors.get_or_404(monitor.parent_id)
+            parent_kuma = parent_row.kuma_monitor_id
+
+        fields = _kuma_fields(monitor, settings, parent_kuma)
+        existing_id = monitor.kuma_monitor_id
+        token = _token(instance)
+
+        def _work(client: UptimeKumaClient) -> tuple[int, dict[str, Any]]:
+            client.authenticate(token)
+            if existing_id is None:
+                new_id = client.add_monitor(fields)
+            else:
+                new_id = existing_id
+                observed = client.get_monitor(new_id)
+                client.edit_monitor(merge_monitor(observed, {**fields, "id": new_id}))
+            return new_id, client.get_monitor(new_id)
+
+        try:
+            kuma_id, observed = await self._in_kuma(instance, _work)
+        except kuma_errors.UptimeKumaError as exc:
+            await self._reload(monitor)
+            monitor.sync_status = SyncStatus.ERROR.value
+            monitor.last_error = str(exc)[:500]
+            await self.ctx.session.flush()
+            raise AppError("upstream_error", error_key(exc), status_code=502) from exc
+
+        await self._reload(monitor, instance)
+        monitor.kuma_monitor_id = kuma_id
+        monitor.remote_snapshot = redact_monitor(observed, salt=instance.secret_salt)
+        monitor.last_observed_at = datetime.now(UTC)
+        monitor.sync_status = SyncStatus.ACTIVE.value
+        monitor.drift_fields = []
+        monitor.last_error = None
+        await self.ctx.session.flush()
+
+    async def reconcile(self, monitor_id: uuid.UUID, payload: UptimeReconcile) -> UptimeMonitor:
+        """Resolve a drift — in **either** direction, which is the whole point.
+
+        An agency editing a monitor in Kuma because that screen was closer to hand is the normal
+        case, not the deviant one. A reconcile that could only overwrite would teach people to
+        stop using the tool they already had, so ``adopt`` copies Uptime Kuma's state into ours
+        and ``push`` sends ours to Kuma.
+        """
+        monitor = await self.monitors.get_or_404(monitor_id)
+        instance = await self.instances.get_or_404(monitor.instance_id)
+
+        if payload.direction == "push":
+            await self._push(instance, monitor)
+            await self.activity.record(MONITOR_ENTITY_TYPE, monitor.id, "drift_pushed")
+            return await self._settled(monitor)
+
+        snapshot = monitor.remote_snapshot or {}
+        for field in prof.DRIFT_FIELDS:
+            value = prof.observed_value(field, snapshot, monitor.monitor_type)
+            if value is not None:
+                setattr(monitor, field, _coerce(field, value))
+        monitor.drift_fields = []
+        monitor.sync_status = SyncStatus.ACTIVE.value
+        await self.activity.record(MONITOR_ENTITY_TYPE, monitor.id, "drift_adopted")
+        return await self._settled(monitor)
+
+
+def _token(instance: UptimeInstance) -> str:
+    if not instance.token_encrypted:
+        raise AppError("validation_error", "errors.uptime_not_enrolled", status_code=409)
+    return decrypt(instance.token_encrypted)
+
+
+def _coerce(field: str, value: Any) -> Any:
+    if field in ("port", "interval_seconds", "retries"):
+        return _int_or_none(value)
+    return value
+
+
+def _kuma_fields(
+    monitor: UptimeMonitor, settings: dict[str, Any], parent_kuma: int | None
+) -> dict[str, Any]:
+    """Our decided state as the keys Uptime Kuma uses.
+
+    Only the keys this module owns. Everything else on an existing monitor is preserved by
+    ``merge_monitor``, and everything else on a new one takes Kuma's own default — which is
+    what an agency would have got by making it in Kuma's UI.
+    """
+    fields: dict[str, Any] = {
+        "type": monitor.monitor_type,
+        "name": monitor.name,
+        "interval": settings["interval_seconds"],
+        "maxretries": settings["retries"],
+        "retryInterval": settings["retry_interval_seconds"],
+        "resendInterval": settings["resend_interval"],
+        "accepted_statuscodes": settings["accepted_status_codes"],
+        "upsideDown": settings["upside_down"],
+        "parent": parent_kuma,
+    }
+    if monitor.monitor_type != "group":
+        # A group watches nothing itself, and sending it a target is how a "group" ends up with
+        # a URL nobody meant to give it.
+        fields[prof.target_field(monitor.monitor_type)] = monitor.target
+        if monitor.port is not None:
+            fields["port"] = monitor.port
+    if monitor.monitor_type in ("http", "keyword", "json-query", "real-browser"):
+        fields |= {
+            "method": settings["method"],
+            "maxredirects": settings["max_redirects"],
+            "timeout": settings["timeout_seconds"],
+            "expiryNotification": settings["expiry_notification"],
+            "ignoreTls": settings["ignore_tls"],
+        }
+    return fields

@@ -19,11 +19,21 @@ from app.modules.uptime.schemas import (
     UptimeInstanceCreate,
     UptimeInstanceRead,
     UptimeInstanceUpdate,
+    UptimeMonitorCreate,
     UptimeMonitorRead,
+    UptimeMonitorUpdate,
     UptimeProbeResult,
+    UptimeProfileCreate,
+    UptimeProfileRead,
+    UptimeProfileUpdate,
+    UptimeReconcile,
     UptimeSyncReport,
 )
-from app.modules.uptime.service import UptimeService, visible_header_names
+from app.modules.uptime.service import (
+    UptimeService,
+    UptimeWriteService,
+    visible_header_names,
+)
 from app.schemas import Page
 
 router = APIRouter(prefix="/uptime", tags=["uptime"])
@@ -212,3 +222,147 @@ def _monitor_read(monitor) -> UptimeMonitorRead:
     value = snapshot.get("active")
     read.remote_active = bool(value) if isinstance(value, bool) else None
     return read
+
+
+# ---------------------------------------------------------------------- gate 2
+
+
+@router.get(
+    "/profiles",
+    response_model=list[UptimeProfileRead],
+    dependencies=[require_permission("uptime.monitor.read")],
+)
+async def list_profiles(
+    ctx: RequestContext = Depends(require_context),
+) -> list[UptimeProfileRead]:
+    """Readable on `monitor.read`, writable on `profile.manage`.
+
+    The create form needs to *show* which profile a monitor will follow, and gating the read on
+    the manage permission would leave an ordinary member with a picker they cannot populate —
+    #310's "mirror the key the call actually makes" applied to a lookup.
+    """
+    return [
+        UptimeProfileRead.model_validate(p) for p in await UptimeWriteService(ctx).list_profiles()
+    ]
+
+
+@router.post(
+    "/profiles",
+    response_model=UptimeProfileRead,
+    status_code=201,
+    dependencies=[require_permission("uptime.profile.manage")],
+)
+async def create_profile(
+    payload: UptimeProfileCreate, ctx: RequestContext = Depends(require_context)
+) -> UptimeProfileRead:
+    return UptimeProfileRead.model_validate(await UptimeWriteService(ctx).create_profile(payload))
+
+
+@router.patch(
+    "/profiles/{profile_id}",
+    response_model=UptimeProfileRead,
+    dependencies=[require_permission("uptime.profile.manage")],
+)
+async def update_profile(
+    profile_id: uuid.UUID,
+    payload: UptimeProfileUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> UptimeProfileRead:
+    return UptimeProfileRead.model_validate(
+        await UptimeWriteService(ctx).update_profile(profile_id, payload)
+    )
+
+
+@router.delete(
+    "/profiles/{profile_id}",
+    status_code=204,
+    dependencies=[require_permission("uptime.profile.manage")],
+)
+async def delete_profile(
+    profile_id: uuid.UUID, ctx: RequestContext = Depends(require_context)
+) -> None:
+    await UptimeWriteService(ctx).delete_profile(profile_id)
+
+
+@router.post(
+    "/monitors",
+    response_model=UptimeMonitorRead,
+    status_code=201,
+    dependencies=[require_permission("uptime.monitor.write")],
+)
+async def create_monitor(
+    payload: UptimeMonitorCreate, ctx: RequestContext = Depends(require_context)
+) -> UptimeMonitorRead:
+    """Create the monitor here and push it to Uptime Kuma."""
+    return _monitor_read(await UptimeWriteService(ctx).create_monitor(payload))
+
+
+@router.patch(
+    "/monitors/{monitor_id}",
+    response_model=UptimeMonitorRead,
+    dependencies=[require_permission("uptime.monitor.write")],
+)
+async def update_monitor(
+    monitor_id: uuid.UUID,
+    payload: UptimeMonitorUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> UptimeMonitorRead:
+    return _monitor_read(await UptimeWriteService(ctx).update_monitor(monitor_id, payload))
+
+
+@router.post(
+    "/monitors/{monitor_id}/pause",
+    response_model=UptimeMonitorRead,
+    dependencies=[require_permission("uptime.monitor.pause")],
+)
+async def pause_monitor(
+    monitor_id: uuid.UUID, ctx: RequestContext = Depends(require_context)
+) -> UptimeMonitorRead:
+    """Its own permission: silencing an alert during a planned migration is an ordinary act,
+    and repointing a monitor is not."""
+    return _monitor_read(await UptimeWriteService(ctx).set_paused(monitor_id, paused=True))
+
+
+@router.post(
+    "/monitors/{monitor_id}/resume",
+    response_model=UptimeMonitorRead,
+    dependencies=[require_permission("uptime.monitor.pause")],
+)
+async def resume_monitor(
+    monitor_id: uuid.UUID, ctx: RequestContext = Depends(require_context)
+) -> UptimeMonitorRead:
+    return _monitor_read(await UptimeWriteService(ctx).set_paused(monitor_id, paused=False))
+
+
+@router.post(
+    "/monitors/{monitor_id}/reconcile",
+    response_model=UptimeMonitorRead,
+    dependencies=[require_permission("uptime.monitor.write")],
+)
+async def reconcile_monitor(
+    monitor_id: uuid.UUID,
+    payload: UptimeReconcile,
+    ctx: RequestContext = Depends(require_context),
+) -> UptimeMonitorRead:
+    """Resolve a drift in the direction the caller names. There is no default direction:
+    one overwrites a colleague's edit in Uptime Kuma, the other overwrites schakl's record."""
+    return _monitor_read(await UptimeWriteService(ctx).reconcile(monitor_id, payload))
+
+
+@router.delete(
+    "/monitors/{monitor_id}",
+    status_code=204,
+    dependencies=[require_permission("uptime.monitor.write")],
+)
+async def delete_monitor(
+    monitor_id: uuid.UUID,
+    at_kuma: bool = Query(
+        False,
+        description=(
+            "Also delete the monitor in Uptime Kuma. Defaults to false: 'stop tracking this "
+            "here' and 'stop watching this client's site' are different decisions."
+        ),
+    ),
+    ctx: RequestContext = Depends(require_context),
+) -> None:
+    await UptimeWriteService(ctx).delete_monitor(monitor_id, at_kuma=at_kuma)

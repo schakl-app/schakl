@@ -4940,5 +4940,21 @@
   "uptime.monitor.up": "Actief",
   "uptime.monitor.paused": "Gepauzeerd",
   "uptime.monitor.unknown": "Onbekend",
-  "uptime.monitor.missing": "Weg uit Uptime Kuma"
+  "uptime.monitor.missing": "Weg uit Uptime Kuma",
+  "errors.uptime_not_pushed": "Deze monitor bestaat nog niet in Uptime Kuma.",
+  "uptime.drift.title": "Gewijzigd in Uptime Kuma",
+  "uptime.drift.fields": "Verschilt op: {fields}",
+  "uptime.drift.push": "Overschrijven met die van ons",
+  "uptime.drift.adopt": "Die van hen overnemen",
+  "uptime.monitor.drift": "Gewijzigd in Uptime Kuma",
+  "uptime.profile.title": "Standaardinstellingen",
+  "uptime.profile.default_badge": "Standaard",
+  "uptime.field.profile": "Standaardinstellingen",
+  "uptime.field.profile_inherit": "Volg de standaard",
+  "uptime.field.interval": "Controleren elke (seconden)",
+  "uptime.field.retries": "Pogingen voordat het down is",
+  "uptime.field.target": "Wat wordt bewaakt",
+  "uptime.field.monitor_type": "Type",
+  "uptime.field.parent": "Groep",
+  "uptime.field.delete_at_kuma": "Deze monitor ook in Uptime Kuma verwijderen"
 }

@@ -170,7 +170,47 @@ class UptimeInstance(
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
+class UptimeMonitorProfile(
+    UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, AuditableMixin, Base
+):
+    """A set of monitor defaults the tenant named — "Standaard website", "Klant met SLA".
+
+    Profiles exist because no agency is going to type ``interval=60, retries=3, resend=30,
+    accepted=[200-299], expiryNotification=true`` three hundred times. They are the **middle** of
+    three layers that must not fuse (:mod:`.profiles`): product invariants are code, the
+    tenant's editorial default is this row, and what is true about one monitor is that monitor.
+
+    ``defaults`` is JSONB rather than columns because what a profile may carry grows with every
+    monitor type Uptime Kuma adds, and a migration per option is how a defaults table becomes
+    something nobody extends.
+    """
+
+    __tablename__ = "uptime_monitor_profiles"
+    __entity_type__ = "uptime_monitor_profile"
+    __activity_read_permission__ = "uptime.profile.manage"
+
+    __table_args__ = (
+        UniqueConstraint("org_id", "name", name="uq_uptime_profiles_org_name"),
+        Index("ix_uptime_profiles_org_type", "org_id", "monitor_type"),
+    )
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    monitor_type: Mapped[str] = mapped_column(String(40), nullable=False, default="http")
+    defaults: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    #: Uptime Kuma's own notification channel ids. Assigned, never managed: an agency
+    #: configuring Slack in Kuma is doing the right thing and Kuma delivers better than we would.
+    notification_ids: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
 class UptimeMonitor(
+
     UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, AuditableMixin, Base
 ):
     """One monitor, as we decided it and as Kuma last reported it.
@@ -214,6 +254,13 @@ class UptimeMonitor(
     )
     #: Paused/resumed at Kuma. Our intent; ``remote_snapshot["active"]`` is theirs.
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    #: Which defaults this monitor follows. ``NULL`` means *the tenant's default profile*,
+    #: resolved at read time — inherit, not unfilled.
+    profile_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("uptime_monitor_profiles.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     # ---- what it is attached to --------------------------------------------------------
     website_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -245,3 +292,15 @@ class UptimeMonitor(
         String(20), nullable=False, default=SyncStatus.PENDING.value
     )
     last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    #: Which of *our* fields Uptime Kuma disagrees with, as of the last sync. A list and not a
+    #: boolean: "this monitor drifted" is not actionable, "its interval and its URL drifted" is.
+    drift_fields: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    #: Whether we found this monitor (``True``) or created it (``False``).
+    #:
+    #: It is what makes a *first* sync meaningful. An adopted monitor has no intent of its own
+    #: for Kuma to disagree with — its observed state simply *is* the truth, and copying it in
+    #: is not an overwrite. One schakl created does have intent, so a difference is drift and
+    #: must be reported rather than quietly absorbed.
+    adopted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

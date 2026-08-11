@@ -9375,7 +9375,11 @@ export interface paths {
         /** List Monitors */
         get: operations["list_monitors_api_v1_uptime_monitors_get"];
         put?: never;
-        post?: never;
+        /**
+         * Create Monitor
+         * @description Create the monitor here and push it to Uptime Kuma.
+         */
+        post: operations["create_monitor_api_v1_uptime_monitors_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -9393,10 +9397,114 @@ export interface paths {
         get: operations["get_monitor_api_v1_uptime_monitors__monitor_id__get"];
         put?: never;
         post?: never;
+        /** Delete Monitor */
+        delete: operations["delete_monitor_api_v1_uptime_monitors__monitor_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Monitor */
+        patch: operations["update_monitor_api_v1_uptime_monitors__monitor_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/uptime/monitors/{monitor_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause Monitor
+         * @description Its own permission: silencing an alert during a planned migration is an ordinary act,
+         *     and repointing a monitor is not.
+         */
+        post: operations["pause_monitor_api_v1_uptime_monitors__monitor_id__pause_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/uptime/monitors/{monitor_id}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reconcile Monitor
+         * @description Resolve a drift in the direction the caller names. There is no default direction:
+         *     one overwrites a colleague's edit in Uptime Kuma, the other overwrites schakl's record.
+         */
+        post: operations["reconcile_monitor_api_v1_uptime_monitors__monitor_id__reconcile_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/uptime/monitors/{monitor_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume Monitor */
+        post: operations["resume_monitor_api_v1_uptime_monitors__monitor_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/uptime/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Profiles
+         * @description Readable on `monitor.read`, writable on `profile.manage`.
+         *
+         *     The create form needs to *show* which profile a monitor will follow, and gating the read on
+         *     the manage permission would leave an ordinary member with a picker they cannot populate —
+         *     #310's "mirror the key the call actually makes" applied to a lookup.
+         */
+        get: operations["list_profiles_api_v1_uptime_profiles_get"];
+        put?: never;
+        /** Create Profile */
+        post: operations["create_profile_api_v1_uptime_profiles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/uptime/profiles/{profile_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Profile */
+        delete: operations["delete_profile_api_v1_uptime_profiles__profile_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Profile */
+        patch: operations["update_profile_api_v1_uptime_profiles__profile_id__patch"];
         trace?: never;
     };
     "/api/v1/users/me": {
@@ -23567,10 +23675,62 @@ export interface components {
             /** Ssl Verify */
             ssl_verify?: boolean | null;
         };
+        /**
+         * UptimeMonitorCreate
+         * @description A monitor schakl creates and pushes.
+         *
+         *     Every settings field is optional and ``None`` means **inherit** — from the profile, then
+         *     from the built-in defaults (`profiles.resolve`). That is what makes "volg de standaard" a
+         *     thing the form can express rather than a value it has to guess.
+         */
+        UptimeMonitorCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Company Id */
+            company_id?: string | null;
+            /** Domain Id */
+            domain_id?: string | null;
+            /** Hosting Id */
+            hosting_id?: string | null;
+            /**
+             * Instance Id
+             * Format: uuid
+             */
+            instance_id: string;
+            /** Interval Seconds */
+            interval_seconds?: number | null;
+            /**
+             * Monitor Type
+             * @default http
+             */
+            monitor_type: string;
+            /** Name */
+            name: string;
+            /** Parent Id */
+            parent_id?: string | null;
+            /** Port */
+            port?: number | null;
+            /** Profile Id */
+            profile_id?: string | null;
+            /** Retries */
+            retries?: number | null;
+            /** Target */
+            target?: string | null;
+            /** Website Id */
+            website_id?: string | null;
+        };
         /** UptimeMonitorRead */
         UptimeMonitorRead: {
             /** Active */
             active: boolean;
+            /**
+             * Adopted
+             * @default true
+             */
+            adopted: boolean;
             /** Company Id */
             company_id: string | null;
             /** Company Name */
@@ -23582,6 +23742,8 @@ export interface components {
             created_at: string;
             /** Domain Id */
             domain_id: string | null;
+            /** Drift Fields */
+            drift_fields?: string[];
             /** Hosting Id */
             hosting_id: string | null;
             /**
@@ -23612,6 +23774,8 @@ export interface components {
             parent_id: string | null;
             /** Port */
             port: number | null;
+            /** Profile Id */
+            profile_id?: string | null;
             /** Remote Active */
             remote_active?: boolean | null;
             /** Retries */
@@ -23627,6 +23791,37 @@ export interface components {
             updated_at: string;
             /** Website Id */
             website_id: string | null;
+        };
+        /**
+         * UptimeMonitorUpdate
+         * @description Absent means leave alone. Note what is **not** here: `instance_id` and `kuma_monitor_id`.
+         *
+         *     A monitor cannot change instances — that is a delete and a create, at two different Uptime
+         *     Kumas — and its remote id is theirs, not a field anybody edits.
+         */
+        UptimeMonitorUpdate: {
+            /** Company Id */
+            company_id?: string | null;
+            /** Domain Id */
+            domain_id?: string | null;
+            /** Hosting Id */
+            hosting_id?: string | null;
+            /** Interval Seconds */
+            interval_seconds?: number | null;
+            /** Name */
+            name?: string | null;
+            /** Parent Id */
+            parent_id?: string | null;
+            /** Port */
+            port?: number | null;
+            /** Profile Id */
+            profile_id?: string | null;
+            /** Retries */
+            retries?: number | null;
+            /** Target */
+            target?: string | null;
+            /** Website Id */
+            website_id?: string | null;
         };
         /**
          * UptimeProbeResult
@@ -23648,6 +23843,117 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** UptimeProfileCreate */
+        UptimeProfileCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Defaults */
+            defaults?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /**
+             * Monitor Type
+             * @default http
+             */
+            monitor_type: string;
+            /** Name */
+            name: string;
+            /** Notification Ids */
+            notification_ids?: number[];
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+        };
+        /** UptimeProfileRead */
+        UptimeProfileRead: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Defaults */
+            defaults?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /**
+             * Monitor Type
+             * @default http
+             */
+            monitor_type: string;
+            /** Name */
+            name: string;
+            /** Notification Ids */
+            notification_ids?: number[];
+            /**
+             * Position
+             * @default 0
+             */
+            position: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** UptimeProfileUpdate */
+        UptimeProfileUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Defaults */
+            defaults?: {
+                [key: string]: unknown;
+            } | null;
+            /** Is Default */
+            is_default?: boolean | null;
+            /** Monitor Type */
+            monitor_type?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Notification Ids */
+            notification_ids?: number[] | null;
+            /** Position */
+            position?: number | null;
+        };
+        /**
+         * UptimeReconcile
+         * @description Which way to resolve a drift.
+         *
+         *     Two directions and no default, on purpose: a reconcile that silently picked one would be
+         *     making the tenant's decision for them, and the two are not symmetrical — one overwrites a
+         *     colleague's edit in Uptime Kuma, the other overwrites schakl's record.
+         */
+        UptimeReconcile: {
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "push" | "adopt";
+        };
         /**
          * UptimeSyncReport
          * @description What a read-only sync did, reported rather than silently applied.
@@ -23668,6 +23974,11 @@ export interface components {
              * @default 0
              */
             created: number;
+            /**
+             * Drifted
+             * @default 0
+             */
+            drifted: number;
             /** Error */
             error?: string | null;
             /**
@@ -44180,6 +44491,39 @@ export interface operations {
             };
         };
     };
+    create_monitor_api_v1_uptime_monitors_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UptimeMonitorCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptimeMonitorRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_monitor_api_v1_uptime_monitors__monitor_id__get: {
         parameters: {
             query?: never;
@@ -44198,6 +44542,287 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UptimeMonitorRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_monitor_api_v1_uptime_monitors__monitor_id__delete: {
+        parameters: {
+            query?: {
+                /** @description Also delete the monitor in Uptime Kuma. Defaults to false: 'stop tracking this here' and 'stop watching this client's site' are different decisions. */
+                at_kuma?: boolean;
+            };
+            header?: never;
+            path: {
+                monitor_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_monitor_api_v1_uptime_monitors__monitor_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                monitor_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UptimeMonitorUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptimeMonitorRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pause_monitor_api_v1_uptime_monitors__monitor_id__pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                monitor_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptimeMonitorRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reconcile_monitor_api_v1_uptime_monitors__monitor_id__reconcile_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                monitor_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UptimeReconcile"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptimeMonitorRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_monitor_api_v1_uptime_monitors__monitor_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                monitor_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptimeMonitorRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_profiles_api_v1_uptime_profiles_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptimeProfileRead"][];
+                };
+            };
+        };
+    };
+    create_profile_api_v1_uptime_profiles_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UptimeProfileCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptimeProfileRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_profile_api_v1_uptime_profiles__profile_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_profile_api_v1_uptime_profiles__profile_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UptimeProfileUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptimeProfileRead"];
                 };
             };
             /** @description Validation Error */

@@ -81,27 +81,36 @@ class FakeKuma:
         """How many sockets are still open. The client must leave none behind."""
         return sum(1 for c in self.connections if c.connected)
 
+    #: What a *seeded* monitor looks like — the convenience a test uses to say "this already
+    #: exists at Kuma". A live 2.5.0 returns ~119 keys; a handful of the ones that matter is
+    #: enough to prove a merge preserves what it was not asked about.
+    SEED_DEFAULTS: dict[str, Any] = {
+        "type": "http",
+        "url": "https://example.com",
+        "interval": 60,
+        "maxretries": 1,
+        "active": True,
+        "parent": None,
+        "accepted_statuscodes": ["200-299"],
+        "maxredirects": 10,
+        "basic_auth_pass": None,
+        "conditions": [],
+    }
+
     def add(self, **fields: Any) -> int:
         """Seed a monitor directly — how a test says "this already exists at Kuma"."""
+        return self._store({**self.SEED_DEFAULTS, **fields})
+
+    def _store(self, fields: dict[str, Any]) -> int:
+        """Store exactly what was given, plus an id.
+
+        Deliberately **no** field defaults: Uptime Kuma stores the payload it was sent, so a
+        fake that helpfully fills in a URL would hide a push that sent one where it should not
+        have — which is precisely the bug a group with a URL is.
+        """
         monitor_id = self._next_id
         self._next_id += 1
-        self.monitors[monitor_id] = {
-            "id": monitor_id,
-            "type": "http",
-            "name": f"monitor {monitor_id}",
-            "url": "https://example.com",
-            "interval": 60,
-            "maxretries": 1,
-            "active": True,
-            "parent": None,
-            # A live 2.5.0 returns ~119 keys; a handful of the ones that matter is enough to
-            # prove the merge preserves what it was not asked about.
-            "accepted_statuscodes": ["200-299"],
-            "maxredirects": 10,
-            "basic_auth_pass": None,
-            "conditions": [],
-            **fields,
-        }
+        self.monitors[monitor_id] = {"id": monitor_id, **fields}
         return monitor_id
 
 
@@ -206,7 +215,7 @@ class FakeSocket:
                 "ok": False,
                 "msg": "SQLITE_CONSTRAINT: NOT NULL constraint failed: monitor.conditions",
             }
-        monitor_id = self.kuma.add(**payload)
+        monitor_id = self.kuma._store(dict(payload))
         # `monitorID`, not 1.x's `monitorId`.
         return {"ok": True, "monitorID": monitor_id, "msg": "successAdded", "msgi18n": True}
 

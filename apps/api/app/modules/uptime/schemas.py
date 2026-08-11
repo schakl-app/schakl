@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -131,6 +132,13 @@ class UptimeMonitorRead(BaseModel):
     company_id: uuid.UUID | None
     kuma_monitor_id: int | None
     sync_status: str
+    #: Which of *our* fields Uptime Kuma disagrees with. A list, not a boolean: "this monitor
+    #: drifted" is not actionable and "its interval and its URL drifted" is.
+    drift_fields: list[str] = Field(default_factory=list)
+    #: Whether we found this monitor or created it — what makes a difference *drift* rather
+    #: than simply the truth.
+    adopted: bool = True
+    profile_id: uuid.UUID | None = None
     last_error: str | None
     last_observed_at: datetime | None
     created_at: datetime
@@ -161,6 +169,8 @@ class UptimeSyncReport(BaseModel):
     created: int = 0
     updated: int = 0
     missing: int = 0
+    #: Monitors schakl created whose settings Uptime Kuma now disagrees with.
+    drifted: int = 0
     matched: int = 0
     ambiguous: int = 0
     unmatched: int = 0
@@ -182,3 +192,107 @@ class UptimeProbeResult(BaseModel):
     #: i18n key, so the message is translatable; Kuma's own text goes to `last_error`.
     error: str | None = None
     detail: str | None = None
+
+
+# ---------------------------------------------------------------------- gate 2
+
+
+class UptimeProfileBase(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    monitor_type: str = Field(default="http", max_length=40)
+    #: Only the keys a profile may set survive (`profiles.PROFILE_KEYS`) — an allow-list, so a
+    #: field added to a monitor tomorrow is not silently profile-writable today.
+    defaults: dict[str, Any] = Field(default_factory=dict)
+    notification_ids: list[int] = Field(default_factory=list)
+    is_default: bool = False
+    active: bool = True
+    position: int = 0
+
+
+class UptimeProfileCreate(UptimeProfileBase):
+    pass
+
+
+class UptimeProfileUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    monitor_type: str | None = Field(default=None, max_length=40)
+    defaults: dict[str, Any] | None = None
+    notification_ids: list[int] | None = None
+    is_default: bool | None = None
+    active: bool | None = None
+    position: int | None = None
+
+
+class UptimeProfileRead(UptimeProfileBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class UptimeMonitorCreate(BaseModel):
+    """A monitor schakl creates and pushes.
+
+    Every settings field is optional and ``None`` means **inherit** — from the profile, then
+    from the built-in defaults (`profiles.resolve`). That is what makes "volg de standaard" a
+    thing the form can express rather than a value it has to guess.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    instance_id: uuid.UUID
+    name: str = Field(min_length=1, max_length=255)
+    monitor_type: str = Field(default="http", max_length=40)
+    target: str | None = Field(default=None, max_length=1000)
+    port: int | None = Field(default=None, ge=1, le=65535)
+    interval_seconds: int | None = Field(default=None, ge=20, le=86_400)
+    retries: int | None = Field(default=None, ge=0, le=10)
+    parent_id: uuid.UUID | None = None
+    profile_id: uuid.UUID | None = None
+    website_id: uuid.UUID | None = None
+    domain_id: uuid.UUID | None = None
+    hosting_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
+    active: bool = True
+
+
+class UptimeMonitorUpdate(BaseModel):
+    """Absent means leave alone. Note what is **not** here: `instance_id` and `kuma_monitor_id`.
+
+    A monitor cannot change instances — that is a delete and a create, at two different Uptime
+    Kumas — and its remote id is theirs, not a field anybody edits.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    target: str | None = Field(default=None, max_length=1000)
+    port: int | None = Field(default=None, ge=1, le=65535)
+    interval_seconds: int | None = Field(default=None, ge=20, le=86_400)
+    retries: int | None = Field(default=None, ge=0, le=10)
+    parent_id: uuid.UUID | None = None
+    profile_id: uuid.UUID | None = None
+    website_id: uuid.UUID | None = None
+    domain_id: uuid.UUID | None = None
+    hosting_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
+
+
+class UptimeReconcile(BaseModel):
+    """Which way to resolve a drift.
+
+    Two directions and no default, on purpose: a reconcile that silently picked one would be
+    making the tenant's decision for them, and the two are not symmetrical — one overwrites a
+    colleague's edit in Uptime Kuma, the other overwrites schakl's record.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    direction: Literal["push", "adopt"]
+
+
+class UptimeMonitorDeleteResult(BaseModel):
+    deleted_at_kuma: bool

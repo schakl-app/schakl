@@ -4940,5 +4940,21 @@
   "uptime.monitor.up": "Active",
   "uptime.monitor.paused": "Paused",
   "uptime.monitor.unknown": "Unknown",
-  "uptime.monitor.missing": "Gone from Uptime Kuma"
+  "uptime.monitor.missing": "Gone from Uptime Kuma",
+  "errors.uptime_not_pushed": "This monitor does not exist in Uptime Kuma yet.",
+  "uptime.drift.title": "Changed in Uptime Kuma",
+  "uptime.drift.fields": "Differs on: {fields}",
+  "uptime.drift.push": "Overwrite with ours",
+  "uptime.drift.adopt": "Take theirs over",
+  "uptime.monitor.drift": "Changed in Uptime Kuma",
+  "uptime.profile.title": "Monitor defaults",
+  "uptime.profile.default_badge": "Default",
+  "uptime.field.profile": "Defaults",
+  "uptime.field.profile_inherit": "Follow the default",
+  "uptime.field.interval": "Check every (seconds)",
+  "uptime.field.retries": "Retries before down",
+  "uptime.field.target": "What to watch",
+  "uptime.field.monitor_type": "Type",
+  "uptime.field.parent": "Group",
+  "uptime.field.delete_at_kuma": "Also delete this monitor in Uptime Kuma"
 }
