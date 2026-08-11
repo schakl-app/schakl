@@ -115,9 +115,22 @@ path — including `/socket.io/`**. A naive reachability probe reads that as hea
 proof-of-identity gate: *200 with a body is not proof of anything*, and a client's half-installed
 Kuma is a realistic thing to be pointed at.
 
-**1–2. The handshake is fast and upgrades cleanly.** 5–9 ms to connect on the LAN, and
-python-socketio's poll-then-upgrade reached `transport='websocket'` unaided. No transport pinning
-needed. *(Still unrun: through a reverse proxy on a subpath, and through Cloudflare Access.)*
+**1. python-socketio throws away the path you hand it, and a subpath instance is the casualty.**
+`_get_engineio_url` rebuilds the request as `{scheme}://{netloc}/{socketio_path}/`, so connecting
+to `https://host/kuma/socket.io/` really asks for `https://host/socket.io/`. Found by a test that
+was checking something else: a client pointed at `http://localhost:3011/definitely-not-kuma`
+connected happily to the Kuma at the root.
+
+   That is worse than a failure. An agency running Kuma behind a reverse proxy on a subpath —
+   the ordinary deployment — would either fail for no visible reason, or on a host serving more
+   than one thing **silently reach a different instance and mirror the wrong monitors**. So
+   `client.socketio_path_for` folds the subpath into `socketio_path`, the only parameter
+   python-socketio honours, and the origin is passed separately. `https://host/kuma/` →
+   origin `https://host`, path `kuma/socket.io`.
+
+**2. The transport upgrades cleanly.** 5–9 ms to connect on the LAN, and poll-then-upgrade
+reached `transport='websocket'` unaided. No pinning needed. *(Still unrun: through Cloudflare
+Access.)*
 
 **3. Messages are i18n keys now, and the exception proves the rule.** Kuma 2.x answers
 `{'ok': True, 'msg': 'successAdded', 'msgi18n': True}` where 1.x answered *"Added Successfully."*.
