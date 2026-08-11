@@ -140,7 +140,7 @@ class Settings(BaseSettings):
             "companies", "contacts", "tasks", "projects", "time", "leave", "notifications",
             "domains", "hosting", "websites", "subscriptions", "invoicing", "automation",
             "interactions", "google", "marketing", "hr", "cloudflare", "oxxa", "portal",
-            "reporting", "mollie",
+            "reporting", "mollie", "uptime",
         ]
     )
     default_locale: str = "nl"

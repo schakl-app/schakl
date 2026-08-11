@@ -30,6 +30,7 @@ and their web counterparts — currently:
 - `apps/api/app/modules/reporting/`
 - `apps/api/app/modules/subscriptions/`
 - `apps/api/app/modules/time/`
+- `apps/api/app/modules/uptime/`
 - `apps/api/app/modules/websites/`
 - `apps/web/src/lib/cloud/`
 - `apps/web/src/lib/modules/oxxa/`

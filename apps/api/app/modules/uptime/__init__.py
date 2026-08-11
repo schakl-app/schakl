@@ -17,3 +17,23 @@ Importing this package self-registers the module.
 """
 
 from __future__ import annotations
+
+from app.modules.uptime.panels import UPTIME_PANELS
+from app.modules.uptime.permissions import UPTIME_PERMISSIONS
+from app.modules.uptime.router import router
+from app.registry import ModuleDescriptor, registry
+
+module = ModuleDescriptor(
+    name="uptime",
+    router=router,
+    i18n_namespace="uptime",
+    # Licensed module (issue #137): a paid integration, the same bracket as `cloudflare` /
+    # `google` / `marketing`. Past expiry the mount-time gate turns every mutation 402 while the
+    # read surface — the stored mirror, the last observed status, the timeline — keeps working,
+    # so a lapsed licence never leaves an agency unable to see that a client's site is down.
+    sku="uptime",
+    permissions=UPTIME_PERMISSIONS,
+    panels=UPTIME_PANELS,
+)
+
+registry.register(module)
