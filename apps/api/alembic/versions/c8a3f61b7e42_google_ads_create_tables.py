@@ -1,7 +1,7 @@
 """google_ads_create_tables
 
 Revision ID: c8a3f61b7e42
-Revises: b7e21d5c9034
+Revises: e2b6d4f81a37
 Create Date: 2026-08-11 12:10:00.000000
 
 The ``google_ads`` module's two tables, plus the *expand* half of moving two facts out of
@@ -50,7 +50,7 @@ from app.core.rls import disable_rls, enable_rls
 
 # revision identifiers, used by Alembic.
 revision: str = "c8a3f61b7e42"
-down_revision: str | None = "b7e21d5c9034"
+down_revision: str | None = "e2b6d4f81a37"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
