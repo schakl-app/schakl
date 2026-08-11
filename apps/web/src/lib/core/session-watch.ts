@@ -36,10 +36,17 @@ const LOCAL_EVENT = "schakl:session-ended";
 /** How stale a "yes, still signed in" may be before a returning tab asks again. */
 export const PROBE_INTERVAL_MS = 20_000;
 
-export type SessionMessage = { kind: "signed-out" } | { kind: "signed-in" };
+export type SessionMessage =
+  /** Another tab of this browser reached `/login`, so somebody signed out. Broadcast only. */
+  | { kind: "signed-out" }
+  /** This tab was refused by the server. Same fact, different sentence — nobody signed out. */
+  | { kind: "expired" }
+  /** Who, so a receiving tab knows whether re-reading its page is necessary — or destructive. */
+  | { kind: "signed-in"; userId: string | null };
 
 export interface SessionState {
   signedIn: boolean;
+  userId?: string | null;
   /** Only when asked for with `options` — what the re-login dialog may draw. */
   localLogin?: boolean;
   oidcEnabled?: boolean;
@@ -66,8 +73,8 @@ export function announceSignedOut(): void {
 }
 
 /** Say that somebody is signed in here again — a tab showing the prompt can stand down. */
-export function announceSignedIn(): void {
-  bus()?.postMessage({ kind: "signed-in" } satisfies SessionMessage);
+export function announceSignedIn(userId: string | null): void {
+  bus()?.postMessage({ kind: "signed-in", userId } satisfies SessionMessage);
 }
 
 /**
@@ -87,9 +94,52 @@ export function reportUnauthorized(): void {
   window.dispatchEvent(new CustomEvent(LOCAL_EVENT));
 }
 
+/** Is anything listening? Nothing below is worth a request on a screen with no guard on it. */
+let listeners = 0;
+export function guardMounted(): () => void {
+  listeners++;
+  return () => {
+    listeners--;
+  };
+}
+
+let asking = false;
+
+/**
+ * A form submission came back refused — ask whether the session is the reason.
+ *
+ * This is the moment work is most at risk and least explained: you press Opslaan, the action
+ * calls the API without a valid cookie, and what comes back is whatever error key that route
+ * happens to use. The user reads "er ging iets mis" over a form they cannot save, with nothing
+ * connecting it to a session that ended ten minutes ago in a tab they have since closed.
+ *
+ * A refusal is a **hint, never a verdict** — most failed submits are ordinary validation — so
+ * this asks rather than concludes, and says nothing at all when the session is fine. Called
+ * from `InFlight.wrap`, which every enhanced form already passes through, so no form has to
+ * remember. Unthrottled on purpose: a failed submit is rare, user-initiated, and exactly when a
+ * stale answer would be worst; `asking` only stops two forms racing the same question.
+ *
+ * The user's typed values are untouched either way. SvelteKit resets a form only on a
+ * `success` result, so a refusal leaves the fields alone and the prompt appears over them —
+ * sign in, press Opslaan again.
+ */
+export async function noticeFailedSubmit(): Promise<void> {
+  if (!listeners || asking) return;
+  asking = true;
+  try {
+    const state = await probeSession();
+    if (!state.signedIn) reportUnauthorized();
+  } finally {
+    asking = false;
+  }
+}
+
 /** Listen for all three signals. Returns the unsubscribe, for an `$effect` teardown. */
 export function onSessionMessage(handler: (message: SessionMessage) => void): () => void {
-  const local = () => handler({ kind: "signed-out" });
+  // `expired`, never `signed-out`: what this tab observed is that the server refused it. Saying
+  // "you signed out in another tab" over a cookie that simply lapsed is a confident wrong
+  // answer, and the person reads it while looking for the tab they never opened.
+  const local = () => handler({ kind: "expired" });
   window.addEventListener(LOCAL_EVENT, local);
 
   const target = bus();

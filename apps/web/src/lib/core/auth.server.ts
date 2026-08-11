@@ -109,8 +109,15 @@ export async function apiVerifyTwoFactor(
  * a second copy of the cookie flags is exactly how one of them would quietly ship a session
  * that outlives the other's, or one a `secure` deployment leaks over http. Whoever calls it
  * decides where to go next; that is the only part the two callers disagree about.
+ *
+ * Returns **who** was signed in, because the locale lookup already asked and the dialog needs
+ * the answer: signing the same person back in must not re-read the page (that is the one thing
+ * that could destroy what they were typing), while a *different* person must.
  */
-export async function establishSession(event: SessionEvent, token: string): Promise<void> {
+export async function establishSession(
+  event: SessionEvent,
+  token: string,
+): Promise<{ userId: string | null }> {
   event.cookies.set(AUTH_COOKIE_NAME, token, {
     path: "/",
     httpOnly: true,
@@ -129,6 +136,7 @@ export async function establishSession(event: SessionEvent, token: string): Prom
   const { data: me } = await authed.GET("/api/v1/meta/me");
   const locale = asLocale(me?.locale);
   if (locale) event.cookies.set(LOCALE_COOKIE, locale, LOCALE_COOKIE_OPTIONS);
+  return { userId: me?.id ?? null };
 }
 
 /** Ask the API to text a login code for this challenge → the masked number, or an error key. */

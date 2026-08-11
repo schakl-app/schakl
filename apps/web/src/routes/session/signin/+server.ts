@@ -62,8 +62,8 @@ export const POST: RequestHandler = async (event) => {
       const expired = verified.errorKey === "errors.two_factor_challenge_invalid";
       return json({ error: verified.errorKey, restart: expired }, { status: 400 });
     }
-    await establishSession(event, verified.token);
-    return json({ ok: true });
+    const { userId } = await establishSession(event, verified.token);
+    return json({ ok: true, userId });
   }
 
   // Step 1 — the password.
@@ -86,6 +86,6 @@ export const POST: RequestHandler = async (event) => {
       methods: result.methods,
     });
   }
-  await establishSession(event, result.token);
-  return json({ ok: true });
+  const { userId } = await establishSession(event, result.token);
+  return json({ ok: true, userId });
 };

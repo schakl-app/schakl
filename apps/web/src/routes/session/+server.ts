@@ -22,7 +22,9 @@ import type { RequestHandler } from "./$types";
  */
 export const GET: RequestHandler = async (event) => {
   const signedIn = !!event.locals.user;
-  const body: Record<string, unknown> = { signedIn };
+  // *Who*, not just whether: the dialog re-reads the page only when the person changed, because
+  // a re-read is the one thing in the recovery that can overwrite what somebody had typed.
+  const body: Record<string, unknown> = { signedIn, userId: event.locals.user?.id ?? null };
 
   if (!signedIn && event.url.searchParams.has("options")) {
     // Per-org and resolved from the hostname, exactly as the login screen resolves it (#76) —

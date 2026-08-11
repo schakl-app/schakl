@@ -31,6 +31,7 @@
   import { t } from "$lib/core/i18n";
   import {
     announceSignedIn,
+    guardMounted,
     onSessionMessage,
     PROBE_INTERVAL_MS,
     probeSession,
@@ -82,16 +83,26 @@
     });
   }
 
-  async function recover() {
+  /**
+   * Stand down.
+   *
+   * `reread` is the whole question of whether work survives. `invalidateAll()` re-runs every
+   * load and hands the page a fresh `data` — which is right when a *different* person is now
+   * signed in (the screen must stop showing what the previous one could see) and actively
+   * harmful otherwise: 51 inputs in this app take their value straight from `data`, and a
+   * re-read is the only thing in this whole flow that could overwrite what somebody had typed.
+   *
+   * For the same person there is nothing to fix. The page's data is exactly as stale as it was
+   * a minute ago; the session ending did not make it staler. So: leave it alone.
+   */
+  async function recover(reread = false) {
     ended = null;
     minimized = false;
     password = "";
     code = "";
     challenge = null;
     errorKey = null;
-    // Not merely "unblock the screen": whoever is signed in now may be a different person from
-    // whoever this page was rendered for, so every load runs again against the new session.
-    await invalidateAll();
+    if (reread) await invalidateAll();
   }
 
   /** Ask the server, but not more than once every {@link PROBE_INTERVAL_MS}. */
@@ -101,13 +112,18 @@
     lastProbe = now;
     const state = await probeSession();
     if (!state.signedIn) raise("expired");
-    else if (ended) await recover();
+    else if (ended) await recover(state.userId !== page.data.user?.id);
   }
+
+  // Let the rest of the app know something is listening, so a screen with no guard on it (the
+  // login page's own failed submits) never pays for a question nobody would answer.
+  $effect(() => guardMounted());
 
   $effect(() =>
     onSessionMessage((message) => {
       if (message.kind === "signed-out") raise("signed_out");
-      else void recover();
+      else if (message.kind === "expired") raise("expired");
+      else void recover(message.userId !== page.data.user?.id);
     }),
   );
 
@@ -156,9 +172,11 @@
       : await post({ email, password });
 
     if (result?.ok) {
-      // Tell the other tabs before this one re-reads: they are stuck on the same wall.
-      announceSignedIn();
-      await recover();
+      const userId = typeof result.userId === "string" ? result.userId : null;
+      // Tell the other tabs first: they are stuck on the same wall, and the id is what lets
+      // each of them decide whether re-reading its own page is necessary or destructive.
+      announceSignedIn(userId);
+      await recover(userId !== (page.data.user?.id ?? null));
       return;
     }
     if (result?.twoFactor) {
