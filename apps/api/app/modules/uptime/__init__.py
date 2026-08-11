@@ -18,6 +18,12 @@ Importing this package self-registers the module.
 
 from __future__ import annotations
 
+from arq import cron
+
+from app.modules.uptime.automation import UPTIME_AUTOMATION_ACTIONS
+from app.modules.uptime.bulk import UPTIME_MONITOR_BULK
+from app.modules.uptime.impex import UPTIME_MONITOR_IMPEX, UPTIME_WEBSITE_COLUMNS
+from app.modules.uptime.jobs import prune_heartbeats
 from app.modules.uptime.panels import UPTIME_PANELS
 from app.modules.uptime.permissions import UPTIME_PERMISSIONS
 from app.modules.uptime.router import router
@@ -34,6 +40,18 @@ module = ModuleDescriptor(
     sku="uptime",
     permissions=UPTIME_PERMISSIONS,
     panels=UPTIME_PANELS,
+    # Export-only (docs/UPTIME.md §17): every imported row would be an outbound socket
+    # round-trip, which the synchronous import path cannot hold.
+    impex=[UPTIME_MONITOR_IMPEX],
+    # The monitor count and drift count on a *website* export — contributed, so `websites`
+    # never learns about monitors (§6).
+    impex_extensions=[UPTIME_WEBSITE_COLUMNS],
+    bulk=[UPTIME_MONITOR_BULK],
+    automation_actions=UPTIME_AUTOMATION_ACTIONS,
+    # Off-peak and offset from the other daily jobs. Pruning is the only reason the heartbeat
+    # table stays a *window*; without it a five-second monitor writes seventeen thousand rows a
+    # day per client and every panel that reads them gets slower every week.
+    cron_jobs=[cron(prune_heartbeats, hour=3, minute=20)],
 )
 
 registry.register(module)

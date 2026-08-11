@@ -4959,5 +4959,13 @@
   "uptime.field.delete_at_kuma": "Deze monitor ook in Uptime Kuma verwijderen",
   "notifications.event.uptime.monitor.down": "Een monitor is down gegaan",
   "uptime.heartbeat.reported": "gemeld door de instantie",
-  "uptime.heartbeat.observed": "waargenomen"
+  "uptime.heartbeat.observed": "waargenomen",
+  "uptime.field.sync_status": "Synchronisatiestatus",
+  "uptime.field.drift": "Verschillen",
+  "uptime.field.kuma_id": "Uptime Kuma-ID",
+  "uptime.field.company": "Klant",
+  "uptime.field.monitor_count": "Monitors",
+  "automation.action.uptime.pause": "Een monitor pauzeren",
+  "uptime.automation.no_monitor": "Er is geen monitor gekozen voor deze actie.",
+  "impex.entity.uptime_monitor": "Monitors"
 }

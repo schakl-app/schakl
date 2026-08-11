@@ -4959,5 +4959,13 @@
   "uptime.field.delete_at_kuma": "Also delete this monitor in Uptime Kuma",
   "notifications.event.uptime.monitor.down": "A monitor went down",
   "uptime.heartbeat.reported": "reported by the instance",
-  "uptime.heartbeat.observed": "observed"
+  "uptime.heartbeat.observed": "observed",
+  "uptime.field.sync_status": "Sync status",
+  "uptime.field.drift": "Differences",
+  "uptime.field.kuma_id": "Uptime Kuma ID",
+  "uptime.field.company": "Client",
+  "uptime.field.monitor_count": "Monitors",
+  "automation.action.uptime.pause": "Pause a monitor",
+  "uptime.automation.no_monitor": "No monitor was selected for this action.",
+  "impex.entity.uptime_monitor": "Monitors"
 }
