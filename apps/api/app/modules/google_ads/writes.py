@@ -132,18 +132,11 @@ class GoogleAdsWriteService:
         validate_only: bool,
         partial_failure: bool,
         tool: str,
-        prefetch: Any = None,
-    ) -> tuple[MutationOutcome, Any]:
-        """One ``:mutate``, plus an optional read inside the same client block.
-
-        ``prefetch`` is an async callable taking the open client; it exists because two writes
-        genuinely need Google's current state to decide — a budget update needs the amount it is
-        raising *from*, and an ad-group update needs to know it exists. Doing that read here keeps
-        it inside the one connection-released block instead of costing a second one.
-        """
+    ) -> MutationOutcome:
+        """One ``:mutate``, with the pooled database connection released for its duration."""
         ops.check_resource(resource)
         if not operations:
-            return MutationOutcome(resource=resource, validate_only=validate_only), None
+            return MutationOutcome(resource=resource, validate_only=validate_only)
         if len(operations) > ops.MAX_OPERATIONS:
             raise AppError(
                 "validation",
@@ -151,10 +144,7 @@ class GoogleAdsWriteService:
                 status_code=422,
                 fields={"operations": "errors.google_ads_too_many_operations"},
             )
-        prefetched: Any = None
         async with self.accounts.open_client(account_id=account.id, tool=tool) as (client, _a):
-            if prefetch is not None:
-                prefetched = await prefetch(client)
             payload = await client.mutate(
                 account.customer_id,
                 resource,
@@ -163,7 +153,7 @@ class GoogleAdsWriteService:
                 partial_failure=partial_failure,
                 context=tool,
             )
-        return self._read_outcome(resource, payload, operations, validate_only), prefetched
+        return self._read_outcome(resource, payload, operations, validate_only)
 
     def _read_outcome(
         self,
@@ -284,7 +274,7 @@ class GoogleAdsWriteService:
         """
         account, policy = await self._prepare(account_id, "google_ads.budget.write")
         _refuse(policy_rules.budget_refusal(policy, amount=amount, previous=None))
-        outcome, _ = await self._mutate(
+        outcome = await self._mutate(
             account,
             "campaignBudgets",
             [ops.operation_create(ops.budget_create(name=name, amount=amount, shared=shared))],
@@ -326,7 +316,6 @@ class GoogleAdsWriteService:
         act somebody may well have meant.
         """
         account, policy = await self._prepare(account_id, "google_ads.budget.write")
-        current: dict[str, Any] = {}
 
         async def _read(client: AdsClient) -> dict[str, Any]:
             row = await client.search_one(
@@ -341,7 +330,7 @@ class GoogleAdsWriteService:
         # The policy check needs Google's answer, so the read runs inside the client block and the
         # refusal is raised after it — before anything is mutated, which is the only ordering
         # requirement that matters.
-        account_row, current = await self._peek(account, _read, tool="budget_update")
+        current = await self._peek(account, _read, tool="budget_update")
         previous = _micros(current.get("amountMicros"))
         if not current:
             raise AppError("not_found", "errors.not_found", status_code=404)
@@ -360,8 +349,8 @@ class GoogleAdsWriteService:
                 status_code=422,
                 fields={"amount": "errors.google_ads_nothing_to_change"},
             )
-        outcome, _ = await self._mutate(
-            account_row,
+        outcome = await self._mutate(
+            account,
             "campaignBudgets",
             [ops.operation_update(ops.budget_rn(account.customer_id, budget_id), fields)],
             validate_only=validate_only,
@@ -411,7 +400,7 @@ class GoogleAdsWriteService:
         goes looking for.
         """
         account, _policy = await self._prepare(account_id, "google_ads.campaign.write")
-        outcome, _ = await self._mutate(
+        outcome = await self._mutate(
             account,
             "campaigns",
             [
@@ -463,7 +452,7 @@ class GoogleAdsWriteService:
         """
         account, _policy = await self._prepare(account_id, "google_ads.campaign.write")
         fields = _status_and_name(status, name)
-        outcome, _ = await self._mutate(
+        outcome = await self._mutate(
             account,
             "campaigns",
             [ops.operation_update(ops.campaign_rn(account.customer_id, campaign_id), fields)],
@@ -501,7 +490,7 @@ class GoogleAdsWriteService:
         """A new ad group, paused, inside an existing campaign."""
         account, policy = await self._prepare(account_id, "google_ads.campaign.write")
         _refuse(policy_rules.cpc_refusal(policy, amount=cpc_bid))
-        outcome, _ = await self._mutate(
+        outcome = await self._mutate(
             account,
             "adGroups",
             [
@@ -550,7 +539,7 @@ class GoogleAdsWriteService:
         fields = _status_and_name(status, name)
         if cpc_bid is not None:
             fields["cpcBidMicros"] = ops.to_micros(cpc_bid)
-        outcome, _ = await self._mutate(
+        outcome = await self._mutate(
             account,
             "adGroups",
             [ops.operation_update(ops.ad_group_rn(account.customer_id, ad_group_id), fields)],
@@ -625,7 +614,7 @@ class GoogleAdsWriteService:
                     payload={"match_type": item.match_type, "cpc_bid": item.cpc_bid},
                 )
             )
-        outcome, _ = await self._mutate(
+        outcome = await self._mutate(
             account,
             "adGroupCriteria",
             operations,
@@ -668,7 +657,7 @@ class GoogleAdsWriteService:
                 status_code=422,
                 fields={"status": "errors.google_ads_nothing_to_change"},
             )
-        outcome, _ = await self._mutate(
+        outcome = await self._mutate(
             account,
             "adGroupCriteria",
             [
@@ -716,7 +705,7 @@ class GoogleAdsWriteService:
             )
             for criterion_id in criterion_ids
         ]
-        outcome, _ = await self._mutate(
+        outcome = await self._mutate(
             account,
             "adGroupCriteria",
             operations,
@@ -807,7 +796,7 @@ class GoogleAdsWriteService:
                     payload={"match_type": item.match_type, "level": level},
                 )
             )
-        outcome, _ = await self._mutate(
+        outcome = await self._mutate(
             account,
             resource,
             operations,
@@ -864,7 +853,7 @@ class GoogleAdsWriteService:
                 ops.ad_group_criterion_rn(account.customer_id, parent_id, criterion_id)
                 for criterion_id in criterion_ids
             ]
-        outcome, _ = await self._mutate(
+        outcome = await self._mutate(
             account,
             resource,
             [ops.operation_remove(name) for name in names],
@@ -907,7 +896,7 @@ class GoogleAdsWriteService:
         campaign nobody meant to touch would not be benign at all.
         """
         account, _policy = await self._prepare(account_id, "google_ads.negative.write")
-        outcome, _ = await self._mutate(
+        outcome = await self._mutate(
             account,
             "sharedSets",
             [ops.operation_create(ops.shared_set_create(name=name))],
@@ -919,7 +908,7 @@ class GoogleAdsWriteService:
             (r.get("resource_name") for r in outcome.results if r.get("ok")), None
         )
         if created and campaign_ids and not validate_only:
-            attach, _ = await self._mutate(
+            attach = await self._mutate(
                 account,
                 "campaignSharedSets",
                 [
@@ -999,7 +988,7 @@ class GoogleAdsWriteService:
                 status_code=422,
                 fields={"headlines": "errors.google_ads_banned_phrase"},
             )
-        outcome, _ = await self._mutate(
+        outcome = await self._mutate(
             account,
             "adGroupAds",
             [
@@ -1051,7 +1040,7 @@ class GoogleAdsWriteService:
         performance history belongs to its text) and is two acts here for the same reason.
         """
         account, _policy = await self._prepare(account_id, "google_ads.campaign.write")
-        outcome, _ = await self._mutate(
+        outcome = await self._mutate(
             account,
             "adGroupAds",
             [
@@ -1082,12 +1071,10 @@ class GoogleAdsWriteService:
 
     # --- internals ------------------------------------------------------------------------------ #
 
-    async def _peek(
-        self, account: GoogleAdsAccount, read: Any, *, tool: str
-    ) -> tuple[GoogleAdsAccount, Any]:
+    async def _peek(self, account: GoogleAdsAccount, read: Any, *, tool: str) -> Any:
         """One read against Google, with the connection released — nothing is mutated."""
         async with self.accounts.open_client(account_id=account.id, tool=tool) as (client, _a):
-            return account, await read(client)
+            return await read(client)
 
 
 def _refuse(refusal: policy_rules.PolicyRefusal | None) -> None:
