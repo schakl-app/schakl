@@ -1,10 +1,10 @@
-import { redirect } from "@sveltejs/kit";
+import { fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
 
-import type { PageServerLoad } from "./$types";
+import type { Actions, PageServerLoad } from "./$types";
 
 /** The report this page shows. The URL is the view (docs/PERFORMANCE.md, CLAUDE.md §9). */
 const VIEWS = ["trend", "campaigns", "keywords", "search-terms", "negatives", "changes"] as const;
@@ -24,11 +24,6 @@ export const load: PageServerLoad = async (event) => {
   const raw = event.url.searchParams.get("view") ?? "campaigns";
   const view: View = isView(raw) ? raw : "campaigns";
   const period = event.url.searchParams.get("period") ?? "30d";
-
-  const account = await api.GET("/api/v1/google-ads/accounts/{account_id}", {
-    params: { path: { account_id: accountId } },
-  });
-  if (!account.data) throw redirect(303, "/marketing/google-ads");
 
   // One live Google call per view, streamed behind the shell: the heading, the tabs and the
   // period picker are what the user interacts with, and none of them needs Google to have
@@ -63,7 +58,6 @@ export const load: PageServerLoad = async (event) => {
                 });
 
   return {
-    account: account.data,
     view,
     period,
     // The API's own error envelope reaches the page as an **i18n key** rather than throwing: a
@@ -76,4 +70,73 @@ export const load: PageServerLoad = async (event) => {
       errorKey: r.error ? apiErrorKey(r.error, "errors.server").key : null,
     })),
   };
+};
+
+export const actions: Actions = {
+  /**
+   * One pass over a search-terms list: exclude some, keep the rest, in one request.
+   *
+   * Both halves together because that is what a review *is*. Excluding eight of a hundred terms
+   * is also a decision about the other ninety-two, and a log holding only the exclusions makes
+   * the same ninety-two candidates again next month — until the account manager stops reading
+   * the list. The API takes them in one call for the same reason.
+   */
+  review: async (event) => {
+    // Mirrors the key the call actually makes (#310): `POST /negatives` declares
+    // `negative.write`, which is not what the screen is *about* (`account.read`).
+    if (!can(event.locals.user, "google_ads.negative.write")) {
+      return fail(403, { key: "errors.forbidden" });
+    }
+    const form = await event.request.formData();
+    const excludeTerms = form.getAll("exclude").map(String).filter(Boolean);
+    const keepTerms = form.getAll("keep").map(String).filter(Boolean);
+    const campaignId = String(form.get("campaign_id") ?? "");
+    const reason = String(form.get("reason") ?? "");
+    if (!campaignId || (excludeTerms.length === 0 && keepTerms.length === 0)) {
+      return fail(400, { key: "google_ads.review.nothing_selected" });
+    }
+    const response = await apiFor(event).POST(
+      "/api/v1/google-ads/accounts/{account_id}/negatives",
+      {
+        params: { path: { account_id: event.params.accountId } },
+        body: {
+          // Not a dry run: the button says "save", and a control that silently validated would
+          // be the worst kind of no-op — it reports success and changes nothing.
+          validate_only: false,
+          level: "campaign",
+          parent_id: campaignId,
+          // The exclusion written for a search term is PHRASE rather than EXACT on purpose: the
+          // term Google reported is one spelling of a query, and an exact negative leaves every
+          // near-variant of it still spending. The protected-terms guard is what makes the wider
+          // match safe to default to.
+          terms: excludeTerms.map((text) => ({ text, match_type: "PHRASE", reason })),
+          keep: keepTerms.map((text) => ({ text, reason })),
+        },
+      },
+    );
+    if (response.error) return fail(400, apiErrorKey(response.error, "errors.server"));
+    return { outcome: response.data };
+  },
+
+  /** Pause or resume one campaign. Gated on the campaign key, which is not the budget key. */
+  campaign_status: async (event) => {
+    if (!can(event.locals.user, "google_ads.campaign.write")) {
+      return fail(403, { key: "errors.forbidden" });
+    }
+    const form = await event.request.formData();
+    const response = await apiFor(event).PATCH(
+      "/api/v1/google-ads/accounts/{account_id}/campaigns/{campaign_id}",
+      {
+        params: {
+          path: {
+            account_id: event.params.accountId,
+            campaign_id: String(form.get("campaign_id") ?? ""),
+          },
+        },
+        body: { validate_only: false, status: String(form.get("status") ?? "PAUSED") },
+      },
+    );
+    if (response.error) return fail(400, apiErrorKey(response.error, "errors.server"));
+    return { outcome: response.data };
+  },
 };

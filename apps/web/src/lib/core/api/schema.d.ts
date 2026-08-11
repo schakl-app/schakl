@@ -2244,11 +2244,38 @@ export interface paths {
          */
         get: operations["google_ads_ad_groups_api_v1_google_ads_accounts__account_id__ad_groups_get"];
         put?: never;
-        post?: never;
+        /**
+         * Create Google Ads Ad Group
+         * @description Create an ad group inside an existing campaign. Paused, like everything created here.
+         */
+        post: operations["create_google_ads_ad_group_api_v1_google_ads_accounts__account_id__ad_groups_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/ad-groups/{ad_group_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Google Ads Ad Group
+         * @description Pause, resume, remove, rename or re-bid an ad group.
+         *
+         *     `cpc_bid` only does anything where the campaign bids manually; under an automated strategy
+         *     Google ignores it, and this route does not pretend otherwise.
+         */
+        patch: operations["update_google_ads_ad_group_api_v1_google_ads_accounts__account_id__ad_groups__ad_group_id__patch"];
         trace?: never;
     };
     "/api/v1/google-ads/accounts/{account_id}/ads": {
@@ -2264,11 +2291,77 @@ export interface paths {
          */
         get: operations["google_ads_ads_api_v1_google_ads_accounts__account_id__ads_get"];
         put?: never;
-        post?: never;
+        /**
+         * Create Google Ads Ad
+         * @description Create a responsive search ad. It is **paused** until somebody reads it and enables it.
+         *
+         *     3–15 headlines of at most 30 characters, 2–4 descriptions of at most 90, at least one final
+         *     URL. Those limits are checked here, so a refusal names the field rather than an operation
+         *     index. Anything the account's policy lists as a banned phrase is refused outright.
+         */
+        post: operations["create_google_ads_ad_api_v1_google_ads_accounts__account_id__ads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Google Ads Ad
+         * @description Pause, resume or remove one ad.
+         *
+         *     Status only. An ad's creative is immutable at Google — its performance history belongs to its
+         *     text — so changing a headline means creating a new ad and removing this one.
+         */
+        patch: operations["update_google_ads_ad_api_v1_google_ads_accounts__account_id__ads_patch"];
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/budgets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Google Ads Budget
+         * @description Create a daily budget, in the account's own currency.
+         *
+         *     A budget on its own spends nothing — a campaign has to be attached to it. Note what does
+         *     *not* bound this: the policy's relative ceiling is a claim about a change, and a new budget
+         *     has no previous amount, so unless the account sets `max_daily_budget` the only limit here is
+         *     the permission. Check `GET /policy` first.
+         */
+        post: operations["create_google_ads_budget_api_v1_google_ads_accounts__account_id__budgets_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/budgets/{budget_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Google Ads Budget
+         * @description Change a daily budget — the one write where being wrong has already cost money.
+         *
+         *     Two limits apply: an absolute ceiling if the policy sets one, and how far a single change may
+         *     *raise* the budget (by default it may at most double). A decrease is never refused.
+         *
+         *     If the budget is shared, changing it moves **every campaign using it**, and the response says
+         *     so in `warnings`. Read the campaigns list first if you are not sure.
+         */
+        patch: operations["update_google_ads_budget_api_v1_google_ads_accounts__account_id__budgets__budget_id__patch"];
         trace?: never;
     };
     "/api/v1/google-ads/accounts/{account_id}/campaigns": {
@@ -2287,11 +2380,46 @@ export interface paths {
          */
         get: operations["google_ads_campaigns_api_v1_google_ads_accounts__account_id__campaigns_get"];
         put?: never;
-        post?: never;
+        /**
+         * Create Google Ads Campaign
+         * @description Create a campaign. It is always **paused** and spends nothing until somebody enables it.
+         *
+         *     Google's own default for a new campaign is ENABLED; this route overrides that, because a
+         *     campaign created here has no ad groups, no keywords and no ads yet.
+         *
+         *     It needs a `budget_id` that already exists — creating a budget is a separate act behind a
+         *     separate permission, and it is also what keeps this atomic: two mutations cannot be one
+         *     transaction, so a campaign that failed after its budget succeeded would leave an orphan.
+         */
+        post: operations["create_google_ads_campaign_api_v1_google_ads_accounts__account_id__campaigns_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/campaigns/{campaign_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Google Ads Campaign
+         * @description Pause, resume, remove or rename a campaign. `status` is ENABLED, PAUSED or REMOVED.
+         *
+         *     REMOVED is permanent at Google: a removed campaign cannot be brought back, only recreated.
+         *     It does not move a campaign to a different budget — that changes what it spends, so it is a
+         *     budget decision and lives behind the budget permission.
+         */
+        patch: operations["update_google_ads_campaign_api_v1_google_ads_accounts__account_id__campaigns__campaign_id__patch"];
         trace?: never;
     };
     "/api/v1/google-ads/accounts/{account_id}/changes": {
@@ -2339,6 +2467,67 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Google Ads Decisions
+         * @description What has already been decided about this account — **check this before proposing a change**.
+         *
+         *     Newest first, and the newest row about a subject is the one that stands: a term excluded in
+         *     March and un-excluded in June has two entries and the June one wins. Withdrawn and expired
+         *     entries no longer stand.
+         *
+         *     The point of this list is that a recommendation is not made twice. A search term somebody
+         *     deliberately kept, with the reason written down, is not a candidate for exclusion next month.
+         */
+        get: operations["list_google_ads_decisions_api_v1_google_ads_accounts__account_id__decisions_get"];
+        put?: never;
+        /**
+         * Record Google Ads Decision
+         * @description Write down a judgement that changes nothing in Google.
+         *
+         *     The one this exists for is `kept`: "we looked at this search term and chose not to exclude
+         *     it". Nothing in Google records that, which is exactly why the same term is proposed again next
+         *     month, and the month after.
+         *
+         *     Returns `null` when the same decision already stood — nothing was appended, and saying so is
+         *     more useful than claiming a write.
+         */
+        post: operations["record_google_ads_decision_api_v1_google_ads_accounts__account_id__decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/decisions/{decision_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Withdraw Google Ads Decision
+         * @description Unsay a decision. The row survives, marked withdrawn and by whom.
+         *
+         *     A delete would take the reason with it, and "we decided this and then changed our minds" is
+         *     the sentence this log exists to be able to make.
+         */
+        delete: operations["withdraw_google_ads_decision_api_v1_google_ads_accounts__account_id__decisions__decision_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2431,7 +2620,69 @@ export interface paths {
          */
         get: operations["google_ads_keywords_api_v1_google_ads_accounts__account_id__keywords_get"];
         put?: never;
-        post?: never;
+        /**
+         * Add Google Ads Keywords
+         * @description Add positive keywords to one ad group. `match_type` is EXACT, PHRASE or BROAD.
+         *
+         *     Sent as one batch with partial failure on, so a keyword Google refuses does not take the
+         *     others down with it: `results` carries one entry per keyword with its own outcome, and
+         *     `skipped` carries the ones the policy refused before Google saw them.
+         */
+        post: operations["add_google_ads_keywords_api_v1_google_ads_accounts__account_id__keywords_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Google Ads Keyword
+         * @description Pause, resume, remove or re-bid one keyword.
+         *
+         *     Its **text and match type cannot be changed** — Google marks them immutable. Correcting a
+         *     keyword means removing it and adding the new one, which is two decisions.
+         */
+        patch: operations["update_google_ads_keyword_api_v1_google_ads_accounts__account_id__keywords_patch"];
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/keywords/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove Google Ads Keywords
+         * @description Remove keywords from an ad group, by criterion id.
+         *
+         *     A POST rather than a DELETE because it takes a list in the body, and because removing forty
+         *     keywords one request at a time is how a tool call becomes a rate limit.
+         */
+        post: operations["remove_google_ads_keywords_api_v1_google_ads_accounts__account_id__keywords_remove_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/negative-lists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Google Ads Negative List
+         * @description Create a shared negative-keyword list and optionally attach it to campaigns.
+         *
+         *     Two operations that cannot be one transaction. If the attach half fails the list still exists,
+         *     blocks nothing, and re-running attaches it — `warnings` says so. Add terms to it afterwards
+         *     with `POST /negatives` at level `shared_set`.
+         */
+        post: operations["create_google_ads_negative_list_api_v1_google_ads_accounts__account_id__negative_lists_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2455,6 +2706,72 @@ export interface paths {
          */
         get: operations["google_ads_negatives_api_v1_google_ads_accounts__account_id__negatives_get"];
         put?: never;
+        /**
+         * Add Google Ads Negatives
+         * @description Exclude search terms — and record the ones you deliberately did **not** exclude.
+         *
+         *     `terms` are written to Google at `level` (`ad_group`, `campaign` or `shared_set`) under
+         *     `parent_id`. `keep` writes nothing: it records the other half of the same review, so those
+         *     terms are not proposed again next month. Send both from one pass over a search-terms list.
+         *
+         *     A term the account's policy protects is **skipped**, not applied, and `skipped` names the
+         *     protected term it would have blocked. Blocking is judged the way Google matches — under the
+         *     proposed exclusion's own match type — so an EXACT negative that cannot reach a protected term
+         *     is allowed.
+         */
+        post: operations["add_google_ads_negatives_api_v1_google_ads_accounts__account_id__negatives_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/negatives/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove Google Ads Negatives
+         * @description Take exclusions back off, by criterion id, at the level they were added.
+         */
+        post: operations["remove_google_ads_negatives_api_v1_google_ads_accounts__account_id__negatives_remove_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Google Ads Policy
+         * @description The rules that bind writes to this account — **read this before proposing anything**.
+         *
+         *     `resolved` is what is actually enforced: the agency's house policy and this account's, folded
+         *     together. `protected_terms` may never be excluded, `banned_phrases` may not appear in ad copy,
+         *     and the three ceilings refuse a budget or a bid outright. The prose fields are advice, and the
+         *     agency's and the account's are kept apart because they are different kinds of claim.
+         */
+        get: operations["get_google_ads_policy_api_v1_google_ads_accounts__account_id__policy_get"];
+        /**
+         * Save Google Ads Policy
+         * @description Set this account's own rules.
+         *
+         *     A field left out of the request is not touched; a field sent explicitly as `null` goes back to
+         *     inheriting the agency's house value. Those are different instructions and the payload alone
+         *     cannot tell them apart, which is why only what you send is read.
+         */
+        put: operations["save_google_ads_policy_api_v1_google_ads_accounts__account_id__policy_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2611,6 +2928,34 @@ export interface paths {
          *     detail. A success clears the flag it may have set last time.
          */
         post: operations["verify_google_ads_account_api_v1_google_ads_accounts__account_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Google Ads House Policy
+         * @description The agency's own standing Ads rules, applied to every account that does not override them.
+         *
+         *     Protected terms and banned phrases here are **added** to each account's rather than replaced
+         *     by them; the numeric ceilings are inherited and an account may set its own. `resolved` shows
+         *     what an account with no policy of its own would get.
+         */
+        get: operations["get_google_ads_house_policy_api_v1_google_ads_policy_get"];
+        /**
+         * Save Google Ads House Policy
+         * @description Set the agency's standing rules. Fields you leave out are not touched.
+         */
+        put: operations["save_google_ads_house_policy_api_v1_google_ads_policy_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -14980,6 +15325,72 @@ export interface components {
             /** Login Customer Id */
             login_customer_id?: string | null;
         };
+        /** GoogleAdsAdCreate */
+        GoogleAdsAdCreate: {
+            /** Ad Group Id */
+            ad_group_id: string;
+            /** Descriptions */
+            descriptions: string[];
+            /** Final Urls */
+            final_urls: string[];
+            /** Headlines */
+            headlines: string[];
+            /** Path1 */
+            path1?: string | null;
+            /** Path2 */
+            path2?: string | null;
+            /**
+             * Validate Only
+             * @description Validate against the live account and change nothing. Use this first.
+             * @default false
+             */
+            validate_only: boolean;
+        };
+        /** GoogleAdsAdGroupCreate */
+        GoogleAdsAdGroupCreate: {
+            /** Campaign Id */
+            campaign_id: string;
+            /** Cpc Bid */
+            cpc_bid?: number | null;
+            /** Name */
+            name: string;
+            /**
+             * Validate Only
+             * @description Validate against the live account and change nothing. Use this first.
+             * @default false
+             */
+            validate_only: boolean;
+        };
+        /** GoogleAdsAdGroupUpdate */
+        GoogleAdsAdGroupUpdate: {
+            /** Cpc Bid */
+            cpc_bid?: number | null;
+            /** Name */
+            name?: string | null;
+            /** Status */
+            status?: string | null;
+            /**
+             * Validate Only
+             * @description Validate against the live account and change nothing. Use this first.
+             * @default false
+             */
+            validate_only: boolean;
+        };
+        /** GoogleAdsAdUpdate */
+        GoogleAdsAdUpdate: {
+            /** Ad Group Id */
+            ad_group_id: string;
+            /** Ad Id */
+            ad_id: string;
+            /** Status */
+            status: string;
+            /**
+             * Validate Only
+             * @description Validate against the live account and change nothing. Use this first.
+             * @default false
+             */
+            validate_only: boolean;
+        };
         /** GoogleAdsAvailableAccount */
         GoogleAdsAvailableAccount: {
             /**
@@ -15000,6 +15411,73 @@ export interface components {
             /** Login Customer Id */
             login_customer_id?: string | null;
         };
+        /** GoogleAdsBudgetCreate */
+        GoogleAdsBudgetCreate: {
+            /** Amount */
+            amount: number;
+            /** Name */
+            name: string;
+            /**
+             * Shared
+             * @default false
+             */
+            shared: boolean;
+            /**
+             * Validate Only
+             * @description Validate against the live account and change nothing. Use this first.
+             * @default false
+             */
+            validate_only: boolean;
+        };
+        /** GoogleAdsBudgetUpdate */
+        GoogleAdsBudgetUpdate: {
+            /** Amount */
+            amount?: number | null;
+            /** Name */
+            name?: string | null;
+            /**
+             * Validate Only
+             * @description Validate against the live account and change nothing. Use this first.
+             * @default false
+             */
+            validate_only: boolean;
+        };
+        /** GoogleAdsCampaignCreate */
+        GoogleAdsCampaignCreate: {
+            /** Budget Id */
+            budget_id: string;
+            /**
+             * Channel
+             * @default SEARCH
+             */
+            channel: string;
+            /** Name */
+            name: string;
+            /**
+             * Target Content Network
+             * @default false
+             */
+            target_content_network: boolean;
+            /**
+             * Validate Only
+             * @description Validate against the live account and change nothing. Use this first.
+             * @default false
+             */
+            validate_only: boolean;
+        };
+        /** GoogleAdsCampaignUpdate */
+        GoogleAdsCampaignUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Status */
+            status?: string | null;
+            /**
+             * Validate Only
+             * @description Validate against the live account and change nothing. Use this first.
+             * @default false
+             */
+            validate_only: boolean;
+        };
         /**
          * GoogleAdsChangeAmount
          * @description What moved, in both the absolute and the relative sense.
@@ -15018,6 +15496,110 @@ export interface components {
             /** To */
             to?: number | null;
         };
+        /** GoogleAdsDecisionCreate */
+        GoogleAdsDecisionCreate: {
+            /** Decision */
+            decision: string;
+            /** Expires On */
+            expires_on?: string | null;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /**
+             * Scope
+             * @default account
+             */
+            scope: string;
+            /** Subject */
+            subject: string;
+            /**
+             * Subject Type
+             * @default search_term
+             */
+            subject_type: string;
+        };
+        /**
+         * GoogleAdsDecisionPage
+         * @description A page of the log. ``total`` is ``null`` when the caller asked not to count.
+         */
+        GoogleAdsDecisionPage: {
+            /** Items */
+            items?: components["schemas"]["GoogleAdsDecisionRead"][];
+            /** Total */
+            total?: number | null;
+        };
+        /** GoogleAdsDecisionRead */
+        GoogleAdsDecisionRead: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /**
+             * Applied
+             * @default false
+             */
+            applied: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Decided By Name
+             * @default
+             */
+            decided_by_name: string;
+            /** Decision */
+            decision: string;
+            /** Expires On */
+            expires_on?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Impersonator Name */
+            impersonator_name?: string | null;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Scope */
+            scope: string;
+            /**
+             * Source
+             * @default manual
+             */
+            source: string;
+            /** Subject */
+            subject: string;
+            /** Subject Type */
+            subject_type: string;
+            /** Withdrawn At */
+            withdrawn_at?: string | null;
+            /** Withdrawn By Name */
+            withdrawn_by_name?: string | null;
+        };
+        /** GoogleAdsKeepInput */
+        GoogleAdsKeepInput: {
+            /** Expires On */
+            expires_on?: string | null;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Text */
+            text: string;
+        };
         /**
          * GoogleAdsKeywordIdeaRequest
          * @description Seeds for keyword research. At least one of ``keywords`` or ``url`` is required.
@@ -15033,6 +15615,61 @@ export interface components {
             limit?: number | null;
             /** Url */
             url?: string | null;
+        };
+        /** GoogleAdsKeywordInput */
+        GoogleAdsKeywordInput: {
+            /** Cpc Bid */
+            cpc_bid?: number | null;
+            /**
+             * Match Type
+             * @default PHRASE
+             */
+            match_type: string;
+            /** Text */
+            text: string;
+        };
+        /** GoogleAdsKeywordUpdate */
+        GoogleAdsKeywordUpdate: {
+            /** Ad Group Id */
+            ad_group_id: string;
+            /** Cpc Bid */
+            cpc_bid?: number | null;
+            /** Criterion Id */
+            criterion_id: string;
+            /** Status */
+            status?: string | null;
+            /**
+             * Validate Only
+             * @description Validate against the live account and change nothing. Use this first.
+             * @default false
+             */
+            validate_only: boolean;
+        };
+        /** GoogleAdsKeywordsAdd */
+        GoogleAdsKeywordsAdd: {
+            /** Ad Group Id */
+            ad_group_id: string;
+            /** Keywords */
+            keywords: components["schemas"]["GoogleAdsKeywordInput"][];
+            /**
+             * Validate Only
+             * @description Validate against the live account and change nothing. Use this first.
+             * @default false
+             */
+            validate_only: boolean;
+        };
+        /** GoogleAdsKeywordsRemove */
+        GoogleAdsKeywordsRemove: {
+            /** Ad Group Id */
+            ad_group_id: string;
+            /** Criterion Ids */
+            criterion_ids: string[];
+            /**
+             * Validate Only
+             * @description Validate against the live account and change nothing. Use this first.
+             * @default false
+             */
+            validate_only: boolean;
         };
         /**
          * GoogleAdsMetrics
@@ -15090,6 +15727,124 @@ export interface components {
             value_per_conversion?: number | null;
         };
         /**
+         * GoogleAdsMutationRead
+         * @description What a write did, per operation.
+         *
+         *     ``requested`` and ``applied`` differ whenever the policy skipped a row, Google refused one
+         *     inside a partial-failure batch, or ``validate_only`` was set — where ``applied`` is zero
+         *     because nothing was.
+         */
+        GoogleAdsMutationRead: {
+            account: components["schemas"]["GoogleAdsAccountBrief"];
+            /**
+             * Applied
+             * @default 0
+             */
+            applied: number;
+            /**
+             * Fetched At
+             * Format: date-time
+             */
+            fetched_at: string;
+            /**
+             * Requested
+             * @default 0
+             */
+            requested: number;
+            /** Resource */
+            resource: string;
+            /** Results */
+            results?: components["schemas"]["GoogleAdsMutationResult"][];
+            /** Skipped */
+            skipped?: components["schemas"]["GoogleAdsSkipped"][];
+            /** Validate Only */
+            validate_only: boolean;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /**
+         * GoogleAdsMutationResult
+         * @description One operation's outcome. ``resource_name`` is what Google named the thing it created.
+         */
+        GoogleAdsMutationResult: {
+            /** Error Code */
+            error_code?: string | null;
+            /** Index */
+            index: number;
+            /** Message */
+            message?: string | null;
+            /** Ok */
+            ok: boolean;
+            /** Resource Name */
+            resource_name?: string | null;
+        };
+        /** GoogleAdsNegativeInput */
+        GoogleAdsNegativeInput: {
+            /**
+             * Match Type
+             * @default PHRASE
+             */
+            match_type: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Text */
+            text: string;
+        };
+        /** GoogleAdsNegativeListCreate */
+        GoogleAdsNegativeListCreate: {
+            /** Campaign Ids */
+            campaign_ids?: string[];
+            /** Name */
+            name: string;
+            /**
+             * Validate Only
+             * @description Validate against the live account and change nothing. Use this first.
+             * @default false
+             */
+            validate_only: boolean;
+        };
+        /** GoogleAdsNegativesAdd */
+        GoogleAdsNegativesAdd: {
+            /** Keep */
+            keep?: components["schemas"]["GoogleAdsKeepInput"][];
+            /**
+             * Level
+             * @default campaign
+             */
+            level: string;
+            /** Parent Id */
+            parent_id: string;
+            /** Terms */
+            terms?: components["schemas"]["GoogleAdsNegativeInput"][];
+            /**
+             * Validate Only
+             * @description Validate against the live account and change nothing. Use this first.
+             * @default false
+             */
+            validate_only: boolean;
+        };
+        /** GoogleAdsNegativesRemove */
+        GoogleAdsNegativesRemove: {
+            /** Criterion Ids */
+            criterion_ids: string[];
+            /**
+             * Level
+             * @default campaign
+             */
+            level: string;
+            /** Parent Id */
+            parent_id: string;
+            /**
+             * Validate Only
+             * @description Validate against the live account and change nothing. Use this first.
+             * @default false
+             */
+            validate_only: boolean;
+        };
+        /**
          * GoogleAdsPeriod
          * @description The span a read covers. Both ends inclusive, resolved in the **account's** timezone.
          */
@@ -15115,6 +15870,84 @@ export interface components {
             accounts?: components["schemas"]["GoogleAdsAvailableAccount"][];
             /** Warnings */
             warnings?: string[];
+        };
+        /**
+         * GoogleAdsPolicyRead
+         * @description One policy row, plus what it actually resolves to.
+         *
+         *     Both, because a form full of blanks meaning "something else decides" is unreadable: the
+         *     editor binds to ``stored`` and the screen shows ``resolved``, so an inherit option can be
+         *     labelled with the value it inherits rather than with the word "inherit" (#312's rule about a
+         *     comparison that names its own span, applied to a setting).
+         */
+        GoogleAdsPolicyRead: {
+            /** Account Id */
+            account_id?: string | null;
+            /**
+             * Ad Copy Rules
+             * @default
+             */
+            ad_copy_rules: string;
+            /** Always Exclude */
+            always_exclude?: string[];
+            /** Banned Phrases */
+            banned_phrases?: string[];
+            /** Max Budget Increase Pct */
+            max_budget_increase_pct?: number | null;
+            /** Max Cpc */
+            max_cpc?: number | null;
+            /** Max Daily Budget */
+            max_daily_budget?: number | null;
+            /** Protected Terms */
+            protected_terms?: string[];
+            /** Resolved */
+            resolved?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Steering
+             * @default
+             */
+            steering: string;
+            /**
+             * Stored
+             * @default false
+             */
+            stored: boolean;
+            /** Waste Min Clicks */
+            waste_min_clicks?: number | null;
+            /** Waste Min Cost */
+            waste_min_cost?: number | null;
+        };
+        /**
+         * GoogleAdsPolicyWrite
+         * @description Absent means leave alone; explicit ``null`` on a scalar means inherit again.
+         *
+         *     Both are real states and the value alone cannot tell them apart, so the router reads
+         *     ``model_fields_set`` (CLAUDE.md §18). Without it a ceiling set once could never be taken off,
+         *     and an account would stay pinned to a number somebody typed in a hurry.
+         */
+        GoogleAdsPolicyWrite: {
+            /** Ad Copy Rules */
+            ad_copy_rules?: string | null;
+            /** Always Exclude */
+            always_exclude?: string[] | null;
+            /** Banned Phrases */
+            banned_phrases?: string[] | null;
+            /** Max Budget Increase Pct */
+            max_budget_increase_pct?: number | null;
+            /** Max Cpc */
+            max_cpc?: number | null;
+            /** Max Daily Budget */
+            max_daily_budget?: number | null;
+            /** Protected Terms */
+            protected_terms?: string[] | null;
+            /** Steering */
+            steering?: string | null;
+            /** Waste Min Clicks */
+            waste_min_clicks?: number | null;
+            /** Waste Min Cost */
+            waste_min_cost?: number | null;
         };
         /**
          * GoogleAdsQueryRead
@@ -15242,6 +16075,23 @@ export interface components {
             developer_token?: string | null;
             /** Writes Enabled */
             writes_enabled?: boolean | null;
+        };
+        /**
+         * GoogleAdsSkipped
+         * @description One operation the **policy** refused before Google saw it.
+         *
+         *     Kept apart from :class:`GoogleAdsMutationResult` on purpose: "we did not ask" and "Google said
+         *     no" are different sentences, and only one of them is fixable in Google's interface.
+         */
+        GoogleAdsSkipped: {
+            /** Blocks */
+            blocks?: string | null;
+            /** Limit */
+            limit?: number | null;
+            /** Reason */
+            reason: string;
+            /** Subject */
+            subject: string;
         };
         /**
          * GoogleAdsSnapshotRead
@@ -30923,6 +31773,77 @@ export interface operations {
             };
         };
     };
+    create_google_ads_ad_group_api_v1_google_ads_accounts__account_id__ad_groups_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleAdsAdGroupCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsMutationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_google_ads_ad_group_api_v1_google_ads_accounts__account_id__ad_groups__ad_group_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                ad_group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleAdsAdGroupUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsMutationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     google_ads_ads_api_v1_google_ads_accounts__account_id__ads_get: {
         parameters: {
             query?: {
@@ -30950,6 +31871,147 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GoogleAdsReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_google_ads_ad_api_v1_google_ads_accounts__account_id__ads_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleAdsAdCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsMutationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_google_ads_ad_api_v1_google_ads_accounts__account_id__ads_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleAdsAdUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsMutationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_google_ads_budget_api_v1_google_ads_accounts__account_id__budgets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleAdsBudgetCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsMutationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_google_ads_budget_api_v1_google_ads_accounts__account_id__budgets__budget_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                budget_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleAdsBudgetUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsMutationRead"];
                 };
             };
             /** @description Validation Error */
@@ -30993,6 +32055,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GoogleAdsReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_google_ads_campaign_api_v1_google_ads_accounts__account_id__campaigns_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleAdsCampaignCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsMutationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_google_ads_campaign_api_v1_google_ads_accounts__account_id__campaigns__campaign_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleAdsCampaignUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsMutationRead"];
                 };
             };
             /** @description Validation Error */
@@ -31071,6 +32204,112 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GoogleAdsReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_google_ads_decisions_api_v1_google_ads_accounts__account_id__decisions_get: {
+        parameters: {
+            query?: {
+                subject_type?: string | null;
+                decision?: string | null;
+                include_withdrawn?: boolean;
+                limit?: number;
+                offset?: number;
+                /** @description Set false to skip the total. */
+                count?: boolean;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsDecisionPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_google_ads_decision_api_v1_google_ads_accounts__account_id__decisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleAdsDecisionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsDecisionRead"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    withdraw_google_ads_decision_api_v1_google_ads_accounts__account_id__decisions__decision_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                decision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsDecisionRead"];
                 };
             };
             /** @description Validation Error */
@@ -31240,6 +32479,146 @@ export interface operations {
             };
         };
     };
+    add_google_ads_keywords_api_v1_google_ads_accounts__account_id__keywords_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleAdsKeywordsAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsMutationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_google_ads_keyword_api_v1_google_ads_accounts__account_id__keywords_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleAdsKeywordUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsMutationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_google_ads_keywords_api_v1_google_ads_accounts__account_id__keywords_remove_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleAdsKeywordsRemove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsMutationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_google_ads_negative_list_api_v1_google_ads_accounts__account_id__negative_lists_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleAdsNegativeListCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsMutationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     google_ads_negatives_api_v1_google_ads_accounts__account_id__negatives_get: {
         parameters: {
             query?: {
@@ -31260,6 +32639,142 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GoogleAdsReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_google_ads_negatives_api_v1_google_ads_accounts__account_id__negatives_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleAdsNegativesAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsMutationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_google_ads_negatives_api_v1_google_ads_accounts__account_id__negatives_remove_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleAdsNegativesRemove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsMutationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_google_ads_policy_api_v1_google_ads_accounts__account_id__policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsPolicyRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_google_ads_policy_api_v1_google_ads_accounts__account_id__policy_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleAdsPolicyWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsPolicyRead"];
                 };
             };
             /** @description Validation Error */
@@ -31480,6 +32995,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GoogleAdsAccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_google_ads_house_policy_api_v1_google_ads_policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsPolicyRead"];
+                };
+            };
+        };
+    };
+    save_google_ads_house_policy_api_v1_google_ads_policy_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleAdsPolicyWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsPolicyRead"];
                 };
             };
             /** @description Validation Error */
