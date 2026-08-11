@@ -369,7 +369,7 @@
     {:else}
       <div class="mt-3">
         <Button variant="secondary" onclick={() => (addingProfile = true)}>
-          {t("uptime.settings.add")}
+          {t("uptime.profile.add")}
         </Button>
       </div>
     {/if}
