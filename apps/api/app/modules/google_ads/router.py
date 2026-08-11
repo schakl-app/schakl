@@ -38,12 +38,37 @@ router = APIRouter(prefix="/google-ads", tags=["google_ads"])
 
 
 def _read(row: GoogleAdsAccount, company_name: str | None = None) -> GoogleAdsAccountRead:
+    """The response shape, written out.
+
+    Deliberately **not** a sweep over ``row.__table__.columns``: that reads every column the
+    table has, including the ones the schema does not want — and ``updated_at`` carries
+    ``onupdate=func.now()``, so SQLAlchemy expires it after a flush and touching it from this
+    synchronous helper fires a refresh SELECT with no greenlet to run it in. Enumerating is also
+    what stops the response quietly growing a field the next migration adds (#304's rule, in the
+    other direction: a payload expressed as "everything except" leaks whatever comes next).
+    """
     return GoogleAdsAccountRead(
-        **{
-            **{c.name: getattr(row, c.name) for c in row.__table__.columns},
-            "customer_id_formatted": format_customer_id(row.customer_id),
-            "company_name": company_name,
-        }
+        id=row.id,
+        customer_id=row.customer_id,
+        customer_id_formatted=format_customer_id(row.customer_id),
+        login_customer_id=row.login_customer_id,
+        company_id=row.company_id,
+        company_name=company_name,
+        connection_id=row.connection_id,
+        descriptive_name=row.descriptive_name,
+        currency_code=row.currency_code,
+        time_zone=row.time_zone,
+        is_manager=row.is_manager,
+        test_account=row.test_account,
+        conversion_tracking_status=row.conversion_tracking_status,
+        optimization_score=(
+            float(row.optimization_score) if row.optimization_score is not None else None
+        ),
+        active=row.active,
+        status=row.status,
+        last_error=row.last_error,
+        last_verified_at=row.last_verified_at,
+        last_synced_at=row.last_synced_at,
     )
 
 
@@ -79,6 +104,9 @@ async def save_google_ads_settings(
 ) -> GoogleAdsSettingsRead:
     await GoogleAdsService(ctx).save_settings(
         developer_token=payload.developer_token,
+        # Absent and explicit-null are different answers and the payload alone cannot tell them
+        # apart — only ``model_fields_set`` can (CLAUDE.md §18).
+        developer_token_set="developer_token" in payload.model_fields_set,
         default_login_customer_id=payload.default_login_customer_id,
         writes_enabled=payload.writes_enabled,
     )

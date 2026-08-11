@@ -29,6 +29,7 @@ from app.core.activity import ActivityService
 from app.core.auth.models import User
 from app.core.cache import get_redis
 from app.core.crypto import decrypt, encrypt
+from app.core.googleads import ads_developer_token, attach_ads_account
 from app.core.jobs import enqueue
 from app.core.narratives import latest_narrative
 from app.core.periods import (
@@ -240,17 +241,33 @@ def aggregate(source: str, rows: list[dict[str, Any]]) -> dict[str, float]:
     return out
 
 
-async def resolve_ads_developer_token(session: AsyncSession, org_id: uuid.UUID) -> str | None:
+async def resolve_ads_developer_token(
+    session: AsyncSession, org_id: uuid.UUID, *, ctx: Any = None
+) -> str | None:
     """The effective Google Ads developer token for ``org_id`` (#134).
 
-    The org's stored (encrypted) token, else the legacy ``SCHAKL_GOOGLE_ADS_DEVELOPER_TOKEN`` env
-    fallback, else ``None``. Callers bind it around the Ads adapter with
-    :func:`developer_token_scope`; the request services and the worker sync share this one resolver
-    so "where does the token come from" has exactly one answer.
+    Three sources, in order, and the order is the expand/contract migration made visible:
+
+    1. **The ``google_ads`` module**, through the core seam. That module owns the credential
+       now, and its ``google_ads_settings`` row is where an admin rotates it.
+    2. **This module's own legacy column**, still read because an install that has not enabled
+       ``google_ads`` must keep working exactly as it did. The migration *copied* the value
+       rather than moving it, so both answer the same thing on an upgraded box; this branch
+       disappears with the column in the contracting release.
+    3. The deprecated ``SCHAKL_GOOGLE_ADS_DEVELOPER_TOKEN`` env var.
+
+    ``ctx`` is optional because the worker sync calls this with a bare session. Without one the
+    seam is skipped and the legacy column answers — which is correct rather than a shortcut: a
+    background job on an install without the module has nothing else to ask.
     """
-    row = await session.scalar(
-        select(MarketingSettings).where(MarketingSettings.org_id == org_id)
-    )
+    if ctx is not None:
+        try:
+            return await ads_developer_token(ctx)
+        except AdsNotConfigured:
+            # The module is absent, or present and holding no token. Either way the legacy
+            # column may still have one, and an upgraded install is precisely that case.
+            pass
+    row = await session.scalar(select(MarketingSettings).where(MarketingSettings.org_id == org_id))
     if row is not None and row.ads_developer_token_encrypted:
         try:
             return decrypt(row.ads_developer_token_encrypted)
@@ -308,7 +325,10 @@ class MarketingService:
         self.ctx = ctx
 
     async def _resolve_ads_developer_token(self) -> str | None:
-        return await resolve_ads_developer_token(self.ctx.session, self.ctx.org.id)
+        # In a request the context is available, so the ``google_ads`` module's token wins.
+        return await resolve_ads_developer_token(
+            self.ctx.session, self.ctx.org.id, ctx=self.ctx
+        )
 
     # --- org-key sources (#300) ------------------------------------------------------------ #
     async def _org_key_accounts(
@@ -651,6 +671,8 @@ class MarketingService:
             await self.ctx.session.flush()
             reactivated = False
 
+        await self._attach_ads_account(link)
+
         await ActivityService(self.ctx).record(
             "company",
             data.company_id,
@@ -685,6 +707,44 @@ class MarketingService:
             {connection.id: self._me_as_owner(connection.email)} if connection else {}
         )
         return self._link_read(link, connections, website_names, owners)
+
+    async def _attach_ads_account(self, link: MarketingLink) -> None:
+        """Point a ``gads`` link at the ``google_ads`` module's account row, creating it if needed.
+
+        This is what keeps one truth for "which Ads customer is this client's" while marketing
+        keeps its own row. Three properties make it safe to call from a shipped write path:
+
+        * it is an **upsert** on ``(org_id, customer_id)``, so two clients sharing one Ads
+          account — a holding and its trading name, an ordinary arrangement — can never raise a
+          unique violation and turn this endpoint into a 500;
+        * it goes through the **core seam**, so this module never names ``google_ads`` and an
+          instance without it simply gets ``AdsNotConfigured``;
+        * and it is **advisory**. Failing to record the account must not fail the link the user
+          asked for: marketing's own ``external_id`` still answers every call, which is exactly
+          the state every pre-existing install is already in.
+        """
+        if link.source != MarketingSource.GADS.value:
+            return
+        try:
+            ref = await attach_ads_account(
+                self.ctx,
+                customer_id=link.external_id,
+                company_id=link.company_id,
+                login_customer_id=str(link.config.get("manager_id") or "") or None,
+                connection_id=link.connection_id,
+                descriptive_name=link.display_name,
+                currency_code=str(link.config.get("currency") or "") or None,
+            )
+        except AdsNotConfigured:
+            return
+        except AppError:
+            # A refusal the other module decided on (an unreadable customer id, a company
+            # outside this caller's horizon). It has already been enforced on *this* row by the
+            # checks above, so re-raising here would fail a link for a reason the screen cannot
+            # explain. Logged, because a repeated one is a bug.
+            logger.warning("could not attach a google ads account for link %s", link.id)
+            return
+        link.google_ads_account_id = ref.id
 
     def _me_as_owner(self, google_email: str) -> ConnectionOwner:
         return ConnectionOwner(

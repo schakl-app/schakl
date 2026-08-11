@@ -100,6 +100,21 @@ class MarketingLink(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         nullable=True,
         index=True,
     )
+    #: For ``source="gads"``: the ``google_ads`` module's account row, which is the **authority**
+    #: for which customer this is, which manager it is reached through and whose grant syncs it.
+    #: NULL for every other source, and for a gads link on an instance that never enabled the
+    #: module — in which case ``external_id``/``config`` below still answer, exactly as before.
+    #:
+    #: ``external_id`` stays populated either way, on purpose. It is what the panel prints and
+    #: what ``deep_link`` builds from, and ``SourceMetrics.external_id`` is typed ``str``: a
+    #: ``None`` there is a validation error, and company panels compose with no per-panel
+    #: ``try``, so one unlinked Ads account would 500 the *whole* company hub rather than blank
+    #: one tile. The join is the truth; this column is a display copy with a stated owner.
+    google_ads_account_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("google_ads_accounts.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     #: Per-source extras: GA4 {currency, propertyType}; GSC {siteType}; Ads {currency,
     #: manager_id}. A JSONB blob, not columns — it differs per source and is display-only.
     config: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")

@@ -112,6 +112,10 @@ def test_paid_module_set_is_pinned() -> None:
         "cloudflare": "cloudflare",
         "domains": "domains",
         "google": "google",
+        # Google Ads is a premium capability *on top of* `marketing`, the same ladder
+        # `reporting` sits on: a tenant can license the dashboards without buying the surface
+        # that reads and writes a client's live advertising account.
+        "google_ads": "google_ads",
         "hosting": "hosting",
         "hr": "hr",
         "interactions": "interactions",
@@ -133,6 +137,9 @@ def test_paid_module_set_is_pinned() -> None:
         "reporting": "reporting",
         "subscriptions": "subscriptions",
         "time": "time",
+        # Landed on dev with a sku and without an entry here, which is precisely what this test
+        # exists to catch — recorded rather than quietly widened.
+        "uptime": "uptime",
         "websites": "websites",
     }
     free = {m.name for m in registry.all() if m.sku is None}

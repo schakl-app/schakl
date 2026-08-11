@@ -550,6 +550,33 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   /ai/time/reconstruct` — puts a cost on every task page open to serve a dialog most opens never
   see. Nothing was added to `GET /tasks/{id}`, and `tests/test_perf_query_budgets.py` now writes
   that number down so the next feature under the same pressure has to argue with it.
+- **A transport two modules need belongs to neither of them, and the surface it exposes *is* the
+  MCP surface** (`google_ads`, `docs/GOOGLE_ADS.md`). Google Ads was already in the tree as a
+  source adapter inside `marketing`, so a licensed module on top of it meant one of the two
+  importing the other's internals. `app/core/googleads/` holds the pipe and the protocol instead
+  — beside `core/registrar` and `core/payments` — and four rules generalise past Ads. **A refusal
+  is a diagnosis, and the HTTP status is not it**: Google answers a `google.rpc.Status` whose
+  `details[]` carries a oneof with 167 possible names, and reading only the 403 collapses "this
+  login has no grant", "the agency never finished the API Center application" and "the client's
+  account is suspended" into one sentence with three different people who can fix it. **A retry is
+  safe for a read and never for a write** — `search` is idempotent, `campaigns:mutate` is not, and
+  a retried create is a second campaign spending a second budget; the provider's own `retryDelay`
+  outranks any ladder we invent. **Absence raises rather than returning `None`**, because a `None`
+  customer id reaches the URL builder, asks Google about a customer named "None", and comes back
+  404 — which this module's own error model reads as *"the API version is sunset"*, the most
+  misleading sentence available for an unlinked account; a default no-op provider is registered at
+  core's own import so the seam answers `AdsNotConfigured` even where the module is disabled,
+  rather than an ImportError that would take the API and the worker with it. And **a borrower keeps
+  its display copy**: `marketing_links.external_id` stays populated beside the new FK, not from
+  laziness but because `SourceMetrics.external_id` is typed `str` and company panels compose with
+  no per-panel `try` — one unlinked account returning `None` would 500 the *whole* company hub
+  rather than blank one tile. The join is the truth; the column is a cache with a stated owner.
+  Because §12 makes every `/api/v1` operation a tool, the route list is the tool list: handlers are
+  named for what an agent would ask for, and the **write permissions are split four ways**
+  (campaign / budget / keyword / negative) so a key can be minted that may tidy search terms
+  overnight and never touch a budget. The query passthrough is gated but *exists*: cross-account
+  access is structurally impossible (the customer id is in the path, from our own row) and GAQL has
+  no write syntax, so what is left to bound is a resource allow-list and what one question may cost.
 
 ## 11. Working agreement (for Claude Code)
 

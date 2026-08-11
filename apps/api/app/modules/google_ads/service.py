@@ -141,19 +141,26 @@ class GoogleAdsService:
         developer_token: str | None = None,
         default_login_customer_id: str | None = None,
         writes_enabled: bool | None = None,
+        developer_token_set: bool = False,
     ) -> GoogleAdsSettings:
         self.ctx.require("google_ads.settings.manage")
         row = await self.settings_row(create=True)
         assert row is not None
         changed: list[str] = []
-        # An empty string means "leave the stored secret alone" — the write-only-secret contract
-        # every credential screen here uses. Clearing it is an explicit ``null``.
-        if developer_token is not None:
-            if developer_token == "":
+        # Three states from one field, and all three are real (CLAUDE.md §18):
+        #   absent            → leave it alone (a PATCH that is not about the token)
+        #   ""                → leave it alone. **This is the load-bearing one**: the form posts
+        #                       blank because nobody retyped a secret it never displayed, and
+        #                       reading that as "clear it" wipes a working credential on every
+        #                       unrelated save.
+        #   explicit null     → clear it, deliberately
+        #   a value           → set it
+        if developer_token_set:
+            if developer_token is None:
                 if row.developer_token_encrypted is not None:
                     row.developer_token_encrypted = None
                     changed.append("developer_token_cleared")
-            else:
+            elif developer_token.strip():
                 row.developer_token_encrypted = encrypt(developer_token.strip())
                 changed.append("developer_token_changed")
         if default_login_customer_id is not None:
