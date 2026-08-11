@@ -4709,6 +4709,7 @@
   "reporting.panel.sent_on": "verstuurd {date}",
   "reporting.review.internal_badge": "Intern",
   "reporting.review.pdf": "Pdf",
+  "reporting.review.client_settings": "Instellingen van deze klant",
   "reporting.review.regenerate": "Opnieuw genereren",
   "reporting.review.regenerating": "Wordt opnieuw gemaakt. De cijfers en de tekst worden ververst.",
   "reporting.review.generating": "Deze rapportage wordt gemaakt.",

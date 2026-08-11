@@ -4709,6 +4709,7 @@
   "reporting.panel.sent_on": "sent {date}",
   "reporting.review.internal_badge": "Internal",
   "reporting.review.pdf": "PDF",
+  "reporting.review.client_settings": "Settings for this client",
   "reporting.review.regenerate": "Generate again",
   "reporting.review.regenerating": "Generating again. The numbers and the text are refreshed.",
   "reporting.review.generating": "This report is being generated.",

@@ -32,6 +32,10 @@ export const load: PageServerLoad = async (event) => {
     report: data,
     canWrite: can(event.locals.user, "reporting.report.write"),
     canSend: can(event.locals.user, "reporting.report.send"),
+    // The key the *destination* declares, not the one this screen is about (§15, #310): the
+    // client's reporting page redirects a caller who lacks it, so a link gated on anything else
+    // is a control that bounces.
+    canManageProfile: can(event.locals.user, "reporting.profile.manage"),
     locale: event.locals.locale,
   };
 };
