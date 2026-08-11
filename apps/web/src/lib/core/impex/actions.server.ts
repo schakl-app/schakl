@@ -60,6 +60,7 @@ export const IMPEX_ENTITIES = [
   "domain_tld_price",
   "website",
   "hosting",
+  "uptime_monitor",
 ] as const satisfies readonly ImpexEntity[];
 
 type NoneMissing =

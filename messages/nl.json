@@ -5115,5 +5115,6 @@
   "uptime.field.monitor_count": "Monitors",
   "automation.action.uptime.pause": "Een monitor pauzeren",
   "uptime.automation.no_monitor": "Er is geen monitor gekozen voor deze actie.",
-  "impex.entity.uptime_monitor": "Monitors"
+  "impex.entity.uptime_monitor": "Monitors",
+  "impex.entity.uptime_monitor_help": "Alleen export: een monitor wordt bij de controledienst aangemaakt, niet vanuit een spreadsheet."
 }

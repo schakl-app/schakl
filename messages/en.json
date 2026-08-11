@@ -5115,5 +5115,6 @@
   "uptime.field.monitor_count": "Monitors",
   "automation.action.uptime.pause": "Pause a monitor",
   "uptime.automation.no_monitor": "No monitor was selected for this action.",
-  "impex.entity.uptime_monitor": "Monitors"
+  "impex.entity.uptime_monitor": "Monitors",
+  "impex.entity.uptime_monitor_help": "Export only: a monitor is created against the checking service, not from a spreadsheet."
 }
