@@ -163,6 +163,67 @@ Parsing is **quote-aware, not a regex**. `WHERE campaign.name = 'FROM billing_se
 the word FROM, and a guard using `\bFROM\s+(\w+)` would run its allow-list check against a string
 literal the caller controls.
 
+## 9a. The read surface *is* the tool surface
+
+Every `/api/v1` operation becomes an MCP tool (§12), so the route list is the tool list. Three
+things follow, and they are why the handlers look the way they do:
+
+- **The docstring is the tool description** an agent reads to decide whether to call it. It says
+  what the read answers *and what it does not* — a model cannot see the source.
+- **The parameters are the tool's arguments**, so they are named for the question (`period`,
+  `campaigns`) rather than for the GAQL (`segments_date`, `campaign_id_in`).
+- **Handler names must shorten uniquely** at `_api_v1_`, or the tool falls back to the full
+  unreadable operation id. `google_ads_campaigns`, not `list_campaigns` — which would collide.
+
+| Route | Answers |
+|---|---|
+| `snapshot` | account totals + every campaign — start an analysis here |
+| `campaigns` / `ad-groups` | performance and settings, most expensive first |
+| `keywords` | match type, bid, Quality Score |
+| `negatives` | ad-group, campaign **and** shared-list exclusions in one answer |
+| `search-terms` | what people typed, with what has already been decided about each |
+| `ads` | ad strength and policy approval |
+| `devices` / `geo` | per device; physical user location, not targeting |
+| `conversions` | what the account optimises toward, and what it recorded |
+| `changes` | field-level old → new, 30 days |
+| `recommendations` | Google's own advice, with projected impact |
+| `keyword-ideas` | `:generateKeywordIdeas` — volume and competition from seeds or a URL |
+| `query` | the gated GAQL passthrough |
+
+Beside them, `mcp.py` contributes three **curated** tools — the shapes where one call beats three
+plus arithmetic a model should not be doing: `google_ads.accounts` (grounding a client name to an
+id), `google_ads.overview` (a period against the same period a year earlier, deltas computed),
+and `google_ads.wasted_spend` (costly non-converting terms **minus what is already excluded** —
+the cross-reference is the part a model gets wrong, and a "recommendation" to exclude something
+already excluded wastes an account manager's afternoon).
+
+### The envelope
+
+Every read returns the same shape: which account answered, the period *with its dates*, the
+account's currency and timezone, `fetched_at`, `row_count`, `totals`, `rows`, `extra` — and
+`warnings`.
+
+**`warnings` is load-bearing.** Truncation, a shortened change-history window, a geo read that
+fell back to country level, provisional recent figures and a filter that matched no campaign are
+reported there and nowhere else. A caller that ignores it will eventually present a capped list
+as a complete one.
+
+Three details that cost a debugging session each if missed:
+
+- **`totals` re-derives its ratios** from the summed components. The average of thirty daily CTRs
+  is not the CTR of thirty days.
+- **A period is resolved in the account's timezone**, so `last_month` for an account set to
+  America/New_York is a different set of impressions than last month in Europe/Amsterdam. It is
+  the one wall-clock question in the product that does *not* resolve against the org (§8), and
+  the data is the reason.
+- **`resolve_campaign_ids` returns `None` for no filter and `[]` for no match.** Collapsing them
+  turns a typo in a campaign name into a report on the whole account. `_empty()` is where the
+  distinction is acted on.
+
+Money is rendered in the **account's** currency on the web, not the tenant's: an agency in
+Amsterdam runs accounts billed in GBP and SEK, and `fmtMoney` — right everywhere else in the
+product — would label every one of them `€`.
+
 ## 10. Permissions, and why the writes are split four ways
 
 The obvious design is one `google_ads.write`, and it is wrong for the reason this module exists:
@@ -208,6 +269,15 @@ place an owner can reach in a hurry without editing eight role grants.
 6. **Every in-request Google call goes inside `ctx.release_db()`**, entering the client *first*.
    A request pins one pool connection for its whole transaction; held across a thirty-second
    call, a handful of these drain the pool and the site appears to freeze.
+7. **`campaign.start_date` does not exist.** v25 names them `startDateTime`/`endDateTime`, and
+   the shorter name is an `UNRECOGNIZED_FIELD` query error rather than a null. Check the
+   discovery document before adding a field: `curl "https://googleads.googleapis.com/$discovery/rest?version=v25"`.
+8. **`user_location_view` carries only `country_criterion_id`.** Country, region and city come
+   from *segments*, and the resource names they return (`geoTargetConstants/2528`) need a second,
+   batched lookup to become readable places.
+9. **`change_event.old_resource` is a wrapper**, not the message. Its single populated key names
+   the resource type, and `changedFields` is a FieldMask relative to what is *inside* it. Walking
+   from the wrapper yields "from null to null" for every change — plausible and useless.
 
 ## 12. Testing
 

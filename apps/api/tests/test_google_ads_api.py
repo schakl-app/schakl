@@ -318,6 +318,65 @@ async def test_the_seam_answers_not_configured_rather_than_none() -> None:
         await ads_call_params(object(), customer_id="")
 
 
+# --- performance ----------------------------------------------------------------------------- #
+
+
+async def test_the_company_panel_costs_the_same_whatever_the_client_has_linked(
+    client_for, count_queries
+) -> None:
+    """A panel that is one query at one account and one-per-row at twenty passes every functional
+    test either way (docs/PERFORMANCE.md), which is why the number is written down.
+
+    The existing ``_PANELS_BUDGET`` guard cannot catch this and is not meant to: its fixture
+    company has nothing linked, so this panel short-circuits on an empty list and costs the same
+    whatever it does with a full one.
+    """
+    t = await make_tenant("gads-perf-panel")
+    headers = await auth_cookie(t.user)
+    company_id = await _company(t.org.id)
+    async with client_for(t.host) as c:
+        with count_queries() as one:
+            await c.get(f"/api/v1/companies/{company_id}/panels", headers=headers)
+        for index in range(6):
+            await c.post(
+                "/api/v1/google-ads/accounts",
+                json={
+                    "customer_id": f"10000000{index:02d}",
+                    "company_id": str(company_id),
+                    "descriptive_name": f"Account {index}",
+                },
+                headers=headers,
+            )
+        with count_queries() as many:
+            await c.get(f"/api/v1/companies/{company_id}/panels", headers=headers)
+    assert len(many.statements) <= len(one.statements) + 1, (
+        f"panel cost grew from {len(one.statements)} to {len(many.statements)} for six accounts"
+    )
+
+
+async def test_listing_accounts_is_one_read(client_for, count_queries) -> None:
+    """The parameterless list an agent calls first. One statement, whatever is linked."""
+    t = await make_tenant("gads-perf-list")
+    headers = await auth_cookie(t.user)
+    company_id = await _company(t.org.id)
+    async with client_for(t.host) as c:
+        for index in range(5):
+            await c.post(
+                "/api/v1/google-ads/accounts",
+                json={"customer_id": f"20000000{index:02d}", "company_id": str(company_id)},
+                headers=headers,
+            )
+        with count_queries() as counter:
+            res = await c.get("/api/v1/google-ads/accounts", headers=headers)
+    assert len(res.json()) == 5
+    reads = [
+        statement
+        for statement in counter.statements
+        if statement.lstrip().upper().startswith("SELECT") and "google_ads_accounts" in statement
+    ]
+    assert len(reads) == 1, f"expected one read of google_ads_accounts, got {len(reads)}"
+
+
 async def test_a_marketing_gads_link_attaches_one_account(client_for) -> None:
     """One truth for "which Ads customer is this client's": linking in marketing records the
     account here, and the link points at it."""

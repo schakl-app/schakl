@@ -18,6 +18,7 @@ import "./websites";
 import "./interactions";
 import "./google";
 import "./marketing";
+import "./google_ads";
 import "./reporting";
 import "./cloudflare";
 import "./uptime";

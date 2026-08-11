@@ -16,6 +16,7 @@ would collide with cloudflare's and fall back to the unreadable full operation i
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 from fastapi import APIRouter, Depends, Query, Response, status
 
@@ -23,14 +24,20 @@ from app.core.googleads import format_customer_id
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.modules.google_ads.models import GoogleAdsAccount
+from app.modules.google_ads.reads import GoogleAdsReadService
 from app.modules.google_ads.schemas import (
     GoogleAdsAccountCreate,
     GoogleAdsAccountRead,
     GoogleAdsAccountUpdate,
     GoogleAdsAvailableAccount,
+    GoogleAdsKeywordIdeaRequest,
     GoogleAdsPickerRead,
+    GoogleAdsQueryRead,
+    GoogleAdsQueryRequest,
+    GoogleAdsReport,
     GoogleAdsSettingsRead,
     GoogleAdsSettingsWrite,
+    GoogleAdsSnapshotRead,
 )
 from app.modules.google_ads.service import GoogleAdsService
 
@@ -253,3 +260,344 @@ async def verify_google_ads_account(
     detail. A success clears the flag it may have set last time.
     """
     return _read(await GoogleAdsService(ctx).verify(account_id))
+
+
+# --- reads ------------------------------------------------------------------------------------ #
+#
+# Every one of these is an MCP tool. Three things follow, and they are why the signatures look
+# the way they do:
+#
+# * **The docstring is the tool description an agent reads to decide whether to call it.** It
+#   says what the read answers and what it does not, because a model cannot see this file.
+# * **The parameters are the tool's arguments**, so they are named for the question rather than
+#   for the GAQL: ``period`` and ``campaigns``, not ``segments_date`` and ``campaign_id_in``.
+# * **`warnings` on the response is load-bearing**, not decoration. Truncation, a shortened
+#   change window and a geo read that fell back to country level are reported there and nowhere
+#   else.
+
+
+def _period_params(
+    period: str | None = Query(
+        default=None,
+        description=(
+            "A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, "
+            "2026-Q3. Resolved in the account's own timezone and always ending yesterday. "
+            "Ignored when date_from and date_to are both given."
+        ),
+    ),
+    date_from: date | None = Query(default=None, description="YYYY-MM-DD, inclusive."),
+    date_to: date | None = Query(default=None, description="YYYY-MM-DD, inclusive."),
+) -> tuple[str | None, date | None, date | None]:
+    return period, date_from, date_to
+
+
+@router.get(
+    "/accounts/{account_id}/snapshot",
+    response_model=GoogleAdsSnapshotRead,
+    dependencies=[require_permission("google_ads.account.read")],
+)
+async def google_ads_snapshot(
+    account_id: uuid.UUID,
+    window: tuple[str | None, date | None, date | None] = Depends(_period_params),
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsSnapshotRead:
+    """Account totals plus every campaign for the period — **start an analysis here**.
+
+    Answers "how is this account doing": what it spent, what it got, which campaigns are
+    responsible, what each is bidding toward, and how much of the available impressions it is
+    losing to budget versus to rank. Costs are in the account's own currency and CTR is a
+    fraction (0.0453 = 4,53 %).
+    """
+    return await GoogleAdsReadService(ctx).snapshot(account_id, *window)
+
+
+@router.get(
+    "/accounts/{account_id}/campaigns",
+    response_model=GoogleAdsReport,
+    dependencies=[require_permission("google_ads.account.read")],
+)
+async def google_ads_campaigns(
+    account_id: uuid.UUID,
+    window: tuple[str | None, date | None, date | None] = Depends(_period_params),
+    campaigns: list[str] | None = Query(
+        default=None, description="Filter by campaign name, case-insensitive substring match."
+    ),
+    include_removed: bool = Query(
+        default=False,
+        description=(
+            "Include removed campaigns. Off by default: a list where a third of the rows cannot "
+            "be acted on is a worse answer to 'what are we running'. Turn it on to ask what was "
+            "spent on things since removed."
+        ),
+    ),
+    limit: int | None = Query(default=None, ge=1),
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsReport:
+    """Campaign performance and settings, most expensive first.
+
+    Impression-share fields are null on Display, Video and Performance Max campaigns because
+    Google does not report them there — which is not the same claim as 0 % visibility.
+    """
+    return await GoogleAdsReadService(ctx).campaigns(
+        account_id, *window, campaigns=campaigns, include_removed=include_removed, limit=limit
+    )
+
+
+@router.get(
+    "/accounts/{account_id}/ad-groups",
+    response_model=GoogleAdsReport,
+    dependencies=[require_permission("google_ads.account.read")],
+)
+async def google_ads_ad_groups(
+    account_id: uuid.UUID,
+    window: tuple[str | None, date | None, date | None] = Depends(_period_params),
+    campaigns: list[str] | None = Query(default=None),
+    include_removed: bool = Query(default=False),
+    limit: int | None = Query(default=None, ge=1),
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsReport:
+    """Ad-group performance, most expensive first. One level below campaigns."""
+    return await GoogleAdsReadService(ctx).ad_groups(
+        account_id, *window, campaigns=campaigns, include_removed=include_removed, limit=limit
+    )
+
+
+@router.get(
+    "/accounts/{account_id}/keywords",
+    response_model=GoogleAdsReport,
+    dependencies=[require_permission("google_ads.account.read")],
+)
+async def google_ads_keywords(
+    account_id: uuid.UUID,
+    window: tuple[str | None, date | None, date | None] = Depends(_period_params),
+    campaigns: list[str] | None = Query(default=None),
+    include_removed: bool = Query(default=False),
+    limit: int | None = Query(default=None, ge=1),
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsReport:
+    """Positive keywords with match type, bid and Quality Score, most expensive first.
+
+    An absent quality_score means Google has not computed one yet (too few impressions), not a
+    score of zero. For what is *excluded*, use the negatives read; for what people actually
+    typed, use search terms.
+    """
+    return await GoogleAdsReadService(ctx).keywords(
+        account_id, *window, campaigns=campaigns, include_removed=include_removed, limit=limit
+    )
+
+
+@router.get(
+    "/accounts/{account_id}/negatives",
+    response_model=GoogleAdsReport,
+    dependencies=[require_permission("google_ads.account.read")],
+)
+async def google_ads_negatives(
+    account_id: uuid.UUID,
+    limit: int | None = Query(default=None, ge=1),
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsReport:
+    """Every negative keyword: ad-group level, campaign level, and shared negative lists.
+
+    Three resources in one answer, because Google models them as three things and an agency asks
+    one question. Each row carries a `level` saying which it came from. Configuration, so there
+    is no period and no metrics: an exclusion either exists or it does not.
+    """
+    return await GoogleAdsReadService(ctx).negatives(account_id, limit=limit)
+
+
+@router.get(
+    "/accounts/{account_id}/search-terms",
+    response_model=GoogleAdsReport,
+    dependencies=[require_permission("google_ads.account.read")],
+)
+async def google_ads_search_terms(
+    account_id: uuid.UUID,
+    window: tuple[str | None, date | None, date | None] = Depends(_period_params),
+    campaigns: list[str] | None = Query(default=None),
+    min_cost: float | None = Query(
+        default=None, ge=0, description="Only terms that cost at least this, in account currency."
+    ),
+    min_clicks: int | None = Query(default=None, ge=0),
+    limit: int | None = Query(default=None, ge=1),
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsReport:
+    """What people actually typed, most expensive first.
+
+    `match_status` says what has already been decided about each term: ADDED (it is a keyword),
+    EXCLUDED (it is a negative), ADDED_EXCLUDED, or NONE. This is **raw and unclassified** — the
+    API labels nothing as a candidate negative, and a term costing money with no conversions may
+    still be a term worth keeping.
+    """
+    return await GoogleAdsReadService(ctx).search_terms(
+        account_id,
+        *window,
+        campaigns=campaigns,
+        min_cost=min_cost,
+        min_clicks=min_clicks,
+        limit=limit,
+    )
+
+
+@router.get(
+    "/accounts/{account_id}/ads",
+    response_model=GoogleAdsReport,
+    dependencies=[require_permission("google_ads.account.read")],
+)
+async def google_ads_ads(
+    account_id: uuid.UUID,
+    window: tuple[str | None, date | None, date | None] = Depends(_period_params),
+    campaigns: list[str] | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1),
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsReport:
+    """Ads with their ad strength and policy approval status, most expensive first."""
+    return await GoogleAdsReadService(ctx).ads(
+        account_id, *window, campaigns=campaigns, limit=limit
+    )
+
+
+@router.get(
+    "/accounts/{account_id}/devices",
+    response_model=GoogleAdsReport,
+    dependencies=[require_permission("google_ads.account.read")],
+)
+async def google_ads_devices(
+    account_id: uuid.UUID,
+    window: tuple[str | None, date | None, date | None] = Depends(_period_params),
+    campaigns: list[str] | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1),
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsReport:
+    """Performance per device, per campaign, plus an account-wide rollup in `extra.device_totals`.
+
+    A large cost-per-conversion gap between devices *within one campaign* is the strongest
+    signal this read produces.
+    """
+    return await GoogleAdsReadService(ctx).devices(
+        account_id, *window, campaigns=campaigns, limit=limit
+    )
+
+
+@router.get(
+    "/accounts/{account_id}/geo",
+    response_model=GoogleAdsReport,
+    dependencies=[require_permission("google_ads.account.read")],
+)
+async def google_ads_geo(
+    account_id: uuid.UUID,
+    window: tuple[str | None, date | None, date | None] = Depends(_period_params),
+    campaigns: list[str] | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1),
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsReport:
+    """Where the people who saw the ads physically were — not where the campaign targets.
+
+    That difference is the point: traffic from outside the targeted area is what this read
+    exists to surface. **Check `extra.granularity` before using region or city** — some accounts
+    cannot segment below country, and the read falls back rather than failing.
+    """
+    return await GoogleAdsReadService(ctx).geo(
+        account_id, *window, campaigns=campaigns, limit=limit
+    )
+
+
+@router.get(
+    "/accounts/{account_id}/conversions",
+    response_model=GoogleAdsReport,
+    dependencies=[require_permission("google_ads.account.read")],
+)
+async def google_ads_conversion_health(
+    account_id: uuid.UUID,
+    window: tuple[str | None, date | None, date | None] = Depends(_period_params),
+    limit: int | None = Query(default=None, ge=1),
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsReport:
+    """What this account optimises toward, and what each conversion action actually recorded.
+
+    Answers "is the money being steered by something real". `primary_for_goal` and
+    `counts_toward_conversions` are the two fields that decide whether an action influences
+    bidding at all. This is Google Ads *configuration* and measured counts — it says nothing
+    about whether those conversions became customers.
+    """
+    return await GoogleAdsReadService(ctx).conversions(account_id, *window, limit=limit)
+
+
+@router.get(
+    "/accounts/{account_id}/changes",
+    response_model=GoogleAdsReport,
+    dependencies=[require_permission("google_ads.account.read")],
+)
+async def google_ads_changes(
+    account_id: uuid.UUID,
+    window: tuple[str | None, date | None, date | None] = Depends(_period_params),
+    limit: int | None = Query(default=None, ge=1),
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsReport:
+    """What was changed in the account, with each field's old and new value.
+
+    Two hard limits, both reported in the response: Google keeps change history for **30 days
+    only** (`extra.effective_period` shows what was really read), and **automatic changes made
+    by Google itself — Smart Bidding above all — appear nowhere in it**. Do not build an audit
+    trail on this alone.
+    """
+    return await GoogleAdsReadService(ctx).changes(account_id, *window, limit=limit)
+
+
+@router.get(
+    "/accounts/{account_id}/recommendations",
+    response_model=GoogleAdsReport,
+    dependencies=[require_permission("google_ads.account.read")],
+)
+async def google_ads_recommendations(
+    account_id: uuid.UUID,
+    limit: int | None = Query(default=None, ge=1),
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsReport:
+    """Google's own suggestions for this account, with the impact it projects for each.
+
+    Advice rather than data, and worth reading before inferring the same thing from metrics.
+    Dismissed recommendations are excluded — somebody already decided about those.
+    """
+    return await GoogleAdsReadService(ctx).recommendations(account_id, limit=limit)
+
+
+@router.post(
+    "/accounts/{account_id}/keyword-ideas",
+    response_model=GoogleAdsReport,
+    dependencies=[require_permission("google_ads.account.read")],
+)
+async def google_ads_keyword_ideas(
+    account_id: uuid.UUID,
+    payload: GoogleAdsKeywordIdeaRequest,
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsReport:
+    """Keyword ideas with search volume and competition, from seed terms or a landing page.
+
+    A POST because it takes a body, not because it writes anything: nothing in the account
+    changes. Volumes are Google's own estimates and are banded, not exact.
+    """
+    return await GoogleAdsReadService(ctx).keyword_ideas(account_id, payload)
+
+
+@router.post(
+    "/accounts/{account_id}/query",
+    response_model=GoogleAdsQueryRead,
+    dependencies=[require_permission("google_ads.query.run")],
+)
+async def google_ads_query(
+    account_id: uuid.UUID,
+    payload: GoogleAdsQueryRequest,
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsQueryRead:
+    """Run a GAQL query against this account — the escape hatch for questions the other tools
+    do not answer.
+
+    Read-only by construction: GAQL has no write syntax. The customer is taken from the linked
+    account in the path and can never be named in the query, so no query reaches an advertiser
+    this workspace has not linked. A LIMIT is imposed if you do not give one and clamped if it
+    is too large, and a query selecting metrics must bound `segments.date`.
+
+    Example: `SELECT campaign.name, metrics.cost_micros FROM campaign
+    WHERE segments.date DURING LAST_30_DAYS ORDER BY metrics.cost_micros DESC`
+    """
+    return await GoogleAdsReadService(ctx).query(account_id, payload)

@@ -39,6 +39,7 @@ and their web counterparts — currently:
 - `apps/web/src/lib/modules/automation/`
 - `apps/web/src/lib/modules/domains/`
 - `apps/web/src/lib/modules/google/`
+- `apps/web/src/lib/modules/google_ads/`
 - `apps/web/src/lib/modules/hosting/`
 - `apps/web/src/lib/modules/interactions/`
 - `apps/web/src/lib/modules/invoicing/`
@@ -69,6 +70,7 @@ and their web counterparts — currently:
 - `apps/web/src/routes/(app)/settings/cloudflare/`
 - `apps/web/src/routes/(app)/settings/automation/`
 - `apps/web/src/routes/(app)/settings/google/`
+- `apps/web/src/routes/(app)/settings/google-ads/`
 - `apps/web/src/routes/(app)/settings/hosting/`
 - `apps/web/src/routes/(app)/settings/interaction-kinds/`
 - `apps/web/src/routes/(app)/settings/invoicing/`

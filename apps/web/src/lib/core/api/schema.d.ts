@@ -2153,6 +2153,462 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google-ads/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Google Ads Accounts
+         * @description Every linked Google Ads account this caller may see — **start here**.
+         *
+         *     The list an agent needs before anything else: it names the accounts, and every other tool
+         *     takes one of these ids. Company-scoped logins see only the accounts of the clients in their
+         *     horizon, and an account attached to no client (the agency's own) stays visible to all.
+         */
+        get: operations["list_google_ads_accounts_api_v1_google_ads_accounts_get"];
+        put?: never;
+        /**
+         * Link Google Ads Account
+         * @description Link an Ads account to a client.
+         *
+         *     The linking user's Google connection is stamped on the row: it is the grant that will sync
+         *     it, and an account whose connection is later removed goes dormant and asks to be
+         *     reconnected rather than silently syncing as somebody else.
+         */
+        post: operations["link_google_ads_account_api_v1_google_ads_accounts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/available": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Available Google Ads Accounts
+         * @description Accounts the caller's own Google grant can reach, manager hierarchies expanded.
+         *
+         *     Live — this is the one read that calls Google on every request, because a picker showing a
+         *     stale account list is how someone links an account that was closed last month.
+         */
+        get: operations["list_available_google_ads_accounts_api_v1_google_ads_accounts_available_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Google Ads Account */
+        get: operations["get_google_ads_account_api_v1_google_ads_accounts__account_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Unlink Google Ads Account
+         * @description Deactivate the link. The row survives: history hangs off it, and a re-link must find the
+         *     same account rather than collide with its own unique constraint.
+         */
+        delete: operations["unlink_google_ads_account_api_v1_google_ads_accounts__account_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Google Ads Account */
+        patch: operations["update_google_ads_account_api_v1_google_ads_accounts__account_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/ad-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Ads Ad Groups
+         * @description Ad-group performance, most expensive first. One level below campaigns.
+         */
+        get: operations["google_ads_ad_groups_api_v1_google_ads_accounts__account_id__ad_groups_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/ads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Ads Ads
+         * @description Ads with their ad strength and policy approval status, most expensive first.
+         */
+        get: operations["google_ads_ads_api_v1_google_ads_accounts__account_id__ads_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/campaigns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Ads Campaigns
+         * @description Campaign performance and settings, most expensive first.
+         *
+         *     Impression-share fields are null on Display, Video and Performance Max campaigns because
+         *     Google does not report them there — which is not the same claim as 0 % visibility.
+         */
+        get: operations["google_ads_campaigns_api_v1_google_ads_accounts__account_id__campaigns_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Ads Changes
+         * @description What was changed in the account, with each field's old and new value.
+         *
+         *     Two hard limits, both reported in the response: Google keeps change history for **30 days
+         *     only** (`extra.effective_period` shows what was really read), and **automatic changes made
+         *     by Google itself — Smart Bidding above all — appear nowhere in it**. Do not build an audit
+         *     trail on this alone.
+         */
+        get: operations["google_ads_changes_api_v1_google_ads_accounts__account_id__changes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/conversions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Ads Conversion Health
+         * @description What this account optimises toward, and what each conversion action actually recorded.
+         *
+         *     Answers "is the money being steered by something real". `primary_for_goal` and
+         *     `counts_toward_conversions` are the two fields that decide whether an action influences
+         *     bidding at all. This is Google Ads *configuration* and measured counts — it says nothing
+         *     about whether those conversions became customers.
+         */
+        get: operations["google_ads_conversion_health_api_v1_google_ads_accounts__account_id__conversions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Ads Devices
+         * @description Performance per device, per campaign, plus an account-wide rollup in `extra.device_totals`.
+         *
+         *     A large cost-per-conversion gap between devices *within one campaign* is the strongest
+         *     signal this read produces.
+         */
+        get: operations["google_ads_devices_api_v1_google_ads_accounts__account_id__devices_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/geo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Ads Geo
+         * @description Where the people who saw the ads physically were — not where the campaign targets.
+         *
+         *     That difference is the point: traffic from outside the targeted area is what this read
+         *     exists to surface. **Check `extra.granularity` before using region or city** — some accounts
+         *     cannot segment below country, and the read falls back rather than failing.
+         */
+        get: operations["google_ads_geo_api_v1_google_ads_accounts__account_id__geo_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/keyword-ideas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Google Ads Keyword Ideas
+         * @description Keyword ideas with search volume and competition, from seed terms or a landing page.
+         *
+         *     A POST because it takes a body, not because it writes anything: nothing in the account
+         *     changes. Volumes are Google's own estimates and are banded, not exact.
+         */
+        post: operations["google_ads_keyword_ideas_api_v1_google_ads_accounts__account_id__keyword_ideas_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/keywords": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Ads Keywords
+         * @description Positive keywords with match type, bid and Quality Score, most expensive first.
+         *
+         *     An absent quality_score means Google has not computed one yet (too few impressions), not a
+         *     score of zero. For what is *excluded*, use the negatives read; for what people actually
+         *     typed, use search terms.
+         */
+        get: operations["google_ads_keywords_api_v1_google_ads_accounts__account_id__keywords_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/negatives": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Ads Negatives
+         * @description Every negative keyword: ad-group level, campaign level, and shared negative lists.
+         *
+         *     Three resources in one answer, because Google models them as three things and an agency asks
+         *     one question. Each row carries a `level` saying which it came from. Configuration, so there
+         *     is no period and no metrics: an exclusion either exists or it does not.
+         */
+        get: operations["google_ads_negatives_api_v1_google_ads_accounts__account_id__negatives_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Google Ads Query
+         * @description Run a GAQL query against this account — the escape hatch for questions the other tools
+         *     do not answer.
+         *
+         *     Read-only by construction: GAQL has no write syntax. The customer is taken from the linked
+         *     account in the path and can never be named in the query, so no query reaches an advertiser
+         *     this workspace has not linked. A LIMIT is imposed if you do not give one and clamped if it
+         *     is too large, and a query selecting metrics must bound `segments.date`.
+         *
+         *     Example: `SELECT campaign.name, metrics.cost_micros FROM campaign
+         *     WHERE segments.date DURING LAST_30_DAYS ORDER BY metrics.cost_micros DESC`
+         */
+        post: operations["google_ads_query_api_v1_google_ads_accounts__account_id__query_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/recommendations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Ads Recommendations
+         * @description Google's own suggestions for this account, with the impact it projects for each.
+         *
+         *     Advice rather than data, and worth reading before inferring the same thing from metrics.
+         *     Dismissed recommendations are excluded — somebody already decided about those.
+         */
+        get: operations["google_ads_recommendations_api_v1_google_ads_accounts__account_id__recommendations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/search-terms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Ads Search Terms
+         * @description What people actually typed, most expensive first.
+         *
+         *     `match_status` says what has already been decided about each term: ADDED (it is a keyword),
+         *     EXCLUDED (it is a negative), ADDED_EXCLUDED, or NONE. This is **raw and unclassified** — the
+         *     API labels nothing as a candidate negative, and a term costing money with no conversions may
+         *     still be a term worth keeping.
+         */
+        get: operations["google_ads_search_terms_api_v1_google_ads_accounts__account_id__search_terms_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Ads Snapshot
+         * @description Account totals plus every campaign for the period — **start an analysis here**.
+         *
+         *     Answers "how is this account doing": what it spent, what it got, which campaigns are
+         *     responsible, what each is bidding toward, and how much of the available impressions it is
+         *     losing to budget versus to rank. Costs are in the account's own currency and CTR is a
+         *     fraction (0.0453 = 4,53 %).
+         */
+        get: operations["google_ads_snapshot_api_v1_google_ads_accounts__account_id__snapshot_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/accounts/{account_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Google Ads Account
+         * @description Ask Google what it says about this account, and record the answer either way.
+         *
+         *     Never raises for a refusal: the outcome *is* the payload (``status``, ``last_error``), which
+         *     is what lets a screen say "the grant was revoked" instead of showing a red toast with no
+         *     detail. A success clears the flag it may have set last time.
+         */
+        post: operations["verify_google_ads_account_api_v1_google_ads_accounts__account_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/google-ads/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Google Ads Settings
+         * @description The org's Ads configuration. The developer token is never part of the response.
+         */
+        get: operations["get_google_ads_settings_api_v1_google_ads_settings_get"];
+        /** Save Google Ads Settings */
+        put: operations["save_google_ads_settings_api_v1_google_ads_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/google/calendar/events": {
         parameters: {
             query?: never;
@@ -9347,35 +9803,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/uptime/hook/{token}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Uptime Hook
-         * @description Ingest one reported heartbeat.
-         *
-         *     Answers a bare status with no body. Every refusal a caller could learn from is a `404` —
-         *     a wrong secret, an unknown instance and an unknown monitor are deliberately identical, or
-         *     the route becomes an oracle for what exists here.
-         *
-         *     `license_exempt`: an expired licence makes a module read-only; it does not make a client's
-         *     outage stop having happened. Gate what the agency *does*, never the recording of what has
-         *     already happened to them (docs/PAYMENTS.md's rule, applied to the other place where
-         *     refusing loses information no retry recovers).
-         */
-        post: operations["uptime_hook_api_v1_uptime_hook__token__post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/uptime/instances": {
         parameters: {
             query?: never;
@@ -9484,11 +9911,7 @@ export interface paths {
         /** List Monitors */
         get: operations["list_monitors_api_v1_uptime_monitors_get"];
         put?: never;
-        /**
-         * Create Monitor
-         * @description Create the monitor here and push it to Uptime Kuma.
-         */
-        post: operations["create_monitor_api_v1_uptime_monitors_post"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -9506,114 +9929,10 @@ export interface paths {
         get: operations["get_monitor_api_v1_uptime_monitors__monitor_id__get"];
         put?: never;
         post?: never;
-        /** Delete Monitor */
-        delete: operations["delete_monitor_api_v1_uptime_monitors__monitor_id__delete"];
-        options?: never;
-        head?: never;
-        /** Update Monitor */
-        patch: operations["update_monitor_api_v1_uptime_monitors__monitor_id__patch"];
-        trace?: never;
-    };
-    "/api/v1/uptime/monitors/{monitor_id}/pause": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Pause Monitor
-         * @description Its own permission: silencing an alert during a planned migration is an ordinary act,
-         *     and repointing a monitor is not.
-         */
-        post: operations["pause_monitor_api_v1_uptime_monitors__monitor_id__pause_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
-        trace?: never;
-    };
-    "/api/v1/uptime/monitors/{monitor_id}/reconcile": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Reconcile Monitor
-         * @description Resolve a drift in the direction the caller names. There is no default direction:
-         *     one overwrites a colleague's edit in Uptime Kuma, the other overwrites schakl's record.
-         */
-        post: operations["reconcile_monitor_api_v1_uptime_monitors__monitor_id__reconcile_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/uptime/monitors/{monitor_id}/resume": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Resume Monitor */
-        post: operations["resume_monitor_api_v1_uptime_monitors__monitor_id__resume_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/uptime/profiles": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Profiles
-         * @description Readable on `monitor.read`, writable on `profile.manage`.
-         *
-         *     The create form needs to *show* which profile a monitor will follow, and gating the read on
-         *     the manage permission would leave an ordinary member with a picker they cannot populate —
-         *     #310's "mirror the key the call actually makes" applied to a lookup.
-         */
-        get: operations["list_profiles_api_v1_uptime_profiles_get"];
-        put?: never;
-        /** Create Profile */
-        post: operations["create_profile_api_v1_uptime_profiles_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/uptime/profiles/{profile_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Delete Profile */
-        delete: operations["delete_profile_api_v1_uptime_profiles__profile_id__delete"];
-        options?: never;
-        head?: never;
-        /** Update Profile */
-        patch: operations["update_profile_api_v1_uptime_profiles__profile_id__patch"];
         trace?: never;
     };
     "/api/v1/users/me": {
@@ -10451,15 +10770,6 @@ export interface components {
          * @enum {string}
          */
         AutoInvoiceMode: "off" | "draft" | "issue" | "send";
-        /**
-         * AvailabilityChange
-         * @description Which way a resolved day moved against the week it sits on.
-         *
-         *     Not stored anywhere — the computed answer a day view hands its callers, so a calendar and a
-         *     capacity read cannot form two opinions about the same Thursday (#312's rule for comparisons).
-         * @enum {string}
-         */
-        AvailabilityChange: "added" | "removed" | "changed";
         /** AvailabilityCreate */
         AvailabilityCreate: {
             /**
@@ -10490,12 +10800,6 @@ export interface components {
          */
         AvailabilityDay: {
             /**
-             * Base Hours
-             * @default 0
-             */
-            base_hours: string;
-            change?: components["schemas"]["AvailabilityChange"] | null;
-            /**
              * Date
              * Format: date
              */
@@ -10505,24 +10809,15 @@ export interface components {
              * @default false
              */
             deviates: boolean;
-            /** Ends At */
-            ends_at?: string | null;
             /** Entry Ids */
             entry_ids?: string[];
             /** Hours */
             hours: string;
-            /** Starts At */
-            starts_at?: string | null;
             /**
              * User Id
              * Format: uuid
              */
             user_id: string;
-            /**
-             * User Name
-             * @default
-             */
-            user_name: string;
             /** Windows */
             windows: components["schemas"]["AvailabilityWindow"][];
         };
@@ -14278,6 +14573,406 @@ export interface components {
          * @enum {string}
          */
         GmailThreadFollowup: "inherit_pending" | "inherit_approve";
+        /**
+         * GoogleAdsAccountBrief
+         * @description Which account answered — on every read, so a response is never ambiguous about that.
+         */
+        GoogleAdsAccountBrief: {
+            /** Company Id */
+            company_id?: string | null;
+            /** Customer Id */
+            customer_id: string;
+            /** Customer Id Formatted */
+            customer_id_formatted: string;
+            /** Descriptive Name */
+            descriptive_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /**
+         * GoogleAdsAccountCreate
+         * @description Link an account the picker offered. ``customer_id`` is normalised on write, so the
+         *     hyphenated form a human pastes and the bare form the picker sends are the same row.
+         */
+        GoogleAdsAccountCreate: {
+            /** Company Id */
+            company_id?: string | null;
+            /** Currency Code */
+            currency_code?: string | null;
+            /** Customer Id */
+            customer_id: string;
+            /**
+             * Descriptive Name
+             * @default
+             */
+            descriptive_name: string;
+            /** Login Customer Id */
+            login_customer_id?: string | null;
+        };
+        /** GoogleAdsAccountRead */
+        GoogleAdsAccountRead: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Company Id */
+            company_id?: string | null;
+            /** Company Name */
+            company_name?: string | null;
+            /** Connection Id */
+            connection_id?: string | null;
+            /** Conversion Tracking Status */
+            conversion_tracking_status?: string | null;
+            /** Currency Code */
+            currency_code?: string | null;
+            /** Customer Id */
+            customer_id: string;
+            /** Customer Id Formatted */
+            customer_id_formatted: string;
+            /** Descriptive Name */
+            descriptive_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Is Manager
+             * @default false
+             */
+            is_manager: boolean;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Synced At */
+            last_synced_at?: string | null;
+            /** Last Verified At */
+            last_verified_at?: string | null;
+            /** Login Customer Id */
+            login_customer_id?: string | null;
+            /** Optimization Score */
+            optimization_score?: number | null;
+            /** Status */
+            status: string;
+            /**
+             * Test Account
+             * @default false
+             */
+            test_account: boolean;
+            /** Time Zone */
+            time_zone?: string | null;
+        };
+        /**
+         * GoogleAdsAccountUpdate
+         * @description Only what schakl *decided* is editable. The name, currency, timezone and manager flag are
+         *     what Google last said, refreshed by verify — typing over them would make the row disagree
+         *     with the account it describes and nothing would ever put it back.
+         */
+        GoogleAdsAccountUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Company Id */
+            company_id?: string | null;
+            /** Login Customer Id */
+            login_customer_id?: string | null;
+        };
+        /** GoogleAdsAvailableAccount */
+        GoogleAdsAvailableAccount: {
+            /**
+             * Already Linked
+             * @default false
+             */
+            already_linked: boolean;
+            /** Currency Code */
+            currency_code?: string | null;
+            /** Customer Id */
+            customer_id: string;
+            /** Customer Id Formatted */
+            customer_id_formatted: string;
+            /** Descriptive Name */
+            descriptive_name: string;
+            /** Hint */
+            hint: string;
+            /** Login Customer Id */
+            login_customer_id?: string | null;
+        };
+        /**
+         * GoogleAdsKeywordIdeaRequest
+         * @description Seeds for keyword research. At least one of ``keywords`` or ``url`` is required.
+         */
+        GoogleAdsKeywordIdeaRequest: {
+            /** Geo Target Ids */
+            geo_target_ids?: number[];
+            /** Keywords */
+            keywords?: string[];
+            /** Language Id */
+            language_id?: number | null;
+            /** Limit */
+            limit?: number | null;
+            /** Url */
+            url?: string | null;
+        };
+        /**
+         * GoogleAdsMetrics
+         * @description The metric block every performance row carries.
+         *
+         *     Two rules, and a client that breaks either produces reports that lie:
+         *
+         *     * **``ctr`` and ``conversion_rate`` are fractions.** ``0.0453`` is 4,53 %. Multiply once,
+         *       where it is displayed.
+         *     * **A non-computable ratio is ``null``, never ``0``.** Zero is a measurement; ``null`` is
+         *       the absence of one. Cost-per-conversion with no conversions is the second, and a layer
+         *       that normalises it to zero makes every report downstream of it wrong in the same
+         *       direction.
+         */
+        GoogleAdsMetrics: {
+            /**
+             * All Conversions
+             * @default 0
+             */
+            all_conversions: number;
+            /** Average Cpc */
+            average_cpc?: number | null;
+            /**
+             * Clicks
+             * @default 0
+             */
+            clicks: number;
+            /** Conversion Rate */
+            conversion_rate?: number | null;
+            /**
+             * Conversions
+             * @default 0
+             */
+            conversions: number;
+            /**
+             * Conversions Value
+             * @default 0
+             */
+            conversions_value: number;
+            /**
+             * Cost
+             * @default 0
+             */
+            cost: number;
+            /** Cost Per Conversion */
+            cost_per_conversion?: number | null;
+            /** Ctr */
+            ctr?: number | null;
+            /**
+             * Impressions
+             * @default 0
+             */
+            impressions: number;
+            /** Value Per Conversion */
+            value_per_conversion?: number | null;
+        };
+        /**
+         * GoogleAdsPeriod
+         * @description The span a read covers. Both ends inclusive, resolved in the **account's** timezone.
+         */
+        GoogleAdsPeriod: {
+            /**
+             * Date From
+             * Format: date
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
+            /** Days */
+            days: number;
+            /** Token */
+            token?: string | null;
+        };
+        /** GoogleAdsPickerRead */
+        GoogleAdsPickerRead: {
+            /** Accounts */
+            accounts?: components["schemas"]["GoogleAdsAvailableAccount"][];
+            /** Warnings */
+            warnings?: string[];
+        };
+        /**
+         * GoogleAdsQueryRead
+         * @description Rows exactly as Google returned them, plus what the guard did to the query.
+         */
+        GoogleAdsQueryRead: {
+            account: components["schemas"]["GoogleAdsAccountBrief"];
+            /** Account Timezone */
+            account_timezone?: string | null;
+            /** Currency */
+            currency?: string | null;
+            /**
+             * Executed Query
+             * @default
+             */
+            executed_query: string;
+            /** Extra */
+            extra?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Fetched At
+             * Format: date-time
+             */
+            fetched_at: string;
+            period?: components["schemas"]["GoogleAdsPeriod"] | null;
+            /**
+             * Resource
+             * @default
+             */
+            resource: string;
+            /**
+             * Row Count
+             * @default 0
+             */
+            row_count: number;
+            /** Rows */
+            rows?: {
+                [key: string]: unknown;
+            }[];
+            totals?: components["schemas"]["GoogleAdsMetrics"] | null;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /**
+         * GoogleAdsQueryRequest
+         * @description A GAQL query against one linked account.
+         *
+         *     The customer id is **not** a field here and never will be: it comes from the account row in
+         *     the path, so no query can reach an advertiser this workspace has not linked.
+         */
+        GoogleAdsQueryRequest: {
+            /** Limit */
+            limit?: number | null;
+            /** Query */
+            query: string;
+        };
+        /**
+         * GoogleAdsReport
+         * @description The shared envelope every read returns.
+         *
+         *     ``warnings`` is not decoration and not cosmetic: truncation, a shortened change-history
+         *     window, a geo read that fell back to country level and the provisional nature of recent
+         *     figures are reported **here and nowhere else**. A caller that ignores it will eventually
+         *     present a capped list as a complete one.
+         */
+        GoogleAdsReport: {
+            account: components["schemas"]["GoogleAdsAccountBrief"];
+            /** Account Timezone */
+            account_timezone?: string | null;
+            /** Currency */
+            currency?: string | null;
+            /** Extra */
+            extra?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Fetched At
+             * Format: date-time
+             */
+            fetched_at: string;
+            period?: components["schemas"]["GoogleAdsPeriod"] | null;
+            /**
+             * Row Count
+             * @default 0
+             */
+            row_count: number;
+            /** Rows */
+            rows?: {
+                [key: string]: unknown;
+            }[];
+            totals?: components["schemas"]["GoogleAdsMetrics"] | null;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /**
+         * GoogleAdsSettingsRead
+         * @description The org's Ads configuration. **Never carries the developer token itself** — only whether
+         *     one is configured, and where the effective one comes from.
+         */
+        GoogleAdsSettingsRead: {
+            /** Default Login Customer Id */
+            default_login_customer_id?: string | null;
+            /** Developer Token Configured */
+            developer_token_configured: boolean;
+            /** Env Token Configured */
+            env_token_configured: boolean;
+            /**
+             * Writes Enabled
+             * @default true
+             */
+            writes_enabled: boolean;
+        };
+        /**
+         * GoogleAdsSettingsWrite
+         * @description An **empty string keeps the stored secret**; an explicit ``null`` clears it.
+         *
+         *     The write-only-secret contract every credential screen here uses. A form that posts the
+         *     field blank because the user did not retype it must not wipe a working credential.
+         */
+        GoogleAdsSettingsWrite: {
+            /** Default Login Customer Id */
+            default_login_customer_id?: string | null;
+            /** Developer Token */
+            developer_token?: string | null;
+            /** Writes Enabled */
+            writes_enabled?: boolean | null;
+        };
+        /**
+         * GoogleAdsSnapshotRead
+         * @description Account totals plus its campaigns — the read to start an analysis from.
+         */
+        GoogleAdsSnapshotRead: {
+            account: components["schemas"]["GoogleAdsAccountBrief"];
+            /** Account Summary */
+            account_summary?: {
+                [key: string]: unknown;
+            };
+            /** Account Timezone */
+            account_timezone?: string | null;
+            /**
+             * Campaign Count
+             * @default 0
+             */
+            campaign_count: number;
+            /** Currency */
+            currency?: string | null;
+            /**
+             * Enabled Campaign Count
+             * @default 0
+             */
+            enabled_campaign_count: number;
+            /** Extra */
+            extra?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Fetched At
+             * Format: date-time
+             */
+            fetched_at: string;
+            period?: components["schemas"]["GoogleAdsPeriod"] | null;
+            /**
+             * Row Count
+             * @default 0
+             */
+            row_count: number;
+            /** Rows */
+            rows?: {
+                [key: string]: unknown;
+            }[];
+            /** Total Daily Budget */
+            total_daily_budget?: number | null;
+            totals?: components["schemas"]["GoogleAdsMetrics"] | null;
+            /** Warnings */
+            warnings?: string[];
+        };
         /** GoogleSettingsRead */
         GoogleSettingsRead: {
             /** Automation Connection User Id */
@@ -23784,62 +24479,10 @@ export interface components {
             /** Ssl Verify */
             ssl_verify?: boolean | null;
         };
-        /**
-         * UptimeMonitorCreate
-         * @description A monitor schakl creates and pushes.
-         *
-         *     Every settings field is optional and ``None`` means **inherit** — from the profile, then
-         *     from the built-in defaults (`profiles.resolve`). That is what makes "volg de standaard" a
-         *     thing the form can express rather than a value it has to guess.
-         */
-        UptimeMonitorCreate: {
-            /**
-             * Active
-             * @default true
-             */
-            active: boolean;
-            /** Company Id */
-            company_id?: string | null;
-            /** Domain Id */
-            domain_id?: string | null;
-            /** Hosting Id */
-            hosting_id?: string | null;
-            /**
-             * Instance Id
-             * Format: uuid
-             */
-            instance_id: string;
-            /** Interval Seconds */
-            interval_seconds?: number | null;
-            /**
-             * Monitor Type
-             * @default http
-             */
-            monitor_type: string;
-            /** Name */
-            name: string;
-            /** Parent Id */
-            parent_id?: string | null;
-            /** Port */
-            port?: number | null;
-            /** Profile Id */
-            profile_id?: string | null;
-            /** Retries */
-            retries?: number | null;
-            /** Target */
-            target?: string | null;
-            /** Website Id */
-            website_id?: string | null;
-        };
         /** UptimeMonitorRead */
         UptimeMonitorRead: {
             /** Active */
             active: boolean;
-            /**
-             * Adopted
-             * @default true
-             */
-            adopted: boolean;
             /** Company Id */
             company_id: string | null;
             /** Company Name */
@@ -23851,8 +24494,6 @@ export interface components {
             created_at: string;
             /** Domain Id */
             domain_id: string | null;
-            /** Drift Fields */
-            drift_fields?: string[];
             /** Hosting Id */
             hosting_id: string | null;
             /**
@@ -23883,8 +24524,6 @@ export interface components {
             parent_id: string | null;
             /** Port */
             port: number | null;
-            /** Profile Id */
-            profile_id?: string | null;
             /** Remote Active */
             remote_active?: boolean | null;
             /** Retries */
@@ -23900,37 +24539,6 @@ export interface components {
             updated_at: string;
             /** Website Id */
             website_id: string | null;
-        };
-        /**
-         * UptimeMonitorUpdate
-         * @description Absent means leave alone. Note what is **not** here: `instance_id` and `kuma_monitor_id`.
-         *
-         *     A monitor cannot change instances — that is a delete and a create, at two different Uptime
-         *     Kumas — and its remote id is theirs, not a field anybody edits.
-         */
-        UptimeMonitorUpdate: {
-            /** Company Id */
-            company_id?: string | null;
-            /** Domain Id */
-            domain_id?: string | null;
-            /** Hosting Id */
-            hosting_id?: string | null;
-            /** Interval Seconds */
-            interval_seconds?: number | null;
-            /** Name */
-            name?: string | null;
-            /** Parent Id */
-            parent_id?: string | null;
-            /** Port */
-            port?: number | null;
-            /** Profile Id */
-            profile_id?: string | null;
-            /** Retries */
-            retries?: number | null;
-            /** Target */
-            target?: string | null;
-            /** Website Id */
-            website_id?: string | null;
         };
         /**
          * UptimeProbeResult
@@ -23952,117 +24560,6 @@ export interface components {
             /** Status */
             status: string;
         };
-        /** UptimeProfileCreate */
-        UptimeProfileCreate: {
-            /**
-             * Active
-             * @default true
-             */
-            active: boolean;
-            /** Defaults */
-            defaults?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Is Default
-             * @default false
-             */
-            is_default: boolean;
-            /**
-             * Monitor Type
-             * @default http
-             */
-            monitor_type: string;
-            /** Name */
-            name: string;
-            /** Notification Ids */
-            notification_ids?: number[];
-            /**
-             * Position
-             * @default 0
-             */
-            position: number;
-        };
-        /** UptimeProfileRead */
-        UptimeProfileRead: {
-            /**
-             * Active
-             * @default true
-             */
-            active: boolean;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Defaults */
-            defaults?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /**
-             * Is Default
-             * @default false
-             */
-            is_default: boolean;
-            /**
-             * Monitor Type
-             * @default http
-             */
-            monitor_type: string;
-            /** Name */
-            name: string;
-            /** Notification Ids */
-            notification_ids?: number[];
-            /**
-             * Position
-             * @default 0
-             */
-            position: number;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-        };
-        /** UptimeProfileUpdate */
-        UptimeProfileUpdate: {
-            /** Active */
-            active?: boolean | null;
-            /** Defaults */
-            defaults?: {
-                [key: string]: unknown;
-            } | null;
-            /** Is Default */
-            is_default?: boolean | null;
-            /** Monitor Type */
-            monitor_type?: string | null;
-            /** Name */
-            name?: string | null;
-            /** Notification Ids */
-            notification_ids?: number[] | null;
-            /** Position */
-            position?: number | null;
-        };
-        /**
-         * UptimeReconcile
-         * @description Which way to resolve a drift.
-         *
-         *     Two directions and no default, on purpose: a reconcile that silently picked one would be
-         *     making the tenant's decision for them, and the two are not symmetrical — one overwrites a
-         *     colleague's edit in Uptime Kuma, the other overwrites schakl's record.
-         */
-        UptimeReconcile: {
-            /**
-             * Direction
-             * @enum {string}
-             */
-            direction: "push" | "adopt";
-        };
         /**
          * UptimeSyncReport
          * @description What a read-only sync did, reported rather than silently applied.
@@ -24083,11 +24580,6 @@ export interface components {
              * @default 0
              */
             created: number;
-            /**
-             * Drifted
-             * @default 0
-             */
-            drifted: number;
             /** Error */
             error?: string | null;
             /**
@@ -29462,6 +29954,810 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_google_ads_accounts_api_v1_google_ads_accounts_get: {
+        parameters: {
+            query?: {
+                company_id?: string | null;
+                active_only?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsAccountRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_google_ads_account_api_v1_google_ads_accounts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleAdsAccountCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsAccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_available_google_ads_accounts_api_v1_google_ads_accounts_available_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsPickerRead"];
+                };
+            };
+        };
+    };
+    get_google_ads_account_api_v1_google_ads_accounts__account_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsAccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlink_google_ads_account_api_v1_google_ads_accounts__account_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_google_ads_account_api_v1_google_ads_accounts__account_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleAdsAccountUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsAccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_ads_ad_groups_api_v1_google_ads_accounts__account_id__ad_groups_get: {
+        parameters: {
+            query?: {
+                campaigns?: string[] | null;
+                include_removed?: boolean;
+                limit?: number | null;
+                /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
+                period?: string | null;
+                /** @description YYYY-MM-DD, inclusive. */
+                date_from?: string | null;
+                /** @description YYYY-MM-DD, inclusive. */
+                date_to?: string | null;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_ads_ads_api_v1_google_ads_accounts__account_id__ads_get: {
+        parameters: {
+            query?: {
+                campaigns?: string[] | null;
+                limit?: number | null;
+                /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
+                period?: string | null;
+                /** @description YYYY-MM-DD, inclusive. */
+                date_from?: string | null;
+                /** @description YYYY-MM-DD, inclusive. */
+                date_to?: string | null;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_ads_campaigns_api_v1_google_ads_accounts__account_id__campaigns_get: {
+        parameters: {
+            query?: {
+                /** @description Filter by campaign name, case-insensitive substring match. */
+                campaigns?: string[] | null;
+                /** @description Include removed campaigns. Off by default: a list where a third of the rows cannot be acted on is a worse answer to 'what are we running'. Turn it on to ask what was spent on things since removed. */
+                include_removed?: boolean;
+                limit?: number | null;
+                /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
+                period?: string | null;
+                /** @description YYYY-MM-DD, inclusive. */
+                date_from?: string | null;
+                /** @description YYYY-MM-DD, inclusive. */
+                date_to?: string | null;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_ads_changes_api_v1_google_ads_accounts__account_id__changes_get: {
+        parameters: {
+            query?: {
+                limit?: number | null;
+                /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
+                period?: string | null;
+                /** @description YYYY-MM-DD, inclusive. */
+                date_from?: string | null;
+                /** @description YYYY-MM-DD, inclusive. */
+                date_to?: string | null;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_ads_conversion_health_api_v1_google_ads_accounts__account_id__conversions_get: {
+        parameters: {
+            query?: {
+                limit?: number | null;
+                /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
+                period?: string | null;
+                /** @description YYYY-MM-DD, inclusive. */
+                date_from?: string | null;
+                /** @description YYYY-MM-DD, inclusive. */
+                date_to?: string | null;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_ads_devices_api_v1_google_ads_accounts__account_id__devices_get: {
+        parameters: {
+            query?: {
+                campaigns?: string[] | null;
+                limit?: number | null;
+                /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
+                period?: string | null;
+                /** @description YYYY-MM-DD, inclusive. */
+                date_from?: string | null;
+                /** @description YYYY-MM-DD, inclusive. */
+                date_to?: string | null;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_ads_geo_api_v1_google_ads_accounts__account_id__geo_get: {
+        parameters: {
+            query?: {
+                campaigns?: string[] | null;
+                limit?: number | null;
+                /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
+                period?: string | null;
+                /** @description YYYY-MM-DD, inclusive. */
+                date_from?: string | null;
+                /** @description YYYY-MM-DD, inclusive. */
+                date_to?: string | null;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_ads_keyword_ideas_api_v1_google_ads_accounts__account_id__keyword_ideas_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleAdsKeywordIdeaRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_ads_keywords_api_v1_google_ads_accounts__account_id__keywords_get: {
+        parameters: {
+            query?: {
+                campaigns?: string[] | null;
+                include_removed?: boolean;
+                limit?: number | null;
+                /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
+                period?: string | null;
+                /** @description YYYY-MM-DD, inclusive. */
+                date_from?: string | null;
+                /** @description YYYY-MM-DD, inclusive. */
+                date_to?: string | null;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_ads_negatives_api_v1_google_ads_accounts__account_id__negatives_get: {
+        parameters: {
+            query?: {
+                limit?: number | null;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_ads_query_api_v1_google_ads_accounts__account_id__query_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleAdsQueryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsQueryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_ads_recommendations_api_v1_google_ads_accounts__account_id__recommendations_get: {
+        parameters: {
+            query?: {
+                limit?: number | null;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_ads_search_terms_api_v1_google_ads_accounts__account_id__search_terms_get: {
+        parameters: {
+            query?: {
+                campaigns?: string[] | null;
+                /** @description Only terms that cost at least this, in account currency. */
+                min_cost?: number | null;
+                min_clicks?: number | null;
+                limit?: number | null;
+                /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
+                period?: string | null;
+                /** @description YYYY-MM-DD, inclusive. */
+                date_from?: string | null;
+                /** @description YYYY-MM-DD, inclusive. */
+                date_to?: string | null;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_ads_snapshot_api_v1_google_ads_accounts__account_id__snapshot_get: {
+        parameters: {
+            query?: {
+                /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
+                period?: string | null;
+                /** @description YYYY-MM-DD, inclusive. */
+                date_from?: string | null;
+                /** @description YYYY-MM-DD, inclusive. */
+                date_to?: string | null;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsSnapshotRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_google_ads_account_api_v1_google_ads_accounts__account_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsAccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_google_ads_settings_api_v1_google_ads_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsSettingsRead"];
+                };
+            };
+        };
+    };
+    save_google_ads_settings_api_v1_google_ads_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleAdsSettingsWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsSettingsRead"];
                 };
             };
             /** @description Validation Error */
@@ -44436,37 +45732,6 @@ export interface operations {
             };
         };
     };
-    uptime_hook_api_v1_uptime_hook__token__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                token: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_instances_api_v1_uptime_instances_get: {
         parameters: {
             query?: never;
@@ -44750,39 +46015,6 @@ export interface operations {
             };
         };
     };
-    create_monitor_api_v1_uptime_monitors_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UptimeMonitorCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UptimeMonitorRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     get_monitor_api_v1_uptime_monitors__monitor_id__get: {
         parameters: {
             query?: never;
@@ -44801,287 +46033,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UptimeMonitorRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_monitor_api_v1_uptime_monitors__monitor_id__delete: {
-        parameters: {
-            query?: {
-                /** @description Also delete the monitor in Uptime Kuma. Defaults to false: 'stop tracking this here' and 'stop watching this client's site' are different decisions. */
-                at_kuma?: boolean;
-            };
-            header?: never;
-            path: {
-                monitor_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_monitor_api_v1_uptime_monitors__monitor_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                monitor_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UptimeMonitorUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UptimeMonitorRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    pause_monitor_api_v1_uptime_monitors__monitor_id__pause_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                monitor_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UptimeMonitorRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    reconcile_monitor_api_v1_uptime_monitors__monitor_id__reconcile_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                monitor_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UptimeReconcile"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UptimeMonitorRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    resume_monitor_api_v1_uptime_monitors__monitor_id__resume_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                monitor_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UptimeMonitorRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_profiles_api_v1_uptime_profiles_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UptimeProfileRead"][];
-                };
-            };
-        };
-    };
-    create_profile_api_v1_uptime_profiles_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UptimeProfileCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UptimeProfileRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_profile_api_v1_uptime_profiles__profile_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                profile_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_profile_api_v1_uptime_profiles__profile_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                profile_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UptimeProfileUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UptimeProfileRead"];
                 };
             };
             /** @description Validation Error */

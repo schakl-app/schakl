@@ -23,6 +23,8 @@ client is doing*, this answers *what the advertising is doing and what to change
 
 from __future__ import annotations
 
+from app.modules.google_ads.mcp import GOOGLE_ADS_MCP_TOOLS
+from app.modules.google_ads.panels import google_ads_company_panel
 from app.modules.google_ads.permissions import GOOGLE_ADS_PERMISSIONS
 from app.modules.google_ads.provider import install as install_provider
 from app.modules.google_ads.router import router
@@ -38,6 +40,10 @@ module = ModuleDescriptor(
     # campaigns did last month, and it certainly must not leave a campaign half-edited.
     sku="google_ads",
     permissions=GOOGLE_ADS_PERMISSIONS,
+    panels=[google_ads_company_panel],
+    # Curated tools *beside* the ones every route already contributes: the three shapes where a
+    # single call beats three plus arithmetic the model should not be doing.
+    mcp_tools=GOOGLE_ADS_MCP_TOOLS,
 )
 
 # The core seam's provider. Registered at import — the same shape ``cloudflare`` uses for

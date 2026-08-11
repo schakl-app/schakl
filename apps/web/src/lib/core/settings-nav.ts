@@ -433,6 +433,19 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     module: "marketing",
   },
   {
+    // Its own card rather than a section of Marketing: the developer token identifies the
+    // *agency* to Google, the account links decide whose money is being spent, and the write
+    // switch stops every mutating call at once. All three are decisions an owner makes, and
+    // none of them belongs behind a dashboard's settings.
+    key: "google_ads",
+    href: "/settings/google-ads",
+    titleKey: "settings.google_ads.title",
+    subtitleKey: "settings.google_ads.subtitle",
+    group: "integrations",
+    permissions: ["google_ads.settings.manage"],
+    module: "google_ads",
+  },
+  {
     // The house voice, the document templates and the org-wide schedule (#300). A client's own
     // profile is *not* here — it belongs on the client, beside everything else about them.
     key: "reporting",
