@@ -17,22 +17,45 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Response, status
 
 from app.core.googleads import format_customer_id
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
+from app.modules.google_ads.decisions import GoogleAdsDecisionService, GoogleAdsPolicyService
 from app.modules.google_ads.models import GoogleAdsAccount
 from app.modules.google_ads.reads import GoogleAdsReadService
 from app.modules.google_ads.schemas import (
+    GoogleAdsAccountBrief,
     GoogleAdsAccountCreate,
     GoogleAdsAccountRead,
     GoogleAdsAccountUpdate,
+    GoogleAdsAdCreate,
+    GoogleAdsAdGroupCreate,
+    GoogleAdsAdGroupUpdate,
+    GoogleAdsAdUpdate,
     GoogleAdsAvailableAccount,
+    GoogleAdsBudgetCreate,
+    GoogleAdsBudgetUpdate,
+    GoogleAdsCampaignCreate,
+    GoogleAdsCampaignUpdate,
+    GoogleAdsDecisionCreate,
+    GoogleAdsDecisionPage,
+    GoogleAdsDecisionRead,
     GoogleAdsKeywordIdeaRequest,
+    GoogleAdsKeywordsAdd,
+    GoogleAdsKeywordsRemove,
+    GoogleAdsKeywordUpdate,
+    GoogleAdsMutationRead,
+    GoogleAdsNegativeListCreate,
+    GoogleAdsNegativesAdd,
+    GoogleAdsNegativesRemove,
     GoogleAdsPickerRead,
+    GoogleAdsPolicyRead,
+    GoogleAdsPolicyWrite,
     GoogleAdsQueryRead,
     GoogleAdsQueryRequest,
     GoogleAdsReport,
@@ -42,6 +65,7 @@ from app.modules.google_ads.schemas import (
     GoogleAdsTrendRead,
 )
 from app.modules.google_ads.service import GoogleAdsService
+from app.modules.google_ads.writes import GoogleAdsWriteService
 
 logger = logging.getLogger("schakl.googleads")
 
@@ -652,3 +676,616 @@ async def google_ads_query(
     WHERE segments.date DURING LAST_30_DAYS ORDER BY metrics.cost_micros DESC`
     """
     return await GoogleAdsReadService(ctx).query(account_id, payload)
+
+
+# --- the policy, and what has already been decided ------------------------------------------- #
+#
+# Phase 4: the records that turn the read surface from a data pipe into something an agent can
+# reason with. Reading the log is `account.read` — it is context every proposal needs, and the
+# curated tools subtract it. *Recording* a standing decision is `policy.manage`, because it
+# changes what will be proposed next time, which the permission's own docstring says is not a
+# read. The write routes below record their own decisions under their own keys: recording is a
+# side effect of a write the caller was already allowed to make, never its own grant (§16).
+
+
+def _policy_read(row: Any, resolved: Any, account_id: uuid.UUID | None) -> GoogleAdsPolicyRead:
+    stored = row is not None
+    return GoogleAdsPolicyRead(
+        account_id=account_id,
+        stored=stored,
+        protected_terms=list(getattr(row, "protected_terms", []) or []),
+        banned_phrases=list(getattr(row, "banned_phrases", []) or []),
+        always_exclude=list(getattr(row, "always_exclude", []) or []),
+        max_daily_budget=_number(getattr(row, "max_daily_budget", None)),
+        max_budget_increase_pct=_number(getattr(row, "max_budget_increase_pct", None)),
+        max_cpc=_number(getattr(row, "max_cpc", None)),
+        waste_min_cost=_number(getattr(row, "waste_min_cost", None)),
+        waste_min_clicks=getattr(row, "waste_min_clicks", None),
+        steering=getattr(row, "steering", "") or "",
+        ad_copy_rules=getattr(row, "ad_copy_rules", "") or "",
+        resolved=resolved.as_payload(),
+    )
+
+
+def _number(raw: Any) -> float | None:
+    """A ``Numeric`` column as a float. ``None`` stays ``None`` — it means *inherit*, not zero."""
+    return None if raw is None else float(raw)
+
+
+@router.get(
+    "/policy",
+    response_model=GoogleAdsPolicyRead,
+    dependencies=[require_permission("google_ads.policy.manage")],
+)
+async def get_google_ads_house_policy(
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsPolicyRead:
+    """The agency's own standing Ads rules, applied to every account that does not override them.
+
+    Protected terms and banned phrases here are **added** to each account's rather than replaced
+    by them; the numeric ceilings are inherited and an account may set its own. `resolved` shows
+    what an account with no policy of its own would get.
+    """
+    service = GoogleAdsPolicyService(ctx)
+    return _policy_read(await service.get(None), await service.resolve(None), None)
+
+
+@router.put(
+    "/policy",
+    response_model=GoogleAdsPolicyRead,
+    dependencies=[require_permission("google_ads.policy.manage")],
+)
+async def save_google_ads_house_policy(
+    payload: GoogleAdsPolicyWrite, ctx: RequestContext = Depends(require_context)
+) -> GoogleAdsPolicyRead:
+    """Set the agency's standing rules. Fields you leave out are not touched."""
+    service = GoogleAdsPolicyService(ctx)
+    await service.save(None, payload.model_dump(include=payload.model_fields_set))
+    return _policy_read(await service.get(None), await service.resolve(None), None)
+
+
+@router.get(
+    "/accounts/{account_id}/policy",
+    response_model=GoogleAdsPolicyRead,
+    dependencies=[require_permission("google_ads.policy.manage")],
+)
+async def get_google_ads_policy(
+    account_id: uuid.UUID, ctx: RequestContext = Depends(require_context)
+) -> GoogleAdsPolicyRead:
+    """The rules that bind writes to this account — **read this before proposing anything**.
+
+    `resolved` is what is actually enforced: the agency's house policy and this account's, folded
+    together. `protected_terms` may never be excluded, `banned_phrases` may not appear in ad copy,
+    and the three ceilings refuse a budget or a bid outright. The prose fields are advice, and the
+    agency's and the account's are kept apart because they are different kinds of claim.
+    """
+    service = GoogleAdsPolicyService(ctx)
+    await GoogleAdsService(ctx).get_account(account_id)
+    return _policy_read(
+        await service.get(account_id), await service.resolve(account_id), account_id
+    )
+
+
+@router.put(
+    "/accounts/{account_id}/policy",
+    response_model=GoogleAdsPolicyRead,
+    dependencies=[require_permission("google_ads.policy.manage")],
+)
+async def save_google_ads_policy(
+    account_id: uuid.UUID,
+    payload: GoogleAdsPolicyWrite,
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsPolicyRead:
+    """Set this account's own rules.
+
+    A field left out of the request is not touched; a field sent explicitly as `null` goes back to
+    inheriting the agency's house value. Those are different instructions and the payload alone
+    cannot tell them apart, which is why only what you send is read.
+    """
+    service = GoogleAdsPolicyService(ctx)
+    await service.save(account_id, payload.model_dump(include=payload.model_fields_set))
+    return _policy_read(
+        await service.get(account_id), await service.resolve(account_id), account_id
+    )
+
+
+@router.get(
+    "/accounts/{account_id}/decisions",
+    response_model=GoogleAdsDecisionPage,
+    dependencies=[require_permission("google_ads.account.read")],
+)
+async def list_google_ads_decisions(
+    account_id: uuid.UUID,
+    subject_type: str | None = Query(default=None),
+    decision: str | None = Query(default=None),
+    include_withdrawn: bool = Query(default=False),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    count: bool = Query(default=True, description="Set false to skip the total."),
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsDecisionPage:
+    """What has already been decided about this account — **check this before proposing a change**.
+
+    Newest first, and the newest row about a subject is the one that stands: a term excluded in
+    March and un-excluded in June has two entries and the June one wins. Withdrawn and expired
+    entries no longer stand.
+
+    The point of this list is that a recommendation is not made twice. A search term somebody
+    deliberately kept, with the reason written down, is not a candidate for exclusion next month.
+    """
+    await GoogleAdsService(ctx).get_account(account_id)
+    rows, total = await GoogleAdsDecisionService(ctx).page(
+        account_id,
+        limit=limit,
+        offset=offset,
+        subject_type=subject_type,
+        decision=decision,
+        include_withdrawn=include_withdrawn,
+        count=count,
+    )
+    return GoogleAdsDecisionPage(
+        items=[GoogleAdsDecisionRead.model_validate(row) for row in rows], total=total
+    )
+
+
+@router.post(
+    "/accounts/{account_id}/decisions",
+    response_model=GoogleAdsDecisionRead | None,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[require_permission("google_ads.policy.manage")],
+)
+async def record_google_ads_decision(
+    account_id: uuid.UUID,
+    payload: GoogleAdsDecisionCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsDecisionRead | None:
+    """Write down a judgement that changes nothing in Google.
+
+    The one this exists for is `kept`: "we looked at this search term and chose not to exclude
+    it". Nothing in Google records that, which is exactly why the same term is proposed again next
+    month, and the month after.
+
+    Returns `null` when the same decision already stood — nothing was appended, and saying so is
+    more useful than claiming a write.
+    """
+    await GoogleAdsService(ctx).get_account(account_id)
+    ctx.require("google_ads.policy.manage")
+    row = await GoogleAdsDecisionService(ctx).record(
+        account_id,
+        subject_type=payload.subject_type,
+        subject=payload.subject,
+        decision=payload.decision,
+        scope=payload.scope,
+        reason=payload.reason,
+        expires_on=payload.expires_on,
+        source="manual",
+    )
+    return GoogleAdsDecisionRead.model_validate(row) if row is not None else None
+
+
+@router.delete(
+    "/accounts/{account_id}/decisions/{decision_id}",
+    response_model=GoogleAdsDecisionRead,
+    dependencies=[require_permission("google_ads.policy.manage")],
+)
+async def withdraw_google_ads_decision(
+    account_id: uuid.UUID,
+    decision_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsDecisionRead:
+    """Unsay a decision. The row survives, marked withdrawn and by whom.
+
+    A delete would take the reason with it, and "we decided this and then changed our minds" is
+    the sentence this log exists to be able to make.
+    """
+    await GoogleAdsService(ctx).get_account(account_id)
+    row = await GoogleAdsDecisionService(ctx).withdraw(account_id, decision_id)
+    return GoogleAdsDecisionRead.model_validate(row)
+
+
+# --- the write surface -------------------------------------------------------------------------- #
+#
+# Phase 5. Four permissions, not one, because this surface is reached over MCP by an agent holding
+# an API key and a key carries permission *scopes*: split, an agency can mint a key that tidies
+# search terms overnight and can never touch a budget. Beside them stands one instance-wide kill
+# switch (`google_ads_settings.writes_enabled`) — the permission decides who, the switch decides
+# whether, and an owner who has just watched an agent do something surprising needs one lever.
+#
+# Every one of these takes `validate_only`. It is the real dry run: Google validates against the
+# actual account structure and applies nothing, which a test account cannot do because it serves
+# no ads and therefore holds no campaigns worth validating against.
+
+
+def _mutation(outcome: Any, account: GoogleAdsAccount) -> GoogleAdsMutationRead:
+    return GoogleAdsMutationRead(
+        account=GoogleAdsAccountBrief(
+            id=account.id,
+            customer_id=account.customer_id,
+            customer_id_formatted=format_customer_id(account.customer_id),
+            descriptive_name=account.descriptive_name,
+            company_id=account.company_id,
+        ),
+        resource=outcome.resource,
+        validate_only=outcome.validate_only,
+        requested=outcome.requested,
+        applied=outcome.applied,
+        results=outcome.results,
+        skipped=outcome.skipped,
+        warnings=list(dict.fromkeys(outcome.warnings)),
+        fetched_at=datetime.now(UTC),
+    )
+
+
+@router.post(
+    "/accounts/{account_id}/budgets",
+    response_model=GoogleAdsMutationRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[require_permission("google_ads.budget.write")],
+)
+async def create_google_ads_budget(
+    account_id: uuid.UUID,
+    payload: GoogleAdsBudgetCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsMutationRead:
+    """Create a daily budget, in the account's own currency.
+
+    A budget on its own spends nothing — a campaign has to be attached to it. Note what does
+    *not* bound this: the policy's relative ceiling is a claim about a change, and a new budget
+    has no previous amount, so unless the account sets `max_daily_budget` the only limit here is
+    the permission. Check `GET /policy` first.
+    """
+    outcome, account = await GoogleAdsWriteService(ctx).create_budget(
+        account_id,
+        name=payload.name,
+        amount=payload.amount,
+        shared=payload.shared,
+        validate_only=payload.validate_only,
+    )
+    return _mutation(outcome, account)
+
+
+@router.patch(
+    "/accounts/{account_id}/budgets/{budget_id}",
+    response_model=GoogleAdsMutationRead,
+    dependencies=[require_permission("google_ads.budget.write")],
+)
+async def update_google_ads_budget(
+    account_id: uuid.UUID,
+    budget_id: str,
+    payload: GoogleAdsBudgetUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsMutationRead:
+    """Change a daily budget — the one write where being wrong has already cost money.
+
+    Two limits apply: an absolute ceiling if the policy sets one, and how far a single change may
+    *raise* the budget (by default it may at most double). A decrease is never refused.
+
+    If the budget is shared, changing it moves **every campaign using it**, and the response says
+    so in `warnings`. Read the campaigns list first if you are not sure.
+    """
+    outcome, account = await GoogleAdsWriteService(ctx).update_budget(
+        account_id,
+        budget_id,
+        amount=payload.amount,
+        name=payload.name,
+        validate_only=payload.validate_only,
+    )
+    return _mutation(outcome, account)
+
+
+@router.post(
+    "/accounts/{account_id}/campaigns",
+    response_model=GoogleAdsMutationRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[require_permission("google_ads.campaign.write")],
+)
+async def create_google_ads_campaign(
+    account_id: uuid.UUID,
+    payload: GoogleAdsCampaignCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsMutationRead:
+    """Create a campaign. It is always **paused** and spends nothing until somebody enables it.
+
+    Google's own default for a new campaign is ENABLED; this route overrides that, because a
+    campaign created here has no ad groups, no keywords and no ads yet.
+
+    It needs a `budget_id` that already exists — creating a budget is a separate act behind a
+    separate permission, and it is also what keeps this atomic: two mutations cannot be one
+    transaction, so a campaign that failed after its budget succeeded would leave an orphan.
+    """
+    outcome, account = await GoogleAdsWriteService(ctx).create_campaign(
+        account_id,
+        name=payload.name,
+        budget_id=payload.budget_id,
+        channel=payload.channel,
+        target_content_network=payload.target_content_network,
+        validate_only=payload.validate_only,
+    )
+    return _mutation(outcome, account)
+
+
+@router.patch(
+    "/accounts/{account_id}/campaigns/{campaign_id}",
+    response_model=GoogleAdsMutationRead,
+    dependencies=[require_permission("google_ads.campaign.write")],
+)
+async def update_google_ads_campaign(
+    account_id: uuid.UUID,
+    campaign_id: str,
+    payload: GoogleAdsCampaignUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsMutationRead:
+    """Pause, resume, remove or rename a campaign. `status` is ENABLED, PAUSED or REMOVED.
+
+    REMOVED is permanent at Google: a removed campaign cannot be brought back, only recreated.
+    It does not move a campaign to a different budget — that changes what it spends, so it is a
+    budget decision and lives behind the budget permission.
+    """
+    outcome, account = await GoogleAdsWriteService(ctx).update_campaign(
+        account_id,
+        campaign_id,
+        status=payload.status,
+        name=payload.name,
+        validate_only=payload.validate_only,
+    )
+    return _mutation(outcome, account)
+
+
+@router.post(
+    "/accounts/{account_id}/ad-groups",
+    response_model=GoogleAdsMutationRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[require_permission("google_ads.campaign.write")],
+)
+async def create_google_ads_ad_group(
+    account_id: uuid.UUID,
+    payload: GoogleAdsAdGroupCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsMutationRead:
+    """Create an ad group inside an existing campaign. Paused, like everything created here."""
+    outcome, account = await GoogleAdsWriteService(ctx).create_ad_group(
+        account_id,
+        name=payload.name,
+        campaign_id=payload.campaign_id,
+        cpc_bid=payload.cpc_bid,
+        validate_only=payload.validate_only,
+    )
+    return _mutation(outcome, account)
+
+
+@router.patch(
+    "/accounts/{account_id}/ad-groups/{ad_group_id}",
+    response_model=GoogleAdsMutationRead,
+    dependencies=[require_permission("google_ads.campaign.write")],
+)
+async def update_google_ads_ad_group(
+    account_id: uuid.UUID,
+    ad_group_id: str,
+    payload: GoogleAdsAdGroupUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsMutationRead:
+    """Pause, resume, remove, rename or re-bid an ad group.
+
+    `cpc_bid` only does anything where the campaign bids manually; under an automated strategy
+    Google ignores it, and this route does not pretend otherwise.
+    """
+    outcome, account = await GoogleAdsWriteService(ctx).update_ad_group(
+        account_id,
+        ad_group_id,
+        status=payload.status,
+        name=payload.name,
+        cpc_bid=payload.cpc_bid,
+        validate_only=payload.validate_only,
+    )
+    return _mutation(outcome, account)
+
+
+@router.post(
+    "/accounts/{account_id}/keywords",
+    response_model=GoogleAdsMutationRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[require_permission("google_ads.keyword.write")],
+)
+async def add_google_ads_keywords(
+    account_id: uuid.UUID,
+    payload: GoogleAdsKeywordsAdd,
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsMutationRead:
+    """Add positive keywords to one ad group. `match_type` is EXACT, PHRASE or BROAD.
+
+    Sent as one batch with partial failure on, so a keyword Google refuses does not take the
+    others down with it: `results` carries one entry per keyword with its own outcome, and
+    `skipped` carries the ones the policy refused before Google saw them.
+    """
+    outcome, account = await GoogleAdsWriteService(ctx).add_keywords(
+        account_id,
+        ad_group_id=payload.ad_group_id,
+        keywords=payload.keywords,
+        validate_only=payload.validate_only,
+    )
+    return _mutation(outcome, account)
+
+
+@router.patch(
+    "/accounts/{account_id}/keywords",
+    response_model=GoogleAdsMutationRead,
+    dependencies=[require_permission("google_ads.keyword.write")],
+)
+async def update_google_ads_keyword(
+    account_id: uuid.UUID,
+    payload: GoogleAdsKeywordUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsMutationRead:
+    """Pause, resume, remove or re-bid one keyword.
+
+    Its **text and match type cannot be changed** — Google marks them immutable. Correcting a
+    keyword means removing it and adding the new one, which is two decisions.
+    """
+    outcome, account = await GoogleAdsWriteService(ctx).update_keyword(
+        account_id,
+        ad_group_id=payload.ad_group_id,
+        criterion_id=payload.criterion_id,
+        status=payload.status,
+        cpc_bid=payload.cpc_bid,
+        validate_only=payload.validate_only,
+    )
+    return _mutation(outcome, account)
+
+
+@router.post(
+    "/accounts/{account_id}/keywords/remove",
+    response_model=GoogleAdsMutationRead,
+    dependencies=[require_permission("google_ads.keyword.write")],
+)
+async def remove_google_ads_keywords(
+    account_id: uuid.UUID,
+    payload: GoogleAdsKeywordsRemove,
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsMutationRead:
+    """Remove keywords from an ad group, by criterion id.
+
+    A POST rather than a DELETE because it takes a list in the body, and because removing forty
+    keywords one request at a time is how a tool call becomes a rate limit.
+    """
+    outcome, account = await GoogleAdsWriteService(ctx).remove_keywords(
+        account_id,
+        ad_group_id=payload.ad_group_id,
+        criterion_ids=payload.criterion_ids,
+        validate_only=payload.validate_only,
+    )
+    return _mutation(outcome, account)
+
+
+@router.post(
+    "/accounts/{account_id}/negatives",
+    response_model=GoogleAdsMutationRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[require_permission("google_ads.negative.write")],
+)
+async def add_google_ads_negatives(
+    account_id: uuid.UUID,
+    payload: GoogleAdsNegativesAdd,
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsMutationRead:
+    """Exclude search terms — and record the ones you deliberately did **not** exclude.
+
+    `terms` are written to Google at `level` (`ad_group`, `campaign` or `shared_set`) under
+    `parent_id`. `keep` writes nothing: it records the other half of the same review, so those
+    terms are not proposed again next month. Send both from one pass over a search-terms list.
+
+    A term the account's policy protects is **skipped**, not applied, and `skipped` names the
+    protected term it would have blocked. Blocking is judged the way Google matches — under the
+    proposed exclusion's own match type — so an EXACT negative that cannot reach a protected term
+    is allowed.
+    """
+    outcome, account = await GoogleAdsWriteService(ctx).add_negatives(
+        account_id,
+        level=payload.level,
+        parent_id=payload.parent_id,
+        terms=payload.terms,
+        keep=payload.keep,
+        validate_only=payload.validate_only,
+    )
+    return _mutation(outcome, account)
+
+
+@router.post(
+    "/accounts/{account_id}/negatives/remove",
+    response_model=GoogleAdsMutationRead,
+    dependencies=[require_permission("google_ads.negative.write")],
+)
+async def remove_google_ads_negatives(
+    account_id: uuid.UUID,
+    payload: GoogleAdsNegativesRemove,
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsMutationRead:
+    """Take exclusions back off, by criterion id, at the level they were added."""
+    outcome, account = await GoogleAdsWriteService(ctx).remove_negatives(
+        account_id,
+        level=payload.level,
+        parent_id=payload.parent_id,
+        criterion_ids=payload.criterion_ids,
+        validate_only=payload.validate_only,
+    )
+    return _mutation(outcome, account)
+
+
+@router.post(
+    "/accounts/{account_id}/negative-lists",
+    response_model=GoogleAdsMutationRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[require_permission("google_ads.negative.write")],
+)
+async def create_google_ads_negative_list(
+    account_id: uuid.UUID,
+    payload: GoogleAdsNegativeListCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsMutationRead:
+    """Create a shared negative-keyword list and optionally attach it to campaigns.
+
+    Two operations that cannot be one transaction. If the attach half fails the list still exists,
+    blocks nothing, and re-running attaches it — `warnings` says so. Add terms to it afterwards
+    with `POST /negatives` at level `shared_set`.
+    """
+    outcome, account = await GoogleAdsWriteService(ctx).create_negative_list(
+        account_id,
+        name=payload.name,
+        campaign_ids=payload.campaign_ids,
+        validate_only=payload.validate_only,
+    )
+    return _mutation(outcome, account)
+
+
+@router.post(
+    "/accounts/{account_id}/ads",
+    response_model=GoogleAdsMutationRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[require_permission("google_ads.campaign.write")],
+)
+async def create_google_ads_ad(
+    account_id: uuid.UUID,
+    payload: GoogleAdsAdCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsMutationRead:
+    """Create a responsive search ad. It is **paused** until somebody reads it and enables it.
+
+    3–15 headlines of at most 30 characters, 2–4 descriptions of at most 90, at least one final
+    URL. Those limits are checked here, so a refusal names the field rather than an operation
+    index. Anything the account's policy lists as a banned phrase is refused outright.
+    """
+    outcome, account = await GoogleAdsWriteService(ctx).create_ad(
+        account_id,
+        ad_group_id=payload.ad_group_id,
+        headlines=payload.headlines,
+        descriptions=payload.descriptions,
+        final_urls=payload.final_urls,
+        path1=payload.path1,
+        path2=payload.path2,
+        validate_only=payload.validate_only,
+    )
+    return _mutation(outcome, account)
+
+
+@router.patch(
+    "/accounts/{account_id}/ads",
+    response_model=GoogleAdsMutationRead,
+    dependencies=[require_permission("google_ads.campaign.write")],
+)
+async def update_google_ads_ad(
+    account_id: uuid.UUID,
+    payload: GoogleAdsAdUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsMutationRead:
+    """Pause, resume or remove one ad.
+
+    Status only. An ad's creative is immutable at Google — its performance history belongs to its
+    text — so changing a headline means creating a new ad and removing this one.
+    """
+    outcome, account = await GoogleAdsWriteService(ctx).update_ad(
+        account_id,
+        ad_group_id=payload.ad_group_id,
+        ad_id=payload.ad_id,
+        status=payload.status,
+        validate_only=payload.validate_only,
+    )
+    return _mutation(outcome, account)

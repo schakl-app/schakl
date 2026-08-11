@@ -28,6 +28,8 @@ from app.core.ai.tools import AIToolSpec, Source, ToolResult
 from app.core.googleads import AdsNotConfigured, format_customer_id
 from app.core.periods import ComparePeriod, compare_window
 from app.errors import AppError
+from app.modules.google_ads import policy as policy_rules
+from app.modules.google_ads.decisions import GoogleAdsDecisionService, GoogleAdsPolicyService
 from app.modules.google_ads.reads import GoogleAdsReadService
 from app.modules.google_ads.service import GoogleAdsService
 
@@ -139,26 +141,80 @@ def _delta(now: Any, then: Any) -> dict[str, Any] | None:
     }
 
 
-async def _wasted_spend(ctx: Any, args: dict[str, Any]) -> ToolResult:
-    """Search terms that cost money, converted nothing, and are **not already excluded**.
+async def _policy(ctx: Any, args: dict[str, Any]) -> ToolResult:
+    """The rules that bind this account, and what has already been settled about it.
 
-    The last clause is the whole value of doing this in one tool. A model asked to combine a
-    search-terms list with a negatives list will happily propose excluding something that is
-    already excluded — and the resulting "recommendation" wastes an account manager's afternoon.
-    Matching is exact-text and case-insensitive, which under-claims rather than over-claims: a
-    phrase negative that would already catch a term is not detected here, so a proposal may be
-    redundant, but nothing already blocked by an identical negative is ever offered.
+    One call rather than two because they answer one question — *what am I allowed to propose,
+    and what has somebody already said about it?* — and because a model that has to remember to
+    make the second call is a model that will sometimes not.
+    """
+    account_id = _account_arg(args)
+    account = await GoogleAdsService(ctx).get_account(account_id)
+    policy = await GoogleAdsPolicyService(ctx).resolve(account_id)
+    standing = await GoogleAdsDecisionService(ctx).standing(account_id)
+    return ToolResult(
+        data={
+            "account": {"account_id": str(account.id), "name": account.descriptive_name},
+            "currency": account.currency_code,
+            "policy": policy.as_payload(),
+            "standing_decisions": [
+                {
+                    "subject": item.subject,
+                    "scope": item.scope,
+                    "decision": item.decision,
+                    "reason": item.reason,
+                    "decided_by": item.decided_by,
+                }
+                for item in list(standing.values())[:200]
+            ],
+            "warnings": list(policy.warnings),
+        },
+        sources=(
+            Source(
+                type="google_ads_account", id=str(account.id), label=account.descriptive_name
+            ),
+        ),
+    )
+
+
+async def _wasted_spend(ctx: Any, args: dict[str, Any]) -> ToolResult:
+    """Search terms that cost money, converted nothing, and nobody has already ruled on.
+
+    That last clause is the whole value of doing this in one tool, and it is now three
+    subtractions rather than one:
+
+    * terms already **excluded** in Google (`match_status`, plus an exact-text pass over every
+      negative);
+    * terms the account's policy **protects** — proposing an exclusion that would stop the
+      client's own brand from serving is the single most expensive mistake available here, and it
+      is silent for weeks;
+    * terms somebody has already **decided to keep**, with a reason written down. Without that,
+      the same shortlist is produced every month until the account manager stops reading it.
+
+    Exact-text matching under-claims rather than over-claims: a phrase negative that would already
+    catch a term is not detected, so a proposal may be redundant, but nothing already blocked by
+    an identical negative is offered.
     """
     account_id = _account_arg(args)
     period = str(args.get("period") or "30d")
+    policy = await GoogleAdsPolicyService(ctx).resolve(account_id)
     try:
-        min_cost = float(args.get("min_cost") or 0)
+        min_cost = float(args.get("min_cost") or 0) or None
     except (TypeError, ValueError):
-        min_cost = 0.0
+        min_cost = None
+    # The policy's threshold is the default and the caller's argument wins: an agency that has
+    # written down "below €5 it is not worth an exclusion" should not have to repeat it in every
+    # tool call, and an operator asking a narrower question should not be overruled by a setting.
+    min_cost = min_cost if min_cost is not None else policy.waste_min_cost
     service = GoogleAdsReadService(ctx)
     try:
         terms = await service.search_terms(
-            account_id, period, None, None, min_cost=min_cost or None
+            account_id,
+            period,
+            None,
+            None,
+            min_cost=min_cost,
+            min_clicks=policy.waste_min_clicks,
         )
     except AdsNotConfigured as exc:
         return ToolResult(data={"error": exc.message_key})
@@ -168,16 +224,30 @@ async def _wasted_spend(ctx: Any, args: dict[str, Any]) -> ToolResult:
         for row in negatives.rows
         if row.get("keyword")
     }
-    candidates = [
-        row
-        for row in terms.rows
+    protected: list[str] = []
+    candidates: list[dict[str, Any]] = []
+    for row in terms.rows:
+        term = str(row.get("search_term") or "")
+        if float(row.get("conversions") or 0):
+            continue
         # `match_status` is Google's own answer to "has somebody already decided about this?"
         # — ADDED_EXCLUDED and EXCLUDED both mean yes.
-        if not float(row.get("conversions") or 0)
-        and str(row.get("match_status") or "") not in {"EXCLUDED", "ADDED_EXCLUDED"}
-        and str(row.get("search_term") or "").casefold() not in blocked
-    ]
+        if str(row.get("match_status") or "") in {"EXCLUDED", "ADDED_EXCLUDED"}:
+            continue
+        if term.casefold() in blocked:
+            continue
+        # An exclusion on a search term is written EXACT, so that is the match type the guard is
+        # asked about: a term that merely *contains* a protected word can be excluded safely.
+        if policy_rules.protected_hit(policy, term, "EXACT") is not None:
+            protected.append(term)
+            continue
+        if row.get("decided"):
+            continue
+        candidates.append(row)
     candidates.sort(key=lambda row: float(row.get("cost") or 0), reverse=True)
+    warnings = [*terms.warnings, "google_ads.warning.wasted_spend_is_a_shortlist"]
+    if protected:
+        warnings.append("google_ads.warning.protected_terms_withheld")
     return ToolResult(
         data={
             "account": terms.account.model_dump(mode="json"),
@@ -186,11 +256,11 @@ async def _wasted_spend(ctx: Any, args: dict[str, Any]) -> ToolResult:
             "wasted_cost": round(sum(float(r.get("cost") or 0) for r in candidates), 2),
             "terms": candidates[:50],
             "already_excluded_count": len(blocked),
-            "warnings": [
-                *terms.warnings,
-                # Said out loud so the model does not present this as a decision.
-                "google_ads.warning.wasted_spend_is_a_shortlist",
-            ],
+            # Reported rather than silently dropped: "we did not offer these, and here is why" is
+            # a different sentence from "there were none", and only the first one is checkable.
+            "withheld_as_protected": protected[:50],
+            "thresholds": {"min_cost": min_cost, "min_clicks": policy.waste_min_clicks},
+            "warnings": warnings,
         },
         sources=(
             Source(
@@ -245,12 +315,33 @@ GOOGLE_ADS_MCP_TOOLS: list[AIToolSpec] = [
         permission=_READ,
     ),
     AIToolSpec(
+        name="google_ads.policy",
+        description=(
+            "The standing rules for one Google Ads account and everything already decided about "
+            "it. Read this before proposing any change. protected_terms may never be excluded — "
+            "a write that would block one is refused. banned_phrases may not appear in ad copy. "
+            "max_daily_budget, max_budget_increase and max_cpc refuse a write outright. The "
+            "agency's steering and this client's are separate fields and both apply. "
+            "standing_decisions is what somebody already ruled on, with the reason: do not "
+            "propose those again."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {"account_id": {"type": "string"}},
+            "required": ["account_id"],
+            "additionalProperties": False,
+        },
+        handler=_policy,
+        permission=_READ,
+    ),
+    AIToolSpec(
         name="google_ads.wasted_spend",
         description=(
-            "Search terms in a Google Ads account that cost money, produced no conversions, and "
-            "are not already excluded as negative keywords. A shortlist to review, never a "
+            "Search terms in a Google Ads account that cost money, produced no conversions, are "
+            "not already excluded as negative keywords, are not protected by the account's "
+            "policy, and have not already been ruled on. A shortlist to review, never a "
             "decision: a term with no conversions may still be worth keeping, and excluding one "
-            "wrongly costs customers silently."
+            "wrongly costs customers silently. Thresholds default to the account's policy."
         ),
         input_schema={
             "type": "object",
