@@ -1,5 +1,6 @@
 import { redirect } from "@sveltejs/kit";
 
+import { safeInternalPath } from "$lib/core/redirect";
 import { apiFor } from "$lib/core/session";
 import { asThemeMode, THEME_COOKIE, THEME_COOKIE_OPTIONS } from "$lib/core/theme-mode";
 
@@ -9,7 +10,7 @@ export const POST: RequestHandler = async (event) => {
   const { request, cookies } = event;
   const form = await request.formData();
   const mode = asThemeMode(String(form.get("theme") ?? ""));
-  const back = String(form.get("redirect") ?? "/");
+  const back = safeInternalPath(form.get("redirect"));
 
   if (mode) {
     // Persist so it follows the user across devices — the cookie below is only this
@@ -18,5 +19,7 @@ export const POST: RequestHandler = async (event) => {
     cookies.set(THEME_COOKIE, mode, THEME_COOKIE_OPTIONS);
   }
   // Only a same-origin relative path — never an absolute or protocol-relative URL (audit F26).
-  throw redirect(303, back.startsWith("/") && !back.startsWith("//") ? back : "/");
+  // Through the shared check, not an inline one: the inline version read `/\evil.example` as
+  // internal, and a browser reads it as another origin.
+  throw redirect(303, back ?? "/");
 };

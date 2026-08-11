@@ -1,10 +1,14 @@
 import { redirect } from "@sveltejs/kit";
 
+import { loginPath } from "$lib/core/redirect";
 import { apiFor } from "$lib/core/session";
 
 import type { LayoutServerLoad } from "./$types";
 
-// Auth guard for the whole app area — anonymous users go to the login screen.
+// Auth guard for the whole app area — anonymous users go to the login screen, carrying the
+// screen they were headed for so signing in finishes the journey rather than restarting it
+// (`$lib/core/redirect.loginPath`). This is the *only* auth gate over `(app)`, which is to say
+// over every deep link anyone pastes into a chat, mails to a colleague or bookmarks.
 //
 // The user's saved table layouts are fetched here rather than per list: a layout load does not
 // rerun on filter/sort/tab navigation, so the column prefs cost one call per section instead of
@@ -15,7 +19,7 @@ import type { LayoutServerLoad } from "./$types";
 // only the *first paint's* value: a layout load does not rerun on navigation, so the bell polls
 // its own endpoint to stay live. A tenant without the module never pays for the call.
 export const load: LayoutServerLoad = async (event) => {
-  if (!event.locals.user) throw redirect(303, "/login");
+  if (!event.locals.user) throw redirect(303, loginPath(event.url));
   const api = apiFor(event);
 
   const notificationsEnabled = event.locals.theme?.enabledModules?.includes("notifications");

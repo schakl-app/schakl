@@ -5,9 +5,12 @@
   import Button from "$lib/core/ui/Button.svelte";
   import PasswordInput from "$lib/core/ui/PasswordInput.svelte";
 
-  let { form } = $props();
+  let { data, form } = $props();
 
   const busy = new InFlight();
+
+  /** Where the layout's guard was sending them; the action's echo wins for the no-JS retry. */
+  const next = $derived(form?.next ?? data.next ?? "");
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
@@ -21,6 +24,7 @@
   <h1 class="text-lg font-semibold text-text">{t("cloud.console.sign_in")}</h1>
   <p class="mt-1 text-sm text-text-muted">{t("cloud.console.sign_in_hint")}</p>
   <form method="POST" use:enhance={busy.clear()} class="mt-5 space-y-4">
+    <input type="hidden" name="next" value={next} />
     <div>
       <label for="email" class="mb-1 block text-sm font-medium text-text">
         {t("auth.email")}

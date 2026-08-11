@@ -29,6 +29,7 @@
   import { invalidateAll } from "$app/navigation";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
+  import { loginPath } from "$lib/core/redirect";
   import {
     announceSignedIn,
     guardMounted,
@@ -61,9 +62,7 @@
   const localLogin = $derived(options?.localLogin ?? true);
   const canSms = $derived(challenge?.methods.includes("sms") ?? false);
   /** Sign-in lands them back here rather than on the dashboard, if they take the long way. */
-  const loginHref = $derived(
-    `/login?next=${encodeURIComponent(page.url.pathname + page.url.search)}`,
-  );
+  const loginHref = $derived(loginPath(page.url));
 
   function raise(reason: Reason) {
     if (ended) return;

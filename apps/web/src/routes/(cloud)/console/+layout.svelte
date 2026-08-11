@@ -44,13 +44,16 @@
             </a>
           {/if}
           <span class="mx-2 hidden text-xs text-text-muted sm:inline">{data.me.email}</span>
-          <a
-            href="/logout"
-            data-sveltekit-preload-data="off"
-            class="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-text hover:bg-surface"
-          >
-            {t("cloud.console.sign_out")}
-          </a>
+          <!-- A form, not a link: `/logout` is POST-only on purpose (audit F26 — a GET that
+               ends a session is triggerable by any image tag on any page), so the anchor that
+               used to be here answered 405 and the console could not be signed out of at all. -->
+          <form method="POST" action="/logout">
+            <button
+              class="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-text hover:bg-surface"
+            >
+              {t("cloud.console.sign_out")}
+            </button>
+          </form>
         </nav>
       {/if}
     </div>

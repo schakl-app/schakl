@@ -11,6 +11,7 @@ import {
   parseFormatCookie,
   serializeFormatCookie,
 } from "$lib/core/dateformat";
+import { safeInternalPath } from "$lib/core/redirect";
 import { apiFor } from "$lib/core/session";
 
 import type { RequestHandler } from "./$types";
@@ -20,7 +21,7 @@ import type { RequestHandler } from "./$types";
 export const POST: RequestHandler = async (event) => {
   const { request, cookies } = event;
   const form = await request.formData();
-  const back = String(form.get("redirect") ?? "/");
+  const back = safeInternalPath(form.get("redirect"));
 
   const current = parseFormatCookie(request.headers.get("cookie"));
   const next: FormatPrefs = {
@@ -33,5 +34,7 @@ export const POST: RequestHandler = async (event) => {
   await apiFor(event).PUT("/api/v1/prefs", { body: { prefs: { format: next } } });
   cookies.set(FORMAT_COOKIE, serializeFormatCookie(next), FORMAT_COOKIE_OPTIONS);
   // Only a same-origin relative path — never an absolute or protocol-relative URL (audit F26).
-  throw redirect(303, back.startsWith("/") && !back.startsWith("//") ? back : "/");
+  // Through the shared check, not an inline one: the inline version read `/\evil.example` as
+  // internal, and a browser reads it as another origin.
+  throw redirect(303, back ?? "/");
 };

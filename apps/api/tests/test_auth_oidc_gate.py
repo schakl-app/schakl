@@ -156,6 +156,109 @@ async def test_login_redirects_with_the_request_derived_callback(
         assert stub.seen_redirect_uri == f"http://{tenant.host}/api/v1/auth/oidc/callback"
 
 
+async def test_a_deep_link_survives_the_idp_round_trip(
+    client_for, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An org that *enforces* SSO renders no password form, so this is the only door it has —
+    and the callback used to land on ``/`` unconditionally, which meant every guarded link such
+    an org's people followed dropped them on the dashboard. The target is parked in the session
+    on the way out and read back on the way in."""
+    tenant = await make_tenant("oidc-next")
+    headers = await auth_cookie(tenant.user)
+    monkeypatch.setattr(sso, "oauth_client", lambda row: _verified("deep@idp-example.com"))
+
+    # One client, so the session cookie Starlette sets on /login is sent back on /callback —
+    # which is the mechanism under test, not an incidental detail of the fixture.
+    async with client_for(tenant.host) as client:
+        await _configure(client, headers)
+        started = await client.get(
+            "/api/v1/auth/oidc/login", params={"next": "/companies/abc-123"}
+        )
+        assert started.status_code in (302, 307)
+        landed = await client.get("/api/v1/auth/oidc/callback")
+        assert landed.headers["location"] == "/companies/abc-123"
+        assert "schakl_auth=" in landed.headers.get("set-cookie", "")
+
+
+async def test_an_external_next_is_refused_and_the_login_still_works(
+    client_for, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The open-redirect shape, and the reason it is worth guarding *here* of all places: the
+    visitor is mid-sign-in, so a look-alike host asking for the password again has borrowed this
+    app's credibility. Refused as a target, never as a login — a stale link is not their fault.
+
+    ``/\\evil.example`` is the case an inline ``startsWith("//")`` check misses: a browser reads
+    the backslash as a slash and the whole thing as another origin."""
+    tenant = await make_tenant("oidc-next-evil")
+    headers = await auth_cookie(tenant.user)
+    monkeypatch.setattr(sso, "oauth_client", lambda row: _verified("wary@idp-example.com"))
+
+    for hostile in ("//evil.example", "/\\evil.example", "https://evil.example"):
+        async with client_for(tenant.host) as client:
+            await _configure(client, headers)
+            await client.get("/api/v1/auth/oidc/login", params={"next": hostile})
+            landed = await client.get("/api/v1/auth/oidc/callback")
+            assert landed.headers["location"] == "/", hostile
+            assert "schakl_auth=" in landed.headers.get("set-cookie", "")
+
+
+async def test_an_abandoned_target_does_not_haunt_the_next_sign_in(
+    client_for, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The session is a place a value can *linger*. Start a deep-linked login, walk away, then
+    sign in plainly from the same browser: the second attempt must land on the dashboard, not on
+    a page the first attempt was headed for."""
+    tenant = await make_tenant("oidc-next-stale")
+    headers = await auth_cookie(tenant.user)
+    monkeypatch.setattr(sso, "oauth_client", lambda row: _verified("twice@idp-example.com"))
+
+    async with client_for(tenant.host) as client:
+        await _configure(client, headers)
+        await client.get("/api/v1/auth/oidc/login", params={"next": "/companies/abandoned"})
+        # …no callback. They come back later and press the SSO button with nothing in mind.
+        await client.get("/api/v1/auth/oidc/login")
+        landed = await client.get("/api/v1/auth/oidc/callback")
+        assert landed.headers["location"] == "/"
+
+
+async def test_the_target_is_consumed_by_the_callback_that_reads_it(
+    client_for, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Popped once, whatever the request answers: a target that outlives its own attempt is a
+    redirect waiting to fire on some later, unrelated sign-in."""
+    tenant = await make_tenant("oidc-next-once")
+    headers = await auth_cookie(tenant.user)
+    monkeypatch.setattr(sso, "oauth_client", lambda row: _verified("once@idp-example.com"))
+
+    async with client_for(tenant.host) as client:
+        await _configure(client, headers)
+        await client.get("/api/v1/auth/oidc/login", params={"next": "/tasks?status=open"})
+        first = await client.get("/api/v1/auth/oidc/callback")
+        assert first.headers["location"] == "/tasks?status=open"
+        second = await client.get("/api/v1/auth/oidc/callback")
+        assert second.headers["location"] == "/"
+
+
+async def test_a_refused_login_hands_the_target_back_to_the_login_screen(
+    client_for, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The IdP authenticated someone this org has no membership for. They bounce to ``/login``
+    with the reason — and with the target, so signing in with a local account that *does* have
+    access still finishes the journey rather than restarting it."""
+    tenant = await make_tenant("oidc-next-refused")
+    headers = await auth_cookie(tenant.user)
+    monkeypatch.setattr(sso, "oauth_client", lambda row: _StubClient("outsider@idp-example.com"))
+
+    async with client_for(tenant.host) as client:
+        await _configure(client, headers, {"auto_provision": False})
+        await client.get("/api/v1/auth/oidc/login", params={"next": "/companies/abc-123"})
+        landed = await client.get("/api/v1/auth/oidc/callback")
+        assert landed.headers["location"] == (
+            "/login?error=oidc_no_access&next=%2Fcompanies%2Fabc-123"
+        )
+        assert "schakl_auth=" not in landed.headers.get("set-cookie", "")
+
+
 async def test_callback_provisions_from_the_orgs_stored_policy(
     client_for, monkeypatch: pytest.MonkeyPatch
 ) -> None:

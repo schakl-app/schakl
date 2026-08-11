@@ -1219,3 +1219,24 @@
   (`bind:value={statusValue}`, re-armed from the record in an `$effect`) and write to the state,
   never to the DOM node; the same applies to any control a handler needs to rewind — a cancelled
   picker, an optimistic toggle that has to go back.
+
+- **A guard that throws the destination away.** Following a link to a screen you are not signed in
+  for landed you on the dashboard, so every deep link anyone pasted into a chat, mailed to a
+  colleague or bookmarked arrived as "sign in, then go and find it yourself" — and the one place
+  it costs most is the notification mail, whose entire purpose is a link to one record. The
+  reading side had been complete since the login screen was written (`?next=` parsed, threaded
+  through the 2FA step, landed on); the single line that redirects an anonymous visitor was
+  passing `"/login"`. That asymmetry is the thing to watch for: **a half-built feature whose
+  present half is the one you read first looks finished.** Three rules came out of fixing it.
+  *One producer* (`loginPath`, `$lib/core/redirect.ts`) rather than an `encodeURIComponent` at
+  each guard, so the next guard cannot repeat it — the tenant app and the instance console now
+  share it, each naming its own login screen and landing page. *The value travels the way the
+  request does*: a form action posts to `?/login`, so the page's query string is gone on the
+  submit **and on every failure re-render** — hence a hidden field on the way in and an echo in
+  every action result on the way out, or one mistyped password silently forgets the target with
+  JS disabled. And *a target crossing a boundary rides the server*, never the URL: the SSO
+  round-trip parks it in the session beside Authlib's state, because the IdP echoes `state` and
+  `redirect_uri` back to us and this value is about to become a `Location` header. Which is the
+  standing rule for all of them — an untrusted path goes through `safeInternalPath` at the point
+  of *use*, since `//evil.example` and `/\evil.example` both read as another origin to a browser
+  and a login screen is exactly where a look-alike host is worth the most.

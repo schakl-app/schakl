@@ -19,6 +19,27 @@ test("an anonymous visitor is sent somewhere sensible, not to a 500", async ({ p
   await expect(page).toHaveURL(/\/(login|setup)(\?.*)?$/);
 });
 
+test("a deep link is remembered across the guard, not thrown away", async ({ page }) => {
+  // The bug this pins: `(app)/+layout.server.ts` used to redirect to a bare `/login`, so every
+  // guarded link anyone pasted into a chat or bookmarked landed the recipient on the dashboard
+  // with no way back but navigating there by hand. The reading side always worked — only the
+  // producer was missing, which is exactly the kind of half-feature no functional test notices.
+  const target = "/companies?status=active";
+  const response = await page.goto(target);
+  expect(response?.status()).toBeLessThan(400);
+
+  const url = new URL(page.url());
+  // An instance with no org at all goes to the first-run wizard instead (issue #26); there is no
+  // session to come back to, so it carries nothing and that is correct.
+  if (url.pathname === "/setup") return;
+
+  expect(url.pathname).toBe("/login");
+  expect(url.searchParams.get("next")).toBe(target);
+  // And the form carries it onward: an action posts to `?/login`, so the page's own query string
+  // is not on the request that redeems the credentials.
+  await expect(page.locator("input[name=next]")).toHaveValue(target);
+});
+
 test("the login screen renders its form", async ({ page }) => {
   await page.goto("/login");
 

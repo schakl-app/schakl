@@ -32,3 +32,27 @@ export function safeInternalPath(
   if (CONTROL_CHARS.test(value)) return null;
   return value;
 }
+
+/**
+ * The sign-in URL a guard turns an anonymous visitor away to, carrying where they were headed.
+ *
+ * There is one of these rather than an `encodeURIComponent` at each guard because the *reading*
+ * side was complete long before anything wrote it: `/login` has parsed `?next=`, threaded it
+ * through the 2FA step and landed on it since it was written, and the whole feature was missing
+ * because the one line that redirects the anonymous visitor threw `event.url` away. A shared
+ * producer is what stops the next guard from doing the same.
+ *
+ * The **fragment is deliberately absent**: it never reaches the server, so there is nothing here
+ * to carry it with. A deep link into a tab or an anchor lands on the page and not the anchor —
+ * the alternative is a client-side dance for the last few characters of the URL.
+ *
+ * `home` is where signing in lands by default, so a visitor turned away from *it* needs no
+ * `next` at all: it would be a longer URL that changes nothing, and one more untrusted string
+ * on the way back in.
+ */
+export function loginPath(url: URL, options?: { base?: string; home?: string }): string {
+  const base = options?.base ?? "/login";
+  const target = url.pathname + url.search;
+  if (target === (options?.home ?? "/")) return base;
+  return `${base}?next=${encodeURIComponent(target)}`;
+}
