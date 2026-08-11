@@ -56,6 +56,11 @@ class MarketingSource(StrEnum):
     #: first source that is not Google, which is why the adapter protocol carries an ``auth``
     #: kind: this one rides one API key per *agency*, not a per-user OAuth grant.
     SERANKING = "seranking"
+    #: Rank Math AI Visibility, read through the client's own WordPress (docs/WORDPRESS.md).
+    #: The third ``auth`` kind and the reason there is one: its credential is per **website**,
+    #: so it is resolved per *link* rather than per org or per user. A link of this source
+    #: therefore requires ``website_id`` — see ``MarketingService.create_link``.
+    RANKMATH = "rankmath"
 
 
 class MarketingLink(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
@@ -86,7 +91,11 @@ class MarketingLink(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         nullable=True,
         index=True,
     )
-    source: Mapped[str] = mapped_column(String(8), nullable=False)
+    #: ``String(16)``, widened from 8 when ``rankmath`` arrived. ``"rankmath"`` is exactly
+    #: eight characters, so it fit — and a schema that depends on a coincidence about the
+    #: length of a brand name is a schema that breaks on the next source. Widening a varchar
+    #: is a metadata-only change in Postgres, so the cost of not living on it was one line.
+    source: Mapped[str] = mapped_column(String(16), nullable=False)
     #: The provider's own id: GA4 "properties/123456789", GSC "sc-domain:acme.nl" or a URL,
     #: Ads "1234567890" (customer id, no dashes).
     external_id: Mapped[str] = mapped_column(String(512), nullable=False)

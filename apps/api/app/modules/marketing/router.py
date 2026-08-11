@@ -104,14 +104,27 @@ async def unlink(
 )
 async def available_accounts(
     source: MarketingSource = Query(...),
+    website_id: uuid.UUID | None = Query(
+        None,
+        description=(
+            "Required for a source whose credential is per website (rankmath); ignored by"
+            " every other source."
+        ),
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> AccountsResponse:
-    """The accounts/properties/sites the caller's Google connection can reach for ``source``.
+    """The accounts/properties/sites the caller's connection can reach for ``source``.
 
-    Serves from a short Redis cache; a not-connected / missing-scope / revoked state comes back
-    as flags so the picker can *teach* rather than show a silently empty list (#132).
+    Serves from a short Redis cache; a not-connected / missing-scope / revoked / not-configured
+    state comes back as flags so the picker can *teach* rather than show a silently empty list
+    (#132).
+
+    ``website_id`` is additive and optional at the API boundary on purpose: a required
+    parameter would 422 the four existing sources, which have no website to name. The source
+    that needs it says so itself — ``rankmath`` answers ``configured=False`` without one, which
+    is the same state the picker already draws for "no credential yet".
     """
-    return await MarketingService(ctx).available_accounts(source)
+    return await MarketingService(ctx).available_accounts(source, website_id)
 
 
 # --- metrics: panel + tab (#133) ------------------------------------------------------------- #

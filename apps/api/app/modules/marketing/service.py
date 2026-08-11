@@ -41,6 +41,12 @@ from app.core.periods import (
 )
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
+
+# The credential seam, not the module (§6). ``wordpress`` may be disabled, in which case the
+# resolver answers ``None`` — the same answer as "this website has no credential yet", which
+# every caller here already handles.
+from app.core.wordpress import open_client as open_wordpress_client
+from app.core.wordpress import resolve_credential as resolve_wordpress_credential
 from app.errors import AppError
 from app.modules.companies.models import Company
 from app.modules.google import client as google_client
@@ -88,7 +94,8 @@ from app.modules.marketing.schemas import (
 )
 from app.modules.marketing.sources import source_auth, source_for
 from app.modules.marketing.sources.base import (
-    AUTH_ORG_KEY,
+    AUTH_GOOGLE,
+    AUTH_SITE_KEY,
     AVERAGED_METRICS,
     LOWER_IS_BETTER,
     METRICS_BY_SOURCE,
@@ -295,6 +302,63 @@ async def resolve_seranking_key(session: AsyncSession, org_id: uuid.UUID) -> str
     return None
 
 
+class SourceNotConfigured(RuntimeError):
+    """No credential exists for this source (yet). Carries the i18n key that says which kind.
+
+    Not an error in the ordinary sense — it is what an install that has not set the source up
+    looks like every night, and what the picker must *teach* from rather than 500 on. The key
+    differs per auth kind because the fix does: an org-key source sends an admin to
+    Instellingen → Marketing, and a site-key source sends them to one client's website page.
+    """
+
+    def __init__(self, message_key: str) -> None:
+        super().__init__(message_key)
+        self.message_key = message_key
+
+
+@asynccontextmanager
+async def keyed_client(
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    source: str,
+    website_id: uuid.UUID | None = None,
+) -> AsyncIterator[Any]:
+    """A prepared HTTP client for whichever credential ``source`` rides.
+
+    The seam #300 predicted would not be needed. Its docstring said a fourth source is "a new
+    module here plus one line in ``SOURCES``, no service change", and the one thing that
+    prediction missed was authentication — then the *fifth* source missed it the same way, for
+    a third kind of credential. Two identical surprises is the point at which per-kind ``if``
+    branches at every call site stop being cheaper than one dispatch, so the picker, the
+    drill-down and the nightly sync now all ask for a client and this decides where it comes
+    from. Raises :class:`SourceNotConfigured` when there is no credential to build one with;
+    every caller already had that branch, and now they share its wording.
+
+    Google is deliberately **not** here: its client needs a per-user connection, an incremental
+    scope check and a reconnect prompt, none of which is expressible as "hand me a credential".
+    That path stays its own, which is exactly what :data:`AUTH_GOOGLE` means.
+    """
+    if source_auth(source) == AUTH_SITE_KEY:
+        if website_id is None:
+            # A site-key source with no website has no credential to find, by construction:
+            # `create_link` refuses such a link and the picker requires the parameter. This is
+            # the "the website was deleted out from under a live link" path.
+            raise SourceNotConfigured(f"marketing.{source}_no_website")
+        credential = await resolve_wordpress_credential(session, org_id, website_id)
+        if credential is None:
+            raise SourceNotConfigured(f"marketing.{source}_not_connected")
+        # Built by the module that owns the credential, never constructed here (§6). The
+        # client opens a short-lived transport per call, so there is nothing to close.
+        yield open_wordpress_client(credential)
+        return
+
+    key = await resolve_seranking_key(session, org_id)
+    if not key:
+        raise SourceNotConfigured(f"marketing.{source}_not_configured")
+    async with org_key_client(key) as client:
+        yield client
+
+
 @asynccontextmanager
 async def org_key_client(api_key: str) -> AsyncIterator[Any]:
     """An HTTP client for an org-key source, with the credential already on it.
@@ -330,37 +394,61 @@ class MarketingService:
             self.ctx.session, self.ctx.org.id, ctx=self.ctx
         )
 
-    # --- org-key sources (#300) ------------------------------------------------------------ #
-    async def _org_key_accounts(
-        self, source: MarketingSource, adapter: Any
+    # --- credential-keyed sources (#300, docs/WORDPRESS.md) --------------------------------- #
+    async def _keyed_accounts(
+        self,
+        source: MarketingSource,
+        adapter: Any,
+        *,
+        website_id: uuid.UUID | None = None,
     ) -> AccountsResponse:
-        """The picker for a source with no OAuth: one agency key, configured or not.
+        """The picker for a source with no OAuth: a credential, configured or not.
 
-        ``connected``/``has_scope`` are reported true because for this kind of source they are
-        not questions — there is no connection to make and no scope to grant. The only
-        prerequisite is the key, which rides ``configured`` exactly as the Ads developer token
-        already does, so the web teaches "not configured yet" from a state it can already draw.
+        ``connected``/``has_scope`` are reported true because for these kinds of source they
+        are not questions — there is no connection to make and no scope to grant. The only
+        prerequisite is the credential, which rides ``configured`` exactly as the Ads developer
+        token already does, so the web teaches "not configured yet" from a state it can already
+        draw.
+
+        ``website_id`` is what a **site-key** source needs and every other source ignores: a
+        Rank Math picker lists the brands tracked on *one client's WordPress*, so there is no
+        agency-wide list to fetch and the question is meaningless without naming a site.
         """
-        key = await resolve_seranking_key(self.ctx.session, self.ctx.org.id)
-        if not key:
-            return AccountsResponse(
-                source=source, connected=True, has_scope=True, configured=False
-            )
-        cache_key = f"schakl:marketing:accounts:{self.ctx.org.id}:{source.value}"
-        redis = get_redis()
-        cached = await redis.get(cache_key)
-        if cached is not None:
-            return AccountsResponse(
-                source=source,
-                connected=True,
-                has_scope=True,
-                accounts=[AvailableAccount(**item) for item in json.loads(cached)],
-            )
+        # Keyed on the website for a site-key source: two clients' brand lists are different
+        # answers to the same question and must never share a cache entry.
+        scope_key = f":{website_id}" if website_id else ""
+        cache_key = (
+            f"schakl:marketing:accounts:{self.ctx.org.id}:{source.value}{scope_key}"
+        )
+        unconfigured = AccountsResponse(
+            source=source, connected=True, has_scope=True, configured=False
+        )
         try:
-            # The pool connection is handed back for the live listing, the same rule the
-            # Google path follows (docs/PERFORMANCE.md).
-            async with org_key_client(key) as client, self.ctx.release_db():
-                fetched = await adapter.list_accounts(client)
+            # The credential is resolved **before** the cache is consulted, which is what the
+            # org-key path always did (it read the key, then Redis) and is worth keeping: an
+            # install that has not configured this source must answer `configured=False`
+            # without a cache round trip, because that is the answer on every page load
+            # forever, not a miss worth caching.
+            async with keyed_client(
+                self.ctx.session, self.ctx.org.id, source.value, website_id
+            ) as client:
+                cached = await get_redis().get(cache_key)
+                if cached is not None:
+                    return AccountsResponse(
+                        source=source,
+                        connected=True,
+                        has_scope=True,
+                        accounts=[AvailableAccount(**item) for item in json.loads(cached)],
+                    )
+                # The pool connection is handed back for the live listing, the same rule the
+                # Google path follows (docs/PERFORMANCE.md).
+                async with self.ctx.release_db():
+                    fetched = await adapter.list_accounts(client)
+        except SourceNotConfigured:
+            # No credential yet. Not an error and not an empty list: `configured=False` is the
+            # state the picker teaches from, and it is what an install that has not set this
+            # source up looks like on every page load.
+            return unconfigured
         except Exception as exc:  # noqa: BLE001 — a live fetch failure teaches, never 500s
             logger.warning("marketing %s account listing failed: %s", source.value, exc)
             return AccountsResponse(
@@ -378,7 +466,7 @@ class MarketingService:
             )
             for option in fetched
         ]
-        await redis.set(
+        await get_redis().set(
             cache_key,
             json.dumps([option.model_dump(mode="json") for option in options]),
             ex=_ACCOUNTS_CACHE_SECONDS,
@@ -629,6 +717,30 @@ class MarketingService:
             if data.website_id not in websites:
                 raise AppError("not_found", "errors.not_found", status_code=404)
             website_names[data.website_id] = websites[data.website_id]
+        # A site-key source has no credential to sync with unless a website names one, so the
+        # website is required rather than optional for it — and refused up front rather than
+        # discovered as a `last_error` on the first nightly run, because a link created here is
+        # a link a marketeer expects to see numbers from tomorrow.
+        if source_auth(data.source.value) == AUTH_SITE_KEY:
+            if data.website_id is None:
+                raise AppError(
+                    "validation",
+                    f"errors.marketing_{data.source.value}_website_required",
+                    status_code=422,
+                    fields={"website_id": "errors.required"},
+                )
+            if (
+                await resolve_wordpress_credential(
+                    self.ctx.session, self.ctx.org.id, data.website_id
+                )
+                is None
+            ):
+                raise AppError(
+                    "validation",
+                    f"errors.marketing_{data.source.value}_not_connected",
+                    status_code=422,
+                    fields={"website_id": "errors.required"},
+                )
         # The caller's own connection is what will sync this link (per-user OAuth); listing the
         # picker options already proved it exists and carries the scope.
         connection = await google_client.connection_for(
@@ -902,11 +1014,13 @@ class MarketingService:
             and connection.id in owners
         ]
 
-    async def available_accounts(self, source: MarketingSource) -> AccountsResponse:
+    async def available_accounts(
+        self, source: MarketingSource, website_id: uuid.UUID | None = None
+    ) -> AccountsResponse:
         self.ctx.require("marketing.link.manage")
         adapter = source_for(source.value)
-        if source_auth(source.value) == AUTH_ORG_KEY:
-            return await self._org_key_accounts(source, adapter)
+        if source_auth(source.value) != AUTH_GOOGLE:
+            return await self._keyed_accounts(source, adapter, website_id=website_id)
         flag = _CONNECT_FLAG[source.value]
         connection = await google_client.connection_for(
             self.ctx.session, self.ctx.org.id, self.ctx.user.id
@@ -1227,7 +1341,7 @@ class MarketingService:
         return "ok" if has_data else "pending"
 
     # --- drill-downs (#133), live behind a Redis TTL -------------------------------------- #
-    async def _org_key_drilldown(
+    async def _keyed_drilldown(
         self,
         link: MarketingLink,
         adapter: Any,
@@ -1242,15 +1356,10 @@ class MarketingService:
 
         Cached and released exactly like the Google one; what differs is the unavailable
         reason. "Reconnect your Google account" is meaningless advice for a missing agency
-        API key, and an admin who follows it ends up on a screen that cannot help them.
+        API key, and an admin who follows it ends up on a screen that cannot help them — which
+        is why the reason comes from :class:`SourceNotConfigured`, whose wording is per auth
+        kind: an org key is set in Instellingen, a site credential on one client's website.
         """
-        key = await resolve_seranking_key(self.ctx.session, self.ctx.org.id)
-        if not key:
-            return DrilldownResponse(
-                source=source, kind=kind, available=False,
-                unavailable_reason=f"marketing.{link.source}_not_configured",
-                deep_link=deep_link,
-            )
         redis = get_redis()
         cache_key = f"schakl:marketing:drill:{link.id}:{kind}:{start}:{end}"
         cached = await redis.get(cache_key)
@@ -1262,10 +1371,20 @@ class MarketingService:
                 deep_link=deep_link,
             )
         try:
-            async with org_key_client(key) as client, self.ctx.release_db():
+            async with (
+                keyed_client(
+                    self.ctx.session, self.ctx.org.id, link.source, link.website_id
+                ) as client,
+                self.ctx.release_db(),
+            ):
                 table = await adapter.drilldown(
                     client, link.external_id, kind, start, end, link.config or {}
                 )
+        except SourceNotConfigured as exc:
+            return DrilldownResponse(
+                source=source, kind=kind, available=False,
+                unavailable_reason=exc.message_key, deep_link=deep_link,
+            )
         except Exception as exc:  # noqa: BLE001
             logger.warning("marketing %s drilldown failed: %s", link.source, exc)
             return DrilldownResponse(
@@ -1320,8 +1439,8 @@ class MarketingService:
         deep_link = adapter.deep_link(link.external_id, link.config or {})
         source = MarketingSource(link.source)
 
-        if source_auth(link.source) == AUTH_ORG_KEY:
-            return await self._org_key_drilldown(
+        if source_auth(link.source) != AUTH_GOOGLE:
+            return await self._keyed_drilldown(
                 link, adapter, kind, start, end, deep_link, source, src_layout
             )
 
@@ -1749,8 +1868,8 @@ async def sync_link_range(
     link but never raises, so one broken link never stops the others' sync.
     """
     adapter = source_for(link.source)
-    if source_auth(link.source) == AUTH_ORG_KEY:
-        await _sync_org_key_link(session, org, link, adapter, start, end)
+    if source_auth(link.source) != AUTH_GOOGLE:
+        await _sync_keyed_link(session, org, link, adapter, start, end)
         return
     if link.connection_id is None:
         link.last_error = "errors.google_not_connected"
@@ -1798,7 +1917,7 @@ async def sync_link_range(
     link.last_synced_at = datetime.now(UTC)
 
 
-async def _sync_org_key_link(
+async def _sync_keyed_link(
     session: Any,
     org: Any,
     link: MarketingLink,
@@ -1813,15 +1932,18 @@ async def _sync_org_key_link(
     clients' sync. A missing key is a *configuration* state, not an error — it is what an
     install that has not set one up yet looks like every night, and it must not fill the log.
     """
-    key = await resolve_seranking_key(session, org.id)
-    if not key:
-        link.last_error = f"marketing.{link.source}_not_configured"
-        return
     try:
-        async with org_key_client(key) as client:
+        async with keyed_client(
+            session, org.id, link.source, link.website_id
+        ) as client:
             daily = await adapter.fetch_daily(
                 client, link.external_id, start, end, link.config or {}
             )
+    except SourceNotConfigured as exc:
+        # A *configuration* state, not an error: it is what an install that has not set this
+        # source up looks like every night, and it must not fill the log.
+        link.last_error = exc.message_key
+        return
     except Exception as exc:  # noqa: BLE001
         logger.warning("marketing %s sync failed for link %s: %s", link.source, link.id, exc)
         link.last_error = _org_key_error(exc, link.source)

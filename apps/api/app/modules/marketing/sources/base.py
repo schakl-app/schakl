@@ -85,6 +85,23 @@ SERANKING_METRICS = [
     "keywords_ranking",
     "keywords_tracked",
 ]
+#: Rank Math AI Visibility, read through the client's own WordPress (docs/WORDPRESS.md).
+#: ``ai_visibility_score`` leads because it is the number a client asks about — and because
+#: this source is the client-facing AI-visibility figure, with SE Ranking's ``ai_search`` left
+#: as the per-LLM drill-down it already was. Two vendors' scores presented as one dashboard
+#: number is not a screen anyone can summarise (#312), so only one of them is a tile.
+#:
+#: Every one of these is a **snapshot**, not a daily total: Rank Math analyses on its own
+#: cadence and reports the latest state, so all five are registered in
+#: :data:`AVERAGED_METRICS` below. Summing a month of them would produce a four-figure
+#: "visibility score" — the trap ``avg_position`` already documents, with five ways to fall in.
+RANKMATH_METRICS = [
+    "ai_visibility_score",
+    "mentions",
+    "citations",
+    "avg_sentiment",
+    "brand_rank",
+]
 
 #: The GA4 acquisition split we store as a sub-object (sessions by default channel group).
 GA4_CHANNELS = ["Organic Search", "Paid Search", "Direct", "Organic Social", "Referral", "Email"]
@@ -94,14 +111,30 @@ METRICS_BY_SOURCE: dict[str, list[str]] = {
     MarketingSource.GSC.value: GSC_METRICS,
     MarketingSource.GADS.value: GADS_METRICS,
     MarketingSource.SERANKING.value: SERANKING_METRICS,
+    MarketingSource.RANKMATH.value: RANKMATH_METRICS,
 }
 
 #: Metrics that are *averages*, not sums — a period total re-derives them, never adds them.
 #: (CTR and average position over N days is not the sum of N daily CTRs.)
-AVERAGED_METRICS = {"ctr", "position", "engagementRate", "avg_position"}
+#:
+#: Every Rank Math metric is here, including ``mentions`` and ``citations``, which *look* like
+#: counts and are not: Rank Math reports a brand's running totals as of its last analysis, so
+#: two consecutive daily snapshots of "18 mentions" mean eighteen mentions, not thirty-six.
+#: They are counts of a thing, stored as a level.
+AVERAGED_METRICS = {
+    "ctr",
+    "position",
+    "engagementRate",
+    "avg_position",
+    "ai_visibility_score",
+    "mentions",
+    "citations",
+    "avg_sentiment",
+    "brand_rank",
+}
 
 #: Metrics where a *lower* number is better, so a positive delta reads red not green (position).
-LOWER_IS_BETTER = {"position", "avg_position"}
+LOWER_IS_BETTER = {"position", "avg_position", "brand_rank"}
 
 
 def primary_metric(source: str) -> str:
@@ -115,6 +148,16 @@ def primary_metric(source: str) -> str:
 #: admin to "reconnect Google".
 AUTH_GOOGLE = "google"
 AUTH_ORG_KEY = "org_key"
+#: One credential per **website** (docs/WORDPRESS.md) — therefore per *link*, not per org and
+#: not per user. Rank Math AI Visibility is read through a WordPress Application Password that
+#: belongs to one client's site, so there is no agency-wide key to fall back on and no
+#: connection to reconnect. Its failure states are its own ("this site's password was revoked",
+#: "Rank Math is not connected to a Content AI subscription"), which is the same argument #300
+#: made for splitting ``AUTH_ORG_KEY`` out of ``AUTH_GOOGLE`` — made a second time, in the same
+#: shape. That repetition is why :func:`app.modules.marketing.service.client_for_link` exists:
+#: the third kind was the point at which per-kind ``if`` branches at five call sites stopped
+#: being cheaper than one dispatch.
+AUTH_SITE_KEY = "site_key"
 
 
 class MarketingSourceAdapter(Protocol):
@@ -172,6 +215,8 @@ SCOPE_BY_SOURCE: dict[str, str] = {
     # SE Ranking has no OAuth and therefore no scope. Present with an empty value rather than
     # absent, so a caller iterating the sources gets a falsy answer instead of a KeyError.
     MarketingSource.SERANKING.value: "",
+    # Rank Math rides a per-website WordPress credential — no OAuth, so no scope either.
+    MarketingSource.RANKMATH.value: "",
 }
 
 
