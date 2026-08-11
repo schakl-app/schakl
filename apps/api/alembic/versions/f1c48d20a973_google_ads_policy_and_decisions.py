@@ -1,7 +1,7 @@
 """google_ads_policy_and_decisions
 
 Revision ID: f1c48d20a973
-Revises: d4f1a86e29c3
+Revises: b5d1c4e78a02
 Create Date: 2026-08-11 17:20:00.000000
 
 The standing rules an agent reasons inside, and the log of what has already been settled.
@@ -41,7 +41,7 @@ from app.core.rls import disable_rls, enable_rls
 
 # revision identifiers, used by Alembic.
 revision: str = "f1c48d20a973"
-down_revision: str | None = "d4f1a86e29c3"
+down_revision: str | None = "b5d1c4e78a02"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
