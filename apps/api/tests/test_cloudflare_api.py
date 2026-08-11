@@ -2144,12 +2144,15 @@ async def test_a_single_page_endpoint_is_read_whole(client_for, cloudflare) -> N
 async def test_an_endpoint_that_pages_at_its_own_size_is_read_to_the_end(
     client_for, cloudflare
 ) -> None:
-    """A refused ``per_page`` does not mean there are no pages — Pages' projects prove it.
+    """Pages' projects cap ``per_page`` at ten, so schakl asks for ten and the argument never
+    starts.
 
-    That list declines the size it is asked for and then serves *its own* page of ten,
-    ``result_info`` and all. Reading the refusal as "this endpoint has no pages" and the short
-    answer as a truncation reported an account of thirteen Pages projects as unreadable, over an
-    endpoint that had just told us, in numbers, exactly how to finish reading it.
+    This is the read that reported an agency's thirteen Pages projects as unreadable. The cap is
+    in no Cloudflare schema — only an ``example: 10`` — and the live endpoint answers
+    ``400``/``8000024`` to anything above it, so asking for fifty bought a guaranteed refusal on
+    every sync before anything could go right. Recovering from that refusal is worth doing and is
+    not the same as being right about it: the size an endpoint gives is a fact about the endpoint
+    (``PAGE_SIZES``), and the whole exchange is two ordinary paged requests.
     """
     t = await make_tenant("cf-capped-page")
     headers = await auth_cookie(t.user)
@@ -2170,10 +2173,102 @@ async def test_an_endpoint_that_pages_at_its_own_size_is_read_to_the_end(
         listed = await c.get("/api/v1/cloudflare/pages/projects", headers=headers)
         names = {p["name"] for p in listed.json()}
         assert names == {f"site-{n:02d}" for n in range(13)}
-        # The size was asked for once, refused, and never asked for again: page two carries the
-        # page number and nothing else, because the size was Cloudflare's to pick and it did.
+        # Two requests, both at a size Cloudflare serves, and **no refusal in between**: the 400
+        # that used to be paid on every single sync is now never provoked at all.
         asked = [q for p, q in cloudflare.queries if "pages/projects" in p]
-        assert asked == ["page=1&per_page=50", "", "page=2"], asked
+        assert asked == ["page=1&per_page=10", "page=2&per_page=10"], asked
+
+
+async def test_an_unknown_cap_is_still_recovered_from(client_for, cloudflare) -> None:
+    """The fallback stays, because the next undocumented cap is the one we do not know about.
+
+    ``PAGE_SIZES`` is knowledge, and knowledge runs out: Cloudflare publishes none of these
+    numbers, so an endpoint we ask fifty of may refuse it tomorrow exactly as Pages does today.
+    When that happens the read still finishes — one plain request reveals the size Cloudflare
+    chose, and the rest is ordinary paging — which is what keeps a new cap a wasted round trip
+    instead of an outage.
+    """
+    t = await make_tenant("cf-unknown-cap")
+    headers = await auth_cookie(t.user)
+    # An endpoint with no entry in PAGE_SIZES: schakl asks for fifty and is refused.
+    cloudflare.capped_page["/zones"] = 2
+    for n in range(5):
+        cloudflare.add_zone(f"klant-{n}.nl")
+    async with client_for(t.host) as c:
+        account = await _account(c, headers)
+        cloudflare.queries.clear()
+
+        body = (
+            await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers)
+        ).json()
+
+        assert body["zones_synced"] == 5, body
+        asked = [q for p, q in cloudflare.queries if p == "/zones"]
+        # Refused at fifty, then asked for the *same page* without naming a size — and finished
+        # at the size Cloudflare picked. Only the size was dropped, which is what leaves page one
+        # knowably page one; the plain read is a rung further down and was never needed.
+        assert asked[0].endswith("page=1&per_page=50"), asked
+        assert all(q for q in asked), asked
+        assert len([q for q in asked if "per_page" not in q]) == 3, asked
+
+
+async def test_a_paged_read_that_ends_short_of_the_count_is_not_a_list(
+    client_for, cloudflare
+) -> None:
+    """The ordinary paged path owes the same promise the fallback does, and never kept it.
+
+    An endpoint is perfectly capable of claiming ``total_pages: 1`` over a ``total_count`` of
+    thirteen and then handing over ten rows — two claims, contradicting each other. The fallback
+    read has always refused to pass that off as a whole list (§17); the paged loop believed the
+    last-page signal and returned the prefix silently, which is the worse of the two failures
+    because nothing anywhere says a thing.
+    """
+    t = await make_tenant("cf-short-count")
+    headers = await auth_cookie(t.user)
+    cloudflare.pages["acct-1"] = [
+        {"name": f"site-{n:02d}", "subdomain": f"site-{n:02d}.pages.dev"} for n in range(10)
+    ]
+    # Cloudflare says it holds thirteen while serving one full page of ten and calling it the last.
+    cloudflare.short_count["pages/projects"] = 13
+    async with client_for(t.host) as c:
+        account = await _account(c, headers)
+
+        body = (
+            await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers)
+        ).json()
+
+        assert body["pages_projects_synced"] == 0
+        assert any("10 of 13" in w for w in body["warnings"]), body["warnings"]
+
+
+async def test_an_endpoint_that_ignores_the_page_is_named_as_one(client_for, cloudflare) -> None:
+    """Twenty identical requests and a cap error about a list of ten is not a diagnosis.
+
+    An endpoint that accepts ``page`` and ignores it answers every page with the same rows. The
+    loop's only defence was the cap, so it asked twenty times and then reported *"more than 1000
+    rows"* about ten projects — sending whoever read it looking for an agency too large, rather
+    than for an endpoint that does not page. It is caught on the second page now, and said.
+    """
+    t = await make_tenant("cf-ignores-page")
+    headers = await auth_cookie(t.user)
+    cloudflare.pages["acct-1"] = [
+        {"name": f"site-{n:02d}", "subdomain": f"site-{n:02d}.pages.dev"} for n in range(25)
+    ]
+    cloudflare.ignores_page.add("pages/projects")
+    async with client_for(t.host) as c:
+        account = await _account(c, headers)
+        cloudflare.queries.clear()
+
+        body = (
+            await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers)
+        ).json()
+
+        assert body["pages_projects_synced"] == 0
+        assert any("ignored the page parameter" in w for w in body["warnings"]), body["warnings"]
+        assert any("10 of 25" in w for w in body["warnings"]), body["warnings"]
+        # Two requests, not forty: the repeat is the evidence, and one repeat is enough of it.
+        asked = [q for p, q in cloudflare.queries if "pages/projects" in p]
+        assert len(asked) == 2, asked
 
 
 async def test_a_refused_page_never_becomes_a_silent_prefix(client_for, cloudflare) -> None:

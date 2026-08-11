@@ -262,6 +262,58 @@ same rule as the account-owned token's: a fake that can only express "pages" and
 is a fake in which this failure cannot happen, and the only test that could have caught it would
 have passed against a Cloudflare that does not exist.
 
+### The cap is ten, and a refusal names a parameter rather than passing a verdict
+
+The two sections above are the symptom twice. The cause is one number nobody publishes:
+**`/accounts/{id}/pages/projects` refuses any `per_page` above 10.** Cloudflare's OpenAPI declares
+`page` and `per_page` on that endpoint with no `minimum`, no `maximum` and no `default` — only
+`example: 10` — and the live API answers `400`, code **8000024**, to anything larger. Its
+siblings disagree with it (deployments and per-project domains cap at 25) and `/zones` takes 50,
+so there is no "Pages number" to learn, only a per-endpoint one.
+
+Three things follow, and the first is the whole fix.
+
+- **The size is declared, not argued about** (`PAGE_SIZES`, `page_size_for`). Asking Pages for
+  ten means the refusal never happens. Recovering from a refusal is worth doing and is not the
+  same as being right about it: the fallback still cost a guaranteed round trip on *every* sync,
+  which is a bug wearing a fix's clothes.
+- **A refusal names a parameter; it does not pass a verdict on the endpoint.** The same `400`
+  means "I have no pages" (Registrar) and "I dislike that size" (Pages), so the ladder drops
+  **one parameter at a time** — `page`+`per_page`, then `page` alone, then nothing — and never
+  infers the second refusal from the first. Dropping only the size is what keeps the answer
+  checkable: page one is page one *because we asked for it*, at a size Cloudflare then names, so
+  page two is a fact. The previous shape had to assume the plain answer *was* page one at
+  `result_info`'s size — unfalsifiable from inside the client, and silently short whenever the
+  preview read and the numbered read use different sizes.
+- **`PAGE_SIZES` is knowledge and knowledge runs out**, which is exactly why the ladder stays
+  under it. An endpoint that caps at five tomorrow costs one wasted request, not an outage.
+
+Two guarantees were missing entirely and are now checked on every path out of `paginate`:
+
+- **A read that ends short of Cloudflare's own `total_count` raises.** The *fallback* had always
+  refused to pass a prefix off as a list (§17); the ordinary paged path promised it in a
+  docstring and never once checked, so an endpoint reporting `total_pages: 1` over a
+  `total_count` of 13 while serving 10 returned ten rows, silently, as a complete list. The
+  last-page signal and the row count are two claims, and an endpoint can make both and
+  contradict itself.
+- **An endpoint that ignores `page` is caught on the repeat**, not after forty identical
+  requests. `/accounts` is reported to do this. It is **stopped, not raised** — one that ignores
+  the page and hands back its whole collection has answered the question, and the count check is
+  what decides whether it did. Rows seen twice are kept once, because a list that shifts under a
+  reader is Cloudflare being ordinary.
+
+The two caps are now separate for the same reason: `MAX_ROWS` is a product limit about the
+agency, `MAX_REQUESTS` a mechanical one about Cloudflare. Expressed as one `MAX_PAGES *
+PER_PAGE`, a list of ten projects behind an endpoint that ignored `page` ended in *"more than
+1000 rows"* — a cap error naming a size nobody exceeded, which sends whoever reads it hunting
+for an agency that does not exist.
+
+`capped_page` in the fake is a **ceiling** rather than "refuses `per_page`", which is what it
+was and which is a Cloudflare that does not exist: the real endpoint serves any size at or below
+ten perfectly happily. That distinction *is* the fix — a client asking for ten never sees the
+refusal, and a fake that refused every size could not tell that client from one still asking for
+fifty. `short_count` and `ignores_page` model the two contradictions above.
+
 ## 3. Two rules the module never bends
 
 **Never guess which account.** The same apex may exist in several of the tenant's accounts —

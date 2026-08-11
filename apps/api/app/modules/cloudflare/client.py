@@ -49,8 +49,48 @@ _RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 
 #: Hard cap on paginated reads. An unbounded read is a build break (CLAUDE.md §9); an agency
 #: with more than 1000 zones in one Cloudflare account needs a background job, not a bigger loop.
-MAX_PAGES = 20
+#: **Two caps, because there are two runaways.** :data:`MAX_ROWS` is the product limit above and
+#: is about the agency. :data:`MAX_REQUESTS` is mechanical and about Cloudflare — an endpoint
+#: serving five rows a page cannot be walked forever just because the rows stay under a thousand.
+#: One number expressed as ``MAX_PAGES * PER_PAGE`` conflated the two and then reported the wrong
+#: one: ten projects behind an endpoint that ignored ``page`` ended in *"more than 1000 rows"*,
+#: which sends whoever reads it hunting for an agency that does not exist.
+MAX_ROWS = 1000
+MAX_REQUESTS = 40
 PER_PAGE = 50
+
+#: The rungs of :meth:`~CloudflareClient.paginate`'s ladder, in the order they are tried: a
+#: numbered page at a size we choose, a numbered page at Cloudflare's size, then whatever it
+#: gives unasked. Ordered so that ``mode += 1`` reads as "drop one more parameter".
+_SIZED, _NUMBERED, _PLAIN = 0, 1, 2
+
+#: **A page size is a property of the endpoint, and Cloudflare documents it nowhere.**
+#:
+#: Pages' project list enforces a maximum ``per_page`` of *ten*. That number appears in no
+#: schema: Cloudflare's own OpenAPI declares ``page`` and ``per_page`` on the endpoint with no
+#: ``minimum``, no ``maximum`` and no ``default`` — only ``example: 10`` — while the live API
+#: answers ``400``/``8000024`` *"Invalid list options provided. Review the `page` or `per_page`
+#: parameter."* to anything larger. Asking for fifty therefore failed a read the tenant's token
+#: was perfectly scoped for, and an agency's thirteen Pages projects reached schakl as none.
+#:
+#: The fallback below rescues that, and rescuing it is not the same as being right about it: a
+#: refusal is still one wasted round trip on **every** sync, and a fallback is only ever as good
+#: as its guesses. So the size is *looked up* rather than argued about — ask for what the
+#: endpoint gives and the argument never starts. Fragments match by substring, longest first.
+#:
+#: (Pages' deployments and per-project domains cap at 25 by the same undocumented mechanism.
+#: Neither is read through :meth:`~CloudflareClient.paginate` today, and both sit under the
+#: ``/pages/projects`` prefix anyway, so both would be asked for ten — smaller than their cap,
+#: which costs a round trip and can never fail.)
+PAGE_SIZES: dict[str, int] = {"/pages/projects": 10}
+
+
+def page_size_for(path: str) -> int:
+    """The largest ``per_page`` this endpoint is known to accept."""
+    for fragment in sorted(PAGE_SIZES, key=len, reverse=True):
+        if fragment in path:
+            return PAGE_SIZES[fragment]
+    return PER_PAGE
 
 #: The capabilities :func:`probe_capabilities` can actually observe with a handful of cheap
 #: calls. Deliberately short: an *edit* scope cannot be observed at all without writing
@@ -86,6 +126,12 @@ ZONE_CAPABILITIES: frozenset[str] = frozenset({"dns_read", "redirect_read"})
 #: because that difference is the entire diagnosis, and reading it as either "invalid token" or
 #: "missing permission" sends an admin to re-mint a credential that was never the problem.
 IP_RESTRICTED_CODE = 9109
+
+#: Cloudflare's code for *"Invalid list options provided. Review the `page` or `per_page`
+#: parameter."* — HTTP 400, and in practice a Pages endpoint saying the page size is too big.
+#: Matched **beside** the sentence rather than instead of it: the code is the reliable half where
+#: it arrives, and the sentence is what the products that send no code are recognised by.
+LIST_OPTIONS_CODE = 8000024
 
 #: The phase whose entrypoint ruleset holds Redirect Rules ("Single Redirects").
 REDIRECT_PHASE = "http_request_dynamic_redirect"
@@ -185,8 +231,66 @@ def _rejects_list_options(exc: CloudflareError) -> bool:
     """
     if exc.status != 400:
         return False
+    if exc.code == LIST_OPTIONS_CODE:
+        return True
     text = str(exc).lower()
     return "list options" in text or "per_page" in text
+
+
+def _row_key(row: dict) -> str:
+    """A stable identity for a row, for telling a *new* row from one already read.
+
+    Cloudflare's lists are keyed by ``id`` almost everywhere and by ``name`` in Pages, and a row
+    with neither is compared whole. This never has to be perfect: it decides whether a page made
+    progress, and a collision only costs one row's worth of suspicion in a check that already
+    prefers ``result_info``.
+    """
+    for field in ("id", "name"):
+        value = row.get(field)
+        if isinstance(value, str) and value:
+            return f"{field}:{value}"
+    return repr(sorted(row.items(), key=lambda item: item[0]))[:300]
+
+
+def _absorb(rows: list[dict], seen: set[str], page: list[dict]) -> int:
+    """Append this page's rows to ``rows``, returning how many of them were **new**.
+
+    Rows already read are dropped rather than counted twice: a paginated list can shift under a
+    reader between two calls, and one project appearing on both page one and page two is
+    Cloudflare being ordinary, not Cloudflare being wrong.
+    """
+    fresh = 0
+    for row in page:
+        key = _row_key(row)
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append(row)
+        fresh += 1
+    return fresh
+
+
+def _short_read(path: str, read: int, total: int, mode: int, repeated: bool) -> str:
+    """A read that ended short of Cloudflare's own count, and the reason it could not continue.
+
+    The count is the finding; *why there was no next page* is the diagnosis, and it decides who
+    the message is for. "It refuses page parameters" is Cloudflare's contract changing under us
+    and is ours to fix; "it ignored the page" is an endpoint misbehaving; a bare shortfall is
+    Cloudflare contradicting itself. All three used to read as one sentence about ``per_page``,
+    which named the only one of the three that is not usually the cause.
+    """
+    because = ""
+    if mode == _PLAIN:
+        because = " and refuses page parameters"
+    elif repeated:
+        because = " and then ignored the page parameter"
+    return f"Cloudflare answered {read} of {total} rows for {path}{because}"
+
+
+def _total_count(info: dict, previous: int | None) -> int | None:
+    """The collection size Cloudflare last claimed, or what it claimed before."""
+    value = info.get("total_count")
+    return value if isinstance(value, int) and value >= 0 else previous
 
 
 def _is_last_page(result: list[Any], info: dict, size: int = PER_PAGE) -> bool:
@@ -194,11 +298,14 @@ def _is_last_page(result: list[Any], info: dict, size: int = PER_PAGE) -> bool:
 
     ``result_info`` answers it outright where Cloudflare sends one, and that is worth preferring:
     an endpoint that *accepts* ``per_page`` and then ignores it answers every page identically,
-    so a row count alone would ask twenty times for the same rows and end in the cap's error.
-    The count stays as the fallback for the endpoints that report nothing — measured against
-    ``size``, which is *ours* on the ordinary path and **Cloudflare's own** when the endpoint
-    picked the size itself (:meth:`CloudflareClient._read_rest`). A short page is only evidence
+    so a row count alone would ask for the same rows until the request cap stopped it. The count
+    stays as the fallback for the endpoints that report nothing — measured against ``size``,
+    which is Cloudflare's own the moment it has named one, because a short page is only evidence
     of the end against the size that page was actually served at.
+
+    Never the *last* word either way: this is one of two claims an endpoint makes, and the count
+    check at the end of :meth:`CloudflareClient.paginate` is what catches it contradicting the
+    other one.
     """
     page = info.get("page")
     total_pages = info.get("total_pages")
@@ -301,105 +408,102 @@ class CloudflareClient:
         return body.get("result"), info if isinstance(info, dict) else {}
 
     async def paginate(self, path: str, params: dict[str, Any] | None = None) -> list[dict]:
-        """Every page of a list endpoint, capped at :data:`MAX_PAGES` (never truncated silently
-        — hitting the cap raises, per CLAUDE.md §17's "over the limit is an error").
+        """Every row of a list endpoint, or an error. Never a prefix of one (CLAUDE.md §17).
 
-        **Not every list endpoint takes a page.** Cloudflare's own SDK types a handful of them —
-        Registrar's domains, several account-level lists — as *single page*: they answer the whole
-        collection at once and reject ``page``/``per_page`` outright with
-        ``400 Invalid list options provided``. Asking for a page of one of those failed the read
-        completely, which on a sync surfaced as *"Niet alles kon gelezen worden"* over a token
-        that was scoped for it and an account Cloudflare was perfectly willing to describe.
+        **A refusal names a parameter; it does not pass a verdict on the endpoint.** That is the
+        whole rule, and getting it wrong is what sent an agency's thirteen Pages projects to
+        schakl as none. Cloudflare answers ``400``/``8000024`` *"Invalid list options provided.
+        Review the `page` or `per_page` parameter."* to two completely different situations:
 
-        So a refusal that names the list options is not fatal: the same path is asked **plainly**,
-        once, and what comes back is read for what it is — the whole collection where the endpoint
-        has no pages, or Cloudflare's *own* page where it merely declined the size asked for
-        (:meth:`_read_whole`). Either way this never returns a prefix as a whole list, which is
-        the one outcome worse than an error (§17).
+        * **it has no pages** — ``page`` and ``per_page`` are both meaningless to it. Registrar's
+          domains, which Cloudflare's own SDK types ``SinglePage``, and legacy Page Rules.
+        * **it has pages and dislikes the size** — Pages' project list, which caps ``per_page`` at
+          ten, publishes that number in no schema, and pages perfectly well at or below it.
+
+        Reading the second as the first is what turned a quarrel about ``per_page`` into *"Niet
+        alles kon gelezen worden"*: the plain retry came back holding ten of thirteen projects,
+        and one page of an endpoint that pages is not the whole collection.
+
+        So the ladder drops **one parameter at a time** — ``page``+``per_page``, then ``page``
+        alone, then nothing — and never infers the second refusal from the first. Dropping only
+        the size is what keeps the answer *checkable*: page one is page one because we asked for
+        it, at a size Cloudflare then names, so page two is a fact rather than a hope. The old
+        shortcut had to assume the plain answer *was* page one at ``result_info``'s size, which
+        is unfalsifiable from in here and silently loses rows the moment it is wrong.
+
+        The ladder is a safety net and not the plan: :data:`PAGE_SIZES` records what an endpoint
+        is known to give, so the refusal that costs a round trip on **every** sync is not
+        provoked in the first place. Knowledge runs out — Cloudflare documents none of these
+        numbers — which is exactly why the net stays under it.
+
+        Three guarantees hold on every path out of here, because Cloudflare has been caught
+        contradicting each of them:
+
+        * a read ending short of the ``total_count`` Cloudflare itself reported **raises** rather
+          than passing a prefix off as a list — including on the ordinary paged path, which
+          promised this in a docstring and never once checked it;
+        * an endpoint that ignores ``page`` and serves the same rows forever is noticed on the
+          repeat and stopped there, rather than after twenty identical requests and a cap error
+          naming a size nobody exceeded;
+        * a row seen on two pages is kept once, because a list that shifts under a reader is
+          Cloudflare being ordinary rather than Cloudflare being wrong.
         """
+        size = page_size_for(path)
+        mode, page, requests = _SIZED, 1, 0
         rows: list[dict] = []
+        seen: set[str] = set()
+        total: int | None = None
+        repeated = False
+
         async with self._http() as http:
-            for page in range(1, MAX_PAGES + 1):
-                query = {**(params or {}), "page": page, "per_page": PER_PAGE}
+            while True:
+                if requests >= MAX_REQUESTS:
+                    raise CloudflareError(
+                        f"Cloudflare needed more than {MAX_REQUESTS} requests for {path}"
+                    )
+                query = dict(params or {})
+                if mode <= _NUMBERED:
+                    query["page"] = page
+                if mode == _SIZED:
+                    query["per_page"] = size
+                requests += 1
                 try:
                     result, info = await self._send_envelope(http, "GET", path, params=query)
                 except CloudflareError as exc:
-                    if page > 1 or not _rejects_list_options(exc):
+                    # Only the *first* request may climb down, and only for a refusal that names
+                    # the list options. A 400 about anything else is an honest error, and asking
+                    # again without the parameters would turn one into two.
+                    if page > 1 or mode == _PLAIN or not _rejects_list_options(exc):
                         raise
-                    return await self._read_whole(http, path, params)
-                result = result or []
-                rows.extend(r for r in result if isinstance(r, dict))
-                if _is_last_page(result, info, PER_PAGE):
-                    return rows
-        raise CloudflareError(
-            f"Cloudflare returned more than {MAX_PAGES * PER_PAGE} rows for {path}"
-        )
+                    mode += 1
+                    continue
 
-    async def _read_whole(
-        self, http: httpx.AsyncClient, path: str, params: dict[str, Any] | None
-    ) -> list[dict]:
-        """The plain read of a list endpoint that refused our page parameters — and, where that
-        answer turns out to be a page of Cloudflare's own choosing, the rest of it.
+                result = [r for r in (result or []) if isinstance(r, dict)]
+                # Cloudflare's own account of the page it just served outranks what we asked for
+                # — it is the only reliable yardstick once an endpoint has overruled us once.
+                served = info.get("per_page")
+                if isinstance(served, int) and served > 0:
+                    size = served
+                total = _total_count(info, total)
+                fresh = _absorb(rows, seen, result)
+                if len(rows) > MAX_ROWS:
+                    raise CloudflareError(
+                        f"Cloudflare returned more than {MAX_ROWS} rows for {path}"
+                    )
+                if result and not fresh:
+                    # The page repeated its predecessor: `page` is being ignored, so there is no
+                    # next page to ask for. **Stopped, not raised** — an endpoint that ignores the
+                    # page and hands back its whole collection has answered the question, and the
+                    # completeness check below is what decides whether it did.
+                    repeated = True
+                    break
+                if mode == _PLAIN or _is_last_page(result, info, size):
+                    break
+                page += 1
 
-        A refusal reads like *"this endpoint has no pages"*, and for Registrar's domains that is
-        exactly what it is. For Pages' projects it is not: that list pages perfectly well and
-        merely declines the **size** it was asked for, so the plain read came back holding ten of
-        thirteen projects and said so in ``result_info`` — and calling that a failed read turned a
-        quarrel about ``per_page`` into *"Niet alles kon gelezen worden"* over three Pages
-        projects nobody could see. Refusing a prefix (§17) was right; stopping at one was not.
-
-        So the plain answer is taken at its word. When Cloudflare says it is holding more than it
-        handed over it has just *described the page it served* — its own size, its own numbering —
-        and the read continues from page two. Completeness is then the ordinary loop's business,
-        exactly as on the paged path: ``result_info`` says which page is the last one.
-
-        Only when there is no next page to ask for — no page one to build on, or the resume
-        refused too — is this the failure it always was, and it still names the prefix it declined
-        to return.
-        """
-        result, info = await self._send_envelope(http, "GET", path, params=params)
-        rows = [r for r in (result or []) if isinstance(r, dict)]
-        total = info.get("total_count")
-        if not isinstance(total, int) or total <= len(rows):
-            return rows
-        if rows:
-            try:
-                return await self._read_rest(http, path, params, rows, info)
-            except CloudflareError as exc:
-                if not _rejects_list_options(exc):
-                    raise
-        raise CloudflareError(
-            f"Cloudflare refused page parameters for {path} and then answered "
-            f"{len(rows)} of {total} rows"
-        )
-
-    async def _read_rest(
-        self,
-        http: httpx.AsyncClient,
-        path: str,
-        params: dict[str, Any] | None,
-        first: list[dict],
-        info: dict,
-    ) -> list[dict]:
-        """Page two onwards of an endpoint that served page one without being asked.
-
-        It is handed ``page`` and **nothing else**. The size is Cloudflare's to choose and it has
-        already chosen — ``result_info`` names it, and what it actually handed over is the
-        fallback — so re-sending a ``per_page`` would only re-open the argument that got us here.
-        """
-        size = info.get("per_page")
-        if not isinstance(size, int) or size <= 0:
-            size = len(first)
-        rows = list(first)
-        for page in range(2, MAX_PAGES + 1):
-            result, info = await self._send_envelope(
-                http, "GET", path, params={**(params or {}), "page": page}
-            )
-            result = result or []
-            rows.extend(r for r in result if isinstance(r, dict))
-            if _is_last_page(result, info, size):
-                return rows
-        raise CloudflareError(f"Cloudflare returned more than {MAX_PAGES * size} rows for {path}")
+        if total is not None and len(rows) < total:
+            raise CloudflareError(_short_read(path, len(rows), total, mode, repeated))
+        return rows
 
     # --- identity & capabilities ---------------------------------------------------------- #
     async def verify_token(self, account_id: str | None = None) -> dict:
