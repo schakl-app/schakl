@@ -1185,6 +1185,10 @@ class TaskService:
     async def delete(self, task_id: uuid.UUID) -> None:
         self.ctx.require("tasks.task.delete")
         task = await self.repo.get_or_404(task_id)
+        # The card's planned blocks go with it (``task_schedules.task_id`` is ON DELETE CASCADE),
+        # and a cascade tells nobody: without this the Google mirror keeps a *pushed* link to a
+        # row that no longer exists and the block sits in someone's calendar forever.
+        await TaskScheduleService(self.ctx).remove_for_task(task.id)
         await self.repo.delete(task)
 
     # ------------------------------------------------------------------ #
