@@ -3120,6 +3120,8 @@
   "common.use_image_url": "Een gehoste URL gebruiken",
   "marketing.loading": "Laden…",
   "nav.marketing": "Marketing",
+  "nav.group.marketing": "Marketing",
+  "nav.marketing_overview": "Overzicht",
   "marketing.page.subtitle": "Analytics, Search Console en Ads, per klant.",
   "marketing.select_client": "Selecteer een klant",
   "marketing.page.pick_prompt": "Selecteer hierboven een klant om de Analytics-, Search Console- en Ads-gegevens te bekijken.",

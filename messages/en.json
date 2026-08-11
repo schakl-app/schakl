@@ -3120,6 +3120,8 @@
   "common.use_image_url": "Point at a hosted URL instead",
   "marketing.loading": "Loading…",
   "nav.marketing": "Marketing",
+  "nav.group.marketing": "Marketing",
+  "nav.marketing_overview": "Overview",
   "marketing.page.subtitle": "Analytics, Search Console and Ads, per client.",
   "marketing.select_client": "Select a client",
   "marketing.page.pick_prompt": "Select a client above to view their Analytics, Search Console and Ads data.",

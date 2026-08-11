@@ -95,7 +95,13 @@ def _token_dict(connection: GoogleConnection) -> dict[str, Any]:
 
 
 @asynccontextmanager
-async def acting_as(session: AsyncSession, org: Org, connection: GoogleConnection):
+async def acting_as(
+    session: AsyncSession,
+    org: Org,
+    connection: GoogleConnection,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+):
     """An authenticated httpx client for this connection; rotated tokens are staged on the
     connection row and persist with the caller's commit.
 
@@ -106,6 +112,11 @@ async def acting_as(session: AsyncSession, org: Org, connection: GoogleConnectio
     Request paths (never worker jobs) must make the actual Google calls inside
     ``ctx.release_db()`` so the awaited round-trips don't pin a pool connection
     (docs/PERFORMANCE.md). Enter ``acting_as`` *first* — it reads settings — then release.
+
+    ``transport`` is a test seam and nothing else: unset, every call goes to Google, so a test
+    that forgot to stub fails loudly on connect rather than quietly passing. It exists because
+    the surfaces built on this — Ads especially — are worth exercising through their *real* call
+    path, headers and paging included, which stubbing ``acting_as`` itself skips over.
     """
     row = await google_settings_row(session, org.id)
     client_id, client_secret = client_credentials(row)
@@ -137,6 +148,7 @@ async def acting_as(session: AsyncSession, org: Org, connection: GoogleConnectio
         token_endpoint=GOOGLE_TOKEN_ENDPOINT,
         update_token=_update_token,
         timeout=20.0,
+        **({"transport": transport} if transport is not None else {}),
     )
     try:
         yield client

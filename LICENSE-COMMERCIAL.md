@@ -18,6 +18,7 @@ and their web counterparts — currently:
 - `apps/api/app/modules/automation/`
 - `apps/api/app/modules/domains/`
 - `apps/api/app/modules/google/`
+- `apps/api/app/modules/google_ads/`
 - `apps/api/app/modules/hosting/`
 - `apps/api/app/modules/hr/`
 - `apps/api/app/modules/interactions/`
