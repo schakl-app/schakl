@@ -20,6 +20,7 @@ import "./google";
 import "./marketing";
 import "./reporting";
 import "./cloudflare";
+import "./uptime";
 import "./oxxa";
 import "./mollie";
 import "./portal";

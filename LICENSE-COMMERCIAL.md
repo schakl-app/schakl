@@ -49,6 +49,7 @@ and their web counterparts — currently:
 - `apps/web/src/lib/modules/reporting/`
 - `apps/web/src/lib/modules/subscriptions/`
 - `apps/web/src/lib/modules/time/`
+- `apps/web/src/lib/modules/uptime/`
 - `apps/web/src/lib/modules/websites/`
 - `apps/web/src/routes/(cloud)/`
 - `apps/web/src/routes/(app)/domains/`
@@ -77,6 +78,7 @@ and their web counterparts — currently:
 - `apps/web/src/routes/(app)/settings/service-access/`
 - `apps/web/src/routes/(app)/settings/subscriptions/`
 - `apps/web/src/routes/(app)/settings/time-entry-types/`
+- `apps/web/src/routes/(app)/settings/uptime/`
 
 Each covered directory carries a `LICENSE` file referring here. Code in these directories
 published in repository history **before** this file was introduced — or, for a directory

@@ -444,6 +444,20 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     module: "reporting",
   },
   {
+    // Uptime Kuma lives here rather than on a website, for principle 6's reason: it holds the
+    // credential, and the credential is org-wide configuration. `uptime.monitor.read` does not
+    // open it — seeing that a client's site is down and holding the administrator account of
+    // the box that watches it are different capabilities.
+    key: "uptime",
+    href: "/settings/uptime",
+    titleKey: "settings.uptime.title",
+    subtitleKey: "settings.uptime.subtitle",
+    keywordsKey: "settings.search.uptime",
+    group: "integrations",
+    permissions: ["uptime.instance.manage"],
+    module: "uptime",
+  },
+  {
     key: "cloudflare",
     href: "/settings/cloudflare",
     titleKey: "settings.cloudflare.title",

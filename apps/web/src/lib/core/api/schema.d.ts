@@ -9267,6 +9267,138 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/uptime/instances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Instances */
+        get: operations["list_instances_api_v1_uptime_instances_get"];
+        put?: never;
+        /** Create Instance */
+        post: operations["create_instance_api_v1_uptime_instances_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/uptime/instances/{instance_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Instance */
+        get: operations["get_instance_api_v1_uptime_instances__instance_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Instance */
+        delete: operations["delete_instance_api_v1_uptime_instances__instance_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Instance */
+        patch: operations["update_instance_api_v1_uptime_instances__instance_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/uptime/instances/{instance_id}/enrol": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enrol Instance
+         * @description Authenticate once and store the token. The password never reaches the database.
+         *
+         *     Answers `200` with `ok=false` on a refusal rather than raising: the report *is* the answer,
+         *     and an exception would roll back the status update that makes the failure visible on the
+         *     settings screen (`docs/PERFORMANCE.md`'s persist-then-report rule).
+         */
+        post: operations["enrol_instance_api_v1_uptime_instances__instance_id__enrol_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/uptime/instances/{instance_id}/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Probe Instance */
+        post: operations["probe_instance_api_v1_uptime_instances__instance_id__probe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/uptime/instances/{instance_id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Instance
+         * @description Read every monitor into the mirror. Writes nothing to Uptime Kuma.
+         */
+        post: operations["sync_instance_api_v1_uptime_instances__instance_id__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/uptime/monitors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Monitors */
+        get: operations["list_monitors_api_v1_uptime_monitors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/uptime/monitors/{monitor_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Monitor */
+        get: operations["get_monitor_api_v1_uptime_monitors__monitor_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/me": {
         parameters: {
             query?: never;
@@ -14527,6 +14659,18 @@ export interface components {
             /** Needs Setup */
             needs_setup: boolean;
         };
+        /**
+         * InstanceMode
+         * @description Whether we reach into this instance, or only hear from it.
+         *
+         *     Not a degraded pair. ``LINKED`` is the mode for a client-hosted Kuma behind a firewall whose
+         *     owner will never hand over a credential — which is a sensible position for them to take,
+         *     because Uptime Kuma has no user management and the only account there is is the
+         *     administrator's. It delivers the status timeline, the alerts and the automation trigger at no
+         *     infrastructure cost, because the traffic runs the other way.
+         * @enum {string}
+         */
+        InstanceMode: "managed" | "linked";
         /** InstancePrincipal */
         InstancePrincipal: {
             /** Capabilities */
@@ -17709,6 +17853,17 @@ export interface components {
         Page_TimeEntryRead_: {
             /** Items */
             items: components["schemas"]["TimeEntryRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** Page[UptimeMonitorRead] */
+        Page_UptimeMonitorRead_: {
+            /** Items */
+            items: components["schemas"]["UptimeMonitorRead"][];
             /** Limit */
             limit: number;
             /** Offset */
@@ -23270,6 +23425,261 @@ export interface components {
             release_url?: string | null;
             /** Update Available */
             update_available: boolean;
+        };
+        /**
+         * UptimeEnrol
+         * @description The one request that carries a password — and the only one, by design.
+         *
+         *     Kuma has no service accounts, so this is the instance's administrator credential. It is used
+         *     once to obtain a token and is never stored: see ``UptimeService.enrol``.
+         */
+        UptimeEnrol: {
+            /** Connect Headers */
+            connect_headers?: {
+                [key: string]: string;
+            } | null;
+            /** Password */
+            password: string;
+            /** Totp */
+            totp?: string | null;
+            /** Username */
+            username: string;
+        };
+        /** UptimeInstanceCreate */
+        UptimeInstanceCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Base Url */
+            base_url?: string | null;
+            /** @default managed */
+            mode: components["schemas"]["InstanceMode"];
+            /** Name */
+            name: string;
+            /**
+             * Ssl Verify
+             * @default true
+             */
+            ssl_verify: boolean;
+        };
+        /** UptimeInstanceRead */
+        UptimeInstanceRead: {
+            /** Active */
+            active: boolean;
+            /** Base Url */
+            base_url: string | null;
+            /** Connect Header Names */
+            connect_header_names?: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Insecure
+             * @default false
+             */
+            insecure: boolean;
+            /** Last Checked At */
+            last_checked_at: string | null;
+            /** Last Error */
+            last_error: string | null;
+            /** Last Synced At */
+            last_synced_at: string | null;
+            mode: components["schemas"]["InstanceMode"];
+            /**
+             * Monitor Count
+             * @default 0
+             */
+            monitor_count: number;
+            /** Name */
+            name: string;
+            /** Server Version */
+            server_version: string | null;
+            /** Ssl Verify */
+            ssl_verify: boolean;
+            /** Status */
+            status: string;
+            /**
+             * Token Configured
+             * @default false
+             */
+            token_configured: boolean;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Username */
+            username: string | null;
+        };
+        /**
+         * UptimeInstanceUpdate
+         * @description Every field optional; absent means *leave alone*, which is what a partial save means.
+         *
+         *     ``connect_headers`` is the exception worth naming: an explicit ``{}`` clears them, absent
+         *     keeps them. That distinction is the difference between "I did not touch the tunnel settings"
+         *     and "this instance is no longer behind Access".
+         */
+        UptimeInstanceUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Base Url */
+            base_url?: string | null;
+            /** Connect Headers */
+            connect_headers?: {
+                [key: string]: string;
+            } | null;
+            mode?: components["schemas"]["InstanceMode"] | null;
+            /** Name */
+            name?: string | null;
+            /** Ssl Verify */
+            ssl_verify?: boolean | null;
+        };
+        /** UptimeMonitorRead */
+        UptimeMonitorRead: {
+            /** Active */
+            active: boolean;
+            /** Company Id */
+            company_id: string | null;
+            /** Company Name */
+            company_name?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Domain Id */
+            domain_id: string | null;
+            /** Hosting Id */
+            hosting_id: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Instance Id
+             * Format: uuid
+             */
+            instance_id: string;
+            /** Instance Name */
+            instance_name?: string | null;
+            /** Interval Seconds */
+            interval_seconds: number | null;
+            /** Kuma Monitor Id */
+            kuma_monitor_id: number | null;
+            /** Last Error */
+            last_error: string | null;
+            /** Last Observed At */
+            last_observed_at: string | null;
+            /** Monitor Type */
+            monitor_type: string;
+            /** Name */
+            name: string;
+            /** Parent Id */
+            parent_id: string | null;
+            /** Port */
+            port: number | null;
+            /** Remote Active */
+            remote_active?: boolean | null;
+            /** Retries */
+            retries: number | null;
+            /** Sync Status */
+            sync_status: string;
+            /** Target */
+            target: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Website Id */
+            website_id: string | null;
+        };
+        /**
+         * UptimeProbeResult
+         * @description What a connection check found — evidence, never a gate.
+         *
+         *     A failed probe on one instance must not blank another's list, and must not hide this one's
+         *     stored mirror: the screen keeps rendering what we last observed with a *"laatst gelezen om…"*
+         *     line beside it.
+         */
+        UptimeProbeResult: {
+            /** Detail */
+            detail?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Ok */
+            ok: boolean;
+            /** Server Version */
+            server_version?: string | null;
+            /** Status */
+            status: string;
+        };
+        /**
+         * UptimeSyncReport
+         * @description What a read-only sync did, reported rather than silently applied.
+         *
+         *     A sync never writes to Kuma and never links a monitor to a client on a guess: ``ambiguous``
+         *     and ``unmatched`` are handed back for a person to resolve, because two websites on the same
+         *     apex is an ordinary thing and picking one attaches a client's monitoring to another client's
+         *     record with every row valid.
+         */
+        UptimeSyncReport: {
+            /**
+             * Ambiguous
+             * @default 0
+             */
+            ambiguous: number;
+            /**
+             * Created
+             * @default 0
+             */
+            created: number;
+            /** Error */
+            error?: string | null;
+            /**
+             * Instance Id
+             * Format: uuid
+             */
+            instance_id: string;
+            /**
+             * Matched
+             * @default 0
+             */
+            matched: number;
+            /**
+             * Missing
+             * @default 0
+             */
+            missing: number;
+            /** Ok */
+            ok: boolean;
+            /**
+             * Seen
+             * @default 0
+             */
+            seen: number;
+            /** Server Version */
+            server_version?: string | null;
+            /**
+             * Unmatched
+             * @default 0
+             */
+            unmatched: number;
+            /**
+             * Updated
+             * @default 0
+             */
+            updated: number;
         };
         /** UserCreate */
         UserCreate: {
@@ -43450,6 +43860,320 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TimeWorkspace"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_instances_api_v1_uptime_instances_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptimeInstanceRead"][];
+                };
+            };
+        };
+    };
+    create_instance_api_v1_uptime_instances_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UptimeInstanceCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptimeInstanceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_instance_api_v1_uptime_instances__instance_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                instance_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptimeInstanceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_instance_api_v1_uptime_instances__instance_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                instance_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_instance_api_v1_uptime_instances__instance_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                instance_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UptimeInstanceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptimeInstanceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enrol_instance_api_v1_uptime_instances__instance_id__enrol_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                instance_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UptimeEnrol"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptimeProbeResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    probe_instance_api_v1_uptime_instances__instance_id__probe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                instance_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptimeProbeResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_instance_api_v1_uptime_instances__instance_id__sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                instance_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptimeSyncReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_monitors_api_v1_uptime_monitors_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                instance_id?: string | null;
+                company_id?: string | null;
+                website_id?: string | null;
+                sync_status?: string | null;
+                /** @description Compute total; set false for pickers */
+                count?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_UptimeMonitorRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_monitor_api_v1_uptime_monitors__monitor_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                monitor_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptimeMonitorRead"];
                 };
             };
             /** @description Validation Error */
