@@ -304,3 +304,65 @@ class UptimeMonitor(
     #: is not an overwrite. One schakl created does have intent, so a difference is drift and
     #: must be reported rather than quietly absorbed.
     adopted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+    @classmethod
+    def __portal_horizon_clause__(cls, scope: frozenset[uuid.UUID] | None):  # noqa: ANN206
+        """The stricter rule for a client-portal login (#266, #274).
+
+        A client sees monitors for **their own** companies and nothing else — emphatically
+        including monitors attached to *no* client, which staff can see and which are exactly
+        the agency's own internal infrastructure. That is the difference between the staff
+        horizon (where ``NULL`` means "not company data, stays visible") and this one, and it is
+        why the rule lives on the model rather than in each read: ``entity_visible`` and the
+        directory seam both prefer this clause, and one of the two callers always forgets.
+
+        A client with no company scope sees nothing at all, rather than everything.
+        """
+        if scope is None:
+            return cls.company_id.is_(None) & cls.company_id.is_not(None)  # always false
+        return cls.company_id.in_(scope)
+
+
+class UptimeHeartbeat(UUIDPrimaryKeyMixin, OrgScopedMixin, Base):
+    """One state change a monitor reported. A **bounded rolling window**, not a warehouse.
+
+    Uptime Kuma keeps the real history and answers questions about it better than a mirror
+    would, so this holds only what a panel and a report section draw, pruned by cron. It is also
+    the one table an unauthenticated caller can cause a row in (:mod:`.webhook`), which is why
+    it carries no free text from the request beyond a bounded message.
+
+    No ``TimestampMixin``: ``observed_at`` is the only time that means anything here, and a
+    row is never updated — a heartbeat that changed would not be a heartbeat.
+    """
+
+    __tablename__ = "uptime_heartbeats"
+    __entity_type__ = "uptime_heartbeat"
+
+    __table_args__ = (
+        # The idempotency guarantee, at the database rather than in application code. A monitor
+        # flapping delivers the same transition twice and Uptime Kuma retries besides, so
+        # "have we recorded this?" followed by an insert leaves a window every retry enters —
+        # including across two API replicas that share no memory (docs/PAYMENTS.md's lesson).
+        UniqueConstraint(
+            "org_id", "monitor_id", "status", "observed_at", name="uq_uptime_heartbeat_event"
+        ),
+        Index("ix_uptime_heartbeats_org_monitor_time", "org_id", "monitor_id", "observed_at"),
+    )
+
+    monitor_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("uptime_monitors.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    #: ``up`` / ``down`` / ``pending`` / ``maintenance`` — Uptime Kuma's own vocabulary.
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    #: Kuma's own message, truncated. Not translatable — it is the far end's text about the
+    #: far end's check, and inventing an i18n key for it would be inventing its meaning.
+    message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    ping_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: Whether this arrived by webhook (reported) or by an authenticated read (observed). A
+    #: `linked` instance can only ever produce the first, and the screen says so rather than
+    #: presenting a claim as a measurement.
+    reported: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

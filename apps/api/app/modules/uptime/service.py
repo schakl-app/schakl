@@ -144,7 +144,7 @@ class UptimeService:
             status=InstanceStatus.PENDING.value,
         )
         await self.activity.record(ENTITY_TYPE, instance.id, "created")
-        return instance
+        return await self._settled(instance)
 
     async def update_instance(
         self, instance_id: uuid.UUID, payload: UptimeInstanceUpdate
@@ -179,8 +179,7 @@ class UptimeService:
             await self.activity.record(
                 ENTITY_TYPE, instance.id, "updated", payload={"changes": changes}
             )
-        await self.ctx.session.flush()
-        return instance
+        return await self._settled(instance)
 
     async def delete_instance(self, instance_id: uuid.UUID) -> None:
         """Delete locally and touch **nothing** at Uptime Kuma.
@@ -231,6 +230,24 @@ class UptimeService:
         async with self.ctx.release_db():
             return await asyncio.to_thread(_run)
 
+    async def _settled(self, row: Any) -> Any:
+        """Flush, then re-read — the last statement of every write path that returns a row.
+
+        ``TimestampMixin.updated_at`` carries ``onupdate=func.now()``, a **SQL** expression, so
+        every flush that updates a row expires that attribute to re-read the server's value.
+        Serialising the row afterwards lazy-loads from inside Pydantic — synchronously, in a
+        context with no greenlet — and asyncpg answers ``MissingGreenlet``.
+
+        Ordinary write paths never notice, because their flush is the last thing that touches
+        the row before the response. This module's are not: an external call sits in the middle
+        of several of them, and ``release_db()`` commits on entry, so a row crosses that seam
+        twice. It applies to the plain instance edit too, which has no external call at all —
+        the expiry is caused by the flush, not by the socket.
+        """
+        await self.ctx.session.flush()
+        await self.ctx.session.refresh(row)
+        return row
+
     async def _reload(self, *rows: Any) -> None:
         """Re-read rows that were loaded before an external call.
 
@@ -245,22 +262,6 @@ class UptimeService:
         for row in rows:
             if row is not None:
                 await self.ctx.session.refresh(row)
-
-    async def _settled(self, row: Any) -> Any:
-        """Flush, then re-read — the last statement of every write path that returns a row.
-
-        ``TimestampMixin.updated_at`` carries ``onupdate=func.now()``, a **SQL** expression, so
-        every flush that updates a row expires that attribute to re-read the server's value.
-        Serialising the row afterwards then lazy-loads from inside Pydantic — synchronously, in
-        a context with no greenlet — and asyncpg answers ``MissingGreenlet``.
-
-        Ordinary write paths never notice, because their flush is the last thing that touches
-        the row before the response. This module's is not: the external call sits in the middle,
-        and ``release_db()`` commits on entry, so the row crosses that seam twice.
-        """
-        await self.ctx.session.flush()
-        await self.ctx.session.refresh(row)
-        return row
 
     def _mark(
         self,

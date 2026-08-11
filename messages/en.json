@@ -4956,5 +4956,8 @@
   "uptime.field.target": "What to watch",
   "uptime.field.monitor_type": "Type",
   "uptime.field.parent": "Group",
-  "uptime.field.delete_at_kuma": "Also delete this monitor in Uptime Kuma"
+  "uptime.field.delete_at_kuma": "Also delete this monitor in Uptime Kuma",
+  "notifications.event.uptime.monitor.down": "A monitor went down",
+  "uptime.heartbeat.reported": "reported by the instance",
+  "uptime.heartbeat.observed": "observed"
 }

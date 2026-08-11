@@ -162,6 +162,18 @@ class NotificationService:
 
     @property
     def actor_id(self) -> uuid.UUID | None:
+        """Who caused this, or ``None`` for the system.
+
+        ``system_context`` (``app/core/jobs.py``) hands out a **transient** user that exists in
+        no table, so that a job never acts as "someone". ``notification_events.actor_user_id``
+        has a FK to ``users``, so writing it raises a foreign-key violation inside whatever
+        transaction the job was doing its real work in — which is precisely why ``is_system``
+        exists and why ``ActivityService`` already honours it (§16's "a genuinely absent actor
+        is the system"). Reached first from the uptime webhook, where a heartbeat arrives with
+        no person behind it at all.
+        """
+        if getattr(self.ctx, "is_system", False):
+            return None
         user = getattr(self.ctx, "user", None)
         return user.id if user is not None else None
 

@@ -47,3 +47,13 @@ UPTIME_PERMISSIONS: list[PermissionSpec] = [
     # The tenant's default-settings profiles (gate 2).
     PermissionSpec("uptime.profile.manage", position=50),
 ]
+
+#: #266/#274's rule, applied here: a client-portal login reads **their own** companies' monitors
+#: and nothing else. Granted as a `DefaultsRevision` rather than a spec default, because the
+#: `client` role in every existing org was already offered this key's defaults and no per-role
+#: diff can tell *never offered* from *offered and unticked*.
+#:
+#: It is safe only because `UptimeMonitor.__portal_horizon_clause__` exists first: granting the
+#: scope before the clause would fence a client by the staff rule, which lets `NULL` through —
+#: and a monitor attached to no client is the agency's own infrastructure.
+UPTIME_PORTAL_REVISION_MARKER = "@rev:uptime-portal-own"

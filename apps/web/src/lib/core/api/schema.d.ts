@@ -9267,6 +9267,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/uptime/hook/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Uptime Hook
+         * @description Ingest one reported heartbeat.
+         *
+         *     Answers a bare status with no body. Every refusal a caller could learn from is a `404` —
+         *     a wrong secret, an unknown instance and an unknown monitor are deliberately identical, or
+         *     the route becomes an oracle for what exists here.
+         *
+         *     `license_exempt`: an expired licence makes a module read-only; it does not make a client's
+         *     outage stop having happened. Gate what the agency *does*, never the recording of what has
+         *     already happened to them (docs/PAYMENTS.md's rule, applied to the other place where
+         *     refusing loses information no retry recovers).
+         */
+        post: operations["uptime_hook_api_v1_uptime_hook__token__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/uptime/instances": {
         parameters: {
             query?: never;
@@ -44195,6 +44224,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TimeWorkspace"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    uptime_hook_api_v1_uptime_hook__token__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

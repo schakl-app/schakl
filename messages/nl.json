@@ -4956,5 +4956,8 @@
   "uptime.field.target": "Wat wordt bewaakt",
   "uptime.field.monitor_type": "Type",
   "uptime.field.parent": "Groep",
-  "uptime.field.delete_at_kuma": "Deze monitor ook in Uptime Kuma verwijderen"
+  "uptime.field.delete_at_kuma": "Deze monitor ook in Uptime Kuma verwijderen",
+  "notifications.event.uptime.monitor.down": "Een monitor is down gegaan",
+  "uptime.heartbeat.reported": "gemeld door de instantie",
+  "uptime.heartbeat.observed": "waargenomen"
 }

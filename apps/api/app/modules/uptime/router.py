@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request, Response
 
-from app.core.permissions.deps import require_permission
+from app.core.entitlements import license_exempt
+from app.core.permissions.deps import no_permission_required, require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.modules.uptime.schemas import (
     UptimeEnrol,
@@ -34,6 +35,7 @@ from app.modules.uptime.service import (
     UptimeWriteService,
     visible_header_names,
 )
+from app.modules.uptime.webhook import ingest
 from app.schemas import Page
 
 router = APIRouter(prefix="/uptime", tags=["uptime"])
@@ -366,3 +368,34 @@ async def delete_monitor(
     ctx: RequestContext = Depends(require_context),
 ) -> None:
     await UptimeWriteService(ctx).delete_monitor(monitor_id, at_kuma=at_kuma)
+
+
+# ---------------------------------------------------------------------- gate 3
+
+
+@license_exempt
+@router.post(
+    "/hook/{token}",
+    status_code=200,
+    dependencies=[
+        no_permission_required(
+            "Uptime Kuma posting a heartbeat. The caller holds no session: the token in the "
+            "path names the tenant and is compared in constant time, and the body is read for "
+            "a monitor id and a state and nothing else (docs/UPTIME.md §11)."
+        )
+    ],
+)
+async def uptime_hook(token: str, request: Request) -> Response:
+    """Ingest one reported heartbeat.
+
+    Answers a bare status with no body. Every refusal a caller could learn from is a `404` —
+    a wrong secret, an unknown instance and an unknown monitor are deliberately identical, or
+    the route becomes an oracle for what exists here.
+
+    `license_exempt`: an expired licence makes a module read-only; it does not make a client's
+    outage stop having happened. Gate what the agency *does*, never the recording of what has
+    already happened to them (docs/PAYMENTS.md's rule, applied to the other place where
+    refusing loses information no retry recovers).
+    """
+    body = await request.body()
+    return Response(status_code=await ingest(token, body))

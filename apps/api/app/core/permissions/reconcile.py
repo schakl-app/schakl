@@ -106,6 +106,16 @@ REVISIONS: tuple[DefaultsRevision, ...] = (
         marker="@rev:310-contacts-member-write",
         grants={"member": ("contacts.contact.write", "contacts.link.write")},
     ),
+    DefaultsRevision(
+        # docs/UPTIME.md gate 3: a client sees whether their own sites are up. The scope is the
+        # only thing that can fence this — `uptime.monitor.read` also serves the agency's
+        # cross-client list — and it is safe only because `UptimeMonitor.__portal_horizon_clause__`
+        # exists: without it a client would be fenced by the staff rule, which lets a NULL
+        # `company_id` through, and a monitor attached to no client is the agency's own
+        # infrastructure.
+        marker="@rev:uptime-portal-own",
+        grants={"client": ("uptime.monitor.read:own",)},
+    ),
 )
 
 

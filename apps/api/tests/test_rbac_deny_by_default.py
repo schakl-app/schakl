@@ -94,6 +94,16 @@ _EXEMPT_OPERATIONS = frozenset(
         ("get", "/api/v1/invoicing/public/invoices/{token}/pdf"),
         ("post", "/api/v1/invoicing/public/invoices/{token}/payment-intents"),
         ("post", "/api/v1/invoicing/public/invoices/{token}/refresh"),
+        # Uptime Kuma posting a heartbeat (docs/UPTIME.md §11). The same shape a fourth time:
+        # no session, a capability token in the URL, and everything unrecognised a bare 404 —
+        # which is what this sweep sees, because it fills path params with a random UUID.
+        #
+        # What keeps it honest is not this exemption. The route's whole write surface is one
+        # heartbeat row on a monitor it already holds and one notification event: it never
+        # creates, never writes configuration, and is capped before the body is parsed.
+        # `tests/test_uptime_webhook.py` asserts each of those, plus that a wrong secret, an
+        # unknown instance and another tenant's instance are indistinguishable.
+        ("post", "/api/v1/uptime/hook/{token}"),
     }
 )
 
