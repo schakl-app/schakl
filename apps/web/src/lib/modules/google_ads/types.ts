@@ -52,3 +52,33 @@ export interface GoogleAdsReport {
   rows: Record<string, unknown>[];
   extra: Record<string, unknown>;
 }
+
+export interface GoogleAdsChangeAmount {
+  from?: number | null;
+  to?: number | null;
+  absolute?: number | null;
+  /** `null` when the baseline was zero: a percentage against nothing is undefined. */
+  relative?: number | null;
+}
+
+/**
+ * The trend read's own shape. A separate type rather than optional fields on
+ * `GoogleAdsReport`, because it is a genuinely different answer: it comes from schakl's stored
+ * rows rather than from Google, it always has a period, and it carries the compared window's
+ * dates — which is what makes any percentage on the screen checkable (#312).
+ */
+export interface GoogleAdsTrendReport {
+  account: GoogleAdsAccountBrief;
+  period: GoogleAdsPeriod;
+  compared_with: GoogleAdsPeriod;
+  compare_mode: string;
+  currency: string | null;
+  totals: GoogleAdsMetrics;
+  previous_totals: GoogleAdsMetrics;
+  change: Record<string, GoogleAdsChangeAmount | null>;
+  series: { date: string; metrics: GoogleAdsMetrics }[];
+  breakdown: Record<string, unknown>[];
+  /** Days with no stored row — "not synced yet", never "no spend". */
+  missing_days: number;
+  warnings: string[];
+}

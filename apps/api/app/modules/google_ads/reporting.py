@@ -32,6 +32,7 @@ that lie:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from typing import Any
@@ -1188,6 +1189,90 @@ def _impact(metrics: dict[str, Any] | None) -> dict[str, Any] | None:
         "cost": money(metrics.get("costMicros")),
         "conversions": round(_float(metrics.get("conversions")), 2),
     }
+
+
+# --- the daily reads the nightly mirror stores ------------------------------------------------ #
+#
+# Same queries as the live reads above, plus `segments.date` — which changes them from "the
+# period, folded" into "one row per day". Kept separate rather than adding a flag, because the
+# *shape* differs: these return `(date, dim_key, label, metrics)` tuples destined for a table,
+# and a caller that confused them with the folded reads would store a period total under a day.
+
+
+def _daily_rows(
+    rows: list[dict[str, Any]],
+    *,
+    key: Callable[[dict[str, Any]], tuple[str, str]] | None = None,
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        day = str(row.get("segments", {}).get("date") or "")
+        if not day:
+            continue
+        dim_key, label = key(row) if key else ("", "")
+        out.append(
+            {
+                "date": date.fromisoformat(day),
+                "dim_key": dim_key,
+                "label": label,
+                "metrics": metrics_block(row),
+            }
+        )
+    return out
+
+
+async def read_account_daily(
+    client: AdsClient, customer_id: str, window: Window
+) -> list[dict[str, Any]]:
+    """One row per day for the whole account — the series every trend line is drawn from."""
+    query = (
+        "SELECT " + _select(("segments.date",), METRIC_FIELDS) + " FROM customer"
+        f" WHERE {window.gaql()}"
+    )
+    rows = await client.search(customer_id, query, context="daily_account")
+    return _daily_rows(rows)
+
+
+async def read_campaign_daily(
+    client: AdsClient, customer_id: str, window: Window
+) -> list[dict[str, Any]]:
+    """One row per campaign per day.
+
+    Bounded by an agency's campaign count times the window, which is the largest of the three
+    stored dimensions and still small — a client with forty campaigns is 280 rows a week.
+    """
+    query = (
+        "SELECT "
+        + _select(("segments.date", "campaign.id", "campaign.name"), METRIC_FIELDS)
+        + " FROM campaign"
+        + f" WHERE {window.gaql()}"
+    )
+    rows = await client.search(customer_id, query, context="daily_campaign")
+    return _daily_rows(
+        rows,
+        key=lambda row: (
+            str(row.get("campaign", {}).get("id") or ""),
+            row.get("campaign", {}).get("name") or "",
+        ),
+    )
+
+
+async def read_device_daily(
+    client: AdsClient, customer_id: str, window: Window
+) -> list[dict[str, Any]]:
+    """One row per device per day, account-wide. Three rows a day, so effectively free."""
+    query = (
+        "SELECT " + _select(("segments.date", "segments.device"), METRIC_FIELDS) + " FROM customer"
+        f" WHERE {window.gaql()}"
+    )
+    rows = await client.search(customer_id, query, context="daily_device")
+    return _daily_rows(
+        rows,
+        key=lambda row: (
+            str(row.get("segments", {}).get("device") or "UNKNOWN"),
+            str(row.get("segments", {}).get("device") or "UNKNOWN"),
+        ),
+    )
 
 
 async def read_account(client: AdsClient, customer_id: str, window: Window) -> dict[str, Any]:

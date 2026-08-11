@@ -13,18 +13,28 @@
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
   import GoogleAdsReportTable from "$lib/modules/google_ads/GoogleAdsReportTable.svelte";
+  import GoogleAdsTrend from "$lib/modules/google_ads/GoogleAdsTrend.svelte";
   import { COLUMNS, type ReportView } from "$lib/modules/google_ads/columns";
-  import type { GoogleAdsReport } from "$lib/modules/google_ads/types";
+  import type { GoogleAdsReport, GoogleAdsTrendReport } from "$lib/modules/google_ads/types";
 
   let { data } = $props();
 
-  const VIEWS: ReportView[] = ["campaigns", "keywords", "search-terms", "negatives", "changes"];
+  const VIEWS = [
+    "trend",
+    "campaigns",
+    "keywords",
+    "search-terms",
+    "negatives",
+    "changes",
+  ] as const;
   const PERIODS = ["30d", "90d", "month", "last_month", "quarter"];
 
   // Resolved into `$state` rather than awaited in the markup: a raw `{#await}` re-enters its
   // pending branch on every invalidation, so switching period would blank a table that is only
   // being refreshed (the lesson the marketing dashboard already learned).
-  let report = $state<GoogleAdsReport | null>(null);
+  // Two genuinely different answers behind one screen: the trend comes from stored rows and
+  // carries a compared window, the rest come from Google and carry rows.
+  let report = $state<GoogleAdsReport | GoogleAdsTrendReport | null>(null);
   let errorKey = $state<string | null>(null);
   let pending = $state(true);
   $effect(() => {
@@ -33,11 +43,17 @@
     void promise.then((value) => {
       // A stale resolution loses: clicking two tabs quickly leaves two loads in flight.
       if (data.report !== promise) return;
-      report = value.data as GoogleAdsReport | null;
+      report = value.data as GoogleAdsReport | GoogleAdsTrendReport | null;
       errorKey = value.errorKey;
       pending = false;
     });
   });
+
+  // Narrowed once, here, rather than by `data.view` at each use site: the view name and the
+  // payload's type are unrelated as far as TypeScript is concerned, so checking one narrows
+  // nothing about the other.
+  const trend = $derived(data.view === "trend" ? (report as GoogleAdsTrendReport | null) : null);
+  const table = $derived(data.view === "trend" ? null : (report as GoogleAdsReport | null));
 
   function href(view: string, period: string): string {
     const params = new URLSearchParams();
@@ -119,13 +135,31 @@
         from: report.period.date_from,
         to: report.period.date_to,
       })}
+      {#if trend}
+        <!-- The compared span is *named*, never left as "vs. previous period": a comparison set
+             to the wrong thing otherwise looks exactly like one set to the right thing (#312). -->
+        · {t("google_ads.trend.compared_with", {
+          from: trend.compared_with.date_from,
+          to: trend.compared_with.date_to,
+        })}
+      {/if}
     </p>
   {/if}
 
-  <GoogleAdsReportTable
-    columns={COLUMNS[data.view]}
-    rows={report.rows}
-    totals={report.totals}
-    currency={report.currency}
-  />
+  {#if trend}
+    <GoogleAdsTrend
+      totals={trend.totals}
+      previous={trend.previous_totals}
+      change={trend.change ?? {}}
+      breakdown={trend.breakdown ?? []}
+      currency={trend.currency}
+    />
+  {:else if table}
+    <GoogleAdsReportTable
+      columns={COLUMNS[data.view as ReportView]}
+      rows={table.rows}
+      totals={table.totals}
+      currency={table.currency}
+    />
+  {/if}
 {/if}

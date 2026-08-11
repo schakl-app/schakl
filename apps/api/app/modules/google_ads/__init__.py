@@ -23,10 +23,14 @@ client is doing*, this answers *what the advertising is doing and what to change
 
 from __future__ import annotations
 
+from arq import cron
+
+from app.modules.google_ads.jobs import google_ads_backfill_account, google_ads_sync_all
 from app.modules.google_ads.mcp import GOOGLE_ADS_MCP_TOOLS
 from app.modules.google_ads.panels import google_ads_company_panel
 from app.modules.google_ads.permissions import GOOGLE_ADS_PERMISSIONS
 from app.modules.google_ads.provider import install as install_provider
+from app.modules.google_ads.report_sections import GOOGLE_ADS_REPORT_SECTIONS
 from app.modules.google_ads.router import router
 from app.registry import ModuleDescriptor, registry
 
@@ -44,6 +48,15 @@ module = ModuleDescriptor(
     # Curated tools *beside* the ones every route already contributes: the three shapes where a
     # single call beats three plus arithmetic the model should not be doing.
     mcp_tools=GOOGLE_ADS_MCP_TOOLS,
+    # 05:15, deliberately after marketing's 04:45: both walk every org making outbound Google
+    # calls, and stacking them on one minute is how a box with thirty clients meets its own rate
+    # limits at four in the morning.
+    cron_jobs=[cron(google_ads_sync_all, hour=5, minute=15)],
+    worker_functions=[google_ads_backfill_account],
+    # The Ads half of the monthly client report (#300): the panels pattern, applied to
+    # documents. Both sections read the nightly mirror, which is what makes a report of last
+    # March still printable next March.
+    report_sections=GOOGLE_ADS_REPORT_SECTIONS,
 )
 
 # The core seam's provider. Registered at import — the same shape ``cloudflare`` uses for

@@ -7,7 +7,7 @@ import { apiFor } from "$lib/core/session";
 import type { PageServerLoad } from "./$types";
 
 /** The report this page shows. The URL is the view (docs/PERFORMANCE.md, CLAUDE.md §9). */
-const VIEWS = ["campaigns", "keywords", "search-terms", "negatives", "changes"] as const;
+const VIEWS = ["trend", "campaigns", "keywords", "search-terms", "negatives", "changes"] as const;
 type View = (typeof VIEWS)[number];
 
 function isView(value: string): value is View {
@@ -33,27 +33,34 @@ export const load: PageServerLoad = async (event) => {
   // One live Google call per view, streamed behind the shell: the heading, the tabs and the
   // period picker are what the user interacts with, and none of them needs Google to have
   // answered (docs/PERFORMANCE.md). Negatives carry no period — an exclusion is configuration.
+  //
+  // `trend` is the exception and the point of the nightly mirror: it reads schakl's own stored
+  // rows, so it is fast, spends no Ads quota, and still renders when Google is down.
   const query = { period };
   const report =
-    view === "negatives"
-      ? api.GET("/api/v1/google-ads/accounts/{account_id}/negatives", {
-          params: { path: { account_id: accountId } },
+    view === "trend"
+      ? api.GET("/api/v1/google-ads/accounts/{account_id}/trend", {
+          params: { path: { account_id: accountId }, query },
         })
-      : view === "keywords"
-        ? api.GET("/api/v1/google-ads/accounts/{account_id}/keywords", {
-            params: { path: { account_id: accountId }, query },
+      : view === "negatives"
+        ? api.GET("/api/v1/google-ads/accounts/{account_id}/negatives", {
+            params: { path: { account_id: accountId } },
           })
-        : view === "search-terms"
-          ? api.GET("/api/v1/google-ads/accounts/{account_id}/search-terms", {
+        : view === "keywords"
+          ? api.GET("/api/v1/google-ads/accounts/{account_id}/keywords", {
               params: { path: { account_id: accountId }, query },
             })
-          : view === "changes"
-            ? api.GET("/api/v1/google-ads/accounts/{account_id}/changes", {
+          : view === "search-terms"
+            ? api.GET("/api/v1/google-ads/accounts/{account_id}/search-terms", {
                 params: { path: { account_id: accountId }, query },
               })
-            : api.GET("/api/v1/google-ads/accounts/{account_id}/campaigns", {
-                params: { path: { account_id: accountId }, query },
-              });
+            : view === "changes"
+              ? api.GET("/api/v1/google-ads/accounts/{account_id}/changes", {
+                  params: { path: { account_id: accountId }, query },
+                })
+              : api.GET("/api/v1/google-ads/accounts/{account_id}/campaigns", {
+                  params: { path: { account_id: accountId }, query },
+                });
 
   return {
     account: account.data,

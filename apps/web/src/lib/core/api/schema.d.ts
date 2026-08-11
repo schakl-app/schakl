@@ -2564,6 +2564,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/google-ads/accounts/{account_id}/trend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Google Ads Trend
+         * @description A period against its comparison, with the change per metric already computed.
+         *
+         *     Answered from schakl's own nightly mirror — **this makes no call to Google**, so it is fast,
+         *     costs no API quota and works when Google is down. The trade is that it only knows what has
+         *     been synced: `missing_days` says how many days of the window have no stored row, which means
+         *     "not synced yet", never "no spend".
+         *
+         *     The comparison defaults to the same period a year earlier, because that is the comparison
+         *     seasonality survives — a campsite's July has nothing to say to its June. Both windows' dates
+         *     are in the payload, so a percentage is always checkable.
+         */
+        get: operations["google_ads_trend_api_v1_google_ads_accounts__account_id__trend_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/google-ads/accounts/{account_id}/verify": {
         parameters: {
             query?: never;
@@ -14861,6 +14890,24 @@ export interface components {
             login_customer_id?: string | null;
         };
         /**
+         * GoogleAdsChangeAmount
+         * @description What moved, in both the absolute and the relative sense.
+         *
+         *     ``relative`` is ``null`` when the baseline was zero. Not infinity and not 100 %: a
+         *     percentage against nothing is undefined, and anything that renders `inf` eventually prints
+         *     it in a sentence in front of a client.
+         */
+        GoogleAdsChangeAmount: {
+            /** Absolute */
+            absolute?: number | null;
+            /** From */
+            from?: number | null;
+            /** Relative */
+            relative?: number | null;
+            /** To */
+            to?: number | null;
+        };
+        /**
          * GoogleAdsKeywordIdeaRequest
          * @description Seeds for keyword research. At least one of ``keywords`` or ``url`` is required.
          */
@@ -15131,6 +15178,51 @@ export interface components {
             /** Total Daily Budget */
             total_daily_budget?: number | null;
             totals?: components["schemas"]["GoogleAdsMetrics"] | null;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /** GoogleAdsTrendPoint */
+        GoogleAdsTrendPoint: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            metrics: components["schemas"]["GoogleAdsMetrics"];
+        };
+        /**
+         * GoogleAdsTrendRead
+         * @description A window against its comparison, **entirely from stored rows** — no Google call.
+         *
+         *     The compared window's dates are part of the payload rather than a label. "Up 21 %" over an
+         *     unnamed span is a sentence that could be printed over any two dates at all, which is why a
+         *     comparison set to the wrong thing looks exactly like one set to the right thing (#312).
+         */
+        GoogleAdsTrendRead: {
+            account: components["schemas"]["GoogleAdsAccountBrief"];
+            /** Breakdown */
+            breakdown?: {
+                [key: string]: unknown;
+            }[];
+            /** Change */
+            change?: {
+                [key: string]: components["schemas"]["GoogleAdsChangeAmount"] | null;
+            };
+            /** Compare Mode */
+            compare_mode: string;
+            compared_with: components["schemas"]["GoogleAdsPeriod"];
+            /** Currency */
+            currency?: string | null;
+            /**
+             * Missing Days
+             * @default 0
+             */
+            missing_days: number;
+            period: components["schemas"]["GoogleAdsPeriod"];
+            previous_totals: components["schemas"]["GoogleAdsMetrics"];
+            /** Series */
+            series?: components["schemas"]["GoogleAdsTrendPoint"][];
+            totals: components["schemas"]["GoogleAdsMetrics"];
             /** Warnings */
             warnings?: string[];
         };
@@ -31038,6 +31130,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GoogleAdsSnapshotRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_ads_trend_api_v1_google_ads_accounts__account_id__trend_get: {
+        parameters: {
+            query?: {
+                /** @description What to compare against: 'year' (the same period a year earlier, the default) or 'previous' (the period immediately before). */
+                compare?: string | null;
+                /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
+                period?: string | null;
+                /** @description YYYY-MM-DD, inclusive. */
+                date_from?: string | null;
+                /** @description YYYY-MM-DD, inclusive. */
+                date_to?: string | null;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleAdsTrendRead"];
                 };
             };
             /** @description Validation Error */

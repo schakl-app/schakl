@@ -15,8 +15,9 @@ would collide with cloudflare's and fall back to the unreadable full operation i
 
 from __future__ import annotations
 
+import logging
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, Query, Response, status
 
@@ -38,8 +39,11 @@ from app.modules.google_ads.schemas import (
     GoogleAdsSettingsRead,
     GoogleAdsSettingsWrite,
     GoogleAdsSnapshotRead,
+    GoogleAdsTrendRead,
 )
 from app.modules.google_ads.service import GoogleAdsService
+
+logger = logging.getLogger("schakl.googleads")
 
 router = APIRouter(prefix="/google-ads", tags=["google_ads"])
 
@@ -195,6 +199,7 @@ async def link_google_ads_account(
     it, and an account whose connection is later removed goes dormant and asks to be
     reconnected rather than silently syncing as somebody else.
     """
+    from app.core.jobs import enqueue
     from app.modules.google import client as google_client
 
     connection = await google_client.connection_for(ctx.session, ctx.org.id, ctx.user.id)
@@ -206,6 +211,21 @@ async def link_google_ads_account(
         descriptive_name=payload.descriptive_name,
         currency_code=payload.currency_code,
     )
+    # Fill thirteen months in the background, so a year-over-year comparison works the day after
+    # linking rather than a year after. Deferred so this transaction has committed before the
+    # job reads the row, and keyed so re-linking does not queue a second one. A queue miss is
+    # not fatal — the nightly run catches up — so it is logged rather than failing the link the
+    # user actually asked for.
+    try:
+        await enqueue(
+            "google_ads_backfill_account",
+            str(ctx.org.id),
+            str(row.id),
+            _defer_by=timedelta(seconds=5),
+            _job_id=f"google-ads-backfill-{row.id}",
+        )
+    except Exception:  # noqa: BLE001 — a nicety this request rides on, never its purpose
+        logger.warning("could not enqueue google ads backfill for account %s", row.id)
     return _read(row)
 
 
@@ -309,6 +329,37 @@ async def google_ads_snapshot(
     fraction (0.0453 = 4,53 %).
     """
     return await GoogleAdsReadService(ctx).snapshot(account_id, *window)
+
+
+@router.get(
+    "/accounts/{account_id}/trend",
+    response_model=GoogleAdsTrendRead,
+    dependencies=[require_permission("google_ads.account.read")],
+)
+async def google_ads_trend(
+    account_id: uuid.UUID,
+    window: tuple[str | None, date | None, date | None] = Depends(_period_params),
+    compare: str | None = Query(
+        default=None,
+        description=(
+            "What to compare against: 'year' (the same period a year earlier, the default) or "
+            "'previous' (the period immediately before)."
+        ),
+    ),
+    ctx: RequestContext = Depends(require_context),
+) -> GoogleAdsTrendRead:
+    """A period against its comparison, with the change per metric already computed.
+
+    Answered from schakl's own nightly mirror — **this makes no call to Google**, so it is fast,
+    costs no API quota and works when Google is down. The trade is that it only knows what has
+    been synced: `missing_days` says how many days of the window have no stored row, which means
+    "not synced yet", never "no spend".
+
+    The comparison defaults to the same period a year earlier, because that is the comparison
+    seasonality survives — a campsite's July has nothing to say to its June. Both windows' dates
+    are in the payload, so a percentage is always checkable.
+    """
+    return await GoogleAdsReadService(ctx).trend(account_id, *window, compare=compare)
 
 
 @router.get(

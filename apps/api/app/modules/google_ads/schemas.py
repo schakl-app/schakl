@@ -228,6 +228,52 @@ class GoogleAdsQueryRead(GoogleAdsReport):
     resource: str = ""
 
 
+class GoogleAdsTrendPoint(BaseModel):
+    date: date
+    metrics: GoogleAdsMetrics
+
+
+class GoogleAdsChangeAmount(BaseModel):
+    """What moved, in both the absolute and the relative sense.
+
+    ``relative`` is ``null`` when the baseline was zero. Not infinity and not 100 %: a
+    percentage against nothing is undefined, and anything that renders `inf` eventually prints
+    it in a sentence in front of a client.
+    """
+
+    from_: float | None = Field(default=None, alias="from")
+    to: float | None = None
+    absolute: float | None = None
+    relative: float | None = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class GoogleAdsTrendRead(BaseModel):
+    """A window against its comparison, **entirely from stored rows** — no Google call.
+
+    The compared window's dates are part of the payload rather than a label. "Up 21 %" over an
+    unnamed span is a sentence that could be printed over any two dates at all, which is why a
+    comparison set to the wrong thing looks exactly like one set to the right thing (#312).
+    """
+
+    account: GoogleAdsAccountBrief
+    period: GoogleAdsPeriod
+    compared_with: GoogleAdsPeriod
+    compare_mode: str
+    currency: str | None = None
+    totals: GoogleAdsMetrics
+    previous_totals: GoogleAdsMetrics
+    change: dict[str, GoogleAdsChangeAmount | None] = Field(default_factory=dict)
+    series: list[GoogleAdsTrendPoint] = Field(default_factory=list)
+    breakdown: list[dict[str, Any]] = Field(default_factory=list)
+    #: Days in the window with no stored row — usually "not synced yet", never "no spend".
+    #: Reported rather than smoothed over, because a chart with a silent gap makes the second
+    #: claim while meaning the first.
+    missing_days: int = 0
+    warnings: list[str] = Field(default_factory=list)
+
+
 class GoogleAdsKeywordIdeaRequest(BaseModel):
     """Seeds for keyword research. At least one of ``keywords`` or ``url`` is required."""
 

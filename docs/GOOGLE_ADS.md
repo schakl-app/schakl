@@ -224,6 +224,48 @@ Money is rendered in the **account's** currency on the web, not the tenant's: an
 Amsterdam runs accounts billed in GBP and SEK, and `fmtMoney` — right everywhere else in the
 product — would label every one of them `€`.
 
+## 9b. The nightly mirror, and what it is for
+
+Two tables (`google_ads_metrics_daily`, `google_ads_changes`), one cron at **05:15** — after
+`marketing`'s 04:45, because both walk every org making outbound Google calls and stacking them
+on one minute is how a box with thirty clients meets its own rate limits at four in the morning.
+
+**The point is that a comparison stops being a second API call.** A tile showing this month
+against the same month last year is otherwise two live Ads reads per client per page load,
+against a shared daily operation quota, for figures that stopped changing weeks ago. `GET
+/google-ads/accounts/{id}/trend` answers entirely from stored rows: fast, free, and it still
+renders when Google is down.
+
+Three properties make the mirror safe, and each is a way this normally goes wrong:
+
+- **A re-run overwrites; it never appends.** The window is re-pulled every night because Ads
+  conversions keep arriving for days after the click — a day read once is a day read too early.
+  Both tables therefore carry a key describing what a row *is*, and `dim_key` is `NOT NULL
+  DEFAULT ''` rather than nullable: Postgres treats NULLs as distinct inside a unique
+  constraint, so a nullable key column silently turns every upsert into an insert.
+- **Google gives change events no id at all**, so a change is identified by `(instant, resource,
+  operation)`. Less specific collapses two real edits; more specific (the changed fields)
+  re-inserts the same event whenever Google fills its own history in a little further.
+- **One broken account does not stop the others.** A failure is recorded on the row
+  (`last_sync_error`, separate from `last_error` because verify and sync ask different
+  questions) and the loop continues. A sync that raised would leave nineteen working accounts
+  unsynced because of one revoked grant.
+
+What is **not** stored is as deliberate: keywords, search terms, negatives and ads stay live.
+They are unbounded, they change constantly, and the live read answers them better. Only the
+bounded dimensions a *trend* needs — account, campaign, device — are mirrored.
+
+`missing_days` on the trend payload says how many days of the window have no stored row. That
+means "not synced yet", never "no spend", and the difference is why it is reported rather than
+smoothed over: a chart with a silent gap makes the second claim while meaning the first.
+
+The module contributes two report sections (#300): a **client**-facing performance table and an
+**internal** change summary. Both read the mirror, which is what makes a report of last March
+still printable next March — and the split is because of what the second one says. "The daily
+budget went from 40 to 400 on the 3rd, by stan@" is exactly the sentence an agency wants in
+front of itself and exactly the one it does not want in front of the client whose budget that
+was.
+
 ## 10. Permissions, and why the writes are split four ways
 
 The obvious design is one `google_ads.write`, and it is wrong for the reason this module exists:

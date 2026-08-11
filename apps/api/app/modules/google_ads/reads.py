@@ -22,6 +22,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from app.core.googleads import AdsClient, format_customer_id, gaql
+from app.core.periods import resolve_compare
 from app.modules.google_ads import reporting
 from app.modules.google_ads.models import GoogleAdsAccount
 from app.modules.google_ads.reporting import ReadResult, Window
@@ -33,8 +34,10 @@ from app.modules.google_ads.schemas import (
     GoogleAdsQueryRequest,
     GoogleAdsReport,
     GoogleAdsSnapshotRead,
+    GoogleAdsTrendRead,
 )
 from app.modules.google_ads.service import GoogleAdsService
+from app.modules.google_ads.trends import read_trend
 
 
 class GoogleAdsReadService:
@@ -504,6 +507,55 @@ class GoogleAdsReadService:
             **envelope.model_dump(),
             executed_query=checked.query,
             resource=checked.resource,
+        )
+
+    async def trend(
+        self,
+        account_id: uuid.UUID,
+        period: str | None,
+        date_from: date | None,
+        date_to: date | None,
+        *,
+        compare: str | None = None,
+    ) -> GoogleAdsTrendRead:
+        """A window against its comparison, from the nightly mirror. **No Google call.**
+
+        Which is the point: a live comparison would be two Ads calls per client per page load
+        against a shared daily quota, and the second is for a period whose figures are already
+        final. The default comparison is the same period a year earlier — the platform's own
+        default (#312), because that is the comparison seasonality survives.
+        """
+        account = await self.accounts.get_account(account_id)
+        window, warnings = await self._window(account, period, date_from, date_to)
+        mode = resolve_compare(compare)
+        result = await read_trend(
+            self.ctx, account_id, start=window.start, end=window.end, mode=mode
+        )
+        if result.missing_days:
+            warnings.append("google_ads.warning.days_not_synced")
+        return GoogleAdsTrendRead(
+            account=self._brief(account),
+            period=GoogleAdsPeriod(
+                date_from=result.current_start,
+                date_to=result.current_end,
+                days=(result.current_end - result.current_start).days + 1,
+                token=window.token,
+            ),
+            compared_with=GoogleAdsPeriod(
+                date_from=result.compare_start,
+                date_to=result.compare_end,
+                days=(result.compare_end - result.compare_start).days + 1,
+                token=None,
+            ),
+            compare_mode=result.compare_mode,
+            currency=result.currency or account.currency_code,
+            totals=result.totals,
+            previous_totals=result.previous_totals,
+            change={key: value for key, value in result.change.items() if value is not None},
+            series=[{"date": point.day, "metrics": point.metrics} for point in result.series],
+            breakdown=result.breakdown,
+            missing_days=result.missing_days,
+            warnings=warnings,
         )
 
     def _empty(

@@ -34,6 +34,7 @@ from enum import StrEnum
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -41,10 +42,14 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    column,
+    select,
+    table,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, declared_attr, mapped_column
 
 from app.core.activity import AuditableMixin
 from app.core.mixins import OrgScopedMixin, TimestampMixin, UUIDPrimaryKeyMixin
@@ -173,3 +178,161 @@ class GoogleAdsAccount(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Audi
         DateTime(timezone=True), nullable=True
     )
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: What the nightly sync last said, when it failed. Separate from ``last_error`` on purpose:
+    #: verify and sync ask Google different questions, and a sync failing every night against a
+    #: credential that verifies perfectly is exactly the state one shared column would hide.
+    last_sync_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+def _account_horizon_clause(account_column):
+    """The company horizon for a table whose client link is its **account's**.
+
+    These rows carry no ``company_id``, so the repository's column match would find nothing and
+    therefore filter nothing at all — #285's first failure mode, and the one that leaks rather
+    than over-restricting. The model states the join instead, and every repository path picks it
+    up. An account attached to no client (the agency's own) stays visible either way: it is not
+    company data.
+    """
+
+    def clause(scope):
+        accounts = table(
+            "google_ads_accounts", column("id"), column("org_id"), column("company_id")
+        )
+        return account_column.in_(
+            select(accounts.c.id).where(
+                (accounts.c.company_id.is_(None)) | (accounts.c.company_id.in_(scope))
+            )
+        )
+
+    return clause
+
+
+class GoogleAdsDimension(StrEnum):
+    """What a stored daily row is *about*.
+
+    Deliberately a short list of **bounded** cardinalities: an account has one row a day, an
+    agency campaign list has tens, a device has three. A keyword-level daily table would be
+    hundreds of thousands of rows a month per client, to answer a question the live read already
+    answers better. Depth stays live; only what a *trend* needs is stored.
+    """
+
+    ACCOUNT = "account"
+    CAMPAIGN = "campaign"
+    DEVICE = "device"
+
+
+class GoogleAdsMetricDaily(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """One day of one thing, stored so a trend costs no Google call.
+
+    The reason it exists is that **a comparison must not be a second round trip**: a tile showing
+    this month against the same month last year would otherwise make two live Ads calls per
+    client per page load, against a shared daily quota, for numbers that stopped changing weeks
+    ago.
+
+    ``metrics`` is JSONB rather than columns because the vocabulary is Google's, not ours, and a
+    new metric must not be a migration. It holds exactly what ``reporting.metrics_block``
+    produces, so a stored row and a live row are the same shape and no screen needs to know
+    which it is looking at.
+
+    Re-pulled for a trailing window every night and **upserted**, because Ads conversions keep
+    arriving for days after the click: a day read once is a day read too early.
+    """
+
+    __tablename__ = "google_ads_metrics_daily"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id",
+            "account_id",
+            "date",
+            "dimension",
+            "dim_key",
+            name="uq_google_ads_metrics_daily_row",
+        ),
+        Index("ix_google_ads_metrics_daily_lookup", "org_id", "account_id", "dimension", "date"),
+    )
+
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("google_ads_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    #: The day on the **account's** calendar, which is the one Google aggregated it on.
+    date: Mapped[Date] = mapped_column(Date, nullable=False)
+    dimension: Mapped[str] = mapped_column(String(16), nullable=False)
+    #: The campaign id or device this row is about; ``""`` for the account-wide row and **never
+    #: NULL** — Postgres treats NULLs as distinct in a unique constraint, so a nullable key
+    #: column lets the same row be stored twice and the upsert silently becomes an insert.
+    dim_key: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    #: Snapshotted at sync time, so a renamed campaign still reads correctly in last quarter's
+    #: chart — §16's rule about actors, applied to a label.
+    label: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    metrics: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    #: The account's currency at sync time. Per row, because an account can change it and last
+    #: year's spend was in the old one.
+    currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+
+    @declared_attr.directive
+    def __company_horizon_clause__(cls):  # noqa: N805
+        return _account_horizon_clause(cls.account_id)
+
+
+class GoogleAdsChange(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """A mirrored ``change_event`` row, kept because Google's own history is 30 days long.
+
+    That window is the whole reason: "who raised this budget, and when" is a question an agency
+    is asked months later, and by then Google no longer knows. Mirroring nightly turns 30 days
+    into a permanent record — of the changes made *while we were watching*, which is worth being
+    precise about: anything that happened before the account was linked was never mirrored and
+    never will be.
+
+    **It is still not a complete audit trail, and no amount of mirroring makes it one.** Google's
+    own automatic adjustments — Smart Bidding above all — appear in ``change_event`` nowhere at
+    all. Said here as well as in the read's warnings, because the tempting mistake is to treat a
+    table with four hundred days in it as authoritative.
+    """
+
+    __tablename__ = "google_ads_changes"
+    __table_args__ = (
+        # Google gives no id, so a row is identified by what it *is*: one resource, changed once,
+        # at one instant, by one operation. Re-mirroring an overlapping window is then an upsert
+        # rather than a duplicate — and the trailing re-pull guarantees overlap every night.
+        UniqueConstraint(
+            "org_id",
+            "account_id",
+            "changed_at",
+            "changed_resource",
+            "operation",
+            name="uq_google_ads_changes_event",
+        ),
+        Index("ix_google_ads_changes_account_at", "org_id", "account_id", "changed_at"),
+    )
+
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("google_ads_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    #: Google reports this in the **account's** timezone. It is resolved to an instant on the way
+    #: in, using that account's own zone, so two accounts in two countries sort together and a
+    #: DST boundary does not reorder an evening's changes.
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    resource_type: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    operation: Mapped[str] = mapped_column(String(16), nullable=False, default="")
+    changed_resource: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    campaign: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    ad_group: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    #: The Google account that made the change, as Google reports it — **not** a schakl user. A
+    #: change made in the Ads interface by the client themselves is exactly what this records.
+    changed_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    client_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: ``[{field, from, to}]``: the old and new value per changed field, which is the entire
+    #: point of mirroring at all. Values are stringified and capped upstream.
+    changed_fields: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+
+    @declared_attr.directive
+    def __company_horizon_clause__(cls):  # noqa: N805
+        return _account_horizon_clause(cls.account_id)
