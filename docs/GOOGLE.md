@@ -86,6 +86,24 @@ incoming channel/notification back to org + connection via our own channel token
 - Start **one-way** where it's cheap: §14 already wants approved leave → Google Calendar.
   Two-way is much harder — don't sign up for it in v1.
 
+**A database cascade announces nothing, so the mirror has to be told.** The outbox learns that a
+local record is gone from one place only — the emit at the removal site — and a link is the *only*
+record that a Google event exists at all: once its `local_id` names a row nobody will write again,
+the event is unreachable. `task_schedules.task_id` is `ON DELETE CASCADE`, so deleting a task took
+its planned blocks with it in the database and told the mirror nothing, leaving the block in
+someone's calendar for good. Three rules come out of fixing it. **Whatever leaves by cascade emits
+first** (`TaskScheduleService.remove_for_task`, called by `TaskService.delete`) — deliberately
+unscoped, because the caller was already allowed to delete the card and a colleague's block on it
+is not a second permission to ask for. **A "may we write?" guard may never gate a "must this be
+removed?" decision**: the push handler's org-sync and per-person-connection checks ran *before* the
+reassignment tombstone, so handing a block to a colleague who never connected Google left it on the
+original person's calendar — what is already in Google is now settled first, and the guards only
+decide whether a *new* event is written. And the sweep cron carries an **orphan pass** as the safety
+net for both, flipping a pushed `task_schedule` link whose block no longer exists to
+`delete_pending`; it is what finishes the events already stranded, and what catches the next write
+path that forgets. Scoped to task schedules on purpose — a leave request is cancelled, never
+hard-deleted, so an unmatched `local_id` there is not evidence of anything.
+
 ## 5. Drive — use it directly; do NOT put object storage in front
 
 **Reference/link model, no sync, no mirror.** The Shared Drive is already the source of truth.

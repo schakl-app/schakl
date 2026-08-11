@@ -77,13 +77,21 @@ export const employmentActions = {
       const hours = String(form.get("contract_hours_per_week") ?? "")
         .trim()
         .replace(",", ".");
-      if (!start || !hours) return fail(400, { error: "errors.required" });
+      const employment_type =
+        form.get("employment_type") === "freelance" ? "freelance" : "employee";
+      // Only a freelance period may go without agreed hours ("no fixed weekly commitment"). The
+      // API refuses the payroll case either way; this is the same rule, stated where the user
+      // can still do something about it.
+      if (!start || (!hours && employment_type !== "freelance")) {
+        return fail(400, { error: "errors.required" });
+      }
       const { error } = await api.POST("/api/v1/leave/contracts", {
         body: {
           user_id: userId,
           start_date: start,
           end_date: String(form.get("end_date") ?? "").trim() || null,
-          contract_hours_per_week: hours,
+          employment_type,
+          contract_hours_per_week: hours || null,
           schedule,
           free_time_hours_per_week,
           note: String(form.get("note") ?? "").trim() || null,

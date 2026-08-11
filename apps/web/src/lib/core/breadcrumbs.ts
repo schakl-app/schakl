@@ -71,6 +71,9 @@ const TAILS_BY_ROOT: Record<string, Record<string, string>> = {
   domains: {
     "tld-prices": "domains.tld_prices.title",
   },
+  marketing: {
+    "google-ads": "nav.google_ads",
+  },
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

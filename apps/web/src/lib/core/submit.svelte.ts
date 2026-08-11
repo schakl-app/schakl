@@ -1,5 +1,7 @@
 import type { SubmitFunction } from "@sveltejs/kit";
 
+import { noticeFailedSubmit } from "./session-watch";
+
 /**
  * Tracks which submission of a surface is in flight (#242, #279), so the button that
  * fired it can spin (`Button`'s `loading`) and its siblings can disable. One instance per
@@ -47,6 +49,16 @@ export class InFlight {
       this.#key = typeof key === "function" ? key(input) : key;
       return async (event) => {
         this.#key = null;
+        // A refused submit is the moment unsaved work is most at risk, and the moment the app
+        // explains itself worst: if the session died, every route reports it as whatever error
+        // key it happens to use, and none of them can say "you are signed out". Ask — here,
+        // because this wrapper is the one thing every enhanced form already goes through, so
+        // no form has to remember. It is a question, not a conclusion (`noticeFailedSubmit`),
+        // and SvelteKit resets a form only on success, so the typed values are still there when
+        // the prompt appears over them.
+        if (event.result.type === "failure" || event.result.type === "error") {
+          void noticeFailedSubmit();
+        }
         const callback = await inner;
         if (callback) await callback(event);
         else await event.update();

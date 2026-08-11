@@ -44,4 +44,24 @@ LEAVE_PERMISSIONS: list[PermissionSpec] = [
         default_own_roles=(ROLE_MEMBER,),
     ),
     PermissionSpec("leave.rate.write", position=90, default_roles=(ROLE_ADMIN,)),
+    # Availability (freelance): a freelancer keeps their own — extra days, moves, a repeating
+    # rhythm — so both default to ``:own`` for a member and ``:any`` for an admin. The boundary
+    # with ``leave.profile.manage`` is deliberate: the *contract*, and the week it was engaged
+    # under, is the agency's; the exceptions on top of it are the person's own. A capability
+    # every freelancer needs that only an admin holds does not read as a policy, it reads as a
+    # broken screen (#310).
+    PermissionSpec(
+        "leave.availability.read",
+        scopes=SCOPES,
+        position=100,
+        default_roles=(ROLE_ADMIN,),
+        default_own_roles=(ROLE_MEMBER,),
+    ),
+    PermissionSpec(
+        "leave.availability.write",
+        scopes=SCOPES,
+        position=110,
+        default_roles=(ROLE_ADMIN,),
+        default_own_roles=(ROLE_MEMBER,),
+    ),
 ]

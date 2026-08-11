@@ -890,6 +890,10 @@ async def test_more_than_2000_rows_is_a_413(client_for) -> None:
 # --------------------------------------------------------------------------- #
 # Settings hub round: entities catalog + the four new descriptors
 # --------------------------------------------------------------------------- #
+#: Entities that travel out by spreadsheet and never back in (``importable=False``).
+EXPORT_ONLY = {"uptime_monitor"}
+
+
 async def test_entities_catalog_lists_all_descriptors(client_for) -> None:
     t = await make_tenant("impex-cat")
     headers = await auth_cookie(t.user)
@@ -901,7 +905,13 @@ async def test_entities_catalog_lists_all_descriptors(client_for) -> None:
     assert set(entities) >= {
         "company", "contact", "project", "task", "time_entry", "subscription",
     }
-    assert all(e["importable"] for e in entities.values())
+    # Export-only is a supported state, not a defect (CLAUDE.md §17): a monitor is created
+    # against the checking service and a row in a spreadsheet cannot make one exist, exactly
+    # as an approval-bearing record must be requested rather than bulk-written. So the set is
+    # named rather than waved through — a descriptor that becomes export-only by accident
+    # still trips this, and a new deliberate one is one line and a reason.
+    assert {k for k, e in entities.items() if not e["importable"]} == EXPORT_ONLY
+    assert all(e["importable"] for k, e in entities.items() if k not in EXPORT_ONLY)
     assert entities["time_entry"]["read_permission"] == "time.entry.read"
     # The upsert keys the wizard offers as "match existing rows on", in priority order.
     assert entities["company"]["natural_keys"] == ["client_number", "name"]

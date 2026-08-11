@@ -10,16 +10,23 @@ The prediction in this docstring — "a fourth source is a new module here plus 
 does not authenticate the way Google does. So an adapter now also declares its ``auth`` kind,
 and the service builds the right client for it. That is the whole extension; the storage, the
 caching, the metric vocabulary and the panel all took the new source unchanged.
+
+The *fifth* source (``rankmath``, docs/WORDPRESS.md) missed it again, the same way, for a third
+kind of credential — one per **website**. Two identical surprises is a pattern rather than a
+coincidence, so the per-kind branches at the service's call sites became one dispatch
+(``MarketingService`` → ``keyed_client``). The prediction above is now true of everything except
+authentication, and authentication has a seam of its own.
 """
 
 from __future__ import annotations
 
 # Import for the registration side effect: each adapter calls ``register()`` at import time,
 # populating :data:`SOURCES`. Ordered GA4 → GSC → Ads → SE Ranking, the build order.
-from app.modules.marketing.sources import ga4, gads, gsc, seranking  # noqa: E402, F401
+from app.modules.marketing.sources import ga4, gads, gsc, rankmath, seranking  # noqa: E402, F401
 from app.modules.marketing.sources.base import (
     AUTH_GOOGLE,
     AUTH_ORG_KEY,
+    AUTH_SITE_KEY,
     SOURCES,
     AccountOption,
     DailyMetrics,
@@ -32,6 +39,7 @@ from app.modules.marketing.sources.base import (
 __all__ = [
     "AUTH_GOOGLE",
     "AUTH_ORG_KEY",
+    "AUTH_SITE_KEY",
     "SOURCES",
     "AccountOption",
     "DailyMetrics",

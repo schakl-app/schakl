@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Ban, Pencil, Plus, Repeat } from "@lucide/svelte";
+  import { Ban, CalendarClock, Pencil, Plus, Repeat } from "@lucide/svelte";
 
   import { page } from "$app/state";
   import { fmtPeriod } from "$lib/core/format";
@@ -18,6 +18,7 @@
   import FreeTimeCard from "$lib/modules/leave/FreeTimeCard.svelte";
   import LeaveRequestForm from "$lib/modules/leave/LeaveRequestForm.svelte";
   import LeaveStatusPill from "$lib/modules/leave/LeaveStatusPill.svelte";
+  import AvailabilityManager from "$lib/modules/leave/AvailabilityManager.svelte";
   import RecurringDaysManager from "$lib/modules/leave/RecurringDaysManager.svelte";
   import {
     fmtHours,
@@ -84,6 +85,14 @@
     types.filter((lt) => lt.active && !lt.requires_approval && lt.tracks_balance),
   );
   let recurringOpen = $state(false);
+
+  // Availability (freelance): the days on top of the week you were engaged under. Offered on the
+  // write permission, which a member holds at `:own` — a freelancer keeping their own calendar is
+  // the ordinary case, and `myAvailability === null` means the read was refused, not empty.
+  const canEditAvailability = $derived(
+    data.myAvailability !== null && can(page.data.user, "leave.availability.write"),
+  );
+  let availabilityOpen = $state(false);
 
   // Bulk cancel: the one bulk act your own list has — everything else is per-request.
   let bulkSelected = $state<string[]>([]);
@@ -173,6 +182,16 @@
       >
         <Repeat size={16} />
         {t("leave.recurring.title")}
+      </button>
+    {/if}
+    {#if canEditAvailability}
+      <button
+        type="button"
+        class="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:border-brand hover:text-brand"
+        onclick={() => (availabilityOpen = true)}
+      >
+        <CalendarClock size={16} />
+        {t("leave.availability.title")}
       </button>
     {/if}
     <button
@@ -444,6 +463,13 @@
     deleted={form?.patternDeleted ? { withdrawn: form.withdrawn ?? 0 } : null}
     ondone={() => (recurringOpen = false)}
   />
+</Modal>
+
+<!-- Own availability (freelance): the same shared surface the manager's roster ⋯ opens, here for
+     yourself. It stays open after an add — the commonest thing to do next is add another day. -->
+<Modal bind:open={availabilityOpen} title={t("leave.availability.title")} size="lg">
+  <p class="mb-3 text-sm text-text-muted">{t("leave.availability.intro")}</p>
+  <AvailabilityManager entries={data.myAvailability ?? []} error={form?.error ?? null} />
 </Modal>
 
 <ConfirmDialog

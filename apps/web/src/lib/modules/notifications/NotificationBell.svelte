@@ -18,6 +18,7 @@
 
   import { fmtDateTime } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { reportUnauthorized } from "$lib/core/session-watch";
 
   import { notificationHref, notificationText, type NotificationLike } from "./format";
 
@@ -50,7 +51,15 @@
   async function refresh(): Promise<void> {
     const basedOn = count;
     const response = await fetch("/notifications/bell");
-    if (response.ok) polled = { ...(await response.json()), basedOn };
+    if (response.ok) {
+      polled = { ...(await response.json()), basedOn };
+    } else if (response.status === 401) {
+      // This poll is the only thing in the shell that keeps talking to the server while
+      // somebody sits reading one screen, so it is also the only thing that notices a session
+      // ending under them without a tab switch. The route 401s on a missing `locals.user` and
+      // nothing else, so the answer is worth passing on rather than swallowing (`SessionGuard`).
+      reportUnauthorized();
+    }
   }
 
   async function markAllRead(): Promise<void> {

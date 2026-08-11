@@ -10,7 +10,13 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.modules.leave.models import LeaveCalendarDisplay, LeaveRequestStatus
+from app.modules.leave.models import (
+    AvailabilityChange,
+    AvailabilityKind,
+    EmploymentKind,
+    LeaveCalendarDisplay,
+    LeaveRequestStatus,
+)
 from app.modules.leave.schedule import Clock, WorkSchedule
 
 # --- leave types ------------------------------------------------------------- #
@@ -223,8 +229,14 @@ class EmploymentContractBase(BaseModel):
     start_date: date
     #: ``null`` = open-ended (still employed). Termination = setting this later.
     end_date: date | None = None
-    #: The legal contract hours — entered, never derived from the schedule.
-    contract_hours_per_week: Decimal = Field(gt=0, le=Decimal("80"))
+    #: Payroll or a freelance engagement. Defaulted rather than required, so every existing
+    #: caller — the wizard before this change, an import, an MCP tool — keeps writing employees.
+    employment_type: EmploymentKind = EmploymentKind.EMPLOYEE
+    #: The legal contract hours — entered, never derived from the schedule. ``null`` is "no fixed
+    #: weekly commitment" and is only accepted on a freelance period (the service refuses it on an
+    #: employee one); the bound stays ``gt=0`` because *zero* agreed hours is not a thing anybody
+    #: means to type — an absent commitment is absent, not nought.
+    contract_hours_per_week: Decimal | None = Field(default=None, gt=0, le=Decimal("80"))
     #: This period's working week; ``null`` follows the profile (legacy) / org default.
     schedule: WorkSchedule | None = None
     #: Free time accrued per week, or ``null`` to derive ``max(0, norm − contract hours)``.
@@ -248,6 +260,9 @@ class EmploymentContractUpdate(BaseModel):
 
     start_date: date | None = None
     end_date: date | None = None
+    employment_type: EmploymentKind | None = None
+    #: An explicit ``null`` clears the agreed hours ("no fixed weekly commitment"), which the
+    #: service accepts only on a period that is — or is becoming — freelance.
     contract_hours_per_week: Decimal | None = Field(default=None, gt=0, le=Decimal("80"))
     schedule: WorkSchedule | None = None
     free_time_hours_per_week: Decimal | None = Field(default=None, ge=0, le=Decimal("80"))
@@ -262,7 +277,9 @@ class EmploymentContractRead(BaseModel):
     user_id: uuid.UUID
     start_date: date
     end_date: date | None
-    contract_hours_per_week: Decimal
+    employment_type: EmploymentKind
+    #: ``null`` on a freelance period with no fixed weekly commitment.
+    contract_hours_per_week: Decimal | None
     #: Derived from this period's week — the rostered hours the contract hours are read against.
     scheduled_hours_per_week: Decimal
     schedule: WorkSchedule | None
@@ -275,6 +292,171 @@ class EmploymentContractRead(BaseModel):
     note: str | None
     created_at: datetime
     updated_at: datetime
+
+
+# --- availability (freelance) ---------------------------------------------------- #
+
+
+class AvailabilityBase(BaseModel):
+    """One dated bend in the base week. See :class:`~app.modules.leave.models.
+    EmploymentAvailability` for why this is not a leave request."""
+
+    kind: AvailabilityKind
+    #: The day it applies to; when it repeats, the first one, and its weekday is the cadence's.
+    date: date
+    #: The window; both omitted = the whole day. A one-sided window is resolved against the day
+    #: itself, exactly as a leave request's is (#48): "from 13:00" on an 08:30–17:00 day means
+    #: 13:00–17:00, not an error.
+    start_time: Clock | None = None
+    end_time: Clock | None = None
+    #: ``1`` = every week, ``2`` = every other week, … ``null`` = this date only.
+    repeat_weeks: int | None = Field(default=None, ge=1, le=8)
+    #: Last date a repeat may land on; ``null`` = open-ended.
+    repeat_until: date | None = None
+    note: str | None = None
+
+    @model_validator(mode="after")
+    def _check(self) -> AvailabilityBase:
+        if (
+            self.start_time is not None
+            and self.end_time is not None
+            and self.start_time >= self.end_time
+        ):
+            raise ValueError("errors.leave_availability_window_invalid")
+        if self.repeat_until is not None:
+            # Refused rather than ignored: a bound with no cadence is somebody believing they
+            # limited a repeat that was never going to happen twice (the #300 family of bug —
+            # a control that posts a value nothing reads).
+            if self.repeat_weeks is None:
+                raise ValueError("errors.leave_availability_repeat_required")
+            if self.repeat_until < self.date:
+                raise ValueError("errors.leave_availability_until_invalid")
+        return self
+
+
+class AvailabilityCreate(AvailabilityBase):
+    #: ``null`` = the calling user. Anyone else needs ``leave.availability.write:any``.
+    user_id: uuid.UUID | None = None
+
+
+class AvailabilityUpdate(BaseModel):
+    """Every field optional; the service reads ``model_fields_set``, so an explicit ``null`` on
+    a window or a repeat clears it rather than reading as an omission."""
+
+    kind: AvailabilityKind | None = None
+    # ``dt.date``, not ``date``: the field above binds the name ``date`` to ``None`` in this
+    # class namespace, and a later ``date | None`` annotation would then evaluate to ``None |
+    # None``. Pydantic raises at import, so this is a build break rather than a lurking one —
+    # but only in the model that gives the field a default.
+    date: dt.date | None = None
+    start_time: Clock | None = None
+    end_time: Clock | None = None
+    repeat_weeks: int | None = Field(default=None, ge=1, le=8)
+    repeat_until: dt.date | None = None
+    note: str | None = None
+
+
+class AvailabilityMove(BaseModel):
+    """"Not Tuesday, Thursday instead" — the two rows a move is, written in one act.
+
+    The times apply to the day being *added*; the day being dropped goes whole, because that is
+    what a move means. A repeat moves both halves together.
+    """
+
+    user_id: uuid.UUID | None = None
+    from_date: date
+    to_date: date
+    start_time: Clock | None = None
+    end_time: Clock | None = None
+    repeat_weeks: int | None = Field(default=None, ge=1, le=8)
+    repeat_until: date | None = None
+    note: str | None = None
+
+    @model_validator(mode="after")
+    def _check(self) -> AvailabilityMove:
+        if self.from_date == self.to_date:
+            raise ValueError("errors.leave_availability_move_same_day")
+        if (
+            self.start_time is not None
+            and self.end_time is not None
+            and self.start_time >= self.end_time
+        ):
+            raise ValueError("errors.leave_availability_window_invalid")
+        if self.repeat_until is not None:
+            if self.repeat_weeks is None:
+                raise ValueError("errors.leave_availability_repeat_required")
+            if self.repeat_until < max(self.from_date, self.to_date):
+                raise ValueError("errors.leave_availability_until_invalid")
+        return self
+
+
+class AvailabilityRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    org_id: uuid.UUID
+    user_id: uuid.UUID
+    kind: AvailabilityKind
+    date: date
+    start_time: Clock | None
+    end_time: Clock | None
+    repeat_weeks: int | None
+    repeat_until: date | None
+    #: Shared by the two halves of a move; ``null`` on a standalone row.
+    pair_id: uuid.UUID | None
+    note: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AvailabilityWindow(BaseModel):
+    """A stretch of one day somebody is available for."""
+
+    start: Clock
+    end: Clock
+
+
+class AvailabilityDay(BaseModel):
+    """What one person's one day resolves to — the base week with every exception applied.
+
+    Computed, never stored: the base week is the period in force and the exceptions bend it, so
+    there is no generated occurrence to drift from the rule that produced it.
+    """
+
+    user_id: uuid.UUID
+    #: Snapshot-free: the live account, for a calendar chip that has to name somebody. The same
+    #: shape the absence feed carries (``TeamLeaveItem.user_name``).
+    user_name: str = ""
+    date: date
+    #: The stretches worked, breaks already removed. Empty = not available that day at all.
+    windows: list[AvailabilityWindow]
+    hours: Decimal
+    #: What the untouched week would have given — the other half of every "this day changed"
+    #: claim. Without it a reader cannot tell an added Saturday from a shortened Monday.
+    base_hours: Decimal = Decimal(0)
+    #: Which way the day moved: ``added`` (the week worked none of it), ``removed`` (all of it is
+    #: gone), ``changed`` (both non-zero and different), or ``None`` for a day that resolves to
+    #: exactly what the week already said.
+    #:
+    #: Decided here rather than by each client, for #312's reason: two surfaces re-deriving the
+    #: same comparison are two surfaces that can disagree about it. It is also **not** the same
+    #: question as ``deviates`` — an exception that changes nothing (a whole-day ``extra`` on a
+    #: day already worked) deviates and yet changed no hours, and a calendar drawing that would
+    #: be announcing a difference nobody made.
+    change: AvailabilityChange | None = None
+    #: The resolved day as an **instant pair** — the first window's start to the last window's
+    #: end, in the org zone — for a grid that positions blocks by hour (#270). ``None`` when the
+    #: day resolves to nothing. The hull, not each window: an ordinary day is two stretches
+    #: either side of lunch, and "available 08:30–17:00" is what a working day means.
+    #:
+    #: Resolved server-side, like every other wall-clock → instant in this module (§8): the org
+    #: zone lives here, so a block still starts at 08:30 on the two days a year the clocks move.
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    #: Whether any exception touched this day — a superset of ``change`` (see above).
+    deviates: bool = False
+    #: The exception rows behind ``deviates``, so a client can offer to undo the right one.
+    entry_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
 # --- recurring rostered free days / ADV (#107) ---------------------------------- #

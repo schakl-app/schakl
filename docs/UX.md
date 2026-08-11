@@ -778,6 +778,55 @@
   conversion, and no other surface may fetch a picture at all. And the marker is a **stored
   marker, not a URL**, like `mention:` and `crm://`: the renderer resolves it, so no API path is
   frozen into a body and a consumer that draws no images ignores it.
+- **A screen that is no longer signed in says so, and offers the way back on the spot**
+  (`core/ui/SessionGuard.svelte`, mounted once on the authenticated shell). Sign out in one tab
+  and the session cookie is gone for the whole browser, but the other tabs go on drawing a
+  working CRM — every control refusing, none of them able to say why — until something makes
+  them ask. The page was not merely stale; it was *claiming* to be signed in. Three signals
+  raise the prompt, and they are different in kind on purpose: a `BroadcastChannel` message
+  (instant, free, same-origin by definition), a `/session` probe when a tab returns to the
+  foreground (throttled to 20s, **not a poll** — a tab left open overnight makes no requests),
+  and any same-origin proxy route that already answers 401 passing that on
+  (`reportUnauthorized`, which the notification bell's existing minute poll now does — it is the
+  only signal that reaches a tab somebody is sitting and reading). Four rules generalise beyond
+  auth. **Announce the state, never the intention**: the first version broadcast from the
+  sign-out button, so the receiving tab's confirming probe raced the very cookie deletion it had
+  been told about, won, and stood the prompt back down half a second after raising it — the
+  announcement moved to `/login`, where arriving *is* the proof, since its own load bounces
+  anyone still holding a session. **A failed probe is not a verdict**: a dropped connection is
+  not a sign-out, and answering one with a sign-in wall over a page that was working a second
+  ago is far worse than answering late, so anything short of a clear "no" reads as "keep going"
+  (the `cloudflare` lesson, CLAUDE.md §10, in another module). **Recover in place rather than
+  redirecting**: a bounce to `/login` throws away the half-written note, the filters, the scroll
+  position — everything that did not need to be lost — so the dialog signs you back in
+  (`/session/signin`, the login screen's own calls, 2FA included) and the screen you were on is
+  still the screen you are on. And **a blocking dialog needs an escape hatch that still nags**:
+  refusing to let someone copy unsaved text out of the page behind it is data loss committed to
+  prevent confusion, so "Nu niet" collapses it to a bar that will not go away. Escape and a
+  backdrop click do not dismiss it (hence not `Modal`), the address is prefilled from whoever
+  was using that tab, and the long way round (`/login?next=…`, `core/redirect.ts`) lands them
+  back on the same screen.
+- **Recovering is not reloading, and the difference is somebody's unsaved work.** The obvious
+  end to the flow above is `invalidateAll()` — and it is the one step that can destroy what the
+  prompt existed to save: 51 inputs in this app take their `value` straight from `data`, so a
+  re-read overwrites a half-typed field with the server's copy. It is also unnecessary. For the
+  **same** person the page's data is exactly as stale as it was a minute ago; the session ending
+  did not make it staler, and nothing about signing back in fixes anything a re-read would. For
+  a **different** person it is mandatory — the screen must stop showing what the previous
+  account could see. So every signal carries a `userId` (`/session`, `/session/signin`, the
+  `signed-in` broadcast) and the re-read is conditional on it. The general rule: **when a
+  recovery path re-fetches, ask what it is fixing** — "refresh everything" is a reflex, and
+  here the reflex is the data loss.
+- **A refused submit is where unsaved work is most at risk and the app explains itself worst.**
+  Press Opslaan with a dead session and the action calls the API without a valid cookie, so
+  what comes back is whatever error key that route happens to use — "er ging iets mis" over a
+  form that will not save, with nothing connecting it to a session that ended in a tab since
+  closed. `InFlight.wrap` (`core/submit.svelte.ts`) is the seam all 290 enhanced forms already
+  pass through, so a `failure`/`error` result asks there — `noticeFailedSubmit()`, a **question,
+  never a conclusion**, silent when the session is fine, and skipped entirely on a screen with
+  no guard mounted. Nothing is lost either way: SvelteKit resets a form only on `success`, so
+  the typed values sit untouched under the prompt, and pressing Opslaan again is the whole
+  recovery.
 
 ## Navigation
 

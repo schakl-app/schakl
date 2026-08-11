@@ -314,7 +314,16 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   turns **on** is a bug with a long tail — `_flag_account` had no mirror, so a row nothing was
   wrong with kept its red line through every sync that worked. Whatever sets a health flag must
   say what clears it, and the fake must reject a bad credential *everywhere* or the only test
-  that could catch this passes against a provider that does not exist. The
+  that could catch this passes against a provider that does not exist. Its third sibling: **a
+  refusal names a parameter, it does not pass a verdict on the endpoint.** `paginate` read
+  *"Invalid list options provided"* as "this list has no pages", which is true of Registrar and
+  false of Pages' projects — that one declines the `per_page` it is handed and then serves its own
+  page of ten, `result_info` and all, so thirteen projects reported as *"Niet alles kon gelezen
+  worden … answered 10 of 13 rows"*. Refusing to return a prefix (§17) was right; concluding there
+  was nothing left to ask was not. A short answer that *describes the page it served* is an
+  instruction for finishing the read, so the resume asks for `page` and nothing else — the size is
+  the provider's to choose and it has already chosen — and the old error survives only for the
+  endpoint that really has no page two. The
   registrar half is now **`oxxa`** (#296, `docs/OXXA.md`): the register sync, the nameserver
   write-back that finishes "Connect to Cloudflare", and the `app/core/registrar/` seam a second
   registrar plugs into. Written from OXXA's official API documentation — §11 bans writing an
@@ -541,6 +550,61 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   /ai/time/reconstruct` — puts a cost on every task page open to serve a dialog most opens never
   see. Nothing was added to `GET /tasks/{id}`, and `tests/test_perf_query_budgets.py` now writes
   that number down so the next feature under the same pressure has to argue with it.
+- **A transport two modules need belongs to neither of them, and the surface it exposes *is* the
+  MCP surface** (`google_ads`, `docs/GOOGLE_ADS.md`). Google Ads was already in the tree as a
+  source adapter inside `marketing`, so a licensed module on top of it meant one of the two
+  importing the other's internals. `app/core/googleads/` holds the pipe and the protocol instead
+  — beside `core/registrar` and `core/payments` — and four rules generalise past Ads. **A refusal
+  is a diagnosis, and the HTTP status is not it**: Google answers a `google.rpc.Status` whose
+  `details[]` carries a oneof with 167 possible names, and reading only the 403 collapses "this
+  login has no grant", "the agency never finished the API Center application" and "the client's
+  account is suspended" into one sentence with three different people who can fix it. **A retry is
+  safe for a read and never for a write** — `search` is idempotent, `campaigns:mutate` is not, and
+  a retried create is a second campaign spending a second budget; the provider's own `retryDelay`
+  outranks any ladder we invent. **Absence raises rather than returning `None`**, because a `None`
+  customer id reaches the URL builder, asks Google about a customer named "None", and comes back
+  404 — which this module's own error model reads as *"the API version is sunset"*, the most
+  misleading sentence available for an unlinked account; a default no-op provider is registered at
+  core's own import so the seam answers `AdsNotConfigured` even where the module is disabled,
+  rather than an ImportError that would take the API and the worker with it. And **a borrower keeps
+  its display copy**: `marketing_links.external_id` stays populated beside the new FK, not from
+  laziness but because `SourceMetrics.external_id` is typed `str` and company panels compose with
+  no per-panel `try` — one unlinked account returning `None` would 500 the *whole* company hub
+  rather than blank one tile. The join is the truth; the column is a cache with a stated owner.
+  Because §12 makes every `/api/v1` operation a tool, the route list is the tool list: handlers are
+  named for what an agent would ask for, and the **write permissions are split four ways**
+  (campaign / budget / keyword / negative) so a key can be minted that may tidy search terms
+  overnight and never touch a budget. The query passthrough is gated but *exists*: cross-account
+  access is structurally impossible (the customer id is in the path, from our own row) and GAQL has
+  no write syntax, so what is left to bound is a resource allow-list and what one question may cost.
+- **Two integrations turned out to be one credential** (`wordpress`, `docs/WORDPRESS.md`). The ask
+  was Rank Math **AI Visibility** in the marketing module *and* a WordPress credential per website
+  for MCP later. Rank Math registers its AI Visibility features as WordPress **Abilities** with
+  `show_in_rest => true` and `mcp => ['public' => true]`, so one Application Password reaches four
+  surfaces on one host — `wp/v2`, `wp-abilities/v1`, the MCP Adapter's `/wp-json/mcp/<server>`, and
+  Rank Math's own `rankmath/v1/ai-visibility` proxy. Reading the *plugin source* rather than
+  reasoning about the feature is what found that, and it is the same rule §11 already states.
+  Four things generalise. **The credential is a row keyed to a website** — `cloudflare`'s rule one
+  level down the tree: Cloudflare is something a domain has, WordPress is something a website has,
+  so the working surface is an `EntityPanelSpec` the website page needed no edit to receive, and
+  `marketing` reaches the credential through `app/core/wordpress.py` (§6) — which carries the
+  **client factory** as well as the resolver, because the transport is the owning module's decision
+  too. **A newer surface is not automatically the right one**: the AI Visibility *ability* reads a
+  12-hour `wp_options` cache and cannot force an upstream fetch (its own `refresh` input is
+  telemetry), so a sync built on it charts when a human last opened the WordPress dashboard; only
+  `GET /rankmath/v1/ai-visibility/overview?refresh=1` measures anything, and a test pins it.
+  **What a provider reports as a level must never be stored as a total** — `mentions` and
+  `citations` look like counts and are running totals as of the last analysis, so every Rank Math
+  metric joins `AVERAGED_METRICS`; and since no upstream path has history at all, `fetch_daily`
+  writes *one* row for `end` rather than filling a range with a flat line that looks like
+  measurement. And **the third auth kind is where branching stops paying**: #300 predicted a new
+  source is one line in `SOURCES` and missed authentication; the fifth source missed it the same
+  way, for a credential that is per *website*, so `AUTH_SITE_KEY` arrived with `keyed_client` and
+  the per-kind `if`s at the picker, the drill-down and the nightly sync collapsed into one
+  dispatch. The cost worth stating out loud: every AI Visibility route is `manage_options`, so this
+  table holds **WordPress administrator credentials** — hence admin-only `manage`, never `client`,
+  never folded into `websites.website.write`, and a disconnect that forgets the credential without
+  revoking it at the far end.
 
 ## 11. Working agreement (for Claude Code)
 
@@ -727,6 +791,60 @@ apply as everywhere.
   employment wizard makes the choice explicitly in its werkweek step, so neither arrangement is
   ever inferred from a schedule the admin happened to enter. Never hardcoded CAO law (§14): a
   tenant who wants none of it still deactivates the type.
+- **Not everyone on the roster is on the payroll, and the difference is a property of the
+  period.** `EmploymentContract.employment_type` is `employee` or `freelance`, chosen when a
+  period is created (a *changed* kind is a new row, exactly as changed hours are, so last year
+  stays priced under the arrangement it was actually worked). It decides exactly one thing —
+  **accrual**: a freelance period earns no statutory vacation and no free time, because a ZZP'er
+  invoices their hours and deriving a pot would hand them a balance that goes negative the first
+  week they take off. It decides nothing else: a freelance period still carries a week, still
+  shows on the team roster, and a negotiated paid-days arrangement is still expressible as a
+  `manual` entitlement, which recompute never touches — an arrangement no formula covers is one
+  an admin states outright. Two rules keep the accrual paths total. `_accruing` filters the kind
+  in **one** place rather than at each of the two computations, so "which periods earn" has one
+  answer; and a freelance period is still a *contract* for the "who is staff for year N" test,
+  which is what keeps a freelancer out of the contract-less scheduled-hours fallback they would
+  otherwise drop into on the strength of holding `time.entry.write` — a full year of statutory
+  hours granted by a permission. `contract_hours_per_week` is nullable **only** there ("no fixed
+  weekly commitment", refused on an employee period with a field error): plenty of freelancers
+  are engaged per assignment, and an invented 16 is a number every capacity figure then quotes as
+  if somebody had agreed to it.
+- **A freelancer's availability is computed, and it is theirs to keep.**
+  `employment_availability` holds dated bends in the base week — a day they *will* work
+  (`extra`), a day they will not (`unavailable`) — and the resolved week is the period's schedule
+  with those applied (`app/modules/leave/availability.py`, `GET /leave/availability/days`).
+  Deliberately **not** leave requests: leave is an entitlement being spent, so it prices in
+  hours, draws on a balance, wants an approver and zeroes on a public holiday, and a freelancer
+  has none of that — while an *extra* day has no leave analogue at all. Three rules. **A repeat
+  is a rule on the row** (`repeat_weeks` + `repeat_until`), never generated occurrences: #107's
+  generator exists because a free day is a balance leaving a pot, and this is not, so "every
+  other Friday" stays one row that is still true next year instead of a monthly cron and a drift
+  risk. **A "no" outranks a "yes"** when both land on one day — booking someone who said they
+  were away is a worse failure than missing a day they could have worked. And **a move is a
+  pair**: "not Tuesday, Thursday instead" is one `unavailable` and one `extra` sharing a
+  `pair_id`, so the UI renders and undoes one act while the day view resolves two days knowing
+  nothing about moves; deleting either half deletes both, because half a move is a statement
+  nobody made. Its own permission (`leave.availability.read`/`.write`, `own` for a member and
+  `any` for an admin), not `leave.profile.manage` — **the contract is the agency's and the
+  exceptions are the freelancer's**, so "I'm also free on Wednesdays" is a weekly `extra` rather
+  than a rewrite of the period somebody was engaged under.
+- **On the agenda it is its own feed, and only the deviations are drawn** (`leave.availability`,
+  the §6 calendar-source pattern). Separate from `leave.team` because it answers the opposite
+  question — that feed says who is away, this one says who can be booked — and a viewer planning
+  work switches one off without losing the other. Drawing *every* available day would be the
+  roster redrawn as noise, so the feed reads `change`, not `deviates`: an exception that moves no
+  hours is a real row and not a difference. Two rendering rules came out of looking at it rather
+  than reasoning about it. **A month cell truncates at about twenty characters**, so the chip
+  leads with the state and not the name — `Lotte de Vries · Bes…` is as ambiguous as no chip at
+  all on the one bit that matters, while `Beschikbaar 09:00…` beside `Niet beschikbaar…` is not;
+  the name survives in the `title` attribute and in every wider view. And **a colour token that is
+  not in the palette renders as no chip at all** (`core/ui/colors`): `slate` looked available
+  because the holidays feed names it, but that feed draws a dashed band via `kind: "holiday"` and
+  never reads the token — so the loudest thing on the feed came out as the faintest thing on the
+  screen. The state rides in *both* the words and the colour, so a viewer who recolours the feed
+  (#281) keeps the distinction in the text. Deliberately **not draggable**: a chip is an
+  occurrence and the row behind it is a rule, so dragging one Friday of "every other Friday" would
+  move the whole rhythm, and dragging half a swap would strand the other half.
 - **A free-time pattern says how many days, or how often** (#107, extended). `days_per_year` on
   `leave_recurring_days` spreads that many days evenly across the year on the anchor's weekday and
   **slides past** a holiday or a non-working day to the next candidate week, so the count the pot

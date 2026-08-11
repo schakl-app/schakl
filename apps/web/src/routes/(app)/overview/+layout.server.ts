@@ -17,7 +17,7 @@ export const load: LayoutServerLoad = async (event) => {
     throw redirect(303, "/");
   }
   const api = apiFor(event);
-  const [companies, projects, tasks, members, entryTypes] = await Promise.all([
+  const [companies, projects, tasks, taskStatuses, members, entryTypes] = await Promise.all([
     api.GET("/api/v1/companies", {
       params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
     }),
@@ -30,6 +30,10 @@ export const load: LayoutServerLoad = async (event) => {
     api.GET("/api/v1/tasks", {
       params: { query: { limit: 200, offset: 0, meta: false, count: false, sort: "title" } },
     }),
+    // The tenant's status vocabulary (#62): the lookup above names the task on every reported
+    // row, finished ones included, so this is what tells the edit modal's picker which of them
+    // are still worth offering.
+    api.GET("/api/v1/tasks/statuses"),
     api.GET("/api/v1/members/lookup"),
     // Entry-type labels for the report's type column/filter (#176) — inactive included so a
     // historical row still names its retired type.
@@ -39,6 +43,7 @@ export const load: LayoutServerLoad = async (event) => {
     companies: companies.data?.items ?? [],
     projects: projects.data?.items ?? [],
     tasks: tasks.data?.items ?? [],
+    taskStatuses: taskStatuses.data ?? [],
     members: members.data ?? [],
     entryTypes: entryTypes.data ?? [],
   };

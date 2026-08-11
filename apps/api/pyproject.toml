@@ -33,6 +33,12 @@ dependencies = [
     "boto3>=1.43.49",
     "pyotp>=2.9",
     "segno>=1.6",
+    # Uptime Kuma has no REST API — at 2.5.0 its whole HTTP surface is `/api/entry-page`, six
+    # badge routes and `/metrics`, and every monitor write is a Socket.IO event. So the
+    # `uptime` module's client is a Socket.IO client (docs/UPTIME.md §2), written here rather
+    # than pulled from a wrapper that caps at Uptime Kuma 1.23 and has been unmaintained since
+    # April 2024. This is the transport only; nothing above it is vendored.
+    "python-socketio[client]>=5.11",
     # Documents render as HTML and are printed by WeasyPrint, so the on-screen preview and
     # the PDF a client receives are the *same artefact* — and a tenant's own HTML/CSS
     # template can render at all. Jinja is sandboxed for that case (render/engine.py); the

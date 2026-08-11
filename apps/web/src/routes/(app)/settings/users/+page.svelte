@@ -77,6 +77,7 @@
     // this page adds the trust actions (2FA reset, revoke) that only belong on the roster.
     const items = employmentMenuItems(member, openEmployment, {
       schedules: data.schedules,
+      availability: data.availability,
       rates: data.rates,
     });
     if (!member.is_self) {
@@ -129,11 +130,12 @@
 
 <!-- The Dienstverband wizard (contract + werkweek + vrije tijd) and the hourly rate, shared with
      the team leave roster. One instance; each row's ⋯ menu opens it through `openEmployment`. -->
-{#if data.schedules || data.rates}
+{#if data.schedules || data.rates || data.availability}
   <EmploymentModals
     register={(open) => (openEmployment = open)}
     contracts={data.contracts}
     recurring={data.recurring}
+    availability={data.availabilityRows}
     leaveTypes={data.leaveTypes as LeaveTypeInfo[]}
     orgDefaultSchedule={data.defaultSchedule as WorkSchedule}
     {rateByUser}

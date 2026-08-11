@@ -871,6 +871,7 @@
             companies={data.companies}
             projects={data.projects}
             tasks={data.tasks}
+            taskStatuses={data.taskStatuses}
             error={form?.error ?? null}
             oncancel={() => (editingId = null)}
             ondone={() => (editingId = null)}
@@ -888,6 +889,7 @@
             companies={data.companies}
             projects={data.projects}
             tasks={data.tasks}
+            taskStatuses={data.taskStatuses}
             draftDate={data.selectedDate}
             draftInitial={aiPrefill ?? data.day?.draft?.payload ?? null}
             draftSavedAt={aiPrefill ? null : (data.day?.draft?.updated_at ?? null)}

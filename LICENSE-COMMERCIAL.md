@@ -18,6 +18,7 @@ and their web counterparts — currently:
 - `apps/api/app/modules/automation/`
 - `apps/api/app/modules/domains/`
 - `apps/api/app/modules/google/`
+- `apps/api/app/modules/google_ads/`
 - `apps/api/app/modules/hosting/`
 - `apps/api/app/modules/hr/`
 - `apps/api/app/modules/interactions/`
@@ -30,13 +31,16 @@ and their web counterparts — currently:
 - `apps/api/app/modules/reporting/`
 - `apps/api/app/modules/subscriptions/`
 - `apps/api/app/modules/time/`
+- `apps/api/app/modules/uptime/`
 - `apps/api/app/modules/websites/`
+- `apps/api/app/modules/wordpress/`
 - `apps/web/src/lib/cloud/`
 - `apps/web/src/lib/modules/oxxa/`
 - `apps/web/src/lib/modules/cloudflare/`
 - `apps/web/src/lib/modules/automation/`
 - `apps/web/src/lib/modules/domains/`
 - `apps/web/src/lib/modules/google/`
+- `apps/web/src/lib/modules/google_ads/`
 - `apps/web/src/lib/modules/hosting/`
 - `apps/web/src/lib/modules/interactions/`
 - `apps/web/src/lib/modules/invoicing/`
@@ -48,7 +52,9 @@ and their web counterparts — currently:
 - `apps/web/src/lib/modules/reporting/`
 - `apps/web/src/lib/modules/subscriptions/`
 - `apps/web/src/lib/modules/time/`
+- `apps/web/src/lib/modules/uptime/`
 - `apps/web/src/lib/modules/websites/`
+- `apps/web/src/lib/modules/wordpress/`
 - `apps/web/src/routes/(cloud)/`
 - `apps/web/src/routes/(app)/domains/`
 - `apps/web/src/routes/(app)/interactions/`
@@ -66,6 +72,7 @@ and their web counterparts — currently:
 - `apps/web/src/routes/(app)/settings/cloudflare/`
 - `apps/web/src/routes/(app)/settings/automation/`
 - `apps/web/src/routes/(app)/settings/google/`
+- `apps/web/src/routes/(app)/settings/google-ads/`
 - `apps/web/src/routes/(app)/settings/hosting/`
 - `apps/web/src/routes/(app)/settings/interaction-kinds/`
 - `apps/web/src/routes/(app)/settings/invoicing/`
@@ -76,6 +83,7 @@ and their web counterparts — currently:
 - `apps/web/src/routes/(app)/settings/service-access/`
 - `apps/web/src/routes/(app)/settings/subscriptions/`
 - `apps/web/src/routes/(app)/settings/time-entry-types/`
+- `apps/web/src/routes/(app)/settings/uptime/`
 
 Each covered directory carries a `LICENSE` file referring here. Code in these directories
 published in repository history **before** this file was introduced — or, for a directory

@@ -35,6 +35,11 @@ def _ok(result: Any, status: int = 200) -> httpx.Response:
 #: product and inventing a stable one would be a fake asserting something Cloudflare does not.
 LIST_OPTIONS_ERROR = "Invalid list options provided. Review the `page` or `per_page` parameter."
 
+#: The numeric code Pages sends with that sentence, observed against the live API. Registrar's
+#: refusal carries none, which is why the client matches the code *beside* the text and not
+#: instead of it — and why only :attr:`FakeCloudflare.capped_page` sends one here.
+LIST_OPTIONS_CODE = 8000024
+
 
 def _err(status: int, message: str, code: int | None = None) -> httpx.Response:
     error: dict[str, Any] = {"message": message}
@@ -81,6 +86,28 @@ class FakeCloudflare:
         #: endpoint hands back *less* than it says it holds. The fallback read must call that an
         #: error rather than a complete list (CLAUDE.md §17: never a silent truncation).
         self.single_page_total: dict[str, int] = {}
+        #: Path fragment → an endpoint's **maximum** ``per_page``, and the size it serves when
+        #: asked plainly. Cloudflare's Pages project list caps at ten: ask for more and it
+        #: answers 400/8000024, ask for that or less and it pages perfectly normally, describing
+        #: every page in ``result_info``. It is the middle case between the two this fake could
+        #: express — neither properly paged nor single-page — and it is why ten of an agency's
+        #: thirteen projects read as a whole account.
+        #:
+        #: Modelled as a **ceiling** rather than as "refuses ``per_page``", which is what it was
+        #: and which is a Cloudflare that does not exist. The distinction is the entire fix: a
+        #: client that asks for ten gets ten and never sees the refusal at all, and a fake that
+        #: refused every size could not tell that client from one that still asks for fifty.
+        self.capped_page: dict[str, int] = {}
+        #: Path fragment → a ``total_count`` **larger than what it serves**, on an endpoint that
+        #: pages normally and calls its one page the last. Two claims contradicting each other,
+        #: which is a thing Cloudflare does and which the ordinary paged loop believed by
+        #: believing only the first: it returned ten rows of a thirteen-row list, silently.
+        self.short_count: dict[str, int] = {}
+        #: Path fragments whose endpoint **accepts ``page`` and ignores it**, answering every
+        #: page with the whole collection (Cloudflare's ``/accounts`` is reported to do this).
+        #: Not the same as single-page: nothing is refused, so a reader is never told to stop —
+        #: it just walks into its own request cap and reports a size nobody exceeded.
+        self.ignores_page: set[str] = set()
         #: Path fragment → ``(status, message, code)``, for a refusal that is **not** about the
         #: token: a query parameter Cloudflare will not take, a product not enabled on the
         #: account, a 5xx. ``deny``'s 403 is the easy case and the one every test reached for;
@@ -217,7 +244,8 @@ class FakeCloudflare:
         path = request.url.path[len(PREFIX):]
         self.calls.append((request.method, path))
         self.queries.append((path, request.url.query.decode()))
-        return self._with_result_info(path, self._route(request, path))
+        response = self._with_result_info(path, self._route(request, path))
+        return self._one_page_of(path, request.url.params, response)
 
     def _with_result_info(self, path: str, response: httpx.Response) -> httpx.Response:
         """Attach the ``result_info`` a test asked this path to report."""
@@ -229,6 +257,48 @@ class FakeCloudflare:
             body = json.loads(response.content)
             if isinstance(body, dict) and body.get("success"):
                 return httpx.Response(200, json={**body, "result_info": {"total_count": total}})
+        return response
+
+    def _one_page_of(
+        self, path: str, params: httpx.QueryParams, response: httpx.Response
+    ) -> httpx.Response:
+        """Serve a :attr:`capped_page` endpoint's page, described the way Cloudflare describes it.
+
+        The refusal of an oversized ``per_page`` happens in :meth:`_route`, before this. What is
+        left is an endpoint that pages properly: a size it can serve is **honoured**, a request
+        that names none gets the ceiling, and a later ``page`` is handed the right window. That
+        is the whole difference from a single-page endpoint, and the reason a client can finish
+        the read — whether it avoided the argument by asking for ten, or had it and recovered.
+        """
+        sizes = {**{f: None for f in self.ignores_page}, **self.short_count, **self.capped_page}
+        for fragment in sizes:
+            if fragment not in path or response.status_code != 200:
+                continue
+            if not response.headers.get("content-type", "").startswith("application/json"):
+                continue
+            body = json.loads(response.content)
+            rows = body.get("result") if isinstance(body, dict) else None
+            if not isinstance(rows, list):
+                continue
+            cap = self.capped_page.get(fragment, len(rows) or 1)
+            size = min(int(params.get("per_page") or cap), cap)
+            page = int(params.get("page") or 1)
+            info = {
+                "page": page,
+                "per_page": size,
+                "total_count": len(rows),
+                "total_pages": max(1, -(-len(rows) // size)),
+            }
+            window = rows[(page - 1) * size : page * size]
+            if fragment in self.ignores_page:
+                # Every page is page one's rows, and every envelope says so agreeably.
+                window, info["total_pages"] = rows[:size], max(1, -(-len(rows) // size))
+            if fragment in self.short_count:
+                # It calls this the last page and claims to hold more than it handed over.
+                info["total_count"], info["total_pages"] = self.short_count[fragment], page
+            return httpx.Response(
+                200, json={**body, "result": window, "result_info": {**info, "count": len(window)}}
+            )
         return response
 
     def _route(self, request: httpx.Request, path: str) -> httpx.Response:  # noqa: PLR0911, PLR0912
@@ -261,6 +331,12 @@ class FakeCloudflare:
             fragment in path for fragment in self.single_page
         ):
             return _err(400, LIST_OPTIONS_ERROR)
+        # A capped-page endpoint refuses a *size above its ceiling* and nothing else: ``page`` is
+        # always fine and so is a size it can serve, which is what makes the read finishable
+        # where a single-page one's is not — and what lets a client avoid the argument entirely.
+        for fragment, size in self.capped_page.items():
+            if fragment in path and int(params.get("per_page") or 0) > size:
+                return _err(400, LIST_OPTIONS_ERROR, LIST_OPTIONS_CODE)
         body = json.loads(request.content) if request.content else {}
         parts = [p for p in path.split("/") if p]
 

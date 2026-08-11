@@ -10,7 +10,16 @@
    * tone of voice excludes. It is never part of the document and a client never sees it — the
    * API strips it for a portal caller, and this screen only draws what it was sent.
    */
-  import { AlertTriangle, ArrowLeft, Download, Eye, RefreshCw, Send, Trash2 } from "@lucide/svelte";
+  import {
+    AlertTriangle,
+    ArrowLeft,
+    Download,
+    Eye,
+    RefreshCw,
+    Send,
+    Settings2,
+    Trash2,
+  } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
   import { invalidate } from "$app/navigation";
@@ -89,6 +98,20 @@
   </div>
 
   <div class="flex flex-wrap items-center gap-2">
+    <!-- Everything the reviewer wants to change about *the next* report — the tone, the
+         recipients, the facts the model is given — lives on the client, and finding it meant
+         going back to the list, opening the company and then its reporting page. Gated on the
+         destination's own permission, so it is never a link that redirects on arrival. -->
+    {#if data.canManageProfile}
+      <a
+        href={`/companies/${report.company_id}/reporting`}
+        class="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm text-text hover:bg-surface"
+      >
+        <Settings2 size={15} />
+        {t("reporting.review.client_settings")}
+      </a>
+    {/if}
+
     {#if report.pdf_file_id}
       <a
         href={`/reports/${report.id}/pdf`}

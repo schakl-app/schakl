@@ -71,6 +71,29 @@ async def _link_for(
     )
 
 
+async def _pushable_connection(session: AsyncSession, org_id: uuid.UUID, user_id: Any):
+    """The connection an event may be written through, or ``None``.
+
+    Calendar sync is per-person opt-in via "Google koppelen" and never someone else's token, so
+    "no connection" is an ordinary answer, not a failure. Accept the broad ``calendar`` scope as
+    well as ``calendar.events`` — both write events, and a connection carrying only the broader
+    one was silently dropped before (#148).
+    """
+    if not user_id:
+        return None
+    row = await google_settings_row(session, org_id)
+    if row is None or not row.calendar_enabled:
+        return None
+    connection = await connection_for(session, org_id, user_id)
+    if (
+        connection is None
+        or connection.status != ConnectionStatus.ACTIVE.value
+        or not has_calendar_write_scope(connection.scopes)
+    ):
+        return None
+    return connection
+
+
 async def _org_locale(session: AsyncSession, org_id: uuid.UUID) -> str | None:
     return await session.scalar(
         select(OrgSettings.default_locale).where(OrgSettings.org_id == org_id)
@@ -115,19 +138,8 @@ async def handle_leave_approved(ctx: EmitContext, payload: dict[str, Any]) -> No
     user_id, request_id = payload.get("user_id"), payload.get("leave_request_id")
     if not user_id or not request_id:
         return
-    row = await google_settings_row(ctx.session, ctx.org.id)
-    if row is None or not row.calendar_enabled:
-        return
-    connection = await connection_for(ctx.session, ctx.org.id, user_id)
-    # No connection, or one without the calendar grant: nothing to push, by design — leave
-    # sync is per-person opt-in via "Google koppelen", never someone else's token. Accept the
-    # broad ``calendar`` scope as well as ``calendar.events`` — both write events, and a
-    # connection carrying only the broader one was silently dropped before (#148).
-    if (
-        connection is None
-        or connection.status != ConnectionStatus.ACTIVE.value
-        or not has_calendar_write_scope(connection.scopes)
-    ):
+    connection = await _pushable_connection(ctx.session, ctx.org.id, user_id)
+    if connection is None:
         return
 
     # The event lands on the *requester's* calendar, so their locale words it (#148);
@@ -197,19 +209,48 @@ async def handle_task_schedule_saved(ctx: EmitContext, payload: dict[str, Any]) 
     """A planned task block → the assigned person's Google Calendar. Guards mirror leave: the
     org must have calendar sync on, and the person must have personally connected with a
     calendar-write scope. The snapshot carries everything ``_event_body`` needs — the worker
-    never re-reads a task."""
+    never re-reads a task.
+
+    Order matters: what is already in Google is settled before those guards, because they answer
+    "may we write an event for this person" and never "may that person's old event stay"."""
     user_id, schedule_id = payload.get("user_id"), payload.get("schedule_id")
     if not user_id or not schedule_id:
         return
-    row = await google_settings_row(ctx.session, ctx.org.id)
-    if row is None or not row.calendar_enabled:
-        return
-    connection = await connection_for(ctx.session, ctx.org.id, user_id)
-    if (
-        connection is None
-        or connection.status != ConnectionStatus.ACTIVE.value
-        or not has_calendar_write_scope(connection.scopes)
-    ):
+    link = await _link_for(ctx.session, ctx.org.id, LOCAL_TYPE_TASK_SCHEDULE, schedule_id)
+    connection = await _pushable_connection(ctx.session, ctx.org.id, user_id)
+
+    if link is not None and link.google_event_id and link.user_id != user_id:
+        # Reassigned to someone else: Google can't move an event between calendars, so tombstone
+        # the old person's event for deletion and let this link recreate fresh on the new one.
+        # This runs *before* the "is there anything to push to?" guard on purpose — whether the
+        # block's new owner can receive an event says nothing about whether its old owner should
+        # keep one, and reassigning to a colleague who never connected Google used to leave the
+        # block on the original person's calendar for good.
+        tombstone = CalendarEventLink(
+            org_id=ctx.org.id,
+            local_type=LOCAL_TYPE_TASK_SCHEDULE,
+            local_id=uuid.uuid4(),
+            user_id=link.user_id,
+            connection_id=link.connection_id,
+            calendar_id=link.calendar_id,
+            google_event_id=link.google_event_id,
+            status=LinkStatus.DELETE_PENDING.value,
+            payload={},
+        )
+        ctx.session.add(tombstone)
+        await ctx.session.flush()
+        await _enqueue_push(ctx.org.id, tombstone.id)
+        link.google_event_id = None
+        link.etag = None
+
+    if connection is None:
+        # Nothing to push to: sync is off org-wide, or this person never connected with a
+        # calendar-write scope. A link with no event behind it (never pushed, or just emptied
+        # above) describes nothing and is dropped; one still holding an event is left alone,
+        # because deleting it needs the token we no longer have.
+        if link is not None and not link.google_event_id:
+            await ctx.session.delete(link)
+            await ctx.session.flush()
         return
 
     locale = (
@@ -227,26 +268,6 @@ async def handle_task_schedule_saved(ctx: EmitContext, payload: dict[str, Any]) 
         "end_time": str(payload["end_time"]) if payload.get("end_time") else None,
         "timezone": payload.get("timezone") or await _org_timezone(ctx.session, ctx.org.id),
     }
-    link = await _link_for(ctx.session, ctx.org.id, LOCAL_TYPE_TASK_SCHEDULE, schedule_id)
-    if link is not None and link.google_event_id and link.user_id != user_id:
-        # Reassigned to someone else: Google can't move an event between calendars, so tombstone
-        # the old person's event for deletion and let this link recreate fresh on the new one.
-        tombstone = CalendarEventLink(
-            org_id=ctx.org.id,
-            local_type=LOCAL_TYPE_TASK_SCHEDULE,
-            local_id=uuid.uuid4(),
-            user_id=link.user_id,
-            connection_id=link.connection_id,
-            calendar_id=link.calendar_id,
-            google_event_id=link.google_event_id,
-            status=LinkStatus.DELETE_PENDING.value,
-            payload={},
-        )
-        ctx.session.add(tombstone)
-        await ctx.session.flush()
-        await _enqueue_push(ctx.org.id, tombstone.id)
-        link.google_event_id = None
-        link.etag = None
     if link is None:
         link = CalendarEventLink(
             org_id=ctx.org.id,

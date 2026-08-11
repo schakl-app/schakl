@@ -8,7 +8,7 @@
   import { beforeNavigate } from "$app/navigation";
   import { page } from "$app/state";
   import { burnPct } from "$lib/core/burn";
-  import { fmtDateTime, fmtNumber } from "$lib/core/format";
+  import { fmtDateTime, fmtNumber, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import BudgetBar from "$lib/core/ui/BudgetBar.svelte";
@@ -30,6 +30,7 @@
     formatMinutes,
     type TimeEntryTypeDef,
   } from "$lib/modules/time/format";
+  import { splitTaskOptions } from "$lib/modules/time/task-picker";
 
   interface Option {
     id: string;
@@ -38,6 +39,11 @@
     company_id?: string | null;
     project_id?: string | null;
     allocated_minutes?: number | null;
+    /** A task's status key, read against the org's own vocabulary (#62) to tell open from
+     *  finished. Absent on companies/projects, and on a lookup that predates `taskStatuses`. */
+    status?: string | null;
+    /** A task's deadline, shown in the picker so two same-named tasks are tellable apart. */
+    due_date?: string | null;
     // A task's own burn (#313): present when the lookup asked for `hours=true` *and* the caller
     // holds `time.entry.read`. Absent, never zero — see `modules/tasks/budget.ts`.
     logged_minutes?: number | null;
@@ -77,6 +83,7 @@
     companies,
     projects,
     tasks,
+    taskStatuses = [],
     defaultCompanyId = "",
     defaultProjectId = "",
     error = null,
@@ -95,6 +102,15 @@
     companies: Option[];
     projects: Option[];
     tasks: Option[];
+    /**
+     * The org's task-status vocabulary (#62), which is what says whether a task is finished.
+     *
+     * Optional, and an empty list means *don't know*: the picker then offers every task, exactly
+     * as it did before. A host that hands over `tasks` without this gets the old behaviour rather
+     * than a silently wrong one — "finished" is a per-tenant fact and cannot be guessed from a
+     * key called `done`.
+     */
+    taskStatuses?: { key: string; name: string; is_terminal: boolean }[];
     defaultCompanyId?: string;
     defaultProjectId?: string;
     error?: string | null;
@@ -201,15 +217,18 @@
       (p) => ({ value: p.id, label: p.name ?? "" }),
     ),
   );
-  const taskOptions = $derived(
-    (fProject
-      ? tasks.filter((task) => task.project_id === fProject || !task.project_id)
-      : tasks
-    ).map((task) => ({
-      value: task.id,
-      label: task.title ?? "",
-      hint: task.allocated_minutes ? formatMinutes(task.allocated_minutes) : undefined,
-    })),
+  // Open tasks in the dropdown, finished ones behind a search (`task-picker.ts` holds the rule
+  // and the reasons). Both buckets get the same hint, deadline included.
+  const taskBuckets = $derived(
+    splitTaskOptions(tasks, {
+      projectId: fProject,
+      selectedId: fTask,
+      statuses: taskStatuses,
+      labels: {
+        due: (iso) => t("time.field.task_due", { date: fmtNumericDate(iso) }),
+        allocated: formatMinutes,
+      },
+    }),
   );
   function onProjectPicked(projectId: string) {
     const project = projects.find((p) => p.id === projectId);
@@ -604,8 +623,12 @@
     <label for="task-{action}" class="mb-1 block text-xs font-medium text-text-muted"
       >{t("time.field.task")}</label
     >
+    <!-- Finished tasks are not offered, only findable: `archived` keeps them out of the opening
+         list and hands them back the moment someone searches for one (#62 vocabulary). -->
     <Combobox
-      items={taskOptions}
+      items={taskBuckets.open}
+      archived={taskBuckets.closed}
+      archivedLabel={t("time.field.task_closed")}
       name="task_id"
       bind:value={fTask}
       id="task-{action}"

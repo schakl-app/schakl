@@ -433,6 +433,19 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     module: "marketing",
   },
   {
+    // Its own card rather than a section of Marketing: the developer token identifies the
+    // *agency* to Google, the account links decide whose money is being spent, and the write
+    // switch stops every mutating call at once. All three are decisions an owner makes, and
+    // none of them belongs behind a dashboard's settings.
+    key: "google_ads",
+    href: "/settings/google-ads",
+    titleKey: "settings.google_ads.title",
+    subtitleKey: "settings.google_ads.subtitle",
+    group: "integrations",
+    permissions: ["google_ads.settings.manage"],
+    module: "google_ads",
+  },
+  {
     // The house voice, the document templates and the org-wide schedule (#300). A client's own
     // profile is *not* here — it belongs on the client, beside everything else about them.
     key: "reporting",
@@ -442,6 +455,20 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     group: "integrations",
     permissions: ["reporting.settings.manage"],
     module: "reporting",
+  },
+  {
+    // Uptime Kuma lives here rather than on a website, for principle 6's reason: it holds the
+    // credential, and the credential is org-wide configuration. `uptime.monitor.read` does not
+    // open it — seeing that a client's site is down and holding the administrator account of
+    // the box that watches it are different capabilities.
+    key: "uptime",
+    href: "/settings/uptime",
+    titleKey: "settings.uptime.title",
+    subtitleKey: "settings.uptime.subtitle",
+    keywordsKey: "settings.search.uptime",
+    group: "integrations",
+    permissions: ["uptime.instance.manage"],
+    module: "uptime",
   },
   {
     key: "cloudflare",

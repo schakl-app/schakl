@@ -42,6 +42,52 @@ class LeaveRequestStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class EmploymentKind(StrEnum):
+    """Payroll or a freelance engagement — a property of the **period**, not of the person.
+
+    A freelancer who later joins the payroll is a new :class:`EmploymentContract` row, exactly as
+    a raise is, so last year stays priced under the arrangement it was actually worked. The same
+    person may hold both kinds over time, and an agency holds both at once.
+
+    What the kind decides is **accrual**: a freelance period earns no statutory vacation and no
+    free time (§14). A ZZP'er invoices their hours; there is no entitlement to prorate, and
+    deriving one would hand them a balance that goes negative the first week they take off. It
+    decides nothing else — a freelance period still carries a week, still shows on the team
+    roster, and an admin may still hand-grant a pot through the ordinary ``manual`` entitlement
+    when a paid-days arrangement was negotiated. That is the escape hatch, deliberately: an
+    arrangement nobody can express in a formula is one an admin states outright.
+
+    ``String``, not a PG enum, like every other small vocabulary here: adding a value is then a
+    code change, never a migration on somebody's live database.
+    """
+
+    EMPLOYEE = "employee"
+    FREELANCE = "freelance"
+
+
+class AvailabilityChange(StrEnum):
+    """Which way a resolved day moved against the week it sits on.
+
+    Not stored anywhere — the computed answer a day view hands its callers, so a calendar and a
+    capacity read cannot form two opinions about the same Thursday (#312's rule for comparisons).
+    """
+
+    ADDED = "added"
+    REMOVED = "removed"
+    CHANGED = "changed"
+
+
+class AvailabilityKind(StrEnum):
+    """Which way an :class:`EmploymentAvailability` row bends the week it sits on.
+
+    ``UNAVAILABLE`` takes a day (or a window of one) out of the base week; ``EXTRA`` adds one the
+    base week does not contain. A *move* is one of each — see the model docstring.
+    """
+
+    EXTRA = "extra"
+    UNAVAILABLE = "unavailable"
+
+
 class LeaveCalendarDisplay(StrEnum):
     """How this type's absences are drawn on the agenda (#270).
 
@@ -406,9 +452,24 @@ class EmploymentContract(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Ba
     start_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     #: ``NULL`` = open-ended (still employed). Termination = setting this, not deleting the row.
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    #: Payroll or freelance — see :class:`EmploymentKind`. Every pre-existing row is ``employee``
+    #: (the server default), so upgrading changes no accrual anywhere.
+    employment_type: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default=EmploymentKind.EMPLOYEE.value,
+        server_default=EmploymentKind.EMPLOYEE.value,
+    )
     #: The legal contract hours — entered, never derived. Statutory vacation and free time both
     #: key off this, not off the scheduled week.
-    contract_hours_per_week: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    #:
+    #: ``NULL`` is *only* legal on a freelance period and means "no fixed weekly commitment" —
+    #: plenty of freelancers are engaged per assignment, and an invented 16 there would be a
+    #: number every capacity figure quotes as if somebody had agreed to it. An **employee**
+    #: period with no hours is refused at the service (``errors.leave_contract_hours_required``),
+    #: which is what keeps every accrual path total: the two computations that read this column
+    #: only ever see employee periods.
+    contract_hours_per_week: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     #: **The working week for this period.** A schedule change usually *is* a contract change, so
     #: the week is a property of the employment period rather than one mutable field on the person
     #: — which is what keeps last year's leave priced at last year's roster. ``NULL`` falls back to
@@ -429,4 +490,64 @@ class EmploymentContract(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Ba
     free_time_hours_per_week: Mapped[Decimal | None] = mapped_column(
         Numeric(5, 2), nullable=True
     )
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class EmploymentAvailability(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """One dated bend in somebody's working week — a day they *will* work that the week does not
+    contain, or one it does contain that they will not.
+
+    **Why this is not a leave request.** Leave is an entitlement being spent: it prices in hours,
+    draws on a balance, wants an approver, and zeroes on a public holiday. None of that applies
+    to a freelancer, who has no pot to draw on and no employer's holiday calendar to follow — and
+    an *extra* day has no leave analogue at all. Modelling availability as leave would mean
+    switching four of leave's own rules off per row and inventing the fifth; this is one small
+    table that says the one thing that is actually being recorded.
+
+    **Availability is computed, never materialised.** The base week comes from the period in
+    force (contract → profile → org default) and these rows bend it, so a repeat is a *rule* on
+    the row (``repeat_weeks`` + ``repeat_until``), not a horizon of generated days waiting for a
+    cron. There is nothing to spend, so there is nothing to place: #107's generator exists
+    because a free day is a balance leaving a pot, and this is not. That keeps "every other
+    Friday" one row that stays true next year instead of a drift risk with a monthly job behind
+    it.
+
+    **A move is a pair.** "Not Tuesday, but Thursday instead" is an ``UNAVAILABLE`` and an
+    ``EXTRA`` sharing a ``pair_id``: two facts about two different days, which is what they are,
+    with one id so the UI can render and undo them as the single act the user performed. Deleting
+    either half deletes both — half a move is a statement nobody made.
+
+    Written by an admin (``leave.availability.write:any``) or by the person themselves
+    (``:own``). The boundary is deliberate: **the contract is the agency's and the exceptions are
+    the freelancer's**. A freelancer telling us they are also free on Wednesdays is a weekly
+    ``EXTRA``, not a rewrite of the period they were engaged under.
+    """
+
+    __tablename__ = "employment_availability"
+    __table_args__ = (
+        Index("ix_employment_availability_org_user_date", "org_id", "user_id", "date"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    #: ``extra`` or ``unavailable`` — see :class:`AvailabilityKind`.
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    #: The day this bends, and — when it repeats — the first one. Its weekday is the cadence's.
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    #: The window; ``NULL``/``NULL`` is the whole day. An ``EXTRA`` with no window means the base
+    #: week's own hours for that weekday, falling back to the org default day when the base week
+    #: does not work it — which is the common case, since an extra day is usually a day off.
+    start_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    end_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    #: ``NULL`` = this date only. ``1`` = every week, ``2`` = every other week, … Bounded like
+    #: #107's cadence: past 8 weeks it is a hand-planned day, not a rhythm.
+    repeat_weeks: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: Last date a repeat may land on; ``NULL`` = open-ended. Ignored without ``repeat_weeks``.
+    repeat_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    #: The other half of a move. ``NULL`` for a standalone row.
+    pair_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)

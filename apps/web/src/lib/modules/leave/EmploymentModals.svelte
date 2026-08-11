@@ -1,6 +1,6 @@
 <script lang="ts" module>
   import type { ActionItem } from "$lib/core/ui/ActionsMenu.svelte";
-  import { BadgeEuro, Briefcase } from "@lucide/svelte";
+  import { BadgeEuro, Briefcase, CalendarClock } from "@lucide/svelte";
 
   import { t } from "$lib/core/i18n";
 
@@ -10,7 +10,7 @@
     full_name: string | null;
     email: string | null;
   };
-  export type EmploymentKind = "employment" | "rate";
+  export type EmploymentKind = "employment" | "rate" | "availability";
   /** Handed to a host via `register`; a ⋯ item calls it to open the right modal for a member. */
   export type OpenEmployment = (member: EmploymentMember, kind: EmploymentKind) => void;
 
@@ -27,7 +27,7 @@
   export function employmentMenuItems(
     member: EmploymentMember,
     open: OpenEmployment | undefined,
-    opts: { schedules: boolean; rates: boolean },
+    opts: { schedules: boolean; rates: boolean; availability?: boolean },
   ): ActionItem[] {
     const items: ActionItem[] = [];
     if (opts.schedules) {
@@ -35,6 +35,16 @@
         label: t("settings.employment.title"),
         icon: Briefcase,
         onclick: () => open?.(member, "employment"),
+      });
+    }
+    // Its own permission (`leave.availability.write:any`), not `leave.profile.manage`: the
+    // contract is the agency's record and the exceptions on top of it are the person's own, so
+    // a host that cannot manage contracts may still be the one keeping a freelancer's calendar.
+    if (opts.availability) {
+      items.push({
+        label: t("leave.availability.title"),
+        icon: CalendarClock,
+        onclick: () => open?.(member, "availability"),
       });
     }
     if (opts.rates) {
@@ -72,6 +82,7 @@
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
 
+  import AvailabilityManager, { type AvailabilityEntry } from "./AvailabilityManager.svelte";
   import EmploymentWizard, {
     type WizardContract,
     type WizardPattern,
@@ -84,6 +95,7 @@
     register,
     contracts = [],
     recurring = [],
+    availability = [],
     leaveTypes = [],
     orgDefaultSchedule,
     rateByUser = {},
@@ -94,6 +106,8 @@
     register?: (open: OpenEmployment) => void;
     contracts?: WizardContract[];
     recurring?: WizardPattern[];
+    /** Everyone's availability exceptions in the host's read window; grouped per member here. */
+    availability?: AvailabilityEntry[];
     /** Active types the free-time step may plan with. */
     leaveTypes?: LeaveTypeInfo[];
     /** The org default week — the full-time norm, and what an inheriting contract follows. */
@@ -113,6 +127,7 @@
   let member = $state<EmploymentMember | null>(null);
   let employmentOpen = $state(false);
   let rateOpen = $state(false);
+  let availabilityOpen = $state(false);
   // `form` survives until the next navigation, so a run's receipt would still be showing the next
   // time the wizard opens. Whatever `form` holds at open is marked stale; a genuinely new action
   // result is a new object and so reads as live.
@@ -127,6 +142,11 @@
   const recurringByUser = $derived.by(() => {
     const map: Record<string, WizardPattern[]> = {};
     for (const p of recurring) (map[p.user_id] ??= []).push(p);
+    return map;
+  });
+  const availabilityByUser = $derived.by(() => {
+    const map: Record<string, AvailabilityEntry[]> = {};
+    for (const entry of availability) (map[entry.user_id] ??= []).push(entry);
     return map;
   });
   const activeLeaveTypes = $derived(leaveTypes.filter((lt) => lt.active));
@@ -155,6 +175,7 @@
     member = target;
     staleForm = form;
     if (kind === "rate") openRate(target);
+    else if (kind === "availability") availabilityOpen = true;
     else employmentOpen = true;
   };
   // The host stores this to trigger a modal from a row's ⋯ menu — a callback prop, not an
@@ -181,6 +202,22 @@
         {orgDefaultSchedule}
         form={liveForm}
         onterminate={openTerminate}
+      />
+    {/key}
+  {/if}
+</Modal>
+
+<!-- One person's availability: the days on top of the week they were engaged under. The same
+     component the freelancer opens on their own /leave page, so the two can't drift — only the
+     `userId` differs, and the API demands `leave.availability.write:any` for somebody else's. -->
+<Modal bind:open={availabilityOpen} title={t("leave.availability.title")} size="lg">
+  {#if member}
+    {#key member.user_id}
+      <p class="mb-3 text-sm text-text-muted">{memberLabel(member)}</p>
+      <AvailabilityManager
+        entries={availabilityByUser[member.user_id] ?? []}
+        userId={member.user_id}
+        error={form?.error ?? null}
       />
     {/key}
   {/if}

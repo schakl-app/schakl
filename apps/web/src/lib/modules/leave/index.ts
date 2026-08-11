@@ -208,6 +208,85 @@ registerWebModule({
       },
     },
     {
+      /**
+       * Freelance availability: the days that do **not** match the week somebody was engaged
+       * under. Its own source, not folded into `leave.team`, because it answers the opposite
+       * question — that feed says who is away, this one says who can be booked — and a viewer
+       * planning work wants to switch one off without losing the other.
+       *
+       * **Only the deviations are drawn.** Emitting every available day would put a chip on
+       * every working day of every freelancer, which is the roster redrawn as noise; the days
+       * that differ are the ones nobody already knows. That is `change`, not `deviates`: an
+       * exception that moves no hours (a whole-day extra on a day already worked) is a real row
+       * and not a difference, and drawing it would announce one nobody made.
+       *
+       * No `move`. Dragging a chip here would edit the *row* behind it, and a row is not an
+       * occurrence: one Friday of "every other Friday" would silently move the whole rhythm,
+       * and dragging half a swap would leave the other half where it was. Both are worse than
+       * opening the surface that owns them.
+       */
+      key: "leave.availability",
+      module: "leave",
+      labelKey: "leave.calendar.availability",
+      color: "sky",
+      load: async (
+        api,
+        { from, to, user, color, personColors, hiddenPeople },
+      ): Promise<CalendarEvent[]> => {
+        const { data } = await api.GET("/api/v1/leave/availability/days", {
+          params: { query: { date_from: from, date_to: to, all_users: true } },
+        });
+        const hidden = new Set(hiddenPeople ?? []);
+        return (data ?? [])
+          .filter((day) => day.change && !hidden.has(day.user_id))
+          .map((day) => {
+            const own = day.user_id === user?.id;
+            const removed = day.change === "removed";
+            // A removed day has no window to state, so it says so in words; the other two say
+            // when the person *can* be booked, which is the question the feed exists to answer.
+            //
+            // **State first, name second** — the opposite order to the absence feed, and the
+            // month grid is why: a cell truncates at about twenty characters, and
+            // "Lotte de Vries · Bes…" is exactly as ambiguous as no chip at all on the one bit
+            // that matters. Leading with it, an unhoverable cell still separates a yes from a
+            // no; the name survives in the `title` attribute and in every wider view.
+            const label = removed
+              ? t("leave.availability.unavailable")
+              : `${t("leave.availability.available")} ${fmtClockTime(day.windows[0].start)}${RANGE_DASH}${fmtClockTime(day.windows[day.windows.length - 1].end)}`;
+            // A day with hours is positioned by the hour like timed leave (#270); a removed day
+            // has no block to draw and stays in the pinned all-day row.
+            const timed = !removed && Boolean(day.starts_at && day.ends_at);
+            return {
+              id: `avail-${day.user_id}-${day.date}`,
+              start: day.date,
+              end: day.date,
+              title: `${label} · ${day.user_name}`,
+              // Colour carries the state as well as the words do, so a glance separates the two
+              // without reading — and an override (#281) collapses them to one colour while the
+              // text still says which is which, which is why the state was never *only* a colour.
+              //
+              // Both are tokens from the shared palette (`core/ui/colors`). `slate` is not in it:
+              // the holidays feed names it and gets away with it only because `kind: "holiday"`
+              // draws a dashed band and never reads the token, so a chip asking for it renders
+              // with no fill at all — the loudest thing on the feed as the faintest thing on the
+              // screen. `amber` says "not available" without `red`'s "something went wrong".
+              color: personColors?.[day.user_id] ?? color ?? (removed ? "amber" : "sky"),
+              href: own ? "/leave" : "/leave/team",
+              startsAt: timed ? (day.starts_at ?? undefined) : undefined,
+              endsAt: timed ? (day.ends_at ?? undefined) : undefined,
+              sourceKey: "leave.availability",
+            };
+          });
+      },
+      splitPeople: async (api, { user }): Promise<CalendarPerson[]> => {
+        // Same gate as the absence feed's split: a viewer who may only see their own gets one
+        // colour and no per-person rows.
+        if (!hasPermission(user?.permissions, "leave.availability.read", "any")) return [];
+        const { data } = await api.GET("/api/v1/members/lookup");
+        return (data ?? []).map((m) => ({ id: m.user_id, name: m.full_name || m.email || "" }));
+      },
+    },
+    {
       // Its own source, not folded into `leave.team`: a holiday is nobody's absence, so it
       // renders as a marking rather than a chip and never counts toward a busy day (#47).
       key: "leave.holidays",

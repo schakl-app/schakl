@@ -9,6 +9,7 @@ import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { LEAVE_TEAM_COLUMNS, LEAVE_TEAM_TABLE_ID } from "$lib/modules/leave/columns";
 // The employment editors (work schedule, contracts, recurring free days) are the same shared
 // surface as Instellingen → Gebruikers, so the roster ⋯ menu reuses its actions verbatim.
+import { availabilityActions } from "$lib/modules/leave/availability.server";
 import { employmentActions } from "$lib/modules/leave/employment.server";
 import { requestBody } from "$lib/modules/leave/request";
 
@@ -98,6 +99,8 @@ export const actions: Actions = {
   // Work schedule, contracts and recurring free days — the same handlers Instellingen →
   // Gebruikers uses, so the roster ⋯ menu behaves identically (employment.server.ts).
   ...employmentActions,
+  // And the availability exceptions on top of them, shared with the freelancer's own /leave.
+  ...availabilityActions,
 
   /** Persist this manager's column layout for the team table. Personal, in-view (docs/UX.md §6). */
   saveTable: async (event) => {

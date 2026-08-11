@@ -134,7 +134,11 @@
             {t("hr.me.contract_hours")}
           </dt>
           <dd class="mt-0.5 tabular-nums text-text">
-            {fmtNumber(Number(contract.contract_hours_per_week), 1)} u
+            <!-- A freelance period may record no fixed weekly commitment; "0 u" would read as an
+                 agreed nought rather than as "none was agreed". -->
+            {contract.contract_hours_per_week == null
+              ? "—"
+              : `${fmtNumber(Number(contract.contract_hours_per_week), 1)} u`}
           </dd>
         </div>
         {#if contract.end_date}

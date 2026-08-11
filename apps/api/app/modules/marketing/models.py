@@ -56,6 +56,11 @@ class MarketingSource(StrEnum):
     #: first source that is not Google, which is why the adapter protocol carries an ``auth``
     #: kind: this one rides one API key per *agency*, not a per-user OAuth grant.
     SERANKING = "seranking"
+    #: Rank Math AI Visibility, read through the client's own WordPress (docs/WORDPRESS.md).
+    #: The third ``auth`` kind and the reason there is one: its credential is per **website**,
+    #: so it is resolved per *link* rather than per org or per user. A link of this source
+    #: therefore requires ``website_id`` — see ``MarketingService.create_link``.
+    RANKMATH = "rankmath"
 
 
 class MarketingLink(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
@@ -86,7 +91,11 @@ class MarketingLink(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         nullable=True,
         index=True,
     )
-    source: Mapped[str] = mapped_column(String(8), nullable=False)
+    #: ``String(16)``, widened from 8 when ``rankmath`` arrived. ``"rankmath"`` is exactly
+    #: eight characters, so it fit — and a schema that depends on a coincidence about the
+    #: length of a brand name is a schema that breaks on the next source. Widening a varchar
+    #: is a metadata-only change in Postgres, so the cost of not living on it was one line.
+    source: Mapped[str] = mapped_column(String(16), nullable=False)
     #: The provider's own id: GA4 "properties/123456789", GSC "sc-domain:acme.nl" or a URL,
     #: Ads "1234567890" (customer id, no dashes).
     external_id: Mapped[str] = mapped_column(String(512), nullable=False)
@@ -99,6 +108,21 @@ class MarketingLink(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         ForeignKey("google_connections.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
+    )
+    #: For ``source="gads"``: the ``google_ads`` module's account row, which is the **authority**
+    #: for which customer this is, which manager it is reached through and whose grant syncs it.
+    #: NULL for every other source, and for a gads link on an instance that never enabled the
+    #: module — in which case ``external_id``/``config`` below still answer, exactly as before.
+    #:
+    #: ``external_id`` stays populated either way, on purpose. It is what the panel prints and
+    #: what ``deep_link`` builds from, and ``SourceMetrics.external_id`` is typed ``str``: a
+    #: ``None`` there is a validation error, and company panels compose with no per-panel
+    #: ``try``, so one unlinked Ads account would 500 the *whole* company hub rather than blank
+    #: one tile. The join is the truth; this column is a display copy with a stated owner.
+    google_ads_account_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("google_ads_accounts.id", ondelete="SET NULL"),
+        nullable=True,
     )
     #: Per-source extras: GA4 {currency, propertyType}; GSC {siteType}; Ads {currency,
     #: manager_id}. A JSONB blob, not columns — it differs per source and is display-only.

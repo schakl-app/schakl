@@ -193,7 +193,10 @@
   }
   // Only multi-type groups (vacation) have a split worth expanding.
   const hasSplit = $derived(groupColumns.some((c) => c.multi));
-  const balanceColCount = $derived(2 + groupColumns.length + (data.manageEmployment ? 1 : 0));
+  // The ⋯ column exists for either capability: managing somebody's contract and keeping their
+  // availability are separate permissions, and a tenant may grant one without the other.
+  const hasRowActions = $derived(data.manageEmployment || data.keepsAvailability);
+  const balanceColCount = $derived(2 + groupColumns.length + (hasRowActions ? 1 : 0));
 
   const busy = new InFlight();
   let registerOpen = $state(false);
@@ -299,11 +302,12 @@
 
 <!-- The Dienstverband wizard for the roster ⋯ menu. One instance; each row opens it through
      `openEmployment`. No rate here — that stays a Gebruikers-only act. -->
-{#if data.manageEmployment}
+{#if hasRowActions}
   <EmploymentModals
     register={(open) => (openEmployment = open)}
     contracts={data.contracts}
     recurring={data.recurring}
+    availability={data.availability}
     leaveTypes={types}
     orgDefaultSchedule={data.defaultSchedule as WorkSchedule}
     {form}
@@ -414,7 +418,7 @@
               </span>
             </th>
           {/each}
-          {#if data.manageEmployment}
+          {#if hasRowActions}
             <th class="w-10 px-2 py-2"><span class="sr-only">{t("common.actions")}</span></th>
           {/if}
         </tr>
@@ -462,13 +466,14 @@
                 </span>
               </td>
             {/each}
-            {#if data.manageEmployment}
+            {#if hasRowActions}
               <!-- Fix this member's rooster/contract/free time without leaving the leave overview. -->
               <td class="px-2 py-2 text-right">
                 <ActionsMenu
                   compact
                   items={employmentMenuItems(member, openEmployment, {
-                    schedules: true,
+                    schedules: data.manageEmployment,
+                    availability: data.keepsAvailability,
                     rates: false,
                   })}
                 />

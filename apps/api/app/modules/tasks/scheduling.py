@@ -12,7 +12,9 @@ person's block — a scope-aware fetch raises 404 rather than leaking that it ex
 The service is the authority on the block: instants are ``TIMESTAMPTZ``/UTC, the web and the
 Google push render them in the org timezone, and ``hours`` is never accepted from a client. On
 save it emits ``task.scheduled`` (notify the scheduled person) and ``task_schedule.saved``
-(Google Calendar mirror); on removal ``task_schedule.removed`` deletes the pushed event.
+(Google Calendar mirror); on removal ``task_schedule.removed`` deletes the pushed event —
+including when the *task* is deleted and the blocks leave by FK cascade, which announces
+nothing on its own (``remove_for_task``).
 """
 
 from __future__ import annotations
@@ -240,12 +242,34 @@ class TaskScheduleService:
     async def delete(self, schedule_id: uuid.UUID) -> None:
         block = await self._readable_or_404(schedule_id)
         self._ensure_write_for(block.user_id)
-        await emit(
-            "task_schedule.removed",
-            self.ctx,
-            {"schedule_id": block.id, "user_id": block.user_id},
-        )
+        await self._emit_removed(block)
         await self.repo.delete(block)
+
+    async def remove_for_task(self, task_id: uuid.UUID) -> None:
+        """Announce every block of a task that is about to be deleted.
+
+        ``task_schedules.task_id`` is ``ON DELETE CASCADE``, so the blocks already go with the
+        card — in the database. What the cascade cannot do is *say so*: the Google mirror only
+        learns a block is gone from ``task_schedule.removed``, and a link left at ``pushed``
+        points at a row that no longer exists, so nothing will ever clean the event up. The rows
+        still go with the cascade; this adds the sentence.
+
+        Deliberately unscoped: the caller is deleting the task, which they were already allowed
+        to do, and the blocks go whether or not they hold ``tasks.schedule.write`` on the people
+        they belong to (§16 — recording a consequence is not its own grant). Refusing here would
+        make a colleague's block a reason a manager cannot delete a task.
+        """
+        blocks = (
+            (
+                await self.ctx.session.execute(
+                    self.repo.scoped_select().where(TaskSchedule.task_id == task_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for block in blocks:
+            await self._emit_removed(block)
 
     async def log_time(self, schedule_id: uuid.UUID, data: ScheduleLogTime) -> TaskSchedule:
         """Confirm a passed block as a real time entry (#188). The entry is always the *caller's*
@@ -335,6 +359,15 @@ class TaskScheduleService:
                 "end_time": local_end.strftime("%H:%M:%S"),
                 "timezone": str(zone),
             },
+        )
+
+    async def _emit_removed(self, block: TaskSchedule) -> None:
+        """The block is going: delete whatever was pushed for it (#188). One emit site, so a
+        second way of removing a block cannot forget the mirror the way the task cascade did."""
+        await emit(
+            "task_schedule.removed",
+            self.ctx,
+            {"schedule_id": block.id, "user_id": block.user_id},
         )
 
     async def _notify_scheduled(self, block: TaskSchedule, task: Task) -> None:

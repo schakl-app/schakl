@@ -1625,6 +1625,24 @@ class _FakeAdsClient:
     async def post(self, url: str, headers: dict | None = None, json: dict | None = None):
         return self._answer(url, headers or {}, json)
 
+    async def request(
+        self,
+        method: str,
+        url: str,
+        headers: dict | None = None,
+        json: dict | None = None,
+        timeout: object = None,  # noqa: ARG002 — httpx's signature
+    ):
+        """What ``core.googleads.AdsClient`` actually calls.
+
+        The adapter no longer builds its own headers or walks its own pages: it hands this
+        client to ``AdsClient``, which does both. Stubbing at ``request`` rather than at
+        ``post`` is what keeps these tests exercising the real header builder and the real
+        paging instead of asserting against a shape nothing in production takes.
+        """
+        del method
+        return self._answer(url, headers or {}, json)
+
 
 async def test_manager_accounts_expand_into_their_clients() -> None:
     """An agency's Google user is granted the **manager**, not the clients under it.
@@ -1677,13 +1695,24 @@ async def test_manager_accounts_expand_into_their_clients() -> None:
 
     calls: list[dict] = []
 
-    async def _post(url: str, headers: dict | None = None, json: dict | None = None):  # noqa: A002
+    async def _request(
+        method: str,
+        url: str,
+        headers: dict | None = None,
+        json: dict | None = None,  # noqa: A002
+        timeout: object = None,  # noqa: ARG001
+    ):
+        del method
+        # Discovery is a GET with no body and is the fake's own to answer; only the two GAQL
+        # reads are scripted here.
+        if "listAccessibleCustomers" in url:
+            return client._answer(url, headers or {})
         query = str((json or {}).get("query", ""))
         calls.append({"url": url, "headers": dict(headers or {}), "query": query})
         body = children if "customer_client" in query else manager_meta
         return httpx.Response(200, json=body, request=httpx.Request("POST", url))
 
-    client.post = _post  # type: ignore[method-assign]
+    client.request = _request  # type: ignore[method-assign]
 
     with gads.developer_token_scope("dev-token"):
         options = await gads.GAdsAdapter().list_accounts(client)  # type: ignore[arg-type]
@@ -1708,7 +1737,16 @@ async def test_a_plain_advertiser_account_is_still_offered_untagged() -> None:
         {"customers:listAccessibleCustomers": {"resourceNames": ["customers/5550001111"]}}
     )
 
-    async def _post(url: str, headers: dict | None = None, json: dict | None = None):  # noqa: A002, ARG001
+    async def _request(
+        method: str,
+        url: str,
+        headers: dict | None = None,
+        json: dict | None = None,  # noqa: A002, ARG001
+        timeout: object = None,  # noqa: ARG001
+    ):
+        del method
+        if "listAccessibleCustomers" in url:
+            return client._answer(url, headers or {})
         return httpx.Response(
             200,
             json={
@@ -1725,7 +1763,7 @@ async def test_a_plain_advertiser_account_is_still_offered_untagged() -> None:
             request=httpx.Request("POST", url),
         )
 
-    client.post = _post  # type: ignore[method-assign]
+    client.request = _request  # type: ignore[method-assign]
     with gads.developer_token_scope("dev-token"):
         options = await gads.GAdsAdapter().list_accounts(client)  # type: ignore[arg-type]
 
@@ -1734,13 +1772,21 @@ async def test_a_plain_advertiser_account_is_still_offered_untagged() -> None:
 
 
 def test_a_linked_child_sends_the_manager_on_every_call() -> None:
-    """The tag is only worth storing if the header is actually built from it."""
-    with gads.developer_token_scope("dev-token"):
-        headers = gads._headers({"manager_id": "111-222-3333", "currency": "EUR"})
+    """The tag is only worth storing if the header is actually built from it.
+
+    The builder moved to ``core.googleads`` when ``google_ads`` was split out — two modules make
+    this header and there must not be two opinions about it — so the assertion follows it there.
+    What is being pinned is unchanged: a child account carries its manager, a directly-granted
+    account carries none, and Google gets the id without dashes either way.
+    """
+    from app.core.googleads import AdsCredentials
+
+    headers = AdsCredentials(
+        developer_token="dev-token", login_customer_id="111-222-3333"
+    ).headers()
     # Google wants the id without dashes.
     assert headers["login-customer-id"] == "1112223333"
     assert headers["developer-token"] == "dev-token"
 
-    with gads.developer_token_scope("dev-token"):
-        plain = gads._headers({"currency": "EUR"})
+    plain = AdsCredentials(developer_token="dev-token").headers()
     assert "login-customer-id" not in plain

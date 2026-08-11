@@ -8,6 +8,7 @@ caller's credential on every in-process call, so the key's scopes govern each to
 from __future__ import annotations
 
 import json
+import re
 from contextlib import asynccontextmanager
 
 from app.main import app as fastapi_app
@@ -34,6 +35,28 @@ async def mcp_running():
             yield
     finally:
         mount.app = original
+
+#: The surfaces ``app/core/mcp/server.py`` excludes by path, as the same expression it uses.
+_EXCLUDED_PATHS = re.compile(r"^/api/v1/(auth|setup|instance|users)(/|$)")
+
+
+def _excluded_tool_names() -> set[str]:
+    """Every tool name the excluded surfaces *would* contribute, had they not been excluded.
+
+    Derived from the spec rather than guessed, and carrying both forms the name builder can
+    produce — the short one it prefers, and the full operationId it falls back to on a
+    collision — so the assertion cannot quietly stop covering an operation.
+    """
+    names: set[str] = set()
+    for path, operations in fastapi_app.openapi()["paths"].items():
+        if not _EXCLUDED_PATHS.match(path):
+            continue
+        for operation in operations.values():
+            op_id = operation.get("operationId") if isinstance(operation, dict) else None
+            if op_id:
+                names |= {op_id, op_id.split("_api_v1_")[0]}
+    assert names, "no excluded surface found in the spec — the pattern stopped matching"
+    return names
 
 _MCP_HEADERS = {
     "Accept": "application/json, text/event-stream",
@@ -68,10 +91,11 @@ async def test_mcp_tools_reflect_the_api_and_enforce_key_scopes(client_for) -> N
         tools = {tool["name"] for tool in listed["result"]["tools"]}
         assert "list_companies" in tools
         # Session flows, self-service account routes and the operator surface are excluded.
-        assert not any(
-            "setup" in name or "instance" in name or name.startswith("users_")
-            for name in tools
-        )
+        # Asked of the *paths* the exclusion is written against, never of a substring of the
+        # tool name: ``/api/v1/uptime/instances`` is an ordinary module route whose tool is
+        # ``list_uptime_instances``, and a name containing "instance" is not the instance
+        # console. A test that reads it as one goes red on the next module that ships a word.
+        assert not (_excluded_tool_names() & tools), sorted(_excluded_tool_names() & tools)
 
         called = await _rpc(
             c, "tools/call", {"name": "list_companies", "arguments": {}}, auth=auth

@@ -11,7 +11,7 @@ import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.core.entitlements.service import license_state
 from app.core.jobs import enqueue, run_per_org
@@ -22,7 +22,11 @@ from app.modules.google.calendar.models import (
     LinkStatus,
     WatchStatus,
 )
-from app.modules.google.calendar.push import MAX_ATTEMPTS, push_link
+from app.modules.google.calendar.push import (
+    LOCAL_TYPE_TASK_SCHEDULE,
+    MAX_ATTEMPTS,
+    push_link,
+)
 from app.modules.google.calendar.service import ensure_watch, sync_connection
 from app.modules.google.models import ConnectionStatus, GoogleConnection
 from app.modules.google.oauth import google_settings_row, has_calendar_write_scope
@@ -100,12 +104,45 @@ async def google_calendar_poll_fallback(ctx: dict) -> None:  # noqa: ARG001
     await run_per_org(_poll)
 
 
+#: A pushed task-schedule event whose block no longer exists. The emit sites announce every
+#: removal they know about, but a link is the *only* record that an event exists at all, so an
+#: orphan is unreachable: nothing will ever name that ``local_id`` again. Kept as a safety net
+#: rather than a one-off repair — the failure it cleans up (a block leaving by FK cascade with
+#: nobody saying so) is one any future write path can reintroduce, and it also finishes the
+#: events already stranded by the task delete that did exactly that. Raw org-scoped SQL, like
+#: the leave-type label read: the mirror never imports another module's internals (§6).
+_ORPHANED_TASK_LINKS = text(
+    """
+    UPDATE calendar_event_links AS l
+       SET status = :delete_pending, attempts = 0
+     WHERE l.org_id = :oid
+       AND l.local_type = :local_type
+       AND l.status = :pushed
+       AND l.google_event_id IS NOT NULL
+       AND NOT EXISTS (
+             SELECT 1 FROM task_schedules s
+              WHERE s.id = l.local_id AND s.org_id = l.org_id
+           )
+    """
+)
+
+
 async def google_calendar_sweep_outbox(ctx: dict) -> None:  # noqa: ARG001
-    """Every 5 min: re-offer links whose enqueue was lost or whose push failed transiently."""
+    """Every 5 min: re-offer links whose enqueue was lost or whose push failed transiently, and
+    tombstone any pushed event whose local record has gone without a word."""
     if not await _licensed():
         return
 
     async def _sweep(org, session) -> None:
+        await session.execute(
+            _ORPHANED_TASK_LINKS,
+            {
+                "oid": org.id,
+                "local_type": LOCAL_TYPE_TASK_SCHEDULE,
+                "pushed": LinkStatus.PUSHED.value,
+                "delete_pending": LinkStatus.DELETE_PENDING.value,
+            },
+        )
         links = (
             (
                 await session.execute(

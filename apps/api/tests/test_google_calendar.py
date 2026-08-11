@@ -772,3 +772,199 @@ async def test_events_feed_hides_events_schakl_pushed(client_for) -> None:
             )
         ).json()
         assert [item["title"] for item in feed] == ["Externe afspraak"]
+
+
+# --------------------------------------------------------------------------- #
+# Task schedules (#188): the mirror has to hear about every way a block can go
+# --------------------------------------------------------------------------- #
+_BLOCK_DAY = "2026-07-20"
+
+
+async def _schedule_a_task(c, headers, *, assignee: uuid.UUID) -> tuple[str, str]:
+    """A task with one planned block on it — the pair the Google mirror keys off."""
+    task = await c.post(
+        "/api/v1/tasks",
+        json={"title": "Redesign homepage", "assignee_user_id": str(assignee)},
+        headers=headers,
+    )
+    assert task.status_code == 201, task.text
+    block = await c.post(
+        "/api/v1/tasks/schedules",
+        json={
+            "task_id": task.json()["id"],
+            "day": _BLOCK_DAY,
+            "start_time": "09:00",
+            "duration_minutes": 180,
+        },
+        headers=headers,
+    )
+    assert block.status_code == 201, block.text
+    return task.json()["id"], block.json()["id"]
+
+
+async def _push_the_block(t, monkeypatch, event_id: str) -> None:
+    """Run the worker once so the link really holds a Google event id."""
+    from sqlalchemy import select
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        link = (await session.execute(select(CalendarEventLink))).scalar_one()
+        assert link.status == "pending"
+        stub = _StubClient([("POST", _StubResponse(200, {"id": event_id, "etag": '"e1"'}))])
+        monkeypatch.setattr("app.modules.google.calendar.push.acting_as", _stub_acting_as(stub))
+        await push_link(session, t.org, link)
+        await session.commit()
+        assert link.status == "pushed" and link.google_event_id == event_id
+
+
+async def test_deleting_the_task_deletes_its_pushed_blocks(client_for, monkeypatch) -> None:
+    """A block leaves by FK cascade when its task is deleted, and a cascade announces nothing.
+
+    Without the emit the link stays ``pushed`` against a ``task_schedules`` row that no longer
+    exists — nothing will ever ask Google to remove it, and the block sits in the person's
+    calendar for good.
+    """
+    from sqlalchemy import select
+
+    t = await make_tenant("gcal-task-delete")
+    await _seed(t)
+
+    async def _fake_offer(org_id, link_id) -> None:  # noqa: ANN001, ARG001
+        return None
+
+    monkeypatch.setattr(push_mod, "_enqueue_push", _fake_offer)
+
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        task_id, _ = await _schedule_a_task(c, headers, assignee=t.user.id)
+        await _push_the_block(t, monkeypatch, "gev-task")
+
+        assert (await c.delete(f"/api/v1/tasks/{task_id}", headers=headers)).status_code == 204
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        link = (await session.execute(select(CalendarEventLink))).scalar_one()
+        assert link.status == "delete_pending"
+        # …and the worker really removes *that* event, not some other one.
+        stub = _StubClient([("DELETE", _StubResponse(204))])
+        monkeypatch.setattr("app.modules.google.calendar.push.acting_as", _stub_acting_as(stub))
+        await push_link(session, t.org, link)
+        await session.commit()
+        assert stub.calls[0][1].endswith("/events/gev-task")
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        assert (await session.execute(select(CalendarEventLink))).first() is None
+
+
+async def test_reassigning_a_block_to_an_unconnected_colleague_clears_the_old_event(
+    client_for, monkeypatch
+) -> None:
+    """Whether the *new* owner can receive an event says nothing about the old one's copy.
+
+    The push guards used to return before the reassignment tombstone, so handing a planned block
+    to a colleague who never connected Google left it on the original person's calendar.
+    """
+    from sqlalchemy import select
+
+    t = await make_tenant("gcal-task-reassign")
+    await _seed(t)
+
+    async def _fake_offer(org_id, link_id) -> None:  # noqa: ANN001, ARG001
+        return None
+
+    monkeypatch.setattr(push_mod, "_enqueue_push", _fake_offer)
+
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        invited = await c.post(
+            "/api/v1/members/invite",
+            json={"email": "mel@agency.nl", "full_name": "Mel Member", "role": "member"},
+            headers=headers,
+        )
+        assert invited.status_code == 201, invited.text
+        colleague = invited.json()["user_id"]
+
+        _, block_id = await _schedule_a_task(c, headers, assignee=t.user.id)
+        await _push_the_block(t, monkeypatch, "gev-reassign")
+
+        moved = await c.patch(
+            f"/api/v1/tasks/schedules/{block_id}",
+            json={"user_id": colleague},
+            headers=headers,
+        )
+        assert moved.status_code == 200, moved.text
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        rows = (await session.execute(select(CalendarEventLink))).scalars().all()
+        # One row left: the tombstone for the original person's event. The block's own link is
+        # dropped rather than kept pending — the colleague has no calendar to push to.
+        assert len(rows) == 1, [(r.status, r.google_event_id) for r in rows]
+        assert rows[0].status == "delete_pending"
+        assert rows[0].google_event_id == "gev-reassign"
+        assert rows[0].user_id == t.user.id
+
+
+async def test_sweep_tombstones_an_orphaned_task_schedule_link(monkeypatch) -> None:
+    """The safety net: a pushed event whose block is gone is unreachable any other way.
+
+    A link is the only record that a Google event exists, so once its ``local_id`` names nothing
+    no emit will ever mention it again — the sweep is what finishes the events already stranded
+    by a task delete that cascaded silently.
+    """
+    from sqlalchemy import select
+
+    from app.modules.google.calendar import jobs as jobs_mod
+
+    t = await make_tenant("gcal-orphan")
+    connection_id = await _seed(t)
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        session.add(
+            CalendarEventLink(
+                org_id=t.org.id,
+                local_type="task_schedule",
+                local_id=uuid.uuid4(),  # a block that no longer exists
+                user_id=t.user.id,
+                connection_id=connection_id,
+                status="pushed",
+                google_event_id="gev-orphan",
+                payload={},
+            )
+        )
+        # A leave link is left alone: leave requests are cancelled, never hard-deleted, so an
+        # unmatched local_id there is not evidence of anything.
+        session.add(
+            CalendarEventLink(
+                org_id=t.org.id,
+                local_type="leave_request",
+                local_id=uuid.uuid4(),
+                user_id=t.user.id,
+                connection_id=connection_id,
+                status="pushed",
+                google_event_id="gev-leave",
+                payload={},
+            )
+        )
+        await session.commit()
+
+    offered: list[str] = []
+
+    async def _fake_licensed() -> bool:
+        return True
+
+    async def _fake_enqueue(name, *args, **kwargs) -> None:  # noqa: ANN001, ARG001
+        offered.append(args[1])
+
+    monkeypatch.setattr(jobs_mod, "_licensed", _fake_licensed)
+    monkeypatch.setattr(jobs_mod, "enqueue", _fake_enqueue)
+    await jobs_mod.google_calendar_sweep_outbox({})
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        rows = (await session.execute(select(CalendarEventLink))).scalars().all()
+        by_event = {row.google_event_id: row.status for row in rows}
+    assert by_event == {"gev-orphan": "delete_pending", "gev-leave": "pushed"}
+    assert offered  # and handed to the worker in the same sweep
