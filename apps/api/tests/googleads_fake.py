@@ -12,6 +12,12 @@ bug that only shows up against the live API, i.e. the most expensive place to fi
 
 Queries are matched by **substring of the GAQL**, because that is the one part of a request that
 says what was asked for. ``fake.script("FROM campaign", rows)`` reads as the sentence it is.
+
+Mutations are scripted **per resource** (``fake.mutation("campaignBudgets", …)``), which is not
+cosmetic: the collection is the only thing separating a budget write from a keyword write, and one
+shared answer for all of them is a fake that would pass a test asserting a budget was created
+while the code posted to ``adGroupCriteria``. :meth:`FakeGoogleAds.mutations` reads back what was
+actually sent, so the operations and the ``updateMask`` a test cares about are assertable.
 """
 
 from __future__ import annotations
@@ -73,6 +79,11 @@ class FakeGoogleAds:
         self._scripts: list[tuple[str, Any]] = []
         #: Answers for the custom verbs (``generateKeywordIdeas``), keyed by verb name.
         self.verbs: dict[str, Any] = {}
+        #: Answers for ``:mutate``, keyed by the **collection** (``campaignBudgets``,
+        #: ``adGroupCriteria``, …). Keyed by collection rather than by the bare verb because
+        #: every mutate path ends in the same ``:mutate`` — one shared answer would let a test
+        #: assert a budget was created while the code posted to the keywords endpoint.
+        self.mutates: dict[str, Any] = {}
         #: Every request that arrived: ``(method, url, headers, body)``. Assertions about the
         #: `login-customer-id` header and the number of round trips read from here.
         self.calls: list[tuple[str, str, dict[str, str], dict[str, Any]]] = []
@@ -117,6 +128,60 @@ class FakeGoogleAds:
                 return payload
         return {"results": []}
 
+    def mutation(
+        self,
+        resource: str,
+        *,
+        resource_names: list[str | None] | None = None,
+        partial_failure: list[tuple[int, str, str]] | None = None,
+        response: httpx.Response | None = None,
+    ) -> None:
+        """Script one ``<resource>:mutate``.
+
+        ``resource_names`` is one entry per operation; ``None`` leaves that slot **empty**, which
+        is exactly what Google sends for an operation refused inside a partial-failure batch and
+        the shape a client that assumes "a result means it worked" gets wrong.
+
+        ``partial_failure`` is ``(operation index, error group, error value)``, assembled into the
+        real ``partialFailureError`` envelope: a bare ``google.rpc.Status`` on an **HTTP 200**,
+        with the index carried in ``location.fieldPathElements``. Built here so no test can assert
+        against a shape the API never sends.
+        """
+        if response is not None:
+            self.mutates[resource] = response
+            return
+        payload: dict[str, Any] = {
+            "results": [
+                {} if name is None else {"resourceName": name} for name in (resource_names or [])
+            ]
+        }
+        if partial_failure:
+            payload["partialFailureError"] = {
+                "code": 3,
+                "message": "partial failure",
+                "details": [
+                    {
+                        "@type": (
+                            "type.googleapis.com/google.ads.googleads.v25.errors.GoogleAdsFailure"
+                        ),
+                        "errors": [
+                            {
+                                "errorCode": {group: value},
+                                "message": f"{value.lower().replace('_', ' ')}",
+                                "location": {
+                                    "fieldPathElements": [
+                                        {"fieldName": "operations", "index": index}
+                                    ]
+                                },
+                            }
+                            for index, group, value in partial_failure
+                        ],
+                        "requestId": "req-fake",
+                    }
+                ],
+            }
+        self.mutates[resource] = payload
+
     # --- transport ------------------------------------------------------------------------ #
 
     def transport(self) -> httpx.MockTransport:
@@ -150,7 +215,18 @@ class FakeGoogleAds:
                 json={"resourceNames": [f"customers/{cid}" for cid in self.accessible]},
             )
 
-        if ":" in path.rsplit("/", 1)[-1] and not path.endswith(
+        last = path.rsplit("/", 1)[-1]
+        if last.endswith(":mutate") and not path.endswith("googleAds:mutate"):
+            # `campaignBudgets:mutate` → `campaignBudgets`. Keyed on the collection, because the
+            # verb is `mutate` for every resource and a shared answer would make a budget test
+            # pass against a keyword write.
+            resource = last.rsplit(":", 1)[0]
+            answer = self.mutates.get(resource, {"results": []})
+            if isinstance(answer, httpx.Response):
+                return answer
+            return httpx.Response(200, json=answer)
+
+        if ":" in last and not path.endswith(
             ("googleAds:search", "googleAds:searchStream", "googleAds:mutate")
         ):
             verb = path.rsplit(":", 1)[-1]
@@ -184,6 +260,23 @@ class FakeGoogleAds:
 
     def last_headers(self) -> dict[str, str]:
         return self.calls[-1][2] if self.calls else {}
+
+    def mutations(self, resource: str | None = None) -> list[tuple[str, dict[str, Any]]]:
+        """``(collection, body)`` for every ``:mutate`` that was sent, in order.
+
+        The body is what actually went to Google, so a test asserts on the real operations and the
+        real ``updateMask`` rather than on the arguments a service was called with — which is the
+        difference between proving the request is right and proving the code is self-consistent.
+        """
+        out: list[tuple[str, dict[str, Any]]] = []
+        for _method, url, _headers, body in self.calls:
+            last = urlparse(url).path.rsplit("/", 1)[-1]
+            if not last.endswith(":mutate") or last == "googleAds:mutate":
+                continue
+            collection = last.rsplit(":", 1)[0]
+            if resource is None or collection == resource:
+                out.append((collection, body))
+        return out
 
 
 # --- row builders ---------------------------------------------------------------------------- #
