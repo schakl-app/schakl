@@ -11,6 +11,11 @@ observed* in separate columns, and a health probe is evidence rather than the ga
 repeats one of them it is because the failure it prevents is the same failure, not because the
 paragraph was copied.
 
+**All four gates are built.** What follows describes the code, not a plan; where building
+changed a decision the section says so. The one thing to know before reading further is that
+*three* separate bugs in this module came from the same place — see §3's *"a commit expires
+every row"*.
+
 **§2's checklist has been run against a live Uptime Kuma 2.5.0** (`docker run -e
 UPTIME_KUMA_DB_TYPE=sqlite louislam/uptime-kuma:2.5.0`). What it found is recorded there as
 observed fact, and several things it found had already been written down wrong — including one
@@ -220,6 +225,32 @@ Three rules follow.
   about what is current; reconnection is the reference client's weakest code; and a proxy in front
   of the instance will idle-timeout the connection anyway. Per-operation also keeps `disconnect()`
   in the one place it can be guaranteed, which the library's own docstring insists on.
+
+### A commit expires every row, and this module commits in the middle of its writes
+
+The single most expensive lesson here, and it bit three times before it was understood.
+``release_db()`` **commits** on entry — that is how it hands the pooled connection back — and a
+commit expires every loaded ORM object. Worse, ``TimestampMixin.updated_at`` carries
+``onupdate=func.now()``, a **SQL** expression, so *any* flush that updates a row expires it
+again. Serialising that row afterwards lazy-loads from inside Pydantic, synchronously, in a
+context with no greenlet, and asyncpg answers ``MissingGreenlet``.
+
+Ordinary write paths never notice, because their flush is the last thing that touches the row
+before the response. This module's are not: an external call sits in the middle of several of
+them, and the row crosses that seam twice.
+
+Two rules, and the second is the one that is easy to miss:
+
+* ``_settled(row)`` — flush, then re-read — is the **last statement of every write path that
+  returns a row**. It lives on the base service, because the plain instance edit needs it too:
+  there the expiry is caused by the flush alone, with no socket involved at all.
+* **Never carry an ORM row across a commit into code that reads it.** The webhook's
+  announcement takes a plain dict captured *before* the commit, which is also simply the right
+  shape for it — an announcement should not depend on live rows.
+
+Assigning to an attribute hides the problem, because that un-expires it without loading. That is
+why the instance paths appeared to work for two gates: ``_mark()`` assigns every field it
+touches, and nothing read ``updated_at`` until a test finally PATCHed an instance.
 
 The cost of per-operation is an authentication per operation, and **that is what makes §4's cached
 token a requirement rather than a convenience.** Measured on 2.5.0: `loginRateLimiter` allows
@@ -527,6 +558,17 @@ one thing, the drift check expects another, and every monitor in the tenant read
 Resolving to *no* profile falls back to the oldest active profile of that monitor type, and the first
 profile of one **is** the default: nobody makes one profile and means "use none of it".
 
+Built as `app/modules/uptime/profiles.py`, and two details are worth knowing. `PROFILE_KEYS` is
+an **allow-list**, so a profile can never carry a `url` — a profile that can set a URL is a
+profile that can point forty monitors at the wrong host in one save. And the invariants clamp
+**last**, after both the profile and the monitor's own overrides, so nothing a tenant configures
+can slip under a floor Uptime Kuma would refuse anyway.
+
+The web half keeps the same rule: a profile's numeric boxes start **blank**, because blank means
+inherit. Prefilling `60` would be a decision the tenant never made, and posting `0` for an empty
+box would pin every following monitor to the invariant floor — a plausible wrong number nobody
+notices until a client asks why their site is checked every twenty seconds.
+
 ### The checkbox trap, before it happens
 
 This module is mostly booleans — `upside_down`, `ignore_tls`, `expiry_notification`, `active`,
@@ -552,17 +594,40 @@ client's record with every row valid.
 
 Adoption never writes to Kuma. Its output is our mirror plus a set of links a human confirmed.
 
-### Spreadsheets (§17)
+### Spreadsheets (§17) — **export-only, and the reason is not squeamishness**
 
-An `ImpexDescriptor` for `uptime_monitor`, and an `ImpexExtension` contributing `uptime_*` columns to
-the **websites** entity — the panels pattern applied to impex, so a website import can carry
-*"monitoring: ja, profiel: Standaard"* without `websites` importing our internals. Contributed
-columns are never `required`, and `apply` runs in the import's own transaction and never on a dry
-run.
+The design said "importable". Building it changed that: every imported monitor row would be an
+outbound Socket.IO round-trip — connect, authenticate, create, re-read — and the import path is
+synchronous (`MAX_IMPORT_ROWS` is what keeps it honest until #77's background job lands). A
+200-row file would hold one request open for minutes and spend the instance's login budget doing
+it, which is the shape §3 exists to prevent. `importable=False` states it, exactly as `leave`
+does for its own reason.
 
-A `BulkDescriptor` (§18) covers the selection case: forty websites → apply a profile, pause, resume,
-move to a group. `editable` is an allow-list, and `url` stays out of it for the reason `Domain.name`
-does — a bulk edit that can retarget forty monitors at one URL is a way to lose monitoring silently.
+What an agency actually wants from a spreadsheet here is the **register**: which client sites are
+watched, by which instance, which have drifted, and — the column that makes it a register rather
+than a list — *whose* they are. That is a read, and it is the half that is useful today.
+
+`websites` gets `uptime.monitors` and `uptime.drifted` as **contributed** columns, so it never
+learns about monitors (§6), hydrated in one grouped query — a contributed column's getter looks
+free, and that is exactly where an export goes N+1.
+
+Note the two contracts that differ from what the design assumed: `ImpexExtension` takes
+`module` / `write_permissions` / `apply` (not `contributor` / `read_permission`), and `filters`
+may only name core's shared `FILTER_PARAMS`. So `instance_id` and `sync_status` became a
+*column* rather than a filter — which is what a register is read for anyway.
+
+### Bulk carries only what does not push (§18)
+
+`company` is editable, because attaching a freshly-adopted instance's monitors to their clients
+is precisely the chore a selection exists for and it touches nothing at Uptime Kuma.
+`interval_seconds`, `target`, `name` and `profile_id` are **absent**: each means a socket
+round-trip per row, so a forty-row edit would hold one request open for a minute. `target` is
+excluded for a second reason as well, the one `Domain.name` is excluded for — a shared value that
+retargets forty monitors at one host loses monitoring silently, with every row valid.
+
+Bulk delete is **local only**. Core's contract has no way to carry "and also at the far end",
+and that is the right answer rather than a limitation to work around: a selection is not the
+place to take an irreversible action on a client's live monitoring.
 
 ## 10. The company horizon needs an event that does not exist yet
 
@@ -577,9 +642,16 @@ is the shape that filters nothing at all when it is wrong. A `NULL` `company_id`
 no client*, which #285 already says stays visible to restricted staff.
 
 The cost is that it must stay in step, and **nothing currently announces a domain changing hands**.
-So gate 1 adds `domain.company_changed` to `app/core/events.py`, emitted by `domains` and subscribed
-here — the §6 in-process bus, handled in the emitter's transaction, so the move and the recomputation
-commit together or neither does.
+So `domain.company_changed` belongs on `app/core/events.py`, emitted by `domains` and subscribed
+here — the §6 in-process bus, handled in the emitter's transaction, so the move and the
+recomputation commit together or neither does.
+
+**This is the one piece of the design that is not built.** It was scoped into gate 1 and did not
+land, because it is a change to another module and every gate had a way to be useful without it.
+That leaves a real, bounded gap: a domain moving from client A to client B leaves its monitors
+readable by A's staff and invisible to B's until somebody corrects the link by hand. Bulk edit of
+`company` (§9) is the manual repair, which is part of why that column is editable — but the
+event is the fix, and nothing on screen currently says the horizon is stale.
 
 That is a change outside this module's blast radius and it is still the right call, because the
 alternative is a **horizon leak with a known window**. A domain moving from client A to client B
@@ -777,6 +849,13 @@ one-per-row at three hundred (`docs/PERFORMANCE.md`).
 - **Heartbeat history as a data warehouse.** `uptime_heartbeats` is a bounded rolling window — what a
   panel and a report section draw — pruned nightly. Kuma keeps the real history and answers questions
   about it better than a mirror would.
+- **`domain.company_changed`** (§10) — the one designed piece that did not land, and the only
+  entry on this list that is a *gap* rather than a decision.
+- **Importing monitors from a spreadsheet** (§9), until #77's background job exists.
+- **A monitor create/edit screen.** The API is complete (`POST`/`PATCH /uptime/monitors`), and
+  the web surface today is the settings screen, the drift queue and the website panel. An agency
+  adopts an instance and reconciles; creating monitors one at a time in schakl rather than in
+  Kuma's own UI is the less pressing half.
 - **Provisioning a tunnel** (§5). Four documented steps in somebody else's Cloudflare account.
 - **A pinned certificate fingerprint**, the better answer to a self-signed instance than
   `ssl_verify = false` (§5). Worth doing; not worth blocking the first gate on.
