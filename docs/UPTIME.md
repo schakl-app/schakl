@@ -11,9 +11,11 @@ observed* in separate columns, and a health probe is evidence rather than the ga
 repeats one of them it is because the failure it prevents is the same failure, not because the
 paragraph was copied.
 
-**Nothing in this module has been exercised against a live Uptime Kuma instance.** §2's checklist
-is what to run the day one is available. Until then a green settings screen is evidence that the
-credential is right and nothing more.
+**§2's checklist has been run against a live Uptime Kuma 2.5.0** (`docker run -e
+UPTIME_KUMA_DB_TYPE=sqlite louislam/uptime-kuma:2.5.0`). What it found is recorded there as
+observed fact, and several things it found had already been written down wrong — including one
+argument in §3 that was right for the wrong reason. Items that still need a *tunnelled* or
+*2FA-enabled* instance are marked as unrun.
 
 ## 1. What it is for, and what it replaces
 
@@ -99,47 +101,87 @@ Rules the client does not bend, all four inherited from `cloudflare/client.py`:
   and overwrite only the keys we own — the fork learned this the hard way on status pages, where
   rebuilding a v1-era field set made 2.x answer *"Invalid analytics type"*.
 
-### The first-instance checklist
+### What a live 2.5.0 actually did
 
-Run these in order the day a real instance is available. Each is a place the code commits to a
-reading that has not been observed.
+Run against `louislam/uptime-kuma:2.5.0`. Nine findings, of which **four contradict something
+written from the source alone**, and one is a state neither wrapper models at all.
 
-1. **The socket.io path.** The reference client connects to `{url}/socket.io/` and lets
-   python-socketio derive the socket.io path from the URL. Confirm this against an instance behind a
-   reverse proxy on a subpath (`https://host/kuma/`), which is how an agency will actually deploy it.
-2. **Which transport is used.** python-socketio defaults to long-polling and upgrades. Confirm the
-   upgrade succeeds through whatever proxy sits in front, and pin the transport if it does not.
-3. **`login` and 2FA.** `socket.on("login")` takes `{username, password, token}`; with 2FA on and no
-   `token` it answers `{tokenRequired: true}` rather than an error. Confirm both branches, and
-   confirm what a wrong TOTP looks like versus a wrong password — an admin who is told "wrong
-   password" about a clock-skew problem will rotate a credential that was never wrong.
-4. **The login rate limiter, and that `loginByToken` escapes it.** `loginRateLimiter` guards the
-   `login` handler and `loginByToken` carries none — the fact §3's per-operation connect rests on.
-   Confirm it, establish what tripping the limiter looks like from the client side, and confirm that
-   a rate-limited enrolment is distinguishable from a wrong password.
-5. **The three JWT revocations.** Read from source and load-bearing for §4, so confirm each in
-   practice: changing the Kuma password invalidates the cached token (`loginByToken` compares
-   `decoded.h` against the live hash), deactivating the Kuma user invalidates it (`active = 1`),
-   and confirm whether rotating `jwtSecret` is reachable without a database edit. Also confirm the
-   failure is distinguishable from a server error, because one means *re-enrol* and the other means
-   *retry*.
-6. **`server_version` from `info()`.** This is the field the whole version-shim rests on. Confirm it
-   is present and parseable pre-login as well as post-login.
-7. **The monitor payload, round-tripped.** `add_monitor` then `get_monitor` and diff. Every key Kuma
-   returns that we did not send is a key `edit_monitor` must preserve.
-8. **A group and its children.** Create `type="group"`, hang two monitors off it via `parent`, and
-   confirm what `parent` reads back as — an id, an object, or absent for a top-level monitor.
-9. **Secrets in the read path.** Create an HTTP monitor with basic auth and confirm whether
-   `get_monitors()` returns `basic_auth_pass` in the clear (§4).
-10. **The `wait_events` settle.** Measure a real `get_monitors()` against an instance with ~200
-    monitors. The 0.2 s guess is the reference client's; if the list arrives in several messages and
-    takes longer, the reader silently truncates.
-11. **Cloudflare Access, end to end** (§5). Confirm a service token on the socket.io handshake
-    survives the WebSocket upgrade through Access, and establish what an expired service token
-    answers — it must not read as "Uptime Kuma is down".
-12. **`/metrics` with an API key**, for the `linked` read path.
+**0. A fresh 2.x is not reachable over socket.io until its database wizard is answered.** This
+phase does not exist in 1.x. `server/setup-database.js` runs first, logs *"Waiting for user
+action…"*, and until it is satisfied the process serves **the SPA's HTML, with HTTP 200, for every
+path — including `/socket.io/`**. A naive reachability probe reads that as healthy. Setting
+`UPTIME_KUMA_DB_TYPE` (also `_DB_HOSTNAME` / `_DB_PORT` / `_DB_NAME` / `_DB_SOCKET`,
+`UPTIME_KUMA_ENABLE_EMBEDDED_MARIADB`) skips it. This is the sharpest argument for §5's
+proof-of-identity gate: *200 with a body is not proof of anything*, and a client's half-installed
+Kuma is a realistic thing to be pointed at.
 
-Until 1–5 and 7 are confirmed, treat the write path as unproven.
+**1–2. The handshake is fast and upgrades cleanly.** 5–9 ms to connect on the LAN, and
+python-socketio's poll-then-upgrade reached `transport='websocket'` unaided. No transport pinning
+needed. *(Still unrun: through a reverse proxy on a subpath, and through Cloudflare Access.)*
+
+**3. Messages are i18n keys now, and the exception proves the rule.** Kuma 2.x answers
+`{'ok': True, 'msg': 'successAdded', 'msgi18n': True}` where 1.x answered *"Added Successfully."*.
+So **nothing may match on English prose** — except that the rate limiter's message
+(*"Too frequently, try again later."*) carries no `msgi18n` and is plain English. Code the
+mismatch defensively; do not assume the flag is present.
+
+**4. `loginRateLimiter` is 20 per minute, instance-wide — and this is why §4's token design is a
+requirement, not a convenience.** `tokensPerInterval: 20, interval: "minute", fireImmediately:
+true`, on a single module-level limiter shared by **every** caller of that instance. It tripped on
+attempt 21 and then refused a *correct* password with *"Too frequently, try again later."*
+`loginByToken` carries no limiter at all: 30 consecutive calls succeeded in 559 ms.
+
+   The consequence is worse than §3 first claimed, and in a different direction. The risk was
+   written up as schakl racing a brute-force defence; the real risk is that **a password-per-
+   operation sync would deny the instance's owner access to their own Kuma.** Twenty logins is one
+   modest sync run, the bucket is shared, and the human who then tries to sign in is told to come
+   back later by their own monitoring. A per-operation design is not merely inefficient here, it is
+   hostile to the tenant.
+
+**5. Every JWT claim is confirmed.** Payload is exactly `{username, h, iat}` — **no `exp`**, so the
+token never expires on its own. After a password change the same token answers
+`{'ok': False, 'msg': 'authInvalidToken', 'msgi18n': True}` — **a distinguishable i18n key**, which
+is what lets §14 map re-authentication to its own error rather than to "wrong password".
+
+**6. `info` is emitted twice, and the version is post-authentication only.** Pre-auth it carries
+`primaryBaseURL`, `serverTimezone`, `serverTimezoneOffset`. Post-auth it adds `version`,
+`latestVersion`, `dbType`, `runtime`, `isContainer`. Kuma 2.x withholds its version from
+unauthenticated clients.
+
+   This splits one gate into two, and the doc previously conflated them. **Proof-of-identity** (§5)
+   is "an `info` event arrived at all", available before login and the right gate for *is this
+   Uptime Kuma*. **The version floor** is a separate, later check that cannot run until we are
+   authenticated. Reading the first `info` and expecting a version — which is what a naive
+   `api.version` does — yields `None` on every 2.x instance.
+
+**7. A monitor round-trips 119 keys against the 16 we sent.** 103 fields we never mentioned come
+back and must survive an edit. That is the whole argument for read-then-write stated as a number:
+a builder that reconstructs the payload from the fields it knows about silently resets a hundred
+of them. `add` also **requires `conditions`** — a 2.x `NOT NULL` column with no default — and
+returns the new id under **`monitorID`**, not 1.x's `monitorId`.
+
+   Both of those break the fork on its own claimed version: passing `conditions=None` raises
+   `SQLITE_CONSTRAINT: NOT NULL constraint failed: monitor.conditions`, and its documented
+   `monitorId` return key does not exist. The most basic call in the library fails against 2.5.0.
+
+**8. `parent` is a plain integer, absent as `None` at top level**, and Kuma derives a display
+`pathName` (`'rt-group / '`). Groups need no second table, as §7 assumed.
+
+**9. Secrets come back in the clear, and there are eight of them.** `basic_auth_pass`,
+`databaseConnectionString`, `mqttPassword`, `oauth_client_secret`, `rabbitmqPassword`,
+`radiusPassword`, `radiusSecret`, `tlsKey` — the canary password was returned verbatim by
+`getMonitor`. §4's strip-and-fingerprint is confirmed necessary, and this is the authoritative key
+list to strip. (The payload also carries an `includeSensitiveData` flag, worth investigating as a
+possible server-side opt-out.)
+
+**10. `monitorList` is pushed 25 ms after connect**, keyed by id, and is never a call. The
+reference client's 0.2 s `wait_events` settle is ~8× the observed arrival on a small instance;
+*still unrun* at ~200 monitors, which is where a fixed settle silently truncates.
+
+Still unrun, and each needs an instance we do not have yet: **2FA** (`{tokenRequired: true}` and
+what a wrong TOTP looks like), **a subpath reverse proxy**, **Cloudflare Access end to end**,
+**`/metrics` with an API key** for the `linked` path, **`jwtSecret` rotation without a database
+edit**, and **the settle at scale**.
 
 ## 3. A blocking socket in an async API
 
@@ -166,12 +208,16 @@ Three rules follow.
   of the instance will idle-timeout the connection anyway. Per-operation also keeps `disconnect()`
   in the one place it can be guaranteed, which the library's own docstring insists on.
 
-The cost of per-operation is an authentication per operation — and that is the second reason the
-cached token (§4) is not merely a convenience. Kuma puts `loginRateLimiter` in front of the `login`
-handler; `loginByToken` has no rate limiter at all. A design that re-sent a password on every
-connect would be a sync cron racing a brute-force defence across every instance a tenant holds, and
-losing on the busiest ones first. Enrol once, then `loginByToken` forever, and the per-operation
-connect is affordable.
+The cost of per-operation is an authentication per operation, and **that is what makes §4's cached
+token a requirement rather than a convenience.** Measured on 2.5.0: `loginRateLimiter` allows
+twenty logins per minute, `fireImmediately`, on one module-level bucket **shared by every caller of
+that instance**. It tripped on the twenty-first attempt and then refused a correct password.
+`loginByToken` passes through no limiter at all — thirty consecutive calls in 559 ms.
+
+So a design that re-sent a password on every connect would not merely be slow. One modest sync run
+spends the whole instance's login budget, and **the next person to sign into their own Uptime Kuma
+is told to come back later by their own monitoring.** Enrol once, `loginByToken` thereafter, and
+per-operation connect costs nothing anyone else can feel.
 
 ## 4. The credential is a row, and `mode` decides what the row means
 
@@ -324,10 +370,13 @@ setting.
    machine.
 2. **Redirects are refused, not followed.** The handshake is an HTTP request before it is a socket,
    and a public URL that 302s to `127.0.0.1` is how every allow-list gets walked around.
-3. **The target must prove it is Uptime Kuma before anything is stored.** Enrolment requires a
-   successful `info()` carrying a `version`; an instance that never authenticates never reaches
-   `active`. A metadata endpoint does not speak socket.io, so the exemption buys a probe of *"does
-   this port exist"* and not a read.
+3. **The target must prove it is Uptime Kuma before anything is stored** — and proof is *an `info`
+   event arriving over socket.io*, not a version and not an HTTP status. §2 found both halves of
+   why: a half-installed 2.x answers **HTTP 200 with HTML on every path**, so status proves
+   nothing; and 2.x withholds `version` from unauthenticated clients, so the version cannot be the
+   gate. A metadata endpoint speaks neither socket.io nor `info`. The **version floor** is a
+   separate check that runs after authentication — two gates at two moments, and conflating them
+   gives you one that always fails on 2.x.
 4. **No response body ever reaches an error message.** `last_error` carries our own i18n key and
    Kuma's own error text, never the bytes of whatever answered. A blind port probe that echoes the
    response is not blind.
