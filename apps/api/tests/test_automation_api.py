@@ -135,9 +135,12 @@ async def test_catalog_lists_triggers_and_actions(client_for) -> None:
         events = {trig["event"] for trig in catalog["triggers"]}
         assert {"task.created", "task.status_changed", "company.created",
                 "website.uptime_toggled", "domain.status_changed"} <= events
-        assert set(catalog["actions"]) == {
+        # Subset, exactly as the triggers above: a module contributes actions the same way it
+        # contributes events (`uptime.pause` is the first), so pinning the set to core's own
+        # five makes every future module's correct contribution a failing test.
+        assert {
             "task.create", "task.set_status", "task.assign", "notification.send", "webhook.post",
-        }
+        } <= set(catalog["actions"])
 
 
 async def test_dry_run_evaluates_and_executes_nothing(client_for) -> None:

@@ -27,7 +27,16 @@ from app.db import async_session_maker, set_current_org
 from tests.conftest import Tenant, auth_cookie, make_tenant
 from tests.test_cloud import _FakeCloudflare, make_instance_owner, mint_instance_key
 
-NOW = datetime(2026, 7, 29, 12, 0, tzinfo=UTC)
+#: The injected clock every sweep in this file runs at, anchored to **today**.
+#:
+#: A frozen literal works only while the calendar agrees with it. `_ends_warning_until` in
+#: `core/meta.py` asks `stage_for(org, datetime.now(UTC))` — the real clock, because it answers
+#: a live request — so a test that sweeps at a fixed date and then reads `/meta/tenant` compares
+#: two clocks that drift apart by one day per day. It passed the week it was written and turned
+#: red on its own, with no code change, once the wall clock had walked the org out of the
+#: warning window. Anchoring here keeps every `NOW ± timedelta` relationship in the file exactly
+#: as it was while making the two clocks agree on which stage the org is in.
+NOW = datetime.now(UTC).replace(hour=12, minute=0, second=0, microsecond=0)
 
 
 @pytest.fixture
