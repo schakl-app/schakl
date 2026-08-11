@@ -26,6 +26,20 @@
   let { data, form } = $props();
 
   const instances = $derived(data.instances ?? []);
+  const profiles = $derived(data.profiles ?? []);
+  const drifted = $derived(data.drifted ?? []);
+  let addingProfile = $state(false);
+
+  /** Field names as words. A drift that reads `interval_seconds` names a column, not a thing. */
+  const fieldLabel = (f: string) =>
+    ({
+      name: t("uptime.field.name"),
+      monitor_type: t("uptime.field.monitor_type"),
+      target: t("uptime.field.target"),
+      port: "Port",
+      interval_seconds: t("uptime.field.interval"),
+      retries: t("uptime.field.retries"),
+    })[f] ?? f;
 
   const busy = new InFlight();
   let adding = $state(false);
@@ -127,13 +141,13 @@
 
           <div class="flex shrink-0 flex-wrap items-center gap-2">
             {#if instance.mode === "managed"}
-              <form method="POST" action="?/probe" use:enhance={busy.wrap()}>
+              <form method="POST" action="?/probe" use:enhance={busy.wrap(`probe-${instance.id}`)}>
                 <input type="hidden" name="id" value={instance.id} />
                 <Button type="submit" variant="secondary" disabled={busy.active}>
                   {t("uptime.settings.probe")}
                 </Button>
               </form>
-              <form method="POST" action="?/sync" use:enhance={busy.wrap()}>
+              <form method="POST" action="?/sync" use:enhance={busy.wrap(`sync-${instance.id}`)}>
                 <input type="hidden" name="id" value={instance.id} />
                 <Button
                   type="submit"
@@ -234,6 +248,132 @@
       </li>
     {/each}
   </ul>
+
+  {#if drifted.length}
+    <!-- The drift queue. Two buttons per row and no default: an agency editing a monitor in
+         Uptime Kuma because that screen was closer to hand is the normal case, so a reconcile
+         that could only overwrite would teach people to stop using the tool they already had. -->
+    <section class="mt-6">
+      <h2 class="mb-2 text-sm font-semibold text-text">{t("uptime.drift.title")}</h2>
+      <ul class="space-y-2">
+        {#each drifted as m (m.id)}
+          <li
+            class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3"
+          >
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-text">{m.name}</p>
+              <p class="text-xs text-muted">
+                {t("uptime.drift.fields", {
+                  fields: (m.drift_fields ?? []).map(fieldLabel).join(", "),
+                })}
+              </p>
+            </div>
+            <div class="flex shrink-0 gap-2">
+              <form method="POST" action="?/reconcile" use:enhance={busy.wrap(`push-${m.id}`)}>
+                <input type="hidden" name="id" value={m.id} />
+                <input type="hidden" name="direction" value="push" />
+                <Button type="submit" variant="secondary" disabled={busy.active}>
+                  {t("uptime.drift.push")}
+                </Button>
+              </form>
+              <form method="POST" action="?/reconcile" use:enhance={busy.wrap(`adopt-${m.id}`)}>
+                <input type="hidden" name="id" value={m.id} />
+                <input type="hidden" name="direction" value="adopt" />
+                <Button type="submit" variant="secondary" disabled={busy.active}>
+                  {t("uptime.drift.adopt")}
+                </Button>
+              </form>
+            </div>
+          </li>
+        {/each}
+      </ul>
+    </section>
+  {/if}
+
+  <section class="mt-8">
+    <h2 class="mb-2 text-sm font-semibold text-text">{t("uptime.profile.title")}</h2>
+    <ul class="space-y-2">
+      {#each profiles as p (p.id)}
+        <li
+          class="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3"
+        >
+          <div class="min-w-0">
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-medium text-text">{p.name}</span>
+              {#if p.is_default}
+                <span class="rounded bg-surface-2 px-1.5 py-0.5 text-xs text-muted">
+                  {t("uptime.profile.default_badge")}
+                </span>
+              {/if}
+            </div>
+            <p class="text-xs text-muted">
+              {p.monitor_type}
+              {#if p.defaults?.interval_seconds}
+                · {t("uptime.field.interval")}: {p.defaults.interval_seconds}
+              {/if}
+              {#if p.defaults?.retries !== undefined}
+                · {t("uptime.field.retries")}: {p.defaults.retries}
+              {/if}
+            </p>
+          </div>
+          <form method="POST" action="?/deleteProfile" use:enhance={busy.clear(`dp-${p.id}`)}>
+            <input type="hidden" name="id" value={p.id} />
+            <Button type="submit" variant="secondary" disabled={busy.active}>
+              {t("common.delete")}
+            </Button>
+          </form>
+        </li>
+      {:else}
+        <li class="rounded-xl border border-dashed border-border p-4 text-center text-sm text-muted">
+          {t("uptime.field.profile_inherit")}
+        </li>
+      {/each}
+    </ul>
+
+    {#if addingProfile}
+      <form
+        method="POST"
+        action="?/createProfile"
+        class="mt-3 grid gap-3 rounded-xl border border-border bg-surface p-4 sm:grid-cols-2"
+        use:enhance={busy.clear("new-profile")}
+      >
+        <div>
+          <label class={labelClass} for="p-name">{t("uptime.field.name")}</label>
+          <input id="p-name" name="name" class={inputClass} required />
+        </div>
+        <div>
+          <label class={labelClass} for="p-type">{t("uptime.field.monitor_type")}</label>
+          <input id="p-type" name="monitor_type" class={inputClass} value="http" />
+        </div>
+        <div>
+          <label class={labelClass} for="p-interval">{t("uptime.field.interval")}</label>
+          <!-- Blank means inherit, which is why this is not : a prefilled box is a
+               decision the tenant did not make. -->
+          <input id="p-interval" name="interval_seconds" class={inputClass} inputmode="numeric" />
+        </div>
+        <div>
+          <label class={labelClass} for="p-retries">{t("uptime.field.retries")}</label>
+          <input id="p-retries" name="retries" class={inputClass} inputmode="numeric" />
+        </div>
+        <label class="flex items-center gap-2 text-sm text-text sm:col-span-2">
+          <input type="checkbox" name="is_default" value="true" />
+          {t("uptime.profile.default_badge")}
+        </label>
+        <div class="flex gap-2 sm:col-span-2">
+          <Button type="submit" disabled={busy.active}>{t("common.save")}</Button>
+          <Button variant="secondary" onclick={() => (addingProfile = false)}>
+            {t("common.cancel")}
+          </Button>
+        </div>
+      </form>
+    {:else}
+      <div class="mt-3">
+        <Button variant="secondary" onclick={() => (addingProfile = true)}>
+          {t("uptime.settings.add")}
+        </Button>
+      </div>
+    {/if}
+  </section>
 
   {#if adding}
     <form

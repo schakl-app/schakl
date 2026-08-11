@@ -22,8 +22,29 @@ import type { Actions, PageServerLoad } from "./$types";
  */
 export const load: PageServerLoad = async (event) => {
   if (!can(event.locals.user, "uptime.instance.manage")) throw redirect(303, "/settings");
-  const { data } = await apiFor(event).GET("/api/v1/uptime/instances");
-  return { instances: data ?? [] };
+  const api = apiFor(event);
+  const [instances, profiles, drifted] = await Promise.all([
+    api.GET("/api/v1/uptime/instances"),
+    // Profiles read on `monitor.read`, a different key from this screen's gate, so a role
+    // holding only `instance.manage` must not fire a call that can do nothing but 403 (#310).
+    can(event.locals.user, "uptime.monitor.read")
+      ? api.GET("/api/v1/uptime/profiles")
+      : Promise.resolve({ data: [] as never[] }),
+    // The drift queue: monitors somebody changed in Uptime Kuma. Bounded, because this is a
+    // section of a settings page and not a list screen — a tenant with two hundred drifted
+    // monitors has a bigger problem than pagination (docs/PERFORMANCE.md).
+    can(event.locals.user, "uptime.monitor.read")
+      ? api.GET("/api/v1/uptime/monitors", {
+          params: { query: { sync_status: "drift", limit: 50, offset: 0, count: true } },
+        })
+      : Promise.resolve({ data: null }),
+  ]);
+  return {
+    instances: instances.data ?? [],
+    profiles: profiles.data ?? [],
+    drifted: drifted.data?.items ?? [],
+    driftTotal: drifted.data?.total ?? 0,
+  };
 };
 
 /** Header pairs typed as `Name: value` lines — where a Cloudflare Access service token goes. */
@@ -37,6 +58,24 @@ function parseHeaders(raw: string): Record<string, string> {
     if (name && value) headers[name] = value;
   }
   return headers;
+}
+
+/**
+ * The numeric fields a profile may set, read as *absent means inherit*.
+ *
+ * An empty box is not a zero. Sending `0` for a blank interval would pin every monitor
+ * following this profile to the invariant floor, which is the kind of silent, plausible wrong
+ * number nobody notices until a client asks why their site is checked every twenty seconds.
+ */
+function numericDefaults(form: FormData): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const key of ["interval_seconds", "retries"]) {
+    const raw = String(form.get(key) ?? "").trim();
+    if (raw === "") continue;
+    const value = Number(raw);
+    if (Number.isFinite(value)) out[key] = value;
+  }
+  return out;
 }
 
 export const actions: Actions = {
@@ -101,6 +140,51 @@ export const actions: Actions = {
     );
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { synced: true, report: data ?? null };
+  },
+
+  reconcile: async (event) => {
+    const form = await event.request.formData();
+    const direction = String(form.get("direction") ?? "");
+    if (direction !== "push" && direction !== "adopt") {
+      // No default direction, here as well as in the API: one overwrites a colleague's edit in
+      // Uptime Kuma, the other overwrites schakl's record.
+      return fail(400, { error: "errors.uptime_failed" });
+    }
+    const { error } = await apiFor(event).POST(
+      "/api/v1/uptime/monitors/{monitor_id}/reconcile",
+      {
+        params: { path: { monitor_id: String(form.get("id") ?? "") } },
+        body: { direction },
+      },
+    );
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { reconciled: direction };
+  },
+
+  createProfile: async (event) => {
+    const form = await event.request.formData();
+    const { error } = await apiFor(event).POST("/api/v1/uptime/profiles", {
+      body: {
+        name: String(form.get("name") ?? "").trim(),
+        monitor_type: String(form.get("monitor_type") ?? "http"),
+        defaults: numericDefaults(form),
+        is_default: checked(form, "is_default"),
+        active: true,
+        position: 0,
+        notification_ids: [],
+      },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { profileCreated: true };
+  },
+
+  deleteProfile: async (event) => {
+    const form = await event.request.formData();
+    const { error } = await apiFor(event).DELETE("/api/v1/uptime/profiles/{profile_id}", {
+      params: { path: { profile_id: String(form.get("id") ?? "") } },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { profileRemoved: true };
   },
 
   remove: async (event) => {
