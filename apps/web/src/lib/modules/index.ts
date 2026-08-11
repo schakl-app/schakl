@@ -22,6 +22,7 @@ import "./google_ads";
 import "./reporting";
 import "./cloudflare";
 import "./uptime";
+import "./wordpress";
 import "./oxxa";
 import "./mollie";
 import "./portal";

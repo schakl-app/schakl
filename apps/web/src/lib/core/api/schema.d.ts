@@ -6702,10 +6702,16 @@ export interface paths {
         };
         /**
          * Available Accounts
-         * @description The accounts/properties/sites the caller's Google connection can reach for ``source``.
+         * @description The accounts/properties/sites the caller's connection can reach for ``source``.
          *
-         *     Serves from a short Redis cache; a not-connected / missing-scope / revoked state comes back
-         *     as flags so the picker can *teach* rather than show a silently empty list (#132).
+         *     Serves from a short Redis cache; a not-connected / missing-scope / revoked / not-configured
+         *     state comes back as flags so the picker can *teach* rather than show a silently empty list
+         *     (#132).
+         *
+         *     ``website_id`` is additive and optional at the API boundary on purpose: a required
+         *     parameter would 422 the four existing sources, which have no website to name. The source
+         *     that needs it says so itself — ``rankmath`` answers ``configured=False`` without one, which
+         *     is the same state the picker already draws for "no credential yet".
          */
         get: operations["available_accounts_api_v1_marketing_accounts_get"];
         put?: never;
@@ -10221,6 +10227,111 @@ export interface paths {
         head?: never;
         /** Update Website */
         patch: operations["update_website_api_v1_websites__website_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Sites */
+        get: operations["list_sites_api_v1_wordpress_sites_get"];
+        put?: never;
+        /** Connect Site */
+        post: operations["connect_site_api_v1_wordpress_sites_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/by-website/{website_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Site For Website
+         * @description The one credential a website has, or ``null``.
+         *
+         *     Literal segment, so declared before ``/sites/{site_id}``. ``null`` rather than a 404
+         *     because most websites have no WordPress connected and that is the panel's ordinary empty
+         *     state, not an error worth logging once per page view.
+         */
+        get: operations["site_for_website_api_v1_wordpress_sites_by_website__website_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Site */
+        get: operations["get_site_api_v1_wordpress_sites__site_id__get"];
+        put?: never;
+        post?: never;
+        /** Disconnect Site */
+        delete: operations["disconnect_site_api_v1_wordpress_sites__site_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Site */
+        patch: operations["update_site_api_v1_wordpress_sites__site_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/brands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Brands
+         * @description The Rank Math brands this site tracks — the marketing link picker's options.
+         */
+        get: operations["list_brands_api_v1_wordpress_sites__site_id__brands_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Site
+         * @description Probe the site and store what was observed.
+         *
+         *     Answers 200 for a credential that was refused: the per-capability answer *is* the response,
+         *     and an exception is the one shape that cannot carry it. ``ok`` says whether anything got
+         *     through at all.
+         */
+        post: operations["verify_site_api_v1_wordpress_sites__site_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/health": {
@@ -17975,7 +18086,7 @@ export interface components {
          *     and a picker for zero data in a client-overview CRM. Extend here for Meta/LinkedIn later.
          * @enum {string}
          */
-        MarketingSource: "ga4" | "gsc" | "gads" | "seranking";
+        MarketingSource: "ga4" | "gsc" | "gads" | "seranking" | "rankmath";
         /** MarketingSummary */
         MarketingSummary: {
             compare: components["schemas"]["MarketingCompareWindow"];
@@ -25299,6 +25410,174 @@ export interface components {
             technical_owner?: components["schemas"]["PartyRef"] | null;
             /** Uptime Enabled */
             uptime_enabled?: boolean | null;
+        };
+        /**
+         * WordPressBrand
+         * @description One tracked brand, as the marketing picker and the panel need it.
+         *
+         *     A hand-written subset of Rank Math's row rather than a passthrough: the upstream shape is a
+         *     third party's and carries fields (``created_at``, cache bookkeeping) that would become our
+         *     contract the moment they appeared in the spec.
+         */
+        WordPressBrand: {
+            /** Analysis Status */
+            analysis_status?: string | null;
+            /** Avg Sentiment */
+            avg_sentiment?: number | null;
+            /** Citations */
+            citations?: number | null;
+            /** Id */
+            id: string;
+            /** Last Analyzed */
+            last_analyzed?: string | null;
+            /** Locale */
+            locale?: string | null;
+            /** Mentions */
+            mentions?: number | null;
+            /** Name */
+            name: string;
+            /** Rank */
+            rank?: number | null;
+            /** Score */
+            score?: number | null;
+            /**
+             * Status
+             * @default active
+             */
+            status: string;
+            /**
+             * Url
+             * @default
+             */
+            url: string;
+        };
+        /** WordPressSiteCreate */
+        WordPressSiteCreate: {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** App Password */
+            app_password: string;
+            /** Base Url */
+            base_url: string;
+            /** Username */
+            username: string;
+            /**
+             * Website Id
+             * Format: uuid
+             */
+            website_id: string;
+        };
+        /**
+         * WordPressSiteRead
+         * @description A connected WordPress. Never carries the application password.
+         */
+        WordPressSiteRead: {
+            /** Active */
+            active: boolean;
+            /** Base Url */
+            base_url: string;
+            /** Capabilities */
+            capabilities?: {
+                [key: string]: boolean;
+            };
+            /** Capabilities Checked At */
+            capabilities_checked_at?: string | null;
+            /** Capability Errors */
+            capability_errors?: {
+                [key: string]: string;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Verified At */
+            last_verified_at?: string | null;
+            /** Mcp Server Path */
+            mcp_server_path?: string | null;
+            /**
+             * Password Configured
+             * @default true
+             */
+            password_configured: boolean;
+            /**
+             * Rankmath Ai Visibility
+             * @default false
+             */
+            rankmath_ai_visibility: boolean;
+            /** Rankmath Version */
+            rankmath_version?: string | null;
+            /** Status */
+            status: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Username */
+            username: string;
+            /**
+             * Website Id
+             * Format: uuid
+             */
+            website_id: string;
+        };
+        /** WordPressSiteUpdate */
+        WordPressSiteUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** App Password */
+            app_password?: string | null;
+            /** Base Url */
+            base_url?: string | null;
+            /** Username */
+            username?: string | null;
+        };
+        /**
+         * WordPressVerifyResult
+         * @description What a verify learned.
+         *
+         *     ``ok`` is **not** "every capability is true" — a site with no Rank Math is a perfectly good
+         *     WordPress connection, and a probe that reported it as broken would be the health-check
+         *     mistake this module exists to avoid. ``ok`` is "at least one probe got through", i.e. the
+         *     credential is real; the capability map is where the nuance lives.
+         */
+        WordPressVerifyResult: {
+            /** Brand Count */
+            brand_count?: number | null;
+            /** Capabilities */
+            capabilities?: {
+                [key: string]: boolean;
+            };
+            /** Capability Errors */
+            capability_errors?: {
+                [key: string]: string;
+            };
+            /** Error */
+            error?: string | null;
+            /** Mcp Server Path */
+            mcp_server_path?: string | null;
+            /** Ok */
+            ok: boolean;
+            /**
+             * Rankmath Ai Visibility
+             * @default false
+             */
+            rankmath_ai_visibility: boolean;
+            /** Rankmath Version */
+            rankmath_version?: string | null;
+            /** Status */
+            status: string;
         };
         /**
          * WorkDay
@@ -39169,6 +39448,8 @@ export interface operations {
         parameters: {
             query: {
                 source: components["schemas"]["MarketingSource"];
+                /** @description Required for a source whose credential is per website (rankmath); ignored by every other source. */
+                website_id?: string | null;
             };
             header?: never;
             path?: never;
@@ -47353,6 +47634,258 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WebsiteRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_sites_api_v1_wordpress_sites_get: {
+        parameters: {
+            query?: {
+                website_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressSiteRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    connect_site_api_v1_wordpress_sites_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressSiteCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressSiteRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    site_for_website_api_v1_wordpress_sites_by_website__website_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                website_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressSiteRead"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_site_api_v1_wordpress_sites__site_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressSiteRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disconnect_site_api_v1_wordpress_sites__site_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_site_api_v1_wordpress_sites__site_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressSiteUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressSiteRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_brands_api_v1_wordpress_sites__site_id__brands_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressBrand"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_site_api_v1_wordpress_sites__site_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressVerifyResult"];
                 };
             };
             /** @description Validation Error */

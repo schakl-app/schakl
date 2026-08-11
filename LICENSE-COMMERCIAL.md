@@ -33,6 +33,7 @@ and their web counterparts — currently:
 - `apps/api/app/modules/time/`
 - `apps/api/app/modules/uptime/`
 - `apps/api/app/modules/websites/`
+- `apps/api/app/modules/wordpress/`
 - `apps/web/src/lib/cloud/`
 - `apps/web/src/lib/modules/oxxa/`
 - `apps/web/src/lib/modules/cloudflare/`
@@ -53,6 +54,7 @@ and their web counterparts — currently:
 - `apps/web/src/lib/modules/time/`
 - `apps/web/src/lib/modules/uptime/`
 - `apps/web/src/lib/modules/websites/`
+- `apps/web/src/lib/modules/wordpress/`
 - `apps/web/src/routes/(cloud)/`
 - `apps/web/src/routes/(app)/domains/`
 - `apps/web/src/routes/(app)/interactions/`

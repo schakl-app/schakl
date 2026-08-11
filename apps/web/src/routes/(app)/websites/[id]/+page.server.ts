@@ -10,6 +10,9 @@ import {
 } from "$lib/core/quickcreate.server";
 import { entityPanelsFor } from "$lib/core/registry";
 import { apiFor } from "$lib/core/session";
+// The WordPress panel edits through this page, because SvelteKit actions live on the page. One
+// import and one spread: the route learns nothing about application passwords (CLAUDE.md §6).
+import { wordpressActions } from "$lib/modules/wordpress/wordpress-actions.server";
 import "$lib/modules";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -65,6 +68,8 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
+  ...wordpressActions,
+
   update: async (event) => {
     const form = await event.request.formData();
     const { error: err } = await apiFor(event).PATCH("/api/v1/websites/{website_id}", {
