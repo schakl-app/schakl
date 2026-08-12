@@ -125,6 +125,31 @@ Two things it is **not**:
   snapshots legitimately repeat. `last_analyzed` is carried into the stored metrics so a report
   can say what it is actually comparing rather than announcing a 0% week (#312's rule).
 
+### What each number is, and on what scale
+
+Read out of the plugin's own UI (1.0.276) rather than guessed, because the scale is the whole
+meaning and two of the five were being printed on the wrong one:
+
+| key | Rank Math's own name | what it counts | scale |
+|---|---|---|---|
+| `ai_visibility_score` | AI Visibility Score | rank, mentions, citations and sentiment folded into one figure | 0-100, printed `X / 100`; green from 70, red under 40 (`ScoreBadge`) |
+| `mentions` | Mentions | times the brand was named in the answers to the tracked prompts | count, a running total as at the last analysis |
+| `citations` | Citations | the subset of those mentions that **linked** to the brand's site — *"mentions that include a link to the selected brand's website"* | count |
+| `avg_sentiment` | Avg sentiment | how positively the brand is described, averaged over its mentions | **0-100, printed as a percentage**; green from 70, red under 50 (`SentimentBadge`) |
+| `brand_rank` | Avg Rank | the brand's average place among the brands an answer names | 1, 2, 3 … — 1 is best, hence `LOWER_IS_BETTER` |
+
+Two corrections came out of writing that table down, and both had shipped:
+
+- **`avg_sentiment` is not a −1…1 ratio.** `format.ts` said so in a comment that admitted it was
+  a guess, and formatted at two decimals — so a mildly positive brand printed `46,00` beside a
+  mentions count, a number with no unit and no ceiling. The plugin renders `${round(score)}%`.
+- **`enabled`, the prompts drill-down's only column, had no label at all.** `marketing.metric.enabled`
+  did not exist, so the header printed the literal key `marketing.metric.enabled` over a column
+  of `1` and `0`. It is now *Gevolgd* over *Ja* / *Nee*.
+
+The cadence is **weekly** by default (`AddBrandModal`'s frequency select; "Daily (Coming Soon)"
+is disabled), which is the plugin-side confirmation of §3's "it is not daily".
+
 **Every Rank Math metric is in `AVERAGED_METRICS`**, including `mentions` and `citations`.
 Those two *look* like counts and are not: Rank Math reports running totals as of the last
 analysis, so two daily snapshots of "18 mentions" mean eighteen, not thirty-six. Summing a
@@ -231,6 +256,31 @@ RANKMATH_METRICS = ["ai_visibility_score", "mentions", "citations", "avg_sentime
 
 `brand_rank` is also in `LOWER_IS_BETTER`. Drill-downs are `competitors` and `queries`, fetched
 live and never stored.
+
+### A metric nobody can name is a metric nobody can act on
+
+The other four sources speak a vocabulary a marketeer already owns: everyone knows what a
+session is. Rank Math's five are new to *both* audiences, and the labels are as short as a tile
+allows — so "Bronvermeldingen 6" sat next to "Vermeldingen 18" with nothing on the screen saying
+that the first is the subset of the second that carried a link. The agency could not explain the
+dashboard it had built and the client could not read the one it had been given.
+
+So a metric carries its sentence: `marketing.metric_help.<key>`, with siblings
+`marketing.drilldown_help.<kind>` and `marketing.source_help.<source>`, resolved by
+`format.ts`'s `metricHelp` / `drilldownHelp` / `sourceHelp`. Three rules:
+
+- **A miss is the empty string, not the key.** `t()` answers with the key it could not find (the
+  `channelLabel` rule), so an undescribed metric would print `marketing.metric_help.sessions`
+  under its tile. Collapsing a miss to `""` and rendering nothing for it is what makes this
+  safe to ship for one source and fill in for the other four later, one key at a time and with
+  no code change.
+- **Written out where it is read, hovered only where there is no room.** The tab's KPI tiles and
+  the drill-down headings print the sentence; the company panel's four-figure summary, the
+  drill-down column headers and edit mode's drag targets carry it as `title`. A hover is not an
+  explanation on a phone, and the client's own dashboard is the surface this is for.
+- **It is the same section component for both audiences.** `MarketingSourceSection` renders the
+  staff tab and the portal widget, so there is no version of this that explains the numbers to
+  the agency and not to the client.
 
 ### The third auth kind
 

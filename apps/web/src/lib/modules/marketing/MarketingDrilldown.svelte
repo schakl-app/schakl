@@ -17,7 +17,15 @@
   import { localeLabel, t } from "$lib/core/i18n";
   import { editLocale } from "$lib/core/i18n-edit.svelte";
 
-  import { channelLabel, drilldownLabel, fmtMetric, metricLabel, sourceLabel } from "./format";
+  import {
+    channelLabel,
+    drilldownHelp,
+    drilldownLabel,
+    fmtMetric,
+    metricHelp,
+    metricLabel,
+    sourceLabel,
+  } from "./format";
   import type { DrilldownResponse, MarketingSource, SourceEditState } from "./types";
 
   let {
@@ -140,6 +148,11 @@
 
   {#if editsLabels}
     <p class="mb-2 text-xs text-text-muted">{t("marketing.layout.key_events_hint")}</p>
+  {:else if drilldownHelp(kind)}
+    <!-- Above the table, not inside it: what "Prompts" and "Concurrenten" are is a question the
+         reader has before the first row, and the answer is the same whether the fetch found
+         rows, found none, or could not run at all. -->
+    <p class="mb-2 text-xs leading-relaxed text-text-muted">{drilldownHelp(kind)}</p>
   {/if}
 
   {#if loading}
@@ -160,7 +173,11 @@
             <tr class="border-b border-border text-left text-xs text-text-muted">
               <th class="py-1.5 pr-2 font-medium">{drilldownLabel(kind)}</th>
               {#each data.columns as col (col)}
-                <th class="py-1.5 pl-2 text-right font-medium">{metricLabel(col)}</th>
+                <!-- A column header has no room for the sentence, so it carries it as a hover.
+                     The tiles above are where a touch reader gets it written out. -->
+                <th class="py-1.5 pl-2 text-right font-medium" title={metricHelp(col) || undefined}>
+                  {metricLabel(col)}
+                </th>
               {/each}
             </tr>
           </thead>

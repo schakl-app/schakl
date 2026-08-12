@@ -213,9 +213,10 @@ export const HEADLINE_METRICS: Record<MarketingSource, string[]> = {
   gsc: ["clicks", "impressions", "position", "ctr"],
   gads: ["cost", "clicks", "conversions", "conversionsValue"],
   seranking: ["avg_position", "top10", "top3", "keywords_ranking"],
-  // `avg_sentiment` is the one of the five that stays out of the panel: it is a −1…1 quality
-  // signal, not a size, and a client glancing at four tiles reads "0,46" as a bad score rather
-  // than as a mildly positive tone. It keeps its place in the tab's full list below.
+  // `avg_sentiment` is the one of the five that stays out of the panel: it is a 0-100 quality
+  // signal, not a size, and next to a mentions count and a score out of 100 a fourth bare
+  // number is one number too many to tell apart. It keeps its place in the tab's full list
+  // below, where it prints as "46%" and carries the sentence that says what 46 would be.
   rankmath: ["ai_visibility_score", "mentions", "citations", "brand_rank"],
 };
 

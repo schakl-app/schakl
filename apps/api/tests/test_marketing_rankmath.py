@@ -40,7 +40,10 @@ _OVERVIEW = {
                 "status": "active",
                 "score": 42.5,
                 "rank": 3,
-                "avg_sentiment": 0.62,
+                # 0-100, not a −1…1 ratio — the plugin's own badge prints `${round(score)}%`
+                # (docs/WORDPRESS.md §3). A fixture on the wrong scale is a fake that agrees
+                # with whatever the formatter happens to assume.
+                "avg_sentiment": 62.0,
                 "mentions": 18,
                 "citations": 7,
                 "last_analyzed": "2026-08-10T04:00:00Z",
@@ -198,7 +201,7 @@ async def test_the_competitor_drilldown() -> None:
     client = _Client(
         insights={
             "competitors": [
-                {"name": "Concurrent", "url": "https://c.nl", "mentions": 9, "avg_sentiment": 0.4},
+                {"name": "Concurrent", "url": "https://c.nl", "mentions": 9, "avg_sentiment": 40.0},
                 {"mentions": 1},  # no name — unusable, dropped
             ]
         }

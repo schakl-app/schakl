@@ -26,7 +26,9 @@
     deltaView,
     drilldownLabel,
     fmtMetric,
+    metricHelp,
     metricLabel,
+    sourceHelp,
     sourceLabel,
     tileLabel,
   } from "./format";
@@ -83,6 +85,11 @@
       ),
   );
   const label = (key: string) => tileLabel(key, src.tile_labels);
+  // What this source measures, in one sentence. Empty for the four whose vocabulary a marketeer
+  // already owns; Rank Math's is the one that needs saying, because "the analysis re-runs weekly"
+  // is the difference between a flat line meaning "nothing happened" and meaning "nothing was
+  // measured" (docs/WORDPRESS.md §3).
+  const sourceHint = $derived(sourceHelp(src.source));
   const values = $derived(src.series?.metrics?.[selected] ?? []);
   const dates = $derived(src.series?.dates ?? []);
 
@@ -195,6 +202,10 @@
     </div>
   </div>
 
+  {#if sourceHint}
+    <p class="-mt-2 mb-4 max-w-3xl text-xs leading-relaxed text-text-muted">{sourceHint}</p>
+  {/if}
+
   {#if src.health === "pending"}
     <p class="text-sm text-text-muted">{t("marketing.pending_hint")}</p>
   {:else if src.health === "disconnected"}
@@ -235,7 +246,12 @@
               <GripVertical size={14} />
             </button>
             <div class="min-w-0 flex-1">
-              <p class="truncate text-xs text-text-muted">{metricLabel(tile.id)}</p>
+              <!-- A hover title, not the sentence itself: edit mode is a drag surface and a
+                   two-line explanation under every tile would double the distance to the drop
+                   target. The client-facing view below writes them out. -->
+              <p class="truncate text-xs text-text-muted" title={metricHelp(tile.id) || undefined}>
+                {metricLabel(tile.id)}
+              </p>
               <p class="mt-0.5 text-lg font-semibold tabular-nums text-text">
                 {kpi ? fmtMetric(tile.id, kpi.current, src.currency) : "—"}
               </p>
@@ -267,6 +283,7 @@
           <button
             type="button"
             onclick={() => showTile(key)}
+            title={metricHelp(key) || undefined}
             class="flex items-center gap-1 rounded-lg border border-dashed border-border px-2 py-1 text-xs text-text-muted hover:border-brand hover:text-brand"
           >
             <Plus size={12} />
@@ -351,10 +368,11 @@
         {@const kpi = src.kpis?.[key]}
         {#if kpi}
           {@const delta = deltaView(kpi.delta_pct, kpi.lower_is_better)}
+          {@const hint = metricHelp(key)}
           <button
             type="button"
             onclick={() => (override = key)}
-            class="rounded-lg border p-3 text-left transition-colors {selected === key
+            class="flex flex-col rounded-lg border p-3 text-left transition-colors {selected === key
               ? 'border-brand bg-surface'
               : 'border-border hover:border-brand/50'}"
           >
@@ -372,6 +390,13 @@
                   </span>
                 {/if}
               </p>
+            {/if}
+            {#if hint}
+              <!-- Written out rather than hidden behind a hover: half these tiles are read on a
+                   phone, and a client's report of a number they cannot name is the whole
+                   complaint this answers. `mt-auto` keeps the sentences bottom-aligned across a
+                   row whose tiles differ by a delta line. -->
+              <p class="mt-auto pt-2 text-[11px] leading-snug text-text-muted">{hint}</p>
             {/if}
           </button>
         {/if}

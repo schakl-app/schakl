@@ -23,6 +23,7 @@
     deltaView,
     fmtMetric,
     healthClass,
+    metricHelp,
     metricLabel,
     sourceLabel,
   } from "./format";
@@ -283,7 +284,9 @@
                   {@const kpi = src.kpis?.[key]}
                   {#if kpi}
                     {@const delta = deltaView(kpi.delta_pct, kpi.lower_is_better)}
-                    <a href={tabHref} class="group block">
+                    <!-- The panel is a four-figure summary with a link into the tab that writes
+                         the explanations out; a hover is all the room there is here. -->
+                    <a href={tabHref} class="group block" title={metricHelp(key) || undefined}>
                       <p class="text-xs text-text-muted">{metricLabel(key)}</p>
                       <p
                         class="text-lg font-semibold tabular-nums text-text group-hover:text-brand"
