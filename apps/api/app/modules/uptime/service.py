@@ -24,13 +24,14 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from app.core.activity import ActivityService
 from app.core.crypto import decrypt, encrypt
 from app.core.tenancy import RequestContext, TenantScopedRepository
 from app.errors import AppError
 from app.modules.uptime import errors as kuma_errors
+from app.modules.uptime import matching
 from app.modules.uptime import profiles as prof
 from app.modules.uptime.client import UptimeKumaClient, merge_monitor
 from app.modules.uptime.models import (
@@ -47,7 +48,9 @@ from app.modules.uptime.schemas import (
     UptimeEnrol,
     UptimeInstanceCreate,
     UptimeInstanceUpdate,
+    UptimeLinkApplyResult,
     UptimeMonitorCreate,
+    UptimeMonitorLink,
     UptimeMonitorUpdate,
     UptimeProbeResult,
     UptimeProfileCreate,
@@ -64,6 +67,12 @@ MONITOR_ENTITY_TYPE = "uptime_monitor"
 #: are not edits — a sync that wrote a trail line per monitor would bury the one line somebody
 #: is looking for under a thousand.
 _AUDITED_INSTANCE_FIELDS = ("name", "mode", "base_url", "username", "ssl_verify", "active")
+
+#: What a monitor is attached to on *our* side, and the kinds those columns name. Uptime Kuma
+#: has no field for any of it, which is why writing one never pushes (#321).
+_ANCHOR_KINDS = ("website", "domain", "hosting")
+_ANCHOR_FIELDS = ("website_id", "domain_id", "hosting_id")
+_LINK_FIELDS = (*_ANCHOR_FIELDS, "company_id")
 
 #: How an i18n key is chosen for a refusal. Ordered most specific first; the fallback is
 #: deliberately generic, because a wrong-but-specific message is worse than an honest vague one.
@@ -485,22 +494,103 @@ class UptimeService:
             report.missing += 1
 
         await self.ctx.session.flush()
-        await self._link_parents(instance)
+        await self._link_parents(instance, report)
+        await self._match_links(instance, report)
         return report
 
-    async def _link_parents(self, instance: UptimeInstance) -> None:
-        """Resolve Kuma's integer ``parent`` into our own ``parent_id``.
+    async def _link_parents(self, instance: UptimeInstance, report: UptimeSyncReport) -> None:
+        """Resolve Kuma's integer ``parent`` into our own ``parent_id`` — and report a move.
 
         A second pass because a child can arrive before its group: Kuma's ids are not ordered by
         hierarchy, and resolving inline would drop every edge that pointed forwards.
+
+        Three cases, and only the first was here before (#321). A monitor **we have never
+        pushed** is left alone: its snapshot is empty, so reading a parent out of it would set
+        every pending monitor's group to `None` and quietly undo the group somebody picked on
+        the create form. An **adopted** monitor takes Kuma's answer, because an observation is
+        simply the truth for a row with no intent of its own. And a monitor **we created** that
+        somebody moved in Kuma is *drift* — reported, never absorbed, exactly as its interval
+        would be. That last case is the whole reason `adopted` exists, and the group was the one
+        field it was not being applied to.
         """
         stmt = self.monitors.scoped_select().where(UptimeMonitor.instance_id == instance.id)
         rows = list((await self.ctx.session.execute(stmt)).scalars().all())
         by_kuma = {r.kuma_monitor_id: r for r in rows if r.kuma_monitor_id is not None}
         for row in rows:
+            if row.kuma_monitor_id is None:
+                continue
             parent = (row.remote_snapshot or {}).get("parent")
             target = by_kuma.get(parent) if isinstance(parent, int) else None
-            row.parent_id = target.id if target is not None else None
+            observed_id = target.id if target is not None else None
+            if row.adopted:
+                row.parent_id = observed_id
+                continue
+            fields = [f for f in (row.drift_fields or []) if f != "parent_id"]
+            if row.parent_id != observed_id:
+                # Counted only when nothing else had already flagged this row, or one monitor
+                # whose interval *and* group moved would be two in a report of one number.
+                if not fields:
+                    report.drifted += 1
+                fields.append("parent_id")
+                row.sync_status = SyncStatus.DRIFT.value
+            elif not fields and row.sync_status == SyncStatus.DRIFT.value:
+                row.sync_status = SyncStatus.ACTIVE.value
+            row.drift_fields = fields
+        await self.ctx.session.flush()
+
+    async def _match_links(self, instance: UptimeInstance, report: UptimeSyncReport) -> None:
+        """Propose the website or domain each unlinked monitor watches (:mod:`.matching`, #321).
+
+        **Proposals only.** Nothing here writes a link, for docs/UPTIME.md §9's reason: adoption
+        never decides on a guess, and its output is our mirror plus a set of links a human
+        confirmed. What it does write is the *observation* — the candidates and the moment they
+        were looked for — so the reconciliation screen survives a page reload and can tell "we
+        looked and found nothing" apart from "nobody has ever looked".
+
+        Two statements for the whole instance, whatever its size: one read of the monitors and
+        one of the domains their hostnames could name (docs/PERFORMANCE.md). A per-monitor
+        lookup would be correct at three monitors and linear at three hundred, and identical in
+        the JSON either way.
+
+        Monitors that are **already linked** are skipped and keep whatever they had: a link a
+        person made is not a question this pass is entitled to re-ask. So are groups — a group
+        watches nothing, so it has no hostname to match and listing it as "unmatched" would fill
+        the screen with rows nobody can act on.
+        """
+        stmt = self.monitors.scoped_select().where(
+            UptimeMonitor.instance_id == instance.id,
+            UptimeMonitor.monitor_type != GROUP_TYPE,
+            UptimeMonitor.website_id.is_(None),
+            UptimeMonitor.domain_id.is_(None),
+            UptimeMonitor.hosting_id.is_(None),
+        )
+        rows = list((await self.ctx.session.execute(stmt)).scalars().all())
+        if not rows:
+            return
+
+        hosts = {h for h in (matching.host_of(r.target) for r in rows) if h}
+        names = matching.lookup_hosts(hosts)
+        websites: dict[str, list[matching.LinkCandidate]] = {}
+        domains: dict[str, list[matching.LinkCandidate]] = {}
+        if names:
+            found = (
+                await self.ctx.session.execute(
+                    matching.index_query(self.ctx.org.id, self.ctx.company_scope, names)
+                )
+            ).all()
+            websites, domains = matching.build_index(found)
+
+        now = datetime.now(UTC)
+        for row in rows:
+            candidates = matching.candidates_for(matching.host_of(row.target), websites, domains)
+            row.link_candidates = [c.as_json() for c in candidates]
+            row.link_checked_at = now
+            if len(candidates) == 1:
+                report.matched += 1
+            elif candidates:
+                report.ambiguous += 1
+            else:
+                report.unmatched += 1
         await self.ctx.session.flush()
 
     # ------------------------------------------------------------------- monitors
@@ -514,31 +604,28 @@ class UptimeService:
         company_id: uuid.UUID | None = None,
         website_id: uuid.UUID | None = None,
         sync_status: str | None = None,
+        monitor_type: str | None = None,
+        link_status: str | None = None,
         count: bool = True,
     ) -> tuple[list[UptimeMonitor], int]:
-        stmt = self.monitors.scoped_select()
-        if instance_id is not None:
-            stmt = stmt.where(UptimeMonitor.instance_id == instance_id)
-        if company_id is not None:
-            stmt = stmt.where(UptimeMonitor.company_id == company_id)
-        if website_id is not None:
-            stmt = stmt.where(UptimeMonitor.website_id == website_id)
-        if sync_status is not None:
-            stmt = stmt.where(UptimeMonitor.sync_status == sync_status)
+        # Built once and spread into both statements. Two hand-written copies of the same
+        # filters is how a `total` starts disagreeing with the list under it — the shape #285
+        # names as failure mode 2, reached here by drift rather than by omission.
+        conditions = _monitor_filters(
+            instance_id=instance_id,
+            company_id=company_id,
+            website_id=website_id,
+            sync_status=sync_status,
+            monitor_type=monitor_type,
+            link_status=link_status,
+        )
+        stmt = self.monitors.scoped_select().where(*conditions)
 
         total: int | None = None
         if count:
             # `scoped_count_select`, never a hand-built count: a total built any other way skips
             # the company horizon and shows "2" above a list of one (#285, failure mode 2).
-            csel = self.monitors.scoped_count_select()
-            if instance_id is not None:
-                csel = csel.where(UptimeMonitor.instance_id == instance_id)
-            if company_id is not None:
-                csel = csel.where(UptimeMonitor.company_id == company_id)
-            if website_id is not None:
-                csel = csel.where(UptimeMonitor.website_id == website_id)
-            if sync_status is not None:
-                csel = csel.where(UptimeMonitor.sync_status == sync_status)
+            csel = self.monitors.scoped_count_select().where(*conditions)
             total = int((await self.ctx.session.execute(csel)).scalar() or 0)
 
         stmt = stmt.order_by(UptimeMonitor.name).limit(limit).offset(offset)
@@ -568,6 +655,24 @@ class UptimeService:
         stmt = stmt.with_only_columns(UptimeMonitor.id, UptimeMonitor.name)
         return {row[0]: row[1] for row in (await self.ctx.session.execute(stmt)).all()}
 
+    async def child_counts(self, monitors: list[UptimeMonitor]) -> dict[uuid.UUID, int]:
+        """How many monitors sit in each group on this page — **one** grouped query.
+
+        What makes the delete guard predictable: a group that refuses to be deleted because it
+        still has children should have said "3 monitors" on screen first, rather than answering
+        an error to a button that looked available (#321, docs/UX.md).
+        """
+        group_ids = [m.id for m in monitors if m.monitor_type == GROUP_TYPE]
+        if not group_ids:
+            return {}
+        stmt = (
+            self.monitors.scoped_select()
+            .with_only_columns(UptimeMonitor.parent_id, func.count(UptimeMonitor.id))
+            .where(UptimeMonitor.parent_id.in_(group_ids))
+            .group_by(UptimeMonitor.parent_id)
+        )
+        return {row[0]: row[1] for row in (await self.ctx.session.execute(stmt)).all()}
+
     async def get_monitor(self, monitor_id: uuid.UUID) -> UptimeMonitor:
         return await self.monitors.get_or_404(monitor_id)
 
@@ -586,6 +691,95 @@ class UptimeService:
         rows = (await self.ctx.session.execute(stmt)).all()
         by_status = {row[0]: row[1] for row in rows}
         return {"total": sum(by_status.values()), "by_status": by_status}
+
+
+def _plain(changes: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """A change map JSONB can hold: a ``UUID`` is not JSON, and an activity row is JSONB.
+
+    Written out rather than left to the driver, because the failure is a 500 at commit time on
+    a *write that already succeeded* — the monitor moves and the trail entry takes the request
+    down with it.
+    """
+    return {
+        field: {side: (str(value) if isinstance(value, uuid.UUID) else value)
+                for side, value in change.items()}
+        for field, change in changes.items()
+    }
+
+
+def _sole_candidate(monitor: UptimeMonitor) -> tuple[str, uuid.UUID] | None:
+    """The one anchor this monitor proposes, or ``None`` if it proposes none or several.
+
+    Defensive about its own stored shape: ``link_candidates`` is JSONB written by an earlier
+    release of this code, so a row from before a change of shape must degrade to "no proposal"
+    rather than raise inside a bulk apply somebody is watching a spinner for.
+    """
+    candidates = monitor.link_candidates or []
+    if len(candidates) != 1 or not isinstance(candidates[0], dict):
+        return None
+    kind = candidates[0].get("entity_type")
+    raw = candidates[0].get("entity_id")
+    if kind not in matching.LINKABLE or not raw:
+        return None
+    try:
+        return kind, uuid.UUID(str(raw))
+    except ValueError:
+        return None
+
+
+def _linked_condition():  # noqa: ANN202 — a SQLAlchemy clause, typed only by SQLAlchemy
+    """"Attached to something" as one clause, so every reader means the same by it."""
+    return or_(
+        UptimeMonitor.website_id.is_not(None),
+        UptimeMonitor.domain_id.is_not(None),
+        UptimeMonitor.hosting_id.is_not(None),
+    )
+
+
+def _monitor_filters(
+    *,
+    instance_id: uuid.UUID | None = None,
+    company_id: uuid.UUID | None = None,
+    website_id: uuid.UUID | None = None,
+    sync_status: str | None = None,
+    monitor_type: str | None = None,
+    link_status: str | None = None,
+) -> list[Any]:
+    """The list filters, once, for the page and its count alike.
+
+    ``link_status`` is expressed in SQL rather than folded in Python for the reason every other
+    filter is: a screen that asks for the unlinked monitors of a thousand-monitor instance must
+    get a page, not a prefix of one (CLAUDE.md §9). ``proposed`` is the one the reconciliation
+    screen asks for — everything with at least one candidate — because "there is exactly one
+    obvious answer" and "there are two and you must choose" belong in the same list, told apart
+    by the row rather than by a second request.
+    """
+    conditions: list[Any] = []
+    if instance_id is not None:
+        conditions.append(UptimeMonitor.instance_id == instance_id)
+    if company_id is not None:
+        conditions.append(UptimeMonitor.company_id == company_id)
+    if website_id is not None:
+        conditions.append(UptimeMonitor.website_id == website_id)
+    if sync_status is not None:
+        conditions.append(UptimeMonitor.sync_status == sync_status)
+    if monitor_type is not None:
+        conditions.append(UptimeMonitor.monitor_type == monitor_type)
+    if link_status is not None:
+        found = func.jsonb_array_length(UptimeMonitor.link_candidates)
+        if link_status == matching.LINKED:
+            conditions.append(_linked_condition())
+        else:
+            conditions.append(~_linked_condition())
+            if link_status == matching.MATCHED:
+                conditions.append(found == 1)
+            elif link_status == matching.AMBIGUOUS:
+                conditions.append(found > 1)
+            elif link_status == matching.UNMATCHED:
+                conditions.append(found == 0)
+            elif link_status == "proposed":
+                conditions.append(found > 0)
+    return conditions
 
 
 def _target_of(payload: dict[str, Any]) -> str | None:
@@ -770,26 +964,197 @@ class UptimeWriteService(UptimeService):
     async def update_monitor(
         self, monitor_id: uuid.UUID, payload: UptimeMonitorUpdate
     ) -> UptimeMonitor:
+        """Edit a monitor — and push **only** when something Uptime Kuma owns actually changed.
+
+        The link fields are ours alone: which client a monitor belongs to and which website it
+        watches on our side mean nothing at the far end. Pushing them anyway is not merely
+        wasteful, it is the shape §3 exists to prevent — a Socket.IO connect, login, read and
+        write per row, so attaching forty freshly-adopted monitors to their clients through the
+        bulk edit held one request open for a minute and spent the instance's login budget
+        saying nothing (`bulk.py`'s own docstring already claimed this write did not push).
+
+        Which client a monitor belongs to is **derived** from what it was attached to, unless
+        the caller said otherwise. Two copies of "whose monitor is this" is how the horizon
+        starts disagreeing with the record: a monitor linked to a client's website while
+        ``company_id`` stayed NULL is visible to staff outside that client's group and invisible
+        to the client (#285, #266), and nothing on the screen would say so.
+        """
         monitor = await self.monitors.get_or_404(monitor_id)
-        instance = await self.instances.get_or_404(monitor.instance_id)
-        before = {f: getattr(monitor, f) for f in prof.DRIFT_FIELDS}
+        audited = (*prof.DRIFT_FIELDS, *_LINK_FIELDS, "parent_id")
+        before = {f: getattr(monitor, f) for f in audited}
 
         values = payload.model_dump(exclude_unset=True)
         for field, value in values.items():
             setattr(monitor, field, value)
+        if any(f in values for f in _ANCHOR_FIELDS) and "company_id" not in values:
+            monitor.company_id = await self._company_for_link(monitor)
         await self.ctx.session.flush()
 
         changes = {
             f: {"from": before[f], "to": getattr(monitor, f)}
-            for f in prof.DRIFT_FIELDS
+            for f in audited
             if before[f] != getattr(monitor, f)
         }
         if changes:
             await self.activity.record(
-                MONITOR_ENTITY_TYPE, monitor.id, "updated", payload={"changes": changes}
+                MONITOR_ENTITY_TYPE, monitor.id, "updated", payload={"changes": _plain(changes)}
             )
-        await self._push(instance, monitor)
+        if any(f not in _LINK_FIELDS for f in values):
+            instance = await self.instances.get_or_404(monitor.instance_id)
+            await self._push(instance, monitor)
         return await self._settled(monitor)
+
+    # -------------------------------------------------------------------- links
+
+    async def _company_for_link(self, monitor: UptimeMonitor) -> uuid.UUID | None:
+        """Whose monitor this is, from whatever it is attached to. **One resolution** (#321).
+
+        Most specific first: a website is a hostname somebody recorded, a domain is the zone it
+        sits in, hosting is the box. Attached to nothing means ``NULL``, which is not "unknown"
+        — it is *not client data*, the state the repository already reads as visible to
+        restricted staff and hidden from a client login.
+        """
+        for kind, field in zip(_ANCHOR_KINDS, _ANCHOR_FIELDS, strict=True):
+            anchor_id = getattr(monitor, field)
+            if anchor_id is not None:
+                resolved = await self._anchor_companies({(kind, anchor_id)})
+                return resolved.get((kind, anchor_id))
+        return None
+
+    async def _anchor_companies(
+        self, anchors: set[tuple[str, uuid.UUID]]
+    ) -> dict[tuple[str, uuid.UUID], uuid.UUID | None]:
+        """Resolve a batch of anchors to their clients — **at most one query per kind**.
+
+        Absence from the answer means *not visible to this caller*, never "has no client": a
+        hosting account with no client is a real state and comes back as an explicit ``None``.
+        Conflating the two would turn shared infrastructure into a 404.
+        """
+        resolved: dict[tuple[str, uuid.UUID], uuid.UUID | None] = {}
+        for kind in matching.LINKABLE:
+            ids = [anchor_id for (k, anchor_id) in anchors if k == kind]
+            if not ids:
+                continue
+            rows = await self.ctx.session.execute(
+                matching.anchor_query(kind, self.ctx.org.id, self.ctx.company_scope, ids)
+            )
+            for row in rows:
+                resolved[(kind, row[0])] = row[1]
+        return resolved
+
+    def _write_link(
+        self,
+        monitor: UptimeMonitor,
+        *,
+        kind: str | None,
+        anchor_id: uuid.UUID | None,
+        company_id: uuid.UUID | None,
+    ) -> None:
+        """Set exactly one anchor and clear the others. The only place link columns are written.
+
+        Clearing the others is the point rather than tidiness: a monitor that claims to watch
+        one client's website *and* another client's hosting is a row no screen can render
+        honestly, and `company_id` could only agree with one of them.
+        """
+        for candidate_kind, field in zip(_ANCHOR_KINDS, _ANCHOR_FIELDS, strict=True):
+            setattr(monitor, field, anchor_id if candidate_kind == kind else None)
+        monitor.company_id = company_id
+
+    async def link_monitor(
+        self, monitor_id: uuid.UUID, payload: UptimeMonitorLink
+    ) -> UptimeMonitor:
+        """Attach one found monitor to the website, domain or hosting it watches — or detach it.
+
+        **Writes nothing to Uptime Kuma.** Which client a monitor belongs to is a fact about our
+        administration; the far end has no opinion on it and no field for it. That is also what
+        makes this route safe to hand an ordinary employee working through a freshly adopted
+        instance: the worst outcome is a wrong row here, not a changed check on a client's site.
+        """
+        monitor = await self.monitors.get_or_404(monitor_id)
+        before = {f: getattr(monitor, f) for f in _LINK_FIELDS}
+
+        if payload.entity_type is None:
+            self._write_link(monitor, kind=None, anchor_id=None, company_id=None)
+        else:
+            key = (payload.entity_type, payload.entity_id)
+            resolved = await self._anchor_companies({key})
+            if key not in resolved:
+                # 404 and not 403: an anchor outside this caller's horizon must not be
+                # confirmed to exist by the shape of the refusal (§15).
+                raise AppError("not_found", "errors.not_found", status_code=404)
+            self._write_link(
+                monitor,
+                kind=payload.entity_type,
+                anchor_id=payload.entity_id,
+                company_id=resolved[key],
+            )
+
+        changes = {
+            f: {"from": before[f], "to": getattr(monitor, f)}
+            for f in _LINK_FIELDS
+            if before[f] != getattr(monitor, f)
+        }
+        if changes:
+            await self.activity.record(
+                MONITOR_ENTITY_TYPE, monitor.id, "updated", payload={"changes": _plain(changes)}
+            )
+        return await self._settled(monitor)
+
+    async def apply_links(self, instance_id: uuid.UUID) -> UptimeLinkApplyResult:
+        """Confirm every **unambiguous** proposal on one instance, and count what it left.
+
+        The button an agency presses once after adopting an instance with two hundred monitors.
+        It applies only what has exactly one candidate; the ambiguous ones are reported as
+        ``skipped``, never resolved by picking the first — that is the decision docs/UPTIME.md §9
+        reserves for a person, and doing it in bulk would be doing it two hundred times.
+
+        Batched throughout (docs/PERFORMANCE.md): one read of the proposals, one count of the
+        ambiguous ones, and one query per anchor kind — not one per monitor.
+        """
+        instance = await self.instances.get_or_404(instance_id)
+        stmt = self.monitors.scoped_select().where(
+            *_monitor_filters(instance_id=instance.id, link_status=matching.MATCHED)
+        )
+        rows = list((await self.ctx.session.execute(stmt)).scalars().all())
+        skipped = int(
+            (
+                await self.ctx.session.execute(
+                    self.monitors.scoped_count_select().where(
+                        *_monitor_filters(instance_id=instance.id, link_status=matching.AMBIGUOUS)
+                    )
+                )
+            ).scalar()
+            or 0
+        )
+
+        anchors: set[tuple[str, uuid.UUID]] = set()
+        for row in rows:
+            anchor = _sole_candidate(row)
+            if anchor is not None:
+                anchors.add(anchor)
+        resolved = await self._anchor_companies(anchors)
+
+        linked = 0
+        for row in rows:
+            anchor = _sole_candidate(row)
+            # A candidate whose anchor has since been deleted, or moved out of this caller's
+            # horizon, is skipped rather than written as a dangling id: the proposal is an
+            # observation from the last sync, and the anchor is re-read at the moment it counts.
+            if anchor is None or anchor not in resolved:
+                skipped += 1
+                continue
+            self._write_link(
+                row, kind=anchor[0], anchor_id=anchor[1], company_id=resolved[anchor]
+            )
+            await self.activity.record(
+                MONITOR_ENTITY_TYPE,
+                row.id,
+                "updated",
+                payload={"changes": {f"{anchor[0]}_id": {"from": None, "to": str(anchor[1])}}},
+            )
+            linked += 1
+        await self.ctx.session.flush()
+        return UptimeLinkApplyResult(linked=linked, skipped=skipped)
 
     async def set_paused(self, monitor_id: uuid.UUID, *, paused: bool) -> UptimeMonitor:
         """Pause or resume. Its own permission, and deliberately not drift.
@@ -797,6 +1162,12 @@ class UptimeWriteService(UptimeService):
         Silencing an alert during a planned migration is an ordinary thing to ask of an ordinary
         employee; repointing a monitor is not. And a monitor paused in Kuma during an incident
         must not read as a configuration conflict somebody has to resolve.
+
+        Pausing a **group** silences every monitor beneath it, because that is what Uptime Kuma
+        does with a paused parent — the children's own ``active`` stays true here and they stop
+        being checked there. Said out loud on the screen (`uptime.group.pause_cascade`) rather
+        than modelled, since inventing a per-child row to mirror it would be this module
+        claiming a state the far end does not have.
         """
         monitor = await self.monitors.get_or_404(monitor_id)
         instance = await self.instances.get_or_404(monitor.instance_id)
@@ -827,8 +1198,29 @@ class UptimeWriteService(UptimeService):
         instance touches nothing: "stop tracking this here" and "stop watching this client's
         site" are different decisions, and the destructive one is never the side effect of the
         other. When it is asked for, it takes the id this module stored — never a name match.
+
+        **A group with children is refused** (docs/UPTIME.md §7). The self-FK is ``SET NULL``,
+        so deleting one locally would silently un-nest every monitor beneath it here while Kuma
+        keeps them exactly where they were — a hierarchy that quietly disagrees with the far end
+        and nothing to say when. Whether Kuma itself would delete the children is *its* answer
+        to give, and discovering it on a client's live monitoring is not how to find out.
         """
         monitor = await self.monitors.get_or_404(monitor_id)
+        if monitor.monitor_type == GROUP_TYPE:
+            children = int(
+                (
+                    await self.ctx.session.execute(
+                        self.monitors.scoped_count_select().where(
+                            UptimeMonitor.parent_id == monitor.id
+                        )
+                    )
+                ).scalar()
+                or 0
+            )
+            if children:
+                raise AppError(
+                    "conflict", "errors.uptime_group_has_children", status_code=409
+                )
         if at_kuma and monitor.kuma_monitor_id is not None:
             instance = await self.instances.get_or_404(monitor.instance_id)
             kuma_id = monitor.kuma_monitor_id
@@ -899,6 +1291,26 @@ class UptimeWriteService(UptimeService):
         monitor.last_error = None
         await self.ctx.session.flush()
 
+    async def _observed_parent(self, monitor: UptimeMonitor) -> uuid.UUID | None:
+        """Our row for the group Uptime Kuma says this monitor sits in, if we mirror it.
+
+        Goes through the repository like every other read here, so a group outside the caller's
+        horizon resolves to nothing rather than being written onto a row they can see.
+        """
+        parent = (monitor.remote_snapshot or {}).get("parent")
+        if not isinstance(parent, int):
+            return None
+        stmt = (
+            self.monitors.scoped_select()
+            .with_only_columns(UptimeMonitor.id)
+            .where(
+                UptimeMonitor.instance_id == monitor.instance_id,
+                UptimeMonitor.kuma_monitor_id == parent,
+            )
+            .limit(1)
+        )
+        return (await self.ctx.session.execute(stmt)).scalar_one_or_none()
+
     async def reconcile(self, monitor_id: uuid.UUID, payload: UptimeReconcile) -> UptimeMonitor:
         """Resolve a drift — in **either** direction, which is the whole point.
 
@@ -920,6 +1332,11 @@ class UptimeWriteService(UptimeService):
             value = prof.observed_value(field, snapshot, monitor.monitor_type)
             if value is not None:
                 setattr(monitor, field, _coerce(field, value))
+        # The group moved too, if it moved (#321). Adopting five fields and leaving the sixth
+        # would clear the drift flag while the disagreement it named was still there — and the
+        # next sync would raise it again, which reads as a reconcile that did not work.
+        if "parent_id" in (monitor.drift_fields or []):
+            monitor.parent_id = await self._observed_parent(monitor)
         monitor.drift_fields = []
         monitor.sync_status = SyncStatus.ACTIVE.value
         await self.activity.record(MONITOR_ENTITY_TYPE, monitor.id, "drift_adopted")

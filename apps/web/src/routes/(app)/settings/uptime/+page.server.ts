@@ -23,19 +23,35 @@ import type { Actions, PageServerLoad } from "./$types";
 export const load: PageServerLoad = async (event) => {
   if (!can(event.locals.user, "uptime.instance.manage")) throw redirect(303, "/settings");
   const api = apiFor(event);
-  const [instances, profiles, drifted] = await Promise.all([
+  const reads = can(event.locals.user, "uptime.monitor.read");
+  const [instances, profiles, drifted, proposed, groups] = await Promise.all([
     api.GET("/api/v1/uptime/instances"),
     // Profiles read on `monitor.read`, a different key from this screen's gate, so a role
     // holding only `instance.manage` must not fire a call that can do nothing but 403 (#310).
-    can(event.locals.user, "uptime.monitor.read")
-      ? api.GET("/api/v1/uptime/profiles")
-      : Promise.resolve({ data: [] as never[] }),
+    reads ? api.GET("/api/v1/uptime/profiles") : Promise.resolve({ data: [] as never[] }),
     // The drift queue: monitors somebody changed in Uptime Kuma. Bounded, because this is a
     // section of a settings page and not a list screen — a tenant with two hundred drifted
     // monitors has a bigger problem than pagination (docs/PERFORMANCE.md).
-    can(event.locals.user, "uptime.monitor.read")
+    reads
       ? api.GET("/api/v1/uptime/monitors", {
           params: { query: { sync_status: "drift", limit: 50, offset: 0, count: true } },
+        })
+      : Promise.resolve({ data: null }),
+    // What the last sync found and nobody has confirmed (#321). `proposed` is one call for
+    // both cases — one obvious candidate and several — because the row itself says which, and
+    // two requests for one section would be two chances for them to disagree.
+    reads
+      ? api.GET("/api/v1/uptime/monitors", {
+          params: { query: { link_status: "proposed", limit: 50, offset: 0, count: true } },
+        })
+      : Promise.resolve({ data: null }),
+    // The groups, with `meta` for the child counts: a delete that refuses because a group
+    // still holds monitors must have said "3 monitors" before the button was pressed.
+    reads
+      ? api.GET("/api/v1/uptime/monitors", {
+          params: {
+            query: { monitor_type: "group", limit: 100, offset: 0, count: true, meta: true },
+          },
         })
       : Promise.resolve({ data: null }),
   ]);
@@ -44,6 +60,10 @@ export const load: PageServerLoad = async (event) => {
     profiles: profiles.data ?? [],
     drifted: drifted.data?.items ?? [],
     driftTotal: drifted.data?.total ?? 0,
+    proposed: proposed.data?.items ?? [],
+    proposedTotal: proposed.data?.total ?? 0,
+    groups: groups.data?.items ?? [],
+    groupTotal: groups.data?.total ?? 0,
   };
 };
 
@@ -150,15 +170,81 @@ export const actions: Actions = {
       // Uptime Kuma, the other overwrites schakl's record.
       return fail(400, { error: "errors.uptime_failed" });
     }
-    const { error } = await apiFor(event).POST(
-      "/api/v1/uptime/monitors/{monitor_id}/reconcile",
-      {
-        params: { path: { monitor_id: String(form.get("id") ?? "") } },
-        body: { direction },
-      },
-    );
+    const { error } = await apiFor(event).POST("/api/v1/uptime/monitors/{monitor_id}/reconcile", {
+      params: { path: { monitor_id: String(form.get("id") ?? "") } },
+      body: { direction },
+    });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { reconciled: direction };
+  },
+
+  /**
+   * Confirm one proposal (#321). Posts the candidate's *own* values — the anchor it was drawn
+   * from — rather than anything typed above it: `cloudflare` paid for the other shape once, in
+   * an adopt button that posted the form's fields and answered a mismatch to the obvious press.
+   */
+  link: async (event) => {
+    const form = await event.request.formData();
+    const entityType = String(form.get("entity_type") ?? "");
+    const kinds = ["website", "domain", "hosting"] as const;
+    type Kind = (typeof kinds)[number];
+    const kind = kinds.includes(entityType as Kind) ? (entityType as Kind) : null;
+    const { error } = await apiFor(event).POST("/api/v1/uptime/monitors/{monitor_id}/link", {
+      params: { path: { monitor_id: String(form.get("id") ?? "") } },
+      // An explicit null on both detaches (§18); a partly-filled pair is refused by the API.
+      body: kind
+        ? { entity_type: kind, entity_id: String(form.get("entity_id") ?? "") }
+        : { entity_type: null, entity_id: null },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { linked: true };
+  },
+
+  applyLinks: async (event) => {
+    const form = await event.request.formData();
+    const { data, error } = await apiFor(event).POST(
+      "/api/v1/uptime/instances/{instance_id}/links/apply",
+      { params: { path: { instance_id: String(form.get("id") ?? "") } } },
+    );
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { applied: data ?? null };
+  },
+
+  createGroup: async (event) => {
+    const form = await event.request.formData();
+    const { error } = await apiFor(event).POST("/api/v1/uptime/monitors", {
+      body: {
+        instance_id: String(form.get("instance_id") ?? ""),
+        name: String(form.get("name") ?? "").trim(),
+        // A group watches nothing, so it carries no target and no interval of its own — Kuma
+        // stores it as a monitor whose only job is to be a parent.
+        monitor_type: "group",
+        active: true,
+      },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { groupCreated: true };
+  },
+
+  renameGroup: async (event) => {
+    const form = await event.request.formData();
+    const { error } = await apiFor(event).PATCH("/api/v1/uptime/monitors/{monitor_id}", {
+      params: { path: { monitor_id: String(form.get("id") ?? "") } },
+      body: { name: String(form.get("name") ?? "").trim() },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { groupRenamed: true };
+  },
+
+  deleteGroup: async (event) => {
+    const form = await event.request.formData();
+    // Local only: `at_kuma` stays false here, exactly as it does for a monitor. "Stop tracking
+    // this group here" and "delete this client's folder at Uptime Kuma" are different acts.
+    const { error } = await apiFor(event).DELETE("/api/v1/uptime/monitors/{monitor_id}", {
+      params: { path: { monitor_id: String(form.get("id") ?? "") }, query: { at_kuma: false } },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { groupRemoved: true };
   },
 
   createProfile: async (event) => {

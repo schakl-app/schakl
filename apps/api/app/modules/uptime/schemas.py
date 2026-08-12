@@ -117,6 +117,20 @@ class UptimeInstanceRead(BaseModel):
     group_count: int = 0
 
 
+class UptimeLinkCandidate(BaseModel):
+    """One anchor a found monitor could belong to (#321).
+
+    ``company_id`` is what the *match* saw, so the screen can say whose it is; the link route
+    re-resolves it rather than trusting this, because a domain that changed hands since the
+    sync would otherwise write yesterday's client onto today's monitor.
+    """
+
+    entity_type: str
+    entity_id: uuid.UUID
+    label: str
+    company_id: uuid.UUID | None = None
+
+
 class UptimeMonitorRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -156,9 +170,60 @@ class UptimeMonitorRead(BaseModel):
     #: means top-level, which is a real answer and not a missing one: an agency that groups
     #: nothing is ordinary, and Kuma's own list is flat until somebody makes a folder.
     parent_name: str | None = None
+    #: How many monitors sit in this group, under the same `meta=true` and only for a group.
+    #: What makes the delete guard predictable rather than a surprise 409 (#321).
+    child_count: int = 0
     #: Kuma's last reported up/down for this monitor, read from the redacted snapshot. `None`
     #: means we have never observed it, which is not the same as "down".
     remote_active: bool | None = None
+
+    #: What the last match found (#321) — proposals a person confirms, never links already made.
+    link_candidates: list[UptimeLinkCandidate] = Field(default_factory=list)
+    #: When that match ran. `None` is *nobody has ever looked*, which an empty candidate list
+    #: cannot say on its own — the distinction the screen needs to avoid telling an admin
+    #: "niets gevonden" about an instance that has never synced.
+    link_checked_at: datetime | None = None
+    #: `linked` / `matched` / `ambiguous` / `unmatched`, derived from the columns above
+    #: (`matching.link_status`). Derived rather than stored, so a link made by hand changes it
+    #: at once and there is no second column to keep in step.
+    link_status: str = "unmatched"
+
+
+class UptimeMonitorLink(BaseModel):
+    """Attach this monitor to one website, domain or hosting account — or to nothing.
+
+    **One anchor, not three columns.** A shape with three optional ids would let a caller set
+    two of them, and a monitor that claims to watch one client's website and another client's
+    hosting is a row no screen can render honestly.
+
+    ``entity_type: null`` detaches (§18's *explicit null means clear*). It is spelled as an
+    explicit null rather than a missing body so that "I opened the dialog and changed nothing"
+    can never mean "unlink it".
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    entity_type: Literal["website", "domain", "hosting"] | None = None
+    entity_id: uuid.UUID | None = None
+
+    @field_validator("entity_id")
+    @classmethod
+    def _both_or_neither(cls, value: uuid.UUID | None, info: Any) -> uuid.UUID | None:
+        if bool(value) != bool(info.data.get("entity_type")):
+            raise ValueError("errors.uptime_link_incomplete")
+        return value
+
+
+class UptimeLinkApplyResult(BaseModel):
+    """What applying every unambiguous proposal did.
+
+    ``skipped`` is the ambiguous ones and is deliberately not an error: they are the rows this
+    button is *not* allowed to decide, and reporting them is how the screen says there is still
+    work left rather than falling silent on it.
+    """
+
+    linked: int = 0
+    skipped: int = 0
 
 
 class UptimeSyncReport(BaseModel):
@@ -168,6 +233,10 @@ class UptimeSyncReport(BaseModel):
     and ``unmatched`` are handed back for a person to resolve, because two websites on the same
     apex is an ordinary thing and picking one attaches a client's monitoring to another client's
     record with every row valid.
+
+    ``matched`` counts **proposals**, not links. Nothing here is applied by the sync, which is
+    why the number can stay the same across two runs and still be honest: it describes what is
+    waiting for somebody, and the reconciliation screen is where it stops waiting.
     """
 
     instance_id: uuid.UUID

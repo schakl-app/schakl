@@ -10297,6 +10297,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/uptime/instances/{instance_id}/links/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Links
+         * @description Confirm every unambiguous proposal on this instance; report what was left.
+         *
+         *     Declares `monitor.write` and not `instance.manage`: what it writes is monitors. The ambiguous
+         *     ones come back as `skipped` rather than resolved — those are a person's to decide, and doing
+         *     it in bulk would be deciding two hundred of them.
+         */
+        post: operations["apply_links_api_v1_uptime_instances__instance_id__links_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/uptime/instances/{instance_id}/probe": {
         parameters: {
             query?: never;
@@ -10372,6 +10396,30 @@ export interface paths {
         head?: never;
         /** Update Monitor */
         patch: operations["update_monitor_api_v1_uptime_monitors__monitor_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/uptime/monitors/{monitor_id}/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link Monitor
+         * @description Attach a found monitor to the website, domain or hosting it watches (#321).
+         *
+         *     Its own route rather than a `PATCH` field, because it is a different act: it writes nothing
+         *     to Uptime Kuma, it takes one anchor instead of three ids that could contradict each other,
+         *     and it is the one the reconciliation screen posts straight from a candidate it was shown.
+         */
+        post: operations["link_monitor_api_v1_uptime_monitors__monitor_id__link_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/uptime/monitors/{monitor_id}/pause": {
@@ -25762,6 +25810,47 @@ export interface components {
             ssl_verify?: boolean | null;
         };
         /**
+         * UptimeLinkApplyResult
+         * @description What applying every unambiguous proposal did.
+         *
+         *     ``skipped`` is the ambiguous ones and is deliberately not an error: they are the rows this
+         *     button is *not* allowed to decide, and reporting them is how the screen says there is still
+         *     work left rather than falling silent on it.
+         */
+        UptimeLinkApplyResult: {
+            /**
+             * Linked
+             * @default 0
+             */
+            linked: number;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+        };
+        /**
+         * UptimeLinkCandidate
+         * @description One anchor a found monitor could belong to (#321).
+         *
+         *     ``company_id`` is what the *match* saw, so the screen can say whose it is; the link route
+         *     re-resolves it rather than trusting this, because a domain that changed hands since the
+         *     sync would otherwise write yesterday's client onto today's monitor.
+         */
+        UptimeLinkCandidate: {
+            /** Company Id */
+            company_id?: string | null;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Label */
+            label: string;
+        };
+        /**
          * UptimeMonitorCreate
          * @description A monitor schakl creates and pushes.
          *
@@ -25808,6 +25897,24 @@ export interface components {
             /** Website Id */
             website_id?: string | null;
         };
+        /**
+         * UptimeMonitorLink
+         * @description Attach this monitor to one website, domain or hosting account — or to nothing.
+         *
+         *     **One anchor, not three columns.** A shape with three optional ids would let a caller set
+         *     two of them, and a monitor that claims to watch one client's website and another client's
+         *     hosting is a row no screen can render honestly.
+         *
+         *     ``entity_type: null`` detaches (§18's *explicit null means clear*). It is spelled as an
+         *     explicit null rather than a missing body so that "I opened the dialog and changed nothing"
+         *     can never mean "unlink it".
+         */
+        UptimeMonitorLink: {
+            /** Entity Id */
+            entity_id?: string | null;
+            /** Entity Type */
+            entity_type?: ("website" | "domain" | "hosting") | null;
+        };
         /** UptimeMonitorRead */
         UptimeMonitorRead: {
             /** Active */
@@ -25817,6 +25924,11 @@ export interface components {
              * @default true
              */
             adopted: boolean;
+            /**
+             * Child Count
+             * @default 0
+             */
+            child_count: number;
             /** Company Id */
             company_id: string | null;
             /** Company Name */
@@ -25852,6 +25964,15 @@ export interface components {
             last_error: string | null;
             /** Last Observed At */
             last_observed_at: string | null;
+            /** Link Candidates */
+            link_candidates?: components["schemas"]["UptimeLinkCandidate"][];
+            /** Link Checked At */
+            link_checked_at?: string | null;
+            /**
+             * Link Status
+             * @default unmatched
+             */
+            link_status: string;
             /** Monitor Type */
             monitor_type: string;
             /** Name */
@@ -26050,6 +26171,10 @@ export interface components {
          *     and ``unmatched`` are handed back for a person to resolve, because two websites on the same
          *     apex is an ordinary thing and picking one attaches a client's monitoring to another client's
          *     record with every row valid.
+         *
+         *     ``matched`` counts **proposals**, not links. Nothing here is applied by the sync, which is
+         *     why the number can stay the same across two runs and still be honest: it describes what is
+         *     waiting for somebody, and the reconciliation screen is where it stops waiting.
          */
         UptimeSyncReport: {
             /**
@@ -48397,6 +48522,37 @@ export interface operations {
             };
         };
     };
+    apply_links_api_v1_uptime_instances__instance_id__links_apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                instance_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptimeLinkApplyResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     probe_instance_api_v1_uptime_instances__instance_id__probe_post: {
         parameters: {
             query?: never;
@@ -48468,6 +48624,10 @@ export interface operations {
                 company_id?: string | null;
                 website_id?: string | null;
                 sync_status?: string | null;
+                /** @description Filter by type; 'group' lists the groups an instance has */
+                monitor_type?: string | null;
+                /** @description linked / matched / ambiguous / unmatched, or 'proposed' for everything a sync found a candidate for and nobody has confirmed yet */
+                link_status?: string | null;
                 /** @description Compute total; set false for pickers */
                 count?: boolean;
                 /** @description Resolve display names; skip it for pickers */
@@ -48607,6 +48767,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["UptimeMonitorUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptimeMonitorRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_monitor_api_v1_uptime_monitors__monitor_id__link_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                monitor_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UptimeMonitorLink"];
             };
         };
         responses: {

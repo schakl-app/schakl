@@ -15,12 +15,15 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from app.core.entitlements import license_exempt
 from app.core.permissions.deps import no_permission_required, require_permission
 from app.core.tenancy import RequestContext, require_context
+from app.modules.uptime import matching
 from app.modules.uptime.schemas import (
     UptimeEnrol,
     UptimeInstanceCreate,
     UptimeInstanceRead,
     UptimeInstanceUpdate,
+    UptimeLinkApplyResult,
     UptimeMonitorCreate,
+    UptimeMonitorLink,
     UptimeMonitorRead,
     UptimeMonitorUpdate,
     UptimeProbeResult,
@@ -194,6 +197,16 @@ async def list_monitors(
     company_id: uuid.UUID | None = Query(None),
     website_id: uuid.UUID | None = Query(None),
     sync_status: str | None = Query(None),
+    monitor_type: str | None = Query(
+        None, description="Filter by type; 'group' lists the groups an instance has"
+    ),
+    link_status: str | None = Query(
+        None,
+        description=(
+            "linked / matched / ambiguous / unmatched, or 'proposed' for everything a sync "
+            "found a candidate for and nobody has confirmed yet"
+        ),
+    ),
     count: bool = Query(True, description="Compute total; set false for pickers"),
     meta: bool = Query(False, description="Resolve display names; skip it for pickers"),
     ctx: RequestContext = Depends(require_context),
@@ -206,13 +219,16 @@ async def list_monitors(
         company_id=company_id,
         website_id=website_id,
         sync_status=sync_status,
+        monitor_type=monitor_type,
+        link_status=link_status,
         count=count,
     )
-    # One extra query for the whole page, and only when asked. A picker renders names it never
+    # Two extra queries for the whole page, and only when asked. A picker renders names it never
     # reads, so paying for them unconditionally is the shape `docs/PERFORMANCE.md` bans.
     groups = await service.group_names(items) if meta else {}
+    children = await service.child_counts(items) if meta else {}
     return Page[UptimeMonitorRead](
-        items=[_monitor_read(m, groups) for m in items],
+        items=[_monitor_read(m, groups, children) for m in items],
         total=total,
         limit=limit,
         offset=offset,
@@ -232,22 +248,37 @@ async def get_monitor(
     return _monitor_read(monitor, await service.group_names([monitor]))
 
 
-def _monitor_read(monitor, groups: dict[uuid.UUID, str] | None = None) -> UptimeMonitorRead:
+def _monitor_read(
+    monitor,
+    groups: dict[uuid.UUID, str] | None = None,
+    children: dict[uuid.UUID, int] | None = None,
+) -> UptimeMonitorRead:
     """One monitor for the wire.
 
     ``remote_active`` is read from the redacted snapshot rather than exposing the snapshot
     itself: it holds a hundred keys of Kuma's internals plus our secret fingerprints, and a
     fingerprint handed to a caller is an oracle.
 
-    ``groups`` is the page's already-resolved ``parent_id -> name`` lookup, passed in rather
-    than fetched here: a name resolved per row is the per-row read a list endpoint must not do.
+    ``groups`` and ``children`` are the page's already-resolved lookups, passed in rather than
+    fetched here: a name resolved per row is the per-row read a list endpoint must not do.
+
+    ``link_status`` is derived on the way out (`matching.link_status`) rather than stored, so a
+    link somebody just made and the status the screen draws can never disagree.
     """
     read = UptimeMonitorRead.model_validate(monitor)
     snapshot = monitor.remote_snapshot or {}
     value = snapshot.get("active")
     read.remote_active = bool(value) if isinstance(value, bool) else None
+    read.link_status = matching.link_status(
+        website_id=monitor.website_id,
+        domain_id=monitor.domain_id,
+        hosting_id=monitor.hosting_id,
+        candidates=monitor.link_candidates,
+    )
     if groups and monitor.parent_id is not None:
         read.parent_name = groups.get(monitor.parent_id)
+    if children is not None:
+        read.child_count = children.get(monitor.id, 0)
     return read
 
 
@@ -335,6 +366,42 @@ async def update_monitor(
     ctx: RequestContext = Depends(require_context),
 ) -> UptimeMonitorRead:
     return _monitor_read(await UptimeWriteService(ctx).update_monitor(monitor_id, payload))
+
+
+@router.post(
+    "/monitors/{monitor_id}/link",
+    response_model=UptimeMonitorRead,
+    dependencies=[require_permission("uptime.monitor.write")],
+)
+async def link_monitor(
+    monitor_id: uuid.UUID,
+    payload: UptimeMonitorLink,
+    ctx: RequestContext = Depends(require_context),
+) -> UptimeMonitorRead:
+    """Attach a found monitor to the website, domain or hosting it watches (#321).
+
+    Its own route rather than a `PATCH` field, because it is a different act: it writes nothing
+    to Uptime Kuma, it takes one anchor instead of three ids that could contradict each other,
+    and it is the one the reconciliation screen posts straight from a candidate it was shown.
+    """
+    return _monitor_read(await UptimeWriteService(ctx).link_monitor(monitor_id, payload))
+
+
+@router.post(
+    "/instances/{instance_id}/links/apply",
+    response_model=UptimeLinkApplyResult,
+    dependencies=[require_permission("uptime.monitor.write")],
+)
+async def apply_links(
+    instance_id: uuid.UUID, ctx: RequestContext = Depends(require_context)
+) -> UptimeLinkApplyResult:
+    """Confirm every unambiguous proposal on this instance; report what was left.
+
+    Declares `monitor.write` and not `instance.manage`: what it writes is monitors. The ambiguous
+    ones come back as `skipped` rather than resolved — those are a person's to decide, and doing
+    it in bulk would be deciding two hundred of them.
+    """
+    return await UptimeWriteService(ctx).apply_links(instance_id)
 
 
 @router.post(

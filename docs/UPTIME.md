@@ -582,6 +582,37 @@ children in Kuma, so pausing a group pauses monitors whose own row still reads a
 group is a question Kuma answers on its own terms, so this module refuses to delete a group that
 still has children rather than discovering the answer on a client's monitoring.
 
+### What was still missing, and what #321 added
+
+Counting a thing is not managing it. The screen said *"3 groepen"* per instance and offered no way
+to see which three, make a fourth, or rename one — so an agency that wanted its tree maintained
+here went back to Uptime Kuma, and the next sync had opinions about that. Four parts:
+
+- **Instellingen → Uptime lists the groups**, with their instance and their **child count**
+  (`child_count`, folded under `meta=true` in one grouped query beside `group_names`). The count is
+  not decoration: it is what makes the delete guard predictable instead of a surprise 409, and the
+  delete button is drawn only where it can succeed (#253 — a control that always refuses is
+  broken).
+- **Create, rename, delete.** A create is `POST /uptime/monitors` with `monitor_type = "group"` —
+  there is no second concept, because Kuma has none — and it pushes, because a group we made must
+  exist at the far end to be a parent. A delete is local by default, exactly as a monitor's is.
+- **The children guard from this section is now real** (`errors.uptime_group_has_children`). It was
+  written down here and never implemented: `parent_id` is `ON DELETE SET NULL`, so deleting a group
+  locally un-nested every monitor beneath it *here* while Kuma kept the tree, and nothing said when
+  or why the two stopped agreeing.
+- **A move made in Kuma is drift, for a monitor we created.** `_link_parents` used to overwrite
+  `parent_id` from the snapshot for **every** row regardless of `adopted` — the one field the
+  distinction §6 is built on was not being applied to — so somebody dragging our monitor into
+  another group was absorbed in silence. It is now reported as `parent_id` in `drift_fields`, with
+  both buttons the drift table already offers, and `adopt` moves the group with the rest (clearing
+  the flag without moving it would raise the same drift on the next sync, which reads as a
+  reconcile that did not work). A row we have **never pushed** is skipped entirely: its snapshot is
+  empty, and reading a parent out of it set every pending monitor's group to nothing.
+
+Still not here: a **picker on the monitor itself**. The API takes `parent_id` on create and on
+`PATCH`, but the web has no monitor list or monitor form yet — the website panel is a read — so
+there is nowhere to put the control. It belongs with that screen, not bolted onto a settings page.
+
 ## 8. Defaults are profiles, and the resolution is one clause
 
 No agency is going to type `interval=60, retries=3, resend=30, accepted=[200-299],
@@ -644,6 +675,50 @@ the same apex are an ordinary thing, and picking one attaches a client's monitor
 client's record with every row valid.
 
 Adoption never writes to Kuma. Its output is our mirror plus a set of links a human confirmed.
+
+#### How it actually works (#321)
+
+The first release shipped the mirror and not the match, and the gap was invisible in the report
+because `matched` / `ambiguous` / `unmatched` were on `UptimeSyncReport` from the start and nothing
+ever set them: every sync answered `0 / 0 / 0`, which is exactly what "we looked and found nothing"
+looks like. Meanwhile every adopted monitor sat at `company_id IS NULL` — **wrong on both sides of
+the horizon at once**: the staff rule reads `NULL` as "not client data, stays visible" and
+`__portal_horizon_clause__` reads it as "not yours", so a client's own monitor was visible to staff
+outside that client's group and invisible to the client. Nothing on the screen said so.
+
+- **`matching.py` holds the whole match**, and it is pure enough to test without a database. The
+  host comes out of whatever the type stores (`url`, `hostname`, …) and is lowercased, de-ported,
+  de-pathed, de-dotted; the ladder is **exact website host → every domain whose zone contains that
+  host**, most specific first, and it stops at the first rung that answers. That second rung is
+  what covers a client's mail server, VPN endpoint and NAS — hosts inside a zone we hold that will
+  never be websites, and a third of what an agency actually monitors.
+- **Ambiguity is an outcome, not a failure.** Two domain records that both contain
+  `a.shop.klant.nl` are two defensible anchors, and picking the longest suffix would be this module
+  deciding something it cannot know. Both come back; the screen asks.
+- **The observation is stored, not just the verdict** — `uptime_monitors.link_candidates` +
+  `link_checked_at`, `cloudflare`'s `observed_redirects` rule one module over. The timestamp is
+  separate because an empty candidate list cannot tell *"we looked and there is nothing to link
+  this to"* apart from *"nobody has ever looked"*, and the reconciliation screen has to say which.
+  It also means the screen survives a page reload, which the alternative (recompute per render)
+  does not.
+- **`POST /monitors/{id}/link` is its own route, and it never dials out.** One anchor
+  (`entity_type` + `entity_id`), not three ids that could contradict each other; an explicit null
+  on both detaches (§18); the anchor is re-read through a horizon-filtered query at the moment it
+  counts, so an anchor outside the caller's horizon is a 404 and a domain that changed hands since
+  the sync cannot write yesterday's client onto today's monitor. `company_id` is **derived** there,
+  in one place, or the record and the horizon start disagreeing again.
+- **`POST /instances/{id}/links/apply`** confirms every proposal with exactly one candidate and
+  reports the rest as `skipped`. It is the button an agency presses once after adopting an
+  instance with two hundred monitors; it never resolves an ambiguity, because doing that in bulk
+  is doing it two hundred times.
+- **A link-only write no longer pushes.** `update_monitor` skips the whole Socket.IO round-trip
+  when every changed field is one of ours (`website_id`, `domain_id`, `hosting_id`, `company_id`) —
+  which is what `bulk.py`'s docstring already claimed, and what makes attaching forty freshly
+  adopted monitors one request instead of forty logins.
+- **Two statements for the whole instance**, whatever its size: one read of the unlinked monitors
+  and one of the domains their hostnames could name.
+  `test_the_match_is_one_query_however_many_monitors` counts the reads of `domains`, because a
+  per-monitor lookup returns the identical report and is invisible in the JSON.
 
 ### Spreadsheets (§17) — **export-only, and the reason is not squeamishness**
 

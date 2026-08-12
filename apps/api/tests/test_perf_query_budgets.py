@@ -1019,9 +1019,11 @@ async def test_the_monitor_list_costs_the_same_however_many_groups_there_are(
         assert len(items) == 6, items
         named = [m for m in items if m["parent_name"]]
         assert len(named) == 4, named
-        # One statement for the page, one for every group name on it. Not one per child.
+        # One statement for the page, one for every group name on it, and one for every child
+        # count (#321 — what makes the group delete guard predictable). Three, whatever the
+        # page holds: not one per child, and not one per group.
         reads = counter.matching("from uptime_monitors")
-        assert len(reads) == 2, counter.statements
+        assert len(reads) == 3, counter.statements
 
         # And a caller that did not ask pays for neither.
         with count_queries() as slim:
