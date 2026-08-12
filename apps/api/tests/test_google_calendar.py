@@ -968,3 +968,129 @@ async def test_sweep_tombstones_an_orphaned_task_schedule_link(monkeypatch) -> N
         by_event = {row.google_event_id: row.status for row in rows}
     assert by_event == {"gev-orphan": "delete_pending", "gev-leave": "pushed"}
     assert offered  # and handed to the worker in the same sweep
+
+
+# --- freelance availability (one exception row ↔ one event) ------------------------- #
+
+
+async def test_availability_pushes_as_a_recurring_free_event_and_delete_removes_it(
+    monkeypatch,
+) -> None:
+    """An extra day someone offers to work is mirrored **free**, and a repeat as an RRULE.
+
+    Free, because it is not a booking: mirroring "I can work that Friday" as busy would block
+    the very hours the row exists to advertise. And one event per row, not one per occurrence —
+    which is what makes the delete below a delete rather than a diff over a horizon.
+    """
+    t = await make_tenant("gcal-avail")
+    await _seed(t)
+
+    offered: list[tuple] = []
+
+    async def _fake_offer(org_id, link_id) -> None:
+        offered.append((org_id, link_id))
+
+    monkeypatch.setattr(push_mod, "_enqueue_push", _fake_offer)
+
+    entry_id = uuid.uuid4()
+    payload = {
+        "user_id": t.user.id,
+        "availability_id": str(entry_id),
+        "kind": "extra",
+        "date": "2026-08-21",
+        "start_time": "09:00:00",
+        "end_time": "17:00:00",
+        "repeat_weeks": 2,
+        "repeat_until": "2026-10-31",
+        "note": "deadline campagne",
+    }
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        ctx = SystemContext(org=t.org, session=session)
+        await emit("availability.saved", ctx, payload)
+        await session.commit()
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        from sqlalchemy import select
+
+        link = (await session.execute(select(CalendarEventLink))).scalar_one()
+        assert link.status == "pending" and link.local_type == "availability"
+        assert link.payload["transparency"] == "transparent"
+        assert offered
+
+        stub = _StubClient([("POST", _StubResponse(200, {"id": "gev-a1", "etag": '"e1"'}))])
+        monkeypatch.setattr("app.modules.google.calendar.push.acting_as", _stub_acting_as(stub))
+        await push_link(session, t.org, link)
+        await session.commit()
+        body = stub.calls[0][2]
+        assert link.status == "pushed" and link.google_event_id == "gev-a1"
+        assert body["transparency"] == "transparent"
+        # A timed series: the RRULE's UNTIL is a UTC instant, stamped a day late so an
+        # occurrence in a zone behind UTC is not dropped from its own last day.
+        assert body["recurrence"] == ["RRULE:FREQ=WEEKLY;INTERVAL=2;UNTIL=20261101T235959Z"]
+        assert body["start"]["dateTime"] == "2026-08-21T09:00:00"
+        assert body["extendedProperties"]["private"]["schakl"] == "availability"
+
+        # Withdrawing the row withdraws the mirror — a day taken back must not stay on a calendar.
+        await set_current_org(session, t.org.id)
+        ctx = SystemContext(org=t.org, session=session)
+        await push_mod.handle_availability_gone(ctx, {"availability_id": str(entry_id)})
+        assert link.status == "delete_pending"
+        stub2 = _StubClient([("DELETE", _StubResponse(204))])
+        monkeypatch.setattr("app.modules.google.calendar.push.acting_as", _stub_acting_as(stub2))
+        await push_link(session, t.org, link)
+        await session.commit()
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        from sqlalchemy import select
+
+        assert (await session.execute(select(CalendarEventLink))).first() is None
+
+
+async def test_unavailable_day_is_mirrored_busy_and_all_day(monkeypatch) -> None:
+    """The other direction: a day off *is* a claim on the calendar, so it blocks the time."""
+    t = await make_tenant("gcal-avail-off")
+    await _seed(t)
+
+    async def _fake_offer(org_id, link_id) -> None:
+        return None
+
+    monkeypatch.setattr(push_mod, "_enqueue_push", _fake_offer)
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        ctx = SystemContext(org=t.org, session=session)
+        await emit(
+            "availability.saved",
+            ctx,
+            {
+                "user_id": t.user.id,
+                "availability_id": str(uuid.uuid4()),
+                "kind": "unavailable",
+                "date": "2026-08-17",
+                "start_time": None,
+                "end_time": None,
+                "repeat_weeks": None,
+                "repeat_until": None,
+                "note": None,
+            },
+        )
+        await session.commit()
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        from sqlalchemy import select
+
+        link = (await session.execute(select(CalendarEventLink))).scalar_one()
+        stub = _StubClient([("POST", _StubResponse(200, {"id": "gev-a2", "etag": '"e2"'}))])
+        monkeypatch.setattr("app.modules.google.calendar.push.acting_as", _stub_acting_as(stub))
+        await push_link(session, t.org, link)
+        await session.commit()
+        body = stub.calls[0][2]
+        assert body["transparency"] == "opaque"
+        assert body["start"] == {"date": "2026-08-17"}
+        assert body["end"] == {"date": "2026-08-18"}  # Google's exclusive end
+        assert "recurrence" not in body  # a one-off is not a series

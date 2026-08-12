@@ -57,11 +57,24 @@
 
   const types = $derived(data.leaveTypes as LeaveTypeInfo[]);
   const typeById = $derived(Object.fromEntries(types.map((lt) => [lt.id, lt])));
+  // Is the period in force a freelance one? Three things on this page turn on it, so it is
+  // resolved once, up here: a freelancer accrues nothing, which makes an empty balance tile and
+  // a free-time planner two ways of saying "does not apply" in the language of "you have none
+  // left". The *kind* is a question only the server can answer (`LeaveProfileRead
+  // .employment_type`, `null` when no period is on file — a tenant with no contracts shows the
+  // freelance surfaces to nobody rather than to everybody).
+  const isFreelance = $derived(data.employmentType === "freelance");
   // Free time has its own card; showing its group tile as well means the page states the same
   // balance twice, once uselessly (see the markup).
   const freeTimeIds = $derived(new Set(data.freeTime?.leave_type_ids ?? []));
   const balanceGroups = $derived(
-    data.groups.filter((g) => !g.leave_type_ids.some((id) => freeTimeIds.has(id))),
+    data.groups
+      .filter((g) => !g.leave_type_ids.some((id) => freeTimeIds.has(id)))
+      // A freelance period accrues nothing, so an empty pot is "does not apply" and not "you
+      // have none left" — and a tile reading "Vakantieverlof 0 u · van 0 u" says the second.
+      // Only the empty ones go: a hand-granted pot (the escape hatch for a negotiated
+      // arrangement) is non-zero and stays exactly where an employee's would be.
+      .filter((g) => !isFreelance || Number(g.entitled_hours) > 0),
   );
   // Remaining keyed by *every* type in a group → the group's combined remaining (#265), so the
   // request form's balance hint reads the combined pool whichever underlying type it posts to.
@@ -81,18 +94,29 @@
   // approval requirement keeps vacation a manager's act (generated days are pre-approved);
   // the balance requirement keeps "sick" out — a *recurring sick day* is not a plan, and a
   // pot is what bounds how much a pattern may hand out. The API enforces both.
+  //
+  // None of it for a freelance period: every such type draws on a pot, and a freelance period
+  // accrues none — so the button opened a planner that could only ever hand out days the
+  // balance refuses. Availability is the surface that answers the same question for them.
   const selfServiceTypes = $derived(
-    types.filter((lt) => lt.active && !lt.requires_approval && lt.tracks_balance),
+    isFreelance
+      ? []
+      : types.filter((lt) => lt.active && !lt.requires_approval && lt.tracks_balance),
   );
   let recurringOpen = $state(false);
 
-  // Availability (freelance): the days on top of the week you were engaged under. Offered on the
-  // write permission, which a member holds at `:own` — a freelancer keeping their own calendar is
-  // the ordinary case, and `myAvailability === null` means the read was refused, not empty.
-  const canEditAvailability = $derived(
-    data.myAvailability !== null && can(page.data.user, "leave.availability.write"),
+  // Availability (freelance): the days on top of the week you were engaged under, as a
+  // **section** rather than a button behind a modal. Every member holds
+  // `leave.availability.write:own`, so gating on the permission alone put a control on every
+  // employee's page for a thing employees do not have. The permission still gates the writes
+  // (it is the API's own key, mirrored); the kind decides whether the surface exists at all.
+  const showAvailability = $derived(
+    isFreelance && data.myAvailability !== null && can(page.data.user, "leave.availability.write"),
   );
-  let availabilityOpen = $state(false);
+  // Deep link from an agenda chip (#106's shape): `?availability=<id>` scrolls the row into view
+  // and marks it, the way `?request=` opens a request. Resolved once, into a state initializer —
+  // the surface reacts on load and the user then moves on.
+  const highlightAvailability = page.url.searchParams.get("availability") ?? "";
 
   // Bulk cancel: the one bulk act your own list has — everything else is per-request.
   let bulkSelected = $state<string[]>([]);
@@ -184,16 +208,6 @@
         {t("leave.recurring.title")}
       </button>
     {/if}
-    {#if canEditAvailability}
-      <button
-        type="button"
-        class="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-text hover:border-brand hover:text-brand"
-        onclick={() => (availabilityOpen = true)}
-      >
-        <CalendarClock size={16} />
-        {t("leave.availability.title")}
-      </button>
-    {/if}
     <button
       type="button"
       class="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
@@ -257,11 +271,17 @@
       {/if}
     </div>
   {:else}
-    <p
-      class="rounded-xl border border-border bg-surface-raised p-5 text-sm text-text-muted sm:col-span-2 lg:col-span-3"
-    >
-      {t("leave.balance.none")}
-    </p>
+    <!-- "An admin sets these up" is a to-do list for an employee and a wrong answer for a
+         freelancer: nothing is missing, a freelance period simply accrues nothing. Saying it
+         anyway renders a state we exist to serve as a fault.
+         (An `{#each}`'s `{:else}` takes no `if` of its own — that is `{#if}`'s alone.) -->
+    {#if !isFreelance}
+      <p
+        class="rounded-xl border border-border bg-surface-raised p-5 text-sm text-text-muted sm:col-span-2 lg:col-span-3"
+      >
+        {t("leave.balance.none")}
+      </p>
+    {/if}
   {/each}
 </div>
 
@@ -277,6 +297,26 @@
     cancelOpen = true;
   }}
 />
+
+<!-- Availability, for a freelancer, as a section of their own page rather than a control hidden
+     behind a button: the days you will and will not work are the thing a freelancer keeps here,
+     and a surface that has to be found is a surface that is not kept up to date. -->
+{#if showAvailability}
+  <section class="mb-6 rounded-xl border border-border bg-surface-raised p-5">
+    <div class="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+      <h2 class="flex items-center gap-2 text-sm font-semibold text-text">
+        <CalendarClock size={16} />
+        {t("leave.availability.title")}
+      </h2>
+    </div>
+    <p class="mb-3 text-sm text-text-muted">{t("leave.availability.intro")}</p>
+    <AvailabilityManager
+      entries={data.myAvailability ?? []}
+      error={form?.error ?? null}
+      highlightId={highlightAvailability}
+    />
+  </section>
+{/if}
 
 {#snippet periodCell(request: Request)}
   <span class="font-medium text-text">
@@ -463,13 +503,6 @@
     deleted={form?.patternDeleted ? { withdrawn: form.withdrawn ?? 0 } : null}
     ondone={() => (recurringOpen = false)}
   />
-</Modal>
-
-<!-- Own availability (freelance): the same shared surface the manager's roster ⋯ opens, here for
-     yourself. It stays open after an add — the commonest thing to do next is add another day. -->
-<Modal bind:open={availabilityOpen} title={t("leave.availability.title")} size="lg">
-  <p class="mb-3 text-sm text-text-muted">{t("leave.availability.intro")}</p>
-  <AvailabilityManager entries={data.myAvailability ?? []} error={form?.error ?? null} />
 </Modal>
 
 <ConfirmDialog

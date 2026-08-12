@@ -33,6 +33,10 @@ export const load: LayoutServerLoad = async (event) => {
     leaveTypes: types.data ?? [],
     hoursPerWeek: Number(profile.data?.hours_per_week ?? 40),
     hoursPerDay: Number(profile.data?.hours_per_day ?? 8),
+    // The kind of the period in force — what decides whether the availability section exists at
+    // all. `null` (no period on file) is not `employee`: a tenant with no contracts shows it to
+    // nobody rather than to everybody.
+    employmentType: profile.data?.employment_type ?? null,
     myRecurring: recurring.data ?? [],
     // `null` when unreadable, `[]` when there simply are none — the two render differently.
     myAvailability: availability.data ?? null,

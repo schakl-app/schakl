@@ -18107,6 +18107,7 @@ export interface components {
          *     day is worth, and only one of them would agree with the server.
          */
         LeaveProfileRead: {
+            employment_type?: components["schemas"]["EmploymentKind"] | null;
             /** Hours Per Day */
             hours_per_day: string;
             /** Hours Per Week */

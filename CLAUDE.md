@@ -906,7 +906,35 @@ apply as everywhere.
   screen. The state rides in *both* the words and the colour, so a viewer who recolours the feed
   (#281) keeps the distinction in the text. Deliberately **not draggable**: a chip is an
   occurrence and the row behind it is a rule, so dragging one Friday of "every other Friday" would
-  move the whole rhythm, and dragging half a swap would strand the other half.
+  move the whole rhythm, and dragging half a swap would strand the other half. It **is** clickable:
+  `?availability=<id>` opens the row, and because a chip names one half of a move while the list
+  draws the pair as one line, the id in the URL is often not the id the row is keyed by —
+  resolving that is what stops a link to the dropped Tuesday finding nothing.
+- **A permission decides who may write; the *kind* decides whether the surface exists.** Every
+  member holds `leave.availability.write:own`, so gating the availability surface on the
+  permission alone put it on every employee's page — a control for a thing employees do not have.
+  It is a **section** of a freelancer's own `/leave` now, not a button behind a modal (a surface
+  that has to be found is one that is not kept up to date), and it is drawn only when
+  `LeaveProfileRead.employment_type` is `freelance`. That field's third value is load-bearing:
+  `null` means *no period on file*, so a tenant that has never entered a contract shows the
+  freelance surfaces to nobody rather than to everybody. The admin's ⋯ item follows the same rule
+  off the contracts those pages already load. Its siblings on the same screen are the same
+  mistake in reverse — a freelancer was shown "Vakantieverlof 0 u", a "no balance yet, an admin
+  sets these up" line, and a free-time planner that could only ever hand out days the balance
+  refuses. For a freelance period an empty pot is *does not apply*, and all three said *you have
+  none left*.
+- **The mirror carries the row, not the resolved day** (`google/calendar/push.py`). A resolved day
+  is the base week bent by exceptions and Google has no base week, so pushing the resolution would
+  mean pushing every ordinary working day too; one row ↔ one event is also what makes an edit an
+  update and a delete a delete. A repeat travels as an **RRULE**, not as a horizon of copies — the
+  row already *is* a recurrence rule (#107's generator exists because a free day is a balance
+  leaving a pot, and this is not). Two details are easy to get wrong: RFC 5545 types `UNTIL` after
+  `DTSTART` (a DATE for an all-day series, a UTC DATE-TIME for a timed one), and the timed form is
+  stamped a day late on purpose, because an occurrence at 17:00 local in a zone behind UTC falls
+  after 23:59:59Z of its own date and the honest bound would drop it. And the two kinds differ in
+  one more way, the useful one: an `unavailable` day is **busy**, an `extra` day is **free** — a
+  day somebody offers to work is not a booking, and mirroring it as busy would block the very
+  hours it exists to advertise.
 - **A free-time pattern says how many days, or how often** (#107, extended). `days_per_year` on
   `leave_recurring_days` spreads that many days evenly across the year on the anchor's weekday and
   **slides past** a holiday or a non-working day to the next candidate week, so the count the pot

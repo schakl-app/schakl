@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from app.core.events import subscribe
 from app.modules.google.calendar.push import (
+    handle_availability_gone,
+    handle_availability_saved,
     handle_leave_approved,
     handle_leave_gone,
     handle_task_schedule_gone,
@@ -28,3 +30,9 @@ subscribe("leave.requested", handle_leave_gone)
 # outbox + worker as leave, keyed by a distinct local_type so the two never collide.
 subscribe("task_schedule.saved", handle_task_schedule_saved)
 subscribe("task_schedule.removed", handle_task_schedule_gone)
+
+# Freelance availability: one exception row ↔ one event, a repeat as an RRULE. No approval
+# lifecycle to track (nobody approves their own availability), so two subscriptions cover it —
+# a save pushes or refreshes, a delete removes. Both halves of a move travel as their own row.
+subscribe("availability.saved", handle_availability_saved)
+subscribe("availability.gone", handle_availability_gone)
