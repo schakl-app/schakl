@@ -155,12 +155,37 @@ async def test_mcp_is_tenant_scoped(client_for) -> None:
 
 
 async def test_mcp_rejects_anonymous_tool_calls(client_for) -> None:
+    """No credential at all is refused at the transport, before any JSON-RPC is read.
+
+    This used to answer 200 with a tool error, and both halves of the change are the point: an
+    OAuth client discovers the authorization server *by being refused* (see
+    ``test_mcp_oauth.py``), and an anonymous ``tools/list`` disclosed the tenant's whole module
+    set. A credential that is merely *wrong* still surfaces as the API's own envelope on the
+    individual tool call — that path is untouched.
+    """
     t = await make_tenant("mcp-anon")
     async with mcp_running(), client_for(t.host) as c:
-        result = await _rpc(
-            c, "tools/call", {"name": "list_companies", "arguments": {}}, auth={}
+        response = await c.post(
+            "/mcp/",
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": "list_companies", "arguments": {}},
+            },
+            headers=_MCP_HEADERS,
         )
-        assert result["result"].get("isError") is True
+        assert response.status_code == 401, response.text
+        assert "resource_metadata=" in response.headers["www-authenticate"]
+
+        # A bad key is a different failure and keeps its old shape.
+        wrong = await _rpc(
+            c,
+            "tools/call",
+            {"name": "list_companies", "arguments": {}},
+            auth={"Authorization": "Bearer schakl_deadbeef_nope"},
+        )
+        assert wrong["result"].get("isError") is True
 
 
 async def test_mcp_refuses_the_standalone_stream_instead_of_holding_it_open(client_for) -> None:
@@ -182,8 +207,10 @@ async def test_mcp_refuses_the_standalone_stream_instead_of_holding_it_open(clie
         )
         assert response.status_code == 405, response.text
         assert response.headers["allow"] == "POST"
-        # POST is unaffected: the guard is about the verb, not about the connection.
-        assert (await _rpc(c, "tools/list", auth={}))["result"]["tools"]
+        # 405 rather than the 401 an anonymous POST now gets, and the ordering is deliberate:
+        # ``GET`` is not offered here to *anyone*, so answering "authenticate first" would send
+        # a client off to complete an OAuth flow that cannot fix it.
+        assert "www-authenticate" not in response.headers
 
 
 #: Bytes of ``tools/list`` the compact profile may spend (CLAUDE.md §12).
@@ -208,7 +235,7 @@ async def test_mcp_compact_profile_fits_a_chat_client(client_for) -> None:
     addable, and the failure would otherwise appear in somebody else's settings screen weeks
     later as an error message we never see.
     """
-    from app.core.mcp.server import _COMPACT_TOOLS
+    from app.core.mcp.sections import _COMPACT_TOOLS
 
     t = await make_tenant("mcp-compact")
     headers = await auth_cookie(t.user)
@@ -250,7 +277,7 @@ async def test_mcp_compact_profile_fits_a_chat_client(client_for) -> None:
         assert called["result"].get("isError") is not True, called
         assert "Compact BV" in json.dumps(called["result"])
 
-        # …and the full surface is untouched, so the profile can never become the default.
+        # …and the full surface is untouched, so a section can never become the default.
         full = await _rpc(c, "tools/list", auth=auth)
         assert len(full["result"]["tools"]) > 100
 
@@ -278,3 +305,142 @@ async def test_meta_modules_advertises_the_mcp_surface(client_for, monkeypatch) 
         assert off["mcp_enabled"] is False
         # Never "unmounted but licensed": the screen must not offer a command either way.
         assert off["mcp_entitled"] is False
+
+
+async def test_a_module_section_is_derived_from_the_module_router(client_for) -> None:
+    """``/mcp/google-ads`` lists that module's tools and nothing else — and nothing lists them.
+
+    This is the specification for the *derivation*, not for a list. A module section is built
+    from the module's own router prefix, so a route added tomorrow is served here tomorrow;
+    the assertions below therefore compare against the OpenAPI document rather than against
+    names written down in a test, which would be the same stale copy one layer out.
+    """
+    from app.core.mcp.sections import build_sections
+    from app.core.mcp.server import _tool_index
+
+    _, paths = _tool_index(fastapi_app)
+    sections = build_sections(paths)
+    expected = {
+        tool
+        for tool, path in paths.items()
+        if path == "/api/v1/google-ads" or path.startswith("/api/v1/google-ads/")
+    }
+    assert sections["google-ads"].tools == expected
+
+    # The segment boundary is the whole reason `_under` exists: `/api/v1/google-ads/...` is not
+    # under `/api/v1/google`, and a plain prefix match says it is — which would fold every
+    # Google Ads tool into the Workspace module's section with nobody able to see why.
+    assert not (sections["google-ads"].tools & sections["google"].tools)
+
+    t = await make_tenant("mcp-section")
+    headers = await auth_cookie(t.user)
+    async with mcp_running(), client_for(t.host) as c:
+        minted = await c.post(
+            "/api/v1/api-keys",
+            json={"name": "s", "scopes": ["companies.company.read"]},
+            headers=headers,
+        )
+        auth = {"Authorization": f"Bearer {minted.json()['secret']}"}
+
+        listed = await _rpc(c, "tools/list", auth=auth, url="/mcp/google-ads")
+        served = {tool["name"] for tool in listed["result"]["tools"]}
+        assert served == expected
+
+        # Response schemas are dropped for every section, not only the curated one: a section is
+        # asked for by somebody who needed a smaller surface, and this is the largest reduction
+        # available that costs a caller nothing at the moment they decide.
+        assert not [tool for tool in listed["result"]["tools"] if tool.get("outputSchema")]
+
+        # A section narrows a *listing*. It is not an authorization boundary: a tool outside it
+        # still answers, still through require_context, still capped by the key's scopes.
+        called = await _rpc(
+            c,
+            "tools/call",
+            {"name": "list_companies", "arguments": {}},
+            auth=auth,
+            url="/mcp/google-ads",
+        )
+        assert called["result"].get("isError") is not True, called
+
+        # A typo'd segment is refused, and the refusal names what exists. Never widened to the
+        # full surface: somebody who typed `/mcp/google-add` asked for 45 tools and would
+        # silently receive 623, which looks like it worked and is not recoverable by reading.
+        unknown = await c.post(
+            "/mcp/google-add",
+            json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+            headers={**_MCP_HEADERS, **auth},
+        )
+        assert unknown.status_code == 404, unknown.text
+        assert "google-ads" in unknown.json()["error"]["message"]
+
+
+async def test_a_bundle_names_modules_and_never_tools(client_for) -> None:
+    """``/mcp/infra`` is exactly the union of its modules' sections.
+
+    Asserted as a union rather than as a count, because that identity is what keeps a bundle as
+    self-maintaining as the sections it unions — the moment a bundle could hold a tool its
+    modules do not, it has become a list somebody has to keep up to date.
+    """
+    from app.core.mcp.sections import KIND_BUNDLE, build_sections
+    from app.core.mcp.server import _tool_index
+
+    _, paths = _tool_index(fastapi_app)
+    sections = build_sections(paths)
+
+    for key in ("agent", "infra", "finance", "growth"):
+        bundle = sections[key]
+        assert bundle.kind == KIND_BUNDLE
+        union: set[str] = set()
+        for module in bundle.modules:
+            prefix = next(
+                s.key for s in sections.values() if s.modules == (module,) and s.kind == "module"
+            )
+            union |= sections[prefix].tools
+        assert bundle.tools == union, key
+
+
+async def test_meta_mcp_describes_every_section_the_server_serves(client_for) -> None:
+    """``/meta/mcp`` is what Instellingen → API en MCP renders, and it agrees with the server.
+
+    The agreement is the assertion. Two places computing "which sections exist" is exactly how a
+    settings screen ends up printing a URL that answers with the full surface — visible to a
+    user, invisible in review.
+    """
+    t = await make_tenant("mcp-meta-sections")
+    headers = await auth_cookie(t.user)
+    async with mcp_running(), client_for(t.host) as c:
+        body = (await c.get("/api/v1/meta/mcp", headers=headers)).json()
+        assert body["enabled"] is True
+        assert body["total_tools"] > 100
+        rows = {row["key"]: row for row in body["sections"]}
+
+        # The three kinds are on the payload because the screen groups on them and they mean
+        # genuinely different things.
+        assert rows["compact"]["kind"] == "curated"
+        assert rows["infra"]["kind"] == "bundle"
+        assert rows["google-ads"]["kind"] == "module"
+
+        # A module section labels itself with the key the modules screen already uses, so the
+        # two can never be one translation apart.
+        assert rows["google-ads"]["label_key"] == "module.google_ads.label"
+        assert rows["google-ads"]["path"] == "/mcp/google-ads"
+        assert rows["infra"]["modules"] and "uptime" in rows["infra"]["modules"]
+
+        # Counts are the number a client actually receives, which is why the index is filtered
+        # by the route maps rather than by a second copy of the exclusions.
+        listed = await _rpc(
+            c,
+            "tools/list",
+            auth={
+                "Authorization": "Bearer "
+                + (
+                    await c.post(
+                        "/api/v1/api-keys",
+                        json={"name": "m", "scopes": ["companies.company.read"]},
+                        headers=headers,
+                    )
+                ).json()["secret"]
+            },
+            url="/mcp/invoicing",
+        )
+        assert len(listed["result"]["tools"]) == rows["invoicing"]["tool_count"]

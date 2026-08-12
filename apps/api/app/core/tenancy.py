@@ -53,6 +53,37 @@ def request_hostname(request: Request) -> str:
     return host.split(",", 1)[0].split(":", 1)[0].strip().lower()
 
 
+def origin_from(host: str, proto: str = "") -> str:
+    """``scheme://host[:port]`` from a forwarded host and (optional) forwarded scheme.
+
+    The scheme has to be *guessed* when nothing forwards it, and the guess must not be "whatever
+    scheme this connection used": every hop that reaches this service is plain HTTP — Traefik
+    terminates TLS, and the SSR web app calls the API over the internal network — so reading it
+    off the socket answers ``http`` for every production request and puts ``http://`` into a
+    discovery document a client is about to trust. Loopback is the only host where plain HTTP is
+    the real answer, so that is the only place it is assumed.
+    """
+    host = host.split(",", 1)[0].strip()
+    proto = proto.split(",", 1)[0].strip()
+    if not proto:
+        proto = "http" if host.startswith(("localhost", "127.0.0.1", "[::1]")) else "https"
+    return f"{proto}://{host}"
+
+
+def external_origin(request: Request) -> str:
+    """The origin the *browser* reached this deployment on — not the one we were called on.
+
+    Distinct from :func:`request_hostname`, which drops the port because a port never resolves a
+    tenant. An origin is a different question: it is echoed into OAuth discovery documents and
+    redirect targets, where a dropped port sends a developer on ``localhost:5173`` to a server
+    that is not running.
+    """
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+    if not host:
+        return str(request.base_url).rstrip("/")
+    return origin_from(host, request.headers.get("x-forwarded-proto", ""))
+
+
 async def resolve_org(session: AsyncSession, host: str) -> Org | None:
     """Resolve the tenant strictly from the request hostname.
 

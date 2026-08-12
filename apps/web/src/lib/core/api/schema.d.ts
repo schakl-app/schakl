@@ -7486,6 +7486,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/meta/mcp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mcp Meta
+         * @description The section catalog, read off the mounted server rather than rebuilt.
+         *
+         *     Rebuilding it here would walk the whole OpenAPI document on every request — the one
+         *     expensive thing this feature does, and it is already paid for once at boot.
+         *     ``build_mcp_asgi_app`` hangs the resolved catalog off the sub-app for exactly this read.
+         */
+        get: operations["mcp_meta_api_v1_meta_mcp_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/meta/me": {
         parameters: {
             query?: never;
@@ -8039,6 +8063,197 @@ export interface paths {
          * @description Reversible: read and unread are the same non-destructive toggle (docs/UX.md).
          */
         patch: operations["set_read_api_v1_notifications__notification_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/oauth/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Connections
+         * @description The clients this user has connected. Counted in one grouped read, not one query per row.
+         */
+        get: operations["list_connections_api_v1_oauth_connections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oauth/connections/{client_pk}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Disconnect
+         * @description Disconnect a client: revoke it, and every key it ever issued goes with it.
+         *
+         *     Revoking the *client* rather than this user's keys is the honest kill switch — a connector
+         *     that has been disconnected must not be able to refresh its way back in, and a refresh
+         *     presented against a revoked client is refused before any key is looked at.
+         */
+        delete: operations["disconnect_api_v1_oauth_connections__client_pk__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oauth/consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Consent Request
+         * @description Validate an authorization request and describe it, without writing anything.
+         *
+         *     A person who opens the screen and closes it again leaves no row behind — which is why the
+         *     grant is written at approval and not here.
+         */
+        get: operations["consent_request_api_v1_oauth_consent_get"];
+        put?: never;
+        /**
+         * Approve Consent
+         * @description Approve, and get the URL to send the browser back to.
+         *
+         *     Gated on ``apikeys.personal.manage`` — the same permission the key screen requires — because
+         *     that is exactly what this is: minting a personal key, with a redirect instead of a copy
+         *     button. A member who may not mint one by hand may not mint one by consenting either.
+         */
+        post: operations["approve_consent_api_v1_oauth_consent_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oauth/metadata/authorization-server": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Authorization Server Metadata
+         * @description Served here and *proxied* by the web app at ``/.well-known/oauth-authorization-server``.
+         *
+         *     The RFC puts it on the root of the host and the edge gives the root to the web app
+         *     (docs/MCP.md), so this is the copy the proxy reads. Deliberately not duplicated in the web
+         *     app: a second literal of the token endpoint's URL is a second thing to forget to change.
+         */
+        get: operations["authorization_server_metadata_api_v1_oauth_metadata_authorization_server_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oauth/metadata/protected-resource": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Protected Resource Metadata
+         * @description One document per ``/mcp`` URL, section segment included.
+         *
+         *     The path is a *parameter* rather than a route so that a section added tomorrow is
+         *     discoverable tomorrow — and it is pattern-bound rather than free text because it is echoed
+         *     into the document as the resource identifier a token gets bound to.
+         */
+        get: operations["protected_resource_metadata_api_v1_oauth_metadata_protected_resource_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oauth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register Client
+         * @description Register a client. Registering grants **nothing** — it names a thing a person may later
+         *     consent to, and until somebody does, the row can read no byte of tenant data.
+         *
+         *     Rate-limited by IP, because it is the one unauthenticated write in the codebase that a
+         *     stranger can repeat.
+         */
+        post: operations["register_client_api_v1_oauth_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oauth/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke
+         * @description Always 200. A revocation endpoint that distinguishes "revoked" from "no such token" is a
+         *     token oracle, and the caller can do nothing with the difference anyway (RFC 7009 §2.2).
+         */
+        post: operations["revoke_api_v1_oauth_revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oauth/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Token
+         * @description ``authorization_code`` and ``refresh_token``. Form-encoded, per the RFC.
+         *
+         *     What comes back is an ``api_keys`` secret — a real key, usable at ``/mcp`` and at the REST
+         *     API alike, and capped by the consenting user's live permissions on every request.
+         */
+        post: operations["token_api_v1_oauth_token_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/oxxa/accounts": {
@@ -12610,6 +12825,30 @@ export interface components {
             /** Token */
             token: string;
         };
+        /** Body_revoke_api_v1_oauth_revoke_post */
+        Body_revoke_api_v1_oauth_revoke_post: {
+            /** Token */
+            token: string;
+        };
+        /** Body_token_api_v1_oauth_token_post */
+        Body_token_api_v1_oauth_token_post: {
+            /** Client Id */
+            client_id?: string | null;
+            /** Client Secret */
+            client_secret?: string | null;
+            /** Code */
+            code?: string | null;
+            /** Code Verifier */
+            code_verifier?: string | null;
+            /** Grant Type */
+            grant_type: string;
+            /** Redirect Uri */
+            redirect_uri?: string | null;
+            /** Refresh Token */
+            refresh_token?: string | null;
+            /** Resource */
+            resource?: string | null;
+        };
         /** Body_upload_company_logo_api_v1_companies__company_id__logo_post */
         Body_upload_company_logo_api_v1_companies__company_id__logo_post: {
             /** File */
@@ -13188,6 +13427,29 @@ export interface components {
             /** Numbered */
             numbered: number;
         };
+        /**
+         * ClientRegistration
+         * @description RFC 7591's request. Unknown members are ignored rather than refused — the registry of
+         *     metadata names is open, and a client sending one we do not read is not an error.
+         */
+        ClientRegistration: {
+            /**
+             * Client Name
+             * @default MCP client
+             */
+            client_name: string;
+            /** Client Uri */
+            client_uri?: string | null;
+            /** Logo Uri */
+            logo_uri?: string | null;
+            /** Redirect Uris */
+            redirect_uris?: string[];
+            /**
+             * Token Endpoint Auth Method
+             * @default none
+             */
+            token_endpoint_auth_method: string;
+        };
         /** ClientRevenue */
         ClientRevenue: {
             /** Company Id */
@@ -13612,36 +13874,56 @@ export interface components {
              */
             user_id: string;
         };
-        /**
-         * ConnectionRead
-         * @description The caller's own connection — or the admin list's per-user rows.
-         */
-        ConnectionRead: {
+        /** ConsentApproval */
+        ConsentApproval: {
+            /** Client Id */
+            client_id: string;
+            /** Code Challenge */
+            code_challenge: string;
             /**
-             * Connected At
-             * Format: date-time
+             * Code Challenge Method
+             * @default S256
              */
-            connected_at: string;
-            /** Email */
-            email: string;
-            /** Gmail Excluded Label */
-            gmail_excluded_label?: string | null;
-            /**
-             * Gmail Sync Enabled
-             * @default false
-             */
-            gmail_sync_enabled: boolean;
-            /** Last Error */
-            last_error?: string | null;
+            code_challenge_method: string;
+            /** Redirect Uri */
+            redirect_uri: string;
+            /** Resource */
+            resource?: string | null;
             /** Scopes */
             scopes?: string[];
-            /** Status */
-            status: string;
-            /**
-             * User Id
-             * Format: uuid
-             */
-            user_id: string;
+            /** State */
+            state?: string | null;
+        };
+        /**
+         * ConsentRequest
+         * @description What the consent screen renders. Everything here is either the client's own words or the
+         *     catalog's — no tenant data, because the person reading it has not agreed to anything yet.
+         */
+        ConsentRequest: {
+            /** Client Name */
+            client_name: string;
+            /** Client Uri */
+            client_uri: string | null;
+            /** Redirect Uri */
+            redirect_uri: string;
+            /** Resource */
+            resource: string | null;
+            /** Scopes */
+            scopes: components["schemas"]["ConsentScope"][];
+        };
+        /** ConsentResult */
+        ConsentResult: {
+            /** Redirect To */
+            redirect_to: string;
+        };
+        /** ConsentScope */
+        ConsentScope: {
+            /** Label Key */
+            label_key: string;
+            /** Read */
+            read: boolean;
+            /** Value */
+            value: string;
         };
         /**
          * ContactCompanyLink
@@ -19132,6 +19414,45 @@ export interface components {
             metric: string;
         };
         /**
+         * McpMeta
+         * @description What the connection screen needs about this instance's MCP surface.
+         *
+         *     Its own endpoint rather than more fields on ``/meta/modules``: that payload is loaded by the
+         *     app layout on every navigation and by the login screen before anyone signs in, and thirty
+         *     section rows on it would be paid for by every page in the product to serve one screen
+         *     (docs/PERFORMANCE.md — a row carries only what its screen draws).
+         */
+        McpMeta: {
+            /** Enabled */
+            enabled: boolean;
+            /** Entitled */
+            entitled: boolean;
+            /** Oauth Issuer */
+            oauth_issuer?: string | null;
+            /** Sections */
+            sections?: components["schemas"]["McpSection"][];
+            /** Total Tools */
+            total_tools: number;
+        };
+        /**
+         * McpSection
+         * @description One ``/mcp/<key>`` URL, as Instellingen → API en MCP lists it.
+         */
+        McpSection: {
+            /** Key */
+            key: string;
+            /** Kind */
+            kind: string;
+            /** Label Key */
+            label_key: string;
+            /** Modules */
+            modules?: string[];
+            /** Path */
+            path: string;
+            /** Tool Count */
+            tool_count: number;
+        };
+        /**
          * MeInfo
          * @description The current user *within the resolved tenant* — including what they may do.
          */
@@ -19453,7 +19774,7 @@ export interface components {
              * @default false
              */
             connected: boolean;
-            connection?: components["schemas"]["ConnectionRead"] | null;
+            connection?: components["schemas"]["app__modules__google__schemas__ConnectionRead"] | null;
             /**
              * Drive Enabled
              * @default false
@@ -27029,11 +27350,63 @@ export interface components {
             stage: string;
         };
         /**
+         * ConnectionRead
+         * @description One connected client, as Instellingen → API en MCP lists it.
+         */
+        app__core__oauth__router__ConnectionRead: {
+            /** Client Name */
+            client_name: string;
+            /** Client Uri */
+            client_uri: string | null;
+            /** Created At */
+            created_at: unknown;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Used At */
+            last_used_at: unknown;
+            /** Sessions */
+            sessions: number;
+        };
+        /**
          * DomainStatus
          * @description Operational state of a domain. ``redirect``'s uptime/redirect webhook is a later slice.
          * @enum {string}
          */
         app__modules__domains__models__DomainStatus: "active" | "redirect" | "parked" | "expired" | "inactive";
+        /**
+         * ConnectionRead
+         * @description The caller's own connection — or the admin list's per-user rows.
+         */
+        app__modules__google__schemas__ConnectionRead: {
+            /**
+             * Connected At
+             * Format: date-time
+             */
+            connected_at: string;
+            /** Email */
+            email: string;
+            /** Gmail Excluded Label */
+            gmail_excluded_label?: string | null;
+            /**
+             * Gmail Sync Enabled
+             * @default false
+             */
+            gmail_sync_enabled: boolean;
+            /** Last Error */
+            last_error?: string | null;
+            /** Scopes */
+            scopes?: string[];
+            /** Status */
+            status: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
         /** TemplateCreate */
         app__modules__invoicing__schemas__TemplateCreate: {
             /**
@@ -33664,7 +34037,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ConnectionRead"][];
+                    "application/json": components["schemas"]["app__modules__google__schemas__ConnectionRead"][];
                 };
             };
         };
@@ -42178,6 +42551,26 @@ export interface operations {
             };
         };
     };
+    mcp_meta_api_v1_meta_mcp_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpMeta"];
+                };
+            };
+        };
+    };
     me_api_v1_meta_me_get: {
         parameters: {
             query?: never;
@@ -43278,6 +43671,276 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotificationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_connections_api_v1_oauth_connections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app__core__oauth__router__ConnectionRead"][];
+                };
+            };
+        };
+    };
+    disconnect_api_v1_oauth_connections__client_pk__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_pk: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    consent_request_api_v1_oauth_consent_get: {
+        parameters: {
+            query: {
+                client_id: string;
+                redirect_uri: string;
+                scope?: string;
+                resource?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsentRequest"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_consent_api_v1_oauth_consent_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsentApproval"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsentResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    authorization_server_metadata_api_v1_oauth_metadata_authorization_server_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    protected_resource_metadata_api_v1_oauth_metadata_protected_resource_get: {
+        parameters: {
+            query?: {
+                resource_path?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_client_api_v1_oauth_register_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClientRegistration"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_api_v1_oauth_revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["Body_revoke_api_v1_oauth_revoke_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    token_api_v1_oauth_token_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["Body_token_api_v1_oauth_token_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

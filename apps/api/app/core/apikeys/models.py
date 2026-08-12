@@ -77,3 +77,23 @@ class ApiKey(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # --- OAuth (docs/MCP.md) ------------------------------------------------------------- #
+    # An OAuth flow does not mint a *second* kind of credential: what it hands back is one of
+    # these rows, which is why nothing above changes for it. The columns below are the only
+    # things the protocol needs that a key had no opinion about — which client holds it, and how
+    # it renews itself without sending the user back through a consent screen.
+    #: Set iff the OAuth flow issued this key. Revoking the client revokes these with it (FK
+    #: cascade), and it is what lets the settings screen say "Claude" rather than "a key".
+    oauth_client_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("oauth_clients.id", ondelete="CASCADE"), nullable=True
+    )
+    #: The refresh token: hashed, looked up by its plaintext prefix — the same shape as the key
+    #: itself, and deliberately a *different* token prefix (``schakr_``). A refresh token
+    #: presented as a credential is then not a key that nearly works; it is not one of ours at
+    #: all, and ``extract_presented_key`` never sees it.
+    refresh_prefix: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    refresh_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    refresh_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

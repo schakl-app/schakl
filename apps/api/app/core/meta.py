@@ -30,7 +30,13 @@ from app.core.entitlements.service import (
 from app.core.models import OrgSettings, OrgStatus
 from app.core.permissions.deps import no_permission_required, require_permission
 from app.core.region import DEFAULT_COUNTRY, is_valid_country
-from app.core.tenancy import RequestContext, request_hostname, require_context, resolve_org
+from app.core.tenancy import (
+    RequestContext,
+    external_origin,
+    request_hostname,
+    require_context,
+    resolve_org,
+)
 from app.core.timezone import is_valid_timezone
 from app.db import async_session_maker, set_current_org
 from app.errors import AppError
@@ -581,6 +587,72 @@ async def modules(request: Request) -> ModulesMeta:
         instance_email_available=instance_email_available,
         mcp_enabled=mcp_enabled,
         mcp_entitled=mcp_entitled,
+    )
+
+
+class McpSection(BaseModel):
+    """One ``/mcp/<key>`` URL, as Instellingen → API en MCP lists it."""
+
+    key: str
+    #: ``module`` | ``bundle`` | ``curated`` — the screen groups on it, and the three mean
+    #: genuinely different things (``app/core/mcp/sections.py``).
+    kind: str
+    #: An i18n key the *client* resolves. The API picks no locale for a label (§17).
+    label_key: str
+    path: str
+    tool_count: int
+    #: The registry modules behind a bundle, so the screen can say what is in one.
+    modules: list[str] = Field(default_factory=list)
+
+
+class McpMeta(BaseModel):
+    """What the connection screen needs about this instance's MCP surface.
+
+    Its own endpoint rather than more fields on ``/meta/modules``: that payload is loaded by the
+    app layout on every navigation and by the login screen before anyone signs in, and thirty
+    section rows on it would be paid for by every page in the product to serve one screen
+    (docs/PERFORMANCE.md — a row carries only what its screen draws).
+    """
+
+    enabled: bool
+    entitled: bool
+    #: The whole surface at ``/mcp``, for the screen to contrast a section against.
+    total_tools: int
+    sections: list[McpSection] = Field(default_factory=list)
+    #: The OAuth issuer, which is this tenant's own origin (docs/MCP.md). Advertised so the
+    #: screen never hardcodes an endpoint the discovery document owns.
+    oauth_issuer: str | None = None
+
+
+@router.get(
+    "/mcp",
+    response_model=McpMeta,
+    dependencies=[
+        no_permission_required(
+            "which tool sections this instance serves: code-defined, no tenant data. The "
+            "connection screen renders its URLs from it, and every route behind those URLs "
+            "still declares its own permission"
+        )
+    ],
+)
+async def mcp_meta(request: Request, ctx: RequestContext = Depends(require_context)) -> McpMeta:
+    """The section catalog, read off the mounted server rather than rebuilt.
+
+    Rebuilding it here would walk the whole OpenAPI document on every request — the one
+    expensive thing this feature does, and it is already paid for once at boot.
+    ``build_mcp_asgi_app`` hangs the resolved catalog off the sub-app for exactly this read.
+    """
+    from app.core.mcp.sections import describe
+
+    enabled, entitled = await _mcp_availability()
+    state = getattr(getattr(request.app.state, "mcp_app", None), "state", None)
+    sections = getattr(state, "sections", None) or {}
+    return McpMeta(
+        enabled=enabled,
+        entitled=entitled,
+        total_tools=getattr(state, "tool_count", 0),
+        sections=[McpSection(**row) for row in describe(sections)],
+        oauth_issuer=external_origin(request) if enabled else None,
     )
 
 

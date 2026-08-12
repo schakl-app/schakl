@@ -736,8 +736,26 @@ Desktop/Code, agents) can work with the instance's data. Design rules:
 - **Auth: API keys** (#20), which already carry **per-key permission scopes** — the
   permissions-per-MCP-key model. The proxy forwards the caller's `Authorization`/`X-API-Key`
   plus the tenant hostname on every internal call; keys are tenant-scoped, revocable and
-  optionally non-expiring. An **OAuth 2.1 resource-server** layer (RFC 9728) is the later
-  addition for clients that require it — the MCP server never runs its own login either way.
+  optionally non-expiring. **OAuth 2.1 is the second door onto the same credential, not a second
+  credential** (`app/core/oauth/`, `docs/MCP.md`): DCR, authorization code + PKCE (`S256` only),
+  refresh and RFC 8414/9728 discovery, where what redemption hands back **is an `api_keys` row**
+  belonging to the person who consented. There is no access-token table, because a second
+  credential is a second set of answers about what it may do and the second answer is always the
+  one missing a rule — so scopes stay capped by the owner's *live* permissions on every request,
+  and the company horizon, tenant scoping and revocation are the ones already written. And **the
+  authorization server authenticates nobody**: consent runs on the browser session the web app
+  already holds (local + 2FA, or this org's OIDC), because a login here would be a second
+  password path, a second 2FA decision and a second answer to "which org is this session for".
+  Three consequences worth keeping. **The discovery documents live where the RFC puts them and
+  the edge decides who serves them** — both are on the root of the host, which belongs to the web
+  app (see the "route the edge does not forward" rule below), so the web app *serves* them and
+  the API *authors* them; an edge rule would have needed every existing install to update Traefik
+  before a connector worked. **Single use is the database's job**: redemption is a conditional
+  `UPDATE … WHERE redeemed_at IS NULL`, because a retried token request races two replicas that
+  share no memory (docs/PAYMENTS.md's rule, one protocol over). And **an anonymous `/mcp` request
+  now answers 401 with the `WWW-Authenticate` challenge** — a behaviour change, and the fix to
+  two things at once: an OAuth client discovers the server *by being refused*, and an anonymous
+  `tools/list` disclosed the tenant's whole module set to nobody in particular.
 - **Tool surface:** every `/api/v1` operation is a tool, generated from the API's own
   OpenAPI spec (FastMCP) and proxied **in-process** back to the REST API — so every call
   travels `require_context` (tenant + RLS + permissions) exactly like the HTTP request it
@@ -770,6 +788,28 @@ Desktop/Code, agents) can work with the instance's data. Design rules:
   The selector is a **path segment, not a query parameter**: this URL is pasted into someone
   else's settings screen, and the query string is the part of a URL that tools normalise, strip
   and re-encode.
+- **A section is derived from a boundary that already exists, or it is a list that rots**
+  (`app/core/mcp/sections.py`). One curated profile answered ChatGPT; it did not answer "give a
+  Google Ads agent only Google Ads", and writing a second, third and tenth hand-picked list would
+  have been ten copies of ten routers. So `/mcp/<section>` has three kinds and only one of them
+  names a tool. A **module section** (`/mcp/google-ads`) is derived from that module's own router
+  prefix, so a route added tomorrow is served tomorrow. A **bundle** (`/mcp/infra`) names
+  **modules, never tools**, which is what keeps it as self-maintaining as the sections it unions
+  — and it exists because an agency job is not a module: "the domain register and what answers on
+  it" spans seven of them. A **curated** section may only exist where an *external* ceiling makes
+  a module boundary useless, which is exactly once (`compact`, ChatGPT's 5,000 tokens). Three
+  more rules came out of building it. **`outputSchema` is dropped for every section**, not only
+  the curated one: it is 79% of the bytes and buys nothing at decision time, and a section is
+  asked for by somebody who needed a smaller surface. **A typo is refused, naming what exists** —
+  falling back to the full surface would hand somebody who asked for 45 tools a silent 620, which
+  looks like it worked and is not recoverable by reading. And **the tool→section index is read
+  off the built server, never predicted from the spec**: `mcp_names` only supplies a name where
+  the short form is unique, and FastMCP derives the rest by splitting at the first `__` and
+  capping — so an index keyed on the operationId matched *no tool at all* for 27 of them, and the
+  sections still looked plausible because the other 597 were there. Reading a private attribute
+  is the lesser evil: restating somebody else's naming rule is a copy that drops tools quietly,
+  a release later, while this breaks loudly and a test compares a section against what
+  `tools/list` actually answers.
 - **A stream nothing can write to is not a stream, it is a held connection.** Streamable HTTP
   lets a client open a standalone `GET` stream for server-initiated messages; ours is stateless
   by choice, so nothing is ever routed to it and it never ends. The SDK refuses `DELETE` with

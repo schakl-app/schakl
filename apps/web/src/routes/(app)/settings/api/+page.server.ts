@@ -32,9 +32,14 @@ export const load: PageServerLoad = async (event) => {
   // The catalog is already on the settings layout for exactly this screen's sake (#290) — it
   // lists `apikeys.personal.manage` among its consumers — so this load asks for two things.
   const parent = await event.parent();
-  const [keys, modules] = await Promise.all([
+  const [keys, modules, mcp, connections] = await Promise.all([
     api.GET("/api/v1/api-keys"),
     api.GET("/api/v1/meta/modules"),
+    // The section catalog (docs/MCP.md). Its own endpoint rather than four more fields on
+    // `/meta/modules`, which the app layout loads on every navigation — thirty section rows
+    // there would be paid for by every page in the product to serve this one screen.
+    api.GET("/api/v1/meta/mcp"),
+    api.GET("/api/v1/oauth/connections"),
   ]);
 
   // A key can never grant more than its owner holds, so the offerable scopes are the catalog
@@ -65,6 +70,15 @@ export const load: PageServerLoad = async (event) => {
     // `claude mcp add` line that fails in a terminal with no screen having warned anyone.
     mcpEnabled: modules.data?.mcp_enabled ?? false,
     mcpEntitled: modules.data?.mcp_entitled ?? false,
+    // What the whole surface costs, and what each section costs instead. The number is the
+    // argument: `/mcp` is 623 tools and a chat client's ceiling is ~5,000 tokens for all of
+    // them together, so "pick a section" is not a preference — it is the difference between a
+    // connector that adds and one that does not.
+    mcpTotalTools: mcp.data?.total_tools ?? 0,
+    mcpSections: mcp.data?.sections ?? [],
+    // Clients this user has connected over OAuth. Listed beside the keys because they are the
+    // same thing: an OAuth session *is* an api_keys row, so revoking either is one act.
+    connections: connections.data ?? [],
   };
 };
 
@@ -94,6 +108,21 @@ export const actions: Actions = {
     }
     // The full secret is returned exactly once — hand it straight to the page to reveal.
     return { createdSecret: data?.secret, createdName: data?.name, target };
+  },
+
+  disconnect: async (event) => {
+    const form = await event.request.formData();
+    const id = String(form.get("client_pk") ?? "");
+    if (id) {
+      // Revoking the *client*, not this user's keys: a connector that has been disconnected
+      // must not be able to refresh its way back in, and a refresh presented against a revoked
+      // client is refused before any key is looked at.
+      const { error } = await apiFor(event).DELETE("/api/v1/oauth/connections/{client_pk}", {
+        params: { path: { client_pk: id } },
+      });
+      if (error) return fail(400, { error: apiErrorKey(error).key });
+    }
+    return { disconnected: true };
   },
 
   revokeKey: async (event) => {
