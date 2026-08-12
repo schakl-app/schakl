@@ -221,10 +221,16 @@ class InteractionReject(BaseModel):
     suppress_thread: bool = False
 
 
-#: The most rows one bulk call may touch. The list pages at 50 and selection is per page
-#: (the bulk bar says so), so this is already twice what the screen can offer — it exists to
+#: The most rows one bulk call may touch — one **full page** at the largest size the pager
+#: offers, which is the same number `app/core/bulk` caps its own selections at. It exists to
 #: bound the per-row work the batch fans out into, not to ration the feature.
-MAX_BULK_IDS = 100
+#:
+#: It read 100, justified as "the list pages at 50, so this is twice what the screen can
+#: offer". Both halves were wrong: `PAGE_SIZES` goes to 200, and a cap *below* what one page
+#: can hold turns "select all, Afwijzen" into a 422 for the whole batch — a red
+#: `errors.validation` naming no row, over a selection the screen had just said was fine.
+#: A per-call cap must never be smaller than the selection the UI can hand it.
+MAX_BULK_IDS = 200
 
 
 class InteractionBulkIds(BaseModel):

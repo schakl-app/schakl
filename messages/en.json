@@ -2715,6 +2715,8 @@
   "interactions.bulk.assign_and_approve": "Assign and approve ({count})",
   "interactions.bulk.reject_title": "Reject selection",
   "interactions.bulk.reject_message": "Reject {count} emails? They are removed from the CRM and the messages are ignored from now on.",
+  "interactions.bulk.none_pending": "None of the selected rows is an email from your own mailbox still awaiting review. Only those can be approved or rejected.",
+  "interactions.bulk.none_filable": "None of the selected rows is an email from your own mailbox. Only those can be assigned.",
   "interactions.bulk.done_approve": "{count} approved",
   "interactions.bulk.done_assign": "{count} assigned",
   "interactions.bulk.done_reject": "{count} rejected",

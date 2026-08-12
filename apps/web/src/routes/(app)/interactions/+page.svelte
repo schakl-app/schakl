@@ -167,6 +167,14 @@
    * carries its own subset as `eligible`, which the bar renders beside the label whenever it is
    * fewer than the selection; the API reports the rest rather than refusing the batch, but an
    * item that silently did less than it said would still be lying.
+   *
+   * **And a subset of none has to say so out loud.** `eligible: 0` disables the button, which
+   * was the whole of the answer: an agency whose emails arrive as uploaded `.eml` files (#262)
+   * or are already logged ticked three of them, pressed a greyed "Afwijzen (0)" and got
+   * nothing — no message, no tooltip, no request. The count is not an explanation; it names
+   * the number and not the rule, and the rule here is not guessable from the screen (these
+   * *are* emails, and they *are* yours). So each action states why it cannot run over this
+   * selection, and `(0)` becomes the short form of a sentence rather than the whole of it.
    */
   const canReview = $derived(can(page.data.user, "interactions.interaction.review"));
   let selecting = $state(false);
@@ -180,6 +188,14 @@
       .filter((item) => isGmailRow(item) && isOwner(item) && item.status === "pending")
       .map((item) => item.id),
   );
+  /**
+   * Why a review action can do nothing with what is ticked — `undefined` while it can.
+   *
+   * Only over a non-empty selection: "select something first" is the bar's own sentence and a
+   * better answer than this one when nothing is picked yet.
+   */
+  const reviewBlocked = (eligible: number, key: string) =>
+    bulkSelected.length > 0 && eligible === 0 ? t(key) : undefined;
   let showBulkAssign = $state(false);
   let showBulkReject = $state(false);
   // Approve is a plain POST with no dialog in front of it, so it stays a real `<form>` — that is
@@ -202,12 +218,14 @@
             icon: Check,
             onclick: () => approveForm?.requestSubmit(),
             eligible: bulkPendingIds.length,
+            disabledReason: reviewBlocked(bulkPendingIds.length, "interactions.bulk.none_pending"),
           },
           {
             label: t("interactions.assign"),
             icon: ArrowRightLeft,
             onclick: () => (showBulkAssign = true),
             eligible: bulkFilableIds.length,
+            disabledReason: reviewBlocked(bulkFilableIds.length, "interactions.bulk.none_filable"),
           },
           {
             label: t("interactions.reject"),
@@ -215,6 +233,7 @@
             onclick: () => (showBulkReject = true),
             danger: true,
             eligible: bulkPendingIds.length,
+            disabledReason: reviewBlocked(bulkPendingIds.length, "interactions.bulk.none_pending"),
           },
         ]
       : [],

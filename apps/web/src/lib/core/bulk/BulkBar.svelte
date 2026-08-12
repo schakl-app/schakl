@@ -64,7 +64,12 @@
     <div class="ml-auto flex flex-wrap items-center gap-2">
       <!-- Disabled until something is ticked, with the reason in the title: in this mode the
            buttons are the point, so hiding them until a row is picked would leave the user in a
-           mode whose purpose is invisible. -->
+           mode whose purpose is invisible.
+
+           "Nothing is selected" outranks the action's own `disabledReason`, and the order is
+           load-bearing: an action whose reason is "none of these qualify" is *also* ineligible
+           over an empty selection, so preferring the reason would answer the wrong question
+           first — you would be told why the rows you have not picked yet do not qualify. -->
       {#each items as item (item.label)}
         {@const Icon = item.icon}
         {@const blocked = count === 0 || item.eligible === 0 || !!item.disabledReason}
@@ -86,7 +91,7 @@
             type="button"
             class="{button} {tone}"
             disabled={blocked}
-            title={item.disabledReason ?? (count === 0 ? t("bulk.select_first") : undefined)}
+            title={count === 0 ? t("bulk.select_first") : item.disabledReason}
             onclick={item.onclick}
           >
             {#if Icon}<Icon size={14} />{/if}

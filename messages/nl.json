@@ -2715,6 +2715,8 @@
   "interactions.bulk.assign_and_approve": "Toewijzen en goedkeuren ({count})",
   "interactions.bulk.reject_title": "Selectie afwijzen",
   "interactions.bulk.reject_message": "{count} e-mails afwijzen? Ze verdwijnen uit het CRM en de berichten worden voortaan genegeerd.",
+  "interactions.bulk.none_pending": "Geen van de geselecteerde regels is een e-mail uit je eigen postvak die nog beoordeeld moet worden. Alleen die kun je goedkeuren of afwijzen.",
+  "interactions.bulk.none_filable": "Geen van de geselecteerde regels is een e-mail uit je eigen postvak. Alleen die kun je toewijzen.",
   "interactions.bulk.done_approve": "{count} goedgekeurd",
   "interactions.bulk.done_assign": "{count} toegewezen",
   "interactions.bulk.done_reject": "{count} afgewezen",
