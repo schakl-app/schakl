@@ -197,6 +197,10 @@ class LeaveProfileRead(BaseModel):
     schedule: WorkSchedule
     #: True when ``schedule`` is the org default rather than this employee's own.
     inherited: bool
+    #: The kind of the employment period in force today, or ``null`` when none is on file.
+    #: ``null`` is deliberately not ``employee``: it is what stops a tenant that has never
+    #: entered a contract from showing everybody the freelancer's own availability surface.
+    employment_type: EmploymentKind | None = None
 
 
 class LeaveProfileSummary(BaseModel):

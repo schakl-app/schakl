@@ -202,6 +202,27 @@
   let registerOpen = $state(false);
   // The opener the shared employment modals hand back; a roster ⋯ item calls it for a member.
   let openEmployment = $state<OpenEmployment>();
+
+  /** Who holds a freelance period, so the ⋯ offers availability only where it means something.
+   *  Read off the contracts this page already loads — a payroll employee has no week of their
+   *  own to bend, and a menu item that opens an empty surface is a menu item that misleads. */
+  const freelancerIds = $derived(
+    new Set(
+      data.contracts
+        .filter((c) => c.employment_type === "freelance")
+        .map((c) => c.user_id as string),
+    ),
+  );
+  // Deep link from an agenda chip: `?availability=<entry id>` opens that person's availability
+  // modal. The entry names the *person* here — the roster's surface is per member — so the id is
+  // resolved against the rows this page already holds rather than fetched again.
+  const availabilityIntent = page.url.searchParams.get("availability") ?? "";
+  $effect(() => {
+    if (!availabilityIntent || !openEmployment) return;
+    const entry = data.availability.find((a) => a.id === availabilityIntent);
+    const member = entry && data.members.find((m) => m.user_id === entry.user_id);
+    if (member) openEmployment(member, "availability");
+  });
   let rejectId = $state("");
   let rejectOpen = $state(false);
   let cancelId = $state("");
@@ -473,7 +494,7 @@
                   compact
                   items={employmentMenuItems(member, openEmployment, {
                     schedules: data.manageEmployment,
-                    availability: data.keepsAvailability,
+                    availability: data.keepsAvailability && freelancerIds.has(member.user_id),
                     rates: false,
                   })}
                 />

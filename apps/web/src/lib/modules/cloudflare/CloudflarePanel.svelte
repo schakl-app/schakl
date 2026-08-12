@@ -19,8 +19,14 @@
    * It therefore renders whether or not the domain is connected here.
    *
    * **Host contract:** `?/cfConnect`, `?/cfCheck`, `?/cfSaveRedirect`, `?/cfRemoveRedirect`,
-   * `?/cfLinkPages`, `?/cfUnlinkPages` plus the DNS actions used by `CloudflareDns` (spread
-   * `cloudflareActions`).
+   * `?/cfAdoptRedirect`, `?/cfEditRule`, `?/cfDeleteRule`, `?/cfLinkPages`, `?/cfUnlinkPages`
+   * plus the DNS actions used by `CloudflareDns` (spread `cloudflareActions`).
+   *
+   * The redirect section lists **every** redirect this domain has, from whichever source, and
+   * each row carries the three acts that apply to it: edit it at Cloudflare, delete it at
+   * Cloudflare, and — for a rule schakl could have written — adopt it. That is what turns an
+   * inherited redirect from a finding into a record. Editing and deleting name the rule by id and
+   * do not claim it; adoption is the separate, explicit act of taking it on.
    */
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
@@ -54,6 +60,8 @@
 
   const busy = new InFlight();
   let confirmRemoveRedirect = $state(false);
+  let confirmDeleteRule = $state(false);
+  let deleteRuleTarget = $state<{ id: string; label: string } | null>(null);
   let confirmUnlink = $state(false);
   let unlinkTarget = $state<{ id: string; hostname: string; project: string } | null>(null);
 
@@ -61,6 +69,12 @@
   const zone = $derived(status?.zone ?? null);
   const redirect = $derived(status?.redirect ?? null);
   const issues = $derived(status?.issues ?? []);
+  // Everything at Cloudflare that redirects and is not ours. Filled on a **stored** read too
+  // (from the zone's last observation), which is what lets an inherited redirect be on the page
+  // the moment it opens rather than only while a check's answer is on screen.
+  const observed = $derived(status?.conflicts ?? []);
+  const otherRules = $derived(observed.filter((row) => row.kind === "redirect_rule"));
+  const pageRules = $derived(observed.filter((row) => row.kind === "page_rule"));
   // The API raises findings for an **unconnected** domain too: `domain_says_redirect` (this
   // record says it redirects and no rule of ours does, which is exactly how a redirect wired
   // outside schakl looks) and `duplicate_zone`. They were computed and then dropped, because
@@ -104,27 +118,121 @@
 
   const statusCodes = [301, 302, 307, 308];
 
-  // Form state, seeded from the stored redirect so editing starts from what is live.
+  // The form is **collapsed until asked for**. A domain-wide redirect is a thing most domains
+  // never have, and the panel opened with a target field, a status select and four checkboxes
+  // permanently expanded over the top of it — which also meant a redirect that *did* exist was
+  // only ever shown as a pre-filled form, never stated as a fact.
+  let formOpen = $state(false);
   let target = $state("");
   let statusCode = $state(301);
   let preservePath = $state(true);
   let preserveQuery = $state(true);
   let includeSubdomains = $state(true);
-  let seeded = $state<string | null>(null);
-  $effect(() => {
-    const key = redirect?.id ?? "none";
-    if (seeded === key) return;
-    seeded = key;
+  // Which rule the open form writes. `null` = schakl's own redirect, through `?/cfSaveRedirect`,
+  // which may also *create* one. A rule id means an existing rule at Cloudflare, edited in place
+  // through `?/cfEditRule` — a different endpoint because it is a different act: it cannot create
+  // anything, and editing a rule schakl does not own deliberately does not claim it.
+  let editRuleId = $state<string | null>(null);
+  // Whether this rule's match set is one schakl can rewrite (the API's tri-state
+  // `include_subdomains`). False means the expression is kept verbatim, so the checkbox is not
+  // drawn — a control that silently does nothing is worse than one that is absent, and here the
+  // *absence* is the honest statement that the rule's reach is not being touched.
+  let scopeEditable = $state(true);
+  // The code the rule holds when it is one schakl cannot write (a 303, say). The select offers the
+  // four we can express, so such a rule cannot keep its code through an edit — and a `<select>`
+  // whose bound value matches no option renders blank and posts nothing, which would have turned
+  // it into a 301 with no word said. Named here so the form can say it out loud instead.
+  let unwritableCode = $state<number | null>(null);
+
+  /** Seed the form from an intent (editing) or from nothing (adding), and open it. */
+  function openForm(intent?: {
+    target_url?: string | null;
+    status_code?: number | null;
+    preserve_path?: boolean | null;
+    preserve_query?: boolean | null;
+    include_subdomains?: boolean | null;
+  }) {
     // Falls back to what the *domain record* says it redirects to. That is the state an agency
     // inherits — the domain is marked "omleiding" here and the rule was made in Cloudflare's
-    // dashboard — and an empty box there means retyping a URL both sides already know, or, now,
-    // an adopt button that cannot be pressed because there is no intent to compare against.
-    target = redirect?.target_url ?? status?.domain_redirect_url ?? "";
-    statusCode = redirect?.status_code ?? 301;
-    preservePath = redirect?.preserve_path ?? true;
-    preserveQuery = redirect?.preserve_query ?? true;
-    includeSubdomains = redirect?.include_subdomains ?? true;
-  });
+    // dashboard — so an empty box there means retyping a URL both sides already know.
+    target = intent?.target_url ?? status?.domain_redirect_url ?? "";
+    statusCode = intent?.status_code ?? 301;
+    preservePath = intent?.preserve_path ?? true;
+    preserveQuery = intent?.preserve_query ?? true;
+    includeSubdomains = intent?.include_subdomains ?? true;
+    editRuleId = null;
+    scopeEditable = true;
+    unwritableCode = null;
+    formOpen = true;
+  }
+
+  /**
+   * Open the form over a rule that already exists at Cloudflare.
+   *
+   * Seeded **field by field from the rule's own settings**, never from `intent`. `intent` is
+   * all-or-nothing by design — it answers "could schakl have written this whole rule?" — so one
+   * unreadable part of a rule would fill every other field with a *default*, and saving would
+   * write those defaults back: a 303 quietly becomes a 301, a rule sending every URL to one page
+   * starts appending paths, a redirect for one hostname widens to every subdomain of it. Three
+   * silent changes to what a visitor's browser does, from pressing "Bewerken" and "Opslaan".
+   *
+   * That is not a corner case: Cloudflare's own dashboard writes
+   * `http.host in {"klant.nl" "www.klant.nl"}`, which we read and cannot reproduce, so the
+   * commonest inherited redirect is exactly the one with no whole intent.
+   */
+  function openRuleForm(rule: {
+    rule_id?: string | null;
+    target_url?: string | null;
+    include_subdomains?: boolean | null;
+    preserve_path?: boolean | null;
+    preserve_query?: boolean | null;
+    status_code?: number | null;
+  }) {
+    target = rule.target_url ?? "";
+    // A code outside the four is kept out of the select (which would render blank and post
+    // nothing) and stated instead, so changing it is something the user is told about.
+    unwritableCode =
+      rule.status_code != null && !statusCodes.includes(rule.status_code) ? rule.status_code : null;
+    statusCode = unwritableCode === null ? (rule.status_code ?? 301) : 301;
+    preservePath = rule.preserve_path ?? true;
+    preserveQuery = rule.preserve_query ?? true;
+    // `null` is "this rule's match set is not ours to rewrite", which is a different statement
+    // from `false` and the reason the checkbox is dropped rather than drawn unticked.
+    scopeEditable = rule.include_subdomains !== null && rule.include_subdomains !== undefined;
+    includeSubdomains = rule.include_subdomains ?? true;
+    editRuleId = rule.rule_id ?? null;
+    formOpen = true;
+  }
+
+  /** "301 · pad meenemen · incl. subdomeinen" — a row describing itself in the form's own words. */
+  function summarise(intent: {
+    status_code: number;
+    preserve_path: boolean;
+    preserve_query: boolean;
+    include_subdomains: boolean;
+  }): string {
+    return [
+      t(`cloudflare.redirect.code_${intent.status_code}`),
+      intent.preserve_path ? t("cloudflare.redirect.preserve_path") : null,
+      intent.preserve_query ? t("cloudflare.redirect.preserve_query") : null,
+      t(
+        intent.include_subdomains
+          ? "cloudflare.redirect.scope_all"
+          : "cloudflare.redirect.scope_apex",
+      ),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
+  // How old the redirect list is. Its own line rather than the panel's `checked_at`, because
+  // this half has its own token scope and its own probe: it can be stale, or never read at all,
+  // while the rest of the report is a minute old.
+  const observedAt = $derived(
+    status?.redirects_observed_at
+      ? t("cloudflare.redirect.observed_at", { when: fmtDateTime(status.redirects_observed_at) })
+      : t("cloudflare.redirect.never_observed"),
+  );
 </script>
 
 {#if page.form?.cfError}
@@ -247,69 +355,27 @@
     </div>
   {/if}
 
-  {#if status?.conflicts?.length}
-    <div class="mt-4">
-      <p class="text-xs font-medium text-text">{t("cloudflare.conflicts.title")}</p>
-      <p class="mb-1 text-xs text-text-muted">{t("cloudflare.conflicts.intro")}</p>
-      <ul class="space-y-1 text-sm text-text">
-        {#each status.conflicts as conflict, i (i)}
-          <li class="min-w-0 break-words">
-            <span class="text-text-muted">{t(`cloudflare.conflicts.${conflict.kind}`)}:</span>
-            {conflict.description || conflict.detail || "—"}
-            <!-- The redirect an agency inherits is usually already right, and until now the only
-                 button on this screen appended a *second* rule beside it — which Cloudflare
-                 evaluates top-down, so pressing it could change nothing at all. Adopting takes
-                 the rule by id and writes nothing at Cloudflare; the API refuses unless it is
-                 exactly the rule these fields would have produced, so what a visitor's browser
-                 does cannot change as a side effect of schakl taking ownership.
-                 Offered only where it can succeed: a rule we already own is not adoptable, and a
-                 Page Rule is a different product this module cannot write (#253 — a control that
-                 always refuses is a broken control). -->
-            {#if canManage && conflict.kind === "redirect_rule" && conflict.rule_id && (!redirect || status?.redirect_live?.present === false)}
-              <form
-                method="POST"
-                action="?/cfAdoptRedirect"
-                use:enhance={busy.keep(`adopt-${conflict.rule_id}`)}
-                class="mt-1"
-              >
-                <input type="hidden" name="rule_id" value={conflict.rule_id} />
-                <input type="hidden" name="target_url" value={target} />
-                <input type="hidden" name="status_code" value={statusCode} />
-                {#if preservePath}<input type="hidden" name="preserve_path" value="on" />{/if}
-                {#if preserveQuery}<input type="hidden" name="preserve_query" value="on" />{/if}
-                {#if includeSubdomains}
-                  <input type="hidden" name="include_subdomains" value="on" />
-                {/if}
-                <Button
-                  type="submit"
-                  variant="secondary"
-                  size="sm"
-                  loading={busy.is(`adopt-${conflict.rule_id}`)}
-                  disabled={busy.active || !target}
-                >
-                  {t("cloudflare.conflicts.adopt")}
-                </Button>
-                <span class="block text-xs text-text-muted">
-                  {t("cloudflare.conflicts.adopt_help")}
-                </span>
-              </form>
-            {/if}
-          </li>
-        {/each}
-      </ul>
-    </div>
-  {/if}
-
-  <!-- Domain-wide redirect ------------------------------------------------------------- -->
+  <!-- Redirects ---------------------------------------------------------------------------
+       A list of what this domain redirects *through*, from whichever source, and then one
+       collapsed control to add another. Before this the section was a permanently-open form:
+       a redirect schakl managed was only ever a pre-filled box, and a redirect Cloudflare
+       already had appeared under "Aandachtspunten" as a conflict — the state an agency inherits,
+       rendered as a fault, next to an empty form suggesting they make a second one. -->
   <section class="mt-5 border-t border-border pt-4">
     <div class="flex flex-wrap items-baseline justify-between gap-2">
       <h3 class="text-sm font-medium text-text">{t("cloudflare.redirect.title")}</h3>
-      {#if redirect}
-        <span class="text-xs text-text-muted">
-          {t(`cloudflare.redirect_status.${redirect.last_status}`)}
-        </span>
-      {/if}
+      <span class="text-xs text-text-muted">{observedAt}</span>
     </div>
+
+    <!-- The old amber "Andere omleidingen op deze zone" box is gone: its rows are the list
+         below, where they belong — with none of ours they *are* this domain's redirects, and
+         boxing them in a warning taught people to ignore the box. What survives is the one
+         sentence that is only true when we hold a rule too (Cloudflare evaluates the ruleset
+         top-down, so one of theirs can beat ours), and the API now raises `redirect_conflict`
+         in exactly that case. It sits above the list it describes. -->
+    {#if issues.includes("redirect_conflict")}
+      <p class="mt-1 text-xs text-amber-600">{t("cloudflare.conflicts.intro")}</p>
+    {/if}
 
     <!-- The rule is live and something *after* it was refused — today only the origin
          placeholder, whose scope is DNS rather than redirects. Cloudflare's own text, because
@@ -336,17 +402,188 @@
       {/if}
     {/if}
 
-    {#if !canManage}
-      <p class="mt-2 text-sm text-text">
-        {redirect ? redirect.target_url : t("cloudflare.redirect.none")}
-      </p>
+    <!-- The list. One row per redirect that exists, ours first, each saying where it came
+         from — because "beheerd via schakl" and "gevonden bij Cloudflare" are the difference
+         between a rule this panel may edit and one it may only claim. -->
+    {#if redirect || otherRules.length > 0 || pageRules.length > 0}
+      <ul class="mt-3 divide-y divide-border border-y border-border">
+        {#if redirect}
+          <li class="flex flex-wrap items-start justify-between gap-2 py-2">
+            <div class="min-w-0">
+              <p class="break-words text-sm text-text">
+                {status?.domain_name} → {redirect.target_url}
+              </p>
+              <p class="text-xs text-text-muted">{summarise(redirect)}</p>
+              <p class="text-xs text-text-muted">
+                {t("cloudflare.redirect.source_managed")} ·
+                {t(`cloudflare.redirect_status.${redirect.last_status}`)}
+              </p>
+            </div>
+            {#if canManage}
+              <div class="flex flex-none gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="xs"
+                  onclick={() => openForm(redirect)}
+                >
+                  {t("cloudflare.redirect.edit")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="xs"
+                  onclick={() => (confirmRemoveRedirect = true)}
+                >
+                  {t("cloudflare.redirect.remove")}
+                </Button>
+              </div>
+            {/if}
+          </li>
+        {/if}
+
+        {#each otherRules as rule, i (rule.rule_id ?? i)}
+          <li class="flex flex-wrap items-start justify-between gap-2 py-2">
+            <div class="min-w-0">
+              <p class="break-words text-sm text-text">
+                {#if rule.target_url}
+                  {status?.domain_name} → {rule.target_url}
+                {:else}
+                  {rule.description || t("cloudflare.conflicts.redirect_rule")}
+                {/if}
+              </p>
+              {#if rule.intent}
+                <p class="text-xs text-text-muted">{summarise(rule.intent)}</p>
+              {:else}
+                <!-- Described by Cloudflare's own text, and no adopt button: a shape schakl
+                     cannot express is one it must not claim to manage (#253). -->
+                <p class="break-words text-xs text-text-muted">{rule.detail || rule.description}</p>
+                <p class="text-xs text-text-muted">{t("cloudflare.redirect.unreadable")}</p>
+              {/if}
+              <p class="text-xs text-text-muted">
+                {t("cloudflare.redirect.source_observed")}
+                {#if rule.domain_wide}· {t("cloudflare.redirect.whole_domain")}{/if}
+              </p>
+            </div>
+            <!-- The row's own controls. Edit and delete act on the rule **by id at Cloudflare**,
+                 which is what makes an inherited redirect a record rather than a finding: before
+                 them, correcting a URL somebody typed into Cloudflare's dashboard years ago meant
+                 going back to Cloudflare's dashboard. Adopt is the third and quite separate act —
+                 claiming the rule as schakl's — so it stays its own button. -->
+            {#if canManage && rule.rule_id}
+              <div class="flex flex-none flex-wrap gap-2">
+                <!-- Editable as soon as we can read *where it goes*. Deliberately not gated on
+                     `intent`: the commonest inherited shape (Cloudflare's own
+                     `http.host in {…}`) has no whole intent and a perfectly readable target, and
+                     gating on the intent would have withheld the button from exactly the rules
+                     this feature exists for. What we cannot rewrite is the match set, and that
+                     is handled by keeping it — see `openRuleForm`. -->
+                {#if rule.target_url}
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="xs"
+                    onclick={() => openRuleForm(rule)}
+                  >
+                    {t("cloudflare.redirect.edit")}
+                  </Button>
+                {/if}
+                <!-- Offered whether or not we can read the rule, because deleting needs no
+                     understanding of its shape — and the one rule nobody can describe is the one
+                     an agency most wants gone. Confirmed against Cloudflare's own text for it. -->
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="xs"
+                  onclick={() => {
+                    deleteRuleTarget = {
+                      id: rule.rule_id ?? "",
+                      label: rule.target_url || rule.description || rule.detail || "",
+                    };
+                    confirmDeleteRule = true;
+                  }}
+                >
+                  {t("cloudflare.redirect.delete")}
+                </Button>
+                <!-- Adopting takes the rule by id and writes nothing at Cloudflare, so what a
+                     visitor's browser does cannot change as a side effect of schakl taking
+                     ownership. It posts **the rule's own** intent — before that it posted whatever
+                     was typed in the form above, so the obvious press answered
+                     `cloudflare_redirect_differs` until the admin hand-matched five fields to a
+                     rule they could not see. Offered only where it can succeed: a rule we already
+                     own is not adoptable. -->
+                {#if rule.intent && (!redirect || status?.redirect_live?.present === false)}
+                  <form
+                    method="POST"
+                    action="?/cfAdoptRedirect"
+                    use:enhance={busy.keep(`adopt-${rule.rule_id}`)}
+                  >
+                    <input type="hidden" name="rule_id" value={rule.rule_id} />
+                    <input type="hidden" name="target_url" value={rule.intent.target_url} />
+                    <input type="hidden" name="status_code" value={rule.intent.status_code} />
+                    {#if rule.intent.preserve_path}
+                      <input type="hidden" name="preserve_path" value="on" />
+                    {/if}
+                    {#if rule.intent.preserve_query}
+                      <input type="hidden" name="preserve_query" value="on" />
+                    {/if}
+                    {#if rule.intent.include_subdomains}
+                      <input type="hidden" name="include_subdomains" value="on" />
+                    {/if}
+                    <Button
+                      type="submit"
+                      variant="secondary"
+                      size="xs"
+                      loading={busy.is(`adopt-${rule.rule_id}`)}
+                      disabled={busy.active}
+                    >
+                      {t("cloudflare.conflicts.adopt")}
+                    </Button>
+                  </form>
+                {/if}
+              </div>
+            {/if}
+          </li>
+        {/each}
+
+        {#each pageRules as rule, i (i)}
+          <li class="py-2">
+            <p class="break-words text-sm text-text">{rule.description || "—"}</p>
+            <p class="text-xs text-text-muted">
+              {t("cloudflare.redirect.source_page_rule")}
+              {#if rule.detail}· {rule.detail}{/if}
+            </p>
+          </li>
+        {/each}
+      </ul>
     {:else}
+      <p class="mt-2 text-sm text-text-muted">{t("cloudflare.redirect.empty")}</p>
+    {/if}
+
+    {#if canManage && !formOpen}
+      <button
+        type="button"
+        class="mt-3 text-sm text-brand hover:underline"
+        onclick={() => openForm()}
+      >
+        ＋ {t("cloudflare.redirect.add")}
+      </button>
+    {/if}
+
+    {#if canManage && formOpen}
       <form
         method="POST"
-        action="?/cfSaveRedirect"
+        action={editRuleId ? "?/cfEditRule" : "?/cfSaveRedirect"}
         use:enhance={busy.keep("redirect")}
         class="mt-3 space-y-3"
       >
+        {#if editRuleId}
+          <!-- The rule this form writes. Editing an existing rule is a different endpoint from
+               saving schakl's own: it names a rule by id, cannot create one, and does not claim
+               ownership of a rule it did not own. -->
+          <input type="hidden" name="rule_id" value={editRuleId} />
+          <p class="text-xs text-text-muted">{t("cloudflare.redirect.edit_rule_help")}</p>
+        {/if}
         <div class="grid gap-3 sm:grid-cols-2">
           <div class="min-w-0">
             <label class={labelClass} for="cf-target">{t("cloudflare.redirect.target")}</label>
@@ -365,6 +602,11 @@
                 <option value={code}>{t(`cloudflare.redirect.code_${code}`)}</option>
               {/each}
             </select>
+            {#if unwritableCode !== null}
+              <p class="mt-1 text-xs text-amber-600">
+                {t("cloudflare.redirect.code_replaced", { code: unwritableCode })}
+              </p>
+            {/if}
             {#if statusCode === 301 || statusCode === 308}
               <p class="mt-1 text-xs text-text-muted">
                 {t("cloudflare.redirect.code_permanent_warning")}
@@ -396,44 +638,53 @@
           />
           {t("cloudflare.redirect.preserve_query")}
         </label>
-        <label class="flex items-center gap-2 text-sm text-text">
-          <input
-            type="checkbox"
-            name="include_subdomains"
-            bind:checked={includeSubdomains}
-            class="rounded border-border"
-          />
-          {t("cloudflare.redirect.include_subdomains")}
-        </label>
-        <label class="flex items-start gap-2 text-sm text-text">
-          <input
-            type="checkbox"
-            name="ensure_origin"
-            checked
-            class="mt-0.5 rounded border-border"
-          />
-          <span>
-            {t("cloudflare.redirect.ensure_origin")}
-            <span class="block text-xs text-text-muted">
-              {t("cloudflare.redirect.ensure_origin_help")}
+        {#if scopeEditable}
+          <label class="flex items-center gap-2 text-sm text-text">
+            <input
+              type="checkbox"
+              name="include_subdomains"
+              bind:checked={includeSubdomains}
+              class="rounded border-border"
+            />
+            {t("cloudflare.redirect.include_subdomains")}
+          </label>
+        {:else}
+          <!-- Not a checkbox that would be ignored: this rule's match set is one schakl can read
+               and not reproduce, so the API keeps it verbatim and the edit moves the destination
+               only. Saying so is the whole point — a drawn control that silently did nothing
+               would be the same bug in a friendlier costume. -->
+          <p class="text-xs text-text-muted">{t("cloudflare.redirect.keeps_match")}</p>
+        {/if}
+        {#if !editRuleId}
+          <!-- Only where a rule may be *created*. A rule already in the ruleset is one traffic
+               already reaches, so offering to add the placeholder that makes a new rule fire
+               would be a checkbox with nothing to do. -->
+          <label class="flex items-start gap-2 text-sm text-text">
+            <input
+              type="checkbox"
+              name="ensure_origin"
+              checked
+              class="mt-0.5 rounded border-border"
+            />
+            <span>
+              {t("cloudflare.redirect.ensure_origin")}
+              <span class="block text-xs text-text-muted">
+                {t("cloudflare.redirect.ensure_origin_help")}
+              </span>
             </span>
-          </span>
-        </label>
+          </label>
+        {/if}
 
         <div class="flex flex-wrap items-center gap-2">
           <Button type="submit" loading={busy.is("redirect")} disabled={busy.active}>
-            {t("cloudflare.redirect.save")}
+            {editRuleId ? t("cloudflare.redirect.save_rule") : t("cloudflare.redirect.save")}
           </Button>
-          {#if redirect}
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onclick={() => (confirmRemoveRedirect = true)}
-            >
-              {t("cloudflare.redirect.remove")}
-            </Button>
-          {/if}
+          <!-- Removing lives on the row it removes, not down here: this form is now reached by
+               pressing "Bewerken" *on* that row, and a delete button at the bottom of an open
+               form is one mis-click away from the save it sits next to. -->
+          <Button type="button" variant="secondary" size="sm" onclick={() => (formOpen = false)}>
+            {t("cloudflare.redirect.cancel")}
+          </Button>
         </div>
       </form>
     {/if}
@@ -580,6 +831,18 @@
   title={t("cloudflare.redirect.remove")}
   message={t("cloudflare.redirect.remove_confirm", { target: redirect?.target_url ?? "" })}
   action="?/cfRemoveRedirect"
+/>
+
+<!-- Deleting a rule the zone already had. Its own dialog rather than the one above, because the
+     sentence is different: that one removes schakl's rule and says so, this one removes a rule
+     at Cloudflare that schakl may never have made — which is exactly the thing a confirmation
+     has to be unambiguous about. -->
+<ConfirmDialog
+  bind:open={confirmDeleteRule}
+  title={t("cloudflare.redirect.delete")}
+  message={t("cloudflare.redirect.delete_rule_confirm", { target: deleteRuleTarget?.label ?? "" })}
+  action="?/cfDeleteRule"
+  fields={{ rule_id: deleteRuleTarget?.id ?? "" }}
 />
 
 <ConfirmDialog

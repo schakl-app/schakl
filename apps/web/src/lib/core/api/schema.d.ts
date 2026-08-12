@@ -1342,6 +1342,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cloudflare/domains/{domain_id}/redirect/rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Edit Zone Redirect
+         * @description Change where an existing Redirect Rule sends traffic. Never changes what it matches.
+         */
+        put: operations["edit_zone_redirect_api_v1_cloudflare_domains__domain_id__redirect_rules__rule_id__put"];
+        post?: never;
+        /**
+         * Delete Zone Redirect
+         * @description Delete one Redirect Rule from this zone by id, resolved inside the zone's own ruleset.
+         */
+        delete: operations["delete_zone_redirect_api_v1_cloudflare_domains__domain_id__redirect_rules__rule_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cloudflare/domains/{domain_id}/status": {
         parameters: {
             query?: never;
@@ -7067,6 +7091,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/marketing/clients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Linked Clients
+         * @description The clients that actually have a source linked, with which sources and how each is doing.
+         *
+         *     Rides the same read as the dashboard it picks for — a picker gated harder than its
+         *     destination is a control that refuses for a reason nobody can act on — and carries no
+         *     metrics: it answers "who is connected", which is a question about links, not numbers.
+         */
+        get: operations["linked_clients_api_v1_marketing_clients_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/marketing/companies/{company_id}/drilldown": {
         parameters: {
             query?: never;
@@ -7430,6 +7478,30 @@ export interface paths {
         };
         /** Deployment Meta */
         get: operations["deployment_meta_api_v1_meta_instance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta/mcp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mcp Meta
+         * @description The section catalog, read off the mounted server rather than rebuilt.
+         *
+         *     Rebuilding it here would walk the whole OpenAPI document on every request — the one
+         *     expensive thing this feature does, and it is already paid for once at boot.
+         *     ``build_mcp_asgi_app`` hangs the resolved catalog off the sub-app for exactly this read.
+         */
+        get: operations["mcp_meta_api_v1_meta_mcp_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -7991,6 +8063,197 @@ export interface paths {
          * @description Reversible: read and unread are the same non-destructive toggle (docs/UX.md).
          */
         patch: operations["set_read_api_v1_notifications__notification_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/oauth/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Connections
+         * @description The clients this user has connected. Counted in one grouped read, not one query per row.
+         */
+        get: operations["list_connections_api_v1_oauth_connections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oauth/connections/{client_pk}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Disconnect
+         * @description Disconnect a client: revoke it, and every key it ever issued goes with it.
+         *
+         *     Revoking the *client* rather than this user's keys is the honest kill switch — a connector
+         *     that has been disconnected must not be able to refresh its way back in, and a refresh
+         *     presented against a revoked client is refused before any key is looked at.
+         */
+        delete: operations["disconnect_api_v1_oauth_connections__client_pk__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oauth/consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Consent Request
+         * @description Validate an authorization request and describe it, without writing anything.
+         *
+         *     A person who opens the screen and closes it again leaves no row behind — which is why the
+         *     grant is written at approval and not here.
+         */
+        get: operations["consent_request_api_v1_oauth_consent_get"];
+        put?: never;
+        /**
+         * Approve Consent
+         * @description Approve, and get the URL to send the browser back to.
+         *
+         *     Gated on ``apikeys.personal.manage`` — the same permission the key screen requires — because
+         *     that is exactly what this is: minting a personal key, with a redirect instead of a copy
+         *     button. A member who may not mint one by hand may not mint one by consenting either.
+         */
+        post: operations["approve_consent_api_v1_oauth_consent_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oauth/metadata/authorization-server": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Authorization Server Metadata
+         * @description Served here and *proxied* by the web app at ``/.well-known/oauth-authorization-server``.
+         *
+         *     The RFC puts it on the root of the host and the edge gives the root to the web app
+         *     (docs/MCP.md), so this is the copy the proxy reads. Deliberately not duplicated in the web
+         *     app: a second literal of the token endpoint's URL is a second thing to forget to change.
+         */
+        get: operations["authorization_server_metadata_api_v1_oauth_metadata_authorization_server_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oauth/metadata/protected-resource": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Protected Resource Metadata
+         * @description One document per ``/mcp`` URL, section segment included.
+         *
+         *     The path is a *parameter* rather than a route so that a section added tomorrow is
+         *     discoverable tomorrow — and it is pattern-bound rather than free text because it is echoed
+         *     into the document as the resource identifier a token gets bound to.
+         */
+        get: operations["protected_resource_metadata_api_v1_oauth_metadata_protected_resource_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oauth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register Client
+         * @description Register a client. Registering grants **nothing** — it names a thing a person may later
+         *     consent to, and until somebody does, the row can read no byte of tenant data.
+         *
+         *     Rate-limited by IP, because it is the one unauthenticated write in the codebase that a
+         *     stranger can repeat.
+         */
+        post: operations["register_client_api_v1_oauth_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oauth/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke
+         * @description Always 200. A revocation endpoint that distinguishes "revoked" from "no such token" is a
+         *     token oracle, and the caller can do nothing with the difference anyway (RFC 7009 §2.2).
+         */
+        post: operations["revoke_api_v1_oauth_revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oauth/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Token
+         * @description ``authorization_code`` and ``refresh_token``. Form-encoded, per the RFC.
+         *
+         *     What comes back is an ``api_keys`` secret — a real key, usable at ``/mcp`` and at the REST
+         *     API alike, and capped by the consenting user's live permissions on every request.
+         */
+        post: operations["token_api_v1_oauth_token_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/oxxa/accounts": {
@@ -10273,6 +10536,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/uptime/instances/{instance_id}/links/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Links
+         * @description Confirm every unambiguous proposal on this instance; report what was left.
+         *
+         *     Declares `monitor.write` and not `instance.manage`: what it writes is monitors. The ambiguous
+         *     ones come back as `skipped` rather than resolved — those are a person's to decide, and doing
+         *     it in bulk would be deciding two hundred of them.
+         */
+        post: operations["apply_links_api_v1_uptime_instances__instance_id__links_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/uptime/instances/{instance_id}/probe": {
         parameters: {
             query?: never;
@@ -10348,6 +10635,30 @@ export interface paths {
         head?: never;
         /** Update Monitor */
         patch: operations["update_monitor_api_v1_uptime_monitors__monitor_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/uptime/monitors/{monitor_id}/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link Monitor
+         * @description Attach a found monitor to the website, domain or hosting it watches (#321).
+         *
+         *     Its own route rather than a `PATCH` field, because it is a different act: it writes nothing
+         *     to Uptime Kuma, it takes one anchor instead of three ids that could contradict each other,
+         *     and it is the one the reconciliation screen posts straight from a candidate it was shown.
+         */
+        post: operations["link_monitor_api_v1_uptime_monitors__monitor_id__link_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/uptime/monitors/{monitor_id}/pause": {
@@ -12514,6 +12825,30 @@ export interface components {
             /** Token */
             token: string;
         };
+        /** Body_revoke_api_v1_oauth_revoke_post */
+        Body_revoke_api_v1_oauth_revoke_post: {
+            /** Token */
+            token: string;
+        };
+        /** Body_token_api_v1_oauth_token_post */
+        Body_token_api_v1_oauth_token_post: {
+            /** Client Id */
+            client_id?: string | null;
+            /** Client Secret */
+            client_secret?: string | null;
+            /** Code */
+            code?: string | null;
+            /** Code Verifier */
+            code_verifier?: string | null;
+            /** Grant Type */
+            grant_type: string;
+            /** Redirect Uri */
+            redirect_uri?: string | null;
+            /** Refresh Token */
+            refresh_token?: string | null;
+            /** Resource */
+            resource?: string | null;
+        };
         /** Body_upload_company_logo_api_v1_companies__company_id__logo_post */
         Body_upload_company_logo_api_v1_companies__company_id__logo_post: {
             /** File */
@@ -13092,6 +13427,29 @@ export interface components {
             /** Numbered */
             numbered: number;
         };
+        /**
+         * ClientRegistration
+         * @description RFC 7591's request. Unknown members are ignored rather than refused — the registry of
+         *     metadata names is open, and a client sending one we do not read is not an error.
+         */
+        ClientRegistration: {
+            /**
+             * Client Name
+             * @default MCP client
+             */
+            client_name: string;
+            /** Client Uri */
+            client_uri?: string | null;
+            /** Logo Uri */
+            logo_uri?: string | null;
+            /** Redirect Uris */
+            redirect_uris?: string[];
+            /**
+             * Token Endpoint Auth Method
+             * @default none
+             */
+            token_endpoint_auth_method: string;
+        };
         /** ClientRevenue */
         ClientRevenue: {
             /** Company Id */
@@ -13516,36 +13874,56 @@ export interface components {
              */
             user_id: string;
         };
-        /**
-         * ConnectionRead
-         * @description The caller's own connection — or the admin list's per-user rows.
-         */
-        ConnectionRead: {
+        /** ConsentApproval */
+        ConsentApproval: {
+            /** Client Id */
+            client_id: string;
+            /** Code Challenge */
+            code_challenge: string;
             /**
-             * Connected At
-             * Format: date-time
+             * Code Challenge Method
+             * @default S256
              */
-            connected_at: string;
-            /** Email */
-            email: string;
-            /** Gmail Excluded Label */
-            gmail_excluded_label?: string | null;
-            /**
-             * Gmail Sync Enabled
-             * @default false
-             */
-            gmail_sync_enabled: boolean;
-            /** Last Error */
-            last_error?: string | null;
+            code_challenge_method: string;
+            /** Redirect Uri */
+            redirect_uri: string;
+            /** Resource */
+            resource?: string | null;
             /** Scopes */
             scopes?: string[];
-            /** Status */
-            status: string;
-            /**
-             * User Id
-             * Format: uuid
-             */
-            user_id: string;
+            /** State */
+            state?: string | null;
+        };
+        /**
+         * ConsentRequest
+         * @description What the consent screen renders. Everything here is either the client's own words or the
+         *     catalog's — no tenant data, because the person reading it has not agreed to anything yet.
+         */
+        ConsentRequest: {
+            /** Client Name */
+            client_name: string;
+            /** Client Uri */
+            client_uri: string | null;
+            /** Redirect Uri */
+            redirect_uri: string;
+            /** Resource */
+            resource: string | null;
+            /** Scopes */
+            scopes: components["schemas"]["ConsentScope"][];
+        };
+        /** ConsentResult */
+        ConsentResult: {
+            /** Redirect To */
+            redirect_to: string;
+        };
+        /** ConsentScope */
+        ConsentScope: {
+            /** Label Key */
+            label_key: string;
+            /** Read */
+            read: boolean;
+            /** Value */
+            value: string;
         };
         /**
          * ContactCompanyLink
@@ -14420,6 +14798,8 @@ export interface components {
             pages_links?: components["schemas"]["PagesLinkRead"][];
             redirect?: components["schemas"]["RedirectRead"] | null;
             redirect_live?: components["schemas"]["RedirectObservation"] | null;
+            /** Redirects Observed At */
+            redirects_observed_at?: string | null;
             /** Unavailable */
             unavailable?: string[];
             zone?: components["schemas"]["ZoneRead"] | null;
@@ -15973,6 +16353,11 @@ export interface components {
              * Format: date-time
              */
             fetched_at: string;
+            /**
+             * Offset
+             * @default 0
+             */
+            offset: number;
             period?: components["schemas"]["GoogleAdsPeriod"] | null;
             /**
              * Resource
@@ -15988,6 +16373,11 @@ export interface components {
             rows?: {
                 [key: string]: unknown;
             }[];
+            /**
+             * Total Rows
+             * @default 0
+             */
+            total_rows: number;
             totals?: components["schemas"]["GoogleAdsMetrics"] | null;
             /** Warnings */
             warnings?: string[];
@@ -16029,6 +16419,11 @@ export interface components {
              * Format: date-time
              */
             fetched_at: string;
+            /**
+             * Offset
+             * @default 0
+             */
+            offset: number;
             period?: components["schemas"]["GoogleAdsPeriod"] | null;
             /**
              * Row Count
@@ -16039,6 +16434,11 @@ export interface components {
             rows?: {
                 [key: string]: unknown;
             }[];
+            /**
+             * Total Rows
+             * @default 0
+             */
+            total_rows: number;
             totals?: components["schemas"]["GoogleAdsMetrics"] | null;
             /** Warnings */
             warnings?: string[];
@@ -16126,6 +16526,11 @@ export interface components {
              * Format: date-time
              */
             fetched_at: string;
+            /**
+             * Offset
+             * @default 0
+             */
+            offset: number;
             period?: components["schemas"]["GoogleAdsPeriod"] | null;
             /**
              * Row Count
@@ -16138,6 +16543,11 @@ export interface components {
             }[];
             /** Total Daily Budget */
             total_daily_budget?: number | null;
+            /**
+             * Total Rows
+             * @default 0
+             */
+            total_rows: number;
             totals?: components["schemas"]["GoogleAdsMetrics"] | null;
             /** Warnings */
             warnings?: string[];
@@ -18035,6 +18445,7 @@ export interface components {
          *     day is worth, and only one of them would agree with the server.
          */
         LeaveProfileRead: {
+            employment_type?: components["schemas"]["EmploymentKind"] | null;
             /** Hours Per Day */
             hours_per_day: string;
             /** Hours Per Week */
@@ -18859,6 +19270,45 @@ export interface components {
             /** Updated */
             updated: number;
         };
+        /** MarketingClientList */
+        MarketingClientList: {
+            /** Rows */
+            rows?: components["schemas"]["MarketingClientRow"][];
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
+        /** MarketingClientRow */
+        MarketingClientRow: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Company Name */
+            company_name: string;
+            /** Sources */
+            sources?: components["schemas"]["MarketingClientSource"][];
+        };
+        /**
+         * MarketingClientSource
+         * @description One source a client has linked, and whether it is currently answering.
+         */
+        MarketingClientSource: {
+            /**
+             * Links
+             * @default 1
+             */
+            links: number;
+            source: components["schemas"]["MarketingSource"];
+            /**
+             * State
+             * @default ok
+             */
+            state: string;
+        };
         /**
          * MarketingCompareWindow
          * @description Which two spans a screen's deltas actually measured (#312).
@@ -18962,6 +19412,45 @@ export interface components {
             kpi: components["schemas"]["KpiValue"];
             /** Metric */
             metric: string;
+        };
+        /**
+         * McpMeta
+         * @description What the connection screen needs about this instance's MCP surface.
+         *
+         *     Its own endpoint rather than more fields on ``/meta/modules``: that payload is loaded by the
+         *     app layout on every navigation and by the login screen before anyone signs in, and thirty
+         *     section rows on it would be paid for by every page in the product to serve one screen
+         *     (docs/PERFORMANCE.md — a row carries only what its screen draws).
+         */
+        McpMeta: {
+            /** Enabled */
+            enabled: boolean;
+            /** Entitled */
+            entitled: boolean;
+            /** Oauth Issuer */
+            oauth_issuer?: string | null;
+            /** Sections */
+            sections?: components["schemas"]["McpSection"][];
+            /** Total Tools */
+            total_tools: number;
+        };
+        /**
+         * McpSection
+         * @description One ``/mcp/<key>`` URL, as Instellingen → API en MCP lists it.
+         */
+        McpSection: {
+            /** Key */
+            key: string;
+            /** Kind */
+            kind: string;
+            /** Label Key */
+            label_key: string;
+            /** Modules */
+            modules?: string[];
+            /** Path */
+            path: string;
+            /** Tool Count */
+            tool_count: number;
         };
         /**
          * MeInfo
@@ -19285,7 +19774,7 @@ export interface components {
              * @default false
              */
             connected: boolean;
-            connection?: components["schemas"]["ConnectionRead"] | null;
+            connection?: components["schemas"]["app__modules__google__schemas__ConnectionRead"] | null;
             /**
              * Drive Enabled
              * @default false
@@ -21582,11 +22071,17 @@ export interface components {
         };
         /**
          * RedirectConflict
-         * @description Something *else* on this zone that already redirects, or could.
+         * @description A redirect on this zone that schakl does not own.
          *
-         *     Reported rather than resolved: Cloudflare evaluates redirect rules top-down and we cannot
-         *     evaluate a tenant's filter expression to know whether it catches this hostname. Naming it
-         *     lets the admin decide; silently appending our rule below it would look like it worked.
+         *     Named `conflict` for the case it was written for — Cloudflare evaluates redirect rules
+         *     top-down, so a tenant rule above ours silently wins — but that is only what it *is* when we
+         *     hold a rule too. With none of ours, these are simply the redirects this domain has, and the
+         *     panel lists them as such: the state an agency inherits is the state this module exists to
+         *     serve, and rendering it as a fault taught people to ignore the box it was in.
+         *
+         *     Either way it is reported rather than resolved. We cannot evaluate a tenant's filter
+         *     expression to know what it catches, so naming it lets the admin decide; silently appending
+         *     our rule below it would look like it worked.
          */
         RedirectConflict: {
             /**
@@ -21600,12 +22095,61 @@ export interface components {
              */
             detail: string;
             /**
+             * Domain Wide
+             * @default false
+             */
+            domain_wide: boolean;
+            /** Include Subdomains */
+            include_subdomains?: boolean | null;
+            intent?: components["schemas"]["RedirectIntent"] | null;
+            /**
              * Kind
              * @enum {string}
              */
             kind: "redirect_rule" | "page_rule";
+            /** Preserve Path */
+            preserve_path?: boolean | null;
+            /** Preserve Query */
+            preserve_query?: boolean | null;
             /** Rule Id */
             rule_id?: string | null;
+            /** Status Code */
+            status_code?: number | null;
+            /** Target Url */
+            target_url?: string | null;
+        };
+        /**
+         * RedirectIntent
+         * @description What the tenant wants the redirect to *be* — the fields a rule is built from.
+         *
+         *     Shared by :class:`RedirectWrite` and :class:`RedirectAdopt` rather than inherited from one
+         *     by the other, because the difference between them is not a field: one writes the rule and
+         *     the other only claims one. ``ensure_origin`` belongs to the first and would be a lie on the
+         *     second, which touches Cloudflare not at all.
+         */
+        RedirectIntent: {
+            /**
+             * Include Subdomains
+             * @default true
+             */
+            include_subdomains: boolean;
+            /**
+             * Preserve Path
+             * @default true
+             */
+            preserve_path: boolean;
+            /**
+             * Preserve Query
+             * @default true
+             */
+            preserve_query: boolean;
+            /**
+             * Status Code
+             * @default 301
+             */
+            status_code: number;
+            /** Target Url */
+            target_url: string;
         };
         /**
          * RedirectObservation
@@ -21659,6 +22203,46 @@ export interface components {
              * Format: uuid
              */
             zone_id: string;
+        };
+        /**
+         * RedirectRuleEdit
+         * @description A new intent for a Redirect Rule the zone already has — ours or the tenant's.
+         *
+         *     The rule is named by **id in the path**, so this carries only what the rule should become.
+         *     Adoption's "only if it already matches exactly" refusal is deliberately absent: that guard
+         *     protects a *claim* about a rule nobody is changing, and this endpoint's whole purpose is to
+         *     change one. What replaces it is narrower and lives in ``redirects.edited_rule`` — a match set
+         *     schakl cannot write is carried over untouched, so an edit moves the destination and never the
+         *     set of hostnames it answers for.
+         *
+         *     No ``ensure_origin``. That flag exists because a *newly created* rule on a zone with no
+         *     proxied record is inert; a rule already in the ruleset is one traffic is already reaching, and
+         *     a checkbox offering to fix a problem this path does not create would be a control with nothing
+         *     to do. The status check still raises ``origin_missing`` where it is genuinely wrong.
+         */
+        RedirectRuleEdit: {
+            /**
+             * Include Subdomains
+             * @default true
+             */
+            include_subdomains: boolean;
+            /**
+             * Preserve Path
+             * @default true
+             */
+            preserve_path: boolean;
+            /**
+             * Preserve Query
+             * @default true
+             */
+            preserve_query: boolean;
+            /**
+             * Status Code
+             * @default 301
+             */
+            status_code: number;
+            /** Target Url */
+            target_url: string;
         };
         /**
          * RedirectWrite
@@ -25699,6 +26283,47 @@ export interface components {
             ssl_verify?: boolean | null;
         };
         /**
+         * UptimeLinkApplyResult
+         * @description What applying every unambiguous proposal did.
+         *
+         *     ``skipped`` is the ambiguous ones and is deliberately not an error: they are the rows this
+         *     button is *not* allowed to decide, and reporting them is how the screen says there is still
+         *     work left rather than falling silent on it.
+         */
+        UptimeLinkApplyResult: {
+            /**
+             * Linked
+             * @default 0
+             */
+            linked: number;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+        };
+        /**
+         * UptimeLinkCandidate
+         * @description One anchor a found monitor could belong to (#321).
+         *
+         *     ``company_id`` is what the *match* saw, so the screen can say whose it is; the link route
+         *     re-resolves it rather than trusting this, because a domain that changed hands since the
+         *     sync would otherwise write yesterday's client onto today's monitor.
+         */
+        UptimeLinkCandidate: {
+            /** Company Id */
+            company_id?: string | null;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Label */
+            label: string;
+        };
+        /**
          * UptimeMonitorCreate
          * @description A monitor schakl creates and pushes.
          *
@@ -25745,6 +26370,24 @@ export interface components {
             /** Website Id */
             website_id?: string | null;
         };
+        /**
+         * UptimeMonitorLink
+         * @description Attach this monitor to one website, domain or hosting account — or to nothing.
+         *
+         *     **One anchor, not three columns.** A shape with three optional ids would let a caller set
+         *     two of them, and a monitor that claims to watch one client's website and another client's
+         *     hosting is a row no screen can render honestly.
+         *
+         *     ``entity_type: null`` detaches (§18's *explicit null means clear*). It is spelled as an
+         *     explicit null rather than a missing body so that "I opened the dialog and changed nothing"
+         *     can never mean "unlink it".
+         */
+        UptimeMonitorLink: {
+            /** Entity Id */
+            entity_id?: string | null;
+            /** Entity Type */
+            entity_type?: ("website" | "domain" | "hosting") | null;
+        };
         /** UptimeMonitorRead */
         UptimeMonitorRead: {
             /** Active */
@@ -25754,6 +26397,11 @@ export interface components {
              * @default true
              */
             adopted: boolean;
+            /**
+             * Child Count
+             * @default 0
+             */
+            child_count: number;
             /** Company Id */
             company_id: string | null;
             /** Company Name */
@@ -25789,6 +26437,15 @@ export interface components {
             last_error: string | null;
             /** Last Observed At */
             last_observed_at: string | null;
+            /** Link Candidates */
+            link_candidates?: components["schemas"]["UptimeLinkCandidate"][];
+            /** Link Checked At */
+            link_checked_at?: string | null;
+            /**
+             * Link Status
+             * @default unmatched
+             */
+            link_status: string;
             /** Monitor Type */
             monitor_type: string;
             /** Name */
@@ -25987,6 +26644,10 @@ export interface components {
          *     and ``unmatched`` are handed back for a person to resolve, because two websites on the same
          *     apex is an ordinary thing and picking one attaches a client's monitoring to another client's
          *     record with every row valid.
+         *
+         *     ``matched`` counts **proposals**, not links. Nothing here is applied by the sync, which is
+         *     why the number can stay the same across two runs and still be honest: it describes what is
+         *     waiting for somebody, and the reconciliation screen is where it stops waiting.
          */
         UptimeSyncReport: {
             /**
@@ -26689,11 +27350,63 @@ export interface components {
             stage: string;
         };
         /**
+         * ConnectionRead
+         * @description One connected client, as Instellingen → API en MCP lists it.
+         */
+        app__core__oauth__router__ConnectionRead: {
+            /** Client Name */
+            client_name: string;
+            /** Client Uri */
+            client_uri: string | null;
+            /** Created At */
+            created_at: unknown;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Used At */
+            last_used_at: unknown;
+            /** Sessions */
+            sessions: number;
+        };
+        /**
          * DomainStatus
          * @description Operational state of a domain. ``redirect``'s uptime/redirect webhook is a later slice.
          * @enum {string}
          */
         app__modules__domains__models__DomainStatus: "active" | "redirect" | "parked" | "expired" | "inactive";
+        /**
+         * ConnectionRead
+         * @description The caller's own connection — or the admin list's per-user rows.
+         */
+        app__modules__google__schemas__ConnectionRead: {
+            /**
+             * Connected At
+             * Format: date-time
+             */
+            connected_at: string;
+            /** Email */
+            email: string;
+            /** Gmail Excluded Label */
+            gmail_excluded_label?: string | null;
+            /**
+             * Gmail Sync Enabled
+             * @default false
+             */
+            gmail_sync_enabled: boolean;
+            /** Last Error */
+            last_error?: string | null;
+            /** Scopes */
+            scopes?: string[];
+            /** Status */
+            status: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
         /** TemplateCreate */
         app__modules__invoicing__schemas__TemplateCreate: {
             /**
@@ -29448,6 +30161,74 @@ export interface operations {
             };
         };
     };
+    edit_zone_redirect_api_v1_cloudflare_domains__domain_id__redirect_rules__rule_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RedirectRuleEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainStatusRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_zone_redirect_api_v1_cloudflare_domains__domain_id__redirect_rules__rule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainStatusRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     cloudflare_domain_status_api_v1_cloudflare_domains__domain_id__status_get: {
         parameters: {
             query?: never;
@@ -31749,13 +32530,20 @@ export interface operations {
             query?: {
                 campaigns?: string[] | null;
                 include_removed?: boolean;
-                limit?: number | null;
                 /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
                 period?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_from?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_to?: string | null;
+                /** @description Only rows with this Google status: ENABLED, PAUSED or REMOVED. REMOVED implies `include_removed`, because a filter that always answers nothing is not a filter. */
+                status?: string | null;
+                /** @description Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. */
+                q?: string | null;
+                /** @description How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. */
+                limit?: number | null;
+                /** @description Where the page starts. `total_rows` is what it runs to. */
+                offset?: number;
             };
             header?: never;
             path: {
@@ -31860,13 +32648,20 @@ export interface operations {
         parameters: {
             query?: {
                 campaigns?: string[] | null;
-                limit?: number | null;
                 /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
                 period?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_from?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_to?: string | null;
+                /** @description Only rows with this Google status: ENABLED, PAUSED or REMOVED. REMOVED implies `include_removed`, because a filter that always answers nothing is not a filter. */
+                status?: string | null;
+                /** @description Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. */
+                q?: string | null;
+                /** @description How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. */
+                limit?: number | null;
+                /** @description Where the page starts. `total_rows` is what it runs to. */
+                offset?: number;
             };
             header?: never;
             path: {
@@ -32044,13 +32839,20 @@ export interface operations {
                 campaigns?: string[] | null;
                 /** @description Include removed campaigns. Off by default: a list where a third of the rows cannot be acted on is a worse answer to 'what are we running'. Turn it on to ask what was spent on things since removed. */
                 include_removed?: boolean;
-                limit?: number | null;
                 /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
                 period?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_from?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_to?: string | null;
+                /** @description Only rows with this Google status: ENABLED, PAUSED or REMOVED. REMOVED implies `include_removed`, because a filter that always answers nothing is not a filter. */
+                status?: string | null;
+                /** @description Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. */
+                q?: string | null;
+                /** @description How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. */
+                limit?: number | null;
+                /** @description Where the page starts. `total_rows` is what it runs to. */
+                offset?: number;
             };
             header?: never;
             path: {
@@ -32154,13 +32956,18 @@ export interface operations {
     google_ads_changes_api_v1_google_ads_accounts__account_id__changes_get: {
         parameters: {
             query?: {
-                limit?: number | null;
                 /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
                 period?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_from?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_to?: string | null;
+                /** @description Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. */
+                q?: string | null;
+                /** @description How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. */
+                limit?: number | null;
+                /** @description Where the page starts. `total_rows` is what it runs to. */
+                offset?: number;
             };
             header?: never;
             path: {
@@ -32193,13 +33000,18 @@ export interface operations {
     google_ads_conversion_health_api_v1_google_ads_accounts__account_id__conversions_get: {
         parameters: {
             query?: {
-                limit?: number | null;
                 /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
                 period?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_from?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_to?: string | null;
+                /** @description Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. */
+                q?: string | null;
+                /** @description How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. */
+                limit?: number | null;
+                /** @description Where the page starts. `total_rows` is what it runs to. */
+                offset?: number;
             };
             header?: never;
             path: {
@@ -32339,13 +33151,18 @@ export interface operations {
         parameters: {
             query?: {
                 campaigns?: string[] | null;
-                limit?: number | null;
                 /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
                 period?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_from?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_to?: string | null;
+                /** @description Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. */
+                q?: string | null;
+                /** @description How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. */
+                limit?: number | null;
+                /** @description Where the page starts. `total_rows` is what it runs to. */
+                offset?: number;
             };
             header?: never;
             path: {
@@ -32379,13 +33196,18 @@ export interface operations {
         parameters: {
             query?: {
                 campaigns?: string[] | null;
-                limit?: number | null;
                 /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
                 period?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_from?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_to?: string | null;
+                /** @description Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. */
+                q?: string | null;
+                /** @description How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. */
+                limit?: number | null;
+                /** @description Where the page starts. `total_rows` is what it runs to. */
+                offset?: number;
             };
             header?: never;
             path: {
@@ -32455,13 +33277,20 @@ export interface operations {
             query?: {
                 campaigns?: string[] | null;
                 include_removed?: boolean;
-                limit?: number | null;
                 /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
                 period?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_from?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_to?: string | null;
+                /** @description Only rows with this Google status: ENABLED, PAUSED or REMOVED. REMOVED implies `include_removed`, because a filter that always answers nothing is not a filter. */
+                status?: string | null;
+                /** @description Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. */
+                q?: string | null;
+                /** @description How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. */
+                limit?: number | null;
+                /** @description Where the page starts. `total_rows` is what it runs to. */
+                offset?: number;
             };
             header?: never;
             path: {
@@ -32634,7 +33463,12 @@ export interface operations {
     google_ads_negatives_api_v1_google_ads_accounts__account_id__negatives_get: {
         parameters: {
             query?: {
+                /** @description Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. */
+                q?: string | null;
+                /** @description How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. */
                 limit?: number | null;
+                /** @description Where the page starts. `total_rows` is what it runs to. */
+                offset?: number;
             };
             header?: never;
             path: {
@@ -32838,7 +33672,12 @@ export interface operations {
     google_ads_recommendations_api_v1_google_ads_accounts__account_id__recommendations_get: {
         parameters: {
             query?: {
+                /** @description Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. */
+                q?: string | null;
+                /** @description How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. */
                 limit?: number | null;
+                /** @description Where the page starts. `total_rows` is what it runs to. */
+                offset?: number;
             };
             header?: never;
             path: {
@@ -32875,13 +33714,18 @@ export interface operations {
                 /** @description Only terms that cost at least this, in account currency. */
                 min_cost?: number | null;
                 min_clicks?: number | null;
-                limit?: number | null;
                 /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
                 period?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_from?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_to?: string | null;
+                /** @description Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. */
+                q?: string | null;
+                /** @description How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. */
+                limit?: number | null;
+                /** @description Where the page starts. `total_rows` is what it runs to. */
+                offset?: number;
             };
             header?: never;
             path: {
@@ -33193,7 +34037,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ConnectionRead"][];
+                    "application/json": components["schemas"]["app__modules__google__schemas__ConnectionRead"][];
                 };
             };
         };
@@ -41057,6 +41901,37 @@ export interface operations {
             };
         };
     };
+    linked_clients_api_v1_marketing_clients_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingClientList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     drilldown_api_v1_marketing_companies__company_id__drilldown_get: {
         parameters: {
             query: {
@@ -41672,6 +42547,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InstanceMeta"];
+                };
+            };
+        };
+    };
+    mcp_meta_api_v1_meta_mcp_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpMeta"];
                 };
             };
         };
@@ -42776,6 +43671,276 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotificationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_connections_api_v1_oauth_connections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app__core__oauth__router__ConnectionRead"][];
+                };
+            };
+        };
+    };
+    disconnect_api_v1_oauth_connections__client_pk__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_pk: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    consent_request_api_v1_oauth_consent_get: {
+        parameters: {
+            query: {
+                client_id: string;
+                redirect_uri: string;
+                scope?: string;
+                resource?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsentRequest"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_consent_api_v1_oauth_consent_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsentApproval"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsentResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    authorization_server_metadata_api_v1_oauth_metadata_authorization_server_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    protected_resource_metadata_api_v1_oauth_metadata_protected_resource_get: {
+        parameters: {
+            query?: {
+                resource_path?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_client_api_v1_oauth_register_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClientRegistration"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_api_v1_oauth_revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["Body_revoke_api_v1_oauth_revoke_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    token_api_v1_oauth_token_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["Body_token_api_v1_oauth_token_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -48303,6 +49468,37 @@ export interface operations {
             };
         };
     };
+    apply_links_api_v1_uptime_instances__instance_id__links_apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                instance_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptimeLinkApplyResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     probe_instance_api_v1_uptime_instances__instance_id__probe_post: {
         parameters: {
             query?: never;
@@ -48374,6 +49570,10 @@ export interface operations {
                 company_id?: string | null;
                 website_id?: string | null;
                 sync_status?: string | null;
+                /** @description Filter by type; 'group' lists the groups an instance has */
+                monitor_type?: string | null;
+                /** @description linked / matched / ambiguous / unmatched, or 'proposed' for everything a sync found a candidate for and nobody has confirmed yet */
+                link_status?: string | null;
                 /** @description Compute total; set false for pickers */
                 count?: boolean;
                 /** @description Resolve display names; skip it for pickers */
@@ -48513,6 +49713,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["UptimeMonitorUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptimeMonitorRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_monitor_api_v1_uptime_monitors__monitor_id__link_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                monitor_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UptimeMonitorLink"];
             };
         };
         responses: {

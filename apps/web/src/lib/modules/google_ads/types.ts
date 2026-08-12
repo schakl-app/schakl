@@ -45,9 +45,18 @@ export interface GoogleAdsReport {
   currency: string | null;
   account_timezone: string | null;
   fetched_at: string;
+  /** How many rows came back — the length of `rows`, which is one page of the answer. */
   row_count: number;
+  /**
+   * How many rows the filter matched. **This is what the pager reads**, never `rows.length`: a
+   * total taken from the page says "1 tot 50 van 50" on every page of a list of nine hundred.
+   */
+  total_rows: number;
+  /** Where this page starts in that set. */
+  offset: number;
   /** i18n keys. Truncation, a shortened window, a geo fallback — reported here and nowhere else. */
   warnings: string[];
+  /** Over the matched set, not the page: the footer describes the list, not the screenful. */
   totals: GoogleAdsMetrics | null;
   rows: Record<string, unknown>[];
   extra: Record<string, unknown>;

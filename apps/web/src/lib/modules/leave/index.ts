@@ -261,6 +261,11 @@ registerWebModule({
               start: day.date,
               end: day.date,
               title: `${label} · ${day.user_name}`,
+              // A chip is a *day*, and a day can be bent by more than one row; the first is the
+              // one to open, and both pages resolve a move's other half from it. Own → the
+              // section on Mijn verlof; someone else's → the roster, whose ⋯ owns that person's
+              // surface. Without an id the chip navigated to a page and left the reader hunting.
+              href: `${own ? "/leave" : "/leave/team"}?availability=${day.entry_ids?.[0] ?? ""}`,
               // Colour carries the state as well as the words do, so a glance separates the two
               // without reading — and an override (#281) collapses them to one colour while the
               // text still says which is which, which is why the state was never *only* a colour.
@@ -271,7 +276,6 @@ registerWebModule({
               // with no fill at all — the loudest thing on the feed as the faintest thing on the
               // screen. `amber` says "not available" without `red`'s "something went wrong".
               color: personColors?.[day.user_id] ?? color ?? (removed ? "amber" : "sky"),
-              href: own ? "/leave" : "/leave/team",
               startsAt: timed ? (day.starts_at ?? undefined) : undefined,
               endsAt: timed ? (day.ends_at ?? undefined) : undefined,
               sourceKey: "leave.availability",

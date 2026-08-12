@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -28,6 +29,7 @@ from app.core.tenancy import RequestContext, require_context
 from app.modules.google_ads.decisions import GoogleAdsDecisionService, GoogleAdsPolicyService
 from app.modules.google_ads.models import GoogleAdsAccount
 from app.modules.google_ads.reads import GoogleAdsReadService
+from app.modules.google_ads.reporting import Slice
 from app.modules.google_ads.schemas import (
     GoogleAdsAccountBrief,
     GoogleAdsAccountCreate,
@@ -335,6 +337,56 @@ def _period_params(
     return period, date_from, date_to
 
 
+def _slice_params(
+    q: str | None = Query(
+        default=None,
+        description=(
+            "Free text, matched case-insensitively against the row's own readable fields — the "
+            "campaign or ad-group name, the keyword, the search term, the place. Applied to the "
+            "whole list before the page is taken, so page 2 of a search is page 2 of the search."
+        ),
+    ),
+    limit: int | None = Query(
+        default=None,
+        ge=1,
+        description=(
+            "How many rows this page holds. Omit for the rest of the list, which is what a "
+            "caller with no pager means. Never more than the read's own ceiling."
+        ),
+    ),
+    offset: int = Query(
+        default=0, ge=0, description="Where the page starts. `total_rows` is what it runs to."
+    ),
+) -> Slice:
+    """The filter and the page, as one argument.
+
+    Separate from ``_period_params`` because they are separate questions: the period says which
+    days Google is asked about and costs a call, while these three say which part of the answer
+    to hand back and cost nothing. Every list read takes them, so a screen that grew past a
+    screenful gains real paging rather than a "showing the first 500" apology (CLAUDE.md §9).
+    """
+    return Slice(search=q, offset=offset, limit=limit)
+
+
+def _status_param(
+    status: str | None = Query(
+        default=None,
+        description=(
+            "Only rows with this Google status: ENABLED, PAUSED or REMOVED. REMOVED implies "
+            "`include_removed`, because a filter that always answers nothing is not a filter."
+        ),
+    ),
+    view: Slice = Depends(_slice_params),
+) -> Slice:
+    """The same slice, carrying a status — for the reads whose rows actually have one.
+
+    Declared as its own dependency rather than a field on every read's parameters: asking a
+    negative-keyword list or a change history to filter by status would answer nothing at all,
+    silently, which is worse than not offering the control.
+    """
+    return replace(view, status=status)
+
+
 @router.get(
     "/accounts/{account_id}/snapshot",
     response_model=GoogleAdsSnapshotRead,
@@ -405,7 +457,7 @@ async def google_ads_campaigns(
             "spent on things since removed."
         ),
     ),
-    limit: int | None = Query(default=None, ge=1),
+    view: Slice = Depends(_status_param),
     ctx: RequestContext = Depends(require_context),
 ) -> GoogleAdsReport:
     """Campaign performance and settings, most expensive first.
@@ -414,7 +466,7 @@ async def google_ads_campaigns(
     Google does not report them there — which is not the same claim as 0 % visibility.
     """
     return await GoogleAdsReadService(ctx).campaigns(
-        account_id, *window, campaigns=campaigns, include_removed=include_removed, limit=limit
+        account_id, *window, campaigns=campaigns, include_removed=include_removed, view=view
     )
 
 
@@ -428,12 +480,12 @@ async def google_ads_ad_groups(
     window: tuple[str | None, date | None, date | None] = Depends(_period_params),
     campaigns: list[str] | None = Query(default=None),
     include_removed: bool = Query(default=False),
-    limit: int | None = Query(default=None, ge=1),
+    view: Slice = Depends(_status_param),
     ctx: RequestContext = Depends(require_context),
 ) -> GoogleAdsReport:
     """Ad-group performance, most expensive first. One level below campaigns."""
     return await GoogleAdsReadService(ctx).ad_groups(
-        account_id, *window, campaigns=campaigns, include_removed=include_removed, limit=limit
+        account_id, *window, campaigns=campaigns, include_removed=include_removed, view=view
     )
 
 
@@ -447,7 +499,7 @@ async def google_ads_keywords(
     window: tuple[str | None, date | None, date | None] = Depends(_period_params),
     campaigns: list[str] | None = Query(default=None),
     include_removed: bool = Query(default=False),
-    limit: int | None = Query(default=None, ge=1),
+    view: Slice = Depends(_status_param),
     ctx: RequestContext = Depends(require_context),
 ) -> GoogleAdsReport:
     """Positive keywords with match type, bid and Quality Score, most expensive first.
@@ -457,7 +509,7 @@ async def google_ads_keywords(
     typed, use search terms.
     """
     return await GoogleAdsReadService(ctx).keywords(
-        account_id, *window, campaigns=campaigns, include_removed=include_removed, limit=limit
+        account_id, *window, campaigns=campaigns, include_removed=include_removed, view=view
     )
 
 
@@ -468,7 +520,7 @@ async def google_ads_keywords(
 )
 async def google_ads_negatives(
     account_id: uuid.UUID,
-    limit: int | None = Query(default=None, ge=1),
+    view: Slice = Depends(_slice_params),
     ctx: RequestContext = Depends(require_context),
 ) -> GoogleAdsReport:
     """Every negative keyword: ad-group level, campaign level, and shared negative lists.
@@ -477,7 +529,7 @@ async def google_ads_negatives(
     one question. Each row carries a `level` saying which it came from. Configuration, so there
     is no period and no metrics: an exclusion either exists or it does not.
     """
-    return await GoogleAdsReadService(ctx).negatives(account_id, limit=limit)
+    return await GoogleAdsReadService(ctx).negatives(account_id, view=view)
 
 
 @router.get(
@@ -493,7 +545,7 @@ async def google_ads_search_terms(
         default=None, ge=0, description="Only terms that cost at least this, in account currency."
     ),
     min_clicks: int | None = Query(default=None, ge=0),
-    limit: int | None = Query(default=None, ge=1),
+    view: Slice = Depends(_slice_params),
     ctx: RequestContext = Depends(require_context),
 ) -> GoogleAdsReport:
     """What people actually typed, most expensive first.
@@ -509,7 +561,7 @@ async def google_ads_search_terms(
         campaigns=campaigns,
         min_cost=min_cost,
         min_clicks=min_clicks,
-        limit=limit,
+        view=view,
     )
 
 
@@ -522,13 +574,11 @@ async def google_ads_ads(
     account_id: uuid.UUID,
     window: tuple[str | None, date | None, date | None] = Depends(_period_params),
     campaigns: list[str] | None = Query(default=None),
-    limit: int | None = Query(default=None, ge=1),
+    view: Slice = Depends(_status_param),
     ctx: RequestContext = Depends(require_context),
 ) -> GoogleAdsReport:
     """Ads with their ad strength and policy approval status, most expensive first."""
-    return await GoogleAdsReadService(ctx).ads(
-        account_id, *window, campaigns=campaigns, limit=limit
-    )
+    return await GoogleAdsReadService(ctx).ads(account_id, *window, campaigns=campaigns, view=view)
 
 
 @router.get(
@@ -540,7 +590,7 @@ async def google_ads_devices(
     account_id: uuid.UUID,
     window: tuple[str | None, date | None, date | None] = Depends(_period_params),
     campaigns: list[str] | None = Query(default=None),
-    limit: int | None = Query(default=None, ge=1),
+    view: Slice = Depends(_slice_params),
     ctx: RequestContext = Depends(require_context),
 ) -> GoogleAdsReport:
     """Performance per device, per campaign, plus an account-wide rollup in `extra.device_totals`.
@@ -549,7 +599,7 @@ async def google_ads_devices(
     signal this read produces.
     """
     return await GoogleAdsReadService(ctx).devices(
-        account_id, *window, campaigns=campaigns, limit=limit
+        account_id, *window, campaigns=campaigns, view=view
     )
 
 
@@ -562,7 +612,7 @@ async def google_ads_geo(
     account_id: uuid.UUID,
     window: tuple[str | None, date | None, date | None] = Depends(_period_params),
     campaigns: list[str] | None = Query(default=None),
-    limit: int | None = Query(default=None, ge=1),
+    view: Slice = Depends(_slice_params),
     ctx: RequestContext = Depends(require_context),
 ) -> GoogleAdsReport:
     """Where the people who saw the ads physically were — not where the campaign targets.
@@ -571,9 +621,7 @@ async def google_ads_geo(
     exists to surface. **Check `extra.granularity` before using region or city** — some accounts
     cannot segment below country, and the read falls back rather than failing.
     """
-    return await GoogleAdsReadService(ctx).geo(
-        account_id, *window, campaigns=campaigns, limit=limit
-    )
+    return await GoogleAdsReadService(ctx).geo(account_id, *window, campaigns=campaigns, view=view)
 
 
 @router.get(
@@ -584,7 +632,7 @@ async def google_ads_geo(
 async def google_ads_conversion_health(
     account_id: uuid.UUID,
     window: tuple[str | None, date | None, date | None] = Depends(_period_params),
-    limit: int | None = Query(default=None, ge=1),
+    view: Slice = Depends(_slice_params),
     ctx: RequestContext = Depends(require_context),
 ) -> GoogleAdsReport:
     """What this account optimises toward, and what each conversion action actually recorded.
@@ -594,7 +642,7 @@ async def google_ads_conversion_health(
     bidding at all. This is Google Ads *configuration* and measured counts — it says nothing
     about whether those conversions became customers.
     """
-    return await GoogleAdsReadService(ctx).conversions(account_id, *window, limit=limit)
+    return await GoogleAdsReadService(ctx).conversions(account_id, *window, view=view)
 
 
 @router.get(
@@ -605,7 +653,7 @@ async def google_ads_conversion_health(
 async def google_ads_changes(
     account_id: uuid.UUID,
     window: tuple[str | None, date | None, date | None] = Depends(_period_params),
-    limit: int | None = Query(default=None, ge=1),
+    view: Slice = Depends(_slice_params),
     ctx: RequestContext = Depends(require_context),
 ) -> GoogleAdsReport:
     """What was changed in the account, with each field's old and new value.
@@ -615,7 +663,7 @@ async def google_ads_changes(
     by Google itself — Smart Bidding above all — appear nowhere in it**. Do not build an audit
     trail on this alone.
     """
-    return await GoogleAdsReadService(ctx).changes(account_id, *window, limit=limit)
+    return await GoogleAdsReadService(ctx).changes(account_id, *window, view=view)
 
 
 @router.get(
@@ -625,7 +673,7 @@ async def google_ads_changes(
 )
 async def google_ads_recommendations(
     account_id: uuid.UUID,
-    limit: int | None = Query(default=None, ge=1),
+    view: Slice = Depends(_slice_params),
     ctx: RequestContext = Depends(require_context),
 ) -> GoogleAdsReport:
     """Google's own suggestions for this account, with the impact it projects for each.
@@ -633,7 +681,7 @@ async def google_ads_recommendations(
     Advice rather than data, and worth reading before inferring the same thing from metrics.
     Dismissed recommendations are excluded — somebody already decided about those.
     """
-    return await GoogleAdsReadService(ctx).recommendations(account_id, limit=limit)
+    return await GoogleAdsReadService(ctx).recommendations(account_id, view=view)
 
 
 @router.post(

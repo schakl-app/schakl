@@ -233,6 +233,54 @@ async def test_hours_are_optional_for_freelance_and_required_for_payroll(client_
         assert together.status_code == 200, together.text
 
 
+async def test_the_profile_reports_the_kind_in_force(client_for) -> None:
+    """What the web asks before it draws a freelancer's own availability surface.
+
+    ``null`` is a third answer, not a synonym for ``employee``: a tenant that has never entered a
+    contract must show the surface to nobody rather than to everybody — every member holds
+    ``leave.availability.write:own``, so the permission alone cannot decide this.
+    """
+    t = await make_tenant("freelance-profile")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        mine = (await c.get("/api/v1/leave/profile", headers=headers)).json()
+        assert mine["employment_type"] is None
+
+        zzp = await _member(c, headers, "profile-zzp@example.com")
+        zzp_headers = await auth_cookie(zzp)
+        res = await c.post(
+            "/api/v1/leave/contracts",
+            json={
+                "user_id": str(zzp.id),
+                "start_date": f"{_YEAR}-01-01",
+                "employment_type": "freelance",
+            },
+            headers=headers,
+        )
+        assert res.status_code == 201, res.text
+        assert (await c.get("/api/v1/leave/profile", headers=zzp_headers)).json()[
+            "employment_type"
+        ] == "freelance"
+
+        # A period that has not started yet is not the period in force.
+        staff = await _member(c, headers, "profile-future@example.com")
+        staff_headers = await auth_cookie(staff)
+        future = await c.post(
+            "/api/v1/leave/contracts",
+            json={
+                "user_id": str(staff.id),
+                "start_date": f"{_YEAR + 1}-01-01",
+                "employment_type": "freelance",
+                "contract_hours_per_week": "20",
+            },
+            headers=headers,
+        )
+        assert future.status_code == 201, future.text
+        assert (await c.get("/api/v1/leave/profile", headers=staff_headers)).json()[
+            "employment_type"
+        ] is None
+
+
 # --- availability ----------------------------------------------------------------- #
 
 

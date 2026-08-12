@@ -198,6 +198,26 @@ export interface DrilldownResponse {
   deep_link: string;
 }
 
+/**
+ * One source a client has linked, as the picker's chips render it.
+ *
+ * `state` is three-way, not the panel's four: "disconnected" is read from the absence of a
+ * *Google* connection, which two of the five sources never have — see the API schema.
+ */
+export interface MarketingClientSource {
+  source: MarketingSource;
+  /** Links of this source (two properties for two websites is ordinary). */
+  links: number;
+  state: "ok" | "pending" | "error";
+}
+
+/** A client with at least one linked source — one tile on the Marketing picker. */
+export interface MarketingClientRow {
+  company_id: string;
+  company_name: string;
+  sources: MarketingClientSource[];
+}
+
 export interface OverviewRow {
   company_id: string;
   company_name: string;
@@ -213,9 +233,10 @@ export const HEADLINE_METRICS: Record<MarketingSource, string[]> = {
   gsc: ["clicks", "impressions", "position", "ctr"],
   gads: ["cost", "clicks", "conversions", "conversionsValue"],
   seranking: ["avg_position", "top10", "top3", "keywords_ranking"],
-  // `avg_sentiment` is the one of the five that stays out of the panel: it is a −1…1 quality
-  // signal, not a size, and a client glancing at four tiles reads "0,46" as a bad score rather
-  // than as a mildly positive tone. It keeps its place in the tab's full list below.
+  // `avg_sentiment` is the one of the five that stays out of the panel: it is a 0-100 quality
+  // signal, not a size, and next to a mentions count and a score out of 100 a fourth bare
+  // number is one number too many to tell apart. It keeps its place in the tab's full list
+  // below, where it prints as "46%" and carries the sentence that says what 46 would be.
   rankmath: ["ai_visibility_score", "mentions", "citations", "brand_rank"],
 };
 

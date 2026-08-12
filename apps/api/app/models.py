@@ -19,6 +19,7 @@ from app.core.customfields.models import CustomFieldDefinition  # noqa: F401
 from app.core.email.models import EmailSettings, OrgEmailTemplate  # noqa: F401
 from app.core.instance.impersonation import ImpersonationHandoff  # noqa: F401
 from app.core.models import InstanceAuditLog, Membership, Org, OrgSettings  # noqa: F401
+from app.core.oauth.models import OAuthClient, OAuthGrant  # noqa: F401
 from app.core.permissions.models import (  # noqa: F401
     MembershipRole,
     Role,

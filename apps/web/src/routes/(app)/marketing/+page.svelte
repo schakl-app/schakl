@@ -3,18 +3,24 @@
    * Top-level Marketing page (epic #134): pick a client, then work with the same marketing
    * dashboard the client's own tab shows — one shared component, so reading and curating
    * (edit mode, #192) are available in both places identically.
+   *
+   * The picker is a grid of tiles over the clients that have a source linked, not a dropdown
+   * over every company: see `MarketingClientTiles`.
    */
-  import { goto } from "$app/navigation";
   import { t } from "$lib/core/i18n";
   import { navLabel, pageTitle } from "$lib/core/title";
-  import Combobox from "$lib/core/ui/Combobox.svelte";
+  import MarketingClientTiles from "$lib/modules/marketing/MarketingClientTiles.svelte";
   import MarketingDashboard from "$lib/modules/marketing/MarketingDashboard.svelte";
-  import type { CompanyMarketing } from "$lib/modules/marketing/types";
+  import type { CompanyMarketing, MarketingClientRow } from "$lib/modules/marketing/types";
 
   let { data } = $props();
 
-  const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
-  const selectedName = $derived(data.companies.find((c) => c.id === data.companyId)?.name ?? "");
+  const clients = $derived(data.clients as MarketingClientRow[]);
+  // A client reached by a link (or a bookmark) need not be one of the tiles — a source can be
+  // unlinked after the URL was shared — so the name is a nicety here, never the gate.
+  const selectedName = $derived(
+    clients.find((c) => c.company_id === data.companyId)?.company_name ?? "",
+  );
   // Resolved into `$state`, never awaited in the markup: a raw `{#await}` re-enters its pending
   // branch on every invalidation, and edit mode holds unsaved tile names its own save would then
   // discard (docs/PERFORMANCE.md).
@@ -40,10 +46,8 @@
     return qs ? `/marketing?${qs}` : "/marketing";
   }
 
-  function pickCompany(id: string) {
-    // A website belongs to one client, so the filter resets with the client.
-    goto(urlFor(id, data.range, ""), { keepFocus: true, noScroll: true });
-  }
+  // A website belongs to one client, so the filter resets with the client.
+  const clientHref = (companyId: string) => urlFor(companyId, data.range, "");
 </script>
 
 <svelte:head>
@@ -55,28 +59,15 @@
   <p class="mt-1 text-sm text-text-muted">{t("marketing.page.subtitle")}</p>
 </div>
 
-<div class="mb-5 max-w-md">
-  <label for="marketing-client" class="mb-1 block text-xs font-medium text-text-muted">
-    {t("marketing.select_client")}
-  </label>
-  <Combobox
-    items={companyItems}
-    name="_marketing_client"
-    id="marketing-client"
-    value={data.companyId}
-    placeholder={t("marketing.select_client")}
-    onselect={pickCompany}
-  />
-</div>
-
 {#if !data.companyId}
-  <div class="rounded-xl border border-dashed border-border bg-surface-raised p-8 text-center">
-    <p class="text-sm text-text-muted">{t("marketing.page.pick_prompt")}</p>
-  </div>
+  <MarketingClientTiles rows={clients} total={data.clientsTotal} hrefFor={clientHref} />
 {:else}
-  <div class="mb-3">
+  <div class="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+    <a href={urlFor("", data.range, "")} class="text-sm text-text-muted hover:text-text">
+      ← {t("marketing.clients.all")}
+    </a>
     <a href={`/companies/${data.companyId}`} class="text-sm text-text-muted hover:text-text">
-      {selectedName} ↗
+      {selectedName || t("marketing.clients.open_company")} ↗
     </a>
   </div>
 

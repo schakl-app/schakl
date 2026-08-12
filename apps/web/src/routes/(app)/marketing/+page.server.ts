@@ -17,19 +17,21 @@ export const load: PageServerLoad = async (event) => {
   // Filtering happens client-side — the metrics payload already carries every link.
   const website = event.url.searchParams.get("website") || "";
 
-  // The client list feeds the picker (name-only); the metrics load only when a client is picked.
-  const companiesP = api.GET("/api/v1/companies", {
-    params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
-  });
+  // The picker's tiles: the clients that actually have a source linked, with which sources and
+  // how each is doing. Deliberately not `/companies` — the old dropdown listed every company,
+  // and most of its entries led to an empty dashboard with nothing on the way there saying so.
+  // It is also cheaper: one query over the links, no metric fold (docs/PERFORMANCE.md).
+  const clientsP = api.GET("/api/v1/marketing/clients", { params: { query: { limit: 200 } } });
   const metricsP = companyId
     ? api.GET("/api/v1/marketing/companies/{company_id}/metrics", {
         params: { path: { company_id: companyId }, query: { period: range } },
       })
     : null;
-  const companies = await companiesP;
+  const clients = await clientsP;
 
   return {
-    companies: companies.data?.items ?? [],
+    clients: clients.data?.rows ?? [],
+    clientsTotal: clients.data?.total ?? 0,
     companyId,
     // Streamed behind the shell (docs/PERFORMANCE.md): the client picker and the period tabs are
     // what the user interacts with, and neither needs a fold of daily metric rows to render.

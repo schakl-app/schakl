@@ -5,6 +5,10 @@
  * from the tenant's, #124 — we label it, never convert it); CTR/engagement are ratios shown as
  * percentages; average position is one decimal and lower is better; counts are whole numbers.
  * A delta's tone flips for a lower-is-better metric so an improving average position reads green.
+ *
+ * A metric also carries the sentence that says what it *means* (`metricHelp` and its two
+ * siblings), because a correctly formatted number is still unreadable if nobody knows what was
+ * counted — which is what Rank Math's five turned out to be for both the agency and its clients.
  */
 import { dateLocale, fmtMonthYear, fmtNumber, fmtPeriod } from "$lib/core/format";
 import { t } from "$lib/core/i18n";
@@ -60,6 +64,37 @@ export function drilldownLabel(kind: string): string {
   return t(`marketing.drilldown.${kind}`);
 }
 
+/**
+ * The one-line explanation of a metric, drill-down or source — `""` where none is written.
+ *
+ * A number nobody can name is a number nobody can act on, and this module prints five of them
+ * that no marketeer has met before: a client reading "Bronvermeldingen 6" beside "Vermeldingen
+ * 18" has no way to learn that the first is the subset of the second that carried a link. The
+ * labels are as short as a tile allows, so the sentence has to live somewhere; here it is
+ * beside the figure, on the same screen the agency and the client both read.
+ *
+ * `t()` answers with the *key* on a miss (the `channelLabel` rule), so an undescribed metric
+ * would print `marketing.metric_help.sessions` under its tile. Everything below therefore
+ * collapses a miss to the empty string and every caller renders nothing for it — which is what
+ * makes this safe to add for one source and fill in for the other four later.
+ */
+function help(key: string): string {
+  const text = t(key);
+  return text === key ? "" : text;
+}
+
+export function metricHelp(key: string): string {
+  return help(`marketing.metric_help.${key}`);
+}
+
+export function drilldownHelp(kind: string): string {
+  return help(`marketing.drilldown_help.${kind}`);
+}
+
+export function sourceHelp(source: string): string {
+  return help(`marketing.source_help.${source}`);
+}
+
 export function fmtCurrency(value: number, currency: string | null | undefined): string {
   return new Intl.NumberFormat(dateLocale(), {
     style: "currency",
@@ -80,11 +115,17 @@ export function fmtMetric(key: string, value: number, currency?: string | null):
   if (MONEY_METRICS.has(key)) return fmtCurrency(value, currency);
   if (PERCENT_METRICS.has(key)) return fmtPercent(value);
   if (key === "position" || key === "position_change") return fmtNumber(value, 1);
-  // Sentiment is a ratio in −1…1, not a count. At zero decimals every value Rank Math reports
-  // prints as "0" or "1" — not a rounding of the number, a different number. (`ai_visibility_score`
-  // is left whole: it reads as a 0-100 score. That range is one of the things docs/WORDPRESS.md §1
-  // asks the first live credential to confirm, so check it there before trusting this line.)
-  if (key === "avg_sentiment") return fmtNumber(value, 2);
+  // Rank Math's sentiment is 0-100 and its own dashboard prints it as a percentage
+  // (`SentimentBadge`: `${round(score)}%`, green from 70, red under 50 — plugin 1.0.276,
+  // docs/WORDPRESS.md §3). It was formatted here as a −1…1 ratio at two decimals, which is a
+  // guess this file admitted to making; against the real scale that guess prints a mildly
+  // positive brand as "46,00" beside a mentions count, i.e. as a number with no unit at all.
+  // `ai_visibility_score` and `brand_rank` stay whole on purpose: one is out of 100 and the
+  // other is a place in a list, and neither is a percentage.
+  if (key === "avg_sentiment") return `${fmtNumber(value, 0)}%`;
+  // The prompts drill-down's only column is a flag, and 1/0 is not an answer to "is this
+  // prompt still being tracked?".
+  if (key === "enabled") return value ? t("common.yes") : t("common.no");
   return fmtNumber(value, 0);
 }
 

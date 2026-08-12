@@ -303,6 +303,20 @@ class UptimeMonitor(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Auditab
     #: must be reported rather than quietly absorbed.
     adopted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
+    #: Which websites or domains this monitor's hostname could mean (:mod:`.matching`, #321).
+    #: Proposals, never applied: one wrong link attaches a client's monitoring to another
+    #: client's record with every row still valid, so a human confirms.
+    link_candidates: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    #: When the match last ran. Separate from the list for `cloudflare`'s
+    #: ``redirects_observed_at`` reason: **"we looked and there is nothing to link this to" and
+    #: "nobody has ever looked" are different sentences, and an empty list cannot tell them
+    #: apart.** Without it the reconciliation screen would have to recompute on every page load
+    #: and would silently show a fresh, wrong "niets gevonden" for an instance that has never
+    #: synced.
+    link_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     @classmethod
     def __portal_horizon_clause__(cls, scope: frozenset[uuid.UUID] | None):  # noqa: ANN206
         """The stricter rule for a client-portal login (#266, #274).

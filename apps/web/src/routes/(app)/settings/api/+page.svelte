@@ -77,12 +77,36 @@
         ),
   );
 
+  /**
+   * Which slice of the tool surface the printed connection points at.
+   *
+   * The whole surface is ~620 tools and about two megabytes of `tools/list`; a chat client loads
+   * every tool into the model's context on every turn, and ChatGPT refuses anything over ~5,000
+   * tokens for all of them together. So this is not a preference — for most clients it is the
+   * difference between a connector that adds and one that does not, which is why the tool count
+   * rides every option instead of a paragraph underneath (docs/MCP.md).
+   *
+   * `""` is `/mcp` itself: the absence of a section, not a section named "everything".
+   */
+  let section = $state("");
+  const sections = $derived(data.mcpSections ?? []);
+  const chosen = $derived(sections.find((s) => s.key === section));
+  const KINDS = ["curated", "bundle", "module"] as const;
+
+  function sectionLabel(row: { key: string; label_key: string }): string {
+    // A module section labels itself with the key the modules screen already uses, and that key
+    // falls back to the raw name for a module this build does not know — so an instance running
+    // a module newer than its web bundle names it, rather than printing an i18n key at somebody.
+    const label = t(row.label_key);
+    return label === row.label_key ? row.key : label;
+  }
+
   // What the connection lines say once the key exists. Before that — and on every later visit,
   // since the API keeps only a hash — the same lines render with a placeholder, so the shape of
   // the command is learnable without minting anything.
   const PLACEHOLDER = "schakl_…";
   const secret = $derived(form?.createdSecret ?? PLACEHOLDER);
-  const mcpUrl = $derived(`${data.origin}/mcp`);
+  const mcpUrl = $derived(`${data.origin}/mcp${section ? `/${section}` : ""}`);
   const docsUrl = $derived(`${data.origin}/api/docs`);
   // `schakl` here is the identifier the server registers itself under (app/core/mcp/server.py)
   // and the alias docs/MCP.md prescribes — code, not the tenant's brand (CLAUDE.md §1).
@@ -355,6 +379,67 @@
 
     <div class="mt-4 space-y-4">
       {#if shownTarget === "mcp" && mcpAvailable}
+        <!-- Which tools the connection offers. Above the commands, because it changes them. -->
+        <div>
+          <span class="mb-1 block text-sm font-medium text-text">
+            {t("settings.api.section_label")}
+          </span>
+          <p class="mb-2 text-xs text-text-muted">
+            {t("settings.api.section_help", { total: data.mcpTotalTools })}
+          </p>
+          <div class="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              class="rounded-full border px-2.5 py-1 text-xs transition-colors {section === ''
+                ? 'border-brand bg-brand/10 text-text'
+                : 'border-border text-text-muted hover:border-brand'}"
+              aria-pressed={section === ""}
+              onclick={() => (section = "")}
+            >
+              {t("settings.api.section_all")}
+              <span class="text-text-muted/70">({data.mcpTotalTools})</span>
+            </button>
+            {#each KINDS as kind (kind)}
+              {#each sections.filter((s) => s.kind === kind) as row (row.key)}
+                <button
+                  type="button"
+                  class="rounded-full border px-2.5 py-1 text-xs transition-colors {section ===
+                  row.key
+                    ? 'border-brand bg-brand/10 text-text'
+                    : 'border-border text-text-muted hover:border-brand'}"
+                  aria-pressed={section === row.key}
+                  onclick={() => (section = row.key)}
+                >
+                  {sectionLabel(row)}
+                  <span class="text-text-muted/70">({row.tool_count})</span>
+                </button>
+              {/each}
+            {/each}
+          </div>
+          {#if chosen}
+            <p class="mt-2 text-xs text-text-muted">
+              {#if chosen.kind === "bundle"}
+                {t("settings.api.section_bundle_note", {
+                  modules: (chosen.modules ?? [])
+                    .map((m) => {
+                      const label = t(`module.${m}.label`);
+                      return label === `module.${m}.label` ? m : label;
+                    })
+                    .join(", "),
+                })}
+              {:else if chosen.kind === "curated"}
+                {t(`settings.api.section.${chosen.key}_help`)}
+              {:else}
+                {t("settings.api.section_module_note", { name: sectionLabel(chosen) })}
+              {/if}
+            </p>
+          {/if}
+          <!-- A section narrows what a client is *offered*, never what a credential may do
+               (CLAUDE.md §12). Said on the screen because the opposite reading is the natural
+               one, and acting on it would leave somebody believing a URL is a security control. -->
+          <p class="mt-1 text-xs text-text-muted/80">{t("settings.api.section_not_a_gate")}</p>
+        </div>
+
         <CopyBlock
           value={claudeCommand}
           label={t("settings.api.claude_code")}
@@ -366,6 +451,10 @@
           help={t("settings.api.client_config_help")}
         />
         <CopyBlock value={mcpUrl} label={t("settings.api.endpoint")} />
+        <div class="rounded-lg border border-dashed border-border p-3">
+          <p class="text-xs font-medium text-text">{t("settings.api.oauth_title")}</p>
+          <p class="mt-1 text-xs text-text-muted">{t("settings.api.oauth_help")}</p>
+        </div>
       {:else}
         <CopyBlock
           value={curlCommand}
@@ -381,6 +470,46 @@
       </p>
     </div>
   </section>
+
+  <!-- Clients connected over OAuth. Their own card rather than a row among the keys, because a
+       person recognises "Claude" and not the key it happens to hold — and disconnecting revokes
+       the client, so every session it ever opened goes with it. -->
+  {#if data.connections.length > 0}
+    <section class="rounded-xl border border-border bg-surface-raised p-5">
+      <h2 class="text-sm font-semibold text-text">{t("settings.api.connections_title")}</h2>
+      <p class="mt-1 text-sm text-text-muted">{t("settings.api.connections_help")}</p>
+      <ul class="mt-4 divide-y divide-border rounded-lg border border-border">
+        {#each data.connections as connection (connection.id)}
+          <li class="flex items-center gap-3 px-3 py-2 text-sm">
+            <Bot size={16} class="shrink-0 text-text-muted" />
+            <div class="min-w-0 flex-1">
+              <!-- The client's own name, from an unauthenticated registration call: text only. -->
+              <span class="font-medium text-text">{connection.client_name}</span>
+              <span class="block text-xs text-text-muted">
+                {connection.sessions > 0
+                  ? t("settings.api.connection_active")
+                  : t("settings.api.connection_idle")}
+              </span>
+            </div>
+            <form
+              method="POST"
+              action="?/disconnect"
+              use:enhance={busy.wrap(`disconnect:${connection.id}`)}
+            >
+              <input type="hidden" name="client_pk" value={connection.id} />
+              <Button
+                variant="danger-outline"
+                size="xs"
+                loading={busy.is(`disconnect:${connection.id}`)}
+              >
+                {t("settings.api.connection_disconnect")}
+              </Button>
+            </form>
+          </li>
+        {/each}
+      </ul>
+    </section>
+  {/if}
 
   <!-- The keys that already exist. No secret here, ever — the API keeps only a hash. -->
   <section class="rounded-xl border border-border bg-surface-raised p-5">

@@ -238,6 +238,23 @@ class RedirectAdopt(RedirectIntent):
     rule_id: str = Field(min_length=1, max_length=64)
 
 
+class RedirectRuleEdit(RedirectIntent):
+    """A new intent for a Redirect Rule the zone already has — ours or the tenant's.
+
+    The rule is named by **id in the path**, so this carries only what the rule should become.
+    Adoption's "only if it already matches exactly" refusal is deliberately absent: that guard
+    protects a *claim* about a rule nobody is changing, and this endpoint's whole purpose is to
+    change one. What replaces it is narrower and lives in ``redirects.edited_rule`` — a match set
+    schakl cannot write is carried over untouched, so an edit moves the destination and never the
+    set of hostnames it answers for.
+
+    No ``ensure_origin``. That flag exists because a *newly created* rule on a zone with no
+    proxied record is inert; a rule already in the ruleset is one traffic is already reaching, and
+    a checkbox offering to fix a problem this path does not create would be a control with nothing
+    to do. The status check still raises ``origin_missing`` where it is genuinely wrong.
+    """
+
+
 class RedirectRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -338,11 +355,17 @@ class RedirectObservation(BaseModel):
 
 
 class RedirectConflict(BaseModel):
-    """Something *else* on this zone that already redirects, or could.
+    """A redirect on this zone that schakl does not own.
 
-    Reported rather than resolved: Cloudflare evaluates redirect rules top-down and we cannot
-    evaluate a tenant's filter expression to know whether it catches this hostname. Naming it
-    lets the admin decide; silently appending our rule below it would look like it worked.
+    Named `conflict` for the case it was written for — Cloudflare evaluates redirect rules
+    top-down, so a tenant rule above ours silently wins — but that is only what it *is* when we
+    hold a rule too. With none of ours, these are simply the redirects this domain has, and the
+    panel lists them as such: the state an agency inherits is the state this module exists to
+    serve, and rendering it as a fault taught people to ignore the box it was in.
+
+    Either way it is reported rather than resolved. We cannot evaluate a tenant's filter
+    expression to know what it catches, so naming it lets the admin decide; silently appending
+    our rule below it would look like it worked.
     """
 
     kind: Literal["redirect_rule", "page_rule"]
@@ -353,6 +376,50 @@ class RedirectConflict(BaseModel):
     #: forwarding rule is a different product and adopting it would mean claiming to manage
     #: something this module cannot write.
     rule_id: str | None = None
+    #: The intent that would have produced this rule (``redirects.rule_intent``), so the row can
+    #: describe itself in the tenant's own vocabulary — *"301, pad meenemen, incl. subdomeinen"* —
+    #: and so **the adopt button posts the rule's own values**. It used to post whatever happened
+    #: to be typed in the form above it, which is why adopting an inherited redirect answered
+    #: `cloudflare_redirect_differs` until the admin hand-matched five fields to a rule they could
+    #: not see. ``None`` means the shape is not one schakl can express: listed, described by
+    #: Cloudflare's own text, and offered no adopt button rather than one that always refuses.
+    intent: RedirectIntent | None = None
+    #: Where this rule sends traffic, read on its own (``redirects.rule_target``) rather than off
+    #: ``intent``. The two come apart on shapes we can read but not *write* — Cloudflare's own
+    #: ``http.host in {"klant.nl" "www.klant.nl"}`` is the common one — and there the target is
+    #: still the single most useful thing to put on the row and in ``Domain.redirect_url``.
+    target_url: str | None = None
+    #: Whether this rule redirects the **whole** domain (``redirects.domain_wide_for``). A rule
+    #: for one subdomain, or one narrowed to a path, mentions the apex and does not redirect it;
+    #: only this may move ``Domain.status``.
+    domain_wide: bool = False
+    # --- the rule's own settings, field by field, each ``None`` where it cannot be read ------ #
+    # Together these are what the **edit form seeds from**, and they exist beside ``intent``
+    # rather than inside it because a rule can be editable without being adoptable. ``intent`` is
+    # all-or-nothing by design — it answers "could schakl have written this whole rule?", and one
+    # unreadable part costs the lot. Seeding a form from it therefore filled every field of a
+    # partly-readable rule with a *default*, and saving then wrote those defaults back: a 303
+    # became a 301, a rule sending every URL to one page started appending paths, a redirect for
+    # one hostname widened to every subdomain of it. All three are silent, and all three change
+    # what a visitor's browser does.
+    #
+    # So each is read on its own and says so when it cannot be. The panel draws a control only
+    # for a field it was given, and the API rewrites only what it was sent.
+    #: **Tri-state** (``redirects.rule_scope``): what the rule's match set says about subdomains,
+    #: or ``None`` when that match set is not one schakl can rewrite (Cloudflare's own
+    #: ``http.host in {…}``, say). ``None`` means the expression is carried over verbatim by an
+    #: edit and the checkbox is not drawn.
+    include_subdomains: bool | None = None
+    #: Read from the target's *shape* (``redirects.rule_target``), which is the only place it
+    #: exists — Cloudflare has no flag for it. Readable exactly when ``target_url`` is, since both
+    #: come out of the same call.
+    preserve_path: bool | None = None
+    #: ``preserve_query_string`` as Cloudflare holds it.
+    preserve_query: bool | None = None
+    #: The code Cloudflare holds, passed through even when it is one schakl cannot express (a 303
+    #: costs the ``intent`` and nothing else). The panel's select offers the four we can write, so
+    #: an edit of such a rule is a deliberate change of code rather than an accidental one.
+    status_code: int | None = None
 
 
 class OriginState(BaseModel):
@@ -414,7 +481,14 @@ class DomainStatusRead(BaseModel):
 
     redirect: RedirectRead | None = None
     redirect_live: RedirectObservation | None = None
+    #: The redirects on this zone schakl does not own. **Filled on a stored read too**, from the
+    #: zone's last observation — that is what lets a domain whose redirect was made in
+    #: Cloudflare's dashboard show as redirecting the moment the page opens, instead of only for
+    #: as long as somebody holds the check button's answer on screen.
     conflicts: list[RedirectConflict] = Field(default_factory=list)
+    #: When ``conflicts`` was last read from Cloudflare. ``None`` = never, which an empty list
+    #: alone cannot say, and "we have not looked" must never render as "there is nothing there".
+    redirects_observed_at: datetime | None = None
     origin: OriginState | None = None
     pages_links: list[PagesLinkRead] = Field(default_factory=list)
 

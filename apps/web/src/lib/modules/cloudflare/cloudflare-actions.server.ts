@@ -34,16 +34,13 @@ export const cloudflareActions = {
   /** Adopt this domain's existing zone, or create one. Adoption always wins (see the API). */
   cfConnect: async (event: RequestEvent) => {
     const form = await event.request.formData();
-    const { error } = await apiFor(event).POST(
-      "/api/v1/cloudflare/domains/{domain_id}/connect",
-      {
-        params: { path: { domain_id: event.params.id as string } },
-        body: {
-          account_id: String(form.get("account_id") ?? "") || null,
-          create_if_missing: form.get("adopt_only") === null,
-        },
+    const { error } = await apiFor(event).POST("/api/v1/cloudflare/domains/{domain_id}/connect", {
+      params: { path: { domain_id: event.params.id as string } },
+      body: {
+        account_id: String(form.get("account_id") ?? "") || null,
+        create_if_missing: form.get("adopt_only") === null,
       },
-    );
+    });
     if (error) return fail(400, { cfError: apiErrorKey(error).key });
     return { cfConnected: true };
   },
@@ -52,6 +49,10 @@ export const cloudflareActions = {
    * The explicit "go look at Cloudflare" action. Its answer is returned to the page rather than
    * reloaded from `load`, because `load` deliberately reads only stored rows — a domain page
    * must not depend on Cloudflare being up (docs/PERFORMANCE.md).
+   *
+   * Its result shape (`cfStatus`) is shared with the by-id redirect writes, which end in the same
+   * refreshed report for the same reason: a write invalidates the observation the list was drawn
+   * from, and the page has exactly one place it reads a fresher one.
    *
    * **Public DNS is refreshed first, and that is a different module's call.** Half of what this
    * button is asked — "do the nameservers point here yet?" — is not Cloudflare's to answer: the
@@ -73,10 +74,9 @@ export const cloudflareActions = {
     await api
       .POST("/api/v1/domains/{domain_id}/refresh", { params: { path: { domain_id } } })
       .catch(() => null);
-    const { data, error } = await api.POST(
-      "/api/v1/cloudflare/domains/{domain_id}/check",
-      { params: { path: { domain_id } } },
-    );
+    const { data, error } = await api.POST("/api/v1/cloudflare/domains/{domain_id}/check", {
+      params: { path: { domain_id } },
+    });
     if (error) return fail(400, { cfError: apiErrorKey(error).key });
     return { cfStatus: data };
   },
@@ -85,21 +85,18 @@ export const cloudflareActions = {
     const form = await event.request.formData();
     const target_url = String(form.get("target_url") ?? "").trim();
     if (!target_url) return fail(400, { cfError: "errors.required" });
-    const { error } = await apiFor(event).PUT(
-      "/api/v1/cloudflare/domains/{domain_id}/redirect",
-      {
-        params: { path: { domain_id: event.params.id as string } },
-        body: {
-          target_url,
-          status_code: statusCode(form.get("status_code")),
-          // Unchecked checkboxes are simply absent from the form data.
-          preserve_path: form.get("preserve_path") !== null,
-          preserve_query: form.get("preserve_query") !== null,
-          include_subdomains: form.get("include_subdomains") !== null,
-          ensure_origin: form.get("ensure_origin") !== null,
-        },
+    const { error } = await apiFor(event).PUT("/api/v1/cloudflare/domains/{domain_id}/redirect", {
+      params: { path: { domain_id: event.params.id as string } },
+      body: {
+        target_url,
+        status_code: statusCode(form.get("status_code")),
+        // Unchecked checkboxes are simply absent from the form data.
+        preserve_path: form.get("preserve_path") !== null,
+        preserve_query: form.get("preserve_query") !== null,
+        include_subdomains: form.get("include_subdomains") !== null,
+        ensure_origin: form.get("ensure_origin") !== null,
       },
-    );
+    });
     if (error) return fail(400, { cfError: apiErrorKey(error).key });
     return { cfRedirectSaved: true };
   },
@@ -133,6 +130,57 @@ export const cloudflareActions = {
     );
     if (error) return fail(400, { cfError: apiErrorKey(error).key });
     return { cfRedirectAdopted: true };
+  },
+
+  /**
+   * Change a rule the zone already has, named by id — the ordinary act on an inherited redirect.
+   *
+   * Distinct from `cfSaveRedirect`, which writes *schakl's* rule and may create one. This one
+   * cannot create anything: it edits a row the user was shown, and editing an unowned rule does
+   * not claim it (see the API). There is no `ensure_origin` — a rule already in the ruleset is
+   * one traffic already reaches, so the checkbox would have nothing to do.
+   *
+   * `include_subdomains` rides along only where the API said the match set is schakl's to rewrite
+   * (`include_subdomains !== null` on the row); on any other rule the panel draws no checkbox and
+   * the API keeps the expression untouched, so whatever is posted here is ignored by design
+   * rather than by accident.
+   *
+   * The answer is the refreshed report, handed to the page as `cfStatus` — the same channel
+   * `cfCheck` uses, so the list redraws from the write instead of needing a second press.
+   */
+  cfEditRule: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const target_url = String(form.get("target_url") ?? "").trim();
+    const rule_id = String(form.get("rule_id") ?? "");
+    if (!target_url || !rule_id) return fail(400, { cfError: "errors.required" });
+    const { data, error } = await apiFor(event).PUT(
+      "/api/v1/cloudflare/domains/{domain_id}/redirect/rules/{rule_id}",
+      {
+        params: { path: { domain_id: event.params.id as string, rule_id } },
+        body: {
+          target_url,
+          status_code: statusCode(form.get("status_code")),
+          preserve_path: form.get("preserve_path") !== null,
+          preserve_query: form.get("preserve_query") !== null,
+          include_subdomains: form.get("include_subdomains") !== null,
+        },
+      },
+    );
+    if (error) return fail(400, { cfError: apiErrorKey(error).key });
+    return { cfRuleSaved: true, cfStatus: data };
+  },
+
+  /** Delete one rule from the zone by id — ours or the tenant's. Confirmed on the row it removes. */
+  cfDeleteRule: async (event: RequestEvent) => {
+    const form = await event.request.formData();
+    const rule_id = String(form.get("rule_id") ?? "");
+    if (!rule_id) return fail(400, { cfError: "errors.required" });
+    const { data, error } = await apiFor(event).DELETE(
+      "/api/v1/cloudflare/domains/{domain_id}/redirect/rules/{rule_id}",
+      { params: { path: { domain_id: event.params.id as string, rule_id } } },
+    );
+    if (error) return fail(400, { cfError: apiErrorKey(error).key });
+    return { cfRuleDeleted: true, cfStatus: data };
   },
 
   cfRemoveRedirect: async (event: RequestEvent) => {

@@ -16,6 +16,10 @@ from dataclasses import dataclass
 # Hex tokens, not base64url: base64url's alphabet includes ``_``, which would collide with the
 # separator and make the prefix ambiguous. Hex is [0-9a-f] only, so the split is unambiguous.
 TOKEN_PREFIX = "schakl_"
+#: OAuth refresh tokens (docs/MCP.md) carry a *different* token prefix, so one presented as a
+#: credential is not a key that nearly works — ``parse`` rejects it outright and
+#: ``extract_presented_key`` never returns it. Same shape, same entropy, different door.
+REFRESH_TOKEN_PREFIX = "schakr_"
 _PREFIX_BYTES = 6  # → 12 hex chars
 _SECRET_BYTES = 32  # → 64 hex chars, 256 bits
 
@@ -28,10 +32,10 @@ class GeneratedKey:
     plaintext: str
 
 
-def generate() -> GeneratedKey:
+def generate(token_prefix: str = TOKEN_PREFIX) -> GeneratedKey:
     prefix = secrets.token_hex(_PREFIX_BYTES)
     secret = secrets.token_hex(_SECRET_BYTES)
-    plaintext = f"{TOKEN_PREFIX}{prefix}_{secret}"
+    plaintext = f"{token_prefix}{prefix}_{secret}"
     return GeneratedKey(prefix=prefix, secret_hash=hash_secret(secret), plaintext=plaintext)
 
 
@@ -44,11 +48,11 @@ def verify_secret(secret: str, stored_hash: str) -> bool:
     return hmac.compare_digest(hash_secret(secret), stored_hash)
 
 
-def parse(raw: str) -> tuple[str, str] | None:
-    """``(prefix, secret)`` from a presented key, or ``None`` if it isn't one of ours."""
-    if not raw or not raw.startswith(TOKEN_PREFIX):
+def parse(raw: str, token_prefix: str = TOKEN_PREFIX) -> tuple[str, str] | None:
+    """``(prefix, secret)`` from a presented token, or ``None`` if it isn't one of ours."""
+    if not raw or not raw.startswith(token_prefix):
         return None
-    body = raw[len(TOKEN_PREFIX) :]
+    body = raw[len(token_prefix) :]
     prefix, sep, secret = body.partition("_")
     if not sep or not prefix or not secret:
         return None

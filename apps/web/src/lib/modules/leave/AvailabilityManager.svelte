@@ -48,6 +48,7 @@
     entries = [],
     userId = "",
     error = null,
+    highlightId = "",
     ondone,
   }: {
     /** This person's exception rows, already narrowed to the read window. */
@@ -55,6 +56,8 @@
     /** Whose week a save writes; `""` = the signed-in user (the API's own default). */
     userId?: string;
     error?: string | null;
+    /** The row an agenda chip deep-linked to (#106's shape): scrolled to and marked on arrival. */
+    highlightId?: string;
     /** A row landed: the host may close its modal and own the confirmation (#271). */
     ondone?: () => void;
   } = $props();
@@ -77,6 +80,29 @@
 
   let deleteId = $state("");
   let deleteOpen = $state(false);
+
+  /** The list row a deep link points at, as the id it is drawn under.
+   *
+   *  A chip names one half of a move and the list draws the pair as *one* line, so the id in the
+   *  URL is often not the id the row is keyed by — resolving it here is what stops a link to the
+   *  dropped Tuesday from finding nothing. `""` when the link names no row we hold. */
+  const highlightRowId = $derived.by(() => {
+    if (!highlightId) return "";
+    for (const row of rows) {
+      const ids = row.kind === "move" ? [row.from.id, row.to.id] : [row.entry.id];
+      if (ids.includes(highlightId)) return row.kind === "move" ? row.to.id : row.entry.id;
+    }
+    return "";
+  });
+
+  // Scroll the deep-linked row into view once the list is on screen. A chip that navigates to a
+  // page and leaves the reader to find the row themselves is half a link.
+  $effect(() => {
+    if (!highlightRowId) return;
+    document
+      .getElementById(`availability-${highlightRowId}`)
+      ?.scrollIntoView({ block: "center", behavior: "smooth" });
+  });
 
   const ready = $derived(tab === "move" ? Boolean(day && toDay) : Boolean(day));
 
@@ -109,11 +135,16 @@
     ].sort((a, b) => a.sortKey.localeCompare(b.sortKey));
   });
 
+  /** The window in words. A one-sided bound gets a phrase, not a dangling dash: an omitted bound
+   *  *means* the day's own start or end (#48), and "13:00-" reads as a truncation, not a rule. */
   function windowText(entry: AvailabilityEntry): string {
     if (!entry.start_time && !entry.end_time) return t("leave.availability.whole_day");
-    return `${entry.start_time ? fmtClockTime(entry.start_time) : ""}${RANGE_DASH}${
-      entry.end_time ? fmtClockTime(entry.end_time) : ""
-    }`;
+    if (entry.start_time && entry.end_time) {
+      return `${fmtClockTime(entry.start_time)}${RANGE_DASH}${fmtClockTime(entry.end_time)}`;
+    }
+    return entry.start_time
+      ? t("leave.availability.from_time", { time: fmtClockTime(entry.start_time) })
+      : t("leave.availability.until_time", { time: fmtClockTime(entry.end_time ?? "") });
   }
 
   function repeatText(entry: AvailabilityEntry): string | null {
@@ -140,7 +171,13 @@
     <ul class="divide-y divide-border rounded-lg border border-border text-sm">
       {#each rows as row (row.kind === "move" ? row.from.id : row.entry.id)}
         {@const primary = row.kind === "move" ? row.to : row.entry}
-        <li class="flex items-start gap-3 px-3 py-2">
+        {@const lit = primary.id === highlightRowId}
+        <li
+          id="availability-{primary.id}"
+          class="flex items-start gap-3 px-3 py-2 {lit
+            ? 'bg-brand/5 ring-1 ring-inset ring-brand'
+            : ''}"
+        >
           <div class="min-w-0 flex-1">
             {#if row.kind === "move"}
               <span class="flex flex-wrap items-center gap-1.5 text-text">

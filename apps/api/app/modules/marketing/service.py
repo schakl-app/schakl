@@ -81,6 +81,9 @@ from app.modules.marketing.schemas import (
     KpiValue,
     LinkCreate,
     LinkRead,
+    MarketingClientList,
+    MarketingClientRow,
+    MarketingClientSource,
     MarketingCompareWindow,
     MarketingSettingsRead,
     MarketingSettingsWrite,
@@ -113,6 +116,10 @@ _ACCOUNTS_CACHE_SECONDS = 600
 #: The longest trailing window a caller may ask for. A named month or quarter is bounded by the
 #: calendar and needs no cap; only ``<n>d`` can be typed into a URL unbounded.
 MAX_RANGE_DAYS = 400
+
+#: How loudly a link's state speaks when a client has several links of one source — the worst
+#: one is what the chip says (:meth:`MarketingService.linked_clients`).
+_CLIENT_STATE_ORDER = {"ok": 0, "pending": 1, "error": 2}
 
 
 def _org_key_error(exc: Exception, source: str) -> str:
@@ -1781,6 +1788,65 @@ class MarketingService:
             linked_total=len(names),
             rows=rows[:limit],
         )
+
+    # --- the client picker on Marketing ----------------------------------------------------- #
+    async def linked_clients(self, limit: int = 200) -> MarketingClientList:
+        """Every client with at least one linked source — what the Marketing picker offers.
+
+        The screen it serves used to be a dropdown over **all** companies, which asked the
+        marketeer to remember which of two hundred client names has a dashboard behind it. The
+        list could not tell them, so most of it led to an empty screen. Tiles can tell them, and
+        this is the read that lets them: one query, no metric fold.
+
+        It is deliberately not :meth:`overview`. That one folds every stored daily row to rank
+        clients and rides ``marketing.overview.read``, a manager permission (docs/UX.md) — a
+        picker built on it would be a screen a marketeer holding exactly the read it leads to
+        could not open. So this rides ``marketing.metrics.read``, like the dashboard it picks
+        for, and is horizon-scoped for the same reason :meth:`summary` is: the portal ``client``
+        role holds that read too, and a list may never name a client its caller cannot fetch.
+        """
+        self.ctx.require("marketing.metrics.read")
+        stmt = (
+            select(MarketingLink, Company.name)
+            .join(Company, Company.id == MarketingLink.company_id)
+            .where(MarketingLink.org_id == self.ctx.org.id, MarketingLink.active.is_(True))
+        )
+        horizon = self.ctx.repo(MarketingLink).horizon_condition()
+        if horizon is not None:
+            stmt = stmt.where(horizon)
+        pairs = (await self.ctx.session.execute(stmt)).all()
+
+        names: dict[uuid.UUID, str] = {}
+        # company -> source -> [link count, worst state]
+        per_company: dict[uuid.UUID, dict[str, list]] = defaultdict(dict)
+        for link, company_name in pairs:
+            names[link.company_id] = company_name
+            state = "error" if link.last_error else ("ok" if link.last_synced_at else "pending")
+            entry = per_company[link.company_id].setdefault(link.source, [0, "ok"])
+            entry[0] += 1
+            # The worst of a client's links of one source wins: a chip reading "ok" while one of
+            # the two properties behind it had been failing for a week would be the picker
+            # telling somebody there is nothing here to look into.
+            if _CLIENT_STATE_ORDER[state] > _CLIENT_STATE_ORDER[entry[1]]:
+                entry[1] = state
+
+        order = {source.value: index for index, source in enumerate(MarketingSource)}
+        rows = [
+            MarketingClientRow(
+                company_id=company_id,
+                company_name=names.get(company_id, ""),
+                sources=[
+                    MarketingClientSource(source=MarketingSource(source), links=count, state=state)
+                    for source, (count, state) in sorted(
+                        sources.items(), key=lambda item: order.get(item[0], 99)
+                    )
+                ],
+            )
+            for company_id, sources in per_company.items()
+        ]
+        # Alphabetical, case-blind: this is a list somebody scans for a name they already know.
+        rows.sort(key=lambda row: row.company_name.casefold())
+        return MarketingClientList(rows=rows[:limit], total=len(rows))
 
 
 class MarketingSettingsService:

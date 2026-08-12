@@ -249,13 +249,15 @@ async def import_holidays(
 )
 async def my_profile(ctx: RequestContext = Depends(require_context)) -> LeaveProfileRead:
     """The caller's **effective** schedule — merged server-side, on purpose (#46)."""
-    schedule, hours, inherited = await LeaveService(ctx).profile_for(ctx.user.id)
+    service = LeaveService(ctx)
+    schedule, hours, inherited = await service.profile_for(ctx.user.id)
     return LeaveProfileRead(
         user_id=ctx.user.id,
         hours_per_week=hours,
         hours_per_day=average_day_hours(schedule),
         schedule=schedule,
         inherited=inherited,
+        employment_type=await service.employment_kind_on(ctx.user.id),
     )
 
 

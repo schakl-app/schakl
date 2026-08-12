@@ -34,6 +34,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from pydantic import ValidationError
 from sqlalchemy import column, func, select, table, update
 
 from app.core.activity import ActivityService
@@ -51,6 +52,7 @@ from app.modules.cloudflare.client import (
     CloudflareError,
 )
 from app.modules.cloudflare.models import (
+    REDIRECT_STATUS_CODES,
     CloudflareAccount,
     CloudflareAccountStatus,
     CloudflarePagesLink,
@@ -73,6 +75,7 @@ from app.modules.cloudflare.schemas import (
     RedirectConflict,
     RedirectIntent,
     RedirectObservation,
+    RedirectRuleEdit,
     RedirectWrite,
     ZoneCandidate,
 )
@@ -1572,16 +1575,22 @@ class CloudflareService:
     # ------------------------------------------------------------------ #
     # Redirects
     # ------------------------------------------------------------------ #
-    def _desired_rule(
-        self, zone: CloudflareZone, payload: RedirectIntent
-    ) -> tuple[str, dict[str, Any]]:
-        """The tenant's intent, validated, as ``(target, rule body)``.
+    def _validated_target(
+        self, zone: CloudflareZone, target_url: str, *, include_subdomains: bool
+    ) -> str:
+        """The intent's target, cleaned and refused where it would break the client's site.
 
-        Shared by writing a redirect and adopting one, because **the two must agree on what "the
-        rule schakl would write" is** — an adopt that compared against a differently-built rule
-        would refuse a rule identical to ours, or worse, accept one that is not.
+        Its own method because **editing an inherited rule must be refused for the same reasons
+        as writing our own**, and the two build their rule bodies differently — one from an intent
+        alone, one over a live rule whose match set may not be ours to touch. Left inside
+        :meth:`_desired_rule` this would have been the guard the new path silently did not have.
+
+        ``include_subdomains`` is the *effective* scope of the rule being written, which on an edit
+        is the live rule's rather than the payload's: whether a target loops depends on the
+        hostnames the rule actually answers for, and asking the question about a different set
+        than the one being saved is how a loop guard passes a rule that loops.
         """
-        target = payload.target_url.strip()
+        target = target_url.strip()
         reject_dangerous_url(target, field="target_url")
         if not target.lower().startswith(("http://", "https://")):
             raise AppError(
@@ -1591,7 +1600,7 @@ class CloudflareService:
                 fields={"target_url": "errors.cloudflare_target_absolute"},
             )
         if rules.redirect_loop_target(
-            apex=zone.name, target_url=target, include_subdomains=payload.include_subdomains
+            apex=zone.name, target_url=target, include_subdomains=include_subdomains
         ):
             # Cloudflare saves this happily; the browser reports ERR_TOO_MANY_REDIRECTS and the
             # client's site is down until someone notices.
@@ -1601,6 +1610,20 @@ class CloudflareService:
                 status_code=422,
                 fields={"target_url": "errors.cloudflare_redirect_loop"},
             )
+        return target
+
+    def _desired_rule(
+        self, zone: CloudflareZone, payload: RedirectIntent
+    ) -> tuple[str, dict[str, Any]]:
+        """The tenant's intent, validated, as ``(target, rule body)``.
+
+        Shared by writing a redirect and adopting one, because **the two must agree on what "the
+        rule schakl would write" is** — an adopt that compared against a differently-built rule
+        would refuse a rule identical to ours, or worse, accept one that is not.
+        """
+        target = self._validated_target(
+            zone, payload.target_url, include_subdomains=payload.include_subdomains
+        )
         return target, rules.build_rule(
             apex=zone.name,
             target_url=target,
@@ -1838,7 +1861,9 @@ class CloudflareService:
         """Delete our redirect rule at Cloudflare and forget it here.
 
         Only ever deletes the rule whose id we stored. A rule we never created stays, whatever it
-        is called — the tenant's redirect rules are theirs.
+        is called — the tenant's redirect rules are theirs. That is a property of *this* route,
+        which names no rule and so must not be free to pick one; deleting an inherited rule is
+        :meth:`delete_zone_redirect`, where the caller names the id of a row they were shown.
         """
         domain = await self._domain_or_404(domain_id)
         zone = await self._zone_or_409(domain)
@@ -1864,6 +1889,17 @@ class CloudflareService:
                 if exc.status != 404:
                     raise self._translate(exc) from exc
 
+        await self._forget_redirect_row(domain, row)
+
+    async def _forget_redirect_row(self, domain: DomainRow, row: CloudflareRedirect) -> None:
+        """Drop our redirect row and walk the domain record back, if it is still ours to walk.
+
+        Shared by :meth:`remove_redirect` and :meth:`delete_zone_redirect`, because the second is
+        the same act reached from the list: deleting the rule *by id* from a row on the panel,
+        where that row happens to be the one we own. Two copies of this would have been two
+        answers to "does the domain go back to active?", and the walk-back is exactly the half a
+        second copy forgets.
+        """
         target = row.target_url
         await self.redirects.delete(row)
         await self.activity.record(
@@ -1873,6 +1909,212 @@ class CloudflareService:
         # since changed by hand is theirs, not ours to revert.
         if domain.status == "redirect" and _norm_host(domain.redirect_url) == _norm_host(target):
             await self._set_domain_redirect_state(domain, status="active", redirect_url=None)
+
+    async def _zone_rule_or_404(
+        self, zone: CloudflareZone, rule_id: str
+    ) -> tuple[CloudflareAccount, CloudflareClient, str, dict[str, Any]]:
+        """Locate one redirect rule on this zone by id: ``(account, client, ruleset_id, rule)``.
+
+        The account is handed back rather than looked up again by the caller: both writes need it
+        for ``_record_failure``, and resolving it twice is a second query on every edit and every
+        delete for a row that cannot have changed in between.
+
+        The lookup both by-id writes start from, and it is where the safety of naming a rule from
+        outside is established. The id is only ever resolved **inside the zone's own redirect
+        ruleset**, so a rule id belonging to another zone, another tenant, or to some other
+        product of Cloudflare's rules engine resolves to nothing and becomes a 404 — the call is
+        never made on the strength of a string somebody posted. An entry that is not a redirect is
+        refused for the same reason: this endpoint edits and deletes redirects, and a ruleset is
+        not a place to discover you were holding a different kind of rule.
+        """
+        account = await self._account_for_zone(zone)
+        client = self._client(account)
+        try:
+            ruleset = await client.get_redirect_ruleset(zone.cf_zone_id)
+        except CloudflareError as exc:
+            await self._record_failure(account, exc)
+            raise self._translate(exc) from exc
+
+        rule = rules.find_rule(ruleset, rule_id)
+        ruleset_id = str((ruleset or {}).get("id") or "")
+        if rule is None or not ruleset_id:
+            # Gone at Cloudflare between the page load and the press — deleted in the dashboard,
+            # or by a colleague on the same screen. The row the user pointed at no longer exists.
+            raise AppError("not_found", "errors.not_found", status_code=404)
+        if str(rule.get("action") or "") != "redirect":
+            raise AppError(
+                "cloudflare_rule_not_redirect",
+                "errors.cloudflare_rule_not_redirect",
+                status_code=409,
+            )
+        return account, client, ruleset_id, rule
+
+    async def edit_zone_redirect(
+        self, domain_id: uuid.UUID, rule_id: str, payload: RedirectRuleEdit
+    ) -> dict[str, Any]:
+        """Change a Redirect Rule this zone already has — **ours or the tenant's** — at Cloudflare.
+
+        The half of "fully connected" that adoption could not reach. Adopting is a claim about a
+        rule, and it is refused unless the rule already matches what we would have written; that
+        is right for a claim and useless for the ordinary act an agency actually performs, which
+        is *"this client's old domain now points at the wrong place — fix it"* over a rule made by
+        hand in Cloudflare's dashboard years ago. Before this the only route to that was: adopt
+        (which refuses unless five fields already match), or hand-edit it at Cloudflare and press
+        check.
+
+        Editing an unowned rule deliberately **does not claim it**. Ownership is what
+        :meth:`adopt_redirect` is for and it carries consequences — a reconcile that recreates the
+        rule, a delete that removes it — none of which anybody asked for by correcting a URL. So
+        the rule stays "found at Cloudflare" afterwards, one press from adoption if that is what
+        is wanted, and the panel keeps saying where it came from.
+
+        What *is* refused lives in ``redirects.edited_rule``: a match set schakl cannot write is
+        carried over verbatim, so the destination moves and the set of hostnames the rule answers
+        for cannot. Cloudflare's own ``http.host in {…}`` — the commonest inherited shape — is
+        precisely such a rule, which is why this is the guard rather than "only edit rules we can
+        rebuild whole": that would have refused the case the feature exists for.
+
+        Returns the refreshed report rather than the rule, because the list the caller is looking
+        at is now out of date by construction: the observation stored on the zone still describes
+        the rule as it was. One round trip re-reads and re-stores it, which is also what lets the
+        domain record follow an edited inherited redirect (``_reconcile_domain_redirect``).
+        """
+        domain = await self._domain_or_404(domain_id)
+        zone = await self._zone_or_409(domain)
+        account, client, ruleset_id, live = await self._zone_rule_or_404(zone, rule_id)
+
+        # The scope the *saved* rule will have, which is not always the one that was posted. Where
+        # the expression is ours the payload rewrites it; where it is not, the expression is kept
+        # and its true scope is unknowable — so the loop guard asks the conservative question. A
+        # refusal there is a sentence on screen; a redirect loop is the client's site down.
+        scope = rules.rule_scope(live, zone.name)
+        target = self._validated_target(
+            zone,
+            payload.target_url,
+            include_subdomains=payload.include_subdomains if scope is not None else True,
+        )
+        body = rules.edited_rule(
+            live,
+            apex=zone.name,
+            target_url=target,
+            status_code=payload.status_code,
+            preserve_path=payload.preserve_path,
+            preserve_query=payload.preserve_query,
+            include_subdomains=payload.include_subdomains,
+        )
+        if body is None:
+            raise AppError(
+                "cloudflare_rule_unreadable",
+                "errors.cloudflare_rule_unreadable",
+                status_code=409,
+            )
+
+        try:
+            await client.update_redirect_rule(zone.cf_zone_id, ruleset_id, rule_id, body)
+        except CloudflareError as exc:
+            await self._record_failure(account, exc)
+            raise self._translate(exc) from exc
+
+        # Past here the rule at Cloudflare says the new thing, so nothing below may raise: a
+        # rollback would leave the only record of it behind (`set_redirect`'s rule, same reason).
+        row = (
+            await self.ctx.session.execute(
+                self.redirects.scoped_select()
+                .where(CloudflareRedirect.zone_id == zone.id)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if row is not None and row.cf_rule_id == rule_id:
+            # It was ours after all — reached from the list rather than from the row's own form.
+            # The intent is what a later reconcile compares against, so leaving it stale would
+            # make the next check report the edit we just made as drift.
+            now = datetime.now(UTC)
+            await self.redirects.update(
+                row,
+                target_url=target,
+                status_code=payload.status_code,
+                preserve_path=payload.preserve_path,
+                preserve_query=payload.preserve_query,
+                include_subdomains=(
+                    payload.include_subdomains if scope is not None else row.include_subdomains
+                ),
+                cf_ruleset_id=ruleset_id,
+                last_status=RedirectStatus.ACTIVE.value,
+                last_checked_at=now,
+                last_pushed_at=now,
+            )
+            await self._set_domain_redirect_state(domain, status="redirect", redirect_url=target)
+
+        await self.activity.record(
+            DOMAIN_ENTITY,
+            domain.id,
+            "cloudflare.redirect_rule_edited",
+            {
+                "target": target,
+                "status_code": payload.status_code,
+                "zone": zone.name,
+                "rule_id": rule_id,
+                "managed": row is not None and row.cf_rule_id == rule_id,
+            },
+        )
+        return await self.domain_status(domain_id, live=True)
+
+    async def delete_zone_redirect(self, domain_id: uuid.UUID, rule_id: str) -> dict[str, Any]:
+        """Delete a Redirect Rule from this zone by id — **ours or the tenant's**.
+
+        :meth:`remove_redirect` deletes only the rule whose id we stored, and that refusal was
+        right while the only rule on the panel was ours. Once the panel lists what the zone
+        actually has, it became the reason the obvious button was missing from every row an agency
+        inherited: an old redirect that should be gone had to be deleted in Cloudflare's dashboard,
+        which is the thing this module exists to stop people needing.
+
+        The safety property is not "we only touch our own rows" but **"we only touch a rule the
+        caller pointed at, resolved inside this zone's own ruleset"** (``_zone_rule_or_404``) —
+        the same one the DNS table already works under, where an inherited record has always been
+        deletable. It is an explicit, confirmed act on a row the user is looking at, carrying
+        ``cloudflare.zone.manage``, and it is written to the domain's trail with the rule's id.
+
+        Deleting *our* rule through this path is the same act as ``DELETE .../redirect`` and ends
+        in the same place (``_forget_redirect_row``): the row goes, and the domain record walks
+        back only if it still says what we put there. Deleting an inherited one leaves nothing
+        here to clean up — the observation is rewritten by the re-read below, and the domain record
+        follows through ``_reconcile_domain_redirect``'s walk-back, which is exactly the case its
+        "previous observation" argument exists for.
+        """
+        domain = await self._domain_or_404(domain_id)
+        zone = await self._zone_or_409(domain)
+        account, client, ruleset_id, rule = await self._zone_rule_or_404(zone, rule_id)
+
+        try:
+            await client.delete_redirect_rule(zone.cf_zone_id, ruleset_id, rule_id)
+        except CloudflareError as exc:
+            # A rule already gone is the state we wanted; anything else stops us here, so nothing
+            # below ever claims a removal that did not happen.
+            if exc.status != 404:
+                await self._record_failure(account, exc)
+                raise self._translate(exc) from exc
+
+        row = (
+            await self.ctx.session.execute(
+                self.redirects.scoped_select()
+                .where(CloudflareRedirect.zone_id == zone.id)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if row is not None and row.cf_rule_id == rule_id:
+            await self._forget_redirect_row(domain, row)
+        else:
+            await self.activity.record(
+                DOMAIN_ENTITY,
+                domain.id,
+                "cloudflare.redirect_rule_deleted",
+                {
+                    "zone": zone.name,
+                    "rule_id": rule_id,
+                    "target": (rules.rule_target(rule) or ("", False))[0],
+                },
+            )
+        return await self.domain_status(domain_id, live=True)
 
     async def _ensure_origin(
         self, client: CloudflareClient, zone: CloudflareZone, include_subdomains: bool
@@ -1963,7 +2205,13 @@ class CloudflareService:
             "nameservers_checked_at": domain.dns_checked_at,
             "redirect": redirect,
             "redirect_live": None,
-            "conflicts": [],
+            # Seeded from the zone's last observation, so a redirect made in Cloudflare's own
+            # dashboard is on the panel the moment the page opens. Before this the list was empty
+            # on every load and filled only by the check button, which meant the one state this
+            # module exists to serve — an inherited, already-live redirect — was the one state
+            # that never survived a refresh.
+            "conflicts": self._stored_observations(zone),
+            "redirects_observed_at": zone.redirects_observed_at if zone is not None else None,
             "origin": None,
             "pages_links": await self._pages_links_for(domain.id),
             "domain_status": domain.status,
@@ -1976,8 +2224,13 @@ class CloudflareService:
         )
 
         if live:
+            # Read *before* the probe overwrites it: walking the domain record back needs to know
+            # what the last observation put there, and that is the only place it is written down.
+            previous = self._stored_observations(zone)
             if zone is not None:
                 await self._probe_live(report, zone, redirect)
+                if "redirect_rules" not in report["unavailable"]:
+                    await self._reconcile_domain_redirect(domain, report, redirect, previous)
             # Outside the zone branch on purpose, for the reason the panel draws Pages outside
             # it (docs/CLOUDFLARE.md §6): a custom hostname is registered on a *project*, which
             # names its own account. Inside, the one domain whose DNS lives elsewhere — exactly
@@ -2068,13 +2321,19 @@ class CloudflareService:
                 report["expected_nameservers"], report["observed_nameservers"]
             )
 
+        # ``None`` = this probe did not run, which :meth:`_store_observations` answers completely
+        # differently from an empty list. Kept apart all the way down for that reason.
+        fresh: dict[str, list[RedirectConflict] | None] = {"redirect_rule": None, "page_rule": None}
+
         try:
             ruleset = await client.get_redirect_ruleset(zone.cf_zone_id)
         except CloudflareError as exc:
             report["unavailable"].append("redirect_rules")
             await self._flag_account(account, exc)
         else:
-            await self._observe_redirect(report, zone, redirect, ruleset, now)
+            fresh["redirect_rule"] = await self._observe_redirect(
+                report, zone, redirect, ruleset, now
+            )
 
         try:
             page_rules = await client.list_page_rules(zone.cf_zone_id)
@@ -2083,14 +2342,16 @@ class CloudflareService:
             # error — a probe that did not run, named as such.
             report["unavailable"].append("page_rules")
         else:
-            for rule in rules.forwarding_page_rules(page_rules):
-                report["conflicts"].append(
-                    RedirectConflict(
-                        kind="page_rule",
-                        description=rules.page_rule_pattern(rule),
-                        detail=str(rule.get("status") or ""),
-                    )
+            fresh["page_rule"] = [
+                RedirectConflict(
+                    kind="page_rule",
+                    description=rules.page_rule_pattern(rule),
+                    detail=str(rule.get("status") or ""),
                 )
+                for rule in rules.forwarding_page_rules(page_rules)
+            ]
+
+        await self._store_observations(zone, report, fresh, now)
 
         try:
             records = await client.list_dns_records(zone.cf_zone_id)
@@ -2108,6 +2369,116 @@ class CloudflareService:
                 has_records=bool(records),
             )
 
+    def _observed_rule(self, rule: dict[str, Any], apex: str) -> RedirectConflict:
+        """One redirect rule schakl does not own, described as far as it can honestly be.
+
+        Three separate readings, because they fail separately and a row is still worth drawing
+        when only some of them succeed:
+
+        * ``target_url`` — where it sends traffic. Readable for more shapes than a whole intent
+          is, and the single most useful thing to put on the row.
+        * ``intent`` — the whole rule read back as something schakl could have *written*, which
+          is what makes adoption a single press: the button posts the rule's own values instead
+          of whatever happened to be typed in the form above it. ``None`` for a shape we cannot
+          express, so no adopt button is drawn rather than one that always refuses (#253).
+        * ``domain_wide`` — whether it redirects the whole domain, which is the only reading
+          allowed anywhere near ``Domain.status``.
+
+        A status code Cloudflare accepts and :data:`REDIRECT_STATUS_CODES` does not (a 303, say)
+        costs the *intent* and nothing else: the row still describes itself and still counts as
+        this domain redirecting. Adoption is refused because writing that rule back is the one
+        thing schakl genuinely cannot do.
+        """
+        intent = rules.rule_intent(rule, apex)
+        if intent is not None and intent["status_code"] not in REDIRECT_STATUS_CODES:
+            intent = None
+        target = rules.rule_target(rule)
+        from_value = (rule.get("action_parameters") or {}).get("from_value") or {}
+        status_code = from_value.get("status_code") if isinstance(from_value, dict) else None
+        return RedirectConflict(
+            kind="redirect_rule",
+            description=str(rule.get("description") or ""),
+            detail=str(rule.get("expression") or ""),
+            # Carried so the screen can offer to adopt *this* rule. The id is the only
+            # safe way to name one (``find_our_rule``), so a conflict that omitted it
+            # could report the problem and never the fix.
+            rule_id=str(rule.get("id") or "") or None,
+            intent=RedirectIntent.model_validate(intent) if intent is not None else None,
+            target_url=target[0] if target is not None else None,
+            domain_wide=rules.domain_wide_for(rule, apex),
+            # Each read on its own, **not** off ``intent``. ``intent`` is all-or-nothing, so one
+            # unreadable part of a rule would have handed the edit form a *default* for every
+            # other part — and saving would write those defaults back: a 303 quietly becomes a
+            # 301, a rule sending every URL to one page starts appending paths, a redirect for one
+            # hostname widens to every subdomain of it. The form seeds from these, so it can only
+            # offer a control for something actually read off the rule.
+            include_subdomains=rules.rule_scope(rule, apex),
+            preserve_path=target[1] if target is not None else None,
+            preserve_query=(
+                bool(from_value.get("preserve_query_string"))
+                if isinstance(from_value, dict) and "preserve_query_string" in from_value
+                else None
+            ),
+            status_code=(
+                status_code
+                if isinstance(status_code, int) and not isinstance(status_code, bool)
+                else None
+            ),
+        )
+
+    @staticmethod
+    def _stored_observations(zone: CloudflareZone | None) -> list[RedirectConflict]:
+        """The zone's last observation, as the report's own type.
+
+        Per entry rather than per list: this is a page load reading JSONB that a *newer* release
+        may have written, and one entry whose shape moved on must cost that entry, never the
+        whole panel. Skipping it degrades to what the module did before it stored anything.
+        """
+        observed: list[RedirectConflict] = []
+        for entry in (zone.observed_redirects if zone is not None else None) or []:
+            try:
+                observed.append(RedirectConflict.model_validate(entry))
+            except ValidationError:
+                logger.warning("unreadable observed redirect on zone %s", zone.id if zone else None)
+        return observed
+
+    async def _store_observations(
+        self,
+        zone: CloudflareZone,
+        report: dict[str, Any],
+        fresh: dict[str, list[RedirectConflict] | None],
+        now: datetime,
+    ) -> None:
+        """Write down what this check saw, **per source**, and put it on the report.
+
+        ``fresh`` maps a ``kind`` to what that probe read, or to ``None`` when the probe did not
+        run — and the two are answered completely differently. A probe that ran and found nothing
+        **clears its own entries**: a list that only ever grows is `_flag_account`'s one-way flag
+        in another costume, and it would leave a redirect somebody deleted in Cloudflare's
+        dashboard on this panel for ever. A probe that could not run leaves its previous entries
+        exactly as they were — losing a client's Page Rules to a missing token scope would be
+        this module deciding that what it cannot see does not exist.
+
+        The kept entries go back on the *report* too, not only into storage. They are still the
+        best answer available for that half, and dropping them would make a partially-failed
+        check render as a cleaner zone than a fully successful one.
+        """
+        if all(entries is None for entries in fresh.values()):
+            return
+        kept = [
+            entry
+            for entry in self._stored_observations(zone)
+            if fresh.get(entry.kind) is None
+        ]
+        observed = [*(entry for entries in fresh.values() if entries for entry in entries), *kept]
+        report["conflicts"] = observed
+        report["redirects_observed_at"] = now
+        await self.zones.update(
+            zone,
+            observed_redirects=[entry.model_dump(mode="json") for entry in observed],
+            redirects_observed_at=now,
+        )
+
     async def _observe_redirect(
         self,
         report: dict[str, Any],
@@ -2115,23 +2486,21 @@ class CloudflareService:
         redirect: CloudflareRedirect | None,
         ruleset: dict[str, Any] | None,
         now: datetime,
-    ) -> None:
-        """Compare our stored intent with the rule Cloudflare holds, and persist the verdict."""
-        others = rules.other_redirect_rules(ruleset, redirect.cf_rule_id if redirect else None)
-        for rule in others:
-            report["conflicts"].append(
-                RedirectConflict(
-                    kind="redirect_rule",
-                    description=str(rule.get("description") or ""),
-                    detail=str(rule.get("expression") or ""),
-                    # Carried so the screen can offer to adopt *this* rule. The id is the only
-                    # safe way to name one (``find_our_rule``), so a conflict that omitted it
-                    # could report the problem and never the fix.
-                    rule_id=str(rule.get("id") or "") or None,
-                )
+    ) -> list[RedirectConflict]:
+        """Compare our stored intent with the rule Cloudflare holds, and persist the verdict.
+
+        Returns the *other* redirects on the zone — which are a conflict only when we hold a rule
+        of our own, and otherwise are simply this domain's redirects (see
+        :class:`RedirectConflict`).
+        """
+        others = [
+            self._observed_rule(rule, zone.name)
+            for rule in rules.other_redirect_rules(
+                ruleset, redirect.cf_rule_id if redirect else None
             )
+        ]
         if redirect is None:
-            return
+            return others
 
         live = rules.find_our_rule(ruleset, redirect.cf_rule_id)
         if live is None:
@@ -2141,7 +2510,7 @@ class CloudflareService:
                 last_status=RedirectStatus.MISSING.value,
                 last_checked_at=now,
             )
-            return
+            return others
 
         desired = rules.build_rule(
             apex=zone.name,
@@ -2171,6 +2540,76 @@ class CloudflareService:
             ),
             last_checked_at=now,
         )
+        return others
+
+    async def _reconcile_domain_redirect(
+        self,
+        domain: DomainRow,
+        report: dict[str, Any],
+        redirect: CloudflareRedirect | None,
+        previous: list[RedirectConflict],
+    ) -> None:
+        """Make the domain record agree with a redirect Cloudflare already has.
+
+        A domain whose redirect was made by hand in Cloudflare's dashboard *is* redirecting, and
+        until now every screen in schakl said otherwise: the domain list showed it active and the
+        panel raised ``domain_says_redirect`` at whoever had set the status by hand. So a check
+        that finds one writes it down, exactly as :meth:`set_redirect` does for a rule we push.
+
+        Four refusals are what make writing another module's record off somebody else's rule
+        safe, and each one is a case that really happens:
+
+        * **Only a rule that redirects the whole domain** (``domain_wide``). A rule for
+          ``oud.klant.nl``, or one narrowed to ``/aanbieding``, mentions the apex and does not
+          redirect it — marking that domain "omleiding" would be wrong about a site that serves
+          perfectly well. An unrecognised expression is not domain-wide, so the failure direction
+          is "listed, left to a human".
+        * **Only one candidate.** Two domain-wide rules mean Cloudflare's top-down order decides
+          which one wins, and this module does not evaluate filter expressions. Reported
+          (``cloudflare_says_redirect``), never guessed.
+        * **Only where the caller could have done it themselves.** This runs on
+          ``POST /domains/{id}/check``, which declares ``cloudflare.dns.read`` — a *read*. Writing
+          a domain record off the back of it would hand every Cloudflare-only admin an edit
+          permission nobody granted them, so the write is gated on ``domains.domain.write`` and
+          simply does not happen without it. The finding still renders, which is the same
+          best-effort shape the panel's own action already uses for the public-DNS refresh.
+        * **Never over our own rule.** With a redirect of ours, ``set_redirect`` / ``adopt`` /
+          ``remove`` own the domain record and this must not get a second opinion in edgeways.
+
+        The walk-back is the other half, because a flag that only ever turns on is half a
+        mechanism (`_flag_account`'s lesson, one table over): when the rule is gone the domain
+        goes back to ``active`` — but **only if it still says exactly what the observation put
+        there**. A status somebody has since changed by hand is theirs, which is the same test
+        :meth:`remove_redirect` applies and the reason the previous observation is read at all.
+        """
+        if redirect is not None or not self.ctx.can("domains.domain.write"):
+            return
+        wide = [
+            entry
+            for entry in report["conflicts"]
+            if entry.kind == "redirect_rule" and entry.domain_wide and entry.target_url
+        ]
+        if len(wide) == 1:
+            status, redirect_url = "redirect", wide[0].target_url
+        elif not wide and domain.status == "redirect":
+            was_ours = {
+                _norm_host(entry.target_url)
+                for entry in previous
+                if entry.kind == "redirect_rule" and entry.domain_wide and entry.target_url
+            }
+            if _norm_host(domain.redirect_url) not in was_ours:
+                return
+            status, redirect_url = "active", None
+        else:
+            return
+
+        await self._set_domain_redirect_state(domain, status=status, redirect_url=redirect_url)
+        # ``DomainRow`` is frozen and the write went straight to the table, so the report is
+        # still describing the row as it was. Leaving it stale would make this response
+        # contradict the write it just made — and ``_issues`` reads these two to decide whether
+        # the domain and Cloudflare still disagree, which they no longer do.
+        report["domain_status"] = status
+        report["domain_redirect_url"] = redirect_url
 
     async def _flag_account(self, account: CloudflareAccount, exc: CloudflareError) -> None:
         """Remember a token failure on a path that still commits, so the settings screen can say
@@ -2295,7 +2734,12 @@ class CloudflareService:
                 # never matches it, so an unproxied ``www`` is the configured state, not a finding.
                 if redirect.include_subdomains and not origin.www_proxied:
                     issues.append(ISSUE_ORIGIN_WWW_MISSING)
-        if report["conflicts"]:
+        # **Only when ours has something to lose to.** Cloudflare evaluates the ruleset top-down,
+        # so another rule is a conflict precisely when we hold one it can beat. With none of ours,
+        # these *are* this domain's redirects — the panel lists them as such — and calling that a
+        # finding put a warning under the state the module exists to serve, which is how a box
+        # nobody reads gets made.
+        if redirect is not None and report["conflicts"]:
             issues.append(ISSUE_REDIRECT_CONFLICT)
 
         pages_links = report["pages_links"]
@@ -2317,9 +2761,20 @@ class CloudflareService:
         # which is a claim about Cloudflare that nothing here checked. It is also the claim a
         # token missing the redirect scope *cannot* check, so the sentence was at its most
         # confident exactly where it was least entitled to be.
-        if domain.status == "redirect" and redirect is None:
+        #
+        # Both halves now read the **report**, not the row: a check that has just moved the domain
+        # record would otherwise raise a disagreement against the value it replaced, in the same
+        # response that fixed it. And an observed domain-wide rule *answers*
+        # ``domain_says_redirect`` — the domain says redirect because Cloudflare has one, which is
+        # agreement, not drift. Left in, this feature's whole happy path would have shipped with a
+        # permanent warning underneath it.
+        domain_says = report["domain_status"] == "redirect"
+        observed_wide = any(
+            entry.kind == "redirect_rule" and entry.domain_wide for entry in report["conflicts"]
+        )
+        if domain_says and redirect is None and not observed_wide:
             issues.append(ISSUE_DOMAIN_SAYS_REDIRECT)
-        if redirect is not None and domain.status != "redirect":
+        if (redirect is not None or observed_wide) and not domain_says:
             issues.append(ISSUE_CLOUDFLARE_SAYS_REDIRECT)
         if report["unavailable"]:
             issues.append(ISSUE_TOKEN_ERROR)

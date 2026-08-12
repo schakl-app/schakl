@@ -16,14 +16,17 @@
 
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
+  import FilterBar from "$lib/core/filters/FilterBar.svelte";
   import { InFlight } from "$lib/core/submit.svelte";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
   import { pageTitle } from "$lib/core/title";
+  import Pagination from "$lib/core/ui/Pagination.svelte";
   import GoogleAdsMutationOutcome from "$lib/modules/google_ads/GoogleAdsMutationOutcome.svelte";
   import GoogleAdsReportTable from "$lib/modules/google_ads/GoogleAdsReportTable.svelte";
   import GoogleAdsTrend from "$lib/modules/google_ads/GoogleAdsTrend.svelte";
   import { COLUMNS, type ReportView } from "$lib/modules/google_ads/columns";
+  import { reportFilters } from "$lib/modules/google_ads/filters";
   import type { GoogleAdsReport, GoogleAdsTrendReport } from "$lib/modules/google_ads/types";
 
   let { data, form } = $props();
@@ -90,12 +93,42 @@
         : { ...marks, [term]: value };
   }
 
+  /**
+   * A tab or period link, built from scratch rather than from the current URL.
+   *
+   * Which is how it drops the page, the search and the status in one move — and it must. Page 4
+   * of the campaigns list is not page 4 of the search terms, a status of PAUSED means nothing on
+   * a change history, and a search for "dakraam" carried into the negatives tab would open it
+   * looking empty for a reason nothing on the screen explains (`core/table/paging.ts`).
+   */
   function href(view: string, period: string): string {
     const params = new URLSearchParams();
     if (view !== "campaigns") params.set("view", view);
     if (period !== "30d") params.set("period", period);
     const qs = params.toString();
     return `/marketing/google-ads/${page.params.accountId}${qs ? `?${qs}` : ""}`;
+  }
+
+  // No filter bar over the trend: it is a summary of one period against another, not a list, so
+  // there is nothing on it to narrow and nothing to page.
+  const filters = $derived(
+    data.view === "trend"
+      ? []
+      : // An unlabelled amount, never a guessed symbol: the ladder says "vanaf 10" rather than
+        // "vanaf € 10" for an account whose currency we have not read yet.
+        reportFilters(data.view as ReportView, data.account.currency_code ?? null),
+  );
+
+  /** Persist the chosen size as this view's default. The URL stays the current view. */
+  function rememberSize(size: number): void {
+    const body = new FormData();
+    body.set("view", data.view);
+    body.set("page_size", String(size));
+    void fetch("?/saveTable", {
+      method: "POST",
+      headers: { "x-sveltekit-action": "true" },
+      body,
+    });
   }
 
   /** What has already been decided about this term, from the API's own annotation. */
@@ -121,6 +154,10 @@
       </a>
     {/each}
   </nav>
+{/if}
+
+{#if filters.length > 0}
+  <FilterBar {filters} idPrefix="google-ads-report" />
 {/if}
 
 {#if form?.outcome}
@@ -338,6 +375,20 @@
       rows={table.rows}
       totals={table.totals}
       currency={table.currency}
+    />
+  {/if}
+
+  {#if table}
+    <!--
+      `total_rows`, never `rows.length`. The rows on screen are one page; the pager's whole job is
+      to say what they are a page *of*, and a count taken from them reads "1 tot 50 van 50" on
+      every page of a list of nine hundred.
+    -->
+    <Pagination
+      total={table.total_rows}
+      page={data.paging.page}
+      limit={data.paging.limit}
+      onsize={rememberSize}
     />
   {/if}
 {/if}

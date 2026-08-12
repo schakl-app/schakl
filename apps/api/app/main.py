@@ -38,6 +38,7 @@ from app.core.instance.router import router as instance_router
 from app.core.members import router as members_router
 from app.core.meta import router as meta_router
 from app.core.nav import router as nav_router
+from app.core.oauth.router import router as oauth_router
 from app.core.permissions.reconcile import reconcile_permission_defaults
 from app.core.permissions.router import permissions_router, roles_router
 from app.core.providers.router import router as providers_router
@@ -151,6 +152,9 @@ def create_app() -> FastAPI:
     api.include_router(instance_admins_router)
     api.include_router(license_router)
     api.include_router(apikeys_router)
+    # OAuth 2.1 for MCP (docs/MCP.md): mounted beside the keys because what its flow issues
+    # *is* an api_keys row — there is no second credential and no second authorization path.
+    api.include_router(oauth_router)
     # The AI core (epic #131) is a licensed surface (issue #137): every generation is a
     # POST, so the standard mutations-gate makes an uncovered instance read-only for AI
     # while its stored settings and usage stay readable.

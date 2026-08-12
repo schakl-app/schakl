@@ -104,6 +104,39 @@ _EXEMPT_OPERATIONS = frozenset(
         # `tests/test_uptime_webhook.py` asserts each of those, plus that a wrong secret, an
         # unknown instance and another tenant's instance are indistinguishable.
         ("post", "/api/v1/uptime/hook/{token}"),
+        # OAuth 2.1 for MCP (docs/MCP.md). Every one of these is reached *before* a credential
+        # exists — that is what an authorization server is for — so a 403 here would mean no
+        # client could ever obtain one. They are exempt from this sweep and gated instead by
+        # what they can actually do, which `tests/test_mcp_oauth.py` asserts one by one:
+        #
+        #   • the two metadata documents are RFC 8414/9728 discovery: code-defined URLs and
+        #     nothing else, the same three constants for every caller, no tenant data.
+        #   • `register` is RFC 7591 dynamic registration — the one unauthenticated *write* a
+        #     stranger can repeat. Rate-limited by IP, capped per org, and it grants nothing:
+        #     the row can read no byte of tenant data until a person signs in and consents.
+        #   • `token` and `revoke` carry their own credential — the authorization code plus its
+        #     PKCE verifier, or the token being revoked. A code is single-use (enforced by a
+        #     conditional UPDATE, not a read-then-write), and every way of being wrong answers
+        #     the same `invalid_grant`, so a holder of a stolen one learns nothing.
+        #
+        # The routes that *do* have a session are deliberately absent: `POST /oauth/consent`
+        # declares `apikeys.personal.manage` — consenting is minting a personal key, with a
+        # redirect instead of a copy button — and so do the connection-management routes.
+        ("get", "/api/v1/oauth/metadata/authorization-server"),
+        ("get", "/api/v1/oauth/metadata/protected-resource"),
+        ("post", "/api/v1/oauth/register"),
+        ("post", "/api/v1/oauth/token"),
+        ("post", "/api/v1/oauth/revoke"),
+        # Describes the client asking for consent, so the screen can render before anything is
+        # written. It reveals no tenant row: the scope list is the code-defined permission
+        # catalog intersected with what *this caller already holds*, which is the one set they
+        # cannot learn anything new from.
+        ("get", "/api/v1/oauth/consent"),
+        # Which MCP tool sections this instance serves (docs/MCP.md): module route prefixes and
+        # tool counts, code-defined. The sibling of `/meta/modules`, exempt above and already
+        # public. Every route behind those URLs still declares its own permission — a section
+        # narrows a *listing*, never an authorization.
+        ("get", "/api/v1/meta/mcp"),
     }
 )
 

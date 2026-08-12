@@ -85,7 +85,8 @@ class FakeWordPress:
                 "status": "active",
                 "score": 42.5,
                 "rank": 3,
-                "avg_sentiment": 0.62,
+                # 0-100 (docs/WORDPRESS.md §3), the scale the plugin's own badge renders.
+                "avg_sentiment": 62.0,
                 "mentions": 18,
                 "citations": 7,
                 "last_analyzed": "2026-08-10T04:00:00Z",

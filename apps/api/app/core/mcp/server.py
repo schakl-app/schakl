@@ -5,32 +5,30 @@ Every ``/api/v1`` operation becomes an MCP tool, generated from the app's own Op
 data path exists: a tool call travels through ``require_context`` — hostname → org, RLS
 bound, permissions resolved — exactly like the HTTP request it is.
 
-**Auth: API keys, not (yet) OAuth.** The platform's keys (#20) already carry per-key
+**Auth: API keys, and OAuth mints one.** The platform's keys (#20) already carry per-key
 permission scopes, are tenant-scoped, revocable and optionally non-expiring — precisely the
-per-MCP-key permission model wanted here. A client configures
-``Authorization: Bearer schakl_…`` (or ``X-API-Key``) on the connection; the proxy forwards
-the credential plus the tenant host on every internal call, so deny-by-default route
-permissions and the key's scopes govern MCP exactly as they govern HTTP, and an unauthorized
-tool call reads as the API's own 401/403 envelope. An OAuth 2.1 resource-server layer
-(RFC 9728) can be added later for clients that require it, without touching the tool surface.
+per-MCP-key permission model wanted here. A client configures ``Authorization: Bearer schakl_…``
+(or ``X-API-Key``); the proxy forwards the credential plus the tenant host on every internal
+call, so deny-by-default route permissions and the key's scopes govern MCP exactly as they
+govern HTTP. The OAuth 2.1 layer in ``app.core.oauth`` does not add a second credential: what
+its flow hands back **is** an API key row, so everything below is unchanged by it and the only
+new thing here is the 401 that tells a client where to go and get one
+(:class:`RequireCredential`).
 
 Excluded from the tool surface: the session flows (``/auth``, ``/setup``) and the
 instance-operator surface (``/instance``) — none make sense for a headless key.
 
-**Two profiles, one server.** ``/mcp`` is the whole surface: every operation, ~620 tools,
-about two megabytes of ``tools/list``. That is the right answer for a coding agent, which
-reads the list once and tolerates it. It is the wrong answer for a chat client that loads
-every tool into the model's context on every turn, and ChatGPT refuses it outright — its
-documented ceiling is **5,000 tokens for all tools together**, name, description and input
-schema included, which the full surface passes by two orders of magnitude. ``/mcp/compact``
-serves the same server through :class:`CompactProfile`: a hand-picked read-only set that fits
-inside that budget. Nothing about the full surface changes, so an existing client keeps the
-tools it already had.
+**Sections, one server.** ``/mcp`` is the whole surface. ``/mcp/<section>`` is the same server,
+the same session manager and the same lifespan answering ``tools/list`` with less —
+see :mod:`app.core.mcp.sections` for what a section is and, more importantly, for why almost
+none of them are written down by hand.
 """
 
 from __future__ import annotations
 
 import json
+import logging
+import re
 from collections import Counter
 from collections.abc import Generator
 from typing import Any
@@ -43,8 +41,21 @@ from fastmcp.server.middleware import MiddlewareContext
 from fastmcp.server.openapi import MCPType, RouteMap
 from starlette.middleware import Middleware
 
+from app.core.mcp.sections import (
+    Section,
+    assert_no_collisions,
+    build_sections,
+    resolve_segment,
+)
+from app.core.tenancy import origin_from
+
+logger = logging.getLogger("schakl.mcp")
+
 #: Credential headers copied from the incoming MCP request onto the proxied API call.
 _FORWARDED_HEADERS = ("authorization", "x-api-key")
+
+#: Scope key :class:`SelectSection` stamps and :class:`SectionListing` reads.
+_SECTION_KEY = "schakl_mcp_section"
 
 
 class ForwardCallerAuth(httpx.Auth):
@@ -67,6 +78,105 @@ class ForwardCallerAuth(httpx.Auth):
         if host:
             request.headers["x-forwarded-host"] = host
         yield request
+
+
+async def _json_error(
+    send: Any, *, status: int, code: int, message: str, headers: tuple = ()
+) -> None:
+    """A JSON-RPC error body written straight to the transport, before the SDK sees the request.
+
+    All three refusals below answer *outside* the protocol handler — a verb it will not serve, a
+    caller with no credential, a section that does not exist — so each has to write its own
+    response. Shaped as JSON-RPC anyway, because the thing reading it is an MCP client, and a
+    bare Starlette 404 gives it nothing to report but "connection failed".
+    """
+    body = json.dumps(
+        {"jsonrpc": "2.0", "id": "server-error", "error": {"code": code, "message": message}}
+    ).encode()
+    await send(
+        {
+            "type": "http.response.start",
+            "status": status,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode()),
+                *headers,
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": body})
+
+
+def _external_origin(scope: dict) -> str:
+    """The origin a caller reached this server on, as the edge saw it.
+
+    Read from the forwarded headers rather than from configuration, because the tenant's
+    hostname *is* the tenant (§5) and a document naming the wrong host sends a client to a
+    different org's authorization server. The scheme rule is shared with the API's own
+    ``external_origin`` rather than restated — one guess, in one place.
+    """
+    headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
+    return origin_from(
+        headers.get("x-forwarded-host") or headers.get("host") or "",
+        headers.get("x-forwarded-proto", ""),
+    )
+
+
+class RequireCredential:
+    """Answer an MCP request carrying no credential with 401 and where to get one.
+
+    Two things are true and only one of them was being served. A client that speaks OAuth
+    discovers the authorization server by *being refused* — RFC 9728 says the refusal carries
+    ``WWW-Authenticate: Bearer resource_metadata="…"``, and a server that answers an
+    unauthenticated request with 200 tells it nothing, so "Add connector" in someone's chat
+    client can never complete a flow. And listing 623 tool names to nobody in particular
+    discloses this tenant's entire module set and feature surface before anyone has proved they
+    may see it.
+
+    So an MCP request with neither ``Authorization`` nor ``X-API-Key`` is refused here, at the
+    transport, before the session manager reads a byte of JSON-RPC. **This is a behaviour
+    change**: ``tools/list`` used to answer anonymously. Every authenticated call is untouched —
+    a presented credential takes exactly the path it took before, including being wrong, which
+    still surfaces as the API's own envelope on the individual tool call.
+
+    ``resource`` names *this* URL, section segment included, because that is the resource the
+    token will be audience-bound to and RFC 8707 does not accept a near-enough one.
+    """
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send) -> None:  # noqa: ANN001
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        headers = {k.decode().lower() for k, _ in scope.get("headers", [])}
+        if "authorization" in headers or "x-api-key" in headers:
+            await self.app(scope, receive, send)
+            return
+
+        origin = _external_origin(scope)
+        path = scope.get("path", "/mcp").rstrip("/") or "/mcp"
+        resource = f"{origin}{path}"
+        # RFC 9728 §3.1: the metadata URL inserts the well-known segment between host and path,
+        # so the document for `https://host/mcp/google-ads` is served at
+        # `https://host/.well-known/oauth-protected-resource/mcp/google-ads`.
+        metadata = f"{origin}/.well-known/oauth-protected-resource{path}"
+        await _json_error(
+            send,
+            status=401,
+            code=-32001,
+            message=(
+                "Unauthorized: present an API key as `Authorization: Bearer schakl_…`, or "
+                f"complete the OAuth flow advertised for {resource} in WWW-Authenticate."
+            ),
+            headers=(
+                (
+                    b"www-authenticate",
+                    f'Bearer realm="schakl", resource_metadata="{metadata}"'.encode(),
+                ),
+            ),
+        )
 
 
 class RefuseStandaloneStream:
@@ -93,89 +203,27 @@ class RefuseStandaloneStream:
 
     async def __call__(self, scope, receive, send) -> None:  # noqa: ANN001
         if scope["type"] == "http" and scope["method"] == "GET":
-            body = json.dumps(
-                {
-                    "jsonrpc": "2.0",
-                    "id": "server-error",
-                    "error": {
-                        "code": -32600,
-                        "message": (
-                            "Method Not Allowed: this server is stateless, so it offers no "
-                            "standalone SSE stream. Send JSON-RPC over POST."
-                        ),
-                    },
-                }
-            ).encode()
-            await send(
-                {
-                    "type": "http.response.start",
-                    "status": 405,
-                    "headers": [
-                        (b"content-type", b"application/json"),
-                        (b"allow", b"POST"),
-                        (b"content-length", str(len(body)).encode()),
-                    ],
-                }
+            await _json_error(
+                send,
+                status=405,
+                code=-32600,
+                message=(
+                    "Method Not Allowed: this server is stateless, so it offers no standalone "
+                    "SSE stream. Send JSON-RPC over POST."
+                ),
+                headers=((b"allow", b"POST"),),
             )
-            await send({"type": "http.response.body", "body": body})
             return
         await self.app(scope, receive, send)
 
 
-#: The path segment under the mount that selects the compact profile: ``/mcp/compact``.
-_COMPACT_SEGMENT = "/compact"
-#: Scope key :class:`SelectProfile` stamps and :class:`CompactProfile` reads.
-_PROFILE_KEY = "schakl_mcp_profile"
-
-#: The compact profile's tools, by the name ``_tool_names`` gives them.
-#:
-#: Chosen against one question — *what does somebody ask a chat assistant about an agency?* —
-#: and then cut until the whole list fits ChatGPT's 5,000-token ceiling with room to spare
-#: (``test_mcp_compact_profile_fits_a_chat_client``, which is the real specification here; a
-#: name added below without watching that number is how this profile stops working).
-#:
-#: **Read-only, and that is a decision rather than an accident.** §12 already calls the surface
-#: read-first; a chat client is where that matters most, because the tools a model may reach
-#: for are the ones nobody explicitly asked it to call. The full surface at ``/mcp`` keeps
-#: every write, gated by the calling key's scopes exactly as before.
-#:
-#: Picked for grounding first (a person says "AAZET", every other tool wants an id), then the
-#: four questions an agency actually asks: what is running, what is owed, where did the hours
-#: go, how are the campaigns doing.
-_COMPACT_TOOLS = frozenset(
-    {
-        # Grounding: name → id, for everything below.
-        "list_companies",
-        "get_company",
-        "list_contacts",
-        # What is running.
-        "list_projects",
-        "my_open_tasks",
-        "get_task",
-        # What is owed.
-        "list_invoices",
-        "outstanding",
-        "unbilled",
-        # Where the hours went.
-        "time_report",
-        # What we host and renew.
-        "list_domains",
-        # How the campaigns are doing. ``list_google_ads_accounts`` is grounding again: the
-        # rest take an ``account_id`` nobody types from memory.
-        "list_google_ads_accounts",
-        "google_ads_snapshot",
-        "google_ads_search_terms",
-    }
-)
-
-
-class SelectProfile:
-    """Route ``/mcp/compact`` to the same MCP server, with the profile stamped on the scope.
+class SelectSection:
+    """Route ``/mcp/<section>`` to the same MCP server, with the section stamped on the scope.
 
     A path segment rather than a query parameter, because this URL is pasted into somebody
     else's settings screen and a query string is the part of a URL that tools normalise, strip
     and re-encode. The rewrite is the whole mechanism: one server, one session manager, one
-    lifespan — the profile changes only what ``tools/list`` answers, which is where the entire
+    lifespan — the section changes only what ``tools/list`` answers, which is where the entire
     problem lives.
 
     Mounted apps see the **whole** path with the mount prefix in ``root_path``, not the
@@ -183,34 +231,60 @@ class SelectProfile:
     which is also what keeps this correct if ``/mcp`` ever moves.
     """
 
-    def __init__(self, app: Any) -> None:
+    def __init__(self, app: Any, sections: dict[str, Section]) -> None:
         self.app = app
+        self.sections = sections
 
     async def __call__(self, scope, receive, send) -> None:  # noqa: ANN001
-        if scope["type"] == "http":
-            root = scope.get("root_path", "")
-            path = scope.get("path", "")
-            relative = path[len(root) :] if root and path.startswith(root) else path
-            if relative.rstrip("/") == _COMPACT_SEGMENT:
-                scope = {**scope, "path": f"{root}/", _PROFILE_KEY: "compact"}
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        root = scope.get("root_path", "")
+        path = scope.get("path", "")
+        relative = path[len(root) :] if root and path.startswith(root) else path
+        section = resolve_segment(self.sections, relative)
+        if section is None:
+            # An unknown segment is refused, and the refusal *names what exists* — this URL is
+            # typed by hand into somebody else's settings screen, so the one place the answer is
+            # useful is the response to the typo. See ``sections.resolve_segment`` for why this
+            # is not quietly widened to the full surface.
+            await _json_error(
+                send,
+                status=404,
+                code=-32601,
+                message=(
+                    f"No such MCP section {relative.strip('/')!r}. Available: "
+                    f"{', '.join(sorted(self.sections))}."
+                ),
+            )
+            return
+        if isinstance(section, Section):
+            scope = {**scope, "path": f"{root}/", _SECTION_KEY: section.key}
         await self.app(scope, receive, send)
 
 
-class CompactProfile(MCPMiddleware):
-    """Answer ``tools/list`` with the curated set when the caller asked for the profile.
+class SectionListing(MCPMiddleware):
+    """Answer ``tools/list`` with the section's tools when the caller asked for a section.
 
-    Two reductions, and the second one is not decoration. Filtering to :data:`_COMPACT_TOOLS`
-    is the obvious half. Dropping ``output_schema`` is the half that makes the budget: it is
-    **79% of the full surface's bytes** — response shapes, which a client needs to *validate*
-    a result it already has, never to decide whether to call. Six single tools in the full
-    surface each exceed ChatGPT's entire allowance on their own, and every one of them is a
-    response schema wearing a tool's name.
+    Two reductions, and the second one is not decoration. Filtering to the section's set is the
+    obvious half. Dropping ``output_schema`` is the half that makes the budget: it is **79% of
+    the full surface's bytes** — response shapes, which a client needs to *validate* a result it
+    already has, never to decide whether to call. Six single tools in the full surface each
+    exceed ChatGPT's entire allowance on their own, and every one of them is a response schema
+    wearing a tool's name.
 
-    Only the listing is narrowed. A call to a tool outside the profile still works and is
-    still governed by the key's scopes — hiding a tool is a context-budget decision, and
-    dressing it up as an authorization boundary would put a second, weaker answer next to the
-    one ``require_context`` already gives.
+    It is dropped for **every** section rather than only for the curated one, because a section
+    is asked for by somebody who needed a smaller surface, and this is the largest reduction
+    available that costs nothing at the moment a caller decides. ``/mcp`` is the URL that means
+    "give me everything" and keeps everything.
+
+    Only the listing is narrowed. A call to a tool outside the section still works and is still
+    governed by the key's scopes — see :mod:`app.core.mcp.sections` on why dressing that up as
+    an authorization boundary would be worse than not having sections at all.
     """
+
+    def __init__(self, sections: dict[str, Section]) -> None:
+        self.sections = sections
 
     async def on_list_tools(self, context: MiddlewareContext, call_next):  # noqa: ANN001, ANN201
         tools = await call_next(context)
@@ -218,12 +292,13 @@ class CompactProfile(MCPMiddleware):
             request = get_http_request()
         except RuntimeError:  # no HTTP request in scope (in-process, tests)
             return tools
-        if request.scope.get(_PROFILE_KEY) != "compact":
+        section = self.sections.get(request.scope.get(_SECTION_KEY) or "")
+        if section is None:
             return tools
         return [
             tool.model_copy(update={"output_schema": None})
             for tool in tools
-            if tool.name in _COMPACT_TOOLS
+            if tool.name in section.tools
         ]
 
 
@@ -238,6 +313,11 @@ _ROUTE_MAPS = [
     # public invoice link (#304) is the first of these; a second one belongs in this pattern
     # rather than in a second decision made somewhere else.
     RouteMap(pattern=r"^/api/v1/invoicing/public(/.*)?$", mcp_type=MCPType.EXCLUDE),
+    # The OAuth 2.1 endpoints are how a client *gets* a credential, so they are reached before
+    # one exists and are excluded for the same reason ``/auth`` is. Offering them as tools would
+    # also hand a model the registration endpoint, which is the one route here that writes a row
+    # for an unauthenticated caller.
+    RouteMap(pattern=r"^/api/v1/oauth(/.*)?$", mcp_type=MCPType.EXCLUDE),
     # A multipart upload is not a tool an LLM can call: the payload is a file it does not have,
     # and the mapping it would have to invent is exactly the human judgement the wizard exists
     # for. `/columns` and `/export` stay — reading a shape and taking data out are both useful.
@@ -247,19 +327,88 @@ _ROUTE_MAPS = [
 ]
 
 
-def _tool_names(app: Any) -> dict[str, str]:
-    """operationId → a short, stable tool name (``list_companies``, not
-    ``list_companies_api_v1_companies_get``). Falls back to the full operationId when the
-    short form would collide."""
-    operation_ids = [
-        operation.get("operationId", "")
-        for operations in app.openapi().get("paths", {}).values()
+def _becomes_a_tool(path: str) -> bool:
+    """Whether ``_ROUTE_MAPS`` turns this path into a tool — read from the maps, not restated.
+
+    A section counts its tools, and a count is a number printed on a settings screen, so it has
+    to be the number a client will actually receive. Restating the exclusions here would put a
+    second copy of them one function away from the first: the invoicing section would have gone
+    on claiming 66 tools while serving 61, because ``/invoicing/public`` is excluded in one place
+    and was not excluded in the other.
+    """
+    for route_map in _ROUTE_MAPS:
+        pattern = route_map.pattern
+        if re.search(pattern, path) if isinstance(pattern, str) else pattern.search(path):
+            return route_map.mcp_type is MCPType.TOOL
+    return False
+
+
+def _tool_routes(mcp: Any, fallback: dict[str, str]) -> dict[str, str]:
+    """tool name → API path, read off the **built server** rather than predicted from the spec.
+
+    Predicting it does not work, and the way it fails is the reason this function exists.
+    ``mcp_names`` only supplies a name where the short form is unique; everything else keeps its
+    operationId, and FastMCP then derives a name from that — splitting at the first ``__`` (the
+    delimiter FastAPI puts around a path parameter) and capping the result. So
+    ``delete_account_api_v1_cloudflare_accounts__account_id__delete`` is served as
+    ``delete_account_api_v1_cloudflare_accounts``, and an index keyed on the operationId matches
+    **no tool at all**: 27 of them were silently absent from their own module's section, and the
+    section still looked plausible because the other 597 were there.
+
+    Reading a private attribute is the lesser evil, and deliberately so. Restating the naming
+    rule here would be a second copy of somebody else's implementation detail, and a copy that
+    goes stale drops tools *quietly* — which is the failure above, one release later. This
+    breaks loudly instead, and ``test_a_module_section_is_derived_from_the_module_router``
+    compares a section against what ``tools/list`` actually answers, so a FastMCP upgrade that
+    moves this turns CI red rather than a customer's agent stupid.
+
+    The fallback keeps a surprised instance serving: sections built from the spec are right for
+    the overwhelming majority of tools, which beats 404ing every section URL at boot.
+    """
+    registered = getattr(getattr(mcp, "_tool_manager", None), "_tools", None)
+    if not isinstance(registered, dict) or not registered:
+        logger.warning(
+            "MCP: cannot read the built tool registry, falling back to spec-derived section "
+            "membership — sections may omit tools whose name FastMCP rewrote"
+        )
+        return fallback
+    routes = {
+        name: tool._route.path  # noqa: SLF001 — see the docstring; the alternative is worse
+        for name, tool in registered.items()
+        if getattr(getattr(tool, "_route", None), "path", None)
+    }
+    return routes or fallback
+
+
+def _tool_index(app: Any) -> tuple[dict[str, str], dict[str, str]]:
+    """``(operationId → tool name, tool name → API path)``, built in one pass over the spec.
+
+    The first half is the naming this server has always done: a short, stable ``list_companies``
+    rather than ``list_companies_api_v1_companies_get``, falling back to the full operationId
+    when the short form would collide. It covers **every** operation, because a name is only
+    unique if collisions are counted across the whole spec — narrowing it to the tool routes
+    first would let an excluded operation's twin quietly claim the short name.
+
+    The second half is what sections are derived from, and it is built *here* because this is
+    the only place both facts are in hand at once. Asking FastMCP afterwards which route backs a
+    tool would mean reading an attribute it does not promise; asking the spec afterwards would
+    mean reproducing the naming rule above and hoping the copy stays honest.
+    """
+    entries = [
+        (path, operation.get("operationId", ""))
+        for path, operations in app.openapi().get("paths", {}).items()
         for operation in operations.values()
         if isinstance(operation, dict)
     ]
-    short = {op_id: op_id.split("_api_v1_")[0] for op_id in operation_ids if op_id}
+    short = {op_id: op_id.split("_api_v1_")[0] for _, op_id in entries if op_id}
     counts = Counter(short.values())
-    return {op_id: name for op_id, name in short.items() if counts[name] == 1}
+    names = {op_id: name for op_id, name in short.items() if counts[name] == 1}
+    paths = {
+        names.get(op_id, op_id): path
+        for path, op_id in entries
+        if op_id and _becomes_a_tool(path)
+    }
+    return names, paths
 
 
 def build_mcp_asgi_app(app: Any) -> Any:
@@ -269,19 +418,37 @@ def build_mcp_asgi_app(app: Any) -> Any:
     affinity and a plain JSON-RPC request (curl, tests) gets a plain JSON response. Being
     stateless is also what makes ``GET`` meaningless here — see :class:`RefuseStandaloneStream`.
     """
+    names, spec_paths = _tool_index(app)
     mcp = FastMCP.from_fastapi(
         app=app,
         name="schakl",
         route_maps=_ROUTE_MAPS,
-        mcp_names=_tool_names(app),
+        mcp_names=names,
         httpx_client_kwargs={"auth": ForwardCallerAuth(), "timeout": 30.0},
     )
-    mcp.add_middleware(CompactProfile())
-    return mcp.http_app(
+    # Sections are built *after* the server, from the names it actually serves — never from the
+    # names the spec suggests. See :func:`_tool_routes` for the 27 tools that difference hid.
+    paths = _tool_routes(mcp, spec_paths)
+    sections = build_sections(paths)
+    assert_no_collisions(sections)
+    mcp.add_middleware(SectionListing(sections))
+    asgi = mcp.http_app(
         path="/",
         stateless_http=True,
         json_response=True,
-        # Outermost first: the profile is selected off the path before anything routes on it,
-        # and the standalone-stream refusal answers before the session manager can open one.
-        middleware=[Middleware(SelectProfile), Middleware(RefuseStandaloneStream)],
+        # Outermost first, and the order is an argument. The standalone-stream refusal comes
+        # first because ``GET`` is not offered here to *anyone* — answering 401 to a verb that
+        # would still be refused after authenticating sends a client off to complete an OAuth
+        # flow that cannot fix it. Then the credential challenge, before anything reads a body.
+        # Then the section, before anything routes on the path.
+        middleware=[
+            Middleware(RefuseStandaloneStream),
+            Middleware(RequireCredential),
+            Middleware(SelectSection, sections=sections),
+        ],
     )
+    # Hung off the app so ``/meta/mcp`` can describe what this instance serves without building
+    # a second FastMCP (which would cost the whole spec walk again, per request).
+    asgi.state.sections = sections
+    asgi.state.tool_count = len(paths)
+    return asgi

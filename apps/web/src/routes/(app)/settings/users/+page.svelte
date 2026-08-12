@@ -72,12 +72,22 @@
     Object.fromEntries((data.rateRows ?? []).map((r) => [r.user_id, r.effective_hourly_rate])),
   );
 
+  /** Who holds a freelance period — the ⋯ offers availability only where there is a week to
+   *  bend. Off the contracts this page already loads; a payroll employee has none. */
+  const freelancerIds = $derived(
+    new Set(
+      (data.contracts ?? [])
+        .filter((c) => c.employment_type === "freelance")
+        .map((c) => c.user_id as string),
+    ),
+  );
+
   function memberActions(member: Member) {
     // Schedule, contracts, recurring and (rate, where permitted) come from the shared helper;
     // this page adds the trust actions (2FA reset, revoke) that only belong on the roster.
     const items = employmentMenuItems(member, openEmployment, {
       schedules: data.schedules,
-      availability: data.availability,
+      availability: data.availability && freelancerIds.has(member.user_id),
       rates: data.rates,
     });
     if (!member.is_self) {

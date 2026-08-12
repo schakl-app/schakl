@@ -69,6 +69,17 @@ async def _enforce(bucket: str, limit: int) -> None:
         logger.debug("auth rate limit skipped (redis unavailable)", exc_info=True)
 
 
+async def limit_by_ip(request: Request, *, bucket: str, limit: int) -> None:
+    """The same per-IP, per-tenant, per-minute ceiling, applied from inside a handler.
+
+    :func:`rate_limit` builds a *router* dependency, which is right when a whole flow shares one
+    budget. This is for a single route that needs its own — OAuth's dynamic client registration
+    (docs/MCP.md), which is the one unauthenticated write in the codebase a stranger can repeat.
+    """
+    host = request.headers.get("host", "") or _client_ip(request)
+    await _enforce(f"{bucket}:{host}:{_client_ip(request)}", limit)
+
+
 def rate_limit(name: str, limit: Callable[[], int]) -> Callable[[Request], Awaitable[None]]:
     """Build a FastAPI dependency limiting requests per IP, per minute, per tenant.
 

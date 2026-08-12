@@ -27,7 +27,7 @@ from app.modules.google_ads import policy as policy_rules
 from app.modules.google_ads import reporting
 from app.modules.google_ads.decisions import GoogleAdsDecisionService
 from app.modules.google_ads.models import GoogleAdsAccount
-from app.modules.google_ads.reporting import ReadResult, Window
+from app.modules.google_ads.reporting import ReadResult, Slice, Window
 from app.modules.google_ads.schemas import (
     GoogleAdsAccountBrief,
     GoogleAdsKeywordIdeaRequest,
@@ -40,6 +40,11 @@ from app.modules.google_ads.schemas import (
 )
 from app.modules.google_ads.service import GoogleAdsService
 from app.modules.google_ads.trends import read_trend
+
+#: Filtering *to* removed rows has to widen the fetch that excludes them, or the one status
+#: a person picks on purpose is the one that always answers nothing. The two settings are
+#: not independent, and the read is where they are reconciled rather than the caller.
+REMOVED = "REMOVED"
 
 
 class GoogleAdsReadService:
@@ -64,6 +69,7 @@ class GoogleAdsReadService:
         result: ReadResult,
         window: Window | None,
         warnings: list[str],
+        view: Slice = Slice(),
     ) -> GoogleAdsReport:
         return GoogleAdsReport(
             account=self._brief(account),
@@ -83,6 +89,10 @@ class GoogleAdsReadService:
             # Two clocks in one response is not an accident; pretending otherwise would be.
             fetched_at=datetime.now(UTC),
             row_count=len(result.rows),
+            # Two counts, because they answer two questions and only one of them is the
+            # pager's. A read nobody paged never called `narrow`, and there they agree.
+            total_rows=len(result.rows) if result.total_rows is None else result.total_rows,
+            offset=view.offset,
             # Deduplicated but order-preserving: a caller reads the first one as the headline.
             warnings=list(dict.fromkeys([*warnings, *result.warnings])),
             totals=result.totals,
@@ -165,7 +175,7 @@ class GoogleAdsReadService:
         *,
         campaigns: list[str] | None = None,
         include_removed: bool = False,
-        limit: int | None = None,
+        view: Slice = Slice(),
     ) -> GoogleAdsReport:
         account = await self.accounts.get_account(account_id)
         window, warnings = await self._window(account, period, date_from, date_to)
@@ -180,10 +190,12 @@ class GoogleAdsReadService:
                 client,
                 account.customer_id,
                 window,
-                limit=reporting.limit_for("campaigns", limit),
-                include_removed=include_removed,
+                limit=reporting.limit_for("campaigns", None),
+                include_removed=include_removed or view.status == REMOVED,
             )
-        return self._envelope(account, result, window, warnings)
+        return self._envelope(
+            account, result.narrow(view, kind="campaigns"), window, warnings, view
+        )
 
     async def ad_groups(
         self,
@@ -194,7 +206,7 @@ class GoogleAdsReadService:
         *,
         campaigns: list[str] | None = None,
         include_removed: bool = False,
-        limit: int | None = None,
+        view: Slice = Slice(),
     ) -> GoogleAdsReport:
         account = await self.accounts.get_account(account_id)
         window, warnings = await self._window(account, period, date_from, date_to)
@@ -209,11 +221,13 @@ class GoogleAdsReadService:
                 client,
                 account.customer_id,
                 window,
-                limit=reporting.limit_for("ad_groups", limit),
+                limit=reporting.limit_for("ad_groups", None),
                 campaign_ids=ids,
-                include_removed=include_removed,
+                include_removed=include_removed or view.status == REMOVED,
             )
-        return self._envelope(account, result, window, warnings)
+        return self._envelope(
+            account, result.narrow(view, kind="ad_groups"), window, warnings, view
+        )
 
     async def keywords(
         self,
@@ -224,7 +238,7 @@ class GoogleAdsReadService:
         *,
         campaigns: list[str] | None = None,
         include_removed: bool = False,
-        limit: int | None = None,
+        view: Slice = Slice(),
     ) -> GoogleAdsReport:
         account = await self.accounts.get_account(account_id)
         window, warnings = await self._window(account, period, date_from, date_to)
@@ -239,25 +253,23 @@ class GoogleAdsReadService:
                 client,
                 account.customer_id,
                 window,
-                limit=reporting.limit_for("keywords", limit),
+                limit=reporting.limit_for("keywords", None),
                 campaign_ids=ids,
-                include_removed=include_removed,
+                include_removed=include_removed or view.status == REMOVED,
             )
-        return self._envelope(account, result, window, warnings)
+        return self._envelope(account, result.narrow(view, kind="keywords"), window, warnings, view)
 
-    async def negatives(
-        self, account_id: uuid.UUID, *, limit: int | None = None
-    ) -> GoogleAdsReport:
+    async def negatives(self, account_id: uuid.UUID, *, view: Slice = Slice()) -> GoogleAdsReport:
         account = await self.accounts.get_account(account_id)
         async with self.accounts.open_client(account_id=account_id, tool="negatives") as (
             client,
             _a,
         ):
             result = await reporting.read_negatives(
-                client, account.customer_id, limit=reporting.limit_for("negatives", limit)
+                client, account.customer_id, limit=reporting.limit_for("negatives", None)
             )
         # No period: an exclusion is configuration, not a measurement over a span.
-        return self._envelope(account, result, None, [])
+        return self._envelope(account, result.narrow(view, kind="negatives"), None, [], view)
 
     async def search_terms(
         self,
@@ -269,7 +281,7 @@ class GoogleAdsReadService:
         campaigns: list[str] | None = None,
         min_cost: float | None = None,
         min_clicks: int | None = None,
-        limit: int | None = None,
+        view: Slice = Slice(),
     ) -> GoogleAdsReport:
         account = await self.accounts.get_account(account_id)
         window, warnings = await self._window(account, period, date_from, date_to)
@@ -284,16 +296,20 @@ class GoogleAdsReadService:
                 client,
                 account.customer_id,
                 window,
-                limit=reporting.limit_for("search_terms", limit),
+                limit=reporting.limit_for("search_terms", None),
                 campaign_ids=ids,
                 min_cost=min_cost,
                 min_clicks=min_clicks,
             )
+        # Narrow first, annotate second. The annotation is a per-row stamp and this is the one
+        # read that has one, so doing it after the page is taken stamps fifty rows rather than a
+        # thousand — and it changes no answer, because `decided` is not a field the search reads.
+        result.narrow(view, kind="search_terms")
         # After the client block, never inside it: the pooled connection is released for the
         # duration and a query there would re-check one out with no RLS GUC bound, which fails
         # closed rather than erroring. One batched read, not one per row.
         await self._annotate_decisions(account, result.rows)
-        return self._envelope(account, result, window, warnings)
+        return self._envelope(account, result, window, warnings, view)
 
     async def _annotate_decisions(self, account: GoogleAdsAccount, rows: list[dict]) -> None:
         """Stamp each search-term row with the decision that already stands about it.
@@ -339,7 +355,7 @@ class GoogleAdsReadService:
         date_to: date | None,
         *,
         campaigns: list[str] | None = None,
-        limit: int | None = None,
+        view: Slice = Slice(),
     ) -> GoogleAdsReport:
         account = await self.accounts.get_account(account_id)
         window, warnings = await self._window(account, period, date_from, date_to)
@@ -351,10 +367,10 @@ class GoogleAdsReadService:
                 client,
                 account.customer_id,
                 window,
-                limit=reporting.limit_for("ads", limit),
+                limit=reporting.limit_for("ads", None),
                 campaign_ids=ids,
             )
-        return self._envelope(account, result, window, warnings)
+        return self._envelope(account, result.narrow(view, kind="ads"), window, warnings, view)
 
     async def devices(
         self,
@@ -364,7 +380,7 @@ class GoogleAdsReadService:
         date_to: date | None,
         *,
         campaigns: list[str] | None = None,
-        limit: int | None = None,
+        view: Slice = Slice(),
     ) -> GoogleAdsReport:
         account = await self.accounts.get_account(account_id)
         window, warnings = await self._window(account, period, date_from, date_to)
@@ -379,10 +395,10 @@ class GoogleAdsReadService:
                 client,
                 account.customer_id,
                 window,
-                limit=reporting.limit_for("devices", limit),
+                limit=reporting.limit_for("devices", None),
                 campaign_ids=ids,
             )
-        return self._envelope(account, result, window, warnings)
+        return self._envelope(account, result.narrow(view, kind="devices"), window, warnings, view)
 
     async def geo(
         self,
@@ -392,7 +408,7 @@ class GoogleAdsReadService:
         date_to: date | None,
         *,
         campaigns: list[str] | None = None,
-        limit: int | None = None,
+        view: Slice = Slice(),
     ) -> GoogleAdsReport:
         account = await self.accounts.get_account(account_id)
         window, warnings = await self._window(account, period, date_from, date_to)
@@ -404,10 +420,10 @@ class GoogleAdsReadService:
                 client,
                 account.customer_id,
                 window,
-                limit=reporting.limit_for("geo", limit),
+                limit=reporting.limit_for("geo", None),
                 campaign_ids=ids,
             )
-        return self._envelope(account, result, window, warnings)
+        return self._envelope(account, result.narrow(view, kind="geo"), window, warnings, view)
 
     async def conversions(
         self,
@@ -416,7 +432,7 @@ class GoogleAdsReadService:
         date_from: date | None,
         date_to: date | None,
         *,
-        limit: int | None = None,
+        view: Slice = Slice(),
     ) -> GoogleAdsReport:
         account = await self.accounts.get_account(account_id)
         window, warnings = await self._window(account, period, date_from, date_to)
@@ -428,9 +444,11 @@ class GoogleAdsReadService:
                 client,
                 account.customer_id,
                 window,
-                limit=reporting.limit_for("conversions", limit),
+                limit=reporting.limit_for("conversions", None),
             )
-        return self._envelope(account, result, window, warnings)
+        return self._envelope(
+            account, result.narrow(view, kind="conversions"), window, warnings, view
+        )
 
     async def changes(
         self,
@@ -439,7 +457,7 @@ class GoogleAdsReadService:
         date_from: date | None,
         date_to: date | None,
         *,
-        limit: int | None = None,
+        view: Slice = Slice(),
     ) -> GoogleAdsReport:
         account = await self.accounts.get_account(account_id)
         window, warnings = await self._window(account, period, date_from, date_to)
@@ -448,12 +466,12 @@ class GoogleAdsReadService:
             _a,
         ):
             result = await reporting.read_changes(
-                client, account.customer_id, window, limit=reporting.limit_for("changes", limit)
+                client, account.customer_id, window, limit=reporting.limit_for("changes", None)
             )
-        return self._envelope(account, result, window, warnings)
+        return self._envelope(account, result.narrow(view, kind="changes"), window, warnings, view)
 
     async def recommendations(
-        self, account_id: uuid.UUID, *, limit: int | None = None
+        self, account_id: uuid.UUID, *, view: Slice = Slice()
     ) -> GoogleAdsReport:
         account = await self.accounts.get_account(account_id)
         async with self.accounts.open_client(account_id=account_id, tool="recommendations") as (
@@ -463,9 +481,9 @@ class GoogleAdsReadService:
             result = await reporting.read_recommendations(
                 client,
                 account.customer_id,
-                limit=reporting.limit_for("recommendations", limit),
+                limit=reporting.limit_for("recommendations", None),
             )
-        return self._envelope(account, result, None, [])
+        return self._envelope(account, result.narrow(view, kind="recommendations"), None, [], view)
 
     async def keyword_ideas(
         self, account_id: uuid.UUID, payload: GoogleAdsKeywordIdeaRequest

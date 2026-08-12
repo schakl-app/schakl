@@ -519,6 +519,23 @@ class LeaveService:
             return week, sched.week_hours(week), False
         return self._effective(await self._profile(user_id), await self.default_schedule())
 
+    async def employment_kind_on(
+        self, user_id: uuid.UUID, on: date | None = None
+    ) -> EmploymentKind | None:
+        """The kind of the period covering ``on`` (org-local today by default), or ``None``.
+
+        ``None`` is "no period on file for that day", which is not the same answer as
+        ``EMPLOYEE`` — a screen that offers a freelancer's own controls must not offer them to
+        everybody in a tenant that has never entered a contract. The one question the web asks
+        to decide whether the availability surface exists at all.
+        """
+        if on is None:
+            on = await self._org_today()
+        for contract in await self._user_contracts(user_id):
+            if contract.start_date <= on <= (contract.end_date or date.max):
+                return EmploymentKind(contract.employment_type)
+        return None
+
     async def _contract_schedule_on(
         self, user_id: uuid.UUID, day: date
     ) -> sched.WorkSchedule | None:
@@ -1159,7 +1176,9 @@ class LeaveService:
         # for a TIME column — the ORM needs the actual time objects (same as create_recurring).
         values["start_time"] = data.start_time
         values["end_time"] = data.end_time
-        return await self.availability.create(user_id=user_id, **values)
+        row = await self.availability.create(user_id=user_id, **values)
+        await self._emit_availability("availability.saved", row)
+        return row
 
     async def update_availability(
         self, entry_id: uuid.UUID, data: AvailabilityUpdate
@@ -1181,7 +1200,9 @@ class LeaveService:
             repeat_weeks=values.get("repeat_weeks", row.repeat_weeks),
             repeat_until=values.get("repeat_until", row.repeat_until),
         )
-        return await self.availability.update(row, **values)
+        updated = await self.availability.update(row, **values)
+        await self._emit_availability("availability.saved", updated)
+        return updated
 
     async def delete_availability(self, entry_id: uuid.UUID) -> None:
         """Delete a row — and the other half, when it is a move.
@@ -1206,6 +1227,9 @@ class LeaveService:
                 .all()
             ) or [row]
         for entry in rows:
+            # Emitted *before* the delete: the handler snapshots what it needs off the row, and
+            # a flushed-away row has nothing left to read.
+            await self._emit_availability("availability.gone", entry)
             await self.availability.delete(entry)
 
     async def move_availability(
@@ -1246,7 +1270,34 @@ class LeaveService:
             pair_id=pair_id,
             note=data.note,
         )
+        for row in (dropped, added):
+            await self._emit_availability("availability.saved", row)
         return [dropped, added]
+
+    async def _emit_availability(self, event: str, row: EmploymentAvailability) -> None:
+        """Announce an availability row to the bus, for whoever mirrors it (#6's rule: the owning
+        module emits, interested modules subscribe — leave imports no Google internals).
+
+        The payload is the **row**, not the day it resolves to. A resolved day is the base week
+        bent by exceptions, and a mirror has no base week to bend: pushing the resolution would
+        mean pushing every ordinary working day too. One row ↔ one mirrored event is also what
+        makes an edit an update and a delete a delete, rather than a diff nobody can compute.
+        """
+        await emit(
+            event,
+            self.ctx,
+            {
+                "user_id": str(row.user_id),
+                "availability_id": str(row.id),
+                "kind": row.kind,
+                "date": row.date.isoformat(),
+                "start_time": row.start_time.isoformat() if row.start_time else None,
+                "end_time": row.end_time.isoformat() if row.end_time else None,
+                "repeat_weeks": row.repeat_weeks,
+                "repeat_until": row.repeat_until.isoformat() if row.repeat_until else None,
+                "note": row.note,
+            },
+        )
 
     @staticmethod
     def _validate_availability(

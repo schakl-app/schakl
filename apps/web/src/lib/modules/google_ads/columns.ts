@@ -15,6 +15,18 @@ export type ReportView = "campaigns" | "keywords" | "search-terms" | "negatives"
  * builds fine under `svelte-check` and fails the production build. */
 export const GOOGLE_ADS_DECISIONS_TABLE_ID = "google-ads-decisions";
 
+/**
+ * Each report view's saved page-size key — one per view, not one for the screen.
+ *
+ * They are different tables that happen to share a route: a negatives list is five narrow text
+ * columns and a keyword list is a dozen numbers, so somebody who wants 200 of the first does not
+ * thereby want 200 of the second. Only the size is remembered; the *page* stays in the URL, or
+ * two tabs fight over one number (`core/table/paging.ts`).
+ */
+export function reportTableId(view: ReportView): string {
+  return `google-ads-${view}`;
+}
+
 export type ColumnKind =
   | "text"
   /** Money in the account's own currency — never assumed to be EUR. */

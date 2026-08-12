@@ -38,6 +38,7 @@ logger = logging.getLogger("schakl.google.calendar")
 
 LOCAL_TYPE_LEAVE = "leave_request"
 LOCAL_TYPE_TASK_SCHEDULE = "task_schedule"
+LOCAL_TYPE_AVAILABILITY = "availability"
 MAX_ATTEMPTS = 5
 
 
@@ -120,15 +121,49 @@ def _event_body(payload: dict[str, Any]) -> dict[str, Any]:
     }
     if payload.get("description"):
         body["description"] = payload["description"]
-    if payload.get("start_time") and payload.get("end_time") and start_date == end_date:
+    # "Show me as free" for a marker that records *availability* rather than an engagement
+    # (#... freelance): an extra day someone offers to work is not a booking, and mirroring it
+    # as busy would block the very hours it exists to advertise. Absent = Google's own default.
+    if payload.get("transparency"):
+        body["transparency"] = payload["transparency"]
+    timed = bool(payload.get("start_time") and payload.get("end_time") and start_date == end_date)
+    if timed:
         zone = payload.get("timezone") or "UTC"
         body["start"] = {"dateTime": f"{start_date}T{payload['start_time']}", "timeZone": zone}
         body["end"] = {"dateTime": f"{end_date}T{payload['end_time']}", "timeZone": zone}
-        return body
-    exclusive_end = (date.fromisoformat(end_date) + timedelta(days=1)).isoformat()
-    body["start"] = {"date": start_date}
-    body["end"] = {"date": exclusive_end}
+    else:
+        exclusive_end = (date.fromisoformat(end_date) + timedelta(days=1)).isoformat()
+        body["start"] = {"date": start_date}
+        body["end"] = {"date": exclusive_end}
+    rule = _rrule(payload.get("repeat_weeks"), payload.get("repeat_until"), timed=timed)
+    if rule:
+        body["recurrence"] = [rule]
     return body
+
+
+def _rrule(repeat_weeks: Any, repeat_until: Any, *, timed: bool) -> str | None:
+    """A weekly RRULE for a rule-shaped row, or ``None`` for a one-off.
+
+    A repeating availability row *is* a recurrence rule, so it mirrors as one event rather than
+    as N — which is what keeps an edit an edit and a delete a delete instead of a diff against
+    whatever the last horizon happened to place.
+
+    ``UNTIL`` follows RFC 5545's typing rule: a DATE for an all-day series, a UTC DATE-TIME for a
+    timed one. The timed form is stamped a **day late** on purpose — an occurrence at 17:00 local
+    in a zone behind UTC falls after 23:59:59Z of its own date, so the honest bound would drop
+    the last occurrence. A cadence is at least a week, so a day of slack can never let an extra
+    one in.
+    """
+    if not repeat_weeks:
+        return None
+    rule = f"RRULE:FREQ=WEEKLY;INTERVAL={int(repeat_weeks)}"
+    if repeat_until:
+        end = date.fromisoformat(str(repeat_until))
+        if timed:
+            rule += f";UNTIL={(end + timedelta(days=1)).strftime('%Y%m%d')}T235959Z"
+        else:
+            rule += f";UNTIL={end.strftime('%Y%m%d')}"
+    return rule
 
 
 # --------------------------------------------------------------------------- #
@@ -198,6 +233,96 @@ async def handle_leave_gone(ctx: EmitContext, payload: dict[str, Any]) -> None:
         await _enqueue_push(ctx.org.id, link.id)
     else:
         # Never reached Google (still pending, or requester not connected): just drop it.
+        await ctx.session.delete(link)
+        await ctx.session.flush()
+
+
+# --------------------------------------------------------------------------- #
+# Availability handlers (freelance) — one exception row ↔ one Google event
+# --------------------------------------------------------------------------- #
+async def handle_availability_saved(ctx: EmitContext, payload: dict[str, Any]) -> None:
+    """A freelancer's availability exception → their own Google Calendar.
+
+    Same guards as leave: org sync on, and the person personally connected with a write scope.
+    What is mirrored is the **row**, not the day it resolves to — the resolved day is the base
+    week bent by exceptions and Google has no base week, so pushing the resolution would mean
+    pushing every ordinary working day too. One row, one event, and a repeat travels as an
+    RRULE rather than as a horizon of copies.
+
+    The two kinds differ in exactly one more way, and it is the useful one: an ``unavailable``
+    day is **busy** (that is what it says), while an ``extra`` day is **free** — a day somebody
+    offers to work is not a booking, and mirroring it as busy would block the very hours it
+    exists to advertise.
+    """
+    user_id, entry_id = payload.get("user_id"), payload.get("availability_id")
+    if not user_id or not entry_id:
+        return
+    connection = await _pushable_connection(ctx.session, ctx.org.id, user_id)
+    if connection is None:
+        return
+
+    locale = (
+        await ctx.session.scalar(select(User.locale).where(User.id == user_id))
+        or await _org_locale(ctx.session, ctx.org.id)
+    )
+    unavailable = payload.get("kind") == "unavailable"
+    summary = translate(
+        "google.calendar.availability_unavailable"
+        if unavailable
+        else "google.calendar.availability_available",
+        locale,
+    )
+    snapshot = {
+        "summary": summary,
+        "description": payload.get("note") or "",
+        "local_type": LOCAL_TYPE_AVAILABILITY,
+        "local_id": str(entry_id),
+        "start_date": str(payload["date"]),
+        "end_date": str(payload["date"]),
+        "start_time": payload.get("start_time"),
+        "end_time": payload.get("end_time"),
+        "repeat_weeks": payload.get("repeat_weeks"),
+        "repeat_until": payload.get("repeat_until"),
+        "transparency": "opaque" if unavailable else "transparent",
+        "timezone": await _org_timezone(ctx.session, ctx.org.id),
+    }
+    link = await _link_for(ctx.session, ctx.org.id, LOCAL_TYPE_AVAILABILITY, uuid.UUID(entry_id))
+    if link is None:
+        link = CalendarEventLink(
+            org_id=ctx.org.id,
+            local_type=LOCAL_TYPE_AVAILABILITY,
+            local_id=uuid.UUID(entry_id),
+            user_id=user_id,
+            connection_id=connection.id,
+            status=LinkStatus.PENDING.value,
+            payload=snapshot,
+        )
+        ctx.session.add(link)
+    else:
+        link.user_id = user_id
+        link.connection_id = connection.id
+        link.status = LinkStatus.PENDING.value
+        link.payload = snapshot
+        link.attempts = 0
+        link.last_error = None
+    await ctx.session.flush()
+    await _enqueue_push(ctx.org.id, link.id)
+
+
+async def handle_availability_gone(ctx: EmitContext, payload: dict[str, Any]) -> None:
+    """The row is going away — so must its mirror, or a withdrawn day stays on the calendar."""
+    entry_id = payload.get("availability_id")
+    if not entry_id:
+        return
+    link = await _link_for(ctx.session, ctx.org.id, LOCAL_TYPE_AVAILABILITY, uuid.UUID(entry_id))
+    if link is None:
+        return
+    if link.google_event_id:
+        link.status = LinkStatus.DELETE_PENDING.value
+        link.attempts = 0
+        await ctx.session.flush()
+        await _enqueue_push(ctx.org.id, link.id)
+    else:
         await ctx.session.delete(link)
         await ctx.session.flush()
 

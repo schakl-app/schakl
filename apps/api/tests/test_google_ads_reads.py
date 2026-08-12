@@ -18,6 +18,7 @@ from app.core.googleads import set_transport
 from app.db import async_session_maker, set_current_org
 from app.modules.google.models import ConnectionStatus, GoogleConnection, GoogleSettings
 from app.modules.google.oauth import SCOPE_ADS
+from app.modules.google_ads import reporting
 from app.modules.google_ads.models import GoogleAdsAccount, GoogleAdsSettings
 from tests.conftest import auth_cookie, make_tenant
 from tests.googleads_fake import (
@@ -241,10 +242,36 @@ async def test_paging_follows_the_token_rather_than_returning_a_prefix(client_fo
     assert len([q for q in fake.queries() if "keyword_view" in q]) == 3
 
 
-async def test_a_truncated_list_says_so(client_for, fake) -> None:
+async def test_a_truncated_list_says_so(client_for, fake, monkeypatch) -> None:
     """A cut nobody is told about is a truncation, and a list of 5 that is really 50 reads as
-    an account with 5 (CLAUDE.md §17)."""
+    an account with 5 (CLAUDE.md §17).
+
+    The cut is the read's **own ceiling** being hit, which is the one row count nothing else in
+    the answer can express: a page is fully described by `total_rows`, but rows Google had and
+    this read declined to carry are described by nothing except this warning.
+    """
     t, account_id = await _linked("gads-read-truncate")
+    headers = await auth_cookie(t.user)
+    monkeypatch.setitem(reporting.LIMITS, "search_terms", 3)
+    fake.script(
+        "FROM search_term_view",
+        [search_term_row(f"term {i}", clicks=i) for i in range(1, 8)],
+    )
+    async with client_for(t.host) as c:
+        res = await c.get(f"/api/v1/google-ads/accounts/{account_id}/search-terms", headers=headers)
+    body = res.json()
+    assert body["row_count"] == 3
+    assert "google_ads.warning.rows_truncated" in body["warnings"]
+
+
+async def test_a_page_is_not_a_truncation(client_for, fake) -> None:
+    """Asking for three of seven rows is a pager, not a cut, and must not say otherwise.
+
+    The two are told apart by `total_rows`: this caller was handed three rows *and* the number
+    seven, so nothing was withheld. Warning here would cry wolf on every page of every list and
+    teach a reader to skip the one warning that does mean rows are missing.
+    """
+    t, account_id = await _linked("gads-read-page-not-cut")
     headers = await auth_cookie(t.user)
     fake.script(
         "FROM search_term_view",
@@ -256,7 +283,8 @@ async def test_a_truncated_list_says_so(client_for, fake) -> None:
         )
     body = res.json()
     assert body["row_count"] == 3
-    assert "google_ads.warning.rows_truncated" in body["warnings"]
+    assert body["total_rows"] == 7
+    assert "google_ads.warning.rows_truncated" not in body["warnings"]
 
 
 async def test_search_terms_never_pretend_to_be_classified(client_for, fake) -> None:
@@ -270,6 +298,159 @@ async def test_search_terms_never_pretend_to_be_classified(client_for, fake) -> 
     body = res.json()
     assert "google_ads.warning.search_terms_unclassified" in body["warnings"]
     assert body["rows"][0]["match_status"] == "NONE"
+
+
+# --- the page, and what is filtered before it is taken --------------------------------------- #
+
+
+async def test_a_page_is_a_page_of_the_list_and_says_how_long_the_list_is(client_for, fake) -> None:
+    """`offset` walks the same ordering, and `total_rows` is what it walks toward.
+
+    The number that matters is the one the pager cannot compute for itself: without it a screen
+    showing rows 1–5 of 12 has no way to know there is a page 2, and "showing the first five"
+    is the apology CLAUDE.md §9 exists to stop anyone having to write.
+    """
+    t, account_id = await _linked("gads-read-page")
+    headers = await auth_cookie(t.user)
+    fake.script(
+        "FROM search_term_view",
+        [search_term_row(f"term {i:02d}", clicks=100 - i) for i in range(1, 13)],
+    )
+    async with client_for(t.host) as c:
+        first = await c.get(
+            f"/api/v1/google-ads/accounts/{account_id}/search-terms?limit=5", headers=headers
+        )
+        second = await c.get(
+            f"/api/v1/google-ads/accounts/{account_id}/search-terms?limit=5&offset=5",
+            headers=headers,
+        )
+        last = await c.get(
+            f"/api/v1/google-ads/accounts/{account_id}/search-terms?limit=5&offset=10",
+            headers=headers,
+        )
+    for page in (first, second, last):
+        # Same list, same length, whichever slice of it you asked for.
+        assert page.json()["total_rows"] == 12
+    assert first.json()["offset"] == 0
+    assert second.json()["offset"] == 5
+    assert [row["search_term"] for row in first.json()["rows"]] == [
+        f"term {i:02d}" for i in range(1, 6)
+    ]
+    assert [row["search_term"] for row in second.json()["rows"]] == [
+        f"term {i:02d}" for i in range(6, 11)
+    ]
+    # A last page is short, and short is not empty: an offset past the end would be.
+    assert last.json()["row_count"] == 2
+
+
+async def test_the_search_narrows_the_list_before_the_page_is_taken(client_for, fake) -> None:
+    """Search the list, then page it — the other order searches a prefix.
+
+    Filtering the page is the failure that cannot be seen from the screen: page 1 of "dakraam"
+    would show only the dakraam terms that happen to be among the twenty most expensive, and a
+    reader has no way to tell that from an account with three of them.
+    """
+    t, account_id = await _linked("gads-read-search")
+    headers = await auth_cookie(t.user)
+    fake.script(
+        "FROM search_term_view",
+        [
+            *[search_term_row(f"zonnepaneel {i}", clicks=100 - i) for i in range(1, 21)],
+            *[search_term_row(f"dakraam {i}", clicks=5 - i) for i in range(1, 4)],
+        ],
+    )
+    async with client_for(t.host) as c:
+        res = await c.get(
+            f"/api/v1/google-ads/accounts/{account_id}/search-terms?q=DAKRAAM&limit=2",
+            headers=headers,
+        )
+    body = res.json()
+    # All three, though every one of them sorts below the twenty that do not match.
+    assert body["total_rows"] == 3
+    assert body["row_count"] == 2
+    assert all("dakraam" in row["search_term"] for row in body["rows"])
+
+
+async def test_the_totals_describe_the_filtered_list_and_not_the_page(client_for, fake) -> None:
+    """A footer under a filtered list totals the filter, not the fifty rows above it.
+
+    Two ways to get this wrong and both print a plausible number: totalling the page says the
+    account spent what this screenful spent, and totalling the unfiltered set says the search
+    found rows costing more than every row it found.
+    """
+    t, account_id = await _linked("gads-read-page-totals")
+    headers = await auth_cookie(t.user)
+    fake.script(
+        "FROM campaign",
+        [
+            campaign_row(1, "Merk zoeken", clicks=10, cost_micros=10_000_000, impressions=100),
+            campaign_row(2, "Merk display", clicks=20, cost_micros=20_000_000, impressions=200),
+            campaign_row(3, "Generiek", clicks=90, cost_micros=90_000_000, impressions=900),
+        ],
+    )
+    async with client_for(t.host) as c:
+        res = await c.get(
+            f"/api/v1/google-ads/accounts/{account_id}/campaigns?q=merk&limit=1", headers=headers
+        )
+    body = res.json()
+    assert body["row_count"] == 1
+    assert body["total_rows"] == 2
+    # The two Merk campaigns together — not the one row shown, and not all three.
+    assert body["totals"]["cost"] == 30.0
+    assert body["totals"]["clicks"] == 30
+
+
+async def test_a_searched_term_never_reaches_the_gaql(client_for, fake) -> None:
+    """The search is matched in Python, for the same reason a campaign name is resolved to an id.
+
+    No caller-supplied string reaches the query text, ever — which is also why the search can
+    see the whole fetched list rather than whatever a `LIKE` would have let Google return.
+    """
+    t, account_id = await _linked("gads-read-search-gaql")
+    headers = await auth_cookie(t.user)
+    fake.script("FROM keyword_view", [keyword_row("dakraam", criterion_id=1, clicks=3)])
+    async with client_for(t.host) as c:
+        res = await c.get(
+            f"/api/v1/google-ads/accounts/{account_id}/keywords?q=dakraam' OR 1=1--",
+            headers=headers,
+        )
+    assert res.status_code == 200
+    assert all("OR 1=1" not in query for query in fake.queries())
+    assert all("dakraam" not in query.casefold() for query in fake.queries())
+
+
+async def test_filtering_to_removed_widens_the_fetch_that_excludes_removed(
+    client_for, fake
+) -> None:
+    """The one status a person picks on purpose must not be the one that always answers nothing.
+
+    `include_removed` decides what Google is asked for and `status` decides what is kept, so a
+    status of REMOVED read against the default fetch would filter an answer that by construction
+    contains no removed row. Reconciled in the read, not left to whoever built the URL.
+    """
+    t, account_id = await _linked("gads-read-status")
+    headers = await auth_cookie(t.user)
+    fake.script(
+        "FROM campaign",
+        [
+            campaign_row(1, "Loopt", status="ENABLED", clicks=5),
+            campaign_row(2, "Pauze", status="PAUSED", clicks=4),
+            campaign_row(3, "Weg", status="REMOVED", clicks=3),
+        ],
+    )
+    async with client_for(t.host) as c:
+        removed = await c.get(
+            f"/api/v1/google-ads/accounts/{account_id}/campaigns?status=REMOVED", headers=headers
+        )
+        paused = await c.get(
+            f"/api/v1/google-ads/accounts/{account_id}/campaigns?status=PAUSED", headers=headers
+        )
+    campaign_queries = [q for q in fake.queries() if "FROM campaign" in q]
+    assert "status != 'REMOVED'" not in campaign_queries[0]
+    assert [row["campaign_name"] for row in removed.json()["rows"]] == ["Weg"]
+    # And a status that is not REMOVED leaves the fetch alone: still no removed rows asked for.
+    assert "status != 'REMOVED'" in campaign_queries[1]
+    assert [row["campaign_name"] for row in paused.json()["rows"]] == ["Pauze"]
 
 
 # --- filters -------------------------------------------------------------------------------- #

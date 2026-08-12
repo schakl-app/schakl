@@ -33,6 +33,7 @@ from app.modules.cloudflare.schemas import (
     PagesProjectRead,
     RedirectAdopt,
     RedirectRead,
+    RedirectRuleEdit,
     RedirectWrite,
     ZoneLink,
     ZoneRead,
@@ -369,6 +370,40 @@ async def remove_redirect(
 ) -> None:
     """Delete the rule we created at Cloudflare. Rules we did not create are never touched."""
     await CloudflareService(ctx).remove_redirect(domain_id)
+
+
+# --- one rule on the zone, by id ------------------------------------------------------------ #
+# The two routes that make an *inherited* redirect a first-class row rather than a read-only
+# finding. They name a rule Cloudflare holds — ours or the tenant's — and both answer with the
+# refreshed report: the write has just invalidated the observation the caller's list was drawn
+# from, so handing back a rule would leave the screen describing the zone as it was.
+@router.put(
+    "/domains/{domain_id}/redirect/rules/{rule_id}",
+    response_model=DomainStatusRead,
+    dependencies=[require_permission("cloudflare.zone.manage")],
+)
+async def edit_zone_redirect(
+    domain_id: uuid.UUID,
+    rule_id: str,
+    payload: RedirectRuleEdit,
+    ctx: RequestContext = Depends(require_context),
+) -> DomainStatusRead:
+    """Change where an existing Redirect Rule sends traffic. Never changes what it matches."""
+    return DomainStatusRead(**await CloudflareService(ctx).edit_zone_redirect(
+        domain_id, rule_id, payload
+    ))
+
+
+@router.delete(
+    "/domains/{domain_id}/redirect/rules/{rule_id}",
+    response_model=DomainStatusRead,
+    dependencies=[require_permission("cloudflare.zone.manage")],
+)
+async def delete_zone_redirect(
+    domain_id: uuid.UUID, rule_id: str, ctx: RequestContext = Depends(require_context)
+) -> DomainStatusRead:
+    """Delete one Redirect Rule from this zone by id, resolved inside the zone's own ruleset."""
+    return DomainStatusRead(**await CloudflareService(ctx).delete_zone_redirect(domain_id, rule_id))
 
 
 @router.post(

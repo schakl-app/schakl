@@ -22,6 +22,7 @@ from app.modules.marketing.schemas import (
     DrilldownResponse,
     LinkCreate,
     LinkRead,
+    MarketingClientList,
     MarketingSettingsRead,
     MarketingSettingsWrite,
     MarketingSummary,
@@ -225,6 +226,24 @@ async def summary(
     stored data. Horizon-scoped like the per-company metrics read it summarizes — never wider
     than what the caller could fetch client-by-client."""
     return await MarketingService(ctx).summary(range_days, limit, period)
+
+
+# --- the client picker on Marketing ---------------------------------------------------------- #
+@router.get(
+    "/clients",
+    response_model=MarketingClientList,
+    dependencies=[require_permission("marketing.metrics.read")],
+)
+async def linked_clients(
+    limit: int = Query(200, ge=1, le=500),
+    ctx: RequestContext = Depends(require_context),
+) -> MarketingClientList:
+    """The clients that actually have a source linked, with which sources and how each is doing.
+
+    Rides the same read as the dashboard it picks for — a picker gated harder than its
+    destination is a control that refuses for a reason nobody can act on — and carries no
+    metrics: it answers "who is connected", which is a question about links, not numbers."""
+    return await MarketingService(ctx).linked_clients(limit)
 
 
 # --- cross-client overview (#133) ------------------------------------------------------------ #

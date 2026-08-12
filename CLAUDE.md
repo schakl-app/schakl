@@ -324,6 +324,50 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   instruction for finishing the read, so the resume asks for `page` and nothing else — the size is
   the provider's to choose and it has already chosen — and the old error survives only for the
   endpoint that really has no page two. The
+  Its fourth sibling is about the *screen*: **a state you exist to serve must not be rendered as a
+  fault.** A redirect an agency inherits — made by hand in a client's Cloudflare dashboard, live for
+  years — arrived as an amber `redirect_conflict` box under "Aandachtspunten", beside a permanently
+  expanded empty form inviting them to make a second one, and it vanished on reload because
+  `conflicts` was computed by the check and stored nowhere. Three rules come out of fixing it. **An
+  integration that stores what it observed must store the observation, not just the verdict** —
+  `cloudflare_zones.observed_redirects` + `redirects_observed_at`, written *per source* (a probe
+  that ran and found nothing clears its own entries; one that could not run leaves its previous
+  ones, or a missing token scope silently deletes a client's Page Rules), with the timestamp
+  separate because "we looked and there is nothing" and "nobody has ever looked" are different
+  sentences an empty list cannot tell apart. **A rule you can write is a rule you can read**:
+  `redirects.rule_intent` is `build_rule` run backwards, recovering the intent from the rule's
+  *shape*, which is simultaneously what lets a row describe itself and what lets the adopt button
+  post the rule's own values — it used to post whatever was typed in the form above it, so the
+  obvious press answered `cloudflare_redirect_differs` until the admin hand-matched five fields to
+  a rule they could not see. And **an observation may move another module's record, under four
+  refusals**: only a rule matching a closed set of whole-domain expression shapes (an unrecognised
+  one is *not* domain-wide, so the failure direction is "listed, left to a human"), only one
+  candidate, only over no rule of ours, and only where the caller holds `domains.domain.write` —
+  because `POST /check` declares `cloudflare.dns.read`, and a read route that writes is an
+  escalation however useful the write is. It walks back too, and only over a value it recognises as
+  its own. Its fifth sibling finishes the thought: **a rule you can list is a rule you can change.**
+  Listing an inherited redirect made it visible and left `adopt` — refused unless the rule is
+  *already* exactly what schakl would have written — as the only act offered on it, which is right
+  for a claim and useless for the thing an agency is actually asked to do: "this old domain points
+  at the wrong place, fix it". So a rule is now named **by id in the path** and edited
+  (`PUT …/redirect/rules/{rule_id}`) or deleted (`DELETE …`) where it lives, and four rules hold it
+  up. **Editing does not claim** — ownership is what adoption is for and it carries consequences
+  (a reconcile that recreates the rule, a delete that removes it) that nobody asked for by
+  correcting a URL; where the rule *is* ours the row is kept in step, or the next check reports the
+  edit as drift. **Changing where a redirect goes must never change what it catches**
+  (`redirects.edited_rule`): the action half is rebuilt from the intent and the expression only
+  where `rule_scope` recognises a shape of ours, so Cloudflare's own
+  `http.host in {"klant.nl" "www.klant.nl"}` — the commonest inherited rule, readable and not
+  writable — is carried over verbatim instead of being silently re-scoped. Gating the *edit* on a
+  readable whole intent would have withheld it from exactly those rules, which is why
+  `RedirectConflict.include_subdomains` is **tri-state and read from the expression alone**: taken
+  off `intent` it hid a working checkbox on any rule whose status code we cannot express, and left
+  the edit rebuilding the expression from a default nobody was shown. And **the safety property is
+  the lookup, not the ownership** — the id arrives from outside, so it is resolved only inside this
+  zone's own redirect ruleset (another zone's, another tenant's, or a non-redirect rule is a 404,
+  never a call), which is the posture the DNS table always had. `DELETE …/redirect` keeps its
+  narrower "only the rule whose id we stored" precisely because it names *no* rule and so must not
+  be free to pick one. The
   registrar half is now **`oxxa`** (#296, `docs/OXXA.md`): the register sync, the nameserver
   write-back that finishes "Connect to Cloudflare", and the `app/core/registrar/` seam a second
   registrar plugs into. Written from OXXA's official API documentation — §11 bans writing an
@@ -692,8 +736,26 @@ Desktop/Code, agents) can work with the instance's data. Design rules:
 - **Auth: API keys** (#20), which already carry **per-key permission scopes** — the
   permissions-per-MCP-key model. The proxy forwards the caller's `Authorization`/`X-API-Key`
   plus the tenant hostname on every internal call; keys are tenant-scoped, revocable and
-  optionally non-expiring. An **OAuth 2.1 resource-server** layer (RFC 9728) is the later
-  addition for clients that require it — the MCP server never runs its own login either way.
+  optionally non-expiring. **OAuth 2.1 is the second door onto the same credential, not a second
+  credential** (`app/core/oauth/`, `docs/MCP.md`): DCR, authorization code + PKCE (`S256` only),
+  refresh and RFC 8414/9728 discovery, where what redemption hands back **is an `api_keys` row**
+  belonging to the person who consented. There is no access-token table, because a second
+  credential is a second set of answers about what it may do and the second answer is always the
+  one missing a rule — so scopes stay capped by the owner's *live* permissions on every request,
+  and the company horizon, tenant scoping and revocation are the ones already written. And **the
+  authorization server authenticates nobody**: consent runs on the browser session the web app
+  already holds (local + 2FA, or this org's OIDC), because a login here would be a second
+  password path, a second 2FA decision and a second answer to "which org is this session for".
+  Three consequences worth keeping. **The discovery documents live where the RFC puts them and
+  the edge decides who serves them** — both are on the root of the host, which belongs to the web
+  app (see the "route the edge does not forward" rule below), so the web app *serves* them and
+  the API *authors* them; an edge rule would have needed every existing install to update Traefik
+  before a connector worked. **Single use is the database's job**: redemption is a conditional
+  `UPDATE … WHERE redeemed_at IS NULL`, because a retried token request races two replicas that
+  share no memory (docs/PAYMENTS.md's rule, one protocol over). And **an anonymous `/mcp` request
+  now answers 401 with the `WWW-Authenticate` challenge** — a behaviour change, and the fix to
+  two things at once: an OAuth client discovers the server *by being refused*, and an anonymous
+  `tools/list` disclosed the tenant's whole module set to nobody in particular.
 - **Tool surface:** every `/api/v1` operation is a tool, generated from the API's own
   OpenAPI spec (FastMCP) and proxied **in-process** back to the REST API — so every call
   travels `require_context` (tenant + RLS + permissions) exactly like the HTTP request it
@@ -726,6 +788,28 @@ Desktop/Code, agents) can work with the instance's data. Design rules:
   The selector is a **path segment, not a query parameter**: this URL is pasted into someone
   else's settings screen, and the query string is the part of a URL that tools normalise, strip
   and re-encode.
+- **A section is derived from a boundary that already exists, or it is a list that rots**
+  (`app/core/mcp/sections.py`). One curated profile answered ChatGPT; it did not answer "give a
+  Google Ads agent only Google Ads", and writing a second, third and tenth hand-picked list would
+  have been ten copies of ten routers. So `/mcp/<section>` has three kinds and only one of them
+  names a tool. A **module section** (`/mcp/google-ads`) is derived from that module's own router
+  prefix, so a route added tomorrow is served tomorrow. A **bundle** (`/mcp/infra`) names
+  **modules, never tools**, which is what keeps it as self-maintaining as the sections it unions
+  — and it exists because an agency job is not a module: "the domain register and what answers on
+  it" spans seven of them. A **curated** section may only exist where an *external* ceiling makes
+  a module boundary useless, which is exactly once (`compact`, ChatGPT's 5,000 tokens). Three
+  more rules came out of building it. **`outputSchema` is dropped for every section**, not only
+  the curated one: it is 79% of the bytes and buys nothing at decision time, and a section is
+  asked for by somebody who needed a smaller surface. **A typo is refused, naming what exists** —
+  falling back to the full surface would hand somebody who asked for 45 tools a silent 620, which
+  looks like it worked and is not recoverable by reading. And **the tool→section index is read
+  off the built server, never predicted from the spec**: `mcp_names` only supplies a name where
+  the short form is unique, and FastMCP derives the rest by splitting at the first `__` and
+  capping — so an index keyed on the operationId matched *no tool at all* for 27 of them, and the
+  sections still looked plausible because the other 597 were there. Reading a private attribute
+  is the lesser evil: restating somebody else's naming rule is a copy that drops tools quietly,
+  a release later, while this breaks loudly and a test compares a section against what
+  `tools/list` actually answers.
 - **A stream nothing can write to is not a stream, it is a held connection.** Streamable HTTP
   lets a client open a standalone `GET` stream for server-initiated messages; ours is stateless
   by choice, so nothing is ever routed to it and it never ends. The SDK refuses `DELETE` with
@@ -906,7 +990,35 @@ apply as everywhere.
   screen. The state rides in *both* the words and the colour, so a viewer who recolours the feed
   (#281) keeps the distinction in the text. Deliberately **not draggable**: a chip is an
   occurrence and the row behind it is a rule, so dragging one Friday of "every other Friday" would
-  move the whole rhythm, and dragging half a swap would strand the other half.
+  move the whole rhythm, and dragging half a swap would strand the other half. It **is** clickable:
+  `?availability=<id>` opens the row, and because a chip names one half of a move while the list
+  draws the pair as one line, the id in the URL is often not the id the row is keyed by —
+  resolving that is what stops a link to the dropped Tuesday finding nothing.
+- **A permission decides who may write; the *kind* decides whether the surface exists.** Every
+  member holds `leave.availability.write:own`, so gating the availability surface on the
+  permission alone put it on every employee's page — a control for a thing employees do not have.
+  It is a **section** of a freelancer's own `/leave` now, not a button behind a modal (a surface
+  that has to be found is one that is not kept up to date), and it is drawn only when
+  `LeaveProfileRead.employment_type` is `freelance`. That field's third value is load-bearing:
+  `null` means *no period on file*, so a tenant that has never entered a contract shows the
+  freelance surfaces to nobody rather than to everybody. The admin's ⋯ item follows the same rule
+  off the contracts those pages already load. Its siblings on the same screen are the same
+  mistake in reverse — a freelancer was shown "Vakantieverlof 0 u", a "no balance yet, an admin
+  sets these up" line, and a free-time planner that could only ever hand out days the balance
+  refuses. For a freelance period an empty pot is *does not apply*, and all three said *you have
+  none left*.
+- **The mirror carries the row, not the resolved day** (`google/calendar/push.py`). A resolved day
+  is the base week bent by exceptions and Google has no base week, so pushing the resolution would
+  mean pushing every ordinary working day too; one row ↔ one event is also what makes an edit an
+  update and a delete a delete. A repeat travels as an **RRULE**, not as a horizon of copies — the
+  row already *is* a recurrence rule (#107's generator exists because a free day is a balance
+  leaving a pot, and this is not). Two details are easy to get wrong: RFC 5545 types `UNTIL` after
+  `DTSTART` (a DATE for an all-day series, a UTC DATE-TIME for a timed one), and the timed form is
+  stamped a day late on purpose, because an occurrence at 17:00 local in a zone behind UTC falls
+  after 23:59:59Z of its own date and the honest bound would drop it. And the two kinds differ in
+  one more way, the useful one: an `unavailable` day is **busy**, an `extra` day is **free** — a
+  day somebody offers to work is not a booking, and mirroring it as busy would block the very
+  hours it exists to advertise.
 - **A free-time pattern says how many days, or how often** (#107, extended). `days_per_year` on
   `leave_recurring_days` spreads that many days evenly across the year on the anchor's weekday and
   **slides past** a holiday or a non-working day to the next candidate week, so the count the pot

@@ -28,7 +28,24 @@
   const instances = $derived(data.instances ?? []);
   const profiles = $derived(data.profiles ?? []);
   const drifted = $derived(data.drifted ?? []);
+  /** What the last sync thinks each unlinked monitor watches, waiting for somebody (#321). */
+  const proposed = $derived(data.proposed ?? []);
+  const groups = $derived(data.groups ?? []);
   let addingProfile = $state(false);
+  let addingGroup = $state(false);
+
+  /** Instance names for the group rows, off the list this page already loaded. */
+  const instanceName = $derived(
+    new Map(instances.map((i: { id: string; name: string }) => [i.id, i.name])),
+  );
+
+  /** A candidate's kind as a word: "website" and "domein" are different promises. */
+  const kindLabel = (kind: string) =>
+    ({
+      website: t("uptime.link.kind_website"),
+      domain: t("uptime.link.kind_domain"),
+      hosting: t("uptime.link.kind_hosting"),
+    })[kind] ?? kind;
 
   /** Field names as words. A drift that reads `interval_seconds` names a column, not a thing. */
   const fieldLabel = (f: string) =>
@@ -39,6 +56,9 @@
       port: "Port",
       interval_seconds: t("uptime.field.interval"),
       retries: t("uptime.field.retries"),
+      // A monitor somebody moved into another group in Uptime Kuma (#321). Drift like any
+      // other field, and it needs a word here or the row reads `parent_id` at an admin.
+      parent_id: t("uptime.field.parent"),
     })[f] ?? f;
 
   const busy = new InFlight();
@@ -90,6 +110,22 @@
             missing: form.report.missing,
           })
         : t(form.report.error ?? "errors.uptime_failed")}
+      {#if form.report.ok && (form.report.matched || form.report.ambiguous)}
+        <!-- Said in the same breath as the read, because "34 gelezen" answers nothing about
+             whether they landed anywhere. Nothing has been linked: these are proposals. -->
+        {t("uptime.sync.links", {
+          matched: form.report.matched,
+          ambiguous: form.report.ambiguous,
+        })}
+      {/if}
+    </p>
+  {/if}
+  {#if form?.applied}
+    <p class="mb-4 rounded-lg bg-surface-2 px-3 py-2 text-sm text-text">
+      {t("uptime.links.applied", {
+        linked: form.applied.linked,
+        skipped: form.applied.skipped,
+      })}
     </p>
   {/if}
 
@@ -169,6 +205,19 @@
                   {t("uptime.settings.sync")}
                 </Button>
               </form>
+              <!-- Confirms every proposal with exactly one answer, on this instance. An
+                   instance-level act, so it sits with this instance's buttons rather than
+                   above a cross-instance list. The ambiguous ones stay below, unconfirmed. -->
+              <form
+                method="POST"
+                action="?/applyLinks"
+                use:enhance={busy.wrap(`links-${instance.id}`)}
+              >
+                <input type="hidden" name="id" value={instance.id} />
+                <Button type="submit" variant="secondary" disabled={busy.active}>
+                  {t("uptime.links.apply")}
+                </Button>
+              </form>
               <Button
                 variant="secondary"
                 onclick={() => (enrolling = enrolling === instance.id ? null : instance.id)}
@@ -243,8 +292,7 @@
                 name="connect_headers"
                 class={inputClass}
                 rows="2"
-                placeholder="CF-Access-Client-Id: ...&#10;CF-Access-Client-Secret: ..."
-              ></textarea>
+                placeholder="CF-Access-Client-Id: ...&#10;CF-Access-Client-Secret: ..."></textarea>
               <p class="mt-1 text-xs text-muted">{t("uptime.field.headers_hint")}</p>
             </div>
             <p class="text-xs text-muted sm:col-span-2">{t("uptime.settings.password_hint")}</p>
@@ -302,6 +350,154 @@
     </section>
   {/if}
 
+  {#if proposed.length}
+    <!-- What a sync found and nobody has confirmed (#321). A proposal, never a link: attaching
+         a client's monitoring to another client's record is invisible afterwards, because every
+         row is still valid. One candidate gets one button; several get one button each and no
+         default, for the reason the drift rows above have two — picking for somebody is how a
+         screen makes a decision it cannot explain later. -->
+    <section class="mt-6">
+      <h2 class="mb-1 text-sm font-semibold text-text">{t("uptime.links.title")}</h2>
+      <p class="mb-2 text-xs text-muted">{t("uptime.links.intro")}</p>
+      <ul class="space-y-2">
+        {#each proposed as m (m.id)}
+          <li class="rounded-xl border border-border bg-surface p-3">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-sm font-medium text-text">{m.name}</p>
+                <p class="truncate text-xs text-muted">{m.target ?? ""}</p>
+                {#if m.link_status === "ambiguous"}
+                  <p class="mt-1 text-xs text-amber-700">{t("uptime.links.ambiguous")}</p>
+                {/if}
+              </div>
+              <div class="flex shrink-0 flex-wrap gap-2">
+                {#each m.link_candidates ?? [] as c (c.entity_id)}
+                  <form
+                    method="POST"
+                    action="?/link"
+                    use:enhance={busy.wrap(`link-${m.id}-${c.entity_id}`)}
+                  >
+                    <input type="hidden" name="id" value={m.id} />
+                    <!-- The candidate's own values, not anything typed above: the obvious
+                         press must answer with the row it was drawn from. -->
+                    <input type="hidden" name="entity_type" value={c.entity_type} />
+                    <input type="hidden" name="entity_id" value={c.entity_id} />
+                    <Button type="submit" variant="secondary" disabled={busy.active}>
+                      {t("uptime.links.confirm", {
+                        kind: kindLabel(c.entity_type),
+                        label: c.label,
+                      })}
+                    </Button>
+                  </form>
+                {/each}
+              </div>
+            </div>
+          </li>
+        {/each}
+      </ul>
+      {#if data.proposedTotal > proposed.length}
+        <p class="mt-2 text-xs text-muted">
+          {t("uptime.links.more", { count: data.proposedTotal - proposed.length })}
+        </p>
+      {/if}
+    </section>
+  {/if}
+
+  <!-- Groups. A group *is* a monitor here (`type = "group"`), because Uptime Kuma has no group
+       entity — so this section creates, renames and deletes monitors of that one type rather
+       than a second concept the far end does not have. -->
+  <section class="mt-8">
+    <h2 class="mb-1 text-sm font-semibold text-text">{t("uptime.group.title")}</h2>
+    <p class="mb-2 text-xs text-muted">{t("uptime.group.pause_cascade")}</p>
+    <ul class="space-y-2">
+      {#each groups as g (g.id)}
+        <li class="rounded-xl border border-border bg-surface p-3">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <!-- `keep()`: a rename edits the thing in front of you, so the field keeps what you
+                 just saved instead of blanking (docs/UX.md, enforced by `pnpm forms:check`). -->
+            <form
+              method="POST"
+              action="?/renameGroup"
+              class="flex min-w-0 flex-1 items-center gap-2"
+              use:enhance={busy.keep(`rename-${g.id}`)}
+            >
+              <input type="hidden" name="id" value={g.id} />
+              <input
+                name="name"
+                class={inputClass}
+                value={g.name}
+                required
+                aria-label={t("uptime.field.name")}
+              />
+              <Button type="submit" variant="secondary" disabled={busy.active}>
+                {t("common.save")}
+              </Button>
+            </form>
+            <div class="flex shrink-0 items-center gap-3">
+              <span class="text-xs text-muted">
+                {instanceName.get(g.instance_id) ?? ""}
+                · {g.child_count === 1
+                  ? t("uptime.group.child_count_one")
+                  : t("uptime.group.child_count", { count: g.child_count })}
+              </span>
+              <!-- Offered only while it can succeed: a group with children is refused by the
+                   API (the local FK would silently un-nest them while Kuma keeps the tree), and
+                   a button that always answers an error is a broken control (#253). -->
+              {#if !g.child_count}
+                <form method="POST" action="?/deleteGroup" use:enhance={busy.clear(`dg-${g.id}`)}>
+                  <input type="hidden" name="id" value={g.id} />
+                  <Button type="submit" variant="secondary" disabled={busy.active}>
+                    {t("common.delete")}
+                  </Button>
+                </form>
+              {/if}
+            </div>
+          </div>
+        </li>
+      {:else}
+        <li
+          class="rounded-xl border border-dashed border-border p-4 text-center text-sm text-muted"
+        >
+          {t("uptime.group.empty")}
+        </li>
+      {/each}
+    </ul>
+
+    {#if addingGroup}
+      <form
+        method="POST"
+        action="?/createGroup"
+        class="mt-3 grid gap-3 rounded-xl border border-border bg-surface p-4 sm:grid-cols-2"
+        use:enhance={busy.clear("new-group")}
+      >
+        <div>
+          <label class={labelClass} for="g-name">{t("uptime.field.name")}</label>
+          <input id="g-name" name="name" class={inputClass} required />
+        </div>
+        <div>
+          <label class={labelClass} for="g-instance">{t("uptime.group.instance")}</label>
+          <select id="g-instance" name="instance_id" class={inputClass} required>
+            {#each instances as i (i.id)}
+              <option value={i.id}>{i.name}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="flex gap-2 sm:col-span-2">
+          <Button type="submit" disabled={busy.active}>{t("common.save")}</Button>
+          <Button variant="secondary" onclick={() => (addingGroup = false)}>
+            {t("common.cancel")}
+          </Button>
+        </div>
+      </form>
+    {:else if instances.length}
+      <div class="mt-3">
+        <Button variant="secondary" onclick={() => (addingGroup = true)}>
+          {t("uptime.group.add")}
+        </Button>
+      </div>
+    {/if}
+  </section>
+
   <section class="mt-8">
     <h2 class="mb-2 text-sm font-semibold text-text">{t("uptime.profile.title")}</h2>
     <ul class="space-y-2">
@@ -336,7 +532,9 @@
           </form>
         </li>
       {:else}
-        <li class="rounded-xl border border-dashed border-border p-4 text-center text-sm text-muted">
+        <li
+          class="rounded-xl border border-dashed border-border p-4 text-center text-sm text-muted"
+        >
           {t("uptime.field.profile_inherit")}
         </li>
       {/each}
