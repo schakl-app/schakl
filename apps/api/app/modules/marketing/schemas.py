@@ -354,3 +354,36 @@ class MarketingSummary(BaseModel):
     #: "top n of this" instead of implying the cap is everything (docs/UX.md, no silent caps).
     linked_total: int = 0
     rows: list[MarketingSummaryRow] = Field(default_factory=list)
+
+
+# --- the client picker on Marketing ---------------------------------------------------------- #
+class MarketingClientSource(BaseModel):
+    """One source a client has linked, and whether it is currently answering."""
+
+    source: MarketingSource
+    #: How many active links of this source the client has — two properties for two websites is
+    #: ordinary, and a chip printed once would be describing half a connection.
+    links: int = 1
+    #: ``ok`` | ``pending`` (linked, nothing synced yet) | ``error`` (the last sync failed).
+    #:
+    #: Deliberately *not* :meth:`MarketingService._health`'s four-way answer: that one reads
+    #: "disconnected" from the absence of a **Google** connection, which two of the five sources
+    #: never have (an agency SE Ranking key, a per-website WordPress password). On a picker whose
+    #: whole job is saying who is connected, that would print "niet verbonden" over a client
+    #: whose numbers are arriving fine. What is left here is true of all five: a failing sync
+    #: says so, and a link nothing has synced yet is pending.
+    state: str = "ok"
+
+
+class MarketingClientRow(BaseModel):
+    company_id: uuid.UUID
+    company_name: str
+    #: Every source this client has linked, in the module's own display order.
+    sources: list[MarketingClientSource] = Field(default_factory=list)
+
+
+class MarketingClientList(BaseModel):
+    rows: list[MarketingClientRow] = Field(default_factory=list)
+    #: Linked clients in the caller's view. ``rows`` is capped, so the screen says "n of this"
+    #: rather than letting the cap read as everything (docs/UX.md, no silent caps).
+    total: int = 0

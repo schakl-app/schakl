@@ -7067,6 +7067,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/marketing/clients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Linked Clients
+         * @description The clients that actually have a source linked, with which sources and how each is doing.
+         *
+         *     Rides the same read as the dashboard it picks for — a picker gated harder than its
+         *     destination is a control that refuses for a reason nobody can act on — and carries no
+         *     metrics: it answers "who is connected", which is a question about links, not numbers.
+         */
+        get: operations["linked_clients_api_v1_marketing_clients_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/marketing/companies/{company_id}/drilldown": {
         parameters: {
             query?: never;
@@ -18858,6 +18882,45 @@ export interface components {
         MarkAllResult: {
             /** Updated */
             updated: number;
+        };
+        /** MarketingClientList */
+        MarketingClientList: {
+            /** Rows */
+            rows?: components["schemas"]["MarketingClientRow"][];
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
+        /** MarketingClientRow */
+        MarketingClientRow: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Company Name */
+            company_name: string;
+            /** Sources */
+            sources?: components["schemas"]["MarketingClientSource"][];
+        };
+        /**
+         * MarketingClientSource
+         * @description One source a client has linked, and whether it is currently answering.
+         */
+        MarketingClientSource: {
+            /**
+             * Links
+             * @default 1
+             */
+            links: number;
+            source: components["schemas"]["MarketingSource"];
+            /**
+             * State
+             * @default ok
+             */
+            state: string;
         };
         /**
          * MarketingCompareWindow
@@ -41044,6 +41107,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AccountsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    linked_clients_api_v1_marketing_clients_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingClientList"];
                 };
             };
             /** @description Validation Error */

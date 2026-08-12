@@ -1270,6 +1270,126 @@ async def test_summary_is_horizon_scoped_for_portal_logins(client_for) -> None:
         assert empty["rows"] == []
 
 
+# --- the client picker on Marketing ---------------------------------------------------------- #
+async def test_linked_clients_lists_only_the_connected_with_folded_sources(client_for) -> None:
+    """The picker's read: a client appears because a source is linked to them, never because
+    they exist. Several links of one source fold into one chip carrying the count and the
+    **worst** of their states, and an unlinked client is simply not on the list."""
+    t = await make_tenant("mktg-clients")
+    headers = await auth_cookie(t.user)
+
+    async with client_for(t.host) as c:
+        acme = (
+            await c.post("/api/v1/companies", json={"name": "acme BV"}, headers=headers)
+        ).json()
+        beta = (
+            await c.post("/api/v1/companies", json={"name": "Beta BV"}, headers=headers)
+        ).json()
+        # A client with nothing linked — the whole point of the tiles is that they never
+        # promise this one a dashboard.
+        await c.post("/api/v1/companies", json={"name": "Zonder BV"}, headers=headers)
+
+        ga4_a = await _link(c, headers, acme["id"], "ga4", "properties/11")
+        ga4_b = await _link(c, headers, acme["id"], "ga4", "properties/12")
+        await _link(c, headers, acme["id"], "gsc", "sc-domain:acme.nl")
+        await _link(c, headers, beta["id"], "gads", "customers/9")
+
+        await _mark_synced(t.org.id, uuid.UUID(ga4_a["id"]))
+        # The second GA4 property is failing; the chip must not read "ok" because its sibling is.
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            link = await session.get(MarketingLink, uuid.UUID(ga4_b["id"]))
+            link.last_synced_at = datetime.now(UTC)
+            link.last_error = "marketing.sync_failed"
+            await session.commit()
+
+        body = (await c.get("/api/v1/marketing/clients", headers=headers)).json()
+        assert body["total"] == 2
+        # Case-blind alphabetical: "acme BV" before "Beta BV", not after it.
+        assert [r["company_name"] for r in body["rows"]] == ["acme BV", "Beta BV"]
+
+        acme_row = body["rows"][0]
+        # Enum order (GA4 → GSC → Ads → SE Ranking → Rank Math), the module's display order.
+        assert [s["source"] for s in acme_row["sources"]] == ["ga4", "gsc"]
+        assert acme_row["sources"][0] == {"source": "ga4", "links": 2, "state": "error"}
+        # Linked, nothing synced yet: pending, not an error and not a green light.
+        assert acme_row["sources"][1] == {"source": "gsc", "links": 1, "state": "pending"}
+        assert body["rows"][1]["sources"] == [{"source": "gads", "links": 1, "state": "pending"}]
+
+        # Unlinking takes the client off the picker: it lists what is connected *now*.
+        links = (
+            await c.get(f"/api/v1/marketing/links?company_id={beta['id']}", headers=headers)
+        ).json()
+        assert (
+            await c.delete(f"/api/v1/marketing/links/{links[0]['id']}", headers=headers)
+        ).status_code == 204
+        after = (await c.get("/api/v1/marketing/clients", headers=headers)).json()
+        assert [r["company_name"] for r in after["rows"]] == ["acme BV"]
+
+    # Tenant isolation: a fresh org's picker is empty, whatever its neighbours link.
+    o = await make_tenant("mktg-clients-other")
+    o_headers = await auth_cookie(o.user)
+    async with client_for(o.host) as co:
+        empty = (await co.get("/api/v1/marketing/clients", headers=o_headers)).json()
+        assert empty["total"] == 0
+        assert empty["rows"] == []
+
+
+async def test_linked_clients_is_horizon_scoped_and_one_query(client_for, count_queries) -> None:
+    """Two things the JSON cannot show. The picker rides ``marketing.metrics.read``, which the
+    portal ``client`` role holds (#193), so it must honour the company horizon — and it must
+    stay **one** read of the links however many clients are on it, because the shape that
+    breaks (a lookup per company) is invisible at three clients and fatal at three hundred
+    (docs/PERFORMANCE.md)."""
+    from app.core.auth.models import User as AuthUser
+
+    t = await make_tenant("mktg-clients-portal")
+    headers = await auth_cookie(t.user)
+
+    async with client_for(t.host) as c:
+        mine = (
+            await c.post("/api/v1/companies", json={"name": "Mijn BV"}, headers=headers)
+        ).json()
+        other = (
+            await c.post("/api/v1/companies", json={"name": "Andermans BV"}, headers=headers)
+        ).json()
+        await _link(c, headers, mine["id"], "ga4", "properties/21")
+        await _link(c, headers, other["id"], "ga4", "properties/22")
+
+        contact = (
+            await c.post(
+                "/api/v1/contacts",
+                json={
+                    "first_name": "Piet",
+                    "last_name": "Klant",
+                    "email": "piet-mktg-clients@example.com",
+                    "company_ids": [mine["id"]],
+                },
+                headers=headers,
+            )
+        ).json()
+        assert (
+            await c.post(f"/api/v1/portal/logins/contact/{contact['id']}", headers=headers)
+        ).status_code == 200
+        async with async_session_maker() as session:
+            portal_user = await session.scalar(
+                select(AuthUser).where(AuthUser.email == contact["email"])
+            )
+        portal_headers = await auth_cookie(portal_user)
+
+        with count_queries() as counter:
+            staff = (await c.get("/api/v1/marketing/clients", headers=headers)).json()
+        assert {r["company_name"] for r in staff["rows"]} == {"Mijn BV", "Andermans BV"}
+        # One statement over the links, joined to their clients' names — never one per client,
+        # and no read of the stored metrics at all: this answers "who", not "how much".
+        assert len(counter.matching("from marketing_links")) == 1
+        assert counter.matching("from marketing_metrics_daily") == []
+
+        portal = (await c.get("/api/v1/marketing/clients", headers=portal_headers)).json()
+        assert [r["company_name"] for r in portal["rows"]] == ["Mijn BV"]
+        assert portal["total"] == 1
+
+
 # --- what Google actually said (a 403 is not one failure) ------------------------------------ #
 def _http_403(body: dict) -> httpx.HTTPStatusError:
     request = httpx.Request("GET", "https://analyticsadmin.googleapis.com/v1beta/accountSummaries")

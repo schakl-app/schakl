@@ -198,6 +198,26 @@ export interface DrilldownResponse {
   deep_link: string;
 }
 
+/**
+ * One source a client has linked, as the picker's chips render it.
+ *
+ * `state` is three-way, not the panel's four: "disconnected" is read from the absence of a
+ * *Google* connection, which two of the five sources never have — see the API schema.
+ */
+export interface MarketingClientSource {
+  source: MarketingSource;
+  /** Links of this source (two properties for two websites is ordinary). */
+  links: number;
+  state: "ok" | "pending" | "error";
+}
+
+/** A client with at least one linked source — one tile on the Marketing picker. */
+export interface MarketingClientRow {
+  company_id: string;
+  company_name: string;
+  sources: MarketingClientSource[];
+}
+
 export interface OverviewRow {
   company_id: string;
   company_name: string;
