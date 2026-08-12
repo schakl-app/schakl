@@ -64,6 +64,54 @@ LIMITS: dict[str, int] = {
 }
 
 
+#: The row keys a free-text search looks at, per read.
+#:
+#: Declared rather than derived from the row, for two reasons that both produce a search nobody
+#: can reason about. A sweep over *every* key matches ids, resource names and micro amounts
+#: nobody typed — looking for the campaign "1" would return every campaign whose id holds a one.
+#: And an **enum column is deliberately absent**, even where a table draws it: the browser
+#: renders those through ``google_ads.enum.*``, so a Dutch reader looking at "Gepauzeerd" would
+#: be searching a row that stores ``PAUSED``, and the search would fail for exactly the word in
+#: front of them. What a closed vocabulary needs is a filter, which is what ``Slice.status`` is.
+#:
+#: So: the fields whose printed text *is* their stored text, and nothing else.
+SEARCH_FIELDS: dict[str, tuple[str, ...]] = {
+    "campaigns": ("campaign_name",),
+    "ad_groups": ("ad_group_name", "campaign_name"),
+    "keywords": ("keyword", "campaign_name", "ad_group_name"),
+    "negatives": ("keyword", "campaign_name", "ad_group_name", "shared_set_name"),
+    "search_terms": ("search_term", "campaign_name", "ad_group_name"),
+    "ads": ("campaign_name", "ad_group_name", "final_urls"),
+    "devices": ("campaign_name",),
+    "geo": ("country", "region", "city", "campaign_name"),
+    "conversions": ("name",),
+    "changes": ("changed_by", "changed_resource"),
+    "recommendations": ("campaign", "ad_group"),
+}
+
+
+@dataclass(frozen=True)
+class Slice:
+    """Which part of a read's answer the caller wants: a filter over it, and a page of that.
+
+    Carried as one object rather than four parameters because the **order they are applied in**
+    is the whole correctness argument, and that order lives in exactly one place
+    (:meth:`ReadResult.narrow`). A read that filtered its page instead of paging its filter would
+    be wrong in a way nothing on the screen could reveal.
+    """
+
+    #: Free text, matched case-insensitively against :data:`SEARCH_FIELDS` for the read.
+    search: str | None = None
+    #: A Google status name (``ENABLED``, ``PAUSED``, ``REMOVED``). Only offered by the reads
+    #: whose rows carry one — asking it of a list that has no status would silently answer none.
+    status: str | None = None
+    #: Where the page starts in the matched set.
+    offset: int = 0
+    #: How many rows the page holds. ``None`` is "the rest", which is what a caller with no pager
+    #: means and what every MCP tool meant before there was one.
+    limit: int | None = None
+
+
 def limit_for(kind: str, requested: int | None) -> int:
     """The smaller of what the caller asked for and what the read is allowed to return."""
     ceiling = LIMITS.get(kind, 500)
@@ -306,6 +354,9 @@ class ReadResult:
     warnings: list[str] = field(default_factory=list)
     #: Per-read extras (``granularity`` for geo, ``effective_period`` for changes).
     extra: dict[str, Any] = field(default_factory=dict)
+    #: How many rows matched **before** a page was taken. ``None`` until :meth:`narrow` has run,
+    #: which is how the envelope tells "nobody asked for a page" from "the page is empty".
+    total_rows: int | None = None
 
     def truncated(self, limit: int, key: str = "google_ads.warning.rows_truncated") -> ReadResult:
         """Cut to ``limit`` and *say so*. Never a silent prefix (CLAUDE.md §17)."""
@@ -313,6 +364,53 @@ class ReadResult:
             self.rows = self.rows[:limit]
             self.warnings.append(key)
         return self
+
+    def narrow(self, view: Slice, *, kind: str) -> ReadResult:
+        """Apply the caller's filter and take their page, in the one order that does not lie.
+
+        **Filter, then total, then slice.** Every other order is wrong in a way nothing on the
+        screen can reveal. Filtering the page searches a prefix — the sample-of-itself failure
+        CLAUDE.md §9 exists to prevent, one layer in from the URL. Totalling the page prints
+        "Totaal" under page 3 of 12 over a footer that describes fifty rows out of nine hundred.
+        And counting after the slice makes the pager say "1 tot 50 van 50" on every page.
+
+        The search runs **here, in Python, never as a GAQL literal**. That is the same rule
+        ``resolve_campaign_ids`` follows for the campaign filter: no caller-supplied string
+        reaches the query text. It costs nothing extra, because the fetch is the read's own
+        ceiling either way — and it sees the whole fetched set, with :meth:`truncated` having
+        already said so if Google had more than that.
+        """
+        wanted = (view.status or "").strip().upper()
+        if wanted:
+            self.rows = [row for row in self.rows if str(row.get("status") or "").upper() == wanted]
+        needle = (view.search or "").strip().casefold()
+        if needle:
+            fields = SEARCH_FIELDS.get(kind, ())
+            self.rows = [row for row in self.rows if _matches(row, fields, needle)]
+        if (wanted or needle) and self.totals is not None:
+            # The footer describes the list above it, so a filtered list gets filtered totals.
+            self.totals = totals_from_rows(self.rows)
+        self.total_rows = len(self.rows)
+        if view.offset or view.limit is not None:
+            end = None if view.limit is None else view.offset + view.limit
+            self.rows = self.rows[view.offset : end]
+        return self
+
+
+def _matches(row: dict[str, Any], fields: tuple[str, ...], needle: str) -> bool:
+    """Does any of ``fields`` on this row contain ``needle``, case-insensitively?
+
+    A list value (an ad's ``final_urls``) matches on any of its entries: what the table draws is
+    the list, so searching it row-wise is what a reader means.
+    """
+    for name in fields:
+        value = row.get(name)
+        if isinstance(value, str):
+            if needle in value.casefold():
+                return True
+        elif isinstance(value, list) and any(needle in str(item).casefold() for item in value):
+            return True
+    return False
 
 
 # --- the reads --------------------------------------------------------------------------------- #

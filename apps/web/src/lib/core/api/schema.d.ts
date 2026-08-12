@@ -16045,6 +16045,11 @@ export interface components {
              * Format: date-time
              */
             fetched_at: string;
+            /**
+             * Offset
+             * @default 0
+             */
+            offset: number;
             period?: components["schemas"]["GoogleAdsPeriod"] | null;
             /**
              * Resource
@@ -16060,6 +16065,11 @@ export interface components {
             rows?: {
                 [key: string]: unknown;
             }[];
+            /**
+             * Total Rows
+             * @default 0
+             */
+            total_rows: number;
             totals?: components["schemas"]["GoogleAdsMetrics"] | null;
             /** Warnings */
             warnings?: string[];
@@ -16101,6 +16111,11 @@ export interface components {
              * Format: date-time
              */
             fetched_at: string;
+            /**
+             * Offset
+             * @default 0
+             */
+            offset: number;
             period?: components["schemas"]["GoogleAdsPeriod"] | null;
             /**
              * Row Count
@@ -16111,6 +16126,11 @@ export interface components {
             rows?: {
                 [key: string]: unknown;
             }[];
+            /**
+             * Total Rows
+             * @default 0
+             */
+            total_rows: number;
             totals?: components["schemas"]["GoogleAdsMetrics"] | null;
             /** Warnings */
             warnings?: string[];
@@ -16198,6 +16218,11 @@ export interface components {
              * Format: date-time
              */
             fetched_at: string;
+            /**
+             * Offset
+             * @default 0
+             */
+            offset: number;
             period?: components["schemas"]["GoogleAdsPeriod"] | null;
             /**
              * Row Count
@@ -16210,6 +16235,11 @@ export interface components {
             }[];
             /** Total Daily Budget */
             total_daily_budget?: number | null;
+            /**
+             * Total Rows
+             * @default 0
+             */
+            total_rows: number;
             totals?: components["schemas"]["GoogleAdsMetrics"] | null;
             /** Warnings */
             warnings?: string[];
@@ -31938,13 +31968,20 @@ export interface operations {
             query?: {
                 campaigns?: string[] | null;
                 include_removed?: boolean;
-                limit?: number | null;
                 /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
                 period?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_from?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_to?: string | null;
+                /** @description Only rows with this Google status: ENABLED, PAUSED or REMOVED. REMOVED implies `include_removed`, because a filter that always answers nothing is not a filter. */
+                status?: string | null;
+                /** @description Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. */
+                q?: string | null;
+                /** @description How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. */
+                limit?: number | null;
+                /** @description Where the page starts. `total_rows` is what it runs to. */
+                offset?: number;
             };
             header?: never;
             path: {
@@ -32049,13 +32086,20 @@ export interface operations {
         parameters: {
             query?: {
                 campaigns?: string[] | null;
-                limit?: number | null;
                 /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
                 period?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_from?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_to?: string | null;
+                /** @description Only rows with this Google status: ENABLED, PAUSED or REMOVED. REMOVED implies `include_removed`, because a filter that always answers nothing is not a filter. */
+                status?: string | null;
+                /** @description Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. */
+                q?: string | null;
+                /** @description How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. */
+                limit?: number | null;
+                /** @description Where the page starts. `total_rows` is what it runs to. */
+                offset?: number;
             };
             header?: never;
             path: {
@@ -32233,13 +32277,20 @@ export interface operations {
                 campaigns?: string[] | null;
                 /** @description Include removed campaigns. Off by default: a list where a third of the rows cannot be acted on is a worse answer to 'what are we running'. Turn it on to ask what was spent on things since removed. */
                 include_removed?: boolean;
-                limit?: number | null;
                 /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
                 period?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_from?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_to?: string | null;
+                /** @description Only rows with this Google status: ENABLED, PAUSED or REMOVED. REMOVED implies `include_removed`, because a filter that always answers nothing is not a filter. */
+                status?: string | null;
+                /** @description Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. */
+                q?: string | null;
+                /** @description How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. */
+                limit?: number | null;
+                /** @description Where the page starts. `total_rows` is what it runs to. */
+                offset?: number;
             };
             header?: never;
             path: {
@@ -32343,13 +32394,18 @@ export interface operations {
     google_ads_changes_api_v1_google_ads_accounts__account_id__changes_get: {
         parameters: {
             query?: {
-                limit?: number | null;
                 /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
                 period?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_from?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_to?: string | null;
+                /** @description Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. */
+                q?: string | null;
+                /** @description How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. */
+                limit?: number | null;
+                /** @description Where the page starts. `total_rows` is what it runs to. */
+                offset?: number;
             };
             header?: never;
             path: {
@@ -32382,13 +32438,18 @@ export interface operations {
     google_ads_conversion_health_api_v1_google_ads_accounts__account_id__conversions_get: {
         parameters: {
             query?: {
-                limit?: number | null;
                 /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
                 period?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_from?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_to?: string | null;
+                /** @description Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. */
+                q?: string | null;
+                /** @description How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. */
+                limit?: number | null;
+                /** @description Where the page starts. `total_rows` is what it runs to. */
+                offset?: number;
             };
             header?: never;
             path: {
@@ -32528,13 +32589,18 @@ export interface operations {
         parameters: {
             query?: {
                 campaigns?: string[] | null;
-                limit?: number | null;
                 /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
                 period?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_from?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_to?: string | null;
+                /** @description Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. */
+                q?: string | null;
+                /** @description How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. */
+                limit?: number | null;
+                /** @description Where the page starts. `total_rows` is what it runs to. */
+                offset?: number;
             };
             header?: never;
             path: {
@@ -32568,13 +32634,18 @@ export interface operations {
         parameters: {
             query?: {
                 campaigns?: string[] | null;
-                limit?: number | null;
                 /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
                 period?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_from?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_to?: string | null;
+                /** @description Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. */
+                q?: string | null;
+                /** @description How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. */
+                limit?: number | null;
+                /** @description Where the page starts. `total_rows` is what it runs to. */
+                offset?: number;
             };
             header?: never;
             path: {
@@ -32644,13 +32715,20 @@ export interface operations {
             query?: {
                 campaigns?: string[] | null;
                 include_removed?: boolean;
-                limit?: number | null;
                 /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
                 period?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_from?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_to?: string | null;
+                /** @description Only rows with this Google status: ENABLED, PAUSED or REMOVED. REMOVED implies `include_removed`, because a filter that always answers nothing is not a filter. */
+                status?: string | null;
+                /** @description Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. */
+                q?: string | null;
+                /** @description How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. */
+                limit?: number | null;
+                /** @description Where the page starts. `total_rows` is what it runs to. */
+                offset?: number;
             };
             header?: never;
             path: {
@@ -32823,7 +32901,12 @@ export interface operations {
     google_ads_negatives_api_v1_google_ads_accounts__account_id__negatives_get: {
         parameters: {
             query?: {
+                /** @description Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. */
+                q?: string | null;
+                /** @description How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. */
                 limit?: number | null;
+                /** @description Where the page starts. `total_rows` is what it runs to. */
+                offset?: number;
             };
             header?: never;
             path: {
@@ -33027,7 +33110,12 @@ export interface operations {
     google_ads_recommendations_api_v1_google_ads_accounts__account_id__recommendations_get: {
         parameters: {
             query?: {
+                /** @description Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. */
+                q?: string | null;
+                /** @description How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. */
                 limit?: number | null;
+                /** @description Where the page starts. `total_rows` is what it runs to. */
+                offset?: number;
             };
             header?: never;
             path: {
@@ -33064,13 +33152,18 @@ export interface operations {
                 /** @description Only terms that cost at least this, in account currency. */
                 min_cost?: number | null;
                 min_clicks?: number | null;
-                limit?: number | null;
                 /** @description A named span: 30d, 90d, month, last_month, quarter, last_quarter, 2026-07, 2026-Q3. Resolved in the account's own timezone and always ending yesterday. Ignored when date_from and date_to are both given. */
                 period?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_from?: string | null;
                 /** @description YYYY-MM-DD, inclusive. */
                 date_to?: string | null;
+                /** @description Free text, matched case-insensitively against the row's own readable fields — the campaign or ad-group name, the keyword, the search term, the place. Applied to the whole list before the page is taken, so page 2 of a search is page 2 of the search. */
+                q?: string | null;
+                /** @description How many rows this page holds. Omit for the rest of the list, which is what a caller with no pager means. Never more than the read's own ceiling. */
+                limit?: number | null;
+                /** @description Where the page starts. `total_rows` is what it runs to. */
+                offset?: number;
             };
             header?: never;
             path: {

@@ -189,8 +189,19 @@ class GoogleAdsReport(BaseModel):
     #: without it — and ``fetched_at`` below is UTC, so a response genuinely carries two clocks.
     account_timezone: str | None = None
     fetched_at: datetime
+    #: How many rows came back — the size of ``rows``, which is one page of the answer.
     row_count: int = 0
+    #: How many rows the filter matched in total. Two counts, not one, because they answer two
+    #: questions: the first says how much came back and this says how much there was. A pager
+    #: driven off ``row_count`` reads "1 to 50 of 50" on every page of a list of nine hundred —
+    #: the truncated-total failure (#37), one layer up. They are equal when nobody paged.
+    total_rows: int = 0
+    #: Where this page starts in that set, echoed so a caller can tell page 1 from page 4
+    #: without still holding the request that asked for it.
+    offset: int = 0
     warnings: list[str] = Field(default_factory=list)
+    #: Over the **matched** set, not over the page: a footer under fifty rows that describes
+    #: nine hundred is the same lie as a total that counts the page.
     totals: GoogleAdsMetrics | None = None
     rows: list[dict[str, Any]] = Field(default_factory=list)
     #: Per-read extras: ``granularity`` on geo, ``device_totals`` on devices,

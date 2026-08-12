@@ -1,8 +1,14 @@
 import { fail, redirect } from "@sveltejs/kit";
 
 import { apiErrorKey } from "$lib/core/errors";
+import { readFilters } from "$lib/core/filters/types";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
+import { readTablePref } from "$lib/core/table/columns";
+import { resolvePaging } from "$lib/core/table/paging";
+import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
+import { reportTableId, type ReportView } from "$lib/modules/google_ads/columns";
+import { GOOGLE_ADS_FILTERS } from "$lib/modules/google_ads/filters";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -12,6 +18,11 @@ type View = (typeof VIEWS)[number];
 
 function isView(value: string): value is View {
   return (VIEWS as readonly string[]).includes(value);
+}
+
+/** The tab whose page size is being remembered. `trend` is a summary and has no table. */
+function tableFor(view: View): ReportView {
+  return view === "trend" ? "campaigns" : view;
 }
 
 export const load: PageServerLoad = async (event) => {
@@ -25,13 +36,28 @@ export const load: PageServerLoad = async (event) => {
   const view: View = isView(raw) ? raw : "campaigns";
   const period = event.url.searchParams.get("period") ?? "30d";
 
-  // One live Google call per view, streamed behind the shell: the heading, the tabs and the
-  // period picker are what the user interacts with, and none of them needs Google to have
-  // answered (docs/PERFORMANCE.md). Negatives carry no period — an exclusion is configuration.
+  // Filters and page from the URL, resolved here and applied by the API. The short keys are the
+  // address bar; mapping them onto Google's own parameter names is this load's job. The saved
+  // size is only the default — `?size=` wins whenever it speaks (`core/table/paging.ts`).
+  const filters = readFilters(event.url, [...GOOGLE_ADS_FILTERS]);
+  const { prefs } = await event.parent();
+  const paging = resolvePaging(event.url, readTablePref(prefs, reportTableId(tableFor(view))));
+
+  // One live Google call per view, streamed behind the shell: the heading, the tabs, the filter
+  // bar and the period picker are what the user interacts with, and none of them needs Google to
+  // have answered (docs/PERFORMANCE.md). Negatives carry no period — an exclusion is
+  // configuration. Paging costs no extra call: the read fetches its own ceiling either way and
+  // hands back the slice, which is why `total_rows` is a real number and not an estimate.
   //
   // `trend` is the exception and the point of the nightly mirror: it reads schakl's own stored
   // rows, so it is fast, spends no Ads quota, and still renders when Google is down.
   const query = { period };
+  const paged = {
+    ...query,
+    q: filters.q,
+    limit: paging.limit,
+    offset: paging.offset,
+  };
   const report =
     view === "trend"
       ? api.GET("/api/v1/google-ads/accounts/{account_id}/trend", {
@@ -39,27 +65,43 @@ export const load: PageServerLoad = async (event) => {
         })
       : view === "negatives"
         ? api.GET("/api/v1/google-ads/accounts/{account_id}/negatives", {
-            params: { path: { account_id: accountId } },
+            params: {
+              path: { account_id: accountId },
+              query: { q: filters.q, limit: paging.limit, offset: paging.offset },
+            },
           })
         : view === "keywords"
           ? api.GET("/api/v1/google-ads/accounts/{account_id}/keywords", {
-              params: { path: { account_id: accountId }, query },
+              params: {
+                path: { account_id: accountId },
+                query: { ...paged, status: filters.status },
+              },
             })
           : view === "search-terms"
             ? api.GET("/api/v1/google-ads/accounts/{account_id}/search-terms", {
-                params: { path: { account_id: accountId }, query },
+                params: {
+                  path: { account_id: accountId },
+                  // A minimum spend the API applies in the GAQL, so it narrows the list the page
+                  // is taken from rather than the page. Junk in the URL degrades to no filter.
+                  query: { ...paged, min_cost: Number(filters.mincost) || undefined },
+                },
               })
             : view === "changes"
               ? api.GET("/api/v1/google-ads/accounts/{account_id}/changes", {
-                  params: { path: { account_id: accountId }, query },
+                  params: { path: { account_id: accountId }, query: paged },
                 })
               : api.GET("/api/v1/google-ads/accounts/{account_id}/campaigns", {
-                  params: { path: { account_id: accountId }, query },
+                  params: {
+                    path: { account_id: accountId },
+                    query: { ...paged, status: filters.status },
+                  },
                 });
 
   return {
     view,
     period,
+    filters,
+    paging,
     // The API's own error envelope reaches the page as an **i18n key** rather than throwing: a
     // refused Google call is a state this screen draws ("reconnect", "the developer token is
     // not approved", "this API version is sunset"), not a 500. Narrowed here with
@@ -73,6 +115,22 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
+  /**
+   * Remember this view's page size for next time. The navigation is `Pagination`'s own.
+   *
+   * Per view, because the tabs are different tables (`reportTableId`). Written through the shared
+   * `parseTablePref`/`saveTablePref` pair rather than a bespoke `{page_size}` write: `/prefs`
+   * replaces a list's entry wholesale, so the day this screen grows a column picker, a
+   * hand-rolled size write here would silently erase the layout it never knew about.
+   */
+  saveTable: async (event) => {
+    const form = await event.request.formData();
+    const raw = String(form.get("view") ?? "");
+    const view = isView(raw) ? raw : "campaigns";
+    await saveTablePref(event, reportTableId(tableFor(view)), parseTablePref(form));
+    return { saved: true };
+  },
+
   /**
    * One pass over a search-terms list: exclude some, keep the rest, in one request.
    *

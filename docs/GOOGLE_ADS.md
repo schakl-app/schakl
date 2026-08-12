@@ -200,8 +200,8 @@ already excluded wastes an account manager's afternoon).
 ### The envelope
 
 Every read returns the same shape: which account answered, the period *with its dates*, the
-account's currency and timezone, `fetched_at`, `row_count`, `totals`, `rows`, `extra` — and
-`warnings`.
+account's currency and timezone, `fetched_at`, `row_count`, `total_rows`, `offset`, `totals`,
+`rows`, `extra` — and `warnings`.
 
 **`warnings` is load-bearing.** Truncation, a shortened change-history window, a geo read that
 fell back to country level, provisional recent figures and a filter that matched no campaign are
@@ -223,6 +223,48 @@ Three details that cost a debugging session each if missed:
 Money is rendered in the **account's** currency on the web, not the tenant's: an agency in
 Amsterdam runs accounts billed in GBP and SEK, and `fmtMoney` — right everywhere else in the
 product — would label every one of them `€`.
+
+### The page, and the order the three steps run in
+
+Every list read takes `q`, `limit` and `offset` (`reporting.Slice`), and the four reads whose rows
+carry a Google status take `status` as well. They are carried as **one object** for a reason that
+is not tidiness: the order they are applied in is the whole correctness argument, and
+`ReadResult.narrow` is the single place it lives.
+
+**Filter, then total, then slice.** Each of the other orders is wrong in a way nothing on the
+screen can reveal:
+
+- **Filtering the page searches a prefix.** Page 1 of a search for "dakraam" would show only the
+  dakraam terms that happened to be among the twenty most expensive, and a reader cannot tell that
+  from an account with three of them — CLAUDE.md §9's sample-of-itself, one layer in from the URL.
+- **Totalling the page** prints "Totaal" under fifty rows over a figure describing nine hundred,
+  or the reverse. The footer describes the list, so a filtered list gets filtered totals.
+- **Counting after the slice** makes the pager say "1 tot 50 van 50" on every page — the truncated
+  total (#37) again.
+
+Three consequences worth stating:
+
+- **The search runs in Python and never as a GAQL literal.** That is the same rule
+  `resolve_campaign_ids` follows for the campaign filter — no caller-supplied string reaches the
+  query text, ever. It costs nothing, because the fetch is the read's own `LIMITS` ceiling either
+  way, and it is what lets the search see the whole list rather than whatever a `LIKE` would have
+  let Google return. `SEARCH_FIELDS` names the keys per read, deliberately: a search over every
+  key of a row matches ids and micro amounts nobody typed, so "1" would find every campaign.
+- **A page is not a truncation.** `rows_truncated` means Google had more rows than the read's
+  ceiling and they are gone; a page is fully described by `total_rows`, and warning about it would
+  cry wolf until nobody reads the warning that does mean something. The two are tested apart.
+- **`status=REMOVED` widens the fetch it filters.** `include_removed` decides what Google is asked
+  for and `status` decides what is kept, so the one status a person picks on purpose would
+  otherwise be the one that always answers nothing. Reconciled in `reads.py`, never left to
+  whoever built the URL.
+
+On the web, the report screen renders the shared `FilterBar` and `Pagination` like every other
+list: `?page=`/`?size=` in the URL, `resetPage` on every filter, and the size saved per **view**
+(`reportTableId`) because a five-column exclusions list and a twelve-number keyword list are
+different tables that happen to share a route. Switching tab or period rebuilds the URL from
+scratch, which is how it drops the page, the search and the status together — a search for
+"dakraam" carried into the negatives tab would open it looking empty for a reason nothing on the
+screen explains.
 
 ## 9b. The nightly mirror, and what it is for
 
