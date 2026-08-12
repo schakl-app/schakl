@@ -709,12 +709,25 @@ async def test_adopting_an_existing_rule_writes_nothing_at_cloudflare(
         zone_id = next(iter(cloudflare.zones))
         theirs = await _hand_made_rule(cloudflare, zone_id, apex="klant.nl", target="https://nieuw.nl")
 
-        # The status report offers the id, which is the only safe way to name a rule.
+        # The status report offers the id, which is the only safe way to name a rule — and it
+        # is *not* a conflict, because schakl holds no rule for it to compete with. It is simply
+        # this domain's redirect, which is why the panel lists it rather than boxing it in a
+        # warning nobody reads.
         checked = (
             await c.post(f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers)
         ).json()
-        assert "redirect_conflict" in checked["issues"]
+        assert "redirect_conflict" not in checked["issues"]
         assert checked["conflicts"][0]["rule_id"] == theirs["id"]
+        # Described well enough that adoption is one press: the row carries the rule's own
+        # intent, so the button no longer posts whatever happens to be typed in the form above it.
+        assert checked["conflicts"][0]["intent"] == {
+            "target_url": "https://nieuw.nl",
+            "status_code": 301,
+            "preserve_path": True,
+            "preserve_query": True,
+            "include_subdomains": True,
+        }
+        assert checked["conflicts"][0]["domain_wide"] is True
 
         cloudflare.calls.clear()
         adopted = await c.post(
@@ -949,10 +962,17 @@ async def test_check_reports_a_domain_that_already_redirects_outside_schakl(
         checked = (
             await c.post(f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers)
         ).json()
-        assert "redirect_conflict" in checked["issues"]
-        assert "domain_says_redirect" in checked["issues"]
         assert checked["conflicts"][0]["kind"] == "page_rule"
         assert checked["conflicts"][0]["description"] == "klant.nl/*"
+        # Not a conflict: schakl holds no rule here for a Page Rule to beat. But
+        # ``domain_says_redirect`` stands, and this is the case that shows why it must — a
+        # forwarding Page Rule is a different product this module cannot write, so it can never
+        # become schakl's redirect and the domain's own status is genuinely unbacked here.
+        assert "redirect_conflict" not in checked["issues"]
+        assert "domain_says_redirect" in checked["issues"]
+        # The status the tenant set by hand is untouched: only a domain-wide *Redirect Rule* may
+        # move a domain record, and a Page Rule is never one.
+        assert checked["domain_status"] == "redirect"
 
 
 async def test_a_rule_with_no_proxied_record_is_reported_and_repaired(
@@ -1116,6 +1136,343 @@ def test_the_rule_expression_escapes_and_scopes_correctly() -> None:
     assert rule["action_parameters"]["from_value"]["preserve_query_string"] is False
     # A trailing slash on the target would otherwise produce "//pad".
     assert "//pad" not in target.replace("https://", "")
+
+
+@pytest.mark.parametrize("status_code", [301, 302, 307, 308])
+@pytest.mark.parametrize("preserve_path", [True, False])
+@pytest.mark.parametrize("preserve_query", [True, False])
+@pytest.mark.parametrize("include_subdomains", [True, False])
+def test_a_rule_reads_back_as_the_intent_that_built_it(
+    status_code: int, preserve_path: bool, preserve_query: bool, include_subdomains: bool
+) -> None:
+    """``rule_intent`` is ``build_rule`` run backwards, and the round trip is the whole contract.
+
+    Every field it recovers is read off the rule's *shape* rather than a flag — the path is
+    preserved iff the target is a ``concat``, subdomains are included iff the expression carries
+    the ``ends_with`` arm — so nothing but exercising both directions can catch a shape drifting
+    away from its reading. If this holds, adopting an inherited rule is one press; if it slips,
+    the adopt button posts a subtly wrong intent and `compare` refuses a rule that is identical.
+    """
+    intent = {
+        "target_url": "https://nieuw.nl/pad",
+        "status_code": status_code,
+        "preserve_path": preserve_path,
+        "preserve_query": preserve_query,
+        "include_subdomains": include_subdomains,
+    }
+    rule = rules.build_rule(apex="klant.nl", **intent)
+    assert rules.rule_intent(rule, "klant.nl") == intent
+    assert rules.domain_wide_for(rule, "klant.nl") is True
+
+
+def test_only_a_whole_domain_rule_counts_as_one() -> None:
+    """The reading a domain's status hangs on, so it refuses everything it does not recognise.
+
+    Each of these mentions the apex, and only some of them redirect the domain. Matching on
+    "the apex appears in the expression" would put "omleiding" on a record whose site serves
+    perfectly well — a wrong answer nobody would think to look for, on a screen that is supposed
+    to be reporting facts.
+    """
+
+    def rule(expression: str, *, action: str = "redirect") -> dict:
+        return {
+            "action": action,
+            "expression": expression,
+            "action_parameters": {
+                "from_value": {
+                    "status_code": 301,
+                    "target_url": {"value": "https://nieuw.nl"},
+                    "preserve_query_string": True,
+                }
+            },
+        }
+
+    wide = [
+        '(http.host eq "klant.nl")',
+        'http.host eq "klant.nl"',  # Cloudflare drops our redundant parentheses
+        '(lower(http.host) eq "klant.nl")',  # ...and its dashboard adds this
+        '(http.host eq "klant.nl" or ends_with(http.host, ".klant.nl"))',
+        # Cloudflare's own list operator: plainly the whole domain, and **not** a shape any
+        # intent of ours produces. Domain-wide, therefore, and never adoptable.
+        'http.host in {"klant.nl" "www.klant.nl"}',
+    ]
+    narrow = [
+        '(http.host eq "oud.klant.nl")',  # one subdomain is not the domain
+        '(http.host eq "klant.nl") and (http.request.uri.path eq "/aanbieding")',  # one path
+        '(http.host eq "nietklant.nl")',  # not even this domain
+        'http.host in {"www.klant.nl"}',  # a list the apex is not in
+        'http.request.full_uri wildcard "https://klant.nl/*"',  # a shape we do not read: refused
+    ]
+    for expression in wide:
+        assert rules.domain_wide_for(rule(expression), "klant.nl") is True, expression
+    for expression in narrow:
+        assert rules.domain_wide_for(rule(expression), "klant.nl") is False, expression
+    # A rule that does something else entirely is not a redirect however it is scoped.
+    assert rules.domain_wide_for(rule(wide[0], action="block"), "klant.nl") is False
+    # Domain-wide and unreadable are independent: the list form has no intent, so no adopt
+    # button is drawn — but the target is still recoverable, which is what the row prints and
+    # what the domain record gets.
+    listed = rule('http.host in {"klant.nl" "www.klant.nl"}')
+    assert rules.rule_intent(listed, "klant.nl") is None
+    assert rules.rule_target(listed) == ("https://nieuw.nl", False)
+
+
+def test_an_unreadable_rule_is_described_not_guessed_at() -> None:
+    """``None`` is a real answer. A half-guessed intent is a button that either refuses or, far
+    worse, succeeds — claiming a rule as something it is not, after which an ordinary save
+    rewrites a live client's redirect to whatever we assumed."""
+    unreadable = {
+        "action": "redirect",
+        "expression": '(http.host eq "klant.nl")',
+        "action_parameters": {
+            "from_value": {
+                "status_code": 301,
+                # A target expression that is not our ``concat`` shape.
+                "target_url": {"expression": 'concat(http.host, "/nieuw")'},
+                "preserve_query_string": True,
+            }
+        },
+    }
+    assert rules.rule_intent(unreadable, "klant.nl") is None
+    assert rules.rule_target(unreadable) is None
+    # But it still redirects the whole domain, so it still moves the domain record.
+    assert rules.domain_wide_for(unreadable, "klant.nl") is True
+
+
+# --------------------------------------------------------------------------------------- #
+# An inherited redirect: stored, listed, and reflected on the domain record
+# --------------------------------------------------------------------------------------- #
+async def test_an_inherited_redirect_survives_the_page_load(client_for, cloudflare) -> None:
+    """The state this module exists to serve, and the one that used not to survive a refresh.
+
+    ``GET .../status`` reads stored rows and calls nothing, so before the zone remembered what a
+    check saw, a redirect made by hand in Cloudflare's dashboard was visible only for as long as
+    somebody held the check button's answer on screen. Reload the domain and it was gone.
+    """
+    t = await make_tenant("cf-inherited")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, domain, _ = await _connected(c, headers, cloudflare)
+        zone_id = next(iter(cloudflare.zones))
+        theirs = await _hand_made_rule(
+            cloudflare, zone_id, apex="klant.nl", target="https://nieuw.nl"
+        )
+
+        # Nothing is known before anyone looks, and the report says *that* rather than "none".
+        before = (
+            await c.get(f"/api/v1/cloudflare/domains/{domain['id']}/status", headers=headers)
+        ).json()
+        assert before["conflicts"] == []
+        assert before["redirects_observed_at"] is None
+
+        await c.post(f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers)
+
+        # ...and now the *stored* read carries it, with an age. No Cloudflare call: the page load
+        # must not depend on an outside API being up (docs/PERFORMANCE.md).
+        cloudflare.calls.clear()
+        stored = (
+            await c.get(f"/api/v1/cloudflare/domains/{domain['id']}/status", headers=headers)
+        ).json()
+        assert cloudflare.calls == []
+        assert stored["live"] is False
+        assert [row["rule_id"] for row in stored["conflicts"]] == [theirs["id"]]
+        assert stored["conflicts"][0]["target_url"] == "https://nieuw.nl"
+        assert stored["conflicts"][0]["domain_wide"] is True
+        assert stored["redirects_observed_at"] is not None
+        # And the domain record itself agrees, so the domains list stops calling it active.
+        assert stored["domain_status"] == "redirect"
+        assert stored["domain_redirect_url"] == "https://nieuw.nl"
+
+
+async def test_a_read_that_finds_nothing_clears_what_it_read_before(
+    client_for, cloudflare
+) -> None:
+    """A list that only ever grows is `_flag_account`'s one-way flag in another costume.
+
+    Without the clear, a redirect somebody deleted in Cloudflare's dashboard stays on this panel
+    for ever — and, worse, keeps the domain record claiming a redirect that no longer exists.
+    """
+    t = await make_tenant("cf-cleared")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, domain, _ = await _connected(c, headers, cloudflare)
+        zone_id = next(iter(cloudflare.zones))
+        await _hand_made_rule(cloudflare, zone_id, apex="klant.nl", target="https://nieuw.nl")
+        checked = (
+            await c.post(f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers)
+        ).json()
+        assert len(checked["conflicts"]) == 1
+        assert checked["domain_status"] == "redirect"
+
+        # Deleted at Cloudflare, by hand, the way it was made.
+        cloudflare.rulesets[zone_id]["rules"] = []
+        after = (
+            await c.post(f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers)
+        ).json()
+        assert after["conflicts"] == []
+        # The walk-back: the domain still said exactly what the observation put there, so it is
+        # ours to take back. ``redirects_observed_at`` stays set — we looked, and found nothing.
+        assert after["domain_status"] == "active"
+        assert after["domain_redirect_url"] is None
+        assert after["redirects_observed_at"] is not None
+        assert "domain_says_redirect" not in after["issues"]
+
+
+async def test_the_walk_back_never_overwrites_a_status_set_by_hand(
+    client_for, cloudflare
+) -> None:
+    """The same test :meth:`remove_redirect` applies, for the same reason: a status somebody has
+    since changed by hand is theirs, and a reconcile that "tidies" it is a data-loss bug that
+    reports success."""
+    t = await make_tenant("cf-handset")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, domain, _ = await _connected(c, headers, cloudflare)
+        zone_id = next(iter(cloudflare.zones))
+        await _hand_made_rule(cloudflare, zone_id, apex="klant.nl", target="https://nieuw.nl")
+        await c.post(f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers)
+
+        # Somebody points the domain somewhere else in schakl, then the Cloudflare rule goes.
+        await c.patch(
+            f"/api/v1/domains/{domain['id']}",
+            json={"status": "redirect", "redirect_url": "https://ergens-anders.nl"},
+            headers=headers,
+        )
+        cloudflare.rulesets[zone_id]["rules"] = []
+        after = (
+            await c.post(f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers)
+        ).json()
+        assert after["domain_status"] == "redirect"
+        assert after["domain_redirect_url"] == "https://ergens-anders.nl"
+        # It is reported instead — the domain claims a redirect nothing here backs.
+        assert "domain_says_redirect" in after["issues"]
+
+
+async def test_two_domain_wide_rules_are_reported_never_guessed_between(
+    client_for, cloudflare
+) -> None:
+    """Cloudflare evaluates top-down and this module does not evaluate filter expressions, so
+    which of two whole-domain rules actually wins is not a question it can answer. Writing either
+    one onto the domain record would be a coin toss presented as a fact."""
+    t = await make_tenant("cf-ambiguous")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, domain, _ = await _connected(c, headers, cloudflare)
+        zone_id = next(iter(cloudflare.zones))
+        await _hand_made_rule(cloudflare, zone_id, apex="klant.nl", target="https://nieuw.nl")
+        await _hand_made_rule(cloudflare, zone_id, apex="klant.nl", target="https://anders.nl")
+
+        checked = (
+            await c.post(f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers)
+        ).json()
+        assert len(checked["conflicts"]) == 2
+        assert checked["domain_status"] == "active"
+        # Silence would be the bug: the panel has to say the two halves disagree.
+        assert "cloudflare_says_redirect" in checked["issues"]
+
+
+async def test_a_probe_that_could_not_run_keeps_what_it_saw_last_time(
+    client_for, cloudflare, monkeypatch
+) -> None:
+    """Losing a client's Page Rules to a missing token scope would be this module deciding that
+    what it cannot see does not exist. A probe that *ran* and found nothing clears its own
+    entries; one that could not run leaves them exactly as they were."""
+    t = await make_tenant("cf-partial")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, domain, _ = await _connected(c, headers, cloudflare)
+        zone_id = next(iter(cloudflare.zones))
+        cloudflare.pagerules[zone_id] = [
+            {
+                "id": "pr-1",
+                "status": "active",
+                "targets": [
+                    {"target": "url", "constraint": {"operator": "matches", "value": "klant.nl/*"}}
+                ],
+                "actions": [
+                    {"id": "forwarding_url", "value": {"url": "https://elders.nl"}}
+                ],
+            }
+        ]
+        first = (
+            await c.post(f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers)
+        ).json()
+        assert [row["kind"] for row in first["conflicts"]] == ["page_rule"]
+
+        # Now the Page Rules scope goes away — the token was narrowed, or never had it.
+        async def refuse(self, zone_id: str):  # noqa: ANN001, ANN202, ARG001
+            raise cf_client.CloudflareError("no page rules scope", status=403)
+
+        monkeypatch.setattr(cf_client.CloudflareClient, "list_page_rules", refuse)
+        after = (
+            await c.post(f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers)
+        ).json()
+        assert [row["kind"] for row in after["conflicts"]] == ["page_rule"]
+        assert "page_rules" in after["unavailable"]
+        # ...and it is still there on the next stored read, not only in that one response.
+        stored = (
+            await c.get(f"/api/v1/cloudflare/domains/{domain['id']}/status", headers=headers)
+        ).json()
+        assert [row["kind"] for row in stored["conflicts"]] == ["page_rule"]
+
+
+async def test_a_read_only_caller_never_moves_the_domain_record(client_for, cloudflare) -> None:
+    """``POST .../check`` declares ``cloudflare.dns.read``. Writing a domain record off the back
+    of it would hand every Cloudflare-only admin an edit permission nobody granted them, so the
+    write is gated on ``domains.domain.write`` — and the finding still renders, which is the
+    whole point: they can see what is wrong, they just cannot silently fix it."""
+    t = await make_tenant("cf-readonly")
+    watcher = await make_tenant("cf-readonly-m", email="cf-readonly-member@example.com")
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        membership = await add_membership(session, t.org.id, watcher.user.id, role="member")
+        membership_id = str(membership.id)
+        await session.commit()
+    owner_headers = await auth_cookie(t.user)
+    watcher_headers = await auth_cookie(watcher.user, org_id=t.org.id)
+
+    async with client_for(t.host) as c:
+        _, domain, _ = await _connected(c, owner_headers, cloudflare)
+        zone_id = next(iter(cloudflare.zones))
+        await _hand_made_rule(cloudflare, zone_id, apex="klant.nl", target="https://nieuw.nl")
+
+        # Everything this screen needs to *look*, and nothing that writes a domain.
+        role = (
+            await c.post(
+                "/api/v1/roles",
+                json={
+                    "key": "cf-kijker",
+                    "name_i18n": {"nl": "Cloudflare kijker", "en": "Cloudflare viewer"},
+                    "permissions": ["cloudflare.dns.read", "domains.domain.read"],
+                },
+                headers=owner_headers,
+            )
+        ).json()
+        assert (
+            await c.put(
+                f"/api/v1/members/{membership_id}/roles",
+                json={"role_ids": [role["id"]]},
+                headers=owner_headers,
+            )
+        ).status_code == 200
+
+        checked = (
+            await c.post(
+                f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=watcher_headers
+            )
+        ).json()
+        assert checked["conflicts"][0]["domain_wide"] is True
+        assert checked["domain_status"] == "active"
+        assert "cloudflare_says_redirect" in checked["issues"]
+
+        # The owner's own check does move it, so the difference really is the permission and
+        # not something incidental about this domain.
+        owned = (
+            await c.post(
+                f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=owner_headers
+            )
+        ).json()
+        assert owned["domain_status"] == "redirect"
 
 
 # --------------------------------------------------------------------------------------- #
@@ -2317,3 +2674,345 @@ async def test_a_bad_request_that_is_not_about_paging_still_fails(client_for, cl
 
         assert any("not entitled" in w for w in body["warnings"]), body["warnings"]
         assert len([q for p, q in cloudflare.queries if "registrar/domains" in p]) == 1
+
+
+# --------------------------------------------------------------------------------------- #
+# Editing and deleting a redirect the zone already has (#278)
+# --------------------------------------------------------------------------------------- #
+async def test_an_inherited_rule_is_edited_at_cloudflare_and_not_claimed(
+    client_for, cloudflare
+) -> None:
+    """The ordinary act on a redirect an agency took over: the target is now wrong, fix it.
+
+    Adoption could not do this — it refuses anything that is not already exactly what schakl
+    would have written, which is correct for a *claim* and useless for a *change*. So the only
+    routes to "this old domain points at the wrong place" were: log in to the client's Cloudflare
+    dashboard, or adopt-then-save, which needs the rule to already be right before you may correct
+    it. Editing names the rule by id and writes it where it lives.
+
+    And it deliberately does **not** claim the rule. Ownership carries consequences nobody asked
+    for by correcting a URL — a reconcile that recreates the rule, a delete that removes it — so
+    the row stays "found at Cloudflare", one press from adoption if that is what is wanted.
+    """
+    t = await make_tenant("cf-edit-rule")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, domain, _ = await _connected(c, headers, cloudflare)
+        zone_id = next(iter(cloudflare.zones))
+        theirs = await _hand_made_rule(
+            cloudflare, zone_id, apex="klant.nl", target="https://oud.nl"
+        )
+
+        edited = await c.put(
+            f"/api/v1/cloudflare/domains/{domain['id']}/redirect/rules/{theirs['id']}",
+            json={"target_url": "https://nieuw.nl", "status_code": 302},
+            headers=headers,
+        )
+        assert edited.status_code == 200, edited.text
+
+        # The rule itself moved, in place: still one rule, still the same id, new destination.
+        live = cloudflare.rulesets[zone_id]["rules"]
+        assert len(live) == 1 and live[0]["id"] == theirs["id"]
+        assert live[0]["action_parameters"]["from_value"]["status_code"] == 302
+        assert rules.rule_target(live[0]) == ("https://nieuw.nl", True)
+        # Their description survives: editing somebody's rule is not signing it. Stamping the
+        # marker on it would make it read in Cloudflare's dashboard as one schakl created, which
+        # is the precise confusion `find_our_rule` matches on id to avoid.
+        assert live[0]["description"] == "Redirect klant.nl"
+
+        # The answer is the refreshed report, because the write just invalidated the observation
+        # the caller's list was drawn from.
+        body = edited.json()
+        assert body["conflicts"][0]["target_url"] == "https://nieuw.nl"
+        assert body["conflicts"][0]["intent"]["status_code"] == 302
+        # Not claimed: no redirect of ours exists, and the row still says where it came from.
+        assert body["redirect"] is None
+        # The domain record follows an edited inherited redirect, exactly as a check does.
+        assert body["domain_status"] == "redirect"
+        assert body["domain_redirect_url"] == "https://nieuw.nl"
+
+        # And it survives the page load, which is the whole point of storing the observation.
+        stored = (
+            await c.get(f"/api/v1/cloudflare/domains/{domain['id']}/status", headers=headers)
+        ).json()
+        assert stored["conflicts"][0]["target_url"] == "https://nieuw.nl"
+
+
+async def test_editing_a_rule_never_moves_the_traffic_it_catches(client_for, cloudflare) -> None:
+    """Changing where a redirect *goes* must never change what it *answers for*.
+
+    Cloudflare's own dashboard writes ``http.host in {"klant.nl" "www.klant.nl"}`` for the
+    commonest rule an agency inherits. We can read it and cannot write it, so rebuilding the
+    expression from an intent would re-scope a live client's redirect as a side effect of
+    correcting its URL — and the subdomain checkbox, whose value would decide that, is a control
+    nobody was shown, because the rule has no whole intent to seed a form from.
+
+    So the API answers `include_subdomains: null` for such a rule (the panel then draws no
+    checkbox and says the match set is kept), and the edit carries the expression over verbatim.
+    Gating the edit on a readable *intent* instead would have withheld it from exactly the rules
+    this feature exists for.
+    """
+    t = await make_tenant("cf-edit-scope")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, domain, _ = await _connected(c, headers, cloudflare)
+        zone_id = next(iter(cloudflare.zones))
+        expression = 'http.host in {"klant.nl" "www.klant.nl"}'
+        theirs = cloudflare.add_redirect_rule(
+            zone_id,
+            {
+                "action": "redirect",
+                "expression": expression,
+                "description": "oude site",
+                "action_parameters": {
+                    "from_value": {
+                        "status_code": 301,
+                        "target_url": {"value": "https://oud.nl"},
+                        "preserve_query_string": True,
+                    }
+                },
+            },
+        )
+
+        checked = (
+            await c.post(f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers)
+        ).json()
+        row = checked["conflicts"][0]
+        # The readings disagree on purpose: no whole intent, a perfectly readable target, and a
+        # match set that is plainly the whole domain and not ours to write.
+        assert row["intent"] is None
+        assert row["target_url"] == "https://oud.nl"
+        assert row["include_subdomains"] is None
+        assert row["domain_wide"] is True
+        # And every setting the edit form posts is reported **on its own**, so the form seeds from
+        # the rule rather than from defaults. `intent` being None must not cost these: this rule
+        # sends every URL to one page (`preserve_path` false, read off the target's shape), and a
+        # form seeded from defaults would have started appending paths on the next save.
+        assert row["preserve_path"] is False
+        assert row["preserve_query"] is True
+        assert row["status_code"] == 301
+
+        edited = await c.put(
+            f"/api/v1/cloudflare/domains/{domain['id']}/redirect/rules/{theirs['id']}",
+            json={
+                "target_url": "https://nieuw.nl",
+                # Posted back exactly as the report gave them — the round trip a screen makes.
+                "status_code": row["status_code"],
+                "preserve_path": row["preserve_path"],
+                "preserve_query": row["preserve_query"],
+                # A value for the field the panel does *not* draw here. It must be ignored, not
+                # obeyed: obeying it would narrow a rule that answers for www to the apex alone.
+                "include_subdomains": False,
+            },
+            headers=headers,
+        )
+        assert edited.status_code == 200, edited.text
+
+        live = cloudflare.rulesets[zone_id]["rules"][0]
+        assert live["expression"] == expression
+        # Only the destination moved: still a plain value, so still "send everything to one page".
+        assert rules.rule_target(live) == ("https://nieuw.nl", False)
+        assert live["action_parameters"]["from_value"]["target_url"] == {
+            "value": "https://nieuw.nl"
+        }
+
+
+async def test_a_status_code_we_cannot_write_costs_the_intent_and_nothing_else(
+    client_for, cloudflare
+) -> None:
+    """A 303 is a redirect Cloudflare holds and schakl cannot express.
+
+    It costs adoption, which is honest — writing that rule back is the one thing we genuinely
+    cannot do. It must cost nothing else: the row still describes itself, still counts as this
+    domain redirecting, and still reports every setting an edit form seeds from. Reading those off
+    the (absent) intent instead would have filled the form with defaults and quietly rewritten a
+    live client's 303 as a 301 on the next save.
+    """
+    t = await make_tenant("cf-odd-code")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, domain, _ = await _connected(c, headers, cloudflare)
+        zone_id = next(iter(cloudflare.zones))
+        body = rules.build_rule(
+            apex="klant.nl",
+            target_url="https://nieuw.nl",
+            status_code=301,
+            preserve_path=True,
+            preserve_query=True,
+            include_subdomains=True,
+        )
+        body["action_parameters"]["from_value"]["status_code"] = 303
+        cloudflare.add_redirect_rule(zone_id, body)
+
+        checked = (
+            await c.post(f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers)
+        ).json()
+        row = checked["conflicts"][0]
+        assert row["intent"] is None
+        assert row["status_code"] == 303
+        # The expression is one of ours, so the match set *is* rewritable — which the whole intent
+        # could never have said, since the status code had already taken it away.
+        assert row["include_subdomains"] is True
+        assert row["preserve_path"] is True
+        assert row["domain_wide"] is True
+
+
+async def test_deleting_an_inherited_rule_removes_it_and_walks_the_domain_back(
+    client_for, cloudflare
+) -> None:
+    """The button that was missing from every row an agency inherited.
+
+    ``DELETE .../redirect`` only ever removes the rule whose id we stored, which is right for a
+    route that names no rule — but it left "this old redirect should be gone" as a job for
+    Cloudflare's dashboard, which is the thing this module exists to stop people needing. The
+    safety property is not "only our own rows" but "only a rule the caller pointed at, resolved
+    inside this zone's own ruleset".
+    """
+    t = await make_tenant("cf-delete-rule")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, domain, _ = await _connected(c, headers, cloudflare)
+        zone_id = next(iter(cloudflare.zones))
+        theirs = await _hand_made_rule(
+            cloudflare, zone_id, apex="klant.nl", target="https://nieuw.nl"
+        )
+
+        # A check first, so the domain record is carrying the observation this must walk back.
+        checked = (
+            await c.post(f"/api/v1/cloudflare/domains/{domain['id']}/check", headers=headers)
+        ).json()
+        assert checked["domain_status"] == "redirect"
+
+        removed = await c.delete(
+            f"/api/v1/cloudflare/domains/{domain['id']}/redirect/rules/{theirs['id']}",
+            headers=headers,
+        )
+        assert removed.status_code == 200, removed.text
+
+        assert cloudflare.rulesets[zone_id]["rules"] == []
+        body = removed.json()
+        assert body["conflicts"] == []
+        # A flag that only ever turns on is half a mechanism: the domain goes back to active,
+        # because it still says exactly what the observation put there.
+        assert body["domain_status"] == "active"
+        assert body["domain_redirect_url"] is None
+
+
+async def test_deleting_our_own_rule_by_id_forgets_the_row_too(client_for, cloudflare) -> None:
+    """Reached from the list, our own rule is still ours: the row goes with it.
+
+    Two delete paths that disagreed about this would leave a stored redirect pointing at a rule
+    that no longer exists — read as ``missing`` forever, and recreated by the next save.
+    """
+    t = await make_tenant("cf-delete-own")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, domain, _ = await _connected(c, headers, cloudflare)
+        zone_id = next(iter(cloudflare.zones))
+        saved = await c.put(
+            f"/api/v1/cloudflare/domains/{domain['id']}/redirect",
+            json={"target_url": "https://nieuw.nl", "status_code": 301},
+            headers=headers,
+        )
+        assert saved.status_code == 200, saved.text
+        rule_id = cloudflare.rulesets[zone_id]["rules"][0]["id"]
+
+        removed = await c.delete(
+            f"/api/v1/cloudflare/domains/{domain['id']}/redirect/rules/{rule_id}",
+            headers=headers,
+        )
+        assert removed.status_code == 200, removed.text
+        assert cloudflare.rulesets[zone_id]["rules"] == []
+        body = removed.json()
+        assert body["redirect"] is None
+        assert body["domain_status"] == "active"
+
+
+async def test_a_rule_id_that_names_nothing_on_this_zone_is_a_404(client_for, cloudflare) -> None:
+    """The id comes from outside, so it is only ever resolved inside this zone's own ruleset.
+
+    A rule id belonging to another zone — or to another tenant, or to some other product of
+    Cloudflare's rules engine — must resolve to nothing rather than to a call. This is also the
+    ordinary race: the rule was deleted in the dashboard between the page load and the press.
+    """
+    t = await make_tenant("cf-rule-404")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, domain, _ = await _connected(c, headers, cloudflare)
+        zone_id = next(iter(cloudflare.zones))
+        await _hand_made_rule(cloudflare, zone_id, apex="klant.nl", target="https://nieuw.nl")
+
+        for call in (
+            c.put(
+                f"/api/v1/cloudflare/domains/{domain['id']}/redirect/rules/rule-elders",
+                json={"target_url": "https://nieuw.nl"},
+                headers=headers,
+            ),
+            c.delete(
+                f"/api/v1/cloudflare/domains/{domain['id']}/redirect/rules/rule-elders",
+                headers=headers,
+            ),
+        ):
+            res = await call
+            assert res.status_code == 404, res.text
+        # Refused means refused: the rule that *is* there is untouched.
+        assert len(cloudflare.rulesets[zone_id]["rules"]) == 1
+
+
+def test_an_edit_rebuilds_the_action_and_keeps_a_match_set_it_cannot_write() -> None:
+    """``edited_rule`` is ``build_rule`` with one refusal, and the refusal is the feature.
+
+    Asserted on the two shapes that decide it: one of ours, which is rebuilt whole so the
+    subdomain toggle works, and one of Cloudflare's, which is carried over so correcting a URL
+    cannot silently re-scope the rule.
+    """
+    ours = rules.build_rule(
+        apex="klant.nl",
+        target_url="https://oud.nl",
+        status_code=301,
+        preserve_path=True,
+        preserve_query=True,
+        include_subdomains=True,
+    )
+    narrowed = rules.edited_rule(
+        ours,
+        apex="klant.nl",
+        target_url="https://nieuw.nl",
+        status_code=302,
+        preserve_path=False,
+        preserve_query=False,
+        include_subdomains=False,
+    )
+    assert rules.rule_intent(narrowed, "klant.nl") == {
+        "target_url": "https://nieuw.nl",
+        "status_code": 302,
+        "preserve_path": False,
+        "preserve_query": False,
+        "include_subdomains": False,
+    }
+
+    theirs = {**ours, "expression": 'http.host in {"klant.nl" "www.klant.nl"}', "enabled": False}
+    kept = rules.edited_rule(
+        theirs,
+        apex="klant.nl",
+        target_url="https://nieuw.nl",
+        status_code=301,
+        preserve_path=True,
+        preserve_query=True,
+        include_subdomains=False,
+    )
+    assert kept["expression"] == 'http.host in {"klant.nl" "www.klant.nl"}'
+    assert rules.rule_target(kept) == ("https://nieuw.nl", True)
+    # A rule somebody disabled on purpose stays disabled: an edit changes a destination, not a
+    # switch.
+    assert kept["enabled"] is False
+    # And nothing to keep, with nothing of ours to put there, is refused rather than guessed.
+    assert rules.edited_rule(
+        {**theirs, "expression": ""},
+        apex="klant.nl",
+        target_url="https://nieuw.nl",
+        status_code=301,
+        preserve_path=True,
+        preserve_query=True,
+        include_subdomains=True,
+    ) is None

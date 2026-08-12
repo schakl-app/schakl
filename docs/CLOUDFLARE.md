@@ -397,10 +397,10 @@ The report's `issues` are stable keys the client resolves to `cloudflare.issue.*
 | `zone_pending` / `zone_paused` | Cloudflare has the zone but is not serving it |
 | `nameservers_not_delegated` | public DNS still points elsewhere — and **only when it definitely does**, see below |
 | `redirect_not_pushed` / `redirect_missing` / `redirect_drift` | our rule was never sent / is gone / has been edited at Cloudflare |
-| `redirect_conflict` | some *other* rule on the zone redirects: another rule in the ruleset, or a legacy forwarding Page Rule |
+| `redirect_conflict` | some *other* rule on the zone redirects **and we hold one for it to beat**. With none of ours those rules are simply this domain's redirects, listed as such |
 | `origin_missing` | the rule exists and no traffic reaches it |
 | `origin_www_missing` | the apex reaches the rule and `www` does not — its own key, because `origin_missing`'s "no traffic reaches it" would be false here. Raised only while `include_subdomains` is on; with it off the rule never matches `www`, so an unproxied one is the configured state |
-| `domain_says_redirect` / `cloudflare_says_redirect` | the domain record and Cloudflare disagree — how a redirect wired outside schakl (#96) shows up, and how a hand-deleted rule does |
+| `domain_says_redirect` / `cloudflare_says_redirect` | the domain record and Cloudflare disagree — how a hand-deleted rule shows up, and how a rule schakl cannot claim (a forwarding Page Rule) does. Both read the *report*, not the row, so a check that has just moved the domain record does not raise a disagreement against the value it replaced; and an observed domain-wide rule answers `domain_says_redirect` rather than triggering it |
 | `token_error` | part of the check could not run; `unavailable` names which parts |
 
 **A finding raised for an unconnected domain has to render there.** The panel drew its issues box
@@ -438,13 +438,128 @@ there. Each half is a refusal, and each one is why this is safe to put on a clie
 - **By id, never by description** (`find_our_rule`), so a rule that vanished between the report and
   the press is a 404 rather than a stored redirect pointing at nothing.
 
-The panel offers it on the conflict row itself, and only where it can succeed: not for a Page Rule
+The panel offers it on the row itself, and only where it can succeed: not for a Page Rule
 (a different product this module cannot write) and not while we own a live rule — #253's rule that
-a control which always refuses is a broken control. The intent it submits is the redirect form's
-own fields, which now seed from `domain_redirect_url` when no rule of ours exists: that is exactly
-the inherited state, and an empty box there meant retyping a URL both sides already know.
+a control which always refuses is a broken control.
 `last_pushed_at` stays `NULL` on an adopted row — we did not push it, and that distinction is the
 feature.
+
+### An inherited redirect is a redirect, not a conflict
+
+Three things were wrong with how that state was *shown*, and they had one cause: the panel could
+describe a rule it had written and could not describe a rule it had merely found.
+
+**It did not survive the page load.** `conflicts` was computed by the check and stored nowhere, so
+a redirect made by hand in Cloudflare's dashboard was visible for exactly as long as somebody held
+the check button's answer on screen. Reload the domain and it was gone — on the cheap stored read
+this module deliberately uses, which is every ordinary page open. `cloudflare_zones` now carries
+`observed_redirects` + `redirects_observed_at`: the same **decided vs observed** split the redirect
+row already has, applied to somebody else's rules. Two properties keep it honest. It is written
+**per source** — the ruleset and the Page Rules are separate probes that fail separately, so a
+probe that ran and found nothing clears *its own* entries while one that could not run leaves its
+previous entries alone (losing a client's Page Rules to a missing token scope would be this module
+deciding that what it cannot see does not exist). And the timestamp is separate from the list,
+because "we looked and there is nothing" and "nobody has ever looked" are different sentences and
+an empty list cannot tell them apart.
+
+**It could not describe what it found.** `redirects.rule_intent` is `build_rule` run backwards:
+the intent that would have produced a live rule, read off its *shape* — the path is preserved iff
+the target is a `concat`, subdomains are included iff the expression carries the `ends_with` arm.
+That is what turns a rule into a row a person can read (*"301, pad meenemen, incl. subdomeinen"*),
+and it is the same parse that lets the adopt button post **the rule's own** values. It used to
+post whatever was typed in the form above it, so the obvious press answered
+`cloudflare_redirect_differs` until the admin hand-matched five fields to a rule they could not
+see. `None` is a real answer and the honest one: a shape we cannot express is listed, described by
+Cloudflare's own text, and offered no adopt button.
+
+**It was filed as a fault.** `redirect_conflict` fired whenever anything else on the zone
+redirected — including when schakl held nothing, which is not a conflict but simply *the domain's
+redirect*. It now fires only when we own a rule for another to beat, which is the case the
+sentence was ever true of (Cloudflare evaluates the ruleset top-down). `domain_says_redirect` is
+suppressed when an observed domain-wide rule explains it, or this feature's whole happy path would
+have shipped with a permanent warning underneath it.
+
+### A rule you can list is a rule you can change
+
+Listing an inherited redirect made it visible; it did not make it *manageable*. The only act the
+panel offered on somebody else's rule was **adopt**, and adoption is refused unless the rule is
+already exactly what schakl would have written — correct for a claim, and useless for the ordinary
+thing an agency is actually asked to do, which is *"this old domain points at the wrong place, fix
+it"*. So the two remaining acts exist, both naming the rule **by id in the path**:
+
+| | route | what it does |
+|---|---|---|
+| edit | `PUT /domains/{id}/redirect/rules/{rule_id}` | rewrites the rule at Cloudflare |
+| delete | `DELETE /domains/{id}/redirect/rules/{rule_id}` | removes it at Cloudflare |
+
+Four things about them are the design, not the implementation.
+
+**Editing does not claim.** Ownership is what adoption is for, and it carries consequences nobody
+asked for by correcting a URL: a reconcile that recreates the rule, a delete that removes it. So an
+edited rule stays "gevonden bij Cloudflare", one press from adoption if that is what is wanted.
+Where the rule *is* ours the row is kept in step — otherwise the very next check would report the
+edit we just made as drift.
+
+**Changing where a redirect goes must never change what it catches** (`redirects.edited_rule`). The
+action half is rebuilt from the intent; the `expression` is rebuilt **only where `rule_scope`
+recognises it as a shape of ours**, and otherwise carried over verbatim. Cloudflare's dashboard
+writes `http.host in {"klant.nl" "www.klant.nl"}` for the commonest rule an agency inherits — we can
+read it and cannot write it — so rebuilding that from an intent would re-scope a live client's
+redirect as a side effect of fixing its URL. Gating the *edit* on a readable whole intent instead
+would have withheld the button from exactly the rules this exists for. The rule's own description
+and its `enabled` flag are carried over for the same reason: an edit is a change of destination,
+not a signature and not a switch.
+
+**`RedirectConflict.include_subdomains` is tri-state, and that is what makes the above safe on the
+screen.** It is read from the expression alone rather than taken off `intent`, because the two come
+apart on rules that are perfectly editable — a 303 costs the whole intent and leaves a match set we
+understand exactly. Taking it from the intent hid a working checkbox, and left the edit free to
+rebuild the expression from a default nobody was shown. `null` means the panel draws no checkbox and
+says the match set is kept as it is; a control that would be silently ignored is the same bug in a
+friendlier costume.
+
+**The safety property is the lookup, not the ownership** (`_zone_rule_or_404`). The id arrives from
+outside, so it is only ever resolved inside *this zone's own redirect ruleset*: an id belonging to
+another zone, another tenant, or another product of Cloudflare's rules engine resolves to nothing
+and becomes a 404 — the call is never made on the strength of a posted string. An entry whose action
+is not `redirect` is refused. This is the same posture the DNS table has always had, where an
+inherited record was already deletable; `DELETE .../redirect` keeps its narrower rule precisely
+because it names *no* rule and so must not be free to pick one. Both routes answer with the
+refreshed report rather than with a rule, because the write has just invalidated the observation the
+caller's list was drawn from. Page Rules stay read-only: a forwarding Page Rule is a different
+product this module cannot write, and drawing a button that would always refuse is #253's mistake.
+
+### Writing another module's record off somebody else's rule
+
+A check that finds a domain-wide redirect sets `Domain.status = redirect` and `redirect_url`,
+exactly as `set_redirect` does for a rule we push — otherwise the domain list says "actief" about a
+domain that has redirected for two years. Four refusals make that safe, and each is a case that
+really happens (`_reconcile_domain_redirect`):
+
+- **Only a rule that redirects the whole domain.** `redirects.domain_wide_for` matches the whole
+  expression against a closed set of shapes — our two `host_expression` forms (normalised for
+  whitespace, redundant parentheses and the `lower(http.host)` Cloudflare's dashboard adds), plus
+  Cloudflare's own `http.host in {…}` list operator when the apex is among its members. A rule for
+  `oud.klant.nl`, or one narrowed with `and http.request.uri.path eq "/aanbieding"`, mentions the
+  apex and does not redirect the domain. **An unrecognised shape is not domain-wide**, so the
+  failure direction is always "listed, left to a human" — including for the `full_uri wildcard`
+  form, which is a known gap awaiting a look at real tenant zones.
+- **Only one candidate.** Two domain-wide rules means Cloudflare's ordering decides, and this
+  module does not evaluate filter expressions. Reported (`cloudflare_says_redirect`), never guessed.
+- **Only where the caller could have done it themselves.** `POST /domains/{id}/check` declares
+  `cloudflare.dns.read` — a *read*. Writing a domain record off the back of it would hand every
+  Cloudflare-only admin an edit permission nobody granted them, so the write is gated on
+  `ctx.can("domains.domain.write")`; without it the finding still renders and the record does not
+  move. Same best-effort shape the panel's own action uses for the public-DNS refresh.
+- **Never over our own rule**, which `set_redirect` / `adopt` / `remove` already own.
+
+The walk-back is the other half, because a flag that only ever turns on is half a mechanism (§The
+flag is two-way, one table over): when the rule is gone the domain returns to `active` — but only
+if it still says exactly what the observation put there, compared with `_norm_host`, which is the
+test `remove_redirect` already applies. A status somebody has since changed by hand is theirs.
+`domain_wide_for` and `rule_intent` deliberately disagree on the `in {…}` form: it plainly
+redirects the domain and is not a rule any intent of ours produces, so it moves the record and can
+never be adopted.
 
 ### The delegation verdict is tri-state, and half of it is not Cloudflare's to give
 
@@ -711,3 +826,14 @@ which is also the answer to #278's "decide the failure path explicitly" — the 
 half, nothing is half-applied, and a retry re-adopts the zone Cloudflare kept.
 
 Also deferred: a background sync cron (today's sync is an explicit button), and Bulk Redirects.
+
+**Writing Page Rules.** They are listed and they are not editable or deletable here. A forwarding
+Page Rule is Cloudflare's legacy product, `client.py` reads them and writes nothing, and a delete
+button on a row this module cannot act on is a control that always refuses (#253). Ending them is a
+job for Cloudflare's own dashboard until there is a reason to carry the write.
+
+**Reordering the ruleset.** Cloudflare evaluates redirect rules top-down, so *which* of two
+matching rules wins is a position, and nothing here moves one. It is reported instead
+(`redirect_conflict`, and only when schakl owns a rule for another to beat) — the same
+report-rather-than-guess posture the rest of §5 takes, and the honest one while this module cannot
+evaluate a tenant's filter expression to know whether two rules overlap at all.

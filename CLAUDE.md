@@ -324,6 +324,50 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   instruction for finishing the read, so the resume asks for `page` and nothing else — the size is
   the provider's to choose and it has already chosen — and the old error survives only for the
   endpoint that really has no page two. The
+  Its fourth sibling is about the *screen*: **a state you exist to serve must not be rendered as a
+  fault.** A redirect an agency inherits — made by hand in a client's Cloudflare dashboard, live for
+  years — arrived as an amber `redirect_conflict` box under "Aandachtspunten", beside a permanently
+  expanded empty form inviting them to make a second one, and it vanished on reload because
+  `conflicts` was computed by the check and stored nowhere. Three rules come out of fixing it. **An
+  integration that stores what it observed must store the observation, not just the verdict** —
+  `cloudflare_zones.observed_redirects` + `redirects_observed_at`, written *per source* (a probe
+  that ran and found nothing clears its own entries; one that could not run leaves its previous
+  ones, or a missing token scope silently deletes a client's Page Rules), with the timestamp
+  separate because "we looked and there is nothing" and "nobody has ever looked" are different
+  sentences an empty list cannot tell apart. **A rule you can write is a rule you can read**:
+  `redirects.rule_intent` is `build_rule` run backwards, recovering the intent from the rule's
+  *shape*, which is simultaneously what lets a row describe itself and what lets the adopt button
+  post the rule's own values — it used to post whatever was typed in the form above it, so the
+  obvious press answered `cloudflare_redirect_differs` until the admin hand-matched five fields to
+  a rule they could not see. And **an observation may move another module's record, under four
+  refusals**: only a rule matching a closed set of whole-domain expression shapes (an unrecognised
+  one is *not* domain-wide, so the failure direction is "listed, left to a human"), only one
+  candidate, only over no rule of ours, and only where the caller holds `domains.domain.write` —
+  because `POST /check` declares `cloudflare.dns.read`, and a read route that writes is an
+  escalation however useful the write is. It walks back too, and only over a value it recognises as
+  its own. Its fifth sibling finishes the thought: **a rule you can list is a rule you can change.**
+  Listing an inherited redirect made it visible and left `adopt` — refused unless the rule is
+  *already* exactly what schakl would have written — as the only act offered on it, which is right
+  for a claim and useless for the thing an agency is actually asked to do: "this old domain points
+  at the wrong place, fix it". So a rule is now named **by id in the path** and edited
+  (`PUT …/redirect/rules/{rule_id}`) or deleted (`DELETE …`) where it lives, and four rules hold it
+  up. **Editing does not claim** — ownership is what adoption is for and it carries consequences
+  (a reconcile that recreates the rule, a delete that removes it) that nobody asked for by
+  correcting a URL; where the rule *is* ours the row is kept in step, or the next check reports the
+  edit as drift. **Changing where a redirect goes must never change what it catches**
+  (`redirects.edited_rule`): the action half is rebuilt from the intent and the expression only
+  where `rule_scope` recognises a shape of ours, so Cloudflare's own
+  `http.host in {"klant.nl" "www.klant.nl"}` — the commonest inherited rule, readable and not
+  writable — is carried over verbatim instead of being silently re-scoped. Gating the *edit* on a
+  readable whole intent would have withheld it from exactly those rules, which is why
+  `RedirectConflict.include_subdomains` is **tri-state and read from the expression alone**: taken
+  off `intent` it hid a working checkbox on any rule whose status code we cannot express, and left
+  the edit rebuilding the expression from a default nobody was shown. And **the safety property is
+  the lookup, not the ownership** — the id arrives from outside, so it is resolved only inside this
+  zone's own redirect ruleset (another zone's, another tenant's, or a non-redirect rule is a 404,
+  never a call), which is the posture the DNS table always had. `DELETE …/redirect` keeps its
+  narrower "only the rule whose id we stored" precisely because it names *no* rule and so must not
+  be free to pick one. The
   registrar half is now **`oxxa`** (#296, `docs/OXXA.md`): the register sync, the nameserver
   write-back that finishes "Connect to Cloudflare", and the `app/core/registrar/` seam a second
   registrar plugs into. Written from OXXA's official API documentation — §11 bans writing an

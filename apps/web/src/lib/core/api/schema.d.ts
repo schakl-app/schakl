@@ -1342,6 +1342,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cloudflare/domains/{domain_id}/redirect/rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Edit Zone Redirect
+         * @description Change where an existing Redirect Rule sends traffic. Never changes what it matches.
+         */
+        put: operations["edit_zone_redirect_api_v1_cloudflare_domains__domain_id__redirect_rules__rule_id__put"];
+        post?: never;
+        /**
+         * Delete Zone Redirect
+         * @description Delete one Redirect Rule from this zone by id, resolved inside the zone's own ruleset.
+         */
+        delete: operations["delete_zone_redirect_api_v1_cloudflare_domains__domain_id__redirect_rules__rule_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cloudflare/domains/{domain_id}/status": {
         parameters: {
             query?: never;
@@ -14492,6 +14516,8 @@ export interface components {
             pages_links?: components["schemas"]["PagesLinkRead"][];
             redirect?: components["schemas"]["RedirectRead"] | null;
             redirect_live?: components["schemas"]["RedirectObservation"] | null;
+            /** Redirects Observed At */
+            redirects_observed_at?: string | null;
             /** Unavailable */
             unavailable?: string[];
             zone?: components["schemas"]["ZoneRead"] | null;
@@ -21724,11 +21750,17 @@ export interface components {
         };
         /**
          * RedirectConflict
-         * @description Something *else* on this zone that already redirects, or could.
+         * @description A redirect on this zone that schakl does not own.
          *
-         *     Reported rather than resolved: Cloudflare evaluates redirect rules top-down and we cannot
-         *     evaluate a tenant's filter expression to know whether it catches this hostname. Naming it
-         *     lets the admin decide; silently appending our rule below it would look like it worked.
+         *     Named `conflict` for the case it was written for — Cloudflare evaluates redirect rules
+         *     top-down, so a tenant rule above ours silently wins — but that is only what it *is* when we
+         *     hold a rule too. With none of ours, these are simply the redirects this domain has, and the
+         *     panel lists them as such: the state an agency inherits is the state this module exists to
+         *     serve, and rendering it as a fault taught people to ignore the box it was in.
+         *
+         *     Either way it is reported rather than resolved. We cannot evaluate a tenant's filter
+         *     expression to know what it catches, so naming it lets the admin decide; silently appending
+         *     our rule below it would look like it worked.
          */
         RedirectConflict: {
             /**
@@ -21742,12 +21774,61 @@ export interface components {
              */
             detail: string;
             /**
+             * Domain Wide
+             * @default false
+             */
+            domain_wide: boolean;
+            /** Include Subdomains */
+            include_subdomains?: boolean | null;
+            intent?: components["schemas"]["RedirectIntent"] | null;
+            /**
              * Kind
              * @enum {string}
              */
             kind: "redirect_rule" | "page_rule";
+            /** Preserve Path */
+            preserve_path?: boolean | null;
+            /** Preserve Query */
+            preserve_query?: boolean | null;
             /** Rule Id */
             rule_id?: string | null;
+            /** Status Code */
+            status_code?: number | null;
+            /** Target Url */
+            target_url?: string | null;
+        };
+        /**
+         * RedirectIntent
+         * @description What the tenant wants the redirect to *be* — the fields a rule is built from.
+         *
+         *     Shared by :class:`RedirectWrite` and :class:`RedirectAdopt` rather than inherited from one
+         *     by the other, because the difference between them is not a field: one writes the rule and
+         *     the other only claims one. ``ensure_origin`` belongs to the first and would be a lie on the
+         *     second, which touches Cloudflare not at all.
+         */
+        RedirectIntent: {
+            /**
+             * Include Subdomains
+             * @default true
+             */
+            include_subdomains: boolean;
+            /**
+             * Preserve Path
+             * @default true
+             */
+            preserve_path: boolean;
+            /**
+             * Preserve Query
+             * @default true
+             */
+            preserve_query: boolean;
+            /**
+             * Status Code
+             * @default 301
+             */
+            status_code: number;
+            /** Target Url */
+            target_url: string;
         };
         /**
          * RedirectObservation
@@ -21801,6 +21882,46 @@ export interface components {
              * Format: uuid
              */
             zone_id: string;
+        };
+        /**
+         * RedirectRuleEdit
+         * @description A new intent for a Redirect Rule the zone already has — ours or the tenant's.
+         *
+         *     The rule is named by **id in the path**, so this carries only what the rule should become.
+         *     Adoption's "only if it already matches exactly" refusal is deliberately absent: that guard
+         *     protects a *claim* about a rule nobody is changing, and this endpoint's whole purpose is to
+         *     change one. What replaces it is narrower and lives in ``redirects.edited_rule`` — a match set
+         *     schakl cannot write is carried over untouched, so an edit moves the destination and never the
+         *     set of hostnames it answers for.
+         *
+         *     No ``ensure_origin``. That flag exists because a *newly created* rule on a zone with no
+         *     proxied record is inert; a rule already in the ruleset is one traffic is already reaching, and
+         *     a checkbox offering to fix a problem this path does not create would be a control with nothing
+         *     to do. The status check still raises ``origin_missing`` where it is genuinely wrong.
+         */
+        RedirectRuleEdit: {
+            /**
+             * Include Subdomains
+             * @default true
+             */
+            include_subdomains: boolean;
+            /**
+             * Preserve Path
+             * @default true
+             */
+            preserve_path: boolean;
+            /**
+             * Preserve Query
+             * @default true
+             */
+            preserve_query: boolean;
+            /**
+             * Status Code
+             * @default 301
+             */
+            status_code: number;
+            /** Target Url */
+            target_url: string;
         };
         /**
          * RedirectWrite
@@ -29654,6 +29775,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RedirectRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_zone_redirect_api_v1_cloudflare_domains__domain_id__redirect_rules__rule_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RedirectRuleEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainStatusRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_zone_redirect_api_v1_cloudflare_domains__domain_id__redirect_rules__rule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_id: string;
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainStatusRead"];
                 };
             };
             /** @description Validation Error */

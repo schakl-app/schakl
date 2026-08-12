@@ -202,6 +202,31 @@ class CloudflareZone(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     name_servers: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     original_name_servers: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
+    #: Every redirect on this zone that schakl does **not** own, as the last successful check saw
+    #: it: the other rules in the dynamic-redirect ruleset, plus any legacy forwarding Page Rule.
+    #: The table's own rule (see the module docstring) applied to somebody else's rules — this is
+    #: purely *observed*, and no part of it is ever pushed anywhere.
+    #:
+    #: It exists because ``GET /domains/{id}/status`` reads stored rows only, so before this the
+    #: one state the module exists to serve — an agency inheriting a client's Cloudflare, where
+    #: the redirect is already live and made by hand — was invisible on every page load and
+    #: reappeared only for as long as somebody held the check button's answer on screen.
+    #:
+    #: Each entry is ``{kind, rule_id, description, detail, intent, domain_wide}``; ``intent`` is
+    #: :func:`redirects.rule_intent`'s answer or ``None`` when the rule's shape is not one we can
+    #: express, which is what decides whether the panel may offer to adopt it.
+    observed_redirects: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    #: When that list was last **read** — which is not the same as when it was last non-empty.
+    #: ``NULL`` means nobody has ever looked, and an empty list under a timestamp means we looked
+    #: and there is nothing there. The distinction is the one §Token scopes already draws between
+    #: *niet toegekend* and *niet gecontroleerd*, and without it an empty list would read as "no
+    #: redirects" on every zone nobody has checked yet.
+    redirects_observed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     #: The schakl domain this zone is for. NULL = a zone in the account that no domain record
     #: matches (yet) — listed, never hidden: an unknown zone in a client's account is exactly
     #: the thing an agency wants to see.
