@@ -10,10 +10,13 @@
    * selection, between the list's controls and the rows themselves.
    *
    * It renders only while the mode is on (`BulkToggle`), so a list nobody is editing is exactly
-   * as tall as it was.
+   * as tall as it was — and while it *is* on it **sticks to the top** (#331). Everything here
+   * describes a decision being made further down a 200-row page: the count, the scope, and each
+   * action's `eligible` suffix. Scrolled out of sight, the user ticks rows and only finds out at
+   * the top of the page whether they ticked eleven or twelve.
    */
   import { page } from "$app/state";
-  import { Pencil, Trash2 } from "@lucide/svelte";
+  import { Pencil, Trash2, X } from "@lucide/svelte";
 
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
@@ -24,7 +27,7 @@
 
   let {
     selecting = false,
-    selected = [],
+    selected = $bindable([]),
     fields = [],
     writePermission,
     deletePermission,
@@ -49,20 +52,53 @@
     eligible !== undefined && eligible < count ? ` (${eligible})` : "";
 
   const button =
-    "inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border" +
-    " bg-surface-raised px-3 py-1.5 text-sm text-text-muted" +
+    "inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg" +
+    " border border-border bg-surface-raised px-3 py-1.5 text-sm text-text-muted" +
     " disabled:cursor-not-allowed disabled:opacity-40";
 </script>
 
 {#if selecting}
-  <div
-    class="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-brand/30 bg-brand/5 px-3 py-2"
-  >
-    <span class="text-xs font-medium text-text">{t("table.selected", { count })}</span>
-    <span class="text-xs text-text-muted">· {t("table.selection_page_only")}</span>
+  <!--
+    What sticks is the **wrapper**, not the tinted bar. The bar's own background is `bg-brand/5`
+    and translucent, so rows would scroll visibly through it; the wrapper is the page's own opaque
+    ground, and its padding is what stops a sliver of row showing above the rounded frame. The
+    negative top margin gives that padding back to the flow, so an unstuck bar sits exactly where
+    it used to. `z-20` is over the table and under `ActionsMenu`'s panel (`z-30`), which measures
+    itself against the viewport for precisely this kind of container.
+  -->
+  <div class="sticky top-0 z-20 -mt-2 bg-surface pb-3 pt-2" data-testid="bulk-bar">
+    <!--
+      One line below `sm`: stuck to the top with six actions, a wrapping strip eats a third of a
+      phone. So the actions scroll sideways instead of stacking, and only the strip scrolls — the
+      count and the way out never leave the screen.
+    -->
+    <div
+      class="flex items-center gap-2 rounded-xl border border-brand/30 bg-brand/5 px-3 py-2 sm:flex-wrap"
+    >
+      <span class="shrink-0 text-xs font-medium text-text" data-testid="bulk-count"
+        >{t("table.selected", { count })}</span
+      >
+      {#if count > 0}
+        <!-- The discoverable way out. The ✎ also drops the selection, but it reads as "leave this
+             mode", and someone who ticked eleven rows by mistake wants a control that says only
+             "forget what I picked" — reachable now that the strip does not scroll away. -->
+        <button
+          type="button"
+          class="inline-flex shrink-0 cursor-pointer items-center rounded p-0.5 text-text-muted hover:text-text"
+          data-testid="bulk-clear"
+          onclick={() => (selected = [])}
+          title={t("table.selection_clear")}
+          aria-label={t("table.selection_clear")}
+        >
+          <X size={13} />
+        </button>
+      {/if}
+      <span class="hidden shrink-0 text-xs text-text-muted sm:inline"
+        >· {t("table.selection_page_only")}</span
+      >
 
-    <div class="ml-auto flex flex-wrap items-center gap-2">
-      <!-- Disabled until something is ticked, with the reason in the title: in this mode the
+      <div class="ml-auto flex min-w-0 items-center gap-2 overflow-x-auto sm:flex-wrap">
+        <!-- Disabled until something is ticked, with the reason in the title: in this mode the
            buttons are the point, so hiding them until a row is picked would leave the user in a
            mode whose purpose is invisible.
 
@@ -70,61 +106,63 @@
            load-bearing: an action whose reason is "none of these qualify" is *also* ineligible
            over an empty selection, so preferring the reason would answer the wrong question
            first — you would be told why the rows you have not picked yet do not qualify. -->
-      {#each items as item (item.label)}
-        {@const Icon = item.icon}
-        {@const blocked = count === 0 || item.eligible === 0 || !!item.disabledReason}
-        {@const tone = item.danger
-          ? "hover:border-red-400 hover:text-red-600 dark:hover:border-red-500 dark:hover:text-red-400"
-          : "hover:border-brand hover:text-brand"}
-        {#if item.href && !blocked}
-          <!-- A download is a navigation, so it is a link: middle-click and "save as" work, and
+        {#each items as item (item.label)}
+          {@const Icon = item.icon}
+          {@const blocked = count === 0 || item.eligible === 0 || !!item.disabledReason}
+          {@const reason = count === 0 ? t("bulk.select_first") : item.disabledReason}
+          {@const tone = item.danger
+            ? "hover:border-red-400 hover:text-red-600 dark:hover:border-red-500 dark:hover:text-red-400"
+            : "hover:border-brand hover:text-brand"}
+          {#if item.href && !blocked}
+            <!-- A download is a navigation, so it is a link: middle-click and "save as" work, and
                there is no handler pretending to be one. `data-sveltekit-reload` for the reason
                `ImpexBar` gives — the target is a download endpoint, never a client-side route.
                Blocked falls through to the button below: a disabled anchor does not exist, and
                an <a> that refuses on click is #253's "link that always refuses". -->
-          <a href={item.href} class="{button} {tone}" data-sveltekit-reload>
-            {#if Icon}<Icon size={14} />{/if}
-            {item.label}{partial(item.eligible)}
-          </a>
-        {:else}
+            <a href={item.href} class="{button} {tone}" data-sveltekit-reload>
+              {#if Icon}<Icon size={14} />{/if}
+              {item.label}{partial(item.eligible)}
+            </a>
+          {:else}
+            <button
+              type="button"
+              class="{button} {tone}"
+              disabled={blocked}
+              title={reason}
+              onclick={item.onclick}
+            >
+              {#if Icon}<Icon size={14} />{/if}
+              {item.label}{partial(item.eligible)}
+            </button>
+          {/if}
+        {/each}
+
+        {#if canEdit}
           <button
             type="button"
-            class="{button} {tone}"
-            disabled={blocked}
-            title={count === 0 ? t("bulk.select_first") : item.disabledReason}
-            onclick={item.onclick}
+            class="{button} hover:border-brand hover:text-brand"
+            disabled={count === 0}
+            title={count === 0 ? t("bulk.select_first") : undefined}
+            onclick={() => (showEdit = true)}
           >
-            {#if Icon}<Icon size={14} />{/if}
-            {item.label}{partial(item.eligible)}
+            <Pencil size={14} />
+            {t("bulk.edit")}
           </button>
         {/if}
-      {/each}
 
-      {#if canEdit}
-        <button
-          type="button"
-          class="{button} hover:border-brand hover:text-brand"
-          disabled={count === 0}
-          title={count === 0 ? t("bulk.select_first") : undefined}
-          onclick={() => (showEdit = true)}
-        >
-          <Pencil size={14} />
-          {t("bulk.edit")}
-        </button>
-      {/if}
-
-      {#if canDelete}
-        <button
-          type="button"
-          class="{button} hover:border-red-400 hover:text-red-600 dark:hover:border-red-500 dark:hover:text-red-400"
-          disabled={count === 0}
-          title={count === 0 ? t("bulk.select_first") : undefined}
-          onclick={() => (confirmDelete = true)}
-        >
-          <Trash2 size={14} />
-          {t("common.delete")}
-        </button>
-      {/if}
+        {#if canDelete}
+          <button
+            type="button"
+            class="{button} hover:border-red-400 hover:text-red-600 dark:hover:border-red-500 dark:hover:text-red-400"
+            disabled={count === 0}
+            title={count === 0 ? t("bulk.select_first") : undefined}
+            onclick={() => (confirmDelete = true)}
+          >
+            <Trash2 size={14} />
+            {t("common.delete")}
+          </button>
+        {/if}
+      </div>
     </div>
   </div>
 {/if}

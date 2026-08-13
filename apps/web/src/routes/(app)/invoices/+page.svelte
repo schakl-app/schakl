@@ -365,7 +365,7 @@
   <p class="mb-3 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
 {/if}
 
-<BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
+<BulkBar {selecting} bind:selected={bulkSelected} {...bulkConfig} />
 
 <BulkResult result={form?.bulkResult} />
 
@@ -378,7 +378,7 @@
   actions={rowActions}
   {mobileRow}
   empty={emptyState}
-  selectable={selecting}
+  {selecting}
   bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}

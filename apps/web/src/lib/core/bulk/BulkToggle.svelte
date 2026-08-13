@@ -58,6 +58,7 @@
       {selecting
       ? 'border-brand bg-brand/10 text-brand'
       : 'border-border text-text-muted hover:border-brand hover:text-brand'}"
+    data-testid="bulk-toggle"
     aria-pressed={selecting}
     aria-label={selecting ? t("bulk.select_done") : t("bulk.select")}
     title={selecting ? t("bulk.select_done") : t("bulk.select")}

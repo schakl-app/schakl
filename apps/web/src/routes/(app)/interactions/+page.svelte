@@ -731,7 +731,7 @@
   </p>
 {/snippet}
 
-<BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
+<BulkBar {selecting} bind:selected={bulkSelected} {...bulkConfig} />
 
 <!-- The shared banner, reading this module's own verbs: "6 goedgekeurd · 2 overgeslagen" rather
      than the generic "bijgewerkt". Same component every list uses, one namespace over — and
@@ -768,7 +768,7 @@
   {empty}
   {groups}
   groupBy={timelineOrder ? (item) => localDay(item.occurred_at) : undefined}
-  selectable={selecting}
+  {selecting}
   bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}

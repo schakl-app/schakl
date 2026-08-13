@@ -526,7 +526,7 @@
   <p class="mb-3 text-sm text-text-muted">{t("contacts.groups_page_only")}</p>
 {/if}
 
-<BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
+<BulkBar {selecting} bind:selected={bulkSelected} {...bulkConfig} />
 
 <BulkResult result={form?.bulkResult} />
 
@@ -545,7 +545,7 @@
   actions={canWrite || canDelete ? rowActions : undefined}
   {mobileRow}
   empty={emptyState}
-  selectable={selecting}
+  {selecting}
   bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}

@@ -47,6 +47,7 @@
   "table.ungrouped": "Overig",
   "table.selected": "{count} geselecteerd",
   "table.selection_page_only": "De selectie geldt alleen voor deze pagina.",
+  "table.selection_clear": "Selectie wissen",
   "table.paging.label": "Paginering",
   "table.paging.range": "{from}–{to} van {total}",
   "table.paging.empty": "Geen resultaten",

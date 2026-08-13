@@ -47,6 +47,7 @@
   "table.ungrouped": "Other",
   "table.selected": "{count} selected",
   "table.selection_page_only": "Selection covers this page only.",
+  "table.selection_clear": "Clear selection",
   "table.paging.label": "Pagination",
   "table.paging.range": "{from}–{to} of {total}",
   "table.paging.empty": "No results",

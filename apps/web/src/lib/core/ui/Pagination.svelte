@@ -114,6 +114,7 @@
       <select
         value={limit}
         onchange={chooseSize}
+        data-testid="page-size"
         aria-label={t("table.paging.size")}
         class="rounded-lg border border-border bg-surface-raised px-2 py-1 text-sm text-text outline-none focus:border-brand"
       >

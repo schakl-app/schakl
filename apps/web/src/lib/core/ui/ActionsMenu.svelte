@@ -96,7 +96,10 @@
   }}
 />
 
-<div class="relative shrink-0" bind:this={root}>
+<!-- `data-actions-menu` is how a container withdraws a record menu it did not render: `DataTable`
+     hides the ⋯ inside a phone row while a bulk selection is live (#332), and that row is the
+     page's own snippet, not markup the table can put an `{#if}` around. -->
+<div class="relative shrink-0" data-actions-menu bind:this={root}>
   <button
     type="button"
     class={triggerClass}

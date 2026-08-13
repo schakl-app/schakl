@@ -598,7 +598,7 @@
   <p class="p-6 text-sm text-text-muted">{t("subscriptions.empty")}</p>
 {/snippet}
 
-<BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
+<BulkBar {selecting} bind:selected={bulkSelected} {...bulkConfig} />
 
 <BulkResult result={form?.bulkResult} />
 
@@ -611,7 +611,7 @@
   actions={rowActions}
   {mobileRow}
   empty={emptyState}
-  selectable={selecting}
+  {selecting}
   bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}

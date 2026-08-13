@@ -361,7 +361,7 @@
   </div>
 </div>
 
-<BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
+<BulkBar {selecting} bind:selected={bulkSelected} {...bulkConfig} />
 
 <BulkResult result={form?.bulkResult} />
 
@@ -387,7 +387,7 @@
   actions={canWrite || canDelete ? rowActions : undefined}
   {mobileRow}
   empty={emptyState}
-  selectable={selecting}
+  {selecting}
   bind:selected={bulkSelected}
   onsort={table.onSort}
   onresize={table.onResize}

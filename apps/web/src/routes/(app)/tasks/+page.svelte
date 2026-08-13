@@ -558,7 +558,7 @@
   <BulkToggle bind:selecting bind:selected={bulkSelected} {...bulkConfig} />
 </div>
 
-<BulkBar {selecting} selected={bulkSelected} {...bulkConfig} />
+<BulkBar {selecting} bind:selected={bulkSelected} {...bulkConfig} />
 
 <BulkResult result={form?.bulkResult} />
 
@@ -573,7 +573,7 @@
   actions={canDelete ? rowActions : undefined}
   {mobileRow}
   {empty}
-  selectable={selecting}
+  {selecting}
   bind:selected={bulkSelected}
   oncollapse={table.onCollapse}
   onsort={table.onSort}

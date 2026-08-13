@@ -393,6 +393,44 @@
     the table down mid-gesture, walking the rows away from the cursor on a list you tick
     top-down; and a permanently visible checkbox gutter made every reader pay for a writer's
     feature.
+  - **A tick lives exactly as long as its row is on screen** (#330). `DataTable` used to empty the
+    whole selection whenever `rows` changed *identity*, which is every load of the same route and
+    not every change of the row set — so the ticks were thrown away by things that are not a
+    different set at all. Switching the page size from 25 to 100 lost twelve of them while all
+    twelve rows stayed on screen; so did a `reloadOn` column toggle and any `invalidateAll()`
+    raised by something else on the page, and since the reset wrote through a `$bindable` the
+    page's own selection was emptied without the page ever hearing about it. Worse, the one
+    gesture that would let a bulk action reach past a screenful — raising the page size — was
+    exactly the gesture that threw the selection away. **Intersecting** with the rows on screen
+    says the same thing honestly and needs no bookkeeping about *why* they changed: a filter drops
+    what vanished, page 2 drops page 1's, 25 → 100 drops nothing, and a bulk delete that landed
+    drops precisely the rows it removed. The scope sentence beside the count ("De selectie geldt
+    alleen voor deze pagina") is then true rather than approximately true — and it stays per page
+    deliberately, because the API's `MAX_BULK_IDS` is 200 *because* that is the largest page the
+    pager offers: a selection spanning pages would buy nothing `?size=200` does not, and 422 past
+    it. The ✕ beside the count is the way to drop a selection without leaving the mode.
+  - **A control that describes a selection stays on screen while the selection is being made**
+    (#331). On a 100- or 200-row page you scroll down to pick rows, and everything that tells you
+    what you are doing — the count, the scope, each action's `eligible` suffix — was above the
+    fold at the moment it was being decided; you ticked, scrolled back up, and found out there
+    whether you had ticked eleven or twelve. The strip is `sticky` while the mode is on, and three
+    details are the whole of it: what sticks is an **opaque wrapper**, because the bar's own
+    `bg-brand/5` would smear the rows scrolling through it; it sits at `z-20`, over the table and
+    under `ActionsMenu`'s `fixed` panel; and below `sm` the actions **scroll sideways rather than
+    wrap**, because a wrapping strip stuck to the top of a phone eats a third of the screen. A
+    list nobody is editing is unaffected — no bar, and the first row is exactly where it was.
+  - **Two controls that look alike must not have different scopes** (#332). With twelve rows
+    ticked, the strip's Verwijderen meant twelve and every row's ⋯ Verwijderen still meant one,
+    with nothing on screen to tell them apart and the confirm naming a single record only *after*
+    the click. Both mistakes were available, including the expensive one: ticking twelve, opening
+    the ⋯ on one of them, and deleting a single client while believing you deleted twelve. So the
+    record menu is **withdrawn while the rows are being picked** — there is one control at a time,
+    and it is the one that describes what you picked. "Being picked" is the mode where a list has
+    one and a live tick where it does not, so the permanently selectable lists (the uren report,
+    the two leave rosters) keep their menus right up to the moment they would become ambiguous.
+    The trailing cell is held open rather than dropped, so no column reflows; and because the
+    phone row is the *page's* own snippet, `DataTable` hides its ⋯ with one rule against
+    `ActionsMenu`'s `data-actions-menu` marker rather than nine `{#if}`s that would drift apart.
   - **A bulk action says what it will actually do, and reports what it did** (#299). A selection
     is rarely uniform — the interacties list mixes still-pending emails with reviewed ones, and
     someone else's mailbox with your own — so each button acts on **its own eligible
