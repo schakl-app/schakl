@@ -142,6 +142,33 @@ want is usually the one you just navigated into, not one visible in the listing)
   `folder_changed` / `folder_cleared`), because "whose documents now live where" is exactly the
   kind of fact §16 exists for.
 
+**Every record a folder can hang off must have a way to get one, and an upload is not a way**
+(#328). `DRIVE_ENTITY_TYPES` has always included `task` and the model was ready for it — the
+unique index, `_ENTITY_TABLES`, `DriveLinkCreate` — but none of the three routes to a folder
+accepted one: `POST /provision` 422'd, the picker was rendered only by the client panel, and the
+entity panel gated its two buttons on `entityType === "project"`. So a task's `rootFolderId`
+always fell back to the project's folder, and a file uploaded from a task's panel landed among
+everything that project had ever produced. Two halves, and both generalise.
+
+- **A parent is a record, not a folder id, and the chain is walked at execution time.**
+  `drive_folder_jobs.parent_entity_type` says what `parent_entity_id` names (`NULL` reads as
+  `company`, which is what every pre-#328 row means and what an older replica keeps writing
+  mid-rollout). `_parent_folder_id` then walks task → project → client at *worker* time rather
+  than emit time, because the parent may acquire a folder while the job sits in the outbox — and
+  a project that never got one is not a dead end, it is the client's folder, exactly where the
+  panel already sends the browser. Auto-provisioning still covers only companies and projects:
+  tasks are numerous and short-lived, so a task's folder is always somebody pressing the button.
+- **An upload attaches to the record it was uploaded from.** `DriveBrowser` minted a resumable
+  session, PUT the bytes, and refreshed the listing — it never wrote a `DriveLink`, though it
+  already held `(entity_type, entity_id)` and passed them to `?/linkDriveFile` twelve lines
+  below. **The listing is live and the link list is what survives the page**, so the link is
+  unconditional: "it landed in this record's own folder" and "this record has this file" are
+  different facts, and only the second one is still true tomorrow. It was never task-specific —
+  a company or project upload was equally unattached, just less visibly so.
+  A refusal here reports *the link* failing (`errors.google_drive_link_failed`), never the
+  upload: the bytes are in Drive by then, and saying otherwise sends someone hunting for a
+  problem that does not exist.
+
 Every Drive surface is **entity-addressed** — `(entity_type, entity_id)` comes from the caller —
 so each goes through `entity_visible` (CLAUDE.md §15's failure mode (4)). Holding
 `google.drive.read` is not the same as being allowed to see *that* client's folder, whose name is

@@ -11,6 +11,12 @@
    * lazily, when the browser opens, and only when the project has no folder of its own — the
    * panel's SSR load stays one call (docs/PERFORMANCE.md).
    *
+   * A **task** gets the same two controls (#328). It used to get only a sentence saying where
+   * its uploads had landed, which was the whole bug: with no route to a folder of its own, a
+   * task's files sat in the project's folder among everything that project ever produced.
+   * Auto-provisioning stays off for tasks — numerous and short-lived — so this button is the
+   * only way one appears, exactly as it is for a project.
+   *
    * **Host contract:** `?/linkDriveFile`, `?/unlinkDriveFile`, `?/provisionDriveFolder`
    * (spread `driveActions`).
    */
@@ -114,10 +120,24 @@
   }
 
   const rootFolderId = $derived(ownFolder?.drive_file_id ?? parentFolder?.drive_file_id ?? null);
-  // The client-folder actions (create a project folder / work in the client folder) only make
-  // sense on a project sitting in its client's folder. A task just gets told where it landed.
-  const showClientActions = $derived(
-    !ownFolder && parentFolderKind === "client" && panel.entityType === "project",
+  // A record with no folder of its own, browsing somebody else's: say whose, and offer the two
+  // ways out. Both halves are the same for a project sitting in its client's folder and a task
+  // sitting in its project's — only the wording differs, so only the wording branches.
+  const showParentActions = $derived(!ownFolder && parentFolder !== null);
+  const createFolderLabel = $derived(
+    panel.entityType === "task"
+      ? t("google.drive.create_task_folder")
+      : t("google.drive.create_project_folder"),
+  );
+  const adoptFolderLabel = $derived(
+    parentFolderKind === "project"
+      ? t("google.drive.work_in_project_folder")
+      : t("google.drive.work_in_client_folder"),
+  );
+  const parentFolderLabel = $derived(
+    parentFolderKind === "project"
+      ? t("google.drive.in_project_folder", { name: parentFolder?.name ?? "" })
+      : t("google.drive.in_client_folder", { name: parentFolder?.name ?? "" }),
   );
 </script>
 
@@ -125,14 +145,13 @@
 
 {#if canWrite}
   {#if browsing}
-    {#if showClientActions && parentFolder}
-      <!-- A project starting in the client's folder: make the two sensible next steps one click. -->
+    {#if showParentActions && parentFolder}
+      <!-- Say where the browser landed — so it's clear it isn't at the shared-drive root (#150)
+           — and make the two sensible next steps one click each. -->
       <div class="mt-3 flex flex-wrap items-center gap-2 text-sm">
-        <span class="text-text-muted">
-          {t("google.drive.in_client_folder", { name: parentFolder.name })}
-        </span>
+        <span class="text-text-muted">{parentFolderLabel}</span>
         <form method="POST" action="?/provisionDriveFolder" use:enhance={busy.wrap("provision")}>
-          <input type="hidden" name="entity_type" value="project" />
+          <input type="hidden" name="entity_type" value={panel.entityType} />
           <input type="hidden" name="entity_id" value={context.entityId} />
           <Button
             variant="secondary"
@@ -140,28 +159,20 @@
             loading={busy.is("provision")}
             disabled={busy.active}
           >
-            {t("google.drive.create_project_folder")}
+            {createFolderLabel}
           </Button>
         </form>
-        <!-- Adopting the client's folder *is* giving this project its folder — the same act
-             the picker performs, so it takes the same route (`?/setDriveFolder`). -->
+        <!-- Adopting the folder we're standing in *is* giving this record its folder — the same
+             act the picker performs, so it takes the same route (`?/setDriveFolder`). -->
         <form method="POST" action="?/setDriveFolder" use:enhance={busy.wrap("link")}>
-          <input type="hidden" name="entity_type" value="project" />
+          <input type="hidden" name="entity_type" value={panel.entityType} />
           <input type="hidden" name="entity_id" value={context.entityId} />
           <input type="hidden" name="drive_file_id" value={parentFolder.drive_file_id} />
           <Button variant="secondary" size="xs" loading={busy.is("link")} disabled={busy.active}>
-            {t("google.drive.work_in_client_folder")}
+            {adoptFolderLabel}
           </Button>
         </form>
       </div>
-    {:else if !ownFolder && parentFolder && panel.entityType === "task"}
-      <!-- A task with no folder of its own: say where it landed — the project's folder, else the
-           client's — so it's clear the browser isn't at the shared-drive root (#150). -->
-      <p class="mt-3 text-sm text-text-muted">
-        {parentFolderKind === "project"
-          ? t("google.drive.in_project_folder", { name: parentFolder.name })
-          : t("google.drive.in_client_folder", { name: parentFolder.name })}
-      </p>
     {/if}
     <div class="mt-3">
       {#key rootFolderId}

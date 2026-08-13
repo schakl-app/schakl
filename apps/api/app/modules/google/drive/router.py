@@ -88,7 +88,10 @@ class DriveFolder(BaseModel):
 
 
 class DriveProvisionRequest(BaseModel):
-    entity_type: str = Field(..., pattern="^(company|project)$")
+    #: Every entity a Drive folder can hang off (#328). Auto-provisioning still covers only
+    #: companies and projects — tasks are numerous and short-lived, so a task's folder is
+    #: always somebody pressing the button on the panel.
+    entity_type: str = Field(..., pattern="^(company|project|task)$")
     entity_id: uuid.UUID
 
 

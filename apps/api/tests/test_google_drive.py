@@ -909,3 +909,242 @@ async def test_provision_refuses_a_second_folder(client_for, monkeypatch) -> Non
         )
         assert response.status_code == 409, response.text
         assert response.json()["error"]["code"] == "google_drive_folder_exists"
+
+
+# --------------------------------------------------------------------------- #
+# A task's own folder (#328): on demand only, nested under its project's folder,
+# else its client's — the same walk the panel already sends the browser down.
+# --------------------------------------------------------------------------- #
+async def _company_project_task(client, headers) -> tuple[dict, dict, dict]:
+    company = (
+        await client.post("/api/v1/companies", json={"name": "Klant BV"}, headers=headers)
+    ).json()
+    project = (
+        await client.post(
+            "/api/v1/projects",
+            json={"name": "Site", "company_id": company["id"]},
+            headers=headers,
+        )
+    ).json()
+    task = (
+        await client.post(
+            "/api/v1/tasks",
+            json={"title": "Logo aanleveren", "project_id": project["id"]},
+            headers=headers,
+        )
+    ).json()
+    return company, project, task
+
+
+async def test_task_folder_is_provisioned_under_the_project_folder(
+    client_for, monkeypatch
+) -> None:
+    """The route accepts ``task`` at all (it used to 422), and the worker nests the new folder
+    inside the project's — not in the org root, where it would be indistinguishable from
+    everything else the agency has ever made."""
+    t = await make_tenant("gdrive-taskfolder")
+    await _seed(t, automation=True)
+    headers = await auth_cookie(t.user)
+
+    async def _quiet_enqueue(function: str, *args, **kwargs) -> None:  # noqa: ARG001
+        return None
+
+    monkeypatch.setattr("app.core.jobs.enqueue", _quiet_enqueue)
+
+    async with client_for(t.host) as c:
+        _, project, task = await _company_project_task(c, headers)
+        # The project has its own folder; the task has none.
+        monkeypatch.setattr(
+            "app.modules.google.drive.service.acting_as",
+            _stub_acting_as(_StubClient([("GET", _folder_meta("proj-folder", "Site"))])),
+        )
+        assert (
+            await c.put(
+                "/api/v1/google/drive/folder",
+                json={
+                    "entity_type": "project",
+                    "entity_id": project["id"],
+                    "drive_file_id": "proj-folder",
+                },
+                headers=headers,
+            )
+        ).status_code == 200
+
+        queued = await c.post(
+            "/api/v1/google/drive/provision",
+            json={"entity_type": "task", "entity_id": task["id"]},
+            headers=headers,
+        )
+        assert queued.status_code == 202, queued.text
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        from sqlalchemy import select
+
+        job = (
+            await session.execute(
+                select(DriveFolderJob).where(DriveFolderJob.entity_type == "task")
+            )
+        ).scalar_one()
+        # The parent is the *record*, resolved at emit; its folder is resolved below.
+        assert job.parent_entity_type == "project"
+        assert str(job.parent_entity_id) == project["id"]
+        assert job.name == "Logo aanleveren"
+
+        stub = _StubClient(
+            [
+                ("GET", _StubResponse(200, {"files": []})),
+                (
+                    "POST",
+                    _StubResponse(
+                        200,
+                        {
+                            "id": "task-folder",
+                            "name": "Logo aanleveren",
+                            "webViewLink": "https://drive.google.com/drive/folders/task-folder",
+                        },
+                    ),
+                ),
+            ]
+        )
+        monkeypatch.setattr("app.modules.google.drive.service.acting_as", _stub_acting_as(stub))
+        await provision_folder(session, t.org, job)
+
+        assert stub.call_kwargs[-1]["json"]["parents"] == ["proj-folder"]
+        link = (
+            await session.execute(
+                select(DriveLink).where(DriveLink.entity_type == "task")
+            )
+        ).scalar_one()
+        assert link.drive_file_id == "task-folder" and link.is_root is True
+        assert str(link.entity_id) == task["id"]
+        await session.commit()
+
+
+async def test_task_folder_falls_back_to_the_client_folder(client_for, monkeypatch) -> None:
+    """A project that never got a folder of its own is not a dead end: the client's folder is
+    the next honest answer, and it is where the panel's browser already opens."""
+    t = await make_tenant("gdrive-taskfallback")
+    await _seed(t, automation=True)
+    headers = await auth_cookie(t.user)
+
+    async def _quiet_enqueue(function: str, *args, **kwargs) -> None:  # noqa: ARG001
+        return None
+
+    monkeypatch.setattr("app.core.jobs.enqueue", _quiet_enqueue)
+
+    async with client_for(t.host) as c:
+        company, _project, task = await _company_project_task(c, headers)
+        monkeypatch.setattr(
+            "app.modules.google.drive.service.acting_as",
+            _stub_acting_as(_StubClient([("GET", _folder_meta("klant-folder", "Klant BV"))])),
+        )
+        assert (
+            await c.put(
+                "/api/v1/google/drive/folder",
+                json={
+                    "entity_type": "company",
+                    "entity_id": company["id"],
+                    "drive_file_id": "klant-folder",
+                },
+                headers=headers,
+            )
+        ).status_code == 200
+        assert (
+            await c.post(
+                "/api/v1/google/drive/provision",
+                json={"entity_type": "task", "entity_id": task["id"]},
+                headers=headers,
+            )
+        ).status_code == 202
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        from sqlalchemy import select
+
+        job = (
+            await session.execute(
+                select(DriveFolderJob).where(DriveFolderJob.entity_type == "task")
+            )
+        ).scalar_one()
+        stub = _StubClient(
+            [
+                ("GET", _StubResponse(200, {"files": []})),
+                ("POST", _StubResponse(200, {"id": "task-folder", "name": "Logo aanleveren"})),
+            ]
+        )
+        monkeypatch.setattr("app.modules.google.drive.service.acting_as", _stub_acting_as(stub))
+        await provision_folder(session, t.org, job)
+        await session.commit()
+        assert stub.call_kwargs[-1]["json"]["parents"] == ["klant-folder"]
+
+
+async def test_task_provision_is_tenant_scoped(client_for, monkeypatch) -> None:
+    """Every Drive surface is entity-addressed (§15's failure mode 4): another org's task id
+    answers 404, and no job is written for it."""
+    a = await make_tenant("gdrive-task-iso-a")
+    b = await make_tenant("gdrive-task-iso-b")
+    await _seed(a, automation=True)
+    await _seed(b, automation=True)
+
+    async def _quiet_enqueue(function: str, *args, **kwargs) -> None:  # noqa: ARG001
+        return None
+
+    monkeypatch.setattr("app.core.jobs.enqueue", _quiet_enqueue)
+
+    a_headers = await auth_cookie(a.user)
+    async with client_for(a.host) as ca:
+        _, _, task = await _company_project_task(ca, a_headers)
+
+    b_headers = await auth_cookie(b.user)
+    async with client_for(b.host) as cb:
+        response = await cb.post(
+            "/api/v1/google/drive/provision",
+            json={"entity_type": "task", "entity_id": task["id"]},
+            headers=b_headers,
+        )
+        assert response.status_code == 404, response.text
+
+    async with async_session_maker() as session:
+        await set_current_org(session, b.org.id)
+        from sqlalchemy import select
+
+        assert (await session.execute(select(DriveFolderJob))).scalars().all() == []
+
+
+async def test_task_drive_links_stay_one_query_however_many_files(
+    client_for, count_queries
+) -> None:
+    """docs/PERFORMANCE.md: the task panel's whole SSR load is this call, and an upload now
+    adds a row to it on every upload. One statement at one file and one at twenty, or the
+    panel gets slower every time somebody uses the feature this issue added."""
+    t = await make_tenant("gdrive-task-budget")
+    await _seed(t)
+    headers = await auth_cookie(t.user)
+
+    async with client_for(t.host) as c:
+        _, _, task = await _company_project_task(c, headers)
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            for i in range(20):
+                session.add(
+                    DriveLink(
+                        org_id=t.org.id,
+                        entity_type="task",
+                        entity_id=uuid.UUID(task["id"]),
+                        drive_file_id=f"file-{i}",
+                        drive_url=f"https://drive/{i}",
+                        name=f"Bestand {i}.pdf",
+                    )
+                )
+            await session.commit()
+
+        with count_queries() as counter:
+            listed = await c.get(
+                "/api/v1/google/drive/links",
+                params={"entity_type": "task", "entity_id": task["id"]},
+                headers=headers,
+            )
+        assert listed.status_code == 200
+        assert len(listed.json()) == 20
+        assert len(counter.matching("from drive_links")) == 1

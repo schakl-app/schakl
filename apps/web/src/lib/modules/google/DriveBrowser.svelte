@@ -12,6 +12,12 @@
    *   the browser PUTs the file to googleusercontent. File contents never transit our API.
    * - **Creating a folder** posts to `/api/v1/google/drive/folders` from here (same viewer-scoped
    *   API, same-origin cookie), then re-lists — it needs no host action and no page data.
+   * - **An upload links itself to the record it was uploaded from** (#328), by the same
+   *   same-origin POST the ＋ on a row makes. The listing is live and the link list is what
+   *   survives the page: without this, a file uploaded from a task's panel was attached to
+   *   nothing and was gone from the record the moment you navigated away. Unconditional on
+   *   purpose — "it landed in this record's own folder" is not the same fact as "this record
+   *   has this file", and only the second one is still true tomorrow.
    *
    * In **pick mode** (`pick`) the same browser chooses a *folder* instead of linking files:
    * every folder row offers "choose", and so does the folder you are standing in — the folder
@@ -32,6 +38,7 @@
   import { onMount } from "svelte";
 
   import { enhance } from "$app/forms";
+  import { invalidateAll } from "$app/navigation";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { filedrop } from "$lib/core/ui/filedrop";
@@ -179,6 +186,36 @@
     }
   }
 
+  /**
+   * Attach a just-uploaded file to the record this browser hangs off. The upload itself has
+   * already succeeded by the time this runs, so a refusal here reports *that* — telling
+   * someone their upload failed when the file is sitting in Drive sends them to look for a
+   * problem that isn't there.
+   */
+  async function linkUploaded(driveFileId: string) {
+    try {
+      const response = await fetch("/api/v1/google/drive/links", {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({
+          entity_type: entityType,
+          entity_id: entityId,
+          drive_file_id: driveFileId,
+        }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        errorKey = body?.error?.message ?? "errors.google_drive_link_failed";
+        return;
+      }
+      // The link list is page data (the panel's SSR load), so it only redraws on an
+      // invalidation — the same one `use:enhance` performs for the ＋ on a row.
+      await invalidateAll();
+    } catch {
+      errorKey = "errors.google_drive_link_failed";
+    }
+  }
+
   async function upload(input: HTMLInputElement) {
     const file = input.files?.[0];
     if (!file || !listing?.folder?.id) return;
@@ -208,6 +245,11 @@
         errorKey = "errors.google_upload_failed";
         return;
       }
+      // The completed resumable session answers with the file resource; its id is what the
+      // record gets attached to. A body we cannot read is not an upload failure — the bytes
+      // are in Drive and the listing below will show them.
+      const uploaded = (await put.json().catch(() => null)) as { id?: string } | null;
+      if (uploaded?.id) await linkUploaded(uploaded.id);
       await load(true);
     } catch {
       errorKey = "errors.google_upload_failed";
