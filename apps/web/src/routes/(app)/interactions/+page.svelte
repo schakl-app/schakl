@@ -52,6 +52,7 @@
   import InteractionDetailModal from "$lib/modules/interactions/InteractionDetailModal.svelte";
   import InteractionForm from "$lib/modules/interactions/InteractionForm.svelte";
   import InteractionMoveDialog from "$lib/modules/interactions/InteractionMoveDialog.svelte";
+  import { recordHref, recordLabelKey, type RecordField } from "$lib/modules/interactions/scope";
 
   let { data, form } = $props();
 
@@ -113,6 +114,17 @@
       active ? "bg-surface font-medium text-text" : "text-text-muted hover:text-text"
     }`;
 
+  // What this list is narrowed to (#323). A panel's truncation notice links here, so the page
+  // must say which record it is showing — a filtered list that presents as everything is the
+  // bug one screen to the left. An unresolvable name still gets its chip: the filter is on
+  // either way, and silence about it is the failure being fixed.
+  const scopeChips = $derived(
+    data.filters.records as { field: RecordField; id: string; label: string | null }[],
+  );
+  /** `include=tasks` only qualifies the project filter (#147), so it leaves with it. */
+  const clearRecordHref = (field: RecordField) =>
+    filterHref(field === "project_id" ? { [field]: null, include: null } : { [field]: null });
+
   // --- date navigation (#238): week switcher, month filter, free range ---------- //
   // All three write the same `from`/`to` URL params; the SSR load turns them into the API's
   // `date_from`/`date_to`. The bounds are org-local days, like the day-group headers.
@@ -167,6 +179,14 @@
    * carries its own subset as `eligible`, which the bar renders beside the label whenever it is
    * fewer than the selection; the API reports the rest rather than refusing the batch, but an
    * item that silently did less than it said would still be lying.
+   *
+   * **And a subset of none has to say so out loud.** `eligible: 0` disables the button, which
+   * was the whole of the answer: an agency whose emails arrive as uploaded `.eml` files (#262)
+   * or are already logged ticked three of them, pressed a greyed "Afwijzen (0)" and got
+   * nothing — no message, no tooltip, no request. The count is not an explanation; it names
+   * the number and not the rule, and the rule here is not guessable from the screen (these
+   * *are* emails, and they *are* yours). So each action states why it cannot run over this
+   * selection, and `(0)` becomes the short form of a sentence rather than the whole of it.
    */
   const canReview = $derived(can(page.data.user, "interactions.interaction.review"));
   let selecting = $state(false);
@@ -180,6 +200,14 @@
       .filter((item) => isGmailRow(item) && isOwner(item) && item.status === "pending")
       .map((item) => item.id),
   );
+  /**
+   * Why a review action can do nothing with what is ticked — `undefined` while it can.
+   *
+   * Only over a non-empty selection: "select something first" is the bar's own sentence and a
+   * better answer than this one when nothing is picked yet.
+   */
+  const reviewBlocked = (eligible: number, key: string) =>
+    bulkSelected.length > 0 && eligible === 0 ? t(key) : undefined;
   let showBulkAssign = $state(false);
   let showBulkReject = $state(false);
   // Approve is a plain POST with no dialog in front of it, so it stays a real `<form>` — that is
@@ -202,12 +230,14 @@
             icon: Check,
             onclick: () => approveForm?.requestSubmit(),
             eligible: bulkPendingIds.length,
+            disabledReason: reviewBlocked(bulkPendingIds.length, "interactions.bulk.none_pending"),
           },
           {
             label: t("interactions.assign"),
             icon: ArrowRightLeft,
             onclick: () => (showBulkAssign = true),
             eligible: bulkFilableIds.length,
+            disabledReason: reviewBlocked(bulkFilableIds.length, "interactions.bulk.none_filable"),
           },
           {
             label: t("interactions.reject"),
@@ -215,6 +245,7 @@
             onclick: () => (showBulkReject = true),
             danger: true,
             eligible: bulkPendingIds.length,
+            disabledReason: reviewBlocked(bulkPendingIds.length, "interactions.bulk.none_pending"),
           },
         ]
       : [],
@@ -400,6 +431,32 @@
   <p class="mb-4 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
 {/if}
 
+{#if scopeChips.length > 0}
+  <!-- Scoped to one record (#323): its own line above the filters, because it narrows the whole
+       page rather than one column of it. The name links back to the record you came from; the ✕
+       widens to everything, which is the only way back that is not the browser's Back button. -->
+  <div class="mb-3 flex flex-wrap items-center gap-2">
+    {#each scopeChips as chip (chip.field)}
+      <span
+        class="inline-flex items-center gap-1.5 rounded-full bg-surface py-1 pl-3 pr-1 text-sm text-text ring-1 ring-inset ring-border"
+      >
+        <span class="text-text-muted">{t(recordLabelKey(chip.field))}:</span>
+        <a href={recordHref(chip.field, chip.id)} class="font-medium text-text hover:text-brand">
+          {chip.label ?? "…"}
+        </a>
+        <a
+          href={clearRecordHref(chip.field)}
+          aria-label={t("interactions.filter.clear_record")}
+          title={t("interactions.filter.clear_record")}
+          class="rounded-full p-1 text-text-muted hover:bg-surface-raised hover:text-text"
+        >
+          <X size={14} aria-hidden="true" />
+        </a>
+      </span>
+    {/each}
+  </div>
+{/if}
+
 <div class="mb-3 flex flex-wrap items-center gap-3">
   <div class="flex flex-wrap items-center gap-1" data-sveltekit-preload-data="hover">
     <a href={filterHref({ status: null })} class={tabClass(!data.filters.pending)}>
@@ -422,14 +479,12 @@
   </select>
   <!-- You land on your own moments (#263) and widen from there. Narrowing to yourself is
        nobody's grant; naming a *colleague* is the read_all one (#168), so only that option
-       list is gated — the API enforces it harder either way. -->
+       list is gated — the API enforces it harder either way.
+       Every choice is written out, "mijn" included: a record-scoped view defaults to iedereen
+       (#323), so deleting the param to mean "me" would have made that option do nothing. -->
   <select
     value={data.filters.ownerValue}
-    onchange={(e) =>
-      applyFilter({
-        owner: e.currentTarget.value === "me" ? null : e.currentTarget.value,
-        mine: null,
-      })}
+    onchange={(e) => applyFilter({ owner: e.currentTarget.value, mine: null })}
     class="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm text-text"
     aria-label={t("interactions.filter.owner")}
   >

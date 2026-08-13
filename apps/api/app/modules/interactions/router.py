@@ -112,7 +112,12 @@ async def list_interactions(
     sort: str | None = Query(
         None, description="occurred_at | subject | kind | contact | owner, '-' desc"
     ),
-    limit: int = Query(20, ge=1, le=100),
+    # 200, like every list route behind the shared pager: `PAGE_SIZES` offers 200 and
+    # `coercePageSize` clamps to it *on the promise that every endpoint serves it*. At 100
+    # this route refused the size its own screen offers, and the load turns that 422 into
+    # `items: []` — so a user who once picked 200 rows/page got a permanently empty
+    # Interacties list, with no error and nothing to select.
+    limit: int = Query(20, ge=1, le=200),
     offset: int = Query(0, ge=0),
     count: bool = Query(
         True,

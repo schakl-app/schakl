@@ -44,15 +44,16 @@ const entityPanels: EntityPanelSpec[] = Object.entries(ENTITY_FIELDS).map(
     // Contactmomenten block with a create control beside the heading.
     requiresPermission: "interactions.interaction.read",
     load: async (api, { entityId }) => {
+      // A project's communication is its own plus its tasks' (#147); each rolled-up row
+      // carries a task chip so the reader sees where it lives.
+      const include = entityType === "project" ? "tasks" : null;
       const { data } = await api.GET("/api/v1/interactions", {
         params: {
           query: {
             [field]: entityId,
             limit: PANEL_LIMIT,
             offset: 0,
-            // A project's communication is its own plus its tasks' (#147); each rolled-up
-            // row carries a task chip so the reader sees where it lives.
-            ...(entityType === "project" ? { include: "tasks" } : {}),
+            ...(include ? { include } : {}),
           },
         },
       });
@@ -60,6 +61,9 @@ const entityPanels: EntityPanelSpec[] = Object.entries(ENTITY_FIELDS).map(
         items: data?.items ?? [],
         total: data?.total ?? 0,
         entityField: field,
+        // Carried, not re-derived: the panel's "alles bekijken" link (#323) must reach a list
+        // filtered exactly the way this read was, or it answers fewer rows than it promised.
+        include,
       };
     },
     component: InteractionsEntityPanel,

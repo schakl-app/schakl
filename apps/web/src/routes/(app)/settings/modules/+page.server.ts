@@ -20,6 +20,10 @@ export const load: PageServerLoad = async (event) => {
     // Licensing (issue #137): which modules need a license, and which are currently usable.
     licensed: instance.data?.licensed_modules ?? [],
     entitled: instance.data?.entitled_modules ?? [],
+    // What "locked" means here, which differs per posture: a licence key the instance owner
+    // installs, or a plan only the operator can change. Telling a cloud tenant to go and
+    // install a key names a screen they cannot open and a fix that is not theirs (#253).
+    deployment: tenant.data?.deployment ?? "self_hosted",
   };
 };
 

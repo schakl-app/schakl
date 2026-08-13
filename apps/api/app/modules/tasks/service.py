@@ -18,7 +18,7 @@ from sqlalchemy.orm import aliased
 
 from app.core.auth.models import User
 from app.core.directory import visible_ids
-from app.core.entitlements import license_state
+from app.core.entitlements import OrgPlan, refusal_for, sku_writable
 from app.core.events import emit
 from app.core.models import Membership
 from app.core.parent import ensure_parent_in_tenant
@@ -1161,8 +1161,8 @@ class TaskService:
         * a named schedule block is claimed, so #188's panel stops offering the same hours.
         """
         self.ctx.require("time.entry.write")
-        if not (await license_state()).writable("time"):
-            raise AppError("license_expired", "errors.license_expired", status_code=402)
+        if not await sku_writable("time", plan=OrgPlan.of(self.ctx.org)):
+            raise AppError(*refusal_for("time"), status_code=402)
         from app.modules.time import system as time_system
 
         entry = await time_system.record_entry(

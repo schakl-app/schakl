@@ -12,6 +12,7 @@ import uuid
 from datetime import UTC, datetime
 
 from app.core.events import subscribe
+from app.modules.interactions.schemas import MAX_BULK_IDS
 from tests.conftest import auth_cookie, make_tenant
 from tests.test_interactions_api import _collect, _member, _seed_gmail_row
 
@@ -252,6 +253,46 @@ async def test_bulk_reject_removes_rows_and_emits_one_suppression_each(client_fo
             ).status_code == 404
 
 
+async def test_a_full_page_of_emails_can_be_selected_and_rejected_in_one_batch(
+    client_for,
+) -> None:
+    """The cap must cover a whole page, because "select all → Afwijzen" is the flow.
+
+    Two numbers have to agree and neither is visible from the other's file: the pager offers
+    200 rows (`PAGE_SIZES`, and `coercePageSize` clamps to it on the promise that every list
+    route serves it), so the list must *return* 200 and the bulk route must *accept* 200. This
+    route capped its `limit` at 100 and its `ids` at 100, which failed at both ends — the list
+    answered 422 and the load rendered it as an empty screen, and a selection larger than the
+    cap 422'd the whole batch with a red `errors.validation` naming no row.
+
+    One test for both because they are one gesture. It seeds 200 so a regression in either
+    number fails here rather than in a browser.
+    """
+    t = await make_tenant("bulk-fullpage")
+    owner_headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        member = await _member(c, owner_headers, "mailbox@bulk-fullpage.example")
+        member_headers = await auth_cookie(member)
+        ids = [
+            await _seed_gmail_row(t, member.id, message_id=f"m{i}", thread_id=f"t{i}")
+            for i in range(200)
+        ]
+
+        listed = await c.get(
+            "/api/v1/interactions", params={"limit": 200, "mine": True}, headers=member_headers
+        )
+        assert listed.status_code == 200, listed.text
+        assert len(listed.json()["items"]) == 200
+
+        result = await c.post(
+            "/api/v1/interactions/bulk/reject",
+            json={"ids": ids},
+            headers=member_headers,
+        )
+        assert result.status_code == 200, result.text
+        assert result.json()["succeeded"] == 200
+
+
 async def test_one_bad_row_is_reported_not_raised_and_the_rest_still_commit(client_for) -> None:
     """The partial-failure contract.
 
@@ -417,13 +458,19 @@ async def test_duplicate_ids_are_collapsed_not_approved_twice(client_for) -> Non
 
 
 async def test_the_batch_is_bounded(client_for) -> None:
+    """The bound is ``MAX_BULK_IDS``, and this test must read it rather than restate it.
+
+    It hardcoded 101 back when the cap was 100, so raising the cap to a whole page left the
+    assertion describing a route that no longer exists: 101 ids are now ordinary, the call
+    answers 200, and the only thing red was the number written down here.
+    """
     t = await make_tenant("bulk-cap")
     async with client_for(t.host) as c:
         headers = await auth_cookie(t.user)
         assert (
             await c.post(
                 "/api/v1/interactions/bulk/approve",
-                json={"ids": [str(uuid.uuid4()) for _ in range(101)]},
+                json={"ids": [str(uuid.uuid4()) for _ in range(MAX_BULK_IDS + 1)]},
                 headers=headers,
             )
         ).status_code == 422

@@ -15,7 +15,7 @@ async def test_dashboard_prefs_fallback_chain(client_for) -> None:
     async with client_for(t.host) as c:
         # No layout anywhere → none.
         prefs = (await c.get("/api/v1/dashboard/prefs", headers=member_headers)).json()
-        assert prefs == {"widgets": None, "source": "none"}
+        assert prefs == {"widgets": None, "columns": None, "source": "none"}
 
         # Members may not set the org template…
         assert (
@@ -32,7 +32,13 @@ async def test_dashboard_prefs_fallback_chain(client_for) -> None:
             headers=owner_headers,
         )
         prefs = (await c.get("/api/v1/dashboard/prefs", headers=member_headers)).json()
-        assert prefs == {"widgets": ["tasks.my_open"], "source": "default"}
+        assert prefs == {
+            "widgets": ["tasks.my_open"],
+            # The settings screen arranges one ordered list, so the template names no columns
+            # and an inheritor keeps splitting it the way it always has (#325).
+            "columns": None,
+            "source": "default",
+        }
 
         # A personal layout overrides the template…
         await c.put(
@@ -50,6 +56,57 @@ async def test_dashboard_prefs_fallback_chain(client_for) -> None:
         ).status_code == 204
         prefs = (await c.get("/api/v1/dashboard/prefs", headers=member_headers)).json()
         assert prefs["source"] == "default"
+
+
+async def test_dashboard_prefs_columns_are_stored(client_for) -> None:
+    """A tile's column is storage, not ``index < ceil(n/2)`` (#325).
+
+    The bug this closes was only expressible because the columns were nowhere: with the two
+    stacks cut out of the flat list at render time, moving a tile across necessarily moved
+    whatever sat on the boundary, and adding a fifth widget re-cut a board of four.
+    """
+    t = await make_tenant("dash-columns")
+    headers = await auth_cookie(t.user)
+
+    async with client_for(t.host) as c:
+        # The arrangement a drag produces: three left, one right — a split no halfway cut of
+        # this flat list would ever give you.
+        saved = await c.put(
+            "/api/v1/dashboard/prefs",
+            json={"columns": [["a", "b", "c"], ["d"]]},
+            headers=headers,
+        )
+        assert saved.status_code == 200
+        # ``widgets`` is derived from the columns, never trusted beside them, so the flat
+        # reading order a phone renders and the previous release reads cannot disagree.
+        assert saved.json()["widgets"] == ["a", "b", "c", "d"]
+        assert saved.json()["columns"] == [["a", "b", "c"], ["d"]]
+
+        prefs = (await c.get("/api/v1/dashboard/prefs", headers=headers)).json()
+        assert prefs["columns"] == [["a", "b", "c"], ["d"]]
+
+        # An empty column is a real arrangement (everything dragged to the left), and it is a
+        # different answer from "nobody has arranged columns here".
+        emptied = await c.put(
+            "/api/v1/dashboard/prefs",
+            json={"columns": [["a", "b", "c", "d"], []]},
+            headers=headers,
+        )
+        assert emptied.json()["columns"] == [["a", "b", "c", "d"], []]
+
+        # The previous release posts the flat list alone and must keep saving — and it clears
+        # the columns rather than leaving stale ones naming widgets no longer on the board.
+        legacy = await c.put(
+            "/api/v1/dashboard/prefs", json={"widgets": ["a", "b"]}, headers=headers
+        )
+        assert legacy.status_code == 200
+        assert legacy.json() == {"widgets": ["a", "b"], "columns": None, "source": "user"}
+
+        # Neither field is not a layout; a third column is one no screen can draw.
+        for bad in ({}, {"columns": [["a"], ["b"], ["c"]]}):
+            assert (
+                await c.put("/api/v1/dashboard/prefs", json=bad, headers=headers)
+            ).status_code == 422
 
 
 async def test_dashboard_prefs_tenant_isolation(client_for) -> None:

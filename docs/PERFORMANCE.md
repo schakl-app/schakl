@@ -303,6 +303,18 @@ send `total` beside the rows so the card can link on with an honest number. Taki
 *through the list's read* is what makes the "Alle 23 bekijken" link continue the card rather
 than open a differently-ordered set, and it is one fewer query shape to keep correct.
 
+**And the sentence admitting the cap has to be the way through it** (#323). Contactmomenten had
+every part of the honest slice — 8 rows, the true total, a notice naming both — and no
+destination: `/interactions` read `q`, `kind`, `status`, `owner` and the dates from its URL and
+never `company_id` / `project_id` / `contact_id` / `task_id`, all four of which the API had taken
+since #147. So a hand-typed `?company_id=` listed everything and moment 9 of 137 was unreachable
+from any screen in the app. A cap with no link is not a bounded slice; it is the truncation this
+section exists to forbid, displaced one page to the left. The notice is now an `<a>` built from
+the `prefill` the panel already holds, and it carries that read's own `include` — a project panel
+rolls its tasks' moments in, so a link that dropped it would answer 42 under a sentence that had
+just said 137. Naming the record on the destination costs **one** by-id read, taken beside the
+list read rather than after it, and only on a URL that names one.
+
 The other half of that change is worth stating on its own: **a filter that crosses a module
 boundary belongs in the statement, not in Python.** A website's client is its parent domain's
 (CLAUDE.md §6 forbids the import, so it is a bare-table bridge), and the first implementation

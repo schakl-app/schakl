@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.entitlements.service import license_state
+from app.core.entitlements.service import sku_cron_enabled
 from app.core.events import SystemContext, emit
 from app.core.jobs import run_per_org
 from app.core.models import Org, OrgSettings, OrgStatus
@@ -48,7 +48,7 @@ async def _licensed() -> bool:
     """Whether the ``domains`` sku is still writable (issue #137): the mount-time 402 gate
     covers requests, but crons write on a schedule — an expired license must stop the
     background refresh too (expired = read-only, not gone; stored DNS facts stay visible)."""
-    return (await license_state()).writable("domains")
+    return await sku_cron_enabled("domains")
 
 
 async def refresh_all_domains(ctx: dict) -> None:

@@ -187,6 +187,29 @@
   Initialise the state inline *and* re-arm it from the record with an effect. And a zone whose rows
   hold checkboxes, menus or inputs stays `dragDisabled` until a grip takes the pointer down, with
   its **own** flag per nesting level — one shared flag lets an item's grip arm the list around it.
+- **A layout the user arranges is stored, never recomputed** (#325). The My Day board's two
+  columns were cut out of one flat list at `ceil(n/2)` on every render, so the column a tile was in
+  was a function of its index and nothing else. Three complaints, one cause: dropping a tile at the
+  top of the *other* column rebuilt the identical list and snapped back; dropping it at the bottom
+  moved it and teleported whatever sat on the boundary the other way; and adding a widget from the
+  gallery re-cut a board nobody had dragged. The columns are `dashboard_prefs.columns` now, with
+  `widgets` kept as the flat reading order a phone renders and NULL still meaning "the halfway
+  split", so a layout saved before this keeps looking like itself until its owner moves something.
+  The tell to reach for: a **derived** value the user can drag.
+  Two further rules came off the same screen. **A hidden form is still a form**: this one carried a
+  bare `use:enhance`, whose success path is `update()` — i.e. `invalidateAll` — so every drop re-ran
+  the page load, refetched every widget's API calls and blinked all thirteen tiles back to their
+  skeletons to persist an order the browser already had on screen, *twice*, because
+  `svelte-dnd-action` dispatches `finalize` on both zones of a cross-zone drop. `pnpm forms:check`
+  governs only forms a user types into, so nothing was ever going to catch this one: a save that
+  teaches the client nothing invalidates nothing, and the streamed per-tile promises are kept **by
+  identity**, so even the one reload that is genuinely needed — a widget added from the gallery has
+  no data — puts a skeleton on that tile alone.
+  And **hit-test a drag on the cursor, not on the dragged element's centre**
+  (`useCursorForDetection`): the default agrees with the pointer only while the dragged thing is
+  small relative to its target, and a 130 px widget over an emptied column's 96 px `min-h-24` put
+  the cursor inside the empty stack with the tile's centre below it — the column you could empty
+  was the column you could not refill.
 - **Every dashboard widget is a bordered card, via `core/ui/DashboardWidgetCard`** (#166). The
   dashboard grid wraps each tile in a bare `<div>` — the card chrome (border, `bg-surface-raised`,
   padding, title row with an optional "show all" link) is the widget's own responsibility, and the
@@ -481,6 +504,19 @@
   is the same parameter the card's `＋ nieuw` already used, and it now does both jobs: it filters
   the list *and* prefills the create dialog, because they are one intent and two parameters
   would let them disagree.
+  A fourth thing has to hold that the other three quietly assume: **the destination must be able
+  to take the filter** (#323). Contactmomenten had the cap and the honest count — *"De 8 meest
+  recente van 137 worden getoond"* — and nowhere to go, because `/interactions` never read the
+  four record filters the API had taken since #147. The sentence that exists to admit a
+  truncation was itself the end of the road. Three things fix it and generalise. The notice
+  **is** the link (a navigation is an `<a href>`, never a click handler), so it previews, opens
+  in a tab and survives a middle click like every other "see the rest" control. The list then
+  **says what it is narrowed to** — the record's name, linking back to it, with an ✕ that widens
+  — because a filtered list presenting as everything is the same lie one screen along; a name
+  the reader may not resolve still gets its chip, since the filter is on either way. And a
+  **default that answers the unfiltered page may not survive the scoped one**: `/interactions`
+  lands you on your own moments (#263), which over a team-visible panel's link would have
+  answered 12 under a notice that said 137.
 - **A panel is how a number opens.** A module hangs a panel off another module's detail page by
   registering an `EntityPanelSpec` (`core/registry.ts`), never by having the host page import it —
   a tenant with the module disabled then simply never renders it, and pays for no call. The panel

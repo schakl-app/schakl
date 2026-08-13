@@ -28,9 +28,58 @@ The cloud surfaces are always in the OpenAPI spec (the generated web client is
 posture-independent); at runtime every route checks the flag and answers 404 on self-host —
 the same "doesn't advertise itself" behaviour as the disabled instance-admin surface.
 
-Licensing: the provisioning surface rides the `cloud` sku's write gate (#137) — a fresh
-install gets the built-in bootstrap window as its trial, after that mutations require a
-license document listing `cloud`.
+## Licensing on cloud: the operator holds a key, the tenant holds a plan
+
+Two authorities, and conflating them is what made an org set to `unlimited` read-only.
+
+The **provisioning surface** rides the `cloud` sku's write gate (#137) — a fresh install gets
+the built-in bootstrap window as its trial, after that mutations require a license document
+listing `cloud`. That sku is the operator's own right to run the posture, and it is resolved on
+the apex, where no org resolves at all.
+
+Every **other** sku follows the resolved tenant's `orgs.plan`, never the instance key
+(`app/core/entitlements/service.py`, `sku_writable`). On a self-hosted box the two coincide —
+there is one tenant and the agency running it holds the key — so an org-blind read of the
+licence is the right answer there, and nothing about self-host changed. On cloud the same read
+is a category error: the operator runs the installation and the tenant bought a *plan*, which is
+what `UpgradeModal` has always told cloud users an upgrade means. Before this it meant nothing —
+`plan` reached only the trial-suspension cron — so an org explicitly marked `unlimited` still
+went read-only across every licensed module the moment the operator's key lapsed or was never
+installed, behind a 402 telling the tenant that *their* licence had expired and sending them to
+Instellingen → Licentie: an artefact they do not hold, and a screen only `is_superuser` can
+open. #253's "a link that always refuses is a broken control", printed as an error message.
+
+| | self-hosted | cloud |
+|---|---|---|
+| `cloud` sku | n/a (surface is 404) | instance licence key |
+| every other sku | instance licence key | the org's `plan` |
+| refusal | 402 `errors.license_expired` | 402 `errors.plan_inactive` |
+
+Plans are **lifecycle, not bundles**: `trial` is live until `trial_ends_at` (an unarmed trial is
+running, not lapsed — never lock an org out of the product it is trialling), `standard` and
+`unlimited` are live indefinitely. Both of the latter are billing-managed: payment trouble
+arrives as an org *suspension* over the provisioning API, which `require_context` refuses far
+earlier than any licence gate. Every live plan unlocks every module the org has enabled, which
+is what `PLANS` already says — three bare strings, no module lists. A plan carrying a module set
+would be a second, competing answer to "which modules does this org run?" beside
+`enabled_modules`.
+
+Three consequences worth knowing:
+
+- **Reads never block, on either posture** (epic #140). A lapsed plan is read-only, not gone —
+  data is no more hostage to a billing state than to a licence.
+- **Background work is filtered per org, not instance-wide.** A module's cron guard
+  (`sku_cron_enabled`) runs *before* the per-org fan-out, so on cloud it cannot answer per
+  tenant and answers yes; `run_per_org` then skips orgs whose plan has lapsed. A single
+  instance-wide "no" there would stop every tenant's background work because the *operator* had
+  not installed a key — the same bug, in cron form.
+- **The plan is memoised per hostname for a minute**, like the licence state, so the write gate
+  costs no query per mutation. `set_plan` drops that cache, so an operator lifting an org to
+  `unlimited` to unstick a customer sees it take effect on that customer's next request.
+
+Whatever the posture, `notice()` says `expired` only about a licence that really lapsed. A box
+that never had a key reads `unlicensed` inside the bootstrap window and `none` outside it —
+"verlopen" would describe a document nobody installed.
 
 ## Two instance principals, and only one can delegate (#26)
 

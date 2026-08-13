@@ -1,5 +1,6 @@
 import { redirect } from "@sveltejs/kit";
 
+import type { ApiClient } from "$lib/core/api/client";
 import { bulkDeleteAction } from "$lib/core/bulk/actions.server";
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
@@ -8,8 +9,47 @@ import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { interactionActions } from "$lib/modules/interactions/actions.server";
 import { INTERACTION_COLUMNS, INTERACTIONS_TABLE_ID } from "$lib/modules/interactions/columns";
+import { RECORD_FIELDS, type RecordField } from "$lib/modules/interactions/scope";
 
 import type { Actions, PageServerLoad } from "./$types";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The name of the record the list is scoped to (#323), for the chip that says so.
+ *
+ * One by-id read, and only when the URL actually names a record — a `null` here is a record the
+ * caller may not read or that no longer exists, which the chip renders as an unresolved name
+ * rather than dropping: a narrowed list that presents as everything is the whole bug.
+ */
+async function recordLabel(api: ApiClient, field: RecordField, id: string): Promise<string | null> {
+  switch (field) {
+    case "company_id": {
+      const { data } = await api.GET("/api/v1/companies/{company_id}", {
+        params: { path: { company_id: id } },
+      });
+      return data?.name ?? null;
+    }
+    case "project_id": {
+      const { data } = await api.GET("/api/v1/projects/{project_id}", {
+        params: { path: { project_id: id } },
+      });
+      return data?.name ?? null;
+    }
+    case "contact_id": {
+      const { data } = await api.GET("/api/v1/contacts/{contact_id}", {
+        params: { path: { contact_id: id } },
+      });
+      return data ? [data.first_name, data.last_name].filter(Boolean).join(" ") || null : null;
+    }
+    case "task_id": {
+      const { data } = await api.GET("/api/v1/tasks/{task_id}", {
+        params: { path: { task_id: id } },
+      });
+      return data?.title ?? null;
+    }
+  }
+}
 
 /**
  * The Interacties page (#168): every interaction the viewer may see — team-visible logged
@@ -29,17 +69,32 @@ export const load: PageServerLoad = async (event) => {
   const q = params.get("q")?.trim() || undefined;
   const kind = params.get("kind") || undefined;
   const pending = params.get("status") === "pending";
+  // What record this list is scoped to (#323) — the destination a panel's "8 van 137" links
+  // to. All four have been API filters since #147; only this page never asked, so a hand-typed
+  // `?company_id=` was silently ignored and listed everything. Several at once is legal (the
+  // API ANDs them) and each gets its own chip; a non-uuid is dropped rather than 422'd, because
+  // these arrive from a query string anyone can edit and an old bookmark can carry.
+  const scoped = RECORD_FIELDS.flatMap((field) => {
+    const id = params.get(field);
+    return id && UUID_RE.test(id) ? [{ field, id }] : [];
+  });
+  const byField = (field: RecordField) => scoped.find((r) => r.field === field)?.id;
+  // The one roll-up this list takes (#147): a project's own moments plus its tasks'. The panel
+  // link carries it so the page counts what the panel counted.
+  const include = params.get("include") === "tasks" ? "tasks" : undefined;
   // You land on **your own** moments (#263). The timeline stays team-visible — this is the
   // initial filter, not a permission change — so "iedereen" is one click away for everyone,
   // while naming a *colleague* is still the `read_all` grant (#168) and still enforced by the
   // API. `owner=all` is what says "everyone" out loud; no owner param at all means me, so the
   // older `?mine=1` links (the pending notification's, the widget's) land where they always did.
-  const ownerParam = params.get("owner");
+  //
+  // Except when the URL names a record: that default answers an unfiltered firehose, and a
+  // record view is already narrow. The panel it comes from is team-visible, so keeping "mijn"
+  // here would land a link that said 137 on a list of 12 — #323's own bug, one screen to the
+  // right. The owner select still narrows it, and it writes `owner=me` out loud so it can.
+  const ownerParam = params.get("owner") || (scoped.length > 0 ? "all" : "me");
   const everyone = ownerParam === "all";
-  const owner =
-    canReadAll && ownerParam && ownerParam !== "all" && ownerParam !== "me"
-      ? ownerParam
-      : undefined;
+  const owner = canReadAll && ownerParam !== "all" && ownerParam !== "me" ? ownerParam : undefined;
   const mine = !everyone && !owner;
   const paging = resolvePaging(event.url, pref);
   // Date navigation (#238): `from`/`to` are org-local calendar days; the week switcher and
@@ -55,22 +110,32 @@ export const load: PageServerLoad = async (event) => {
   // fields come from the section layout, which does not rerun on a search keystroke, a date
   // click, an owner switch or a page step (#290).
   const api = apiFor(event);
-  const list = await api.GET("/api/v1/interactions", {
-    params: {
-      query: {
-        limit: paging.limit,
-        offset: paging.offset,
-        q,
-        kind,
-        status: pending ? "pending" : undefined,
-        mine: mine || undefined,
-        owner_user_id: !mine ? owner : undefined,
-        date_from: from,
-        date_to: to,
-        sort,
+  const [list, labels] = await Promise.all([
+    api.GET("/api/v1/interactions", {
+      params: {
+        query: {
+          limit: paging.limit,
+          offset: paging.offset,
+          q,
+          kind,
+          status: pending ? "pending" : undefined,
+          mine: mine || undefined,
+          owner_user_id: !mine ? owner : undefined,
+          company_id: byField("company_id"),
+          project_id: byField("project_id"),
+          contact_id: byField("contact_id"),
+          task_id: byField("task_id"),
+          include,
+          date_from: from,
+          date_to: to,
+          sort,
+        },
       },
-    },
-  });
+    }),
+    // Nothing extra to pay for on the unscoped page: `scoped` is empty and this resolves at
+    // once. Beside the list read, not after it, so naming the record costs no round trip.
+    Promise.all(scoped.map((r) => recordLabel(api, r.field, r.id))),
+  ]);
 
   return {
     items: list.data?.items ?? [],
@@ -88,6 +153,9 @@ export const load: PageServerLoad = async (event) => {
       ownerValue: everyone ? "all" : (owner ?? "me"),
       from: from ?? null,
       to: to ?? null,
+      /** The records this list is narrowed to, named — one clearable chip each (#323). */
+      records: scoped.map((r, i) => ({ ...r, label: labels[i] })),
+      include: include ?? null,
     },
     table: { pref, sort: sort ?? null, widths: resolved.widths },
     locale: event.locals.locale,

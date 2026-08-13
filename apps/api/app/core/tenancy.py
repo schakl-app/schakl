@@ -16,7 +16,7 @@ App-layer filtering and Postgres RLS thus enforce the same boundary from both si
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncGenerator, Sequence
+from collections.abc import AsyncGenerator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any, Generic, TypeVar
@@ -42,6 +42,10 @@ ModelT = TypeVar("ModelT")
 # --------------------------------------------------------------------------- #
 # Org resolution
 # --------------------------------------------------------------------------- #
+def _normalise_host(host: str) -> str:
+    return host.split(",", 1)[0].split(":", 1)[0].strip().lower()
+
+
 def request_hostname(request: Request) -> str:
     """The tenant hostname for this request.
 
@@ -49,8 +53,22 @@ def request_hostname(request: Request) -> str:
     on a user's behalf) so tenant resolution reflects the *browser's* host, not the internal
     service address. Falls back to ``Host``.
     """
-    host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
-    return host.split(",", 1)[0].split(":", 1)[0].strip().lower()
+    return _normalise_host(
+        request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+    )
+
+
+def scope_hostname(scope: Mapping[str, Any]) -> str:
+    """:func:`request_hostname` for a raw ASGI scope — same rule, no ``Request`` to hand.
+
+    The mounted MCP app is wrapped at the ASGI layer (``LicenseGateASGI``), so its entitlement
+    check runs before anything has built a ``Request``. Sharing the normalisation matters more
+    than it looks: a second copy that forgot to strip the port, or to prefer the forwarded
+    header, would resolve a *different tenant* than the rest of the request does.
+    """
+    headers = {k.decode("latin-1").lower(): v for k, v in scope.get("headers") or []}
+    raw = headers.get("x-forwarded-host") or headers.get("host", b"")
+    return _normalise_host(raw.decode("latin-1"))
 
 
 def origin_from(host: str, proto: str = "") -> str:

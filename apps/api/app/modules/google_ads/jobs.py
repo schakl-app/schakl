@@ -20,7 +20,7 @@ from datetime import timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.entitlements.service import license_state
+from app.core.entitlements.service import sku_cron_enabled
 from app.core.jobs import run_per_org
 from app.core.models import Org, OrgStatus
 from app.db import async_session_maker, set_current_org
@@ -41,7 +41,7 @@ async def _licensed() -> bool:
     Expired means **read-only, not gone**: the stored trend keeps rendering, and only the writing
     of new rows stops.
     """
-    return (await license_state()).writable("google_ads")
+    return await sku_cron_enabled("google_ads")
 
 
 async def _sync_org(org: Org, session: AsyncSession) -> None:
