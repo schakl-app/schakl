@@ -476,6 +476,112 @@ async def test_interaction_rosters_cost_one_query_per_page(client_for, count_que
         assert len(counter.matching("from interaction_contacts")) == 1
 
 
+async def test_a_record_filtered_interaction_page_costs_what_the_unfiltered_one_does(
+    client_for, count_queries
+) -> None:
+    """#323 pointed every panel's truncation notice at ``/interactions?<record>_id=…``.
+
+    A destination reached from every company, project, contact and task page is worth pinning.
+    The four filters must stay **predicates on the feed**, never joins that fan it out — three
+    are indexed FK comparisons and ``contact_id`` is an ``EXISTS`` over the roster (a join there
+    would multiply the folded rows) — so a scoped page issues exactly the statements the
+    unscoped one does.
+
+    "The same statements" is only comparable over the **same rows**, so that half is asserted
+    with the two filters that narrow to nothing here: a page's label lookups are one batch per
+    kind of link *present on it* (``_link_names``), so a page holding no task-linked row is
+    legitimately one statement cheaper and comparing those two would measure the fixture.
+
+    What the narrowing filters get instead is the property that actually matters and that no
+    functional test can see: **the count does not move when the record gains rows**. Including
+    the roll-up (#147), where the project's task ids are fetched once for the filter — three
+    more tasks, each with a moment, and not one more statement.
+
+    Every moment names the same contact, so the batched roster read (#300) happens on every
+    variant — otherwise the comparison would be measuring which pages have people on them.
+    """
+    t = await make_tenant("perf-inter-scope")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers)
+        project = await c.post(
+            "/api/v1/projects", json={"name": "Herbouw", "company_id": company}, headers=headers
+        )
+        assert project.status_code == 201, project.text
+        project_id = project.json()["id"]
+        person = await c.post(
+            "/api/v1/contacts",
+            json={"first_name": "Iris", "company_ids": [company]},
+            headers=headers,
+        )
+        assert person.status_code == 201, person.text
+        contact_id = person.json()["id"]
+
+        async def _moment(**links: str) -> None:
+            res = await c.post(
+                "/api/v1/interactions",
+                json={
+                    "kind": "note",
+                    "subject": "Overleg",
+                    "contact_ids": [contact_id],
+                    "occurred_at": datetime(2026, 3, 4, 9, 0, tzinfo=UTC).isoformat(),
+                    **links,
+                },
+                headers=headers,
+            )
+            assert res.status_code == 201, res.text
+
+        async def _tasks_with_moments(count: int, offset: int) -> None:
+            for i in range(count):
+                task = await c.post(
+                    "/api/v1/tasks",
+                    json={
+                        "title": f"T{offset + i}",
+                        "company_id": company,
+                        "project_id": project_id,
+                    },
+                    headers=headers,
+                )
+                assert task.status_code == 201, task.text
+                await _moment(task_id=task.json()["id"])
+
+        await _moment(company_id=company)
+        await _moment(project_id=project_id)
+        await _tasks_with_moments(3, 0)
+
+        # The batched roster read, named by its own ordering rather than by its table: with
+        # ``contact_id`` set, the filter's EXISTS mentions ``interaction_contacts`` inside the
+        # feed statement and the count statement too, and a substring match would count three.
+        roster = "order by interaction_contacts.interaction_id"
+
+        async def _cost(query: str) -> tuple[int, int]:
+            with count_queries() as counter:
+                res = await c.get(f"/api/v1/interactions{query}", headers=headers)
+            assert res.status_code == 200, res.text
+            assert len(counter.matching(roster)) == 1, counter.statements
+            return len(counter), res.json()["total"]
+
+        baseline, everything = await _cost("")
+        assert everything == 5
+
+        # Same five rows, filtered two different ways: the FK comparison and the roster EXISTS
+        # each cost nothing at all. An ``EXISTS`` that had been written as a join would also
+        # have multiplied the folded feed, which is why the total is asserted beside the count.
+        assert await _cost(f"?company_id={company}") == (baseline, 5)
+        assert await _cost(f"?contact_id={contact_id}") == (baseline, 5)
+
+        # The roll-up (#147): the project's own moment plus its three tasks'.
+        scoped, total = await _cost(f"?project_id={project_id}&include=tasks")
+        assert total == 4
+
+        # And now the property the JSON cannot show. Three more tasks, three more moments — the
+        # task ids are one prefetch for the filter and the labels one batch for the page, so
+        # nothing about this read grows with the project.
+        await _tasks_with_moments(3, 3)
+        assert await _cost(f"?project_id={project_id}&include=tasks") == (scoped, 7)
+        assert await _cost(f"?company_id={company}") == (baseline, 8)
+
+
 async def test_invoice_rows_carry_no_lines_until_asked(client_for, count_queries) -> None:
     t = await make_tenant("perf-invoice-lines")
     async with client_for(t.host) as c:

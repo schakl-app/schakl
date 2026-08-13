@@ -481,6 +481,19 @@
   is the same parameter the card's `＋ nieuw` already used, and it now does both jobs: it filters
   the list *and* prefills the create dialog, because they are one intent and two parameters
   would let them disagree.
+  A fourth thing has to hold that the other three quietly assume: **the destination must be able
+  to take the filter** (#323). Contactmomenten had the cap and the honest count — *"De 8 meest
+  recente van 137 worden getoond"* — and nowhere to go, because `/interactions` never read the
+  four record filters the API had taken since #147. The sentence that exists to admit a
+  truncation was itself the end of the road. Three things fix it and generalise. The notice
+  **is** the link (a navigation is an `<a href>`, never a click handler), so it previews, opens
+  in a tab and survives a middle click like every other "see the rest" control. The list then
+  **says what it is narrowed to** — the record's name, linking back to it, with an ✕ that widens
+  — because a filtered list presenting as everything is the same lie one screen along; a name
+  the reader may not resolve still gets its chip, since the filter is on either way. And a
+  **default that answers the unfiltered page may not survive the scoped one**: `/interactions`
+  lands you on your own moments (#263), which over a team-visible panel's link would have
+  answered 12 under a notice that said 137.
 - **A panel is how a number opens.** A module hangs a panel off another module's detail page by
   registering an `EntityPanelSpec` (`core/registry.ts`), never by having the host page import it —
   a tenant with the module disabled then simply never renders it, and pays for no call. The panel

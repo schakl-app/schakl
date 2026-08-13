@@ -16,10 +16,12 @@
   }: { data: unknown; context: EntityPanelContext; lookups: EntityPanelLookups } = $props();
 
   const panel = $derived(
-    (data ?? { items: [], total: 0, entityField: "company_id" }) as {
+    (data ?? { items: [], total: 0, entityField: "company_id", include: null }) as {
       items: InteractionItem[];
       total: number;
       entityField: string;
+      /** The roll-up the load used (#147) — carried so the "alles bekijken" link matches. */
+      include?: string | null;
     },
   );
 </script>
@@ -28,5 +30,6 @@
   items={panel.items}
   total={panel.total}
   prefill={{ [panel.entityField]: context.entityId }}
+  include={panel.include ?? null}
   members={lookups.members}
 />

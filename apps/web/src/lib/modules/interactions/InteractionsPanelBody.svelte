@@ -17,6 +17,7 @@
    */
   import {
     ArrowDownLeft,
+    ArrowRight,
     ArrowRightLeft,
     ArrowUpRight,
     CheckCircle2,
@@ -43,6 +44,7 @@
   import EmlUploadForm from "./EmlUploadForm.svelte";
   import { contactChips, type InteractionItem, isGmailRow, kindIcon, withBody } from "./format";
   import { snippetPreview } from "./snippet";
+  import { interactionsListHref } from "./scope";
   import InteractionConversationDialog from "./InteractionConversationDialog.svelte";
   import InteractionDetailModal from "./InteractionDetailModal.svelte";
   import InteractionForm from "./InteractionForm.svelte";
@@ -52,15 +54,26 @@
     items,
     total,
     prefill = {},
+    include = null,
     members = [],
   }: {
     items: InteractionItem[];
     total: number;
     /** The host entity's link, stamped on rows added from this panel. */
     prefill?: Record<string, string | null | undefined>;
+    /**
+     * The roll-up this panel's own read used, if any (#147: a project counts its tasks' moments
+     * too). It rides the "alles bekijken" link so the list answers what the notice claimed.
+     */
+    include?: string | null;
     /** Org members, for the note editor's @mention autocomplete (#151). */
     members?: { user_id: string; full_name: string | null; email: string | null }[];
   } = $props();
+
+  // Where the capped panel leads (#323). A panel is a summary and 8 rows is right; what was
+  // missing is the paged list it summarises — `prefill` already names the record, so the link
+  // is the filter, and a host that names none simply keeps the plain notice.
+  const listHref = $derived(interactionsListHref(prefill, include));
 
   const mentionCandidates = $derived(
     members.map((m) => ({ id: m.user_id, name: m.full_name || m.email || "" })),
@@ -365,8 +378,24 @@
 {/if}
 
 {#if total > items.length}
-  <p class="mt-3 border-t border-border pt-3 text-xs text-text-muted">
-    {t("interactions.panel.truncated", { shown: items.length, total })}
+  <!-- The truncation notice *is* the way through it (#323). A navigation is a link, never a
+       click handler (docs/UX.md) — so it opens in a new tab, previews on hover and survives a
+       middle click like every other "see the rest" control in the app. -->
+  <p class="mt-3 border-t border-border pt-3 text-xs">
+    {#if listHref}
+      <a
+        href={listHref}
+        data-sveltekit-preload-data="hover"
+        class="inline-flex items-center gap-1 font-medium text-brand hover:underline"
+      >
+        {t("interactions.panel.truncated_link", { shown: items.length, total })}
+        <ArrowRight size={13} aria-hidden="true" />
+      </a>
+    {:else}
+      <span class="text-text-muted">
+        {t("interactions.panel.truncated", { shown: items.length, total })}
+      </span>
+    {/if}
   </p>
 {/if}
 

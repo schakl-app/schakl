@@ -52,6 +52,7 @@
   import InteractionDetailModal from "$lib/modules/interactions/InteractionDetailModal.svelte";
   import InteractionForm from "$lib/modules/interactions/InteractionForm.svelte";
   import InteractionMoveDialog from "$lib/modules/interactions/InteractionMoveDialog.svelte";
+  import { recordHref, recordLabelKey, type RecordField } from "$lib/modules/interactions/scope";
 
   let { data, form } = $props();
 
@@ -112,6 +113,17 @@
     `rounded-lg px-3 py-1.5 text-sm ${
       active ? "bg-surface font-medium text-text" : "text-text-muted hover:text-text"
     }`;
+
+  // What this list is narrowed to (#323). A panel's truncation notice links here, so the page
+  // must say which record it is showing — a filtered list that presents as everything is the
+  // bug one screen to the left. An unresolvable name still gets its chip: the filter is on
+  // either way, and silence about it is the failure being fixed.
+  const scopeChips = $derived(
+    data.filters.records as { field: RecordField; id: string; label: string | null }[],
+  );
+  /** `include=tasks` only qualifies the project filter (#147), so it leaves with it. */
+  const clearRecordHref = (field: RecordField) =>
+    filterHref(field === "project_id" ? { [field]: null, include: null } : { [field]: null });
 
   // --- date navigation (#238): week switcher, month filter, free range ---------- //
   // All three write the same `from`/`to` URL params; the SSR load turns them into the API's
@@ -419,6 +431,32 @@
   <p class="mb-4 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
 {/if}
 
+{#if scopeChips.length > 0}
+  <!-- Scoped to one record (#323): its own line above the filters, because it narrows the whole
+       page rather than one column of it. The name links back to the record you came from; the ✕
+       widens to everything, which is the only way back that is not the browser's Back button. -->
+  <div class="mb-3 flex flex-wrap items-center gap-2">
+    {#each scopeChips as chip (chip.field)}
+      <span
+        class="inline-flex items-center gap-1.5 rounded-full bg-surface py-1 pl-3 pr-1 text-sm text-text ring-1 ring-inset ring-border"
+      >
+        <span class="text-text-muted">{t(recordLabelKey(chip.field))}:</span>
+        <a href={recordHref(chip.field, chip.id)} class="font-medium text-text hover:text-brand">
+          {chip.label ?? "…"}
+        </a>
+        <a
+          href={clearRecordHref(chip.field)}
+          aria-label={t("interactions.filter.clear_record")}
+          title={t("interactions.filter.clear_record")}
+          class="rounded-full p-1 text-text-muted hover:bg-surface-raised hover:text-text"
+        >
+          <X size={14} aria-hidden="true" />
+        </a>
+      </span>
+    {/each}
+  </div>
+{/if}
+
 <div class="mb-3 flex flex-wrap items-center gap-3">
   <div class="flex flex-wrap items-center gap-1" data-sveltekit-preload-data="hover">
     <a href={filterHref({ status: null })} class={tabClass(!data.filters.pending)}>
@@ -441,14 +479,12 @@
   </select>
   <!-- You land on your own moments (#263) and widen from there. Narrowing to yourself is
        nobody's grant; naming a *colleague* is the read_all one (#168), so only that option
-       list is gated — the API enforces it harder either way. -->
+       list is gated — the API enforces it harder either way.
+       Every choice is written out, "mijn" included: a record-scoped view defaults to iedereen
+       (#323), so deleting the param to mean "me" would have made that option do nothing. -->
   <select
     value={data.filters.ownerValue}
-    onchange={(e) =>
-      applyFilter({
-        owner: e.currentTarget.value === "me" ? null : e.currentTarget.value,
-        mine: null,
-      })}
+    onchange={(e) => applyFilter({ owner: e.currentTarget.value, mine: null })}
     class="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm text-text"
     aria-label={t("interactions.filter.owner")}
   >
