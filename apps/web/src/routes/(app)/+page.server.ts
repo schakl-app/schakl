@@ -9,19 +9,38 @@ import { apiFor } from "$lib/core/session";
 
 import type { Actions, PageServerLoad } from "./$types";
 
+/** The board is two columns; a stored layout with fewer (or none) is padded out. */
+const COLUMN_COUNT = 2;
+
+/** Left column first, then right — the flat order a phone reads and the API stores. */
+function splitEvenly(keys: string[]): string[][] {
+  const half = Math.ceil(keys.length / COLUMN_COUNT);
+  return [keys.slice(0, half), keys.slice(half)];
+}
+
 // A saved layout picks/orders the (already permission-filtered) available widgets; unknown
 // keys — another audience's widgets in the org template, a module since disabled — drop out.
 function resolveLayout(
-  prefs: { widgets?: string[] | null; source?: string } | undefined,
+  prefs: { widgets?: string[] | null; columns?: string[][] | null; source?: string } | undefined,
   available: DashboardWidgetSpec[],
-): { widgetKeys: string[]; prefsSource: string } {
+): { widgetKeys: string[]; columns: string[][]; prefsSource: string } {
+  const known = (keys: string[]) =>
+    keys
+      .map((key) => available.find((w) => w.key === key))
+      .filter((w): w is DashboardWidgetSpec => Boolean(w))
+      .map((w) => w.key);
   const layout = prefs?.widgets ?? null;
-  const widgets = layout
-    ? layout
-        .map((key) => available.find((w) => w.key === key))
-        .filter((w): w is DashboardWidgetSpec => Boolean(w))
-    : available;
-  return { widgetKeys: widgets.map((w) => w.key), prefsSource: prefs?.source ?? "none" };
+  const flat = layout ? known(layout) : available.map((w) => w.key);
+  // Columns are stored since #325. A row that has none was saved before they were — or is the
+  // org template, which is one ordered list by design — and it keeps rendering as the halfway
+  // split it always did, rather than being invented into a layout nobody arranged.
+  const stored = prefs?.columns ?? null;
+  const columns = stored
+    ? Array.from({ length: COLUMN_COUNT }, (_, i) => known(stored[i] ?? []))
+    : splitEvenly(flat);
+  // The columns are what the board draws, so they decide which tiles need data — not the flat
+  // list, which a stored layout may disagree with once unknown keys have dropped out of both.
+  return { widgetKeys: columns.flat(), columns, prefsSource: prefs?.source ?? "none" };
 }
 
 // My Day composes widgets contributed by the enabled modules — the core page stays generic.
@@ -118,11 +137,25 @@ function parseWidgets(form: FormData): string[] {
     .filter(Boolean);
 }
 
+/** `a,b|c` — one column per `|`, keys inside it comma-separated. An empty column is "". */
+function parseColumns(form: FormData): string[][] {
+  return String(form.get("columns") ?? "")
+    .split("|")
+    .map((column) =>
+      column
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    );
+}
+
 export const actions: Actions = {
   saveLayout: async (event) => {
-    const widgets = parseWidgets(await event.request.formData());
+    // Columns are the layout (#325); the API derives the flat order from them, so nothing here
+    // gets to state the two separately and have them disagree.
+    const columns = parseColumns(await event.request.formData());
     const { error } = await apiFor(event).PUT("/api/v1/dashboard/prefs", {
-      body: { widgets },
+      body: { columns },
     });
     if (error) return fail(400, { error: apiErrorKey(error).key });
     return { saved: true };

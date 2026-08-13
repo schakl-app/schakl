@@ -1,8 +1,11 @@
 <script lang="ts">
   import { Check, Pencil, X } from "@lucide/svelte";
+  import { untrack } from "svelte";
   import { dndzone } from "svelte-dnd-action";
+  import type { SubmitFunction } from "@sveltejs/kit";
 
-  import { enhance } from "$app/forms";
+  import { applyAction, enhance } from "$app/forms";
+  import { invalidateAll } from "$app/navigation";
   import { page } from "$app/state";
   import { t } from "$lib/core/i18n";
   import { pageTitle } from "$lib/core/title";
@@ -20,35 +23,46 @@
   // above it, and the curated-marketing widget's data riding the URL it controls.
   const portalCompanies = $derived(data.portal?.companies ?? []);
 
-  // Tiles are draggable in edit mode: mirror the loaded order locally; a change persists it.
+  // Two independent columns instead of a grid: grid rows are as tall as their tallest tile,
+  // so a short tile next to a tall one left a hole and the vertical rhythm drifted. Each
+  // column is a flex stack with a constant gap. The flat order reads down the left column
+  // first, then the right — which is also exactly what a phone shows, and what the API stores
+  // beside the columns.
+  //
+  // The columns themselves are **stored** (#325). They used to be cut out of the flat list at
+  // ceil(n/2) on every render, which made a tile's column a function of its index and nothing
+  // else: a drag across only took if it also crossed that index, and crossing it shoved
+  // whatever sat on the boundary the other way. The load resolves the fallback split for a
+  // layout saved before columns existed; the drag handlers overwrite this until `data` changes.
   interface Tile {
     id: string;
   }
-  let tiles = $derived<Tile[]>(data.widgetKeys.map((key: string) => ({ id: key })));
+  let columns = $derived<Tile[][]>(
+    data.columns.map((column: string[]) => column.map((key) => ({ id: key }))),
+  );
   const widgetFor = (key: string) => allWidgets.find((w) => w.key === key);
-  const activeKeys = $derived(tiles.map((tile) => tile.id));
+  const activeKeys = $derived(columns.flat().map((tile) => tile.id));
 
-  // Two independent columns instead of a grid: grid rows are as tall as their tallest tile,
-  // so a short tile next to a tall one left a hole and the vertical rhythm drifted. Each
-  // column is a flex stack with a constant gap. The saved order reads down the left column
-  // first, then the right — which is also exactly the flat order a phone shows.
-  const splitAt = $derived(Math.ceil(tiles.length / 2));
-  const useColumns = $derived([tiles.slice(0, splitAt), tiles.slice(splitAt)]);
-  // Edit mode mirrors the same two stacks as drag zones; a drop rebuilds the flat order.
-  let editColumns = $state<Tile[][]>([[], []]);
+  // Streamed tile data. A reload hands the board a *new* promise for data it already drew, and
+  // a new promise identity sends every {#await} back to its skeleton — which is the flash in
+  // #325. So a tile keeps the promise it has; only a key we hold none for (a widget just added
+  // from the gallery) adopts the incoming one.
+  let tileData = $state<Record<string, Promise<unknown>>>({ ...data.widgetData });
   $effect(() => {
-    const half = Math.ceil(tiles.length / 2);
-    editColumns = [tiles.slice(0, half), tiles.slice(half)];
+    const incoming = data.widgetData;
+    untrack(() => {
+      for (const [key, promise] of Object.entries(incoming)) tileData[key] ??= promise;
+    });
   });
-  function considerColumn(column: number) {
+
+  function considerColumn(index: number) {
     return (e: CustomEvent<{ items: Tile[] }>) => {
-      editColumns[column] = e.detail.items;
+      columns = columns.map((column, i) => (i === index ? e.detail.items : column));
     };
   }
-  function finalizeColumn(column: number) {
+  function finalizeColumn(index: number) {
     return (e: CustomEvent<{ items: Tile[] }>) => {
-      editColumns[column] = e.detail.items;
-      tiles = [...editColumns[0], ...editColumns[1]];
+      columns = columns.map((column, i) => (i === index ? e.detail.items : column));
       persist();
     };
   }
@@ -59,18 +73,53 @@
 
   let layoutForm: HTMLFormElement | undefined = $state();
   let layoutValue = $state("");
+  let saveQueued = false;
+  let reloadAfterSave = false;
+
   function persist() {
-    layoutValue = tiles.map((tile) => tile.id).join(",");
-    setTimeout(() => layoutForm?.requestSubmit(), 0);
+    layoutValue = columns.map((column) => column.map((tile) => tile.id).join(",")).join("|");
+    // svelte-dnd-action dispatches `finalize` on **both** the origin and the target zone (its
+    // README, v0.9.70), so one cross-column drop calls this twice in the same tick. One drop is
+    // one save: coalescing into a single submit also lets the second call's columns be the ones
+    // that travel, because the input's value is flushed before this timeout runs.
+    if (saveQueued) return;
+    saveQueued = true;
+    setTimeout(() => {
+      saveQueued = false;
+      layoutForm?.requestSubmit();
+    }, 0);
   }
+
+  // The board is already showing what it just saved, so the default success path — `update()`,
+  // which is `invalidateAll` — re-ran the whole page load, refetched every widget's API calls
+  // and blinked every tile back to its skeleton to persist an order the browser had on screen
+  // (#325). The one thing the browser genuinely lacks is data for a widget it has never drawn.
+  const saveLayout: SubmitFunction =
+    () =>
+    async ({ result }) => {
+      if (result.type === "failure") {
+        await applyAction(result);
+        return;
+      }
+      if (reloadAfterSave) {
+        reloadAfterSave = false;
+        await invalidateAll();
+      }
+    };
+
   function addWidget(key: string) {
-    if (!activeKeys.includes(key)) {
-      tiles = [...tiles, { id: key }];
-      persist();
-    }
+    if (activeKeys.includes(key)) return;
+    // Under the shorter column — where a new tile visually belongs, and the only placement that
+    // doesn't disturb what is already arranged.
+    const target = columns[0].length <= columns[1].length ? 0 : 1;
+    columns = columns.map((column, i) => (i === target ? [...column, { id: key }] : column));
+    // Its data is the one thing the page does not have — unless this widget was on the board
+    // earlier in the session and its promise is still here.
+    reloadAfterSave = !(key in tileData);
+    persist();
   }
   function removeWidget(key: string) {
-    tiles = tiles.filter((tile) => tile.id !== key);
+    columns = columns.map((column) => column.filter((tile) => tile.id !== key));
     persist();
   }
 </script>
@@ -95,6 +144,30 @@
     >
       {company.name.slice(0, 2).toUpperCase()}
     </span>
+  {/if}
+{/snippet}
+
+{#snippet tileBody(key: string)}
+  {@const widget = widgetFor(key)}
+  {#if widget}
+    {@const WidgetComponent = widget.component}
+    {#if tileData[key] === undefined}
+      <!-- Just added from the gallery: nothing has ever loaded this one, so the skeleton is the
+           honest answer until the reload brings it back. -->
+      <div
+        class="h-32 animate-pulse rounded-xl border border-border bg-surface-raised"
+        aria-busy="true"
+      ></div>
+    {:else}
+      {#await tileData[key]}
+        <div
+          class="h-32 animate-pulse rounded-xl border border-border bg-surface-raised"
+          aria-busy="true"
+        ></div>
+      {:then widgetData}
+        <WidgetComponent data={widgetData} />
+      {/await}
+    {/if}
   {/if}
 {/snippet}
 
@@ -152,56 +225,63 @@
     <p class="text-sm text-text-muted">{t("portal.home.empty")}</p>
   </div>
 {:else}
-  <form method="POST" action="?/saveLayout" use:enhance bind:this={layoutForm} class="hidden">
-    <input type="hidden" name="widgets" value={layoutValue} />
+  <form
+    method="POST"
+    action="?/saveLayout"
+    use:enhance={saveLayout}
+    bind:this={layoutForm}
+    class="hidden"
+  >
+    <input type="hidden" name="columns" value={layoutValue} />
   </form>
 
   {#if form?.error}<p class="mb-4 text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>{/if}
 
   <!-- The board. In use mode it is a plain grid — tiles are not draggable and a stray drag can't
        disturb the layout (UX §3). Edit mode turns on the drag zone and the per-tile remove. -->
-  {#if tiles.length === 0}
+  {#if activeKeys.length === 0}
     <div class="rounded-xl border border-dashed border-border bg-surface-raised p-10 text-center">
       <p class="text-sm text-text-muted">{t("dashboard.my_day.empty")}</p>
     </div>
   {:else if editMode}
-    <!-- The same two stacks as use mode, each a drag zone; dragging between them works and a
-         drop rebuilds the flat saved order (left column first, then right). -->
+    <!-- The same two stacks as use mode, each a drag zone. A drop writes that column and saves
+         it; the columns are the layout, so a tile crossing does not move anything else. -->
     <div class="flex flex-col gap-4 sm:flex-row sm:items-start">
-      {#each editColumns as column, columnIndex (columnIndex)}
+      {#each columns as column, columnIndex (columnIndex)}
         <div
           class="flex min-h-24 w-full min-w-0 flex-col gap-4 sm:flex-1"
+          data-dashboard-column={columnIndex}
           use:dndzone={{
             items: column,
             flipDurationMs: 150,
             dropTargetStyle: {},
             type: "dashboard",
+            // Hit-test on the cursor, not on the centre of the tile being dragged. The default
+            // is the tile's centre, which only agrees with the pointer when the tile is small
+            // relative to its target — and a widget is 130 px tall against an empty column's
+            // 96 px, so emptying a column left a board you could not drag anything back into:
+            // the cursor was over the empty stack and the tile's centre was below it. Nothing
+            // moves differently, only what counts as "over".
+            useCursorForDetection: true,
           }}
           onconsider={considerColumn(columnIndex)}
           onfinalize={finalizeColumn(columnIndex)}
         >
           {#each column as tile (tile.id)}
-            {@const widget = widgetFor(tile.id)}
-            <div class="relative cursor-grab rounded-xl ring-1 ring-border active:cursor-grabbing">
+            <div
+              class="relative cursor-grab rounded-xl ring-1 ring-border active:cursor-grabbing"
+              data-widget={tile.id}
+            >
               <button
                 type="button"
                 onclick={() => removeWidget(tile.id)}
+                data-remove-widget={tile.id}
                 class="absolute -right-2 -top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-surface-raised text-text-muted shadow hover:border-red-400 hover:text-red-500"
                 aria-label={t("dashboard.remove_widget")}
               >
                 <X size={13} />
               </button>
-              {#if widget}
-                {@const WidgetComponent = widget.component}
-                {#await data.widgetData[tile.id]}
-                  <div
-                    class="h-32 animate-pulse rounded-xl border border-border bg-surface-raised"
-                    aria-busy="true"
-                  ></div>
-                {:then widgetData}
-                  <WidgetComponent data={widgetData} />
-                {/await}
-              {/if}
+              {@render tileBody(tile.id)}
             </div>
           {/each}
         </div>
@@ -211,21 +291,15 @@
     <!-- Two independent flex stacks: every tile sits gap-4 under its neighbour whatever the
          heights, instead of grid rows stretching to the tallest tile and leaving holes. -->
     <div class="flex flex-col gap-4 sm:flex-row sm:items-start">
-      {#each useColumns as column, columnIndex (columnIndex)}
-        <div class="flex w-full min-w-0 flex-col gap-4 sm:flex-1">
+      {#each columns as column, columnIndex (columnIndex)}
+        <div
+          class="flex w-full min-w-0 flex-col gap-4 sm:flex-1"
+          data-dashboard-column={columnIndex}
+        >
           {#each column as tile (tile.id)}
-            {@const widget = widgetFor(tile.id)}
-            {#if widget}
-              {@const WidgetComponent = widget.component}
-              <div>
-                {#await data.widgetData[tile.id]}
-                  <div
-                    class="h-32 animate-pulse rounded-xl border border-border bg-surface-raised"
-                    aria-busy="true"
-                  ></div>
-                {:then widgetData}
-                  <WidgetComponent data={widgetData} />
-                {/await}
+            {#if widgetFor(tile.id)}
+              <div data-widget={tile.id}>
+                {@render tileBody(tile.id)}
               </div>
             {/if}
           {/each}

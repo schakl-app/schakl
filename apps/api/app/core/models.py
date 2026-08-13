@@ -247,6 +247,15 @@ class DashboardPref(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     widgets: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, default=list, server_default="[]"
     )
+    # Which column each widget sits in (#325). The board is two columns, and until this column
+    # existed they were cut out of ``widgets`` at ceil(n/2) on every render — so the column a
+    # tile was in was a function of its index and nothing else, which is why no drag could move
+    # one across without shoving whatever sat on the boundary the other way. ``widgets`` stays
+    # the flat reading order (``columns`` flattened) — a phone renders it, and the previous
+    # release still reads it. NULL means *nobody has arranged columns here*, a different
+    # sentence from "one empty column": a layout saved before this existed keeps rendering as
+    # the halfway split it always did, until its owner drags something.
+    columns: Mapped[list[list[str]] | None] = mapped_column(JSONB, nullable=True)
 
 
 class NavPref(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):

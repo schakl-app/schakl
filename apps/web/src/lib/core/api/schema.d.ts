@@ -14312,15 +14312,28 @@ export interface components {
         };
         /** DashboardPrefs */
         DashboardPrefs: {
+            /** Columns */
+            columns?: string[][] | null;
             /** Source */
             source: string;
             /** Widgets */
             widgets: string[] | null;
         };
-        /** DashboardPrefsUpdate */
+        /**
+         * DashboardPrefsUpdate
+         * @description A layout is the columns the board shows; the flat list is what they read as.
+         *
+         *     Both fields are accepted, and that is the rolling-deploy contract (docs/WORKFLOW.md): the
+         *     previous release posts ``widgets`` alone and must keep saving, and it also *reads* only
+         *     ``widgets``, so the flat order has to stay written. When ``columns`` arrives it is the
+         *     authority — ``widgets`` is derived from it rather than trusted alongside it, so the two
+         *     stored shapes can never disagree about which widgets are on the board.
+         */
         DashboardPrefsUpdate: {
+            /** Columns */
+            columns?: string[][] | null;
             /** Widgets */
-            widgets: string[];
+            widgets?: string[] | null;
         };
         /**
          * DashboardTaskGroup
