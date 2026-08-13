@@ -12,6 +12,7 @@ import uuid
 from datetime import UTC, datetime
 
 from app.core.events import subscribe
+from app.modules.interactions.schemas import MAX_BULK_IDS
 from tests.conftest import auth_cookie, make_tenant
 from tests.test_interactions_api import _collect, _member, _seed_gmail_row
 
@@ -457,13 +458,19 @@ async def test_duplicate_ids_are_collapsed_not_approved_twice(client_for) -> Non
 
 
 async def test_the_batch_is_bounded(client_for) -> None:
+    """The bound is ``MAX_BULK_IDS``, and this test must read it rather than restate it.
+
+    It hardcoded 101 back when the cap was 100, so raising the cap to a whole page left the
+    assertion describing a route that no longer exists: 101 ids are now ordinary, the call
+    answers 200, and the only thing red was the number written down here.
+    """
     t = await make_tenant("bulk-cap")
     async with client_for(t.host) as c:
         headers = await auth_cookie(t.user)
         assert (
             await c.post(
                 "/api/v1/interactions/bulk/approve",
-                json={"ids": [str(uuid.uuid4()) for _ in range(101)]},
+                json={"ids": [str(uuid.uuid4()) for _ in range(MAX_BULK_IDS + 1)]},
                 headers=headers,
             )
         ).status_code == 422
