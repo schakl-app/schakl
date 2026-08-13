@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.auth.models import User
+from app.core.entitlements.service import OrgPlan
 from app.core.models import Org, OrgStatus
 from app.core.permissions.permset import PermissionSet
 from app.core.tenancy import RequestContext
@@ -91,6 +92,12 @@ async def run_per_org(callback: PerOrgCallback) -> None:
     Suspended and soft-deleted orgs are skipped: a tenant that can't serve requests must not
     keep accruing background work either (issue #26). A failure is rolled back and logged for
     that org only; the remaining orgs still run.
+
+    On cloud an org whose **plan** has lapsed is skipped for the same reason, and this is the
+    one place it needs saying: a module's cron guard asks whether its sku is writable with no
+    org in hand (there isn't one yet — it runs before the fan-out), so on cloud that question
+    can only be answered instance-wide. Answering it per org here keeps the background half
+    agreeing with the request half without every module learning about plans.
     """
     async with async_session_maker() as session:
         orgs = (
@@ -98,6 +105,8 @@ async def run_per_org(callback: PerOrgCallback) -> None:
             .scalars()
             .all()
         )
+    if settings.is_cloud:
+        orgs = [org for org in orgs if OrgPlan.of(org).live()]
 
     for org in orgs:
         async with async_session_maker() as session:

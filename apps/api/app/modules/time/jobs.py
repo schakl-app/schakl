@@ -35,10 +35,10 @@ async def _purge_org_drafts(org: Org, session: AsyncSession) -> None:
 
 async def purge_stale_time_drafts(ctx: dict) -> None:
     """ARQ entrypoint: drop drafts untouched for 30 days (#44)."""
-    from app.core.entitlements.service import license_state
+    from app.core.entitlements.service import sku_cron_enabled
 
     # Licensed module (issue #137): past expiry the module is read-only, and read-only means
     # the background half does not delete data either — drafts simply wait for a renewal.
-    if not (await license_state()).writable("time"):
+    if not await sku_cron_enabled("time"):
         return
     await run_per_org(_purge_org_drafts)

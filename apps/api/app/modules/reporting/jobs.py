@@ -36,7 +36,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.entitlements.service import license_state
+from app.core.entitlements.service import sku_cron_enabled
 from app.core.jobs import enqueue, run_per_org
 from app.core.models import Org, OrgStatus
 from app.core.timezone import org_zoneinfo
@@ -54,7 +54,7 @@ logger = logging.getLogger("schakl.reporting")
 
 
 async def _licensed() -> bool:
-    return (await license_state()).writable("reporting")
+    return await sku_cron_enabled("reporting")
 
 
 async def _due(session: AsyncSession, org: Org) -> list[tuple[ReportProfile, dict]]:

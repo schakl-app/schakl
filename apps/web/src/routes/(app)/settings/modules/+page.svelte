@@ -14,6 +14,18 @@
   // rendered one-way loses its mark on hydration, and the next save then silently strips
   // every module the user never touched — only the freshly ticked ones survived.
   let selected = $state<string[]>([...data.enabled]);
+
+  // A locked module means two different things, and only one of them is something the reader
+  // can act on. On a self-hosted box a licence key is missing and the instance owner installs
+  // one; on cloud the workspace's plan does not cover it and only the operator can change that,
+  // so pointing at Instellingen → Licentie would be a control that always refuses (#253).
+  const lockedHint = $derived(
+    t(
+      data.deployment === "cloud"
+        ? "settings.modules.locked_hint_cloud"
+        : "settings.modules.locked_hint",
+    ),
+  );
 </script>
 
 <svelte:head>
@@ -68,7 +80,7 @@
           {:else if locked}
             <span
               class="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-700 dark:text-amber-400"
-              title={t("settings.modules.locked_hint")}
+              title={lockedHint}
             >
               {t("settings.modules.locked")}
             </span>

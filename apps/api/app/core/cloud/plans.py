@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.auth.models import User
 from app.core.cloud.models import PLANS
+from app.core.entitlements import invalidate_plan_cache
 from app.core.instance import audit
 from app.core.instance import service as org_service
 from app.core.models import Org, OrgStatus
@@ -55,6 +56,10 @@ async def set_plan(
     else:
         org.trial_ends_at = None
     await session.flush()
+    # The plan is now an entitlement authority (app/core/entitlements), memoised per host for a
+    # minute. Drop it here so an operator who lifts an org to "unlimited" to unstick a customer
+    # sees it on the customer's next request rather than up to a TTL later.
+    invalidate_plan_cache()
     await audit.record(
         session,
         actor=actor,

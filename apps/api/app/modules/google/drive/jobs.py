@@ -6,7 +6,7 @@ import uuid
 
 from sqlalchemy import select
 
-from app.core.entitlements.service import license_state
+from app.core.entitlements.service import sku_cron_enabled
 from app.core.jobs import enqueue, run_per_org
 from app.db import async_session_maker, set_current_org
 from app.modules.google.drive.models import DriveFolderJob, FolderJobStatus
@@ -14,7 +14,7 @@ from app.modules.google.drive.service import MAX_ATTEMPTS, provision_folder
 
 
 async def _licensed() -> bool:
-    return (await license_state()).writable("google")
+    return await sku_cron_enabled("google")
 
 
 async def google_drive_sweep_folder_jobs(ctx: dict) -> None:  # noqa: ARG001

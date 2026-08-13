@@ -23,9 +23,10 @@ from app.core.currency import DEFAULT_CURRENCY, is_valid_currency
 from app.core.customfields import customizable_entity_types
 from app.core.entitlements.service import (
     MCP_SKU,
+    OrgPlan,
     ensure_modules_enableable,
-    license_state,
     licensed_skus,
+    sku_writable,
 )
 from app.core.models import OrgSettings, OrgStatus
 from app.core.permissions.deps import no_permission_required, require_permission
@@ -120,29 +121,33 @@ class DomainProbe(BaseModel):
     nonce: str
 
 
-async def _module_entitlements() -> dict[str, list[str]]:
+async def _module_entitlements(plan: OrgPlan | None = None) -> dict[str, list[str]]:
     """``{licensed_modules, entitled_modules}`` — the two lists both meta payloads carry.
 
     One helper because two endpoints must never drift into disagreeing about which modules are
     usable: a locked control and the modules settings screen answering differently is a bug the
-    user reads as the app being broken. ``license_state()`` is cached in-process for a minute,
-    so this costs no query on the request path (docs/PERFORMANCE.md).
+    user reads as the app being broken. Both the licence state and the per-host plan are cached
+    in-process for a minute, so this costs no query on the request path (docs/PERFORMANCE.md).
+
+    ``plan`` must be the resolved org wherever one exists, for the same reason the enable path
+    needs it: this list is what draws a control locked or live, and drawing it from a different
+    authority than the write gate uses is how a button becomes a 402.
     """
-    state = await license_state()
     module_skus = {
         name: sku
         for name, sku in licensed_skus().items()
         if registry.get(name) is not None
     }
+    entitled = [
+        name for name, sku in module_skus.items() if await sku_writable(sku, plan=plan)
+    ]
     return {
         "licensed_modules": sorted(module_skus),
-        "entitled_modules": sorted(
-            name for name, sku in module_skus.items() if state.writable(sku)
-        ),
+        "entitled_modules": sorted(entitled),
     }
 
 
-async def _mcp_availability() -> tuple[bool, bool]:
+async def _mcp_availability(plan: OrgPlan | None = None) -> tuple[bool, bool]:
     """``(mcp_enabled, mcp_entitled)`` — whether ``/mcp`` exists, and whether it answers.
 
     Deliberately *not* folded into ``licensed_modules``: that list is filtered to registry
@@ -155,8 +160,7 @@ async def _mcp_availability() -> tuple[bool, bool]:
     """
     if not settings.mcp_enabled:
         return False, False
-    state = await license_state()
-    return True, state.writable(MCP_SKU)
+    return True, await sku_writable(MCP_SKU, plan=plan)
 
 
 _HEX_COLOR = r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
@@ -426,7 +430,7 @@ async def tenant_branding(request: Request) -> TenantBranding:
             enabled_modules=list(s.enabled_modules)
             if s and s.enabled_modules
             else list(settings.enabled_modules),
-            **(await _module_entitlements()),
+            **(await _module_entitlements(OrgPlan.of(org))),
             deployment=settings.deployment,
             demo_mode=settings.demo_mode,
             demo_reset_minutes=settings.demo_reset_minutes,
@@ -518,7 +522,9 @@ async def update_tenant_branding(
         # Newly enabling a licensed module requires a covering license (issue #137, 409);
         # keeping an already-enabled one is allowed — the write gate governs that case.
         await ensure_modules_enableable(
-            data["enabled_modules"], current=list(s.enabled_modules or [])
+            data["enabled_modules"],
+            current=list(s.enabled_modules or []),
+            plan=OrgPlan.of(ctx.org),
         )
     for key, value in data.items():
         # Empty strings clear the optional fields; required fields ignore empties.
@@ -563,16 +569,20 @@ async def modules(request: Request) -> ModulesMeta:
     # Instance-wide until an org resolves, then narrowed to that org's entitlement (#199):
     # an org the operator took off included e-mail must not be offered it.
     instance_email_available = settings.instance_email_available
+    # None until an org resolves: on the cloud console's apex host there is no tenant, and the
+    # instance licence is then the only authority there is (entitlements.sku_writable).
+    plan: OrgPlan | None = None
     async with async_session_maker() as session:
         org = await resolve_org(session, request_hostname(request))
         if org is not None:
             await set_current_org(session, org.id)
+            plan = OrgPlan.of(org)
             row = await sso.sso_row(session, org.id)
             oidc_enabled = sso.sso_configured(row)
             oidc_name = row.oidc_name if row is not None and oidc_enabled else None
             local_login_enabled = sso.local_login_enabled_for(row)
             instance_email_available = instance_email_available and org.email_included
-    mcp_enabled, mcp_entitled = await _mcp_availability()
+    mcp_enabled, mcp_entitled = await _mcp_availability(plan)
     return ModulesMeta(
         enabled_modules=[m.name for m in registry.enabled(settings.enabled_modules)],
         customizable_entity_types=customizable_entity_types(),
@@ -582,7 +592,7 @@ async def modules(request: Request) -> ModulesMeta:
         oidc_enabled=oidc_enabled,
         oidc_name=oidc_name,
         base_domain=settings.base_domain,
-        **(await _module_entitlements()),
+        **(await _module_entitlements(plan)),
         deployment=settings.deployment,
         instance_email_available=instance_email_available,
         mcp_enabled=mcp_enabled,
@@ -644,7 +654,7 @@ async def mcp_meta(request: Request, ctx: RequestContext = Depends(require_conte
     """
     from app.core.mcp.sections import describe
 
-    enabled, entitled = await _mcp_availability()
+    enabled, entitled = await _mcp_availability(OrgPlan.of(ctx.org))
     state = getattr(getattr(request.app.state, "mcp_app", None), "state", None)
     sections = getattr(state, "sections", None) or {}
     return McpMeta(

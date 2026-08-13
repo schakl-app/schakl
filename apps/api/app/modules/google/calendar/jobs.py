@@ -13,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select, text
 
-from app.core.entitlements.service import license_state
+from app.core.entitlements.service import sku_cron_enabled
 from app.core.jobs import enqueue, run_per_org
 from app.db import async_session_maker, set_current_org
 from app.modules.google.calendar.models import (
@@ -38,7 +38,7 @@ _STALE_AFTER = timedelta(minutes=30)
 
 
 async def _licensed() -> bool:
-    return (await license_state()).writable("google")
+    return await sku_cron_enabled("google")
 
 
 async def _calendar_connections(session, org_id: uuid.UUID) -> list[GoogleConnection]:

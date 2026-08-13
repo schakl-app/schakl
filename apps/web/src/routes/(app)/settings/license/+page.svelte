@@ -19,6 +19,10 @@
   const fmtDay = (iso: string | null | undefined) =>
     iso ? fmtDayMonthYear(iso.slice(0, 10)) : "—";
 
+  // "expired" is reserved for a licence that really lapsed. A box that never had a key reads
+  // "unlicensed" while its bootstrap window is open and "none" once it has closed — saying
+  // "verlopen" there describes a document nobody installed, and sends the reader off to renew
+  // something that does not exist.
   const stateKey = (notice: string | null | undefined) =>
     notice === "grace"
       ? "settings.license.state_grace"
@@ -26,7 +30,9 @@
         ? "settings.license.state_expired"
         : notice === "unlicensed"
           ? "settings.license.state_unlicensed"
-          : "settings.license.state_ok";
+          : notice === "none"
+            ? "settings.license.state_none"
+            : "settings.license.state_ok";
 </script>
 
 <svelte:head>
