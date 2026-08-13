@@ -115,23 +115,62 @@ class ContactMatch:
     company_ids: list[uuid.UUID] = field(default_factory=list)
     #: The header this contact was found on — see ``_ROLE_RANK``.
     role: str = "to"
-    #: This contact is a colleague: their address is a staff member's.
+    #: This contact is a colleague: their address reaches one of our own mailboxes.
     is_staff: bool = False
 
 
-def internal_only(participants: list[dict[str, str]], member_emails: AbstractSet[str]) -> bool:
-    """Colleague-to-colleague mail is not a client touchpoint — skip it entirely."""
+def internal_only(participants: list[dict[str, str]], ours: AbstractSet[str]) -> bool:
+    """Colleague-to-colleague mail is not a client touchpoint — skip it entirely.
+
+    Read off the *addresses*, never off what matched a contact row: whether anyone outside
+    the agency is on this message is a fact about the message, and it is the same answer
+    whether or not the people on it happen to have records (#324).
+    """
     addresses = {p["email"] for p in participants}
-    return bool(addresses) and addresses <= member_emails
+    return bool(addresses) and addresses <= ours
+
+
+def is_internal_match(
+    match: ContactMatch, internal_company_ids: frozenset[uuid.UUID] = frozenset()
+) -> bool:
+    """Is this matched contact one of ours rather than somebody outside the agency?
+
+    Two ways to be ours: the address reaches a colleague (``is_staff``), or every company the
+    contact is linked to is the agency's own (``internal_company_ids``, itself derived from
+    staff-as-contacts — so it covers ``administratie@`` and the rest of the people on our own
+    record who hold no login). A contact linked to *no* company is an outsider: an unattached
+    prospect is precisely the record this feed exists to fill in.
+
+    One definition, two readers — the ingest gate (:func:`has_external_match`) and the mapping
+    ranking (:func:`resolve_mappings`). They were two copies of it, and only one was ever
+    written down (#324).
+    """
+    return match.is_staff or (
+        bool(match.company_ids)
+        and all(company_id in internal_company_ids for company_id in match.company_ids)
+    )
+
+
+def has_external_match(
+    matches: list[ContactMatch], internal_company_ids: frozenset[uuid.UUID] = frozenset()
+) -> bool:
+    """Does this message name a known contact who is **not** one of ours? (#324)
+
+    The ingest gate's question. "Matched a contact" was never it: an agency's own staff are
+    contacts too — the ordinary setup, and the very fact ``Internals.company_ids`` is derived
+    from — so a newsletter addressed to one colleague matched *that colleague*, opened the
+    gate, and landed in their review queue as a pending contactmoment on the agency's own
+    company. Every supplier invoice, cold outreach and GitHub notification with it.
+    """
+    return any(not is_internal_match(match, internal_company_ids) for match in matches)
 
 
 def _rank(match: ContactMatch, internal_company_ids: frozenset[uuid.UUID]) -> tuple[int, int]:
     """Sort key: outsiders before insiders, then by how central the header is."""
-    internal = match.is_staff or (
-        bool(match.company_ids)
-        and all(company_id in internal_company_ids for company_id in match.company_ids)
+    return (
+        int(is_internal_match(match, internal_company_ids)),
+        _ROLE_RANK.get(match.role, len(_ROLE_RANK)),
     )
-    return (int(internal), _ROLE_RANK.get(match.role, len(_ROLE_RANK)))
 
 
 def resolve_mappings(

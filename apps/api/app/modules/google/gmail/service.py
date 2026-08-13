@@ -222,13 +222,18 @@ async def _ingest_message(
             org.id,
         )
         return 0
-    internal = matching.internal_only(participants, internals.member_emails)
+    internal = matching.internal_only(participants, internals.ours)
     if internal and not settings_row.gmail_log_internal:
         return 0
     matches = await _match_contacts(session, org.id, participants, internals)
-    if not matches and not internal:
-        # External mail still needs a known contact; without the internal opt-in nothing
-        # changes here — every newsletter and cold email stays out.
+    if not internal and not matching.has_external_match(matches, internals.company_ids):
+        # A mail with an outsider on it still needs that outsider to be a contact we know —
+        # and "known" has to mean known *and outside* (#324). Our own staff hold contact rows
+        # too, which is the setup ``_internals`` assumes and derives ``company_ids`` from, so
+        # "matched anything" let every newsletter, supplier invoice, password reset and GitHub
+        # notification addressed to a colleague straight through: it matched the colleague,
+        # and the row landed in their review queue filed on the agency's own company.
+        # ``gmail_log_internal`` remains the only door for a message with nobody outside on it.
         return 0
 
     inherited = (
@@ -341,26 +346,40 @@ async def _owner_name(session: AsyncSession, user_id: uuid.UUID) -> str | None:
 class Internals:
     """Who counts as *us*, resolved once per poll rather than once per message.
 
-    The first two halves answer the same question — "is this person the agency, or the
-    client?" — which the feed asks twice: to skip colleague-only chatter, and to rank the
-    mapping (#305). The last two answer a different one: *which colleague*, and does their own
+    ``ours`` and ``company_ids`` answer one question — "is this person the agency, or somebody
+    outside it?" — which the feed asks three times: to skip colleague-only chatter, to decide
+    whether the message is CRM-relevant at all (#324), and to rank the mapping (#305).
+    ``member_emails`` exists to derive the company half. ``owner_by_email`` and
+    ``syncing_user_ids`` answer a different question: *which* colleague, and does their own
     mailbox poll.
     """
 
-    #: Staff addresses.
+    #: Staff *login* addresses (``users.email``). Narrow on purpose: it is what derives
+    #: ``company_ids``, and a colleague who connected a private Google account must never make
+    #: whichever company that address is a contact of read as the agency's own.
     member_emails: frozenset[str]
     #: Companies that are the agency itself rather than one of its clients.
     company_ids: frozenset[uuid.UUID]
     #: Every address that reaches a colleague → their user id. Wider than ``member_emails`` on
     #: purpose: it also carries the address each Google grant was made with, because what has
     #: to be found here is a *mailbox*, and someone whose ``users.email`` differs from their
-    #: Workspace address would otherwise resolve to nobody. Only ``intended_owner`` reads it —
-    #: ``internal_only`` and ``is_staff`` keep the narrower set, so what counts as
-    #: colleague-to-colleague chatter is exactly what it was.
+    #: Workspace address would otherwise resolve to nobody.
     owner_by_email: dict[str, uuid.UUID] = field(default_factory=dict)
     #: Users whose own mailbox is genuinely being polled: active, opted in, holding the Gmail
     #: scope. Deferring to a mailbox that will never poll would lose the email outright.
     syncing_user_ids: frozenset[uuid.UUID] = frozenset()
+
+    @property
+    def ours(self) -> frozenset[str]:
+        """Every address that is one of ours — the keys of ``owner_by_email``.
+
+        One set answers "is this person outside the agency?" wherever it is asked: whether the
+        message is colleague-to-colleague chatter (``internal_only``) and whether a matched
+        contact row is a colleague's (``is_staff``). Two sets is how a mail to somebody's
+        Workspace alias came out *external* on one question and *internal* on the other (#324);
+        the alias reaches the same person either way.
+        """
+        return frozenset(self.owner_by_email)
 
 
 async def _internals(session: AsyncSession, org_id: uuid.UUID) -> Internals:
@@ -482,8 +501,9 @@ async def _match_contacts(
     internals: Internals,
 ) -> list[matching.ContactMatch]:
     """Participant addresses → contacts (+ their companies, oldest link first), each carrying
-    the header it was found on and whether it is a colleague, which is what ``resolve_mappings``
-    ranks by. Bare-table lookups, never a contacts-module import (§6)."""
+    the header it was found on and whether it is a colleague — which is what the ingest gate
+    filters on and ``resolve_mappings`` ranks by. Bare-table lookups, never a contacts-module
+    import (§6)."""
     # First occurrence wins: participants read From, To, Cc, so this is the most central header
     # each address appears on.
     roles: dict[str, str] = {}
@@ -513,12 +533,16 @@ async def _match_contacts(
     companies: dict[uuid.UUID, list[uuid.UUID]] = {}
     for contact_id, company_id in link_rows:
         companies.setdefault(contact_id, []).append(company_id)
+    # ``ours``, not ``member_emails``: a contact row on a colleague's Workspace alias is still
+    # a colleague's, and now that the gate reads this flag, calling it an outsider is what
+    # would let the newsletter back in (#324). Resolved once, not once per match.
+    ours = internals.ours
     return [
         matching.ContactMatch(
             contact_id=contact_id,
             company_ids=companies.get(contact_id, []),
             role=roles.get(email, "to"),
-            is_staff=email in internals.member_emails,
+            is_staff=email in ours,
         )
         for contact_id, email in found
     ]

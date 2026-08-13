@@ -173,6 +173,43 @@ def test_mapping_ranks_the_client_above_the_agency() -> None:
     )
 
 
+def test_the_gate_asks_for_an_outsider_not_merely_a_match() -> None:
+    """#324: "matched a contact" was never "involves somebody outside the agency".
+
+    Staff are contacts on the agency's own company — the ordinary setup, and the very one
+    ``internal_company_ids`` is derived from — so a newsletter addressed to one colleague
+    matched *that colleague* and walked through the gate meant to stop it. The predicate the
+    ranking already used is now named and shared, so the gate and the ranking cannot disagree.
+    """
+    colleague, house, client, stranger = (uuid.uuid4() for _ in range(4))
+    ours, theirs = uuid.uuid4(), uuid.uuid4()
+    internal = frozenset({ours})
+
+    staff = matching.ContactMatch(colleague, [ours], role="to", is_staff=True)
+    office = matching.ContactMatch(house, [ours], role="to")  # administratie@, holds no login
+    customer = matching.ContactMatch(client, [theirs], role="from")
+    unattached = matching.ContactMatch(stranger, [], role="from")
+
+    assert matching.is_internal_match(staff, internal)
+    assert matching.is_internal_match(office, internal)
+    assert not matching.is_internal_match(customer, internal)
+    # A contact on no company at all is an outsider — an unattached prospect is exactly the
+    # record this feed exists to fill in, and reading it as one of ours would lose it.
+    assert not matching.is_internal_match(unattached, internal)
+    # A colleague carries the flag on their own; the office address needs the derived company
+    # set, which is the whole reason that set exists.
+    assert matching.is_internal_match(staff)
+    assert not matching.is_internal_match(office)
+
+    # The gate. The newsletter's only match is the colleague it was addressed to.
+    assert not matching.has_external_match([staff], internal)
+    assert not matching.has_external_match([staff, office], internal)
+    assert not matching.has_external_match([], internal)
+    # A real customer on the same thread is untouched by any of this (#305, unchanged).
+    assert matching.has_external_match([staff, office, customer], internal)
+    assert matching.has_external_match([unattached], internal)
+
+
 def test_body_extraction_prefers_plain_text() -> None:
     def _b64(value: str) -> str:
         return base64.urlsafe_b64encode(value.encode()).decode()
@@ -643,6 +680,156 @@ async def test_internal_mail_logs_pending_when_opted_in(client_for, monkeypatch)
         assert row.gmail_message_id == "msg-int"
         assert row.status == "pending"  # forced despite auto_approve — unmapped internal
         assert row.company_id is None and row.contact_id is None
+
+
+async def test_a_staff_contact_does_not_open_the_gate(client_for, monkeypatch) -> None:
+    """#324: the whole mailbox was landing in the review queue, one rejection at a time.
+
+    The gate reads as though it cannot happen — *"External mail still needs a known contact"* —
+    and the code asked a different question: had *anything* matched. An agency puts its own
+    people in its own contact list (that is where ``_internals`` derives its own companies
+    from), so a newsletter to one colleague matched the colleague, filed itself on the agency's
+    own company as pending, and notified its owner. Every supplier invoice, cold email, GitHub
+    notification and password reset with it.
+
+    Seeded as the setup that reproduces it — staff *and* the login-less ``office@`` address as
+    contacts on the agency's own record — and polled with the four shapes at once, because the
+    bug is not that any one of them logs but that the gate cannot tell them apart.
+    """
+    from tests.test_notification_channels import _member
+
+    t = await make_tenant("gmail-staff-gate")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    collega = "collega@gmail-staff-gate-example.nl"
+    async with client_for(t.host) as c:
+        await _member(c, headers, collega)
+        house = (
+            await c.post("/api/v1/companies", json={"name": "Bureau zelf"}, headers=headers)
+        ).json()
+        for first_name, email in (
+            ("Eigenaar", t.user.email),
+            ("Collega", collega),
+            ("Office", "office@agency.nl"),
+        ):
+            await c.post(
+                "/api/v1/contacts",
+                json={
+                    "first_name": first_name,
+                    "email": email,
+                    "company_ids": [house["id"]],
+                },
+                headers=headers,
+            )
+        client_co = (
+            await c.post("/api/v1/companies", json={"name": "Client NL"}, headers=headers)
+        ).json()
+        klant = (
+            await c.post(
+                "/api/v1/contacts",
+                json={
+                    "first_name": "Klant",
+                    "email": "klant@client.nl",
+                    "company_ids": [client_co["id"]],
+                },
+                headers=headers,
+            )
+        ).json()
+
+    stub = _StubGmail(
+        history=["msg-news", "msg-office", "msg-intern", "msg-klant"],
+        messages={
+            # A newsletter to a colleague: nobody outside is a contact, so nothing is.
+            "msg-news": _message(
+                "msg-news",
+                sender="Nieuwsbrief <nieuws@example.com>",
+                to=t.user.email,
+                thread="thr-news",
+            ),
+            # The same, addressed to the office address — internal by *company*, not by
+            # ``is_staff``, which is the half of the predicate a staff-only check would miss.
+            "msg-office": _message(
+                "msg-office",
+                sender="Leverancier <factuur@leverancier.nl>",
+                to="office@agency.nl",
+                thread="thr-office",
+            ),
+            # Colleague to colleague, with both of them contacts: still internal, and
+            # ``gmail_log_internal`` is off.
+            "msg-intern": _message(
+                "msg-intern", sender=f"Collega <{collega}>", to=t.user.email, thread="thr-int"
+            ),
+            # The one that is actually a client touchpoint.
+            "msg-klant": _message(
+                "msg-klant",
+                sender="Klant <klant@client.nl>",
+                to=t.user.email,
+                thread="thr-klant",
+            ),
+        },
+        history_id="9910",
+    )
+    assert await _poll(t, connection_id, stub, monkeypatch) == 1
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        row = (await session.execute(select(Interaction))).scalar_one()
+        assert row.gmail_message_id == "msg-klant"
+        # …and #305's answer is unchanged: the colleague on the thread does not steal it.
+        assert row.company_id == uuid.UUID(client_co["id"])
+        assert row.contact_id == uuid.UUID(klant["id"])
+
+        from app.modules.notifications.models import NotificationEvent
+
+        pending = (
+            (
+                await session.execute(
+                    select(NotificationEvent).where(
+                        NotificationEvent.event_type == "interactions.email_pending"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(pending) == 1  # one review to do, not four
+
+        # Opting in is the *only* door a message with nobody outside on it has — and opening
+        # it must not reopen the newsletter's.
+        settings_row = (await session.execute(select(GoogleSettings))).scalar_one()
+        settings_row.gmail_log_internal = True
+        await session.commit()
+
+    stub2 = _StubGmail(
+        history=["msg-news2", "msg-intern2"],
+        messages={
+            "msg-news2": _message(
+                "msg-news2",
+                sender="Nieuwsbrief <nieuws@example.com>",
+                to=t.user.email,
+                thread="thr-news2",
+                rfc822="<news2@mail>",
+            ),
+            "msg-intern2": _message(
+                "msg-intern2",
+                sender=f"Collega <{collega}>",
+                to=t.user.email,
+                thread="thr-int2",
+                rfc822="<intern2@mail>",
+            ),
+        },
+        history_id="9920",
+    )
+    assert await _poll(t, connection_id, stub2, monkeypatch) == 1
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        logged = (
+            (await session.execute(select(Interaction).order_by(Interaction.created_at)))
+            .scalars()
+            .all()
+        )
+        assert [row.gmail_message_id for row in logged] == ["msg-klant", "msg-intern2"]
 
 
 async def _colleague_mailbox(t, email: str, *, syncing: bool) -> uuid.UUID:

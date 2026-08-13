@@ -188,6 +188,33 @@ agency tool — so, direct.
 
 - Only link emails whose participants match a known `contact`; attach to the company/project
   timeline.
+- **A known contact is not the question; a known *outsider* is** (#324). The gate read *"external
+  mail still needs a known contact"* and asked whether anything had matched at all — and an
+  agency's own staff are contacts, on the agency's own company, which is the setup `_internals`
+  derives that company from. So a newsletter to one colleague matched the colleague, opened the
+  gate, and became a pending contactmoment on the agency's own record with a notification behind
+  it. On any instance set up the way this code assumes, the filter was effectively off: every
+  supplier invoice, cold email, GitHub notification and password reset in the mailbox arrived in
+  somebody's review queue to be rejected by hand. #305 had already moved these rows to a better
+  *destination*; the sibling it left standing was that they should not be landing at all. The
+  predicate is now named once (`matching.is_internal_match`) and read twice — by the gate
+  (`has_external_match`) and by the ranking — because two copies of it is how they came to
+  disagree. `gmail_log_internal` is the only door a message with nobody outside on it has, and
+  opening it does not reopen the newsletter's.
+- **"One of ours" is one set of addresses, asked in one place.** `Internals.ours` — every address
+  that reaches a colleague, `users.email` plus the address each Google grant was made with —
+  answers both *is this colleague-to-colleague chatter* (`internal_only`) and *is this contact row
+  a colleague's* (`is_staff`). Two sets meant a mail to somebody's Workspace alias came out
+  external on one question and internal on the other. `member_emails` stays narrower and stays
+  behind the *company* derivation only: a colleague who connected a private Google account must
+  never make whichever company that address is a contact of read as the agency's own.
+- **What about the rows already in the queue?** Nothing retroactive ships, deliberately. The
+  mis-ingested rows are indistinguishable from wanted ones by anything the server knows — a
+  pending row filed on the agency's own company is also exactly what an opted-in internal mail
+  looks like — so a purge would decide for the tenant, at scale, in a place where being wrong is
+  invisible. Bulk reject (#299) is the answer: filter the queue to `status=pending` on the
+  agency's own company, select, reject. Note that rejecting also suppresses the *thread* where
+  asked to, which is right for a newsletter and not for a client conversation swept up with it.
 - **The agency is not the client** (#305). An agency keeps itself in its own company list —
   that is where its own domains, hosting and invoices hang — with its staff and its
   `administratie@` address as contacts on it. Those records date from setup, so on any thread
