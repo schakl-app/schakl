@@ -523,6 +523,8 @@
   "companies.field.responsible": "Responsible",
   "companies.field.assignees": "Assigned employees",
   "companies.filter.mine": "My clients",
+  "companies.filter.not_archived": "Not archived",
+  "companies.filter.all": "All",
   "companies.status.lead": "Lead",
   "companies.status.onboarding": "Onboarding",
   "companies.status.active": "Active",

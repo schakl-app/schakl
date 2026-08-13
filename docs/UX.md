@@ -1037,6 +1037,18 @@
   one that had just landed on it. Clamp the bar, never the number.
 - A hardcoded `<ul>` per list. Six of them and no user could hide a column; the seventh is what
   `DataTable` exists to prevent.
+- **A list that opens on everything it has, rather than on what anyone is working on.** Klanten
+  listed the archive among the live clients and sorted newest-first, so the first screen of an
+  agency's oldest relationship was whoever they signed up last, mixed with people they stopped
+  working for years ago (#329). It now opens on every status but archived, A–Z. Two rules came
+  out of it, and both are about *saying so*. **A narrowing default is a selected pill, not the
+  absence of one**: a list quietly missing its archive looks identical to a list that has none,
+  and the only thing that can tell them apart is a control showing itself on. So "Niet
+  gearchiveerd" sits in the pill row, next to "Alles" for the other half — a state you can reach
+  needs a token in the URL (`?status=all`) or it cannot be linked, bookmarked or reached back to.
+  And **the export is handed what the screen resolved, never what the URL says**: `ImpexBar`'s
+  `filters` exist so the spreadsheet is the list on screen, and passing the token instead of the
+  resolved filter is how the archived rows quietly come back in the file.
 - **A bare `use:enhance` on a form that survives its own save.** The default reset rewound the
   roles matrix and the users-page role ticks to their server-rendered marks on every save — the
   UI read as "it didn't save", and the next save posted the rewound marks. The rule lives under

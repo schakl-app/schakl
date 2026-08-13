@@ -43,7 +43,10 @@ from app.errors import AppError
 #: entity's own list endpoint takes, so the export filters exactly like the list it exports.
 FILTER_PARAMS: dict[str, tuple[Any, Any]] = {
     "q": (str | None, Query(None, max_length=200, description="Search, as on the list")),
-    "status": (str | None, Query(None, max_length=50)),
+    # Wide enough for a comma-separated set, which the companies list takes (#329): the export
+    # is handed whatever the screen resolved its filter to, so a cap that fits one status would
+    # 422 the download of the very list the user is looking at.
+    "status": (str | None, Query(None, max_length=200, description="Status, as on the list")),
     "mine": (bool, Query(False, description="Only rows assigned to me")),
     "company_id": (uuid.UUID | None, Query(None)),
     "project_id": (uuid.UUID | None, Query(None)),

@@ -523,6 +523,8 @@
   "companies.field.responsible": "Verantwoordelijke",
   "companies.field.assignees": "Toegewezen medewerkers",
   "companies.filter.mine": "Mijn klanten",
+  "companies.filter.not_archived": "Niet gearchiveerd",
+  "companies.filter.all": "Alles",
   "companies.status.lead": "Lead",
   "companies.status.onboarding": "Onboarding",
   "companies.status.active": "Actief",

@@ -278,6 +278,21 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   the URL, or two tabs fight over one number). A group count inside a page counts the page, so a
   sectioned list says so. The narrow exceptions — a grouped inventory, a report whose subtotals
   span the whole set, an approval queue meant to be emptied — are named in `docs/PERFORMANCE.md`.
+- **A screen may open on a narrowed default; the endpoint behind it may not** (#329). Klanten opens
+  on the working book of business — every status but archived, sorted A–Z — because an agency's live
+  list includes the leads it is chasing and the clients it is onboarding, so `status=active` is not
+  the answer either. Three rules generalise past companies. **The screen picks the default and the
+  API only makes it expressible**: `status` grew into a set (`lead,onboarding,active,offboarding`)
+  and *absent still means everything*, because the pickers, the impex export and the generated MCP
+  tool surface all read that same endpoint, and narrowing it there would change what an MCP client
+  is told the org's clients are. **A default that hides rows owes the hidden state a URL of its
+  own** — "alles, archief inclusief" is `?status=all`, or it is a view the user can reach and
+  cannot link to, bookmark or come back to with the back button — and **whatever it resolves to
+  reaches the export**, since `ImpexBar` is handed the *resolved* filter and never the URL token:
+  a spreadsheet that quietly grows the archive back is the same list disagreeing with itself. The
+  sort moved with it, for every consumer: browsing a client register now orders the way searching
+  it already did, because one list answering the same question two ways depending on whether the
+  search box is empty is the inconsistency that let "newest client first" survive this long.
 
 ## 10. Phased plan (build gates)
 

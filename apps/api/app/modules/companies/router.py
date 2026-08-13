@@ -96,10 +96,21 @@ async def list_companies(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     q: str | None = Query(None, max_length=200),
-    status: str | None = Query(None, max_length=50, description="Filter on one lifecycle status"),
+    status: str | None = Query(
+        None,
+        max_length=200,
+        description=(
+            "Lifecycle status; comma-separate for several ('lead,onboarding,active'). "
+            "Absent means every status, the archived ones included — the screen picks its own "
+            "default, this endpoint does not."
+        ),
+    ),
     mine: bool = Query(False, description="Only clients I'm assigned to (primary or not)"),
     sort: str | None = Query(
-        None, description="name | client_number | status | created_at | updated_at, '-' desc"
+        None,
+        description=(
+            "name | client_number | status | created_at | updated_at, '-' desc. Default: name"
+        ),
     ),
     hours: bool = Query(
         False, description="Include the budget roll-up; costs three grouped queries"

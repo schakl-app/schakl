@@ -30609,11 +30609,11 @@ export interface operations {
                 limit?: number;
                 offset?: number;
                 q?: string | null;
-                /** @description Filter on one lifecycle status */
+                /** @description Lifecycle status; comma-separate for several ('lead,onboarding,active'). Absent means every status, the archived ones included — the screen picks its own default, this endpoint does not. */
                 status?: string | null;
                 /** @description Only clients I'm assigned to (primary or not) */
                 mine?: boolean;
-                /** @description name | client_number | status | created_at | updated_at, '-' desc */
+                /** @description name | client_number | status | created_at | updated_at, '-' desc. Default: name */
                 sort?: string | null;
                 /** @description Include the budget roll-up; costs three grouped queries */
                 hours?: boolean;
@@ -34836,6 +34836,7 @@ export interface operations {
             query?: {
                 /** @description Search, as on the list */
                 q?: string | null;
+                /** @description Status, as on the list */
                 status?: string | null;
                 /** @description Only rows assigned to me */
                 mine?: boolean;
@@ -35087,6 +35088,7 @@ export interface operations {
                 /** @description Search, as on the list */
                 q?: string | null;
                 company_id?: string | null;
+                /** @description Status, as on the list */
                 status?: string | null;
                 registrar_provider_id?: string | null;
                 dns_provider_id?: string | null;
@@ -35467,6 +35469,7 @@ export interface operations {
             query?: {
                 /** @description Search, as on the list */
                 q?: string | null;
+                /** @description Status, as on the list */
                 status?: string | null;
                 company_id?: string | null;
                 /** @description Only rows assigned to me */
@@ -35592,6 +35595,7 @@ export interface operations {
     impex_export_subscription_api_v1_impex_subscription_export_get: {
         parameters: {
             query?: {
+                /** @description Status, as on the list */
                 status?: string | null;
                 company_id?: string | null;
                 /** @description List sort key, '-' desc */
@@ -35935,6 +35939,7 @@ export interface operations {
             query?: {
                 /** @description Search, as on the list */
                 q?: string | null;
+                /** @description Status, as on the list */
                 status?: string | null;
                 company_id?: string | null;
                 project_id?: string | null;

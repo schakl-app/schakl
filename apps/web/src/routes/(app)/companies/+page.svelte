@@ -30,7 +30,11 @@
   import SearchInput from "$lib/core/ui/SearchInput.svelte";
   import CompanyForm from "$lib/modules/companies/CompanyForm.svelte";
   import { COMPANY_COLUMNS, HOURS_COLUMN } from "$lib/modules/companies/columns";
-  import { COMPANY_STATUSES, statusPillClass } from "$lib/modules/companies/status";
+  import {
+    COMPANY_STATUS_ALL,
+    COMPANY_STATUSES,
+    statusPillClass,
+  } from "$lib/modules/companies/status";
   import ContactDraftField from "$lib/modules/contacts/ContactDraftField.svelte";
 
   let { data, form } = $props();
@@ -115,6 +119,11 @@
 
   // Every filter here is the API's — a browser-side one narrows the page you happen to hold, not
   // the list — and every one of them resets to page 1 (`paging.ts`).
+  //
+  // The empty token is the default view (every status but archived, #329) rather than "no filter",
+  // which is why pressing the pill you are already on still returns you to it: the way back from
+  // a narrowing is the same gesture it always was. "Alles" carries its own token so that view is
+  // linkable (§9).
   function setStatusFilter(status: string) {
     const url = resetPage(new URL(page.url));
     if (status && status !== data.statusFilter) url.searchParams.set("status", status);
@@ -274,23 +283,35 @@
     aria-pressed={data.mine}
     onclick={toggleMine}>{t("companies.filter.mine")}</button
   >
+  <!-- The default view is a pill of its own, not the absence of one: a list that silently leaves
+       the archive out looks identical to a list that has none, and the only thing that can say
+       which is a control showing itself selected. "Alles" sits beside it for the other half. -->
+  <button
+    class="rounded-full px-3 py-1 text-xs font-medium
+      {data.statusFilter === ''
+      ? 'bg-brand/10 text-brand ring-2 ring-brand'
+      : 'bg-surface text-text-muted hover:text-text'}"
+    aria-pressed={data.statusFilter === ""}
+    onclick={() => setStatusFilter("")}>{t("companies.filter.not_archived")}</button
+  >
+  <button
+    class="rounded-full px-3 py-1 text-xs font-medium
+      {data.statusFilter === COMPANY_STATUS_ALL
+      ? 'bg-brand/10 text-brand ring-2 ring-brand'
+      : 'bg-surface text-text-muted hover:text-text'}"
+    aria-pressed={data.statusFilter === COMPANY_STATUS_ALL}
+    onclick={() => setStatusFilter(COMPANY_STATUS_ALL)}>{t("companies.filter.all")}</button
+  >
   {#each COMPANY_STATUSES as status (status)}
     <button
       class="rounded-full px-3 py-1 text-xs font-medium
         {data.statusFilter === status
         ? 'ring-2 ring-brand ' + statusPillClass(status)
         : statusPillClass(status) + ' opacity-70 hover:opacity-100'}"
+      aria-pressed={data.statusFilter === status}
       onclick={() => setStatusFilter(status)}>{t(`companies.status.${status}`)}</button
     >
   {/each}
-  {#if data.statusFilter}
-    <button
-      class="text-xs text-text-muted underline hover:text-text"
-      onclick={() => setStatusFilter("")}
-    >
-      {t("tasks.filter.clear")}
-    </button>
-  {/if}
   <div class="ml-auto flex flex-wrap items-center gap-2">
     <!-- The Export link carries the page's current filters, so the file holds exactly the
          filtered list on screen — the whole set, not just the loaded page (issue #77). -->
@@ -300,7 +321,9 @@
       writePermission="companies.company.write"
       filters={{
         q: page.url.searchParams.get("q"),
-        status: data.statusFilter,
+        // The resolved filter, not the URL token: the default narrows, and `?status=` on the
+        // export means to the API exactly what it means to the list.
+        status: data.statusQuery,
         mine: data.mine,
         sort: data.table.sort,
       }}

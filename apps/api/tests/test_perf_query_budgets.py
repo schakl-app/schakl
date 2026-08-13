@@ -1137,3 +1137,50 @@ async def test_the_monitor_list_costs_the_same_however_many_groups_there_are(
         assert res.status_code == 200, res.text
         assert all(m["parent_name"] is None for m in res.json()["items"])
         assert len(slim.matching("from uptime_monitors")) == 1, slim.statements
+
+
+# --- /companies: a status *set* is still one WHERE, not one read per status ---------------- #
+async def test_company_status_set_costs_no_extra_read(client_for, count_queries) -> None:
+    """The default Klanten view narrows to a set of statuses (#329) and pays nothing for it.
+
+    Worth writing down because the tempting implementation of "everything except archived" is a
+    read per status folded together in Python — which returns byte-identical JSON at four
+    statuses and four clients, and scales with both. Two statements: the page, and its count.
+    Neither the number of statuses named nor the number of rows behind them moves the number.
+    """
+    t = await make_tenant("perf-company-status")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+
+        async def add(name: str, status: str) -> None:
+            res = await c.post(
+                "/api/v1/companies", json={"name": name, "status": status}, headers=headers
+            )
+            assert res.status_code == 201, res.text
+
+        async def measure(expected: list[str]) -> int:
+            with count_queries() as counter:
+                res = await c.get(
+                    "/api/v1/companies",
+                    params={"status": "lead,onboarding,active,offboarding"},
+                    headers=headers,
+                )
+            assert res.status_code == 200, res.text
+            assert [i["name"] for i in res.json()["items"]] == expected
+            return len(counter.matching("from companies"))
+
+        await add("Aannemer", "lead")
+        await add("Zonwering", "archived")
+        first = await measure(["Aannemer"])
+        assert first == 2, first
+
+        await add("Bakkerij", "active")
+        await add("Molenaar", "offboarding")
+        await add("Notaris", "archived")
+        assert await measure(["Aannemer", "Bakkerij", "Molenaar"]) == first
+
+        # And the narrowing itself is free: the unfiltered list costs exactly the same.
+        with count_queries() as unfiltered:
+            res = await c.get("/api/v1/companies", headers=headers)
+        assert res.json()["total"] == 5
+        assert len(unfiltered.matching("from companies")) == first

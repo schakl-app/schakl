@@ -9,6 +9,7 @@ import { readTablePref, resolveColumns } from "$lib/core/table/columns";
 import { resolvePaging } from "$lib/core/table/paging";
 import { parseTablePref, saveTablePref } from "$lib/core/table/prefs.server";
 import { COMPANIES_TABLE_ID, COMPANY_COLUMNS, HOURS_COLUMN } from "$lib/modules/companies/columns";
+import { COMPANY_STATUS_ALL, COMPANY_WORKING_SET } from "$lib/modules/companies/status";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -47,7 +48,15 @@ export const load: PageServerLoad = async (event) => {
   // only while the page *was* the list; against a paged list it would filter the fifty rows you
   // happen to hold and report a total counted over all of them. The export already sent `status`
   // to the API, so the screen and its spreadsheet now agree by construction.
-  const status = event.url.searchParams.get("status") || undefined;
+  //
+  // Klanten opens on the working book of business — every status except archived (#329) — so the
+  // URL token and the wire value are no longer the same string. Absent means the working set;
+  // `all` is how "everything, archive included" says so in a URL you can link to; anything else
+  // is that one status. Only the resolution lives here: the *set* is in `status.ts`, beside the
+  // pills, so the screen and the export cannot end up with two ideas of what is archived.
+  const statusFilter = event.url.searchParams.get("status") || "";
+  const status =
+    statusFilter === COMPANY_STATUS_ALL ? undefined : statusFilter || COMPANY_WORKING_SET;
   const api = apiFor(event);
 
   // The saved column layout comes from the layout load, which does not rerun on filter or sort
@@ -61,8 +70,11 @@ export const load: PageServerLoad = async (event) => {
 
   //   1. the sort, which the *server* applies — sorting one page of a longer list in the browser
   //      sorts the wrong set. The URL wins over the saved default so a sorted list stays
-  //      shareable and the back button works.
-  const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? undefined;
+  //      shareable and the back button works, and A–Z is what is left when neither says
+  //      anything: a client register reads alphabetically, and someone who deliberately sorted
+  //      on klantnummer keeps that (#329). Stated here as well as in the API's own default so
+  //      the column header shows the arrow on the column the rows are actually ordered by.
+  const sort = event.url.searchParams.get("sort") ?? resolved.sort ?? "name";
   //   2. whether to pay for the budget roll-up at all. Hidden column, no aggregate (#24).
   const hours = resolved.columns.some((column) => column.key === HOURS_COLUMN);
   //   3. the page size, whose saved default the URL likewise overrides (`paging.ts`).
@@ -103,7 +115,12 @@ export const load: PageServerLoad = async (event) => {
     definitions,
     members,
     table: { pref, sort: sort ?? null, widths: resolved.widths },
-    statusFilter: status ?? "",
+    // Two values, on purpose: the pills highlight on the *token* the URL carries, and the export
+    // sends the *resolved* filter — the whole point of `ImpexBar`'s `filters` is that the file
+    // holds what the screen holds, and with a default that narrows, passing the token would let
+    // the archived clients quietly back into the spreadsheet.
+    statusFilter,
+    statusQuery: status ?? "",
     mine,
     locale: event.locals.locale,
   };
