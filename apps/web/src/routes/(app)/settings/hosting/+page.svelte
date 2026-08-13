@@ -71,10 +71,7 @@
 </svelte:head>
 
 <div class="mb-6 flex items-center justify-between">
-  <div>
-    <h1 class="text-xl font-semibold text-text">{t("hosting.title")}</h1>
-    <p class="mt-1 text-sm text-text-muted">{t("hosting.count", { count: data.total })}</p>
-  </div>
+  <h1 class="text-xl font-semibold text-text">{t("hosting.title")}</h1>
   <div class="flex flex-wrap items-center gap-2">
     <ImpexBar
       entity="hosting"

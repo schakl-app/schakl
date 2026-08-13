@@ -340,10 +340,7 @@
 </svelte:head>
 
 <div class="mb-6 flex flex-wrap items-center justify-between gap-2">
-  <div>
-    <h1 class="text-xl font-semibold text-text">{navLabel("websites", t("nav.websites"))}</h1>
-    <p class="mt-1 text-sm text-text-muted">{t("websites.count", { count: data.total })}</p>
-  </div>
+  <h1 class="text-xl font-semibold text-text">{navLabel("websites", t("nav.websites"))}</h1>
   {#if can(page.data.user, "websites.website.write")}
     <button
       class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white"

@@ -216,14 +216,13 @@
 <div class="mb-6 flex items-center justify-between">
   <div>
     <h1 class="text-xl font-semibold text-text">{navLabel("tasks", t("tasks.title"))}</h1>
-    <p class="mt-1 text-sm text-text-muted">
-      {t("tasks.count", { count: data.total })}
-      {#if overdueCount > 0}
-        · <span class="font-medium text-red-600 dark:text-red-400"
-          >{t("tasks.overdue_count", { count: overdueCount })}</span
-        >
-      {/if}
-    </p>
+    <!-- The total is the pager's (#334); overdue is not a count of the list, it is a warning
+         about part of it, so it keeps its place under the heading. -->
+    {#if overdueCount > 0}
+      <p class="mt-1 text-sm font-medium text-red-600 dark:text-red-400">
+        {t("tasks.overdue_count", { count: overdueCount })}
+      </p>
+    {/if}
   </div>
   <!-- Create-then-edit (#230): the server creates a minimal task and redirects to its detail
        page in edit mode — creating and editing share one surface (docs/UX.md Principle 3). -->

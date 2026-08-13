@@ -252,10 +252,7 @@
 </svelte:head>
 
 <div class="mb-6 flex items-center justify-between">
-  <div>
-    <h1 class="text-xl font-semibold text-text">{navLabel("companies", t("companies.title"))}</h1>
-    <p class="mt-1 text-sm text-text-muted">{t("companies.count", { count: data.total })}</p>
-  </div>
+  <h1 class="text-xl font-semibold text-text">{navLabel("companies", t("companies.title"))}</h1>
   {#if canWrite}
     <button
       class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"

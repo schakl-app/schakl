@@ -265,8 +265,8 @@ the place the whole set lives, so it may not be a sample of itself. Every one of
 
 The rule this replaced was "ask for 200 and hope", and it failed the way truncation always fails:
 a tenant whose client list outgrew the cap got a *prefix* that looked exactly like the whole
-answer, and the only route to row 201 was guessing a narrow enough search term. Four properties
-hold the replacement up, and a new list gets all four or it is not done:
+answer, and the only route to row 201 was guessing a narrow enough search term. Five properties
+hold the replacement up, and a new list gets all five or it is not done:
 
 1. **The URL is the view.** `?page=` (1-based, absent on page 1) and `?size=` fully describe the
    slice on screen. That is what makes the back button land where the user left, a page
@@ -286,13 +286,28 @@ hold the replacement up, and a new list gets all four or it is not done:
    it whenever it speaks. Storing the current *page* in the preference instead would make two
    tabs fight over one number and break the back button outright. A screen with no table
    preference to hang it on passes no `onsize` — the choice then lasts the visit, which is fine.
+5. **The bar always renders, and only the stepping stands down** (#334). The pager used to hide
+   itself whole below one page — "otherwise it is decoration" — which threw away the count and
+   the size selector along with the arrows. A total is not decoration: twelve results are worth
+   stating exactly as much as eight hundred, and twelve is the case where the reader has no
+   other way to know. Hiding it is why seven of nineteen list screens had grown their own total
+   under the heading, in two different wordings, printing it *twice* once a list got long
+   enough to page. `hasPageSteps(page, pages)` now gates the arrows and the numbered chips
+   alone — over a single page they can never act — and the range collapses to
+   `table.paging.empty` at zero rather than reporting "0–0 of 0".
 
-Two consequences worth stating. **A filter that was applied in the browser is now a bug, not a
-shortcut**: the companies status pill filtered `data.companies` client-side, which was survivable
-only while the page *was* the list — against a paged list it narrows the fifty rows you happen to
-hold and reports a total counted over all of them. It moved to the API, where the export already
-sent it. And **a group count inside a paged list counts the page**, so a sectioned list says so
-(`contacts.groups_page_only`), exactly as a capped panel does.
+Which puts a trap where the old guard used to be, because the pager can no longer decline to
+print: **do not hand `<Pagination>` a count you did not compute.** A list read with
+`count=false` gets `total = len(items)` back by contract, so an always-on pager would say
+"1–50 of 50" over four thousand rows and mean it. `count=false` is for pickers and lookups;
+the read behind a pager counts.
+
+Two more consequences worth stating. **A filter that was applied in the browser is now a bug,
+not a shortcut**: the companies status pill filtered `data.companies` client-side, which was
+survivable only while the page *was* the list — against a paged list it narrows the fifty rows
+you happen to hold and reports a total counted over all of them. It moved to the API, where the
+export already sent it. And **a group count inside a paged list counts the page**, so a
+sectioned list says so (`contacts.groups_page_only`), exactly as a capped panel does.
 
 **A panel cap is the list's own first page, taken through the list's own read.** The domains
 company panel used to call a bespoke `domains_for_company` with no limit at all: to draw five
@@ -497,7 +512,8 @@ makes every dev server start faster.
 - [ ] URL-independent lookups are in the **section layout**, not the page load.
 - [ ] Modal-only and report payloads stream, resolved into `$state` (never a raw `{#await}`).
 - [ ] `count=false` / `meta=false` / `with_body` / `lines=false` on anything whose extra work
-      you discard — and a new opt-out if this list ships what its screen never draws.
+      you discard — and a new opt-out if this list ships what its screen never draws. Never
+      `count=false` on the read behind a `<Pagination>`: the pager would print `len(items)`.
 - [ ] No 200-row fetch to show a handful; no heavy aggregate to render a label.
 - [ ] Aggregates are computed in SQL, and every hand-built one carries `horizon_condition()`.
 - [ ] Every unbounded read is capped, and every capped list's total is *counted*.

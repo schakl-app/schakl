@@ -15,13 +15,27 @@
    *
    * **A phone gets the same information, not the same widget.** Below `sm` the numbered pages
    * collapse to "Page 2 of 17" — twelve tap targets 6 px apart is not a control.
+   *
+   * **The bar is unconditional; only the stepping stands down** (#334). The count and the size
+   * selector are information, not decoration, so they render at twelve rows and at zero — see
+   * `hasPageSteps`. Which leaves one trap worth naming, because this component can no longer
+   * decline to print: **do not hand it a count you did not compute.** A list read with
+   * `count=false` gets `total = len(items)` back by contract, and an always-on pager would then
+   * say "1–50 of 50" over four thousand rows with total confidence. `count=false` belongs on
+   * pickers and lookups — never on the read behind a `<Pagination>`.
    */
   import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "@lucide/svelte";
 
   import { goto } from "$app/navigation";
   import { page as pageState } from "$app/state";
   import { t } from "$lib/core/i18n";
-  import { PAGE_SIZES, pageCount, pageHref, pageWindow } from "$lib/core/table/paging";
+  import {
+    hasPageSteps,
+    PAGE_SIZES,
+    pageCount,
+    pageHref,
+    pageWindow,
+  } from "$lib/core/table/paging";
 
   let {
     total,
@@ -30,7 +44,10 @@
     onsize,
     sizes = PAGE_SIZES as readonly number[],
   }: {
-    /** The API's count of the whole set — never `rows.length`, which counts this page (#37). */
+    /**
+     * The API's count of the whole set — never `rows.length`, which counts this page (#37), and
+     * never the total of a `count=false` read, which *is* `len(items)` (#334).
+     */
     total: number;
     /** 1-based, as the load resolved it. */
     page: number;
@@ -47,8 +64,8 @@
   const to = $derived(Math.min(page * limit, total));
   const steps = $derived(pageWindow(page, pages));
 
-  /** Rendered only when there is more than one page to be on — otherwise it is decoration. */
-  const shown = $derived(pages > 1 || page > 1);
+  /** Arrows and numbered chips only; the frame around them always renders (`hasPageSteps`). */
+  const steppable = $derived(hasPageSteps(page, pages));
 
   function href(target: number): string {
     return pageHref(pageState.url, target);
@@ -77,36 +94,44 @@
   const desktop = "hidden sm:inline-flex";
 </script>
 
-{#if shown}
-  <nav
-    class="mt-4 flex flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-between"
-    aria-label={t("table.paging.label")}
-    data-sveltekit-preload-data="hover"
-  >
-    <span class="text-text-muted">
-      {t("table.paging.range", { from, to, total })}
-    </span>
+<nav
+  class="mt-4 flex flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+  aria-label={t("table.paging.label")}
+  data-sveltekit-preload-data="hover"
+>
+  <!-- At zero the range computes to "0–0 van 0", which is arithmetic rather than an answer. The
+       size selector and the frame stay: a filter that matched nothing is still a view of a list. -->
+  <span class="text-text-muted">
+    {total === 0 ? t("table.paging.empty") : t("table.paging.range", { from, to, total })}
+  </span>
 
-    <div class="flex items-center justify-between gap-3 sm:justify-end">
-      <label class="flex items-center gap-2 text-text-muted">
-        <span class="hidden sm:inline">{t("table.paging.size")}</span>
-        <select
-          value={limit}
-          onchange={chooseSize}
-          aria-label={t("table.paging.size")}
-          class="rounded-lg border border-border bg-surface-raised px-2 py-1 text-sm text-text outline-none focus:border-brand"
-        >
-          {#each sizes as size (size)}
-            <option value={size}>{size}</option>
-          {/each}
-          <!-- A ?size= somebody typed, or a list whose own default is off the menu: show the
-               value in force rather than snapping the control to something it is not. -->
-          {#if !sizes.includes(limit)}
-            <option value={limit}>{limit}</option>
-          {/if}
-        </select>
-      </label>
+  <div class="flex items-center justify-between gap-3 sm:justify-end">
+    <label class="flex items-center gap-2 text-text-muted">
+      <!-- "Per pagina" is dropped on a phone to make room for the arrows beside it. With the
+           arrows stood down there is room, and a lone "50" combo box with nothing next to it is
+           the one place the label is genuinely needed. -->
+      <span class={steppable ? "hidden sm:inline" : "inline"}>{t("table.paging.size")}</span>
+      <select
+        value={limit}
+        onchange={chooseSize}
+        aria-label={t("table.paging.size")}
+        class="rounded-lg border border-border bg-surface-raised px-2 py-1 text-sm text-text outline-none focus:border-brand"
+      >
+        {#each sizes as size (size)}
+          <option value={size}>{size}</option>
+        {/each}
+        <!-- A ?size= somebody typed, or a list whose own default is off the menu: show the
+             value in force rather than snapping the control to something it is not. -->
+        {#if !sizes.includes(limit)}
+          <option value={limit}>{limit}</option>
+        {/if}
+      </select>
+    </label>
 
+    <!-- Stepping controls only. Held-open muted arrows exist so the row does not jump
+         sideways as you page; over a single page there is no paging to hold a place in,
+         and a lone highlighted "1" repeats what the range already said. -->
+    {#if steppable}
       <div class="flex items-center gap-1">
         {#if page > 1}
           <a href={href(1)} class="{linkClass} {desktop}" aria-label={t("table.paging.first")}>
@@ -163,6 +188,6 @@
           <span class="{mutedClass} {desktop}" aria-hidden="true"><ChevronsRight size={15} /></span>
         {/if}
       </div>
-    </div>
-  </nav>
-{/if}
+    {/if}
+  </div>
+</nav>

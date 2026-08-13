@@ -326,9 +326,18 @@
     one sets `nowrap` and nothing else, and spills instead of ellipsizing.
   - **Every list ends in a pager, and the pager is the address bar** (`core/ui/Pagination.svelte`,
     docs/PERFORMANCE.md). A list is where the whole set lives, so it never shows a prefix of
-    itself: the bar states the honest range ("51–100 van 812"), offers **25 / 50 / 100 / 200** per
-    page, and appears only once there is more than one page — a pager over nine rows is
-    decoration. Three things it must keep being:
+    itself: the bar states the honest range ("51–100 van 812") and offers
+    **25 / 50 / 100 / 200** per page. Four things it must keep being:
+    - **Always there** (#334). The bar used to hide itself whole below one page, on the grounds
+      that a pager over nine rows is decoration — true of the arrows, false of everything beside
+      them. "12 van 12" is the answer to "heeft mijn filter iets gedaan", and a short list is
+      the only place the reader cannot count for themselves; the size selector was unreachable
+      on exactly the lists a 50-row default is worst for. So the frame, the count and
+      **Per pagina** render at twelve rows and at zero (where the range becomes "Geen
+      resultaten" rather than "0–0 van 0"), and only the arrows and numbered chips stand down
+      when there is nowhere to step. Seven screens printed their own "Totaal: 12" under the
+      heading to work around this, in two different wordings, saying it twice on a long list —
+      they are gone, and a heading count is not the answer to wanting one back.
     - **Links, not buttons.** `<a href="?page=3">` is what gives the back button, middle-click,
       preload-on-hover and a page you can send someone. Opening a client from page 4 and coming
       back to page 1 was the bug; the URL carrying the view is the fix, and SvelteKit restores
@@ -1166,6 +1175,15 @@
   now (`core/ui/Pagination.svelte`), and the reason it is shared is that the interesting parts —
   the URL carrying the page so the back button works, every filter resetting it, the size saved
   per user — are exactly the parts a hand-rolled copy leaves out.
+- **A shared component that hides more than it should, so its callers reimplement the rest.**
+  That same pager then dropped its whole `<nav>` below one page, reasoning correctly that arrows
+  over nine rows are decoration and taking the count and the size selector with them. Seven of
+  nineteen lists answered by printing their own total under the heading — two wordings, stated
+  twice on a long list — and the twelve that did not simply never told a user how many rows they
+  were looking at. The tell is the workaround: when several call sites grow the same little
+  patch, the shared component is refusing something they all need, and the fix belongs inside it
+  (#334). The narrower lesson is worth keeping too: **"this control can do nothing here" is a
+  reason to stand the control down, never the surrounding information.**
 - **A filter applied in the browser.** The clients list narrowed `data.companies` by status in
   the page. That was survivable only while the page *was* the list: against a paged list it
   filters the fifty rows you happen to hold and reports a total counted over all of them. The

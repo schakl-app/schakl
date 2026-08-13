@@ -286,10 +286,7 @@
 </svelte:head>
 
 <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
-  <div>
-    <h1 class="text-xl font-semibold text-text">{navLabel("projects", t("projects.title"))}</h1>
-    <p class="mt-1 text-sm text-text-muted">{t("projects.count", { count: data.total })}</p>
-  </div>
+  <h1 class="text-xl font-semibold text-text">{navLabel("projects", t("projects.title"))}</h1>
   <!-- Create-then-edit (docs/UX.md Principle 3, same as tasks #230): the server creates a
        minimal project and redirects to its detail page in edit mode — creating and editing
        share one surface instead of a duplicate inline form. -->

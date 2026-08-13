@@ -307,10 +307,7 @@
 <!-- Wraps: "Nieuwe contactpersoon" is a 192px button, and a phone has ~312px of content width
      once the title has had its share. The Dutch label is the long one, so English never shows it. -->
 <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
-  <div>
-    <h1 class="text-xl font-semibold text-text">{navLabel("contacts", t("contacts.title"))}</h1>
-    <p class="mt-1 text-sm text-text-muted">{t("contacts.count", { count: data.total })}</p>
-  </div>
+  <h1 class="text-xl font-semibold text-text">{navLabel("contacts", t("contacts.title"))}</h1>
   {#if canWrite}
     <!-- Opening the inline create form is a contacts.contact.write act; hidden from a read-only
          portal client (#244), like the row edit/delete actions and the Import button below. -->

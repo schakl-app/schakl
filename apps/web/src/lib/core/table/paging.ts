@@ -74,6 +74,22 @@ export function pageCount(total: number, limit: number): number {
 }
 
 /**
+ * Whether the *stepping* controls have anywhere to go (#334).
+ *
+ * The pager's frame — the range and the size selector — is unconditional: "twelve results" is as
+ * much of an answer as "51–100 of 812", and it is the one the reader only ever gets on the short
+ * lists. Hiding the whole bar below one page is what made seven list screens print their own
+ * total under the heading, in four different wordings, saying it twice on a long one.
+ *
+ * Arrows and numbered chips are the part that may stand down: over a single page they can never
+ * act, and a lone highlighted "1" states nothing the range has not. `page > 1` is not redundant —
+ * a hand-typed `?page=5` over nine rows still needs its way back.
+ */
+export function hasPageSteps(page: number, pages: number): boolean {
+  return pages > 1 || page > 1;
+}
+
+/**
  * Drop `page` from a URL a filter/search/sort control is about to navigate to. Every such
  * control must call this: keeping the page number across a filter change strands the user on an
  * empty page of a shorter list, which reads as "the filter found nothing".
