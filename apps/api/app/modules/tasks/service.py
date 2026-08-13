@@ -550,8 +550,54 @@ class TaskService:
         return await self._list_items(await self._my_open_rows(limit))
 
     async def dashboard_mine(self, *, limit: int = 20) -> list[DashboardTaskItem]:
-        """Personal tile rows without full-card label/checklist/comment enrichment."""
-        return [DashboardTaskItem.model_validate(task) for task in await self._my_open_rows(limit)]
+        """Personal tile rows — the client joined in, no full-card enrichment, one query."""
+        statuses = await load_statuses(self.ctx.session, self.ctx.org.id)
+        # Same starting point as ``dashboard_groups``: the repository-scoped relation, so the
+        # portal rule and a manager's company horizon hold on the tile as well as on the list.
+        visible = self.repo.scoped_select().subquery()
+        # A task's client is its own company, or — when it only names a project — that project's.
+        company_id = func.coalesce(visible.c.company_id, _dashboard_projects.c.company_id)
+        company_name = func.coalesce(
+            _dashboard_companies.c.name, _dashboard_project_companies.c.name
+        )
+        stmt = (
+            select(
+                visible.c.id,
+                visible.c.title,
+                visible.c.priority,
+                visible.c.due_date,
+                company_id.label("company_id"),
+                company_name.label("company_name"),
+            )
+            .select_from(visible)
+            .outerjoin(
+                _dashboard_companies,
+                and_(
+                    _dashboard_companies.c.org_id == visible.c.org_id,
+                    _dashboard_companies.c.id == visible.c.company_id,
+                ),
+            )
+            .outerjoin(
+                _dashboard_projects,
+                and_(
+                    _dashboard_projects.c.org_id == visible.c.org_id,
+                    _dashboard_projects.c.id == visible.c.project_id,
+                ),
+            )
+            .outerjoin(
+                _dashboard_project_companies,
+                and_(
+                    _dashboard_project_companies.c.org_id == _dashboard_projects.c.org_id,
+                    _dashboard_project_companies.c.id == _dashboard_projects.c.company_id,
+                ),
+            )
+            .where(visible.c.assignee_user_id == self.ctx.user.id)
+            .where(visible.c.status.in_(non_terminal_keys(statuses)))
+            .order_by(visible.c.due_date.asc().nulls_last(), visible.c.created_at.desc())
+            .limit(limit)
+        )
+        rows = (await self.ctx.session.execute(stmt)).all()
+        return [DashboardTaskItem.model_validate(row) for row in rows]
 
     async def dashboard_groups(self) -> list[DashboardTaskGroup]:
         """Open task counts by project/company without shipping all source rows to the web."""

@@ -223,7 +223,7 @@ class DashboardTaskGroup(BaseModel):
 
 
 class DashboardTaskItem(BaseModel):
-    """Only the four fields rendered by the personal dashboard task tile."""
+    """Only the fields rendered by the personal dashboard task tile."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -231,6 +231,12 @@ class DashboardTaskItem(BaseModel):
     title: str
     priority: TaskPriority
     due_date: date | None
+    # Whose task it is — ``DashboardTaskGroup.company_name``'s rule one level down: a title alone
+    # is not a task, and "Nieuwsbrief plannen" on four clients' work drew four identical rows.
+    # Resolved through the project when the task hangs off one; null for the agency's own to-do
+    # items, which belong to no client and must not be labelled as if they did.
+    company_id: uuid.UUID | None = None
+    company_name: str | None = None
 
 
 # --------------------------------------------------------------------------- #

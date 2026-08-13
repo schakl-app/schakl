@@ -14357,9 +14357,13 @@ export interface components {
         };
         /**
          * DashboardTaskItem
-         * @description Only the four fields rendered by the personal dashboard task tile.
+         * @description Only the fields rendered by the personal dashboard task tile.
          */
         DashboardTaskItem: {
+            /** Company Id */
+            company_id?: string | null;
+            /** Company Name */
+            company_name?: string | null;
             /** Due Date */
             due_date: string | null;
             /**
