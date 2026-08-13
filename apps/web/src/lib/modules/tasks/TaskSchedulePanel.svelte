@@ -13,6 +13,7 @@
   import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import DurationInput from "$lib/core/ui/DurationInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import { formatMinutes } from "$lib/modules/time/format";
 
@@ -66,7 +67,7 @@
   let editingBlock = $state<Block | null>(null);
   let logOpen = $state(false);
   let logBlock = $state<Block | null>(null);
-  let logMinutes = $state(0);
+  let logMinutes = $state<number | null>(0);
   let logDescription = $state("");
   let logBillable = $state(true);
   let deleteOpen = $state(false);
@@ -213,16 +214,7 @@
         <label for="log-minutes" class="mb-1 block text-sm font-medium text-text">
           {t("tasks.schedule.worked_minutes")}
         </label>
-        <input
-          id="log-minutes"
-          name="minutes"
-          type="number"
-          min="1"
-          max="1440"
-          step="15"
-          bind:value={logMinutes}
-          class="w-full min-w-0 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
-        />
+        <DurationInput id="log-minutes" name="minutes" required bind:minutes={logMinutes} />
       </div>
       <div>
         <label for="log-desc" class="mb-1 block text-sm font-medium text-text">

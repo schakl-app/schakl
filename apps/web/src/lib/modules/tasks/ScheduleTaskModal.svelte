@@ -23,6 +23,7 @@
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import DurationInput from "$lib/core/ui/DurationInput.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
   import { formatMinutes } from "$lib/modules/time/format";
@@ -105,7 +106,7 @@
   let personId = $state("");
   let day = $state("");
   let startTime = $state("09:00");
-  let durationMinutes = $state(60);
+  let durationMinutes = $state<number | null>(60);
   let note = $state("");
   const busy = new InFlight();
   let errorKey = $state<string | null>(null);
@@ -196,7 +197,7 @@
   const endPreview = $derived.by(() => {
     const [h, m] = startTime.split(":").map(Number);
     if (Number.isNaN(h) || Number.isNaN(m)) return { time: "", nextDay: false };
-    const total = h * 60 + m + durationMinutes;
+    const total = h * 60 + m + (durationMinutes ?? 0);
     const time = `${String(Math.floor((total % 1440) / 60)).padStart(2, "0")}:${String(
       total % 60,
     ).padStart(2, "0")}`;
@@ -206,7 +207,7 @@
   const overBudget = $derived(
     Boolean(
       selectedTask?.allocated_minutes &&
-      durationMinutes > (selectedTask.allocated_minutes as number),
+      (durationMinutes ?? 0) > (selectedTask.allocated_minutes as number),
     ),
   );
 
@@ -354,15 +355,11 @@
           <label for="sched-duration" class="mb-1 block text-sm font-medium text-text">
             {t("tasks.schedule.duration")}
           </label>
-          <input
+          <DurationInput
             id="sched-duration"
             name="duration_minutes"
-            type="number"
-            min="15"
-            max="1440"
-            step="15"
-            bind:value={durationMinutes}
-            class="w-full min-w-0 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
+            required
+            bind:minutes={durationMinutes}
           />
         </div>
       </div>
@@ -384,7 +381,7 @@
       <p class="rounded-lg bg-surface px-3 py-2 text-sm text-text">
         {fmtDayMonth(day || todayIso())} · {startTime}{RANGE_DASH}{endPreview.time}{endPreview.nextDay
           ? " (+1)"
-          : ""} · {formatMinutes(durationMinutes)}
+          : ""} · {formatMinutes(durationMinutes ?? 0)}
       </p>
       {#if overBudget}
         <p class="text-xs text-amber-600 dark:text-amber-400">{t("tasks.schedule.over_budget")}</p>

@@ -27,6 +27,7 @@
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import FileAttachments from "$lib/core/ui/FileAttachments.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import DurationInput from "$lib/core/ui/DurationInput.svelte";
   import Markdown from "$lib/core/ui/Markdown.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
@@ -1761,14 +1762,11 @@
             <label for="allocated" class="mb-1 block text-xs font-medium text-text-muted"
               >{t("tasks.field.allocated_input")}</label
             >
-            <input
+            <DurationInput
               id="allocated"
               name="allocated_minutes"
-              type="number"
-              min="0"
-              step="15"
-              form="task-edit"
-              value={task.allocated_minutes ?? ""}
+              formId="task-edit"
+              minutes={task.allocated_minutes ?? null}
               class={inputClass}
             />
           </div>

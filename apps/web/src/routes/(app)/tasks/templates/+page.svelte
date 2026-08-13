@@ -11,6 +11,7 @@
   import Button from "$lib/core/ui/Button.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
+  import DurationInput from "$lib/core/ui/DurationInput.svelte";
   import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import TasksNav from "$lib/modules/tasks/TasksNav.svelte";
 
@@ -41,7 +42,8 @@
     description: string;
     priority: string;
     relative_due_days: string;
-    allocated_minutes: string;
+    /** Integer minutes, never the typed text: `DurationInput` parses (#326). */
+    allocated_minutes: number | null;
     assignee_user_id: string;
     requires_interaction: boolean;
     checklist_title: string;
@@ -82,7 +84,7 @@
       description: "",
       priority: "normal",
       relative_due_days: "",
-      allocated_minutes: "",
+      allocated_minutes: null,
       assignee_user_id: "",
       requires_interaction: false,
       checklist_title: "",
@@ -105,7 +107,7 @@
       description: item.description ?? "",
       priority: item.priority ?? "normal",
       relative_due_days: item.relative_due_days == null ? "" : String(item.relative_due_days),
-      allocated_minutes: item.allocated_minutes == null ? "" : String(item.allocated_minutes),
+      allocated_minutes: item.allocated_minutes ?? null,
       // "__responsible__" is the apply-time sentinel (#28), never a real user id.
       assignee_user_id: item.assign_responsible ? "__responsible__" : (item.assignee_user_id ?? ""),
       requires_interaction: item.requires_interaction ?? false,
@@ -130,7 +132,7 @@
         description: item.description,
         priority: item.priority,
         relative_due_days: item.relative_due_days === "" ? null : Number(item.relative_due_days),
-        allocated_minutes: item.allocated_minutes === "" ? null : Number(item.allocated_minutes),
+        allocated_minutes: item.allocated_minutes,
         assignee_user_id:
           item.assignee_user_id && item.assignee_user_id !== "__responsible__"
             ? item.assignee_user_id
@@ -263,16 +265,12 @@
               <span class="text-xs">{t("tasks.templates.days")}</span>
             </div>
             <div class="flex items-center gap-1 text-sm text-text-muted">
-              <input
-                type="number"
-                min="0"
-                step="15"
-                bind:value={item.allocated_minutes}
-                placeholder="—"
-                class="w-20 rounded-lg border border-border px-2 py-2 text-sm"
-                aria-label={t("tasks.field.allocated_input")}
+              <DurationInput
+                bind:minutes={item.allocated_minutes}
+                placeholder="1:30"
+                class="w-24 rounded-lg border border-border px-2 py-2 text-sm"
+                ariaLabel={t("tasks.field.allocated_input")}
               />
-              <span class="text-xs">{t("tasks.templates.minutes")}</span>
             </div>
             <div class="flex items-center gap-1">
               <button

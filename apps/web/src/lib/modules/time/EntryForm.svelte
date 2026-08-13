@@ -8,6 +8,7 @@
   import { beforeNavigate } from "$app/navigation";
   import { page } from "$app/state";
   import { burnPct } from "$lib/core/burn";
+  import { formatDurationInput, parseDurationText } from "$lib/core/duration";
   import { fmtDateTime, fmtNumber, fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -16,14 +17,10 @@
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
+  import DurationInput from "$lib/core/ui/DurationInput.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
   import { taskBurn } from "$lib/modules/tasks/budget";
-  import {
-    endFromDuration,
-    formatDurationInput,
-    minutesBetween,
-    parseDurationText,
-  } from "$lib/modules/time/duration";
+  import { endFromDuration, minutesBetween } from "$lib/modules/time/duration";
   import {
     entryTypeLabel,
     entryTypes,
@@ -149,7 +146,7 @@
   let fDate = $state(entry ? entry.started_at.slice(0, 10) : (restored?.date ?? date));
   let fStart = $state(entry ? entry.started_at.slice(11, 16) : (restored?.start ?? ""));
   let fEnd = $state(entry?.ended_at ? entry.ended_at.slice(11, 16) : (restored?.end ?? ""));
-  let fBreak = $state(entry?.break_minutes ?? restored?.break_minutes ?? 0);
+  let fBreak = $state<number | null>(entry?.break_minutes ?? restored?.break_minutes ?? 0);
   /** What a new entry on this project bills by default (#284) — false where a subscription
    *  covers it, because the retainer already pays for that work. Mirrors what the API
    *  resolves when a client sends no `billable` at all; no project means the old plain true. */
@@ -501,15 +498,12 @@
       <label for="break-{action}" class="mb-1 block text-xs font-medium text-text-muted"
         >{t("time.field.break")}</label
       >
-      <input
+      <DurationInput
         id="break-{action}"
         name="break_minutes"
-        type="number"
-        min="0"
-        step="5"
-        bind:value={fBreak}
-        oninput={syncDurationFromTimes}
-        class={inputClass}
+        bind:minutes={fBreak}
+        onchange={syncDurationFromTimes}
+        placeholder="0:30"
       />
     </div>
   </div>
@@ -523,7 +517,7 @@
         id="duration-{action}"
         bind:value={durationText}
         onchange={syncEndFromDuration}
-        placeholder={t("time.duration_hint")}
+        placeholder={t("common.duration_hint")}
         class={inputClass}
       />
     </div>

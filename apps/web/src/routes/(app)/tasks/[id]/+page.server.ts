@@ -3,6 +3,7 @@ import "$lib/modules"; // ensure the panels are registered before we read the re
 import { error, fail, redirect } from "@sveltejs/kit";
 
 import { apiBaseUrl } from "$lib/core/api/client";
+import { parsePostedMinutes } from "$lib/core/duration";
 import { apiErrorKey } from "$lib/core/errors";
 import { can } from "$lib/core/permissions";
 import { createCompanyAction } from "$lib/core/quickcreate.server";
@@ -118,9 +119,10 @@ export const actions: Actions = {
         body[field] = raw || null;
       }
     }
+    // The budget travels as the text that was typed ("1:40"), so the browser is not the authority
+    // on what it means (#326): the same parser runs here, and a bare number still reads as minutes.
     if (form.has("allocated_minutes")) {
-      const minutes = Number(String(form.get("allocated_minutes") ?? "").trim());
-      body.allocated_minutes = Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes) : null;
+      body.allocated_minutes = parsePostedMinutes(form.get("allocated_minutes"));
     }
     // Close policy (#157 extended): a hidden "false" precedes the checkbox, so a full edit-form
     // submit always carries a value (last wins); the status quick-form carries none → untouched.

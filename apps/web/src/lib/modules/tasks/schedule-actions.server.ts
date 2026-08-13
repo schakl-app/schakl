@@ -5,6 +5,7 @@
  */
 import type { RequestEvent } from "@sveltejs/kit";
 
+import { parsePostedMinutes } from "$lib/core/duration";
 import { apiErrorKey } from "$lib/core/errors";
 import { apiFor } from "$lib/core/session";
 
@@ -16,7 +17,9 @@ export async function createScheduleAction(event: RequestEvent): Promise<Result>
   const taskId = String(form.get("task_id") ?? "");
   const day = String(form.get("day") ?? "");
   const startTime = String(form.get("start_time") ?? "");
-  const durationMinutes = Number(form.get("duration_minutes") ?? 0);
+  // A duration arrives as the text that was typed ("1:30"), so the parser — not the browser —
+  // decides what it means (#326); a bare number still reads as minutes.
+  const durationMinutes = parsePostedMinutes(form.get("duration_minutes"));
   if (!taskId || !day || !startTime || !durationMinutes) return { error: "errors.required" };
   const userId = String(form.get("user_id") ?? "");
   const note = String(form.get("note") ?? "");
@@ -39,7 +42,7 @@ export async function updateScheduleAction(event: RequestEvent): Promise<Result>
   const scheduleId = String(form.get("schedule_id") ?? "");
   const day = String(form.get("day") ?? "");
   const startTime = String(form.get("start_time") ?? "");
-  const durationMinutes = Number(form.get("duration_minutes") ?? 0);
+  const durationMinutes = parsePostedMinutes(form.get("duration_minutes"));
   if (!scheduleId || !day || !startTime || !durationMinutes) return { error: "errors.required" };
   const userId = String(form.get("user_id") ?? "");
   const note = String(form.get("note") ?? "");
@@ -71,13 +74,13 @@ export async function logScheduleTimeAction(event: RequestEvent): Promise<Result
   const form = await event.request.formData();
   const scheduleId = String(form.get("schedule_id") ?? "");
   if (!scheduleId) return { error: "errors.required" };
-  const rawMinutes = String(form.get("minutes") ?? "");
   const description = String(form.get("description") ?? "");
   const { error } = await apiFor(event).POST("/api/v1/tasks/schedules/{schedule_id}/log-time", {
     params: { path: { schedule_id: scheduleId } },
     body: {
-      minutes: rawMinutes ? Number(rawMinutes) : null,
-      break_minutes: Number(form.get("break_minutes") ?? 0),
+      // null → the block's own duration stands (the API's default).
+      minutes: parsePostedMinutes(form.get("minutes")),
+      break_minutes: parsePostedMinutes(form.get("break_minutes")) ?? 0,
       description: description || null,
       billable: form.get("billable") !== "false",
     },

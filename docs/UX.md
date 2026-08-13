@@ -56,6 +56,20 @@
   `DateInput` (never a bare `<input type="date">` — browsers render those US-style). Its
   calendar popup must anchor to the field. Formatting goes through `core/format.ts`
   (locale → nl-NL / en-GB).
+- **A duration is typed, not counted** (#326). Every field whose subject is a span of time —
+  a task's budget, a scheduled block, worked hours, a break — takes free text through the shared
+  `core/ui/DurationInput` and the one parser behind it (`core/duration.ts`): `1:40`, `100`,
+  `100m`, `1h40` and `1,5` all land on the same minutes, and the field canonicalises to `1:40`
+  afterwards. **Never a stepped `<input type="number">` in minutes.** That control asked an agency
+  to do the arithmetic (an hour and a half is `90`) while the read directly above it said
+  `1h 30m`, and its `step="15"` was a rule nobody ever decided: Chrome blocked the submit with
+  *"the two nearest valid values are 90 and 105"* on a number the API accepts without complaint.
+  A client-side rule stricter than the server's is a control refusing valid input, so this one
+  states **no** range of its own — the API is the authority, and a second copy of that rule here
+  is one that drifts. What travels is the text, not a hidden number, and the server action runs
+  the same parser (`parsePostedMinutes`), so a post with JS off lands on the same value. Text it
+  cannot read is refused visibly, through the browser's own validity machinery; it never guesses
+  a number nobody typed.
 - **Pickers are type-ahead comboboxes** (`core/ui/Combobox`), never long native selects, and
   **every entity-reference picker offers inline-create — this is per-picker definition of done,
   not an optional flourish.** Typing an unknown name offers "＋ … toevoegen", which opens the
