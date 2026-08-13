@@ -235,6 +235,18 @@ agency tool — so, direct.
   external on one question and internal on the other. `member_emails` stays narrower and stays
   behind the *company* derivation only: a colleague who connected a private Google account must
   never make whichever company that address is a contact of read as the agency's own.
+- **And "one of ours" is core's question, asked whole.** A client login is a membership, so it
+  lands in `member_emails` unless something takes it out — and `_internals` asked
+  `portal_user_ids`, *"is this user contact-linked?"* That is one of the **two** ways to be an
+  external login (§15, #274): a client invited from Instellingen → Gebruikers holds the seeded
+  `client` role and no contact link, so they came back as staff. Every mail they wrote to a
+  colleague was then colleague-to-colleague chatter and was dropped — no pending row, no
+  notification, no log line, the failure mode this feed can least afford. And worse than the one
+  address: `company_ids` is derived from `member_emails`, so *their own company* read as the
+  agency's own, and behind #324's gate every other contact at that client went dark with them.
+  `app.core.portal.external_user_ids` answers both halves in one place; the notification fan-out
+  and the cloud domain-health recipients keep an inline copy only because each folds it into a
+  statement it already runs.
 - **What about the rows already in the queue?** Nothing retroactive ships, deliberately. The
   mis-ingested rows are indistinguishable from wanted ones by anything the server knows — a
   pending row filed on the agency's own company is also exactly what an opted-in internal mail

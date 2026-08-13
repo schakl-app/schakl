@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.events import SystemContext
 from app.core.htmlmd import referenced_cids, rewrite_cid_images
 from app.core.models import Org
-from app.core.portal import portal_user_ids
+from app.core.portal import external_user_ids
 from app.modules.google.client import acting_as, mark_connection_error
 from app.modules.google.gmail import matching
 from app.modules.google.gmail.models import GmailSuppression
@@ -385,11 +385,20 @@ class Internals:
 async def _internals(session: AsyncSession, org_id: uuid.UUID) -> Internals:
     """The staff addresses, and the companies they are the contacts of.
 
-    A portal login (#193) is an ordinary membership whose user is a client's contact — so a
-    naive all-memberships set makes every portal-invited client look like a colleague, and
-    ``internal_only`` then silently drops their entire correspondence (polls succeed,
-    ``logged:0`` forever). Portal users are excluded through the core seam; they keep
-    matching as *contacts*, which is what they are.
+    A client login is an ordinary membership — so a naive all-memberships set makes every
+    invited client look like a colleague, and ``internal_only`` then silently drops their
+    entire correspondence (polls succeed, ``logged:0`` forever). Client logins are excluded
+    through the core seam; they keep matching as *contacts*, which is what they are.
+
+    The seam has to be asked the **whole** question (:func:`external_user_ids`, #274). This
+    used to ask ``portal_user_ids`` — "is this user contact-linked?" — which is only half of
+    what an external login is: a client invited straight from Instellingen → Gebruikers holds
+    the ``client`` role and no contact link, so they landed in ``member_emails`` and every mail
+    they wrote to a colleague read as colleague-to-colleague chatter and was dropped. The
+    second-order damage was worse than the first: their address then made *their own company*
+    read as the agency's own (the ``company_ids`` derivation below), so since #324's gate every
+    other contact at that client was dropped too. Nothing appears anywhere — no pending row, no
+    notification, no log line — which is exactly why this asks core rather than restating it.
 
     The company half is **derived, never configured**: an agency that keeps its own company in
     its own list — the ordinary thing to do, and what invoicing and its own domains want — has
@@ -408,8 +417,8 @@ async def _internals(session: AsyncSession, org_id: uuid.UUID) -> Internals:
         {"oid": org_id},
     )
     pairs = [(row[0], row[1]) for row in rows]
-    portal = await portal_user_ids(session, org_id, {uid for uid, _ in pairs})
-    member_emails = frozenset(email for uid, email in pairs if uid not in portal)
+    external = await external_user_ids(session, org_id, {uid for uid, _ in pairs})
+    member_emails = frozenset(email for uid, email in pairs if uid not in external)
     # The mailboxes that actually poll, and the addresses that reach them. Same predicate the
     # cron offers on (``jobs.google_gmail_poll``) — stated once there and once here is already
     # one copy too many, but the alternative is the cron importing this module to ask.
@@ -420,10 +429,10 @@ async def _internals(session: AsyncSession, org_id: uuid.UUID) -> Internals:
         ),
         {"oid": org_id},
     )
-    owner_by_email = {email: uid for uid, email in pairs if uid not in portal}
+    owner_by_email = {email: uid for uid, email in pairs if uid not in external}
     syncing: set[uuid.UUID] = set()
     for user_id, email, status, sync_enabled, scopes in connection_rows:
-        if user_id in portal:
+        if user_id in external:
             continue
         owner_by_email.setdefault(email, user_id)
         if (
