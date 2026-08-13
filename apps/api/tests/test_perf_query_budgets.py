@@ -960,6 +960,32 @@ async def test_task_detail_costs_the_same_however_much_the_card_carries(
         assert len(loaded) == len(bare), (loaded.statements, bare.statements)
 
 
+async def test_the_ai_status_poll_stays_a_poll(client_for, count_queries) -> None:
+    """``GET /tasks/{id}/ai-status`` (#327) is fetched **on a timer**, so its cost is a budget.
+
+    It exists precisely so the card does not re-fetch itself every few seconds while an email is
+    being read. Two assertions, and they say different things. The **task read is exactly one
+    statement** — that is the property this endpoint owns, and a rise means somebody put a
+    lookup behind a one-column answer. The **total stays far below the card's own** — that is
+    the property that justifies the endpoint existing at all, since polling multiplies whatever
+    it costs; asserted as a ceiling rather than an exact number because most of the remainder is
+    the ``require_context`` preamble every route pays, and pinning that here would fail this
+    test for changes that have nothing to do with it.
+    """
+    t = await make_tenant("perf-ai-status")
+    async with client_for(t.host) as c:
+        headers = await auth_cookie(t.user)
+        company = await _company(c, headers)
+        task = await _task(c, headers, company_id=company, title="Homepage")
+        with count_queries() as counter:
+            polled = await c.get(f"/api/v1/tasks/{task}/ai-status", headers=headers)
+        assert polled.status_code == 200, polled.text
+        assert polled.json()["ai_status"] is None
+        task_reads = counter.matching("from tasks")
+        assert len(task_reads) == 1, task_reads
+        assert len(counter) <= 8, counter.statements
+
+
 # --- the websites/domains section layout: pickers pay picker prices (#290, extended) --------- #
 async def test_available_domains_is_one_statement_whatever_the_register_holds(
     client_for, count_queries

@@ -815,7 +815,51 @@ class InteractionService:
                 )
                 roster = await self._requested_roster(sent)
         row = await self._approve_row(row, link_values, roster)
+        if data is not None and data.enrich_task:
+            await self._offer_task_enrichment(row)
         return await self._present_one(row)
+
+    async def _offer_task_enrichment(self, row: Interaction) -> None:
+        """"Laat schakl deze taak invullen" (#327): hand the email to the worker.
+
+        Nothing is read here. The body does not exist yet — a pending row carries metadata only
+        and the gmail fetch happens after this transaction, on purpose — so a synchronous read
+        would write an empty description on most emails, and only on the ones nobody checked.
+        What happens here is the *claim*: the task is flipped to ``queued`` so its card says
+        "schakl leest de e-mail" from the next render, and a deferred job does the reading.
+
+        Every way out of this is a no-op rather than an error, because the thing that must
+        survive is the **approval**. Losing a review to an optional convenience — no task
+        picked, AI not configured, Redis down — is a far worse outcome than an unenriched task,
+        which is exactly what the user had before ticking the box.
+        """
+        from app.modules.interactions import enrich
+        from app.modules.interactions.jobs import schedule_enrichment
+        from app.modules.tasks.models import TaskAIStatus
+        from app.modules.tasks.system import caller_may_write_task, set_ai_status_system
+
+        if row.task_id is None or not await enrich.available(self.ctx):
+            return
+        # The gate of the module being written into, not of the route this rode in on (#314):
+        # approving is `interactions.interaction.review`, and filling a task in is a task write.
+        if not await caller_may_write_task(self.ctx, row.task_id):
+            logger.debug(
+                "interactions: enrichment declined for task %s — caller cannot write it",
+                row.task_id,
+            )
+            return
+        # Any prior state may be overwritten: the user just asked for this run, and a finished
+        # or failed earlier one is not a reason to refuse the one they pressed for.
+        await set_ai_status_system(self.ctx, row.task_id, TaskAIStatus.QUEUED)
+        try:
+            queued = await schedule_enrichment(self.ctx.org.id, row.id, row.task_id)
+        except Exception:  # noqa: BLE001 — a queue outage must not cost the approval
+            logger.warning("interactions: could not queue enrichment for task %s", row.task_id)
+            queued = None
+        if queued is None:
+            # The row would otherwise claim a worker has it and none does — twenty minutes of
+            # "bezig" for something we know right now (the reporting lesson, #300).
+            await set_ai_status_system(self.ctx, row.task_id, TaskAIStatus.FAILED)
 
     async def _approve_row(
         self, row: Interaction, link_values: dict[str, Any], roster: list[uuid.UUID] | None

@@ -12,11 +12,7 @@ import { can, type PermissionHolder } from "$lib/core/permissions";
  *  has no speech endpoint and is the default, so without this an Anthropic org would be shown
  *  a microphone that 409s on first click. */
 export type AIFeature =
-  | "assistant"
-  | "writing_assist"
-  | "time_assist"
-  | "reporting"
-  | "speech";
+  "assistant" | "writing_assist" | "time_assist" | "reporting" | "email_assist" | "speech";
 
 /** Svelte context key the (app) layout provides; shared components (the editor's writing
  *  assist) read it so no consumer needs per-module wiring (#128). */

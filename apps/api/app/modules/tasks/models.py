@@ -59,6 +59,27 @@ class TaskPriority(StrEnum):
     HIGH = "high"
 
 
+class TaskAIStatus(StrEnum):
+    """How far the "let schakl fill this in" run has got (#327).
+
+    A task created while approving an email can be populated from that email by the model. The
+    body is not there yet when the task is created (the gmail fetch is asynchronous and
+    deliberately outside the approving request's transaction), so the work is a worker job and
+    this column is what the card shows meanwhile — the whole point being that nobody waits for
+    it.
+
+    ``SKIPPED`` is not a failure: it is "we looked and there was nothing to carry over" — a body
+    that never landed, or a model that found no plan in it. Distinguishing it from ``FAILED``
+    is what lets the card say something true rather than showing a red mark over an empty mail.
+    """
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    DONE = "done"
+    SKIPPED = "skipped"
+    FAILED = "failed"
+
+
 class RecurrenceFreq(StrEnum):
     DAILY = "daily"
     WEEKLY = "weekly"
@@ -106,6 +127,14 @@ class Task(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
             "ix_tasks_recurrence_next_run",
             "recurrence_next_run",
             postgresql_where=text("recurrence_next_run IS NOT NULL"),
+        ),
+        # Same shape for the enrichment reaper (#327): it only ever scans the handful of rows a
+        # worker currently claims, never the whole table.
+        Index(
+            "ix_tasks_ai_status_running",
+            "org_id",
+            "ai_status_at",
+            postgresql_where=text("ai_status IN ('queued', 'running')"),
         ),
     )
 
@@ -179,6 +208,17 @@ class Task(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     )
     recurrence: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     recurrence_next_run: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # "schakl is filling this in from the email" (#327). ``NULL`` on an ordinary task; every
+    # other value is a :class:`TaskAIStatus`. Written only through ``tasks.system`` — the run
+    # happens in a worker, where the actor is the system and ``TaskActivity.actor_user_id``'s
+    # FK would refuse the placeholder user a ``SystemContext`` carries.
+    ai_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # When the status last moved. The reaper reads it (a run whose worker died leaves
+    # ``running`` behind and no process is left to say so — the reporting lesson, #300), and the
+    # card stops polling on it.
+    ai_status_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     @classmethod
     def __portal_horizon_clause__(cls, scope: frozenset[uuid.UUID] | None):  # noqa: ANN206

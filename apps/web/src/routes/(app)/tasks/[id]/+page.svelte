@@ -36,6 +36,7 @@
   import ClientVisibilityIcon from "$lib/modules/tasks/ClientVisibilityIcon.svelte";
   import { LABEL_COLORS, labelChipClass, labelDotClass } from "$lib/modules/tasks/labels";
   import { canWriteTask } from "$lib/modules/tasks/permissions";
+  import TaskAIStatus from "$lib/modules/tasks/TaskAIStatus.svelte";
   import { localDayTime } from "$lib/modules/tasks/schedule";
   import TaskAssigneePicker from "$lib/modules/tasks/TaskAssigneePicker.svelte";
   import TaskSchedulePanel from "$lib/modules/tasks/TaskSchedulePanel.svelte";
@@ -755,6 +756,14 @@
 </svelte:head>
 
 <div class="mb-4"></div>
+
+<!-- "schakl leest de e-mail" (#327). Above the card rather than inside it: it is about the whole
+     task, it is short-lived, and it must not push the title around while it comes and goes. -->
+{#if task.ai_status}
+  <div class="mb-4">
+    <TaskAIStatus taskId={task.id} status={task.ai_status} />
+  </div>
+{/if}
 
 <!-- Phone vs desktop order: a flex column below `lg` puts the details card (status, assignee,
      due date) straight after the title — on a phone those are what you came to change, and they

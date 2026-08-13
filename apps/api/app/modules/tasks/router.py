@@ -42,6 +42,7 @@ from app.modules.tasks.schemas import (
     StatusCreate,
     StatusRead,
     StatusUpdate,
+    TaskAIStatusRead,
     TaskCreate,
     TaskDetail,
     TaskLabelsSet,
@@ -418,6 +419,26 @@ async def get_task(
 ) -> TaskDetail:
     """The full card: labels, checklists, comments and recent activity included."""
     return await TaskService(ctx).detail(task_id)
+
+
+@router.get(
+    "/{task_id}/ai-status",
+    response_model=TaskAIStatusRead,
+    dependencies=[require_permission("tasks.task.read")],
+)
+async def get_task_ai_status(
+    task_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> TaskAIStatusRead:
+    """Just the "is schakl still filling this in?" flag (#327).
+
+    Its own endpoint because it is *polled*. The card shows a live pill while an email is being
+    read, and re-fetching ``GET /{task_id}`` every few seconds to learn one short string would
+    drag the whole detail — labels, checklists, every comment and the activity trail — across
+    the wire each time, for a screen that already has all of it. One indexed row, one column
+    (docs/PERFORMANCE.md: a row carries only what its screen draws).
+    """
+    return await TaskService(ctx).ai_status(task_id)
 
 
 @router.patch(

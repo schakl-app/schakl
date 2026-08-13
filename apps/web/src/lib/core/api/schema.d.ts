@@ -9849,6 +9849,32 @@ export interface paths {
         patch: operations["update_task_api_v1_tasks__task_id__patch"];
         trace?: never;
     };
+    "/api/v1/tasks/{task_id}/ai-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Task Ai Status
+         * @description Just the "is schakl still filling this in?" flag (#327).
+         *
+         *     Its own endpoint because it is *polled*. The card shows a live pill while an email is being
+         *     read, and re-fetching ``GET /{task_id}`` every few seconds to learn one short string would
+         *     drag the whole detail — labels, checklists, every comment and the activity trail — across
+         *     the wire each time, for a screen that already has all of it. One indexed row, one column
+         *     (docs/PERFORMANCE.md: a row carries only what its screen draws).
+         */
+        get: operations["get_task_ai_status_api_v1_tasks__task_id__ai_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/{task_id}/checklists": {
         parameters: {
             query?: never;
@@ -17295,6 +17321,11 @@ export interface components {
              * @description Everyone the moment was with. Wins over contact_id; [] clears the roster.
              */
             contact_ids?: string[] | null;
+            /**
+             * Enrich Task
+             * @default false
+             */
+            enrich_task: boolean;
             /** Project Id */
             project_id?: string | null;
             /** Task Id */
@@ -24443,6 +24474,17 @@ export interface components {
             update: components["schemas"]["UpdateInfo"];
             worker: components["schemas"]["WorkerInfo"];
         };
+        /**
+         * TaskAIStatusRead
+         * @description The polled shape behind the "schakl leest de e-mail" pill (#327) — one short string.
+         *
+         *     Deliberately not ``TaskRead``: this is fetched on a timer while a run is in flight, and the
+         *     whole point of giving it its own endpoint is that it does not drag the card with it.
+         */
+        TaskAIStatusRead: {
+            /** Ai Status */
+            ai_status?: string | null;
+        };
         /** TaskCreate */
         TaskCreate: {
             /** Allocated Minutes */
@@ -24484,6 +24526,8 @@ export interface components {
         TaskDetail: {
             /** Activities */
             activities?: components["schemas"]["ActivityRead"][];
+            /** Ai Status */
+            ai_status?: string | null;
             /** Allocated Minutes */
             allocated_minutes?: number | null;
             /** Assignee Contact Id */
@@ -24567,6 +24611,8 @@ export interface components {
          * @description List-row shape: enough to render a card without loading the detail.
          */
         TaskListItem: {
+            /** Ai Status */
+            ai_status?: string | null;
             /** Allocated Minutes */
             allocated_minutes?: number | null;
             /** Assignee Contact Id */
@@ -24687,6 +24733,8 @@ export interface components {
         TaskPriority: "low" | "normal" | "high";
         /** TaskRead */
         TaskRead: {
+            /** Ai Status */
+            ai_status?: string | null;
             /** Allocated Minutes */
             allocated_minutes?: number | null;
             /** Assignee Contact Id */
@@ -47910,6 +47958,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_task_ai_status_api_v1_tasks__task_id__ai_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskAIStatusRead"];
                 };
             };
             /** @description Validation Error */

@@ -7,6 +7,7 @@ import { fail, type RequestEvent } from "@sveltejs/kit";
 
 import { apiBaseUrl } from "$lib/core/api/client";
 import { apiErrorKey } from "$lib/core/errors";
+import { checked } from "$lib/core/forms";
 import { apiFor } from "$lib/core/session";
 
 const LINK_FIELDS = ["company_id", "project_id", "task_id", "contact_id"] as const;
@@ -263,7 +264,14 @@ export const interactionActions = {
     if (!id) return fail(400, { error: "errors.required" });
     // Assign links in the same step (#183) only when the approve came from the review dialog
     // (`assign=1`); the one-click inline approve sends no links and touches none.
-    const body = form.get("assign") === "1" ? linkBody(form) : undefined;
+    //
+    // "Laat schakl deze taak invullen" (#327) rides the same body. Read by **presence**, never
+    // against a literal: `FormCheckbox` posts "true" and a bare input posts "on", so any
+    // comparison naming one of them silently posts `false` for the other (CLAUDE.md §10).
+    const body =
+      form.get("assign") === "1"
+        ? { ...linkBody(form), enrich_task: checked(form, "enrich_task") }
+        : undefined;
     const api = apiFor(event);
     const { error } = await api.POST("/api/v1/interactions/{interaction_id}/approve", {
       params: { path: { interaction_id: id } },

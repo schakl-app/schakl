@@ -77,6 +77,7 @@ from app.modules.tasks.schemas import (
     LinkRead,
     StatusCreate,
     StatusUpdate,
+    TaskAIStatusRead,
     TaskCreate,
     TaskDetail,
     TaskListItem,
@@ -680,6 +681,16 @@ class TaskService:
     # ------------------------------------------------------------------ #
     # Detail
     # ------------------------------------------------------------------ #
+    async def ai_status(self, task_id: uuid.UUID) -> TaskAIStatusRead:
+        """Just the "is schakl still filling this in?" flag (#327), for the card's live pill.
+
+        Loaded through ``self.repo`` like every other read, so the portal narrowing and the
+        company horizon apply exactly as they do to the detail — a one-column endpoint is still
+        an endpoint, and answering ``404`` here has to mean what it means everywhere else.
+        """
+        task = await self.repo.get_or_404(task_id)
+        return TaskAIStatusRead(ai_status=task.ai_status)
+
     async def detail(self, task_id: uuid.UUID) -> TaskDetail:
         task = await self.repo.get_or_404(task_id)
         detail = TaskDetail.model_validate(task)

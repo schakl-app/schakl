@@ -124,6 +124,11 @@ class TaskRead(TaskBase):
     # negative, and is ``None`` when there is no allocation to remain of.
     logged_minutes: int | None = None
     remaining_minutes: int | None = None
+    # "schakl is filling this in from the email it came from" (#327) — a
+    # :class:`~app.modules.tasks.models.TaskAIStatus`, or ``None`` on a task no AI run ever
+    # touched. It rides every task shape rather than the card alone because the state it
+    # describes is short-lived and the *list* is where a user watches for it to finish.
+    ai_status: str | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -435,6 +440,18 @@ class LinkRead(BaseModel):
     id: uuid.UUID
     url: str
     title: str | None
+
+
+class TaskAIStatusRead(BaseModel):
+    """The polled shape behind the "schakl leest de e-mail" pill (#327) — one short string.
+
+    Deliberately not ``TaskRead``: this is fetched on a timer while a run is in flight, and the
+    whole point of giving it its own endpoint is that it does not drag the card with it.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    ai_status: str | None = None
 
 
 class TaskDetail(TaskRead):

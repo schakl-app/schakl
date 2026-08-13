@@ -16,7 +16,7 @@ from pwdlib import PasswordHash
 from sqlalchemy import select, text
 
 from app.core.ai.audio import MAX_ENCODED_CHARS
-from app.core.ai.models import AIUsage
+from app.core.ai.models import AI_FEATURES, AIUsage
 from app.core.ai.providers import AIEvent, ToolCall
 from app.core.ai.service import invalidate_features_cache
 from app.core.ai.tools import available_tools, get_tool, run_tool
@@ -70,9 +70,10 @@ async def test_ai_settings_roundtrip_key_never_echoed(client_for) -> None:
         assert "sk-test-super-secret-123" not in saved.text
         # The provider default fills an empty model; every feature has a config.
         assert body["default_model"]
-        assert set(body["features"]) == {
-            "assistant", "writing_assist", "time_assist", "reporting",
-        }
+        # Against the catalog, not a copy of it: this assertion is about *"every feature has a
+        # config"*, and spelling the list out again made adding one (#327's `email_assist`) fail
+        # a test that has no opinion about which features exist.
+        assert set(body["features"]) == set(AI_FEATURES)
 
         # An empty key on an update means "keep what is stored".
         again = await c.put(

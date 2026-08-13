@@ -17,6 +17,7 @@
   import { enhance } from "$app/forms";
   import { page } from "$app/state";
   import type { SubmitFunction } from "@sveltejs/kit";
+  import { aiEnabled } from "$lib/core/ai";
   import type { CustomFieldDefinition } from "$lib/core/customfields/types";
   import { t } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
@@ -131,6 +132,11 @@
   const canCloseTask = $derived(
     canApprove && canWriteTask(page.data.user, tasks.find((task) => task.value === taskId) ?? null),
   );
+  // "Laat schakl deze taak invullen" (#327): the same per-task write gate the close box uses —
+  // filling a task in is a task write — plus the AI gate, which is what keeps the tick off the
+  // screen entirely for an org with no provider configured ("off means invisible", #126).
+  const canEnrichTask = $derived(canCloseTask && aiEnabled(page.data.user, "email_assist"));
+  let enrichTask = $state(false);
   // Terminal statuses load when the box is first ticked — never on page load (PERFORMANCE.md).
   $effect(() => {
     if (closeTask && !terminalLoaded) {
@@ -403,6 +409,27 @@
         />
       </div>
     </div>
+
+    {#if canEnrichTask && taskId}
+      <!-- Carry the email into the task while approving (#327) — the opening move to
+           "sluit deze taak hiermee"'s closing one, and it reads like its sibling. Off by
+           default: sending a client's own words to a model is a decision, not an inheritance. -->
+      <label class="flex items-start gap-2 rounded-lg border border-border p-3 text-sm text-text">
+        <input
+          type="checkbox"
+          name="enrich_task"
+          value="1"
+          bind:checked={enrichTask}
+          class="mt-0.5"
+        />
+        <span>
+          {t("interactions.approve_enrich_task")}
+          <span class="mt-0.5 block text-xs text-text-muted"
+            >{t("interactions.approve_enrich_task_hint")}</span
+          >
+        </span>
+      </label>
+    {/if}
 
     {#if canCloseTask && taskId}
       <!-- Close the task with this contact moment while approving (#157): offered for any
