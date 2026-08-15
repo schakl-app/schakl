@@ -56,6 +56,11 @@ MATCHED = "matched"
 AMBIGUOUS = "ambiguous"
 UNMATCHED = "unmatched"
 
+#: Not one of the derived states above — a *filter* value covering all three unlinked ones. The
+#: picker that offers "which monitor watches this website" asks for it, because its question is
+#: "what may I still attach", and that is a different set from any one matcher outcome.
+UNLINKED = "unlinked"
+
 #: How far up a hostname to look for a domain we hold. Four levels covers
 #: `status.api.klant.co.uk` and keeps the batched `IN` list bounded on an instance with a
 #: thousand monitors — an unbounded read is the one docs/PERFORMANCE.md bans outright.

@@ -196,6 +196,8 @@ async def list_monitors(
     instance_id: uuid.UUID | None = Query(None),
     company_id: uuid.UUID | None = Query(None),
     website_id: uuid.UUID | None = Query(None),
+    domain_id: uuid.UUID | None = Query(None),
+    hosting_id: uuid.UUID | None = Query(None),
     sync_status: str | None = Query(None),
     monitor_type: str | None = Query(
         None, description="Filter by type; 'group' lists the groups an instance has"
@@ -203,8 +205,9 @@ async def list_monitors(
     link_status: str | None = Query(
         None,
         description=(
-            "linked / matched / ambiguous / unmatched, or 'proposed' for everything a sync "
-            "found a candidate for and nobody has confirmed yet"
+            "linked / matched / ambiguous / unmatched, 'proposed' for everything a sync found a "
+            "candidate for and nobody has confirmed yet, or 'unlinked' for everything still "
+            "attachable"
         ),
     ),
     count: bool = Query(True, description="Compute total; set false for pickers"),
@@ -218,17 +221,23 @@ async def list_monitors(
         instance_id=instance_id,
         company_id=company_id,
         website_id=website_id,
+        domain_id=domain_id,
+        hosting_id=hosting_id,
         sync_status=sync_status,
         monitor_type=monitor_type,
         link_status=link_status,
         count=count,
     )
-    # Two extra queries for the whole page, and only when asked. A picker renders names it never
-    # reads, so paying for them unconditionally is the shape `docs/PERFORMANCE.md` bans.
+    # Four extra queries for the whole page, and only when asked. A picker renders names it never
+    # reads, so paying for them unconditionally is the shape `docs/PERFORMANCE.md` bans. Each is
+    # one statement for the page rather than one per row, which is what
+    # `test_the_monitor_list_costs_the_same_however_many_groups_there_are` pins.
     groups = await service.group_names(items) if meta else {}
     children = await service.child_counts(items) if meta else {}
+    companies = await service.company_names(items) if meta else {}
+    instances = await service.instance_names(items) if meta else {}
     return Page[UptimeMonitorRead](
-        items=[_monitor_read(m, groups, children) for m in items],
+        items=[_monitor_read(m, groups, children, companies, instances) for m in items],
         total=total,
         limit=limit,
         offset=offset,
@@ -252,6 +261,8 @@ def _monitor_read(
     monitor,
     groups: dict[uuid.UUID, str] | None = None,
     children: dict[uuid.UUID, int] | None = None,
+    companies: dict[uuid.UUID, str] | None = None,
+    instances: dict[uuid.UUID, str] | None = None,
 ) -> UptimeMonitorRead:
     """One monitor for the wire.
 
@@ -279,6 +290,10 @@ def _monitor_read(
         read.parent_name = groups.get(monitor.parent_id)
     if children is not None:
         read.child_count = children.get(monitor.id, 0)
+    if companies and monitor.company_id is not None:
+        read.company_name = companies.get(monitor.company_id)
+    if instances:
+        read.instance_name = instances.get(monitor.instance_id)
     return read
 
 

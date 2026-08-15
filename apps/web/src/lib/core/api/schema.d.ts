@@ -49817,10 +49817,12 @@ export interface operations {
                 instance_id?: string | null;
                 company_id?: string | null;
                 website_id?: string | null;
+                domain_id?: string | null;
+                hosting_id?: string | null;
                 sync_status?: string | null;
                 /** @description Filter by type; 'group' lists the groups an instance has */
                 monitor_type?: string | null;
-                /** @description linked / matched / ambiguous / unmatched, or 'proposed' for everything a sync found a candidate for and nobody has confirmed yet */
+                /** @description linked / matched / ambiguous / unmatched, 'proposed' for everything a sync found a candidate for and nobody has confirmed yet, or 'unlinked' for everything still attachable */
                 link_status?: string | null;
                 /** @description Compute total; set false for pickers */
                 count?: boolean;

@@ -79,7 +79,15 @@ MIN_VERSION = (1, 21, 3)
 
 #: 2.x refuses an ``add`` whose ``conditions`` is NULL — a ``NOT NULL`` column with no default,
 #: and the single most likely thing to break a payload built from 1.x documentation.
-REQUIRED_ON_CREATE: dict[str, Any] = {"conditions": []}
+#:
+#: ``accepted_statuscodes`` is here for a different reason, found running against a live 2.5.0:
+#: ``server.js``'s ``add`` handler dereferences ``monitor.accepted_statuscodes.every(...)``
+#: **before** it branches on type, so omitting it does not take a default — it answers the raw
+#: JavaScript ``Cannot read properties of undefined (reading 'every')``, which names neither the
+#: field nor the module. It applies to every type, a ``group`` included, which is the one payload
+#: nobody thinks to give status codes to. `_kuma_fields` always sends its own, so this is the
+#: floor under a caller that does not, not a value that overrides one.
+REQUIRED_ON_CREATE: dict[str, Any] = {"conditions": [], "accepted_statuscodes": ["200-299"]}
 
 #: Kuma's own answer when a stored token no longer verifies. An i18n key, so it is stable across
 #: locales in a way the rate limiter's bare English sentence is not.
