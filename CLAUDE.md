@@ -513,6 +513,57 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   perceives as a stripe is a printing fault. Finally, **what a client is called on their report
   is not what an invoice calls them** — `report_profiles.display_name`, resolved once at
   generation and snapshotted, never a second name on `companies`.
+- **A table's geometry is stated, or the loudest heading spends the page** (#373,
+  `docs/REPORTING.md`). The overflow fix above was right and its two halves together produced the
+  opposite fault: auto layout allocates by *content demand*, and `overflow-wrap: anywhere` drops a
+  column's minimum width to one character — so BELANGRIJKE GEBEURTENISSEN, one unbreakable phrase
+  at 7pt, beat the column holding `startgoogle.startpagina.nl`, which duly broke over three lines
+  beside a column of sixteen zeros twice its width. `table-layout: fixed` plus a computed width
+  per column ends the negotiation; a **short** metric label heads a printed column (`DOELEN`,
+  never the tile's full name) because that is what makes the stated width enough; and a per-metric
+  glyph makes seven columns scannable rather than readable. Its sibling has nothing to do with
+  CSS: **a JSONB column has no key order** — Postgres sorts by length then bytes — so a provider's
+  carefully ordered totals came back as *NIEUWE GEBRUIKERS · SESSIES · BELANGRIJKE GEBEURTENISSEN
+  · GEBRUIKERS* on the strip a client reads first. Invisible in every offline render, because a
+  Python dict *does* keep insertion order; only a document read back from the database shows it,
+  which is the general lesson (`_TILE_ORDER`). And three rules about what a client's table
+  *contains*, all applied at the renderer so they also improve the reports already stored: an
+  all-zero column does not print, an open-ended source list folds its long tail into one row that
+  **names the size of what it is not showing** (§17 — twelve one-session referrers are four facts
+  and a footnote), and a raw `bedankt_offerte_aanvragen` never reaches a client, which is #300's
+  `totalUsers` lesson still unlearned by the *table* after the model had stopped saying it.
+- **A section whose data has two possible sources needs a setting, not a silent preference**
+  (#373, `app/modules/marketing/rankings.py`). "Zoekwoordposities" was produced from SE Ranking
+  and nothing else, so a client without that subscription simply had no keyword section — the one
+  question an agency's customer asks every month — with nothing on the document or the review
+  screen saying one had been withheld, while Search Console sat connected and unasked. The fix is
+  not a fallback buried in the gatherer: it is `auto` / `seranking` / `search_console` / `off`,
+  org default with a per-client diff, resolved by **one** `effective_source()` that the gatherer,
+  the settings screen and the section picker all read — three copies of a preference rule is how
+  a screen comes to promise a section the run then drops. A *named* source is never silently
+  substituted (two months on different sources are not comparable and nothing on the page would
+  say why), the two adapters answer the same payload shape so the document cannot tell them apart,
+  and the visibility depth is deliberately the same number on both — a client whose agency
+  switches source must not find sixty new "rankings" in a month where nothing changed.
+- **A per-client document needs a per-client diff, not a second template** (#373). Sections were
+  toggled per *template*, which is org-wide, so a client with no social presence got a social
+  section every month and the only escape was authoring a near-copy of the house template for
+  them. `report_profiles.sections` makes resolution three layers — registry → template layout →
+  this client — each a diff over the one before, overriding in **both** directions (a client may
+  switch on what the template hides, or the control is a veto rather than a choice) and leaving
+  the *order* the template's, because two reports from one agency reading like two different
+  products is not something anybody asked for. The picker states **what feeds each section** and
+  whether this client has it: choosing what goes in a document is a decision about sources, and a
+  list of nine names cannot tell "no social traffic" from "nobody linked the property".
+- **A client opening their own report should get the document, not the desk it was written on**
+  (#373). `/reports/<id>` rendered one layout for everybody — per-section prose cards down the
+  left, the preview frame down the right — with the write controls hidden for a portal login, so
+  a client's monthly report read as a half-disabled admin tool headed with our internal section
+  names. `is_portal` picks the **layout** here, which is the one question it is genuinely the
+  right signal for (§15, #274): a read-only staff member still wants the review desk, that being
+  their working tool. Every control stays gated on its own API key regardless, so nothing depends
+  on the flag for safety — and the same pass removed *"Klaar om na te kijken"* from the client's
+  view, because a state in our workflow is true, none of their business, and alarming.
 - **A percentage is a claim about two spans, so both of them have to be on the screen** (#312,
   `app/core/periods.py`). The marketing dashboard labelled every delta *"t.o.v. vorige periode"* —
   a sentence it could print over any two dates at all, which is why a comparison set to the wrong

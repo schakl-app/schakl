@@ -222,6 +222,7 @@ GOOGLE_ADS_REPORT_SECTIONS: list[ReportSectionSpec] = [
         title_key="google_ads.report.performance.title",
         provider=_performance,
         brief_key="google_ads.report.performance.brief",
+        source_key="reporting.source.gads",
         # Both: the client reads what their advertising did, and the marketeer's own analysis
         # would be worth little without it. Only the change history below is withheld.
         audience=AUDIENCE_BOTH,
@@ -235,6 +236,7 @@ GOOGLE_ADS_REPORT_SECTIONS: list[ReportSectionSpec] = [
         title_key="google_ads.report.changes.title",
         provider=_changes,
         brief_key="google_ads.report.changes.brief",
+        source_key="reporting.source.gads",
         audience=AUDIENCE_INTERNAL,
         requires_permission=_READ,
         position=95,

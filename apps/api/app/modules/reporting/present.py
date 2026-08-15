@@ -46,8 +46,9 @@ from app.modules.reporting.render.context import (
     channel_label,
     fmt_delta,
     fmt_metric,
-    localise_section,
     metric_label,
+    ordered_metrics,
+    shape_section,
 )
 
 #: How many rows of one table the model reads. It is writing a paragraph about the shape of a
@@ -79,6 +80,7 @@ def document(
     *,
     locale: str,
     section_titles: dict[str, str] | None = None,
+    internal: bool = False,
 ) -> dict[str, Any]:
     """The whole report, formatted and labelled, ready to be read rather than parsed."""
     titles = section_titles or {}
@@ -96,7 +98,11 @@ def document(
         if not data:
             continue
         sections[key] = section(
-            data, locale=locale, title=titles.get(key, key), compare_label=compare.get("label")
+            data,
+            locale=locale,
+            title=titles.get(key, key),
+            compare_label=compare.get("label"),
+            internal=internal,
         )
     out["sections"] = sections
     return out
@@ -108,9 +114,17 @@ def section(
     locale: str,
     title: str,
     compare_label: str | None = None,
+    internal: bool = False,
 ) -> dict[str, Any]:
-    """One section as prose-ready data: a title, its totals, and its table."""
-    data = localise_section(data, locale)
+    """One section as prose-ready data: a title, its totals, and its table.
+
+    Shaped by the **renderer's own** :func:`~render.context.shape_section`, so the model reads
+    the table the reader will look at: the same columns, the same folded tail, the same
+    humanised event names. Handing it the raw payload instead is how a paragraph comes to
+    describe a column the page does not print, or to name thirteen referrers the document folded
+    into one line.
+    """
+    data = shape_section(data, locale, internal=internal)
     out: dict[str, Any] = {"title": title}
     totals = _totals(data, locale, compare_label)
     if totals:
@@ -144,7 +158,10 @@ def _totals(
     compare = data.get("compare") or {}
     currency = data.get("currency")
     out: list[dict[str, str]] = []
-    for metric, value in (data.get("totals") or {}).items():
+    # The same order the strip prints them in — a snapshot is JSONB and has none of its own
+    # (``render.context._TILE_ORDER``). Two surfaces reading one dict in two different orders is
+    # how a paragraph comes to open on the third-most-important figure.
+    for metric, value in ordered_metrics(data.get("totals") or {}):
         previous = compare.get(metric)
         # The same predicate the document draws its tiles by, so the model is never handed a
         # figure the page does not print — an "Omzet € 0" it would dutifully write a sentence

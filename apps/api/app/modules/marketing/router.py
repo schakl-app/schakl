@@ -150,6 +150,26 @@ async def company_metrics(
     return await MarketingService(ctx).company_marketing(company_id, range_days, period)
 
 
+@router.get(
+    "/companies/{company_id}/settings",
+    response_model=CompanySettingsRead,
+    dependencies=[require_permission("marketing.metrics.read")],
+)
+async def get_company_settings(
+    company_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> CompanySettingsRead:
+    """This client's marketing preferences, and what they resolve to.
+
+    A **read**, so it declares the read permission rather than ``link.manage``: the reporting
+    profile screen (#373) shows the resolved keyword-positions settings a client's document will
+    be built with, and someone who may look at a report should not need the permission to
+    reconfigure integrations in order to see them. Writing is still the manage permission, on the
+    PUT below.
+    """
+    return await MarketingService(ctx).company_settings(company_id)
+
+
 @router.put(
     "/companies/{company_id}/settings",
     response_model=CompanySettingsRead,
@@ -166,9 +186,9 @@ async def set_company_settings(
     Configuration rides ``marketing.link.manage`` like linking. Hidden tiles stop being
     returned for this client — panel, tab and overview — until they're back on.
 
-    ``compare`` is the one field where an explicit ``null`` differs from omitting it: it clears
-    the override back to the org default, which is a choice the dashboard's select offers. Hence
-    ``model_fields_set`` rather than a ``None`` check (CLAUDE.md §18).
+    ``compare`` and ``rankings`` are the two fields where an explicit ``null`` differs from
+    omitting it: it clears the override back to the org default, which is a choice both screens
+    offer. Hence ``model_fields_set`` rather than a ``None`` check (CLAUDE.md §18).
     """
     return await MarketingService(ctx).set_company_settings(
         company_id,
@@ -176,6 +196,10 @@ async def set_company_settings(
         layout=payload.layout,
         compare=payload.compare,
         compare_set="compare" in payload.model_fields_set,
+        rankings=(
+            payload.rankings.model_dump(exclude_none=True) if payload.rankings else None
+        ),
+        rankings_set="rankings" in payload.model_fields_set,
     )
 
 

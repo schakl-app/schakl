@@ -103,6 +103,12 @@ class ReportSectionSpec:
     provider: ReportSectionProvider
     #: i18n key of the default narrative brief handed to the model for this section.
     brief_key: str = ""
+    #: i18n key naming **where this section's data comes from** — "Google Analytics", "Search
+    #: Console of SE Ranking" (#373). Choosing what goes in a client's document is a decision
+    #: about sources, and a picker that lists nine section names while saying nothing about what
+    #: feeds them cannot be reasoned about: an agency switching one off wants to know whether it
+    #: is empty because the client has no social traffic or because nobody linked the property.
+    source_key: str = ""
     audience: str = AUDIENCE_CLIENT
     #: The permission the *generating* caller must hold for this section to be gathered. A
     #: section is skipped, never 403'd: a report is assembled from whatever the generator may

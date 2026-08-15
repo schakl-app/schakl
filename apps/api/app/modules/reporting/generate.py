@@ -99,43 +99,65 @@ class Gathered:
     warnings: list[dict[str, str]] = field(default_factory=list)
 
 
-def enabled_sections(audience: str, layout: dict | None) -> list[ReportSectionSpec]:
-    """The registry's sections for this audience, ordered and toggled by the template.
+def enabled_sections(
+    audience: str, layout: dict | None, overrides: dict | None = None
+) -> list[ReportSectionSpec]:
+    """The registry's sections for this audience, ordered by the template and toggled by both.
 
-    A stored layout is a **diff, not a snapshot** (docs/INVOICING.md): resolution starts from
-    the registry and lets the layout reorder and disable what it *mentions*. A section a later
-    release adds therefore appears in every existing tenant's next report, rather than being
-    invisible to all of them until somebody re-saves a template.
+    Resolution is three layers, each a **diff over the one before, never a snapshot**
+    (docs/INVOICING.md's rule):
+
+        registry  →  template layout  →  this client's own overrides
+
+    A stored layout reorders and disables what it *mentions*, so a section a later release adds
+    appears in every existing tenant's next report rather than being invisible to all of them
+    until somebody re-saves a template. ``overrides`` is ``ReportProfile.sections`` — one
+    client saying "not this one" (or "yes this one" over a template that hid it) without needing
+    a template of their own, which was the only escape before #373 and left an agency
+    maintaining a near-copy of the house template per client.
+
+    Order stays the template's: what a client may change is *whether* a section prints, not where
+    it goes. A per-client running order would make two reports from the same agency read like two
+    different products, and nobody has asked for one.
     """
     available = registry.report_sections_for(audience, app_settings.enabled_modules)
     entries = (layout or {}).get("sections") or []
-    stated = {
-        str(entry.get("key")): entry
-        for entry in entries
-        if isinstance(entry, dict) and entry.get("key")
+    own = {
+        str(key): bool(value)
+        for key, value in (overrides or {}).items()
+        if isinstance(value, bool)
     }
+
+    def on(key: str, template_says: bool) -> bool:
+        return own.get(key, template_says)
+
     ordered: list[ReportSectionSpec] = []
+    mentioned: set[str] = set()
     for entry in entries:
         key = str(entry.get("key")) if isinstance(entry, dict) else None
         spec = next((s for s in available if s.key == key), None)
-        if spec is not None and entry.get("enabled", True):
+        if spec is None or spec.key in mentioned:
+            continue
+        mentioned.add(spec.key)
+        if on(spec.key, bool(entry.get("enabled", True))):
             ordered.append(spec)
-            del stated[key]
-    seen = {spec.key for spec in ordered}
+    # A section the layout has never heard of is on unless this client says otherwise — the
+    # whole reason resolution is a diff rather than a stored list.
     ordered.extend(
-        spec
-        for spec in available
-        if spec.key not in seen
-        and (stated.get(spec.key) or {}).get("enabled", True) is not False
+        spec for spec in available if spec.key not in mentioned and on(spec.key, True)
     )
     return ordered
 
 
 async def gather_sections(
-    ctx: RequestContext, window: ReportWindow, audience: str, layout: dict | None
+    ctx: RequestContext,
+    window: ReportWindow,
+    audience: str,
+    layout: dict | None,
+    overrides: dict | None = None,
 ) -> Gathered:
     out = Gathered()
-    for spec in enabled_sections(audience, layout):
+    for spec in enabled_sections(audience, layout, overrides):
         # A section is *skipped*, never 403'd: a report is assembled from what the generating
         # caller may read, so a member without ad-spend access produces a report without it
         # rather than a failure they cannot fix.
@@ -289,6 +311,7 @@ async def write_prose(
                 key: translate(spec.title_key, locale)
                 for key, spec in gathered.specs.items()
             },
+            internal=audience == ReportAudience.INTERNAL.value,
         ),
         profile=profile_facts(profile),
         tone=tone_payload(tone),

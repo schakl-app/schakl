@@ -186,6 +186,123 @@ class GSCAdapter:
             rows=movers[:10],
         )
 
+    async def keyword_rows(
+        self,
+        client: AsyncOAuth2Client,
+        external_id: str,
+        start: date,
+        end: date,
+        compare_start: date | None = None,
+        compare_end: date | None = None,
+        *,
+        limit: int = 25,
+        min_impressions: float = 10.0,
+        max_position: float = 25.0,
+    ) -> list[dict[str, Any]]:
+        """Per-query positions for the period — the rankings section, from Search Console.
+
+        Until this existed, ``marketing.rankings`` was produced from **SE Ranking and nothing
+        else**, so a client without that subscription got no keyword section at all — silently,
+        with nothing on the document or the review screen saying one had been withheld. Search
+        Console is connected for practically every client and answers the question directly; the
+        adapter already had ``top_queries`` and ``movers`` and the report used neither.
+
+        It answers the same shape ``SERankingAdapter.keyword_rows`` does — ``keyword``,
+        ``group``, ``begin``, ``end``, ``change``, ``status`` — so the section, the renderer and
+        the model need to know nothing about where a ranking came from. Three fields differ
+        honestly rather than being invented:
+
+        * **no ``landing_page``**. A query dimension knows what was searched, not which page
+          answered it; asking for both dimensions at once returns the *pairs*, which is a
+          different and much longer table. The design draws the column only where rows carry one
+          (``context._has_landing_pages``), so a Search Console table simply has four columns.
+        * **no ``group``**. SE Ranking groups keywords because somebody put them in groups.
+          Google has no opinion, and inventing themes from substrings would be us making up the
+          client's taxonomy.
+        * **``volume`` is impressions**, which is what Search Console can actually observe: how
+          often the site was *shown* for the term. It is not the same as a keyword tool's
+          monthly search volume and is not labelled as if it were.
+
+        ``begin`` is the average position over the comparison window and ``end`` over this one —
+        the same "where it started, where it ended" the SE Ranking rows carry, measured over the
+        two spans the whole report is already built around rather than over the first and last
+        day of the month, which for a low-volume term is two samples and a coin toss.
+        """
+        rows = await self._query(
+            client,
+            external_id,
+            {
+                "startDate": start.isoformat(),
+                "endDate": end.isoformat(),
+                "dimensions": ["query"],
+                "rowLimit": max(limit * 4, 100),
+            },
+        )
+        before: dict[str, float] = {}
+        if compare_start is not None and compare_end is not None:
+            previous = await self._query(
+                client,
+                external_id,
+                {
+                    "startDate": compare_start.isoformat(),
+                    "endDate": compare_end.isoformat(),
+                    "dimensions": ["query"],
+                    "rowLimit": max(limit * 4, 100),
+                },
+            )
+            before = {
+                row["keys"][0]: _num(row.get("position"))
+                for row in previous
+                if row.get("keys")
+            }
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            if not row.get("keys"):
+                continue
+            impressions = _num(row.get("impressions"))
+            position = _num(row.get("position"))
+            # A term shown twice all month is not a ranking, it is a rounding error, and a
+            # table of them buries the ones the client is actually competing for.
+            if impressions < min_impressions or not position:
+                continue
+            query = row["keys"][0]
+            start_position = before.get(query)
+            begin = int(round(start_position)) if start_position else 0
+            finish = int(round(position))
+            # Visible at **either** end — ``SeRankingAdapter.keyword_rows``' own rule, kept
+            # identical so the two sources produce comparable tables. It also keeps the row a
+            # client most needs to see: a term that has *dropped out* of the visible depth is
+            # news, and a rule reading only the current position would delete exactly that.
+            if not (0 < finish <= max_position or 0 < begin <= max_position):
+                continue
+            out.append(
+                {
+                    "keyword": query,
+                    "group": "",
+                    "begin": begin,
+                    "end": finish,
+                    # Positive = climbed, matching SE Ranking's convention: rank 8 → 3 is +5
+                    # even though the number fell.
+                    "change": (begin - finish) if begin else 0,
+                    "status": (
+                        "new"
+                        if not begin
+                        else "improved"
+                        if finish < begin
+                        else "declined"
+                        if finish > begin
+                        else "stable"
+                    ),
+                    "landing_page": None,
+                    "volume": int(round(impressions)),
+                    "clicks": _num(row.get("clicks")),
+                }
+            )
+        # Best first: a client reads the top of the table and stops, so the top of the table has
+        # to be where they rank, not wherever Google happened to order the response.
+        out.sort(key=lambda item: (item["end"] or 999, -item["volume"]))
+        return out[:limit]
+
     def deep_link(self, external_id: str, config: dict) -> str:
         return f"https://search.google.com/search-console?resource_id={quote(external_id, safe='')}"
 

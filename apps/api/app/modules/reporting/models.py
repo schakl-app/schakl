@@ -271,6 +271,24 @@ class ReportProfile(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Auditab
     schedule: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict, server_default="{}"
     )
+    #: ``{section_key: bool}`` — this client's own section on/off diff (#373).
+    #:
+    #: Sections were toggled per **template**, which is org-wide, so two clients sharing the
+    #: house template could not differ. In practice they always do: a client with no social
+    #: presence got a social section every month, a client who buys no ads got a paid-traffic
+    #: paragraph, and the only escape was authoring a second template for them — which then has
+    #: to be kept in step with the first one for ever.
+    #:
+    #: A **diff, not a snapshot**, the rule ``ReportTemplate.layout`` already follows one layer
+    #: up, so resolution reads
+    #:
+    #:     registry  →  template layout  →  this
+    #:
+    #: and a section a later release adds still appears for every client who has never mentioned
+    #: it. An absent key means *inherit*; only a key present here overrides.
+    sections: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
     internal_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")
     )

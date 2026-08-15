@@ -122,12 +122,18 @@ class ReportTemplateSource(BaseModel):
 
 
 class SectionCatalogEntry(BaseModel):
-    """One section a template may order or switch off — the registry, made visible."""
+    """One section a template or a client may order or switch off — the registry, made visible."""
 
     key: str
     title_key: str
     audience: str
     module: str
+    #: i18n key naming what feeds this section (#373). Choosing what goes in a client's document
+    #: is a decision about sources, and a list of nine section names that says nothing about
+    #: where they come from cannot be reasoned about — an agency switching one off wants to know
+    #: whether it is empty because the client has no social traffic or because nobody linked the
+    #: property.
+    source_key: str = ""
 
 
 # --- profiles --------------------------------------------------------------------------- #
@@ -168,6 +174,10 @@ class ReportProfileWrite(BaseModel):
     avoid_topics: str | None = Field(default=None, max_length=4000)
     recipients: list[ReportRecipient] = Field(default_factory=list, max_length=50)
     schedule: ReportSchedule = Field(default_factory=ReportSchedule)
+    #: ``{section_key: bool}`` — this client's own on/off diff over the template's layout
+    #: (#373). A key that is absent inherits; only a key present here overrides, which is what
+    #: keeps a section a later release adds visible to every client who has never mentioned it.
+    sections: dict[str, bool] = Field(default_factory=dict)
     internal_enabled: bool = True
     active: bool = True
 
@@ -193,11 +203,17 @@ class ReportProfileRead(BaseModel):
     avoid_topics: str | None = None
     recipients: list[dict] = Field(default_factory=list)
     schedule: dict = Field(default_factory=dict)
+    sections: dict = Field(default_factory=dict)
     internal_enabled: bool = True
     active: bool = True
     #: The schedule after inheritance, so a screen can show what will actually happen rather
     #: than a form full of blanks that mean "something else decides".
     effective_schedule: dict = Field(default_factory=dict)
+    #: The section keys that will actually print for this client, after registry → template →
+    #: profile (#373). Resolved here for the same reason ``effective_schedule`` is: a screen
+    #: showing a diff without its result makes the reader compute the answer, and three of them
+    #: computing it in three places is how a picker comes to promise a section the run drops.
+    effective_sections: list[str] = Field(default_factory=list)
     next_run_on: date | None = None
 
 

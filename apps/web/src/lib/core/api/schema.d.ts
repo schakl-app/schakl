@@ -7338,7 +7338,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Get Company Settings
+         * @description This client's marketing preferences, and what they resolve to.
+         *
+         *     A **read**, so it declares the read permission rather than ``link.manage``: the reporting
+         *     profile screen (#373) shows the resolved keyword-positions settings a client's document will
+         *     be built with, and someone who may look at a report should not need the permission to
+         *     reconfigure integrations in order to see them. Writing is still the manage permission, on the
+         *     PUT below.
+         */
+        get: operations["get_company_settings_api_v1_marketing_companies__company_id__settings_get"];
         /**
          * Set Company Settings
          * @description Per-client marketing preferences: the curated tab layout (#192), the comparison this
@@ -7347,9 +7357,9 @@ export interface paths {
          *     Configuration rides ``marketing.link.manage`` like linking. Hidden tiles stop being
          *     returned for this client — panel, tab and overview — until they're back on.
          *
-         *     ``compare`` is the one field where an explicit ``null`` differs from omitting it: it clears
-         *     the override back to the org default, which is a choice the dashboard's select offers. Hence
-         *     ``model_fields_set`` rather than a ``None`` check (CLAUDE.md §18).
+         *     ``compare`` and ``rankings`` are the two fields where an explicit ``null`` differs from
+         *     omitting it: it clears the override back to the org default, which is a choice both screens
+         *     offer. Hence ``model_fields_set`` rather than a ``None`` check (CLAUDE.md §18).
          */
         put: operations["set_company_settings_api_v1_marketing_companies__company_id__settings_put"];
         post?: never;
@@ -14022,10 +14032,18 @@ export interface components {
             compare?: components["schemas"]["ComparePeriod"] | null;
             /** @default year */
             compare_resolved: components["schemas"]["ComparePeriod"];
+            keyword_source?: components["schemas"]["RankingSource"] | null;
             /** Layout */
             layout?: {
                 [key: string]: unknown;
             } | null;
+            /** Linked Sources */
+            linked_sources?: components["schemas"]["MarketingSource"][];
+            /** Rankings */
+            rankings?: {
+                [key: string]: unknown;
+            } | null;
+            rankings_resolved?: components["schemas"]["RankingSettingsRead"];
             /** Show Key Events */
             show_key_events: boolean;
         };
@@ -14041,6 +14059,8 @@ export interface components {
          *     meaningful stored value here — the dashboard's select posts "volg standaard" as a real
          *     choice, and a payload that could not express it would leave a client pinned to whatever was
          *     set once, forever. The service reads ``model_fields_set`` to tell the two apart.
+         *
+         *     ``rankings`` follows the same rule for the same reason (#373).
          */
         CompanySettingsUpdate: {
             compare?: components["schemas"]["ComparePeriod"] | null;
@@ -14048,6 +14068,7 @@ export interface components {
             layout?: {
                 [key: string]: unknown;
             } | null;
+            rankings?: components["schemas"]["RankingSettingsWrite"] | null;
             /** Show Key Events */
             show_key_events?: boolean | null;
         };
@@ -19858,6 +19879,7 @@ export interface components {
              * @default false
              */
             env_ads_token_configured: boolean;
+            rankings?: components["schemas"]["RankingSettingsRead"];
             /**
              * Seranking Api Key Configured
              * @default false
@@ -19869,6 +19891,7 @@ export interface components {
             /** Ads Developer Token */
             ads_developer_token?: string | null;
             default_compare?: components["schemas"]["ComparePeriod"] | null;
+            rankings?: components["schemas"]["RankingSettingsWrite"] | null;
             /** Seranking Api Key */
             seranking_api_key?: string | null;
         };
@@ -22435,6 +22458,65 @@ export interface components {
             /** Valid Until */
             valid_until?: string | null;
         };
+        /**
+         * RankingSettingsRead
+         * @description The resolved answer — never nulls, so no screen has to re-derive inheritance.
+         */
+        RankingSettingsRead: {
+            /**
+             * Grouped
+             * @default true
+             */
+            grouped: boolean;
+            /**
+             * Limit
+             * @default 25
+             */
+            limit: number;
+            /**
+             * Max Position
+             * @default 25
+             */
+            max_position: number;
+            /**
+             * Min Impressions
+             * @default 10
+             */
+            min_impressions: number;
+            /**
+             * Show Landing Pages
+             * @default true
+             */
+            show_landing_pages: boolean;
+            /** @default auto */
+            source: components["schemas"]["RankingSource"];
+        };
+        /**
+         * RankingSettingsWrite
+         * @description How keyword positions are reported — the agency's house rule, or one client's own.
+         *
+         *     Every field optional and merged over what it inherits, so raising the house limit reaches
+         *     every client who never set one (``marketing.rankings.parse``'s diff rule).
+         */
+        RankingSettingsWrite: {
+            /** Grouped */
+            grouped?: boolean | null;
+            /** Limit */
+            limit?: number | null;
+            /** Max Position */
+            max_position?: number | null;
+            /** Min Impressions */
+            min_impressions?: number | null;
+            /** Show Landing Pages */
+            show_landing_pages?: boolean | null;
+            source?: components["schemas"]["RankingSource"] | null;
+        };
+        /**
+         * RankingSource
+         * @description Where a client's keyword positions come from.
+         * @enum {string}
+         */
+        RankingSource: "auto" | "seranking" | "search_console" | "off";
         /** ReadUpdate */
         ReadUpdate: {
             /** Read */
@@ -23126,6 +23208,8 @@ export interface components {
             effective_schedule?: {
                 [key: string]: unknown;
             };
+            /** Effective Sections */
+            effective_sections?: string[];
             /** Goals */
             goals?: string | null;
             /**
@@ -23163,6 +23247,10 @@ export interface components {
             scope_notes?: string | null;
             /** Sea Focus */
             sea_focus?: string | null;
+            /** Sections */
+            sections?: {
+                [key: string]: unknown;
+            };
             /** Seo Focus */
             seo_focus?: string | null;
             /** Template Id */
@@ -23210,6 +23298,10 @@ export interface components {
             scope_notes?: string | null;
             /** Sea Focus */
             sea_focus?: string | null;
+            /** Sections */
+            sections?: {
+                [key: string]: boolean;
+            };
             /** Seo Focus */
             seo_focus?: string | null;
             /** Template Id */
@@ -24021,7 +24113,7 @@ export interface components {
         };
         /**
          * SectionCatalogEntry
-         * @description One section a template may order or switch off — the registry, made visible.
+         * @description One section a template or a client may order or switch off — the registry, made visible.
          */
         SectionCatalogEntry: {
             /** Audience */
@@ -24030,6 +24122,11 @@ export interface components {
             key: string;
             /** Module */
             module: string;
+            /**
+             * Source Key
+             * @default
+             */
+            source_key: string;
             /** Title Key */
             title_key: string;
         };
@@ -42906,6 +43003,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CompanyMarketing"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_company_settings_api_v1_marketing_companies__company_id__settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanySettingsRead"];
                 };
             };
             /** @description Validation Error */

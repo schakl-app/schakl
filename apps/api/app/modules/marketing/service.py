@@ -70,6 +70,13 @@ from app.modules.marketing.models import (
     MarketingSettings,
     MarketingSource,
 )
+from app.modules.marketing.rankings import effective_source
+from app.modules.marketing.rankings import (
+    parse as parse_rankings,
+)
+from app.modules.marketing.rankings import (
+    resolve as resolve_rankings,
+)
 from app.modules.marketing.schemas import (
     AccountsResponse,
     AvailableAccount,
@@ -91,6 +98,7 @@ from app.modules.marketing.schemas import (
     MarketingSummaryRow,
     OverviewResponse,
     OverviewRow,
+    RankingSettingsRead,
     SeriesData,
     SourceMetrics,
     WebsiteRef,
@@ -887,6 +895,22 @@ class MarketingService:
             )
 
     # --- per-client settings (#134) ------------------------------------------------------- #
+    async def company_settings(self, company_id: uuid.UUID) -> CompanySettingsRead:
+        """This client's stored preferences and what they resolve to (#373).
+
+        Gated on ``marketing.metrics.read`` by its route: it is a read, and the reporting
+        profile screen needs it to show which keyword source a client's report will use.
+        """
+        self.ctx.require("marketing.metrics.read")
+        await self._company_or_404(company_id)
+        row = await self.ctx.session.scalar(
+            select(MarketingCompanySettings).where(
+                MarketingCompanySettings.org_id == self.ctx.org.id,
+                MarketingCompanySettings.company_id == company_id,
+            )
+        )
+        return await self._company_settings_read(company_id, row)
+
     async def set_company_settings(
         self,
         company_id: uuid.UUID,
@@ -895,6 +919,8 @@ class MarketingService:
         layout: dict | None = None,
         compare: ComparePeriod | None = None,
         compare_set: bool = False,
+        rankings: dict | None = None,
+        rankings_set: bool = False,
     ) -> CompanySettingsRead:
         """Per-client marketing preferences (upsert, one row per org+company).
 
@@ -933,9 +959,14 @@ class MarketingService:
         )
         previous_layout = row.layout
         previous_compare = row.compare
+        previous_rankings = row.rankings
 
         if compare_set:
             row.compare = compare.value if compare is not None else None
+        if rankings_set:
+            # Same absent/`null` rule as `compare` (#373): an explicit null is how a screen says
+            # "volg de standaard", which is a choice, not the absence of one.
+            row.rankings = rankings or None
 
         if layout is not None:
             parsed = CompanyLayout.model_validate(layout)
@@ -995,12 +1026,48 @@ class MarketingService:
                 "marketing.compare_changed",
                 {"changes": {"compare": {"from": previous_compare, "to": row.compare}}},
             )
+        if rankings_set and previous_rankings != row.rankings:
+            await activity.record("company", company_id, "marketing.rankings_changed", {})
+        return await self._company_settings_read(company_id, row)
+
+    async def _company_settings_read(
+        self, company_id: uuid.UUID, row: MarketingCompanySettings | None
+    ) -> CompanySettingsRead:
+        org_rankings = await self.ctx.session.scalar(
+            select(MarketingSettings.rankings).where(
+                MarketingSettings.org_id == self.ctx.org.id
+            )
+        )
+        # Through the repo, so the company horizon applies (§15, #285) — a restricted member
+        # must not learn which sources a client they cannot see is linked to.
+        stmt = (
+            self.ctx.repo(MarketingLink)
+            .scoped_select()
+            .where(
+                MarketingLink.company_id == company_id,
+                MarketingLink.active.is_(True),
+            )
+        )
+        linked = [link.source for link in (await self.ctx.session.execute(stmt)).scalars()]
+        resolved = resolve_rankings(org_rankings, row.rankings if row else None)
         return CompanySettingsRead(
             company_id=company_id,
-            show_key_events=row.show_key_events,
-            layout=row.layout,
-            compare=ComparePeriod(row.compare) if row.compare else None,
-            compare_resolved=resolve_compare(row.compare, await self._org_default_compare()),
+            show_key_events=bool(row.show_key_events) if row else True,
+            layout=row.layout if row else None,
+            compare=ComparePeriod(row.compare) if row and row.compare else None,
+            compare_resolved=resolve_compare(
+                row.compare if row else None, await self._org_default_compare()
+            ),
+            rankings=row.rankings if row else None,
+            rankings_resolved=RankingSettingsRead(**resolved.as_dict()),
+            linked_sources=[MarketingSource(source) for source in sorted(set(linked))],
+            # The same one function the gatherer asks, so a screen promising "positions from
+            # Search Console" and a run that produces none is a contradiction that cannot arise.
+            keyword_source=effective_source(
+                resolved,
+                has_seranking=MarketingSource.SERANKING.value in linked,
+                has_search_console=MarketingSource.GSC.value in linked,
+            ),
         )
 
     # --- pickers (#132) ------------------------------------------------------------------- #
@@ -1871,6 +1938,11 @@ class MarketingSettingsService:
             seranking_api_key_configured=bool(row and row.seranking_api_key_encrypted),
             # Always resolved: the settings select has two options and no third "unset" state.
             default_compare=resolve_compare(row.default_compare if row else None),
+            # Likewise resolved (#373): a screen showing the house rule shows what a run does,
+            # not a form of blanks that each mean "something in the code decides".
+            rankings=RankingSettingsRead(
+                **parse_rankings(row.rankings if row else None).as_dict()
+            ),
         )
 
     async def get(self) -> MarketingSettingsRead:
@@ -1919,6 +1991,13 @@ class MarketingSettingsService:
         # comparison require retyping a developer token nobody can read back.
         if data.default_compare is not None:
             row.default_compare = data.default_compare.value
+        if data.rankings is not None:
+            # Merged over what is already stored, not replaced: the same screen saves the whole
+            # block at once and a partial payload must not silently reset the fields it omits.
+            row.rankings = parse_rankings(
+                data.rankings.model_dump(exclude_none=True),
+                base=parse_rankings(row.rankings),
+            ).as_dict()
         await self.ctx.session.flush()
         return self._read(row)
 

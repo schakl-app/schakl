@@ -1,0 +1,304 @@
+"""What the document a client receives actually says and how it is laid out (issue #373).
+
+Everything here is about the *presentation* layer between a frozen snapshot and the page — the
+half that has no functional test to protect it, because a table that spends its width on a
+heading and one that spends it on the source both render, both validate and both print. The
+difference is only visible if you measure it or read it aloud.
+
+Four rules, each one a defect that reached a client's desk:
+
+* the table's geometry is stated, not negotiated by the widest column heading;
+* a column that says nothing is not the widest thing on the page;
+* the long tail is folded into a line that says how big it is, not printed in full;
+* a developer's identifier is never what a client reads.
+
+The model reads the same shaped section the page prints (``present.section``), so a fifth rule
+comes free: the paragraph cannot describe a column the table dropped.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from app.modules.reporting import present
+from app.modules.reporting.render import context as ctx
+
+pytestmark = pytest.mark.anyio
+
+
+SEVEN = [
+    "sessions",
+    "newUsers",
+    "totalUsers",
+    "screenPageViews",
+    "avg_engagement_time",
+    "engagementRate",
+    "keyEvents",
+]
+
+
+def _referrals(count: int, *, tail_sessions: int = 1) -> dict:
+    """A referral table: four real sources and a tail of one-session referrers."""
+    rows = [
+        {"label": "mail.google.com", "sessions": 14, "newUsers": 0, "totalUsers": 1,
+         "screenPageViews": 14, "avg_engagement_time": 151.0, "engagementRate": 0.57,
+         "keyEvents": 0},
+        {"label": "l.wl.co", "sessions": 5, "newUsers": 2, "totalUsers": 2,
+         "screenPageViews": 8, "avg_engagement_time": 104.0, "engagementRate": 0.6,
+         "keyEvents": 0},
+        {"label": "startgoogle.startpagina.nl", "sessions": 5, "newUsers": 1, "totalUsers": 1,
+         "screenPageViews": 53, "avg_engagement_time": 2053.0, "engagementRate": 1.0,
+         "keyEvents": 0},
+        {"label": "garagebaas.nl", "sessions": 4, "newUsers": 0, "totalUsers": 1,
+         "screenPageViews": 17, "avg_engagement_time": 324.0, "engagementRate": 0.75,
+         "keyEvents": 0},
+    ]
+    rows += [
+        {"label": f"noise{index}.example", "sessions": tail_sessions, "newUsers": 1,
+         "totalUsers": 1, "screenPageViews": 1, "avg_engagement_time": 3.0,
+         "engagementRate": 0.0, "keyEvents": 0}
+        for index in range(count)
+    ]
+    return {
+        "kind": "referral_sources",
+        "columns": list(SEVEN),
+        "rows": rows,
+        "totals": {},
+        "compare": None,
+        "chart": None,
+    }
+
+
+# --------------------------------------------------------------------------------------- #
+# Geometry
+# --------------------------------------------------------------------------------------- #
+def test_a_table_states_its_widths_and_the_name_column_gets_the_remainder() -> None:
+    """The allocation is decided up front, and the name column is never the loser.
+
+    The defect this pins: an auto-layout table allocates by *content demand*, and the loudest
+    demand on a traffic table is the heading BELANGRIJKE GEBEURTENISSEN — one unbreakable phrase
+    at 7pt — competing with cells holding two digits. It won, so every hostname broke mid-token
+    while a column of zeros took twice its width.
+    """
+    for count in (1, 2, 3, 4, 5, 6, 7):
+        name, per = ctx.column_widths(count)
+        assert name + per * count == pytest.approx(100.0, abs=0.5)
+        # The name column always holds the largest single share: it is the only column whose
+        # content is genuinely long.
+        assert name > per, (count, name, per)
+        # …and never so narrow that a hostname has to break inside a word again.
+        assert name >= 24.0, (count, name)
+
+
+def test_a_column_heading_is_the_short_name_and_the_tile_keeps_the_long_one() -> None:
+    """Said once, in the place with room for it — not abbreviated everywhere."""
+    assert ctx.metric_short("keyEvents", "nl") == "Doelen"
+    assert ctx.metric_label("keyEvents", "nl") == "Belangrijke gebeurtenissen"
+    # A metric with no short form falls back rather than printing a message key.
+    assert ctx.metric_short("keywords_tracked", "nl") == ctx.metric_label(
+        "keywords_tracked", "nl"
+    )
+
+
+def test_a_metric_glyph_is_inline_svg_or_nothing() -> None:
+    """An invented mark is worse than a bare heading: a reader will try to learn it."""
+    assert "<svg" in ctx.metric_icon("sessions")
+    assert ctx.metric_icon("a_metric_nobody_has_drawn") == ""
+
+
+def test_a_tile_strip_is_balanced_and_padded_to_a_rectangle() -> None:
+    """Four figures are four quarters, not three and one full-bleed leftover.
+
+    Search Console's strip is exactly four, and at ``flex: 1 1 22%`` it wrapped 3 + 1 with the
+    fourth tile stretched across the page — which reads as a rendering fault, not a layout.
+    """
+    tiles = [{"key": str(index)} for index in range(6)]
+    rows = ctx.tile_rows(tiles)
+    assert [len(row) for row in rows] == [3, 3]
+    # Five balance 3 + 2, and the short row is padded so every tile is the same width.
+    rows = ctx.tile_rows(tiles[:5])
+    assert [len(row) for row in rows] == [3, 3]
+    assert rows[1][-1] is None
+    assert ctx.tile_rows([]) == []
+
+
+# --------------------------------------------------------------------------------------- #
+# What the table says
+# --------------------------------------------------------------------------------------- #
+def test_a_column_that_is_zero_on_every_row_is_not_printed() -> None:
+    shaped = ctx.shape_section(_referrals(0), "nl")
+    assert "keyEvents" not in shaped["columns"]
+    # A single non-zero cell is this period's news and keeps its column.
+    data = _referrals(0)
+    data["rows"][0]["keyEvents"] = 2
+    assert "keyEvents" in ctx.shape_section(data, "nl")["columns"]
+
+
+def test_a_client_table_drops_the_columns_a_client_does_not_read() -> None:
+    """Seven metric columns per referring domain is the marketeer's table on the client's desk."""
+    client = ctx.shape_section(_referrals(0), "nl")["columns"]
+    assert client == ["sessions", "totalUsers", "avg_engagement_time"]
+    # The internal analysis keeps the full set — minus the all-zero one, which nobody wants.
+    internal = ctx.shape_section(_referrals(0), "nl", internal=True)["columns"]
+    assert internal == SEVEN[:-1]
+
+
+def test_the_long_tail_folds_into_a_row_that_says_how_big_it_is() -> None:
+    """Twelve one-session referrers are not twelve facts; they are one, and it is countable."""
+    shaped = ctx.shape_section(_referrals(12), "nl")
+    labels = [row["label"] for row in shaped["rows"]]
+    assert labels[:4] == [
+        "mail.google.com", "l.wl.co", "startgoogle.startpagina.nl", "garagebaas.nl"
+    ]
+    # Four real sources, then one line for the twelve. Not "four, one arbitrary one-session
+    # referrer, then a line for the other eleven" — a rule that shows at least N rows must not
+    # promote a piece of the noise it is folding.
+    assert len(shaped["rows"]) == 5
+    folded = shaped["rows"][-1]
+    assert folded["folded"] is True
+    assert "12" in folded["label"]
+    # Summable metrics are summed; an average over twelve sources is not invented.
+    assert folded["sessions"] == 12
+    assert "avg_engagement_time" not in folded
+
+
+def test_a_short_table_is_never_folded() -> None:
+    """A table of three rows and a "plus two others" line is not a table."""
+    shaped = ctx.shape_section(_referrals(1), "nl")
+    assert not any(row.get("folded") for row in shaped["rows"])
+
+
+def test_a_table_that_is_all_tail_still_shows_rows() -> None:
+    """The degenerate case: traffic so evenly spread that the floor eats everything."""
+    data = _referrals(0)
+    data["rows"] = [
+        {"label": f"tiny{index}.example", "sessions": 1, "totalUsers": 1,
+         "avg_engagement_time": 1.0, "newUsers": 0, "screenPageViews": 1,
+         "engagementRate": 0.0, "keyEvents": 0}
+        for index in range(9)
+    ]
+    shaped = ctx.shape_section(data, "nl")
+    kept = [row for row in shaped["rows"] if not row.get("folded")]
+    assert len(kept) == 3
+    assert shaped["rows"][-1]["folded"] is True
+
+
+def test_a_closed_vocabulary_is_never_folded() -> None:
+    """Channels are Google's twelve and conversions are the client's own goals — folding either
+    would hide a choice somebody made rather than a tail nobody chose."""
+    channels = {
+        "kind": "channels",
+        "columns": ["sessions"],
+        "rows": [{"label": f"Channel {i}", "sessions": 1} for i in range(14)],
+        "totals": {},
+        "compare": None,
+        "chart": None,
+    }
+    assert len(ctx.shape_section(channels, "nl")["rows"]) == 14
+
+
+def test_a_ga4_event_name_reaches_the_client_in_words() -> None:
+    """`bedankt_offerte_aanvragen` is a developer's identifier, printed on somebody's report."""
+    data = {
+        "kind": "conversions",
+        "columns": ["keyEvents"],
+        "rows": [
+            {"label": "bedankt_offerte_aanvragen", "keyEvents": 14},
+            {"label": "Telefoon GA4", "keyEvents": 80},
+            {"label": "mail.google.com", "keyEvents": 3},
+        ],
+        "totals": {},
+        "compare": None,
+        "chart": {"type": "grouped", "labels": ["bedankt_offerte_aanvragen"], "series": []},
+    }
+    shaped = ctx.shape_section(data, "nl")
+    assert [row["label"] for row in shaped["rows"]] == [
+        "Bedankt offerte aanvragen",
+        # A name somebody wrote is not ours to restyle, and a dotted name is an address.
+        "Telefoon GA4",
+        "mail.google.com",
+    ]
+    # The chart is renamed with the table, or the picture beside the rows disagrees with them.
+    assert shaped["chart"]["labels"] == ["Bedankt offerte aanvragen"]
+
+
+def test_two_tiles_never_show_the_same_number_under_two_names() -> None:
+    """GA4 answers `keyEvents` and `conversions` with the same figure for nearly every property,
+    so every report ever generated printed it twice with the same delta beneath it."""
+    data = {
+        "kind": "channels",
+        "columns": ["sessions"],
+        "rows": [],
+        "totals": {"sessions": 4124, "keyEvents": 879, "conversions": 879},
+        "compare": {"sessions": 2515, "keyEvents": 591, "conversions": 591},
+        "chart": None,
+    }
+    tiles = ctx._tiles(data, "nl", None)
+    assert [tile["key"] for tile in tiles] == ["sessions", "keyEvents"]
+
+    # Two metrics that happen to be equal this month but moved differently are two facts.
+    data["compare"] = {"sessions": 2515, "keyEvents": 591, "conversions": 800}
+    assert len(ctx._tiles(data, "nl", None)) == 3
+
+
+def test_a_strip_of_figures_is_ordered_by_the_document_not_by_postgres() -> None:
+    """``data_snapshot`` is JSONB, and JSONB has no key order — it sorts by length, then bytes.
+
+    A section provider builds its totals in the source's own display order and that order
+    survives exactly as far as the first commit. What every report actually printed was
+    *NIEUWE GEBRUIKERS · SESSIES · BELANGRIJKE GEBEURTENISSEN · GEBRUIKERS* — an ordering with
+    no meaning, on the strip that is the first thing a client reads.
+
+    Invisible in an offline render, because a Python dict *does* keep insertion order: only a
+    document read back from the database shows it. So the fixture below is deliberately in
+    Postgres' order rather than in a sensible one.
+    """
+    stored = {
+        "newUsers": 2810.0,
+        "sessions": 4124.0,
+        "keyEvents": 879.0,
+        "totalUsers": 3781.0,
+        "engagementRate": 0.46,
+        # A metric no order names is appended, never dropped into the middle of the strip.
+        "somethingNew": 7.0,
+    }
+    assert [metric for metric, _ in ctx.ordered_metrics(stored)] == [
+        "sessions", "totalUsers", "newUsers", "keyEvents", "engagementRate", "somethingNew"
+    ]
+
+
+def test_the_cover_leads_with_the_first_section_that_has_figures() -> None:
+    sections = [
+        {"totals": []},
+        {"totals": [{"key": str(index)} for index in range(6)]},
+    ]
+    assert len(ctx._headline(sections)) == 4
+    assert ctx._headline([{"totals": []}]) == []
+
+
+def test_a_rankings_row_is_coloured_by_its_move_not_by_its_rank() -> None:
+    """A term parked at 22 all year earned a red cell every month for standing still."""
+    rows = ctx._ranked(
+        [
+            {"keyword": "a", "begin": 41, "end": 38, "change": 3, "status": "improved"},
+            {"keyword": "b", "begin": 19, "end": 22, "change": -3, "status": "declined"},
+            {"keyword": "c", "begin": 7, "end": 7, "change": 0, "status": "stable"},
+            {"keyword": "d", "begin": 0, "end": 27, "change": 0, "status": "new"},
+        ]
+    )
+    assert [row["move_class"] for row in rows] == ["up", "down", "", "up"]
+
+
+# --------------------------------------------------------------------------------------- #
+# The model reads the page, not the database
+# --------------------------------------------------------------------------------------- #
+def test_the_model_is_handed_the_table_the_document_prints() -> None:
+    """One shaping function, so a paragraph cannot describe a column the table dropped or name
+    thirteen referrers the document folded into one line."""
+    presented = present.section(_referrals(12), locale="nl", title="Verwijzend verkeer")
+    rows = presented["rows"]
+    # The folded line is in the model's copy too, and it says how many it stands for.
+    assert any("12" in str(row.get("Bron", "")) for row in rows)
+    # …and the dropped columns are not.
+    assert not any("Nieuwe gebruikers" in row for row in rows)
+    assert not any("Belangrijke gebeurtenissen" in row for row in rows)

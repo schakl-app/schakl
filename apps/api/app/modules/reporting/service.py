@@ -64,6 +64,9 @@ logger = logging.getLogger("schakl.reporting")
 _TRACKED_PROFILE_FIELDS = (
     "display_name", "locale", "tone_id", "template_id", "internal_enabled", "active",
     "business_context", "goals", "seo_focus", "sea_focus",
+    # Which sections this client's document carries (#373): a change here changes what a client
+    # is sent, so it belongs on the trail beside the tone and the template.
+    "sections",
 )
 _TRACKED_REPORT_FIELDS = ("status", "title", "published_at", "sent_at")
 
@@ -240,6 +243,7 @@ class TemplateService:
                         title_key=spec.title_key,
                         audience=spec.audience,
                         module=spec.key.split(".", 1)[0],
+                        source_key=spec.source_key,
                     )
                 )
         return out
@@ -508,19 +512,41 @@ class ProfileService:
         own = (profile.schedule if profile else None) or {}
         return {**seeds.DEFAULT_SCHEDULE, **org.schedule, **own}
 
+    async def effective_sections(self, row: ReportProfile | None) -> list[str]:
+        """The client sections that will actually print, after registry → template → profile.
+
+        Resolved here for the same reason :meth:`effective_schedule` is: a screen that draws a
+        diff without its result makes the reader compute the answer, and three surfaces
+        computing it separately is exactly how a picker comes to promise a section the run then
+        drops. It reads the *client* template because that is the document this picker is about;
+        the internal analysis follows its own template and is not a per-client decision.
+        """
+        template = await TemplateService(self.ctx).resolve(
+            row.template_id if row else None, ReportAudience.CLIENT.value
+        )
+        specs = generate.enabled_sections(
+            ReportAudience.CLIENT.value,
+            template.layout if template else None,
+            (row.sections if row else None),
+        )
+        return [spec.key for spec in specs]
+
     async def _read(
         self, row: ReportProfile | None, company_id: uuid.UUID
     ) -> ReportProfileRead:
         schedule = await self.effective_schedule(row)
+        sections = await self.effective_sections(row)
         if row is None:
             return ReportProfileRead(
                 id=uuid.UUID(int=0),
                 company_id=company_id,
                 effective_schedule=schedule,
+                effective_sections=sections,
                 next_run_on=await self.next_run(schedule),
             )
         payload = ReportProfileRead.model_validate(row)
         payload.effective_schedule = schedule
+        payload.effective_sections = sections
         payload.next_run_on = (
             await self.next_run(schedule) if row.active else None
         )

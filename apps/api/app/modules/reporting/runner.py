@@ -265,7 +265,14 @@ async def _run(
     )
     template = await _template(session, org, report)
     gathered = await generate.gather_sections(
-        ctx, window, report.audience, (template.layout if template else None)
+        ctx,
+        window,
+        report.audience,
+        (template.layout if template else None),
+        # This client's own section on/off diff over the template's (#373). Read off the profile
+        # that already had to be loaded for the tone and the recipients, so a per-client section
+        # choice costs no extra query.
+        (profile.sections if profile else None),
     )
     if not gathered.sections:
         # Nothing to report on is a real state — a client with no linked properties — and it

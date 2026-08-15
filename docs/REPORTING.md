@@ -127,6 +127,74 @@ the registry and lets a template reorder and disable what it *mentions*, so a se
 release adds appears in every existing tenant's next report instead of being invisible to all of
 them.
 
+### …and one client may differ from the house without a template of their own (#373)
+
+Sections were toggled per **template**, which is org-wide, so two clients sharing the house
+template could not differ. In practice they always do: a client with no social presence got a
+social section every month, a client who buys no ads got a paid-traffic paragraph, and the only
+escape was authoring a second template for them — which then has to be kept in step with the
+first one for ever.
+
+`report_profiles.sections` is that client's own `{key: bool}` diff, so resolution is three
+layers, each a diff over the one before:
+
+```
+registry  →  template layout  →  this client's overrides
+```
+
+An absent key inherits; only a key present overrides, and it overrides **in both directions** — a
+client may switch on what the template hides, or the control is a veto rather than a choice. The
+**order** stays the template's: what a client may change is whether a section prints, not where
+it goes. Two reports from one agency reading like two different products is not something
+anybody asked for.
+
+`ReportProfileRead.effective_sections` returns the resolved answer beside the diff, for the same
+reason `effective_schedule` does — a screen that draws a diff without its result makes the reader
+compute it, and three surfaces computing it separately is how a picker comes to promise a section
+the run then drops.
+
+A section also declares **where its data comes from** (`ReportSectionSpec.source_key`), and the
+picker pairs that with which sources this client actually has
+(`CompanySettingsRead.linked_sources`). Choosing what goes in a document is a decision about
+sources: an agency switching a section off wants to know whether it is empty because the client
+has no social traffic or because nobody ever linked the property, and a list of nine names
+answers neither.
+
+## Keyword positions have a source, and it is a setting (#373)
+
+`marketing.rankings` was produced from **SE Ranking and nothing else**. A client without that
+subscription got no keyword section at all — silently, with nothing on the document or the review
+screen to say one had been withheld — while Search Console, connected for practically every
+client, answers the question directly and was never asked. The design block for the section had
+existed since #300 and had simply never had data for most clients.
+
+`GSCAdapter.keyword_rows` answers the *same payload shape* SE Ranking's does, so the section, the
+renderer and the model need to know nothing about where a ranking came from. Three fields differ
+honestly rather than being invented: no `landing_page` (a query dimension knows what was searched,
+not which page answered it — and the design draws that column only where rows carry one), no
+`group` (Google has no opinion, and inventing themes from substrings would be us making up the
+client's taxonomy), and `volume` is **impressions**, which is what Search Console can observe.
+
+The preference is `app/modules/marketing/rankings.py`, org default with a per-client diff over
+it (`marketing_settings.rankings` → `marketing_company_settings.rankings`, `NULL` = inherit):
+
+| Value | What it does |
+|---|---|
+| `auto` (default) | SE Ranking where the client has a linked project, Search Console otherwise |
+| `seranking` / `search_console` | that source, or **no section** — never a silent substitution, because two months on different sources are not comparable and nothing on the page would say why |
+| `off` | no keyword section for this client |
+
+Plus what turns an export into a report: how many keywords, a minimum-impressions floor (Search
+Console will happily report an average position of 3.0 for a term shown twice), whether to group,
+whether to print landing pages. `effective_source()` is the **one** function that resolves it,
+read by the gatherer, the settings screen and the section picker alike — three copies of a
+preference rule is how a screen comes to promise a section the run does not produce.
+
+`DEFAULT_MAX_POSITION` is deliberately `SeRankingAdapter.VISIBLE_DEPTH`'s number, and the filter
+is SE Ranking's own "visible at **either** end": a client whose agency switches source must not
+find sixty new "rankings" appearing in a month where nothing changed, and a term that has
+*dropped out* of the visible depth is exactly the row worth printing.
+
 ## Who may read what
 
 | Key | Scope | Guards |
@@ -210,7 +278,7 @@ stated where it is enforced rather than remembered:
   column cut — silently, on any report holding a long referrer or the heading BELANGRIJKE
   GEBEURTENISSEN. `overflow-wrap: anywhere` on the **cells** fixes the minimum (`break-word`
   does not count toward it; `break-all` breaks words that would have fitted), and the name
-  column takes a stated `width: 26%` so `anywhere` does not hand its room to the numbers. Not on
+  column took a stated `width: 26%` so `anywhere` did not hand its room to the numbers. Not on
   the headings — there it produced `SESSI/ES`, `GEBRUIK/ERS`. A test asserts that no laid-out
   box crosses the right page margin.
 - **A category name the chart could not fit was cut, twice identically.** Ten channels under a
@@ -229,6 +297,74 @@ stated where it is enforced rather than remembered:
   **heading strip of every section**: bounded, `break-inside: avoid`, identical for all of them,
   and still bleeding to the sheet edge, because a wash that stops at the text column claims a
   containment its contents do not have.
+
+### The table's geometry is stated, not negotiated (#373)
+
+The two fixes above solved the overflow and together produced the opposite fault. Auto layout
+allocates by *content demand*, and the loudest demand on a traffic table is the heading —
+BELANGRIJKE GEBEURTENISSEN is one unbreakable phrase at 7pt with letter-spacing, competing with
+cells holding two digits — while `anywhere` drops the name column's minimum width to one
+character so it can be squeezed to its stated 26 % without complaint. The heading won every
+time:
+
+```
+duckduc      mail.google      startgoogle.      customerpo
+kgo          .com             startpagina.      rtaljames-
+                              nl                zzmf4gsdza…
+```
+
+A column of sixteen zeros, roughly twice the width of the column naming the source. Four changes,
+and each one is a rule rather than a number:
+
+- **`table-layout: fixed`** ends the negotiation. Widths come from `context.column_widths` — an
+  equal, generous share per metric column, everything left over to the name.
+- **A column heading is the metric's *short* name** (`metric_short`, `marketing.metric.short.*`),
+  which is what makes that share enough: `DOELEN` fits where BELANGRIJKE GEBEURTENISSEN never
+  could. The long name still heads the KPI tile, which is the box with room for it — said once,
+  in the place that has room, not abbreviated everywhere.
+- **A metric carries a glyph** (`metric_icon`), so a seven-column table is scanned rather than
+  read. Inline SVG in `currentColor`, for the reason every chart here is; a metric with no glyph
+  has none, because an invented mark is worse than a bare heading — a reader will try to learn it.
+- **A strip of figures is ordered by the document, not by Postgres.** `data_snapshot` is `JSONB`
+  and JSONB has no key order: it sorts by length, then bytes. A provider builds its totals in the
+  source's display order and that order survives as far as the first commit; what every report
+  printed was *NIEUWE GEBRUIKERS · SESSIES · BELANGRIJKE GEBEURTENISSEN · GEBRUIKERS*. Invisible
+  in an offline render, because a Python dict keeps insertion order — only a document read back
+  from the database shows it. `_TILE_ORDER` states it.
+
+### What the table says (#373)
+
+Three narrowings, applied at the renderer for the reason `localise_section` already gives: a
+report freezes its rows, so a presentation rule applied here also improves the reports already
+stored and leaves the snapshot a record of what the source really said. `present.section` calls
+the same `shape_section`, so the paragraph cannot describe a column the table dropped.
+
+- **A column that is zero on every row is not printed.** `always_zero` already drops such a KPI
+  tile; this is the same argument one dimension over, and the column in question was the *widest*
+  thing on the page.
+- **The long tail folds into one row that says how big it is.** Twelve of sixteen referrers with
+  one session each is four facts and a footnote, and printed in full it buries the four.
+  `Overig (12 bronnen)` is strictly more informative than the rows it replaces, because it names
+  the size of what it is not showing (§17). Summable metrics are summed; an average over twelve
+  sources is left blank rather than invented. Only open-ended source tables — a channel list is
+  Google's closed twelve and a conversions table is the client's own goals, and folding either
+  would hide a choice somebody made.
+- **A client's table drops the columns a client does not read.** The provider returns the
+  marketeer's seven, which is right for the internal analysis and a data dump on a client's desk.
+- **A GA4 event name reaches the client in words.** `bedankt_offerte_aanvragen` is a developer's
+  identifier. The tenant can rename events per client (#192) and should; `humanise` is the
+  fallback, and it is deliberately snake_case-only — a space means somebody wrote it, a dot means
+  it is an address.
+- **Two tiles never show the same number twice.** `GA4_METRICS` holds `keyEvents` *and*
+  `conversions`, which GA4 answers identically for nearly every property, so every report printed
+  `BELANGRIJKE GEBEURTENISSEN 879` beside `CONVERSIES 879`. Value *and* change must match before
+  a tile is dropped: two metrics equal this month that moved differently are two facts.
+- **The cover leads with the figures.** It was a title, a paragraph and 60 % white space before a
+  hard break; `_headline` puts the first section's own totals there, taken from the resolved
+  section so the cover and the page it came from cannot disagree about a number.
+- **A ranking is coloured by its move, not by its rank.** `≤ 10 = green` is a verdict, and the
+  wrong one: a term parked at 22 all year earned a red cell every month for standing still, and
+  one that climbed 41 → 38 earned two red cells for its best month in a year.
 
 And two about what the numbers *said*:
 
