@@ -184,6 +184,15 @@ COPIED_FIELDS = frozenset(
         "requires_interaction",
         "visible_to_client",
         "recurrence",
+        # Copied *because* ``title`` is (#350, #369). ``unnamed`` is a fact about the title, not
+        # about the occurrence: it says the stored string is a placeholder nobody typed, written
+        # in whichever locale the creator happened to be using. Leaving it behind while carrying
+        # the title forward would hand the clone that placeholder **as if it were a name** —
+        # precisely the failure the flag exists to prevent, reintroduced monthly by a cron. The
+        # "a fresh occurrence is a fresh record" argument below does not reach it: the clone did
+        # not acquire a name by being created, and the moment somebody types one the service
+        # clears the flag on the clone alone.
+        "unnamed",
     }
 )
 
