@@ -107,6 +107,8 @@ registerWebModule({
       module: "uptime",
       component: UptimeCompanyPanel,
       position: 460,
+      // Nothing here yet folds into the hub's one ＋ strip (#364).
+      emptyHref: (id: string) => `/websites?company=${id}`,
     },
   ],
   entityPanels: [

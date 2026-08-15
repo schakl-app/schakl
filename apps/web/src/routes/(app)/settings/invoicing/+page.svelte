@@ -2,6 +2,7 @@
   import { Pencil, Trash2 } from "@lucide/svelte";
 
   import { enhance } from "$app/forms";
+  import CountryInput from "$lib/core/ui/CountryInput.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
@@ -166,13 +167,9 @@
         <label for="seller-country" class="mb-1 block text-sm font-medium text-text"
           >{t("settings.invoicing.country")}</label
         >
-        <input
-          id="seller-country"
-          name="country"
-          maxlength="2"
-          value={seller.country ?? ""}
-          class={inputClass}
-        />
+        <!-- The same shared picker the client form uses (#349): a country is chosen from a
+             searchable list of names, never typed as two letters nobody is expected to know. -->
+        <CountryInput id="seller-country" name="country" value={seller.country ?? ""} />
       </div>
       <div>
         <label for="seller-taxcountry" class="mb-1 block text-sm font-medium text-text"

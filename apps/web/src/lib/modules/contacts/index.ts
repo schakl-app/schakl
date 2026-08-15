@@ -28,6 +28,10 @@ registerWebModule({
       module: "contacts",
       component: ContactsPanel,
       position: 20,
+      // Its ⋯ edit toggle belongs on the heading line, not in a band beneath it (#364).
+      ownsHeader: true,
+      // Nothing here yet folds into the hub's one ＋ strip (#364).
+      emptyHref: (id: string) => `/contacts?company=${id}`,
     },
   ],
 });

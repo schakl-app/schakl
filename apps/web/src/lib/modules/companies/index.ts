@@ -29,6 +29,8 @@ registerWebModule({
       module: "companies",
       component: CompanyDetailsPanel,
       position: 10,
+      // Draws its own heading, because it carries a control beside the title (#364).
+      ownsHeader: true,
     },
   ],
 });

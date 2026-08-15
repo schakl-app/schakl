@@ -88,13 +88,30 @@ function changeText(entityType: string, field: string, change: Change): string {
   });
 }
 
+/**
+ * How many field changes are spelled out before the line summarises instead.
+ *
+ * A five-field edit read as one run-on sentence — *"wijzigde plaats: — → Goes, land: — → NL,
+ * postcode: — → 4462 HA, huisnummer: — → 29, straat: — → Columbusweg"* — where the interesting
+ * fact is that **the address was filled in**. Two is the point at which naming each one stops
+ * being more informative than counting them; the whole before/after set is still in the stored
+ * row, so nothing is lost, only unread.
+ */
+const SPELLED_OUT = 2;
+
 /** The sentence an activity entry reads as, after the actor's name, in the reader's locale. */
 export function activityText(item: ActivityLike): string {
   if (item.action === "updated") {
-    const changes = (item.payload?.changes ?? {}) as Record<string, Change>;
-    const parts = Object.entries(changes).map(([field, change]) =>
-      changeText(item.entity_type, field, change),
-    );
+    const changes = Object.entries((item.payload?.changes ?? {}) as Record<string, Change>);
+    if (changes.length > SPELLED_OUT) {
+      const [field] = changes[0];
+      const rest = changes.length - 1;
+      const key = rest === 1 ? "activity.change_many_one" : "activity.change_many";
+      return t("activity.action.updated", {
+        changes: t(key, { field: fieldLabel(field), count: rest }),
+      });
+    }
+    const parts = changes.map(([field, change]) => changeText(item.entity_type, field, change));
     return t("activity.action.updated", { changes: parts.join(", ") });
   }
   if (

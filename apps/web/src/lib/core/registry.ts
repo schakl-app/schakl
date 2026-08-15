@@ -9,6 +9,8 @@ import type { Component } from "svelte";
 
 import { getLocale } from "$lib/paraglide/runtime";
 
+import type { CustomFieldDefinition } from "./customfields/types";
+
 import type { ApiClient } from "./api/client";
 import { t } from "./i18n";
 import { can, type PermissionScope } from "./permissions";
@@ -70,14 +72,42 @@ export interface CompanyPanelSpec {
   /** Matches the API PanelSpec.key it renders (e.g. "companies.details"). */
   key: string;
   module: string;
-  /** `members` is optional context the host already holds (mention candidates, #151) —
-   *  a panel that doesn't take the prop simply never reads it. */
+  /** `members`, `definitions` and `locale` are optional context the host already holds
+   *  (mention candidates #151; the tenant's custom-field definitions #364) — a panel that
+   *  doesn't take the prop simply never reads it. */
   component: Component<{
     companyId: string;
     data: Record<string, unknown>;
     members?: PanelMember[];
+    definitions?: CustomFieldDefinition[];
+    locale?: string;
+    /** The heading the host would draw; passed so an `ownsHeader` panel can draw it itself. */
+    title?: string;
+    onedit?: () => void;
   }>;
   position?: number;
+  /**
+   * This panel draws its own heading row (`PanelHeader`), so the host draws none (#364).
+   *
+   * A panel with a control beside its title otherwise had nowhere to put it, because the host
+   * owns the `<h2>` — so it pushed a button row *underneath* the heading and the card opened
+   * with a band of empty space and one floating control in it.
+   */
+  ownsHeader?: boolean;
+  /**
+   * What this module offers when the client has nothing here yet (#364).
+   *
+   * A module with nothing to show does not earn a heading, a border and 100 px — the API says
+   * `empty: true` and the hub folds it into one "nog niets vastgelegd" strip of ＋ chips. The
+   * chip needs somewhere to go, and where is a *routing* question the API may not answer, so it
+   * lives here beside the component that draws the full panel.
+   *
+   * A chip with no `emptyHref` is drawn as a plain label: still one line in a strip instead of a
+   * card, which is the win, and never a control that goes nowhere (#253).
+   */
+  emptyHref?: (companyId: string) => string;
+  /** Overrides the chip's label; defaults to the panel's own `title_key`. */
+  emptyLabelKey?: string;
 }
 
 /** A member as `/api/v1/members/lookup` returns them. Panels print names, never user ids. */

@@ -53,9 +53,13 @@ export const load: PageServerLoad = async (event) => {
   // other call wait a full round-trip for an answer none of them needed — they are all keyed by
   // the id in the URL, not by anything the company row says. The 404 check simply moves below;
   // the panels call answers 404 too if the id is not ours, so nothing leaks by asking.
-  const [companyRes, panels, definitions, templates, members] = await Promise.all([
+  const [companyRes, panels, summary, definitions, templates, members] = await Promise.all([
     api.GET("/api/v1/companies/{company_id}", { params: { path: { company_id } } }),
     api.GET("/api/v1/companies/{company_id}/panels", { params: { path: { company_id } } }),
+    // The vital signs (#364) — the strip under the header that answers "are we all right with
+    // this client" before anything is scrolled. In the same fan as the panels: it is keyed by
+    // the id in the URL like everything else here, so it costs no extra round trip.
+    api.GET("/api/v1/companies/{company_id}/summary", { params: { path: { company_id } } }),
     api.GET("/api/v1/custom-fields/definitions", {
       params: { query: { entity_type: "company" } },
     }),
@@ -91,6 +95,7 @@ export const load: PageServerLoad = async (event) => {
   return {
     company,
     panels: panels.data ?? [],
+    summary: summary.data ?? [],
     definitions: definitions.data ?? [],
     templates,
     members: members.data ?? [],
@@ -102,35 +107,49 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
   update: async (event) => {
     const form = await event.request.formData();
-    const name = String(form.get("name") ?? "").trim();
-    if (!name) return fail(400, { error: "errors.required" });
+
+    // **Only what the form actually carried** (#364). The edit surface is no longer one
+    // 30-field dialog: the Gegevens card and the Factuurgegevens card each flip into edit mode
+    // on their own, and the status pill posts one field from the header. Reading every field
+    // with `?? ""` would have made each of those a *wholesale* write that nulled everything the
+    // section left out — the same shape as a permission-hidden block being wiped by a restricted
+    // caller's ordinary save. `has()` is the question, and asking it any other way is the bug.
+    const text = (field: string): string | null | undefined =>
+      form.has(field) ? String(form.get(field) ?? "").trim() || null : undefined;
+
+    // A form that carries `name` must carry a real one; one that doesn't isn't renaming.
+    if (form.has("name") && !String(form.get("name") ?? "").trim()) {
+      return fail(400, { error: "errors.required" });
+    }
 
     const api = apiFor(event);
     const company_id = event.params.id;
+    const country = text("country");
+    const body = {
+      name: text("name") ?? undefined,
+      client_number: text("client_number"),
+      website: text("website"),
+      phone: text("phone"),
+      invoice_email: text("invoice_email"),
+      vat_number: text("vat_number"),
+      coc_number: text("coc_number"),
+      address_line1: text("address_line1"),
+      house_number: text("house_number"),
+      address_line2: text("address_line2"),
+      postal_code: text("postal_code"),
+      city: text("city"),
+      country: country ? country.toUpperCase() : country,
+      notes: text("notes"),
+      status: form.has("status") ? (String(form.get("status")) as "active") : undefined,
+      assignees: form.has("assignees") ? parseAssignees(form.get("assignees")) : undefined,
+      custom: form.has("custom") ? parseCustom(form.get("custom")) : undefined,
+    };
+    // `undefined` keys vanish in `JSON.stringify`, and the API reads `exclude_unset`: absent
+    // means leave alone, an explicit `null` clears. That is the same rule bulk edit states
+    // (CLAUDE.md §18), and it is what makes a per-section save safe.
     const { error: apiError } = await api.PATCH("/api/v1/companies/{company_id}", {
       params: { path: { company_id } },
-      body: {
-        name,
-        client_number: String(form.get("client_number") ?? "").trim() || null,
-        website: String(form.get("website") ?? "").trim() || null,
-        phone: String(form.get("phone") ?? "").trim() || null,
-        invoice_email: String(form.get("invoice_email") ?? "").trim() || null,
-        vat_number: String(form.get("vat_number") ?? "").trim() || null,
-        coc_number: String(form.get("coc_number") ?? "").trim() || null,
-        address_line1: String(form.get("address_line1") ?? "").trim() || null,
-        house_number: String(form.get("house_number") ?? "").trim() || null,
-        address_line2: String(form.get("address_line2") ?? "").trim() || null,
-        postal_code: String(form.get("postal_code") ?? "").trim() || null,
-        city: String(form.get("city") ?? "").trim() || null,
-        country:
-          String(form.get("country") ?? "")
-            .trim()
-            .toUpperCase() || null,
-        notes: String(form.get("notes") ?? "").trim() || null,
-        status: String(form.get("status") ?? "active") as "active",
-        assignees: parseAssignees(form.get("assignees")),
-        custom: parseCustom(form.get("custom")),
-      },
+      body,
     });
     if (apiError) return fail(400, { error: apiErrorKey(apiError).key });
 

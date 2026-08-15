@@ -1712,8 +1712,37 @@ export interface paths {
         /**
          * Company Panels
          * @description Compose the detail-view panels contributed by every enabled module (the hub).
+         *
+         *     Only the panels **this caller may read** (#365): the composition used to declare
+         *     ``companies.company.read`` once and then call thirteen providers, so a member holding
+         *     exactly that key received the client's tasks, hours, domains and full change history.
+         *     ``panels_for`` takes ``ctx.can`` and the provider is never called.
          */
         get: operations["company_panels_api_v1_companies__company_id__panels_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/companies/{company_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Company Summary
+         * @description The client's vital signs (#364) — openstaand, uren, open taken, laatste contact, verlenging.
+         *
+         *     Every one of these was already derivable from a panel the reader had to scroll to and add up
+         *     by eye. Same seam as the panels one level up: the module owns the number and where it opens,
+         *     core owns the strip, and this page gains no per-module code.
+         */
+        get: operations["company_summary_api_v1_companies__company_id__summary_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -20989,10 +21018,25 @@ export interface components {
             data: {
                 [key: string]: unknown;
             };
+            /**
+             * Empty
+             * @default false
+             */
+            empty: boolean;
             /** Key */
             key: string;
             /** Position */
             position: number;
+            /**
+             * Prominence
+             * @default register
+             */
+            prominence: string;
+            /**
+             * Size
+             * @default full
+             */
+            size: string;
             /** Title Key */
             title_key: string;
         };
@@ -24871,6 +24915,46 @@ export interface components {
             period_start: string | null;
             /** Used Hours */
             used_hours: number;
+        };
+        /**
+         * SummaryData
+         * @description One vital sign in a host entity's header strip (#364).
+         *
+         *     The panels answer "what is on file"; these answer *"are we all right with this client"* —
+         *     and each one opens the thing it counted (docs/UX.md principle 7, "every number opens").
+         */
+        SummaryData: {
+            /** Currency */
+            currency?: string | null;
+            /**
+             * Format
+             * @default number
+             */
+            format: string;
+            /** Hint Key */
+            hint_key?: string | null;
+            /** Hint Params */
+            hint_params?: {
+                [key: string]: unknown;
+            };
+            /** Href */
+            href?: string | null;
+            /** Key */
+            key: string;
+            /** Label Key */
+            label_key: string;
+            /**
+             * Position
+             * @default 100
+             */
+            position: number;
+            /**
+             * Tone
+             * @default neutral
+             */
+            tone: string;
+            /** Value */
+            value: string;
         };
         /** SystemInfo */
         SystemInfo: {
@@ -31663,6 +31747,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PanelData"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    company_summary_api_v1_companies__company_id__summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SummaryData"][];
                 };
             };
             /** @description Validation Error */

@@ -40,6 +40,8 @@ registerWebModule({
       module: "subscriptions",
       component: SubscriptionsPanel,
       position: 60,
+      // Nothing here yet folds into the hub's one ＋ strip (#364).
+      emptyHref: (id: string) => `/subscriptions?company=${id}`,
     },
   ],
   entityPanels: [

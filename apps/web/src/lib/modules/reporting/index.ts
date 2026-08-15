@@ -34,6 +34,8 @@ registerWebModule({
       module: "reporting",
       component: ReportingCompanyPanel,
       position: 55,
+      // Nothing here yet folds into the hub's one ＋ strip (#364).
+      emptyHref: (id: string) => `/companies/${id}/reporting`,
     },
   ],
   dashboardWidgets: [

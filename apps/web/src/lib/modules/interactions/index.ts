@@ -90,6 +90,8 @@ registerWebModule({
       module: "interactions",
       component: InteractionsCompanyPanel,
       position: POSITION,
+      // Nothing here yet folds into the hub's one ＋ strip (#364).
+      emptyHref: (id: string) => `/interactions?company_id=${id}`,
     },
   ],
   entityPanels,
