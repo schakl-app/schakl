@@ -1150,6 +1150,20 @@
   one that had just landed on it. Clamp the bar, never the number.
 - A hardcoded `<ul>` per list. Six of them and no user could hide a column; the seventh is what
   `DataTable` exists to prevent.
+- **A `shrink-0` badge sharing the identity cell with the identity.** The invoices list drew a
+  "Creditfactuur" badge beside the number and marked the *badge* as the thing that must not
+  shrink, on the reasoning that the kind is what the row is about (#341). In a `table-fixed` grid
+  that reasoning is a measurement, and it lost: the column is 130 px, 98 px of it inside the
+  padding, the badge took 84 px, and `2026-0006` was handed 10 px and rendered as **`2.`** — so
+  the one document hardest to tell apart from its neighbours (same client, same date, only the
+  sign differs) was the only one whose number could not be read. Two rules. **The identity wins
+  its own cell**: whatever else lands there yields first, and a marker that cannot yield has to be
+  small enough that it never needs to. And **widening the column is not a fix, it is a new
+  threshold** — a longer number or a longer translation walks straight back into it, which is why
+  the word became a 14 px glyph carrying its label in `sr-only` (and in `title` for a sighted
+  hover) rather than a badge with a bigger budget. That is not the ★ mistake above: this glyph
+  replaces text that no longer fits and says the same thing to a screen reader that the badge did,
+  where the star duplicated a colour that already carried the meaning.
 - **A list that opens on everything it has, rather than on what anyone is working on.** Klanten
   listed the archive among the live clients and sorted newest-first, so the first screen of an
   agency's oldest relationship was whoever they signed up last, mixed with people they stopped

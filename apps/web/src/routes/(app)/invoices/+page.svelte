@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Download, Pencil, Trash2 } from "@lucide/svelte";
+  import { CircleMinus, Download, Pencil, Trash2 } from "@lucide/svelte";
 
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
@@ -241,10 +241,18 @@
   >
     <span class="truncate">{invoice.number ?? t("invoicing.status.draft")}</span>
     {#if invoice.kind === "credit_note"}
-      <!-- `shrink-0`: the badge is what the row is *about*; the number truncates before it. -->
-      <span class="shrink-0 rounded bg-surface px-1 text-xs text-text-muted"
-        >{t("invoicing.kind.credit_note")}</span
-      >
+      <!-- A glyph, not the word (#341). This used to be a `shrink-0` "Creditfactuur" badge on the
+           reasoning that the kind is what the row is about — but the column is 130px, 98px of it
+           inside the padding, the badge measured 84px and refused to give any of it back, so
+           `2026-0006` was handed 10px and rendered as `2.`. The one document hardest to tell
+           apart from its neighbours was the only one you could not read the number of. No width
+           fixes that: a longer number or a longer translation just moves the threshold. 14px of
+           icon cannot starve the identity in any locale, and the word rides along in `sr-only`
+           (and in `title` for a sighted hover) rather than being lost. -->
+      <span class="shrink-0 text-text-muted" title={t("invoicing.kind.credit_note")}>
+        <CircleMinus class="size-3.5" aria-hidden="true" />
+        <span class="sr-only">{t("invoicing.kind.credit_note")}</span>
+      </span>
     {/if}
   </a>
 {/snippet}
