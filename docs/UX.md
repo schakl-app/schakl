@@ -178,11 +178,25 @@
   time entry form, checklist items on the card. The full forms still exist on their own
   pages; quick-add is an accelerator, not a replacement.
 - **People attached to a record are "one primary, N others"** — the same chips-plus-type-ahead
-  shape everywhere. **The primary is marked by the brand colour and nothing else: no star, no
-  emoji, no glyph of any kind.** A coloured chip among grey ones already says which one is
-  primary; a ★ next to it is decoration, and decoration is what makes a dense screen look cheap.
-  Because colour cannot be read by a screen reader (WCAG 1.4.1), the primary chip carries an
-  `sr-only` label — that, not a glyph, is how the meaning is made accessible.
+  shape everywhere. **The primary is marked by a ★ *and* the brand colour**, plus an `sr-only`
+  label. This **reverses** the original rule ("the colour and nothing else: no star, no emoji, no
+  glyph of any kind"), and the reversal is the interesting part. A coloured chip among grey ones
+  does say which one is primary — but only when there *are* grey ones, and a client with one
+  contact person has a lone gold pill with nothing to contrast against; on a gold-branded tenant
+  that pill is also indistinguishable from an amber warning chip, so the person to ring first read
+  as a problem. Colour was carrying two meanings and neither of them reached a screen reader.
+  Both *pill* surfaces obey it (`LinkField`, `AssigneePicker`): they sit on the same screens, and a
+  marker that means "primary" on one card and nothing on the next teaches the reader that it means
+  nothing. `Assignees` — the read-only avatar row — is not a pill and keeps its full-vs-muted
+  contrast; a glyph beside a face fixes nothing there.
+  **The glyph says *that* a chip is special, never *what* or *which direction*** (#374). That is
+  words' work, and on a direction-ambiguous surface the words must say the direction:
+  `company_contacts.is_primary` means "the primary contact **for that company**", so the
+  clients-on-a-contact block reads *"hoofdcontact bij deze klant"* and never a bare *"primair"* —
+  which invites a reading that does not exist (*this person's main client*) and turns the promote
+  click into an unannounced write to a different client's configuration. So every chip carries a
+  `title` naming itself, and edit mode states the promote gesture in one line of text: a gesture
+  discoverable only by hovering the thing you did not know to hover is not discoverable.
   **Clicking a chip promotes it to primary** — the marker never doubles as a control — and each
   chip carries an ✕ to drop it. Both gestures are *edit-mode only* (Principle 3): attaching,
   detaching and re-designating the primary all change the record's definition. So `LinkField`
@@ -1229,8 +1243,14 @@
 - A desktop-only sidebar with no mobile navigation at all.
 - Bare **Delete** / **Edit** buttons exposed on a row or header (accidental-click magnets) —
   they belong in the ⋯ `ActionsMenu`, and every delete confirms via `ConfirmDialog`.
-- A ★ (or any emoji/glyph) marking the primary chip on top of its brand colour — the colour is
-  the marker, the glyph was noise. Meaning that colour alone carries goes in an `sr-only` label.
+- ~~A ★ (or any emoji/glyph) marking the primary chip on top of its brand colour~~ — **reversed**:
+  the colour turned out to be the mistake, not the glyph. It said nothing on a chip that had no
+  grey sibling to contrast with, and on an amber-branded tenant it said *warning*. The chip carries
+  a ★ now; see the rule above. Left struck through rather than deleted, because a design decision
+  that was made, held, and then overturned is worth more here than a clean list.
+- A primary marker with no words anywhere near it. The glyph says *that* one chip differs; only
+  text says what it means, and — on the clients-on-a-contact block, which points the other way
+  round from how it reads — which direction it points (#374).
 - Chip fields that were editable in use mode: a stray click could detach a contact or move the
   primary. Linking, unlinking and promoting are definition changes and live behind edit mode.
 - A burn bar clamped at 100 % (`Math.min(100, pct)`): a project 40 % over budget drew exactly like

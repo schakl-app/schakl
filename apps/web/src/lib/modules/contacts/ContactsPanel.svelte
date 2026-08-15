@@ -158,6 +158,7 @@
     makePrimary: t("contacts.make_primary"),
     remove: t("contacts.unlink"),
   }}
+  hint={t("contacts.primary_hint")}
   oncreate={canCreate ? openCreate : undefined}
   onsearch={searchContacts}
   {searching}

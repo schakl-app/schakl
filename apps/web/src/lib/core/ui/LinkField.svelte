@@ -6,6 +6,19 @@
    * whose brand is gold the chip is indistinguishable from an amber warning, so the person you
    * should ring first read as a problem; and nothing at all reaches a screen reader (WCAG 1.4.1).
    *
+   * The ★ says *that* a chip is special; it does not say **what** or **which direction** (#374).
+   * Two things carry that in words. Every chip has a `title`, and the marked one's names what it
+   * is — the shape `Assignees` already uses — so a client with a single contact person, where
+   * there is no grey chip to contrast against, still has an answer. And `hint` states the promote
+   * gesture in edit mode, because clicking a chip to re-designate is discoverable only by hovering
+   * a thing you did not know to hover.
+   *
+   * Both `labels.primary` and `labels.makePrimary` are the *parent's* words, and on a
+   * direction-ambiguous surface they have to say the direction: `company_contacts.is_primary`
+   * means "the primary contact **for that company**", so the clients-on-a-contact side reads
+   * "hoofdcontact bij deze klant", never a bare "primair" that invites the reading — which does
+   * not exist — that this is the person's own main client.
+   *
    * **Use mode vs edit mode** (docs/UX.md §3). Working *with* the links is the default: chips are
    * quiet navigation to the linked record, and nothing can be changed by a stray click. Changing
    * *which* records are linked is a definition change, so it lives behind the parent's edit mode
@@ -46,6 +59,7 @@
     chipHref,
     labels,
     editing = false,
+    hint,
     oncreate,
     onsearch,
     searching = false,
@@ -64,6 +78,8 @@
     labels: { primary: string; makePrimary: string; remove: string };
     /** Attach / detach / promote are only reachable while the parent is in edit mode. */
     editing?: boolean;
+    /** One line naming the promote gesture, shown while editing. Omit and nothing renders. */
+    hint?: string;
     /** Typing an unknown name offers "＋ add …", handed back here to open a create dialog. */
     oncreate?: (query: string) => void;
     /** Search the candidate set server-side rather than shipping all of it (#290) — see
@@ -113,7 +129,13 @@
   {#if links.length > 0}
     <ul class="flex flex-wrap gap-2">
       {#each links as chip (chip.id)}
-        <li class={chipClass(chip.is_primary)}>
+        <!-- The title sits on the <li>, not on the overlay: tooltip lookup walks up the tree, so
+             the navigation <a> (which has none of its own) inherits it, while edit mode's promote
+             button keeps its own more specific one. -->
+        <li
+          class={chipClass(chip.is_primary)}
+          title={chip.is_primary ? `${chip.label} · ${labels.primary}` : chip.label}
+        >
           <!-- The whole chip is the target — navigation in use mode, promote in edit mode —
                stretched over the pill rather than wrapping it, since the ✕ is a control of its own
                and anchors/buttons cannot nest. -->
@@ -167,6 +189,11 @@
   {/if}
 
   {#if editing}
+    {#if hint && links.length > 0}
+      <!-- Only with chips on screen: over an empty list it would describe a gesture there is
+           nothing to perform. -->
+      <p class="text-xs text-text-muted">{hint}</p>
+    {/if}
     <Combobox
       items={candidates}
       name="_link_pick"
