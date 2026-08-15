@@ -1,3 +1,19 @@
+<script lang="ts" module>
+  /**
+   * Every currently-open Modal, in the order they opened. Escape belongs to the **last** one.
+   *
+   * The listener is on `window` and every mounted Modal registers one, open or not, so a screen
+   * with two of them answered a single Escape twice (#361). Which one should answer is not "the
+   * one declared first" — that is the parent, and a confirmation raised *on top of* it must be
+   * what the keystroke dismisses.
+   *
+   * Membership is maintained by an effect, so it settles a tick after `open` does. That is the
+   * behaviour the double-handling needs: a dialog opened *by* this very keystroke is not on the
+   * stack yet when the later listener runs, so it cannot close itself in the same breath.
+   */
+  const openStack: object[] = [];
+</script>
+
 <script lang="ts">
   /** Simple centered modal; closes on backdrop click or Escape. */
   import type { Snippet } from "svelte";
@@ -27,6 +43,18 @@
     children: Snippet;
   } = $props();
 
+  /** This instance's identity on `openStack` — an object, so it is unique per Modal. */
+  const token = {};
+
+  $effect(() => {
+    if (!open) return;
+    openStack.push(token);
+    return () => {
+      const i = openStack.lastIndexOf(token);
+      if (i >= 0) openStack.splice(i, 1);
+    };
+  });
+
   /** Every exit goes through here, so the guard cannot be bypassed by one of the three. */
   function close() {
     if (closeGuard && !closeGuard()) return;
@@ -41,11 +69,26 @@
     "5xl": "max-w-5xl",
   } as const;
 
+  /**
+   * Escape, and the two ways one keystroke used to be answered twice (#361).
+   *
+   * The listener is on `window` and is registered for **every mounted Modal**, open or not. A
+   * screen with two of them — the import wizard and the discard confirmation it raises — had
+   * both handlers run on one Escape: the wizard's opened the confirmation, and the
+   * confirmation's, registered later and therefore running second, closed it again. Svelte's
+   * signals settle synchronously, so the second handler already saw itself as open. The net
+   * effect was an Escape that did nothing at all, which reads exactly like a dead key.
+   *
+   * So Escape goes to the **topmost open dialog and nowhere else**: `openStack` decides which
+   * that is, and `preventDefault` marks the keystroke handled — whether the dialog closed or
+   * its guard blocked the close — so nothing downstream answers it a second time. A control
+   * inside that already dismissed its own dropdown claims it the same way, before this runs.
+   */
   function onkeydown(e: KeyboardEvent) {
-    // `defaultPrevented` is how a control inside says it already answered this Escape — a
-    // combobox dismissing its own dropdown, say. Closing the dialog on top of that makes the
-    // reflex keystroke destroy the surface instead of the popup (#361).
-    if (e.key === "Escape" && !e.defaultPrevented) close();
+    if (!open || e.key !== "Escape" || e.defaultPrevented) return;
+    if (openStack[openStack.length - 1] !== token) return;
+    e.preventDefault();
+    close();
   }
 
   /**

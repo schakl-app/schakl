@@ -135,7 +135,21 @@
   const selectedStatuses = $derived(
     entries.filter((e) => selected.includes(e.id)).map((e) => entryStatus(e)),
   );
+  /**
+   * Every action this report can ever offer, in order. It is what the ✎ asks about *before*
+   * anything is ticked — a toggle derived from the current selection could never appear, since
+   * nothing can be selected until it is pressed — and what the bar falls back to over an empty
+   * selection, where `BulkBar` disables each one and says why.
+   */
+  const ALL_BULK_ACTIONS = $derived([
+    { action: "approve", label: t("time.overview.approve") },
+    { action: "unapprove", label: t("time.overview.unapprove") },
+    { action: "invoice", label: t("time.overview.mark_invoiced") },
+    { action: "uninvoice", label: t("time.overview.unmark_invoiced") },
+  ]);
+
   const bulkActions = $derived.by(() => {
+    if (selected.length === 0) return ALL_BULK_ACTIONS;
     const st = selectedStatuses;
     const anyInvoiced = st.some((s) => s === "invoiced");
     const out: { action: string; label: string }[] = [];

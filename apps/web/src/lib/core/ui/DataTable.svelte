@@ -343,6 +343,17 @@
    */
   const FIXED_MIN = 90;
 
+  /**
+   * What the flexible column is *reserved* before any fixed column keeps a pixel it asked for.
+   *
+   * `FLEX_MIN` alone was the wrong bargain: reserving only the floor meant the identity column
+   * fell all the way to 160 and the fixed ones then gave up four pixels each — technically a
+   * proportional shrink, and still the name paying for a column of em-dashes. The target is
+   * what the row's own name actually needs to be read; the floor is only what is left when
+   * even shrinking every fixed column to `FIXED_MIN` cannot buy it.
+   */
+  const FLEX_TARGET = 280;
+
   /** The scroll container's own width, measured — 0 until mount, and 0 means "do not shrink". */
   let viewportWidth = $state(0);
 
@@ -376,8 +387,8 @@
       if (dragged !== undefined) pinned += dragged;
       else shrinkable += column.width ?? 0;
     }
-    const flexFloor = widths[flexKey ?? ""] ?? FLEX_MIN;
-    const room = viewportWidth - chrome - pinned - flexFloor;
+    const reserved = widths[flexKey ?? ""] ?? FLEX_TARGET;
+    const room = viewportWidth - chrome - pinned - reserved;
     if (shrinkable === 0 || room >= shrinkable) return 1;
     return Math.max(0, room) / shrinkable;
   });
